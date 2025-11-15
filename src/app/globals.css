@@ -1,26 +1,340 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here.
+All colors MUST be HSL.
+*/
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* La Vaca Brand Colors */
+    --background: 0 0% 99%;
+    --background-subtle: 210 25% 98%;
+    --background-soft: 26 20% 98%;
+    --foreground: 0 0% 10.2%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10.2%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10.2%;
+
+    /* Primary Brand Orange */
+    --primary: 26 84% 58.4%; /* #EE9639 */
+    --primary-foreground: 0 0% 100%;
+    --primary-light: 26 84% 68.4%;
+    --primary-dark: 26 84% 48.4%;
+
+    /* Midnight Blue */
+    --secondary: 209 100% 17%; /* #002855 */
+    --secondary-foreground: 0 0% 100%;
+
+    /* Supporting Colors */
+    --accent-teal: 165 59% 32%; /* #146356 */
+    --accent-sunset: 15 100% 59%; /* #FF6F31 */
+    --accent-tangerine: 22 100% 65%; /* #FF9051 */
+
+    /* Text Colors */
+    --text-primary: 0 0% 10.2%; /* #1A1A1A */
+    --text-secondary: 0 0% 18.8%; /* #303030 */
+    --text-muted: 0 0% 45%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 26 84% 58.4%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 26 84% 58.4%;
+
+    --radius: 0.75rem;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent-tangerine)));
+    --gradient-hero: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--accent-sunset)) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%) 0%, hsl(0 0% 98%) 100%);
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--background-subtle)) 100%);
+
+    /* Shadows */
+    --shadow-elegant: 0 10px 30px -10px hsl(var(--primary) / 0.15);
+    --shadow-card: 0 4px 20px -4px hsl(var(--primary) / 0.1);
+    --shadow-button: 0 6px 25px -6px hsl(var(--primary) / 0.3);
+
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 209 100% 8%;
+    --background-subtle: 209 50% 12%;
+    --background-soft: 26 30% 10%;
+    --foreground: 0 0% 98%;
+
+    --card: 209 100% 10%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 209 100% 10%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 26 84% 58.4%;
+    --primary-foreground: 0 0% 10.2%;
+
+    --secondary: 209 100% 17%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 209 50% 15%;
+    --muted-foreground: 0 0% 65%;
+
+    --accent: 26 84% 58.4%;
+    --accent-foreground: 0 0% 10.2%;
+
+    --text-primary: 0 0% 98%;
+    --text-secondary: 0 0% 85%;
+    --text-muted: 0 0% 65%;
+
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 209 50% 20%;
+    --input: 209 50% 20%;
+    --ring: 26 84% 58.4%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent-tangerine)));
+    --gradient-hero: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--accent-sunset)) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(209 100% 12%) 0%, hsl(209 100% 10%) 100%);
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--background-subtle)) 100%);
+
+    --shadow-elegant: 0 10px 30px -10px hsl(0 0% 0% / 0.3);
+    --shadow-card: 0 4px 20px -4px hsl(0 0% 0% / 0.25);
+    --shadow-button: 0 6px 25px -6px hsl(var(--primary) / 0.4);
+
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+}
+
+/* Prevent horizontal scroll on root elements */
+html {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Hide scrollbar for horizontal nav */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Smooth scrolling for the entire page */
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+}
+
+/* Mobile optimization base styles */
+@layer base {
+  /* Ensure minimum font sizes for mobile readability */
+  body {
+    font-size: 16px; /* Minimum 16px for mobile */
+    line-height: 1.6;
+  }
+
+  /* Touch-friendly interactive elements */
+  button,
+  [role="button"],
+  input[type="submit"],
+  input[type="button"],
+  .touch-target {
+    min-height: 48px;
+    min-width: 48px;
+    touch-action: manipulation;
+  }
+
+  /* Prevent horizontal scrolling */
+  body, html {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  /* Optimize text rendering on mobile */
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Prevent zoom on form focus */
+  input[type="email"],
+  input[type="number"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="text"],
+  input[type="url"],
+  select,
+  textarea {
+    font-size: 16px; /* Prevent iOS zoom */
+  }
+
+  /* Improve tap target spacing */
+  a, button {
+    margin: 2px;
+  }
+}
+
+/* Scrolling animations for mobile service areas */
+@keyframes scroll-left {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes scroll-right {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+/* Pause animation on hover */
+.hover\:pause-animation:hover {
+  animation-play-state: paused !important;
+}
+
+/* iOS/Material Design Toggle Switches */
+/* The toggle container */
+.toggle-switch {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  gap: 12px;
+}
+
+/* The pill-shaped track */
+.slider {
+  position: relative;
+  width: 50px;
+  height: 26px;
+  background-color: #ccc;
+  border-radius: 34px; /* This makes it pill-shaped */
+  transition: background-color 0.3s;
+}
+
+/* The circular knob */
+.slider::before {
+  content: "";
+  position: absolute;
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.3s;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* When toggled ON */
+.toggle-switch[data-state="checked"] .slider {
+  background-color: #E97E3C; /* Orange */
+}
+
+/* Move knob to right when ON */
+.toggle-switch[data-state="checked"] .slider::before {
+  transform: translateX(24px);
+}
+
+/* Mobile-specific animations */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Checkbox/Checkmark utility classes */
+.checkbox-icon {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  border: 2px solid hsl(var(--primary));
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  background-color: hsl(var(--background));
+}
+
+.checkbox-icon.checked {
+  background-color: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+}
+
+.checkbox-icon:hover {
+  background-color: hsl(var(--primary) / 0.1);
+}
+
+.checkbox-icon-sm {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  border-width: 1.5px;
+  border-radius: 4px;
+}
+
+.checkbox-icon-lg {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: 8px;
 }
