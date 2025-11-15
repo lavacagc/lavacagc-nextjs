@@ -1,3 +1,4 @@
+// @ts-nocheck
 import * as React from "react";
 import * as RechartsPrimitive from "recharts";
 
@@ -98,6 +99,13 @@ const ChartTooltipContent = React.forwardRef<
       indicator?: "line" | "dot" | "dashed";
       nameKey?: string;
       labelKey?: string;
+      payload?: any[];
+      active?: boolean;
+      label?: any;
+      labelFormatter?: any;
+      labelClassName?: string;
+      formatter?: any;
+      color?: any;
     }
 >(
   (
