@@ -5,6 +5,9 @@ import Footer from '@/components/Footer';
 import { Badge } from '@/components/ui/badge';
 import BlogPostGrid from '@/components/BlogPostGrid';
 
+// Revalidate every 60 seconds (ISR - Incremental Static Regeneration)
+export const revalidate = 60;
+
 // Server-side Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -51,18 +54,24 @@ interface BlogPost {
 }
 
 async function getBlogPosts(): Promise<BlogPost[]> {
-  const { data, error } = await supabase
-    .from('blog_posts')
-    .select('id, title, slug, excerpt, author, category, featured_image, created_at')
-    .eq('published', true)
-    .order('created_at', { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from('blog_posts')
+      .select('id, title, slug, excerpt, author, category, featured_image, created_at')
+      .eq('published', true)
+      .order('created_at', { ascending: false });
 
-  if (error) {
-    console.error('Error loading blog posts:', error);
+    if (error) {
+      console.error('Error loading blog posts:', error);
+      return [];
+    }
+
+    console.log(`Loaded ${data?.length || 0} blog posts`);
+    return data || [];
+  } catch (err) {
+    console.error('Failed to fetch blog posts:', err);
     return [];
   }
-
-  return data || [];
 }
 
 export default async function Blog() {
