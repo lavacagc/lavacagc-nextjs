@@ -1,33 +1,154 @@
-'use client'
-
+import { Metadata } from 'next';
 import dynamic from 'next/dynamic';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, Clock, FileText } from 'lucide-react';
+import Link from 'next/link';
 
 // Dynamically import WarrantyForm with no SSR to avoid browser-only dependency issues
 const WarrantyForm = dynamic(() => import('@/components/WarrantyForm'), {
   ssr: false,
-  loading: () => <div className="text-center py-8">Loading form...</div>
+  loading: () => <div className="text-center py-8">Loading form...</div>,
 });
 
-export default function Warranty() {
+export const metadata: Metadata = {
+  title: '5-Year Warranty | Home Remodeling Guarantee | La Vaca General Contractors',
+  description:
+    'Comprehensive 5-year warranty on all home remodeling projects. We stand behind our work with coverage for workmanship defects, structural integrity, and installation issues.',
+  keywords:
+    'contractor warranty, home remodeling warranty, 5 year warranty, NJ contractor guarantee, workmanship warranty, renovation warranty',
+  openGraph: {
+    title: '5-Year Warranty | La Vaca General Contractors',
+    description: 'Comprehensive warranty coverage on all home remodeling projects. Peace of mind guaranteed.',
+    type: 'website',
+    url: 'https://www.lavacagc.com/warranty',
+    images: [
+      {
+        url: 'https://www.lavacagc.com/og-warranty.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'La Vaca General Contractors 5-Year Warranty',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: '5-Year Warranty | La Vaca GC',
+    description: 'Comprehensive warranty on all home remodeling projects',
+  },
+  alternates: {
+    canonical: 'https://www.lavacagc.com/warranty',
+  },
+};
+
+export default function WarrantyPage() {
+  // JSON-LD Schema for Service with Warranty
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Service',
+    name: '5-Year Home Remodeling Warranty',
+    description:
+      'Comprehensive 5-year warranty on all home remodeling projects covering workmanship defects, structural integrity, and installation issues.',
+    provider: {
+      '@type': 'LocalBusiness',
+      name: 'La Vaca General Contractors',
+      url: 'https://www.lavacagc.com',
+      telephone: '(201) 212-4917',
+    },
+    serviceType: 'Warranty Service',
+    areaServed: {
+      '@type': 'State',
+      name: 'New Jersey',
+    },
+    hasOfferCatalog: {
+      '@type': 'OfferCatalog',
+      name: 'Warranty Coverage',
+      itemListElement: [
+        {
+          '@type': 'Offer',
+          itemOffered: {
+            '@type': 'Service',
+            name: 'Workmanship Defects Coverage',
+          },
+        },
+        {
+          '@type': 'Offer',
+          itemOffered: {
+            '@type': 'Service',
+            name: 'Structural Integrity Coverage',
+          },
+        },
+        {
+          '@type': 'Offer',
+          itemOffered: {
+            '@type': 'Service',
+            name: 'Installation Issues Coverage',
+          },
+        },
+        {
+          '@type': 'Offer',
+          itemOffered: {
+            '@type': 'Service',
+            name: 'Material Failures Coverage',
+          },
+        },
+      ],
+    },
+  };
+
+  // Breadcrumb JSON-LD
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Home',
+        item: 'https://www.lavacagc.com',
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Warranty',
+        item: 'https://www.lavacagc.com/warranty',
+      },
+    ],
+  };
+
   return (
     <div className="min-h-screen bg-background-primary">
       <Header />
 
+      {/* JSON-LD Structured Data */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
+
       <main className="pt-24">
-        {/* Hero Section */}
+        {/* Hero Section - Server Rendered for SEO */}
         <section className="py-8 md:py-16 bg-gradient-to-br from-background-primary via-background-secondary to-background-accent">
           <div className="container mx-auto px-4">
             <div className="max-w-4xl mx-auto text-center">
+              <nav aria-label="Breadcrumb" className="mb-6">
+                <ol className="flex items-center justify-center space-x-2 text-sm text-muted-foreground">
+                  <li>
+                    <Link href="/" className="hover:text-primary">
+                      Home
+                    </Link>
+                  </li>
+                  <li>/</li>
+                  <li className="text-foreground font-medium">Warranty</li>
+                </ol>
+              </nav>
+
               <div className="flex justify-center mb-6">
                 <Shield className="h-16 w-16 text-primary" />
               </div>
-              <h1 className="text-4xl md:text-5xl font-bold text-text-primary mb-6">
-                Our 5-Year Warranty
-              </h1>
+              <h1 className="text-4xl md:text-5xl font-bold text-text-primary mb-6">Our 5-Year Warranty</h1>
               <p className="text-xl text-text-secondary leading-relaxed">
                 We stand behind our work with a comprehensive 5-year warranty on all home remodeling projects,
                 giving you peace of mind and protecting your investment.
@@ -36,7 +157,7 @@ export default function Warranty() {
           </div>
         </section>
 
-        {/* Warranty Details */}
+        {/* Warranty Details - Server Rendered for SEO */}
         <section className="py-8 md:py-16">
           <div className="container mx-auto px-4">
             <div className="max-w-6xl mx-auto">
@@ -123,7 +244,7 @@ export default function Warranty() {
           </div>
         </section>
 
-        {/* Warranty Claim Form Section */}
+        {/* Warranty Claim Form Section - Client Component */}
         <section className="py-8 md:py-16 bg-background-accent">
           <div className="container mx-auto px-4">
             <div className="text-center mb-12">
