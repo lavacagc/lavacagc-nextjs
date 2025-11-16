@@ -22,6 +22,14 @@ export const metadata: Metadata = {
   description: 'Transform your NJ home with La Vaca GC\'s expert kitchen & bathroom remodeling, home additions, and renovation services. Licensed contractors. Free estimates. Call today!',
   keywords: ['home remodeling', 'kitchen renovation', 'bathroom remodeling', 'basement finishing', 'Northern New Jersey contractor', 'Alpine', 'Short Hills', 'Saddle River', 'Essex Fells'],
   authors: [{ name: 'La Vaca General Contractors, LLC' }],
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/logo.png', type: 'image/png' },
+    ],
+    shortcut: '/logo.png',
+    apple: '/logo.png',
+  },
   openGraph: {
     type: 'website',
     locale: 'en_US',
