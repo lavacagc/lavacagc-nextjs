@@ -93,9 +93,15 @@ class AnalyticsManager {
   }
 
   private initializeGTM(containerId: string) {
-    // Load GTM script
+    // Validate container ID format to prevent XSS
+    if (!/^GTM-[A-Z0-9]+$/.test(containerId)) {
+      console.error('Invalid GTM container ID format');
+      return;
+    }
+
+    // Load GTM script using safe DOM manipulation
     const script1 = document.createElement('script');
-    script1.innerHTML = `
+    script1.textContent = `
       (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
       new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
       j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
@@ -119,32 +125,62 @@ class AnalyticsManager {
   }
 
   private initializeGA4(measurementId: string) {
+    // Validate measurement ID format to prevent XSS
+    if (!/^G-[A-Z0-9]+$/.test(measurementId)) {
+      console.error('Invalid GA4 measurement ID format');
+      return;
+    }
+
     // Load Google Analytics script
     const script1 = document.createElement('script');
     script1.async = true;
-    script1.src = `https://www.googletagmanager.com/gtag/js?id=${measurementId}`;
+    script1.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`;
     document.head.appendChild(script1);
 
-    // Initialize gtag
+    // Initialize gtag using safe textContent instead of innerHTML
     const script2 = document.createElement('script');
-    script2.innerHTML = `
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      
-      ${this.config?.consent_mode_enabled ? `
+
+    // Build config object safely
+    const configOptions: Record<string, unknown> = {
+      page_title: 'document.title',
+      page_location: 'window.location.href',
+    };
+
+    if (this.config?.ip_anonymization) {
+      configOptions.anonymize_ip = true;
+    }
+
+    // Sanitize custom dimensions - only allow safe key-value pairs
+    if (this.config?.custom_dimensions && typeof this.config.custom_dimensions === 'object') {
+      const safeCustomDimensions: Record<string, string> = {};
+      for (const [key, value] of Object.entries(this.config.custom_dimensions)) {
+        // Only allow alphanumeric keys and string values
+        if (/^[a-zA-Z0-9_]+$/.test(key) && typeof value === 'string') {
+          safeCustomDimensions[key] = value;
+        }
+      }
+      if (Object.keys(safeCustomDimensions).length > 0) {
+        configOptions.custom_map = safeCustomDimensions;
+      }
+    }
+
+    const consentBlock = this.config?.consent_mode_enabled ? `
       gtag('consent', 'default', {
         'analytics_storage': 'denied',
         'ad_storage': 'denied'
       });
-      ` : ''}
-      
+    ` : '';
+
+    script2.textContent = `
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      ${consentBlock}
       gtag('config', '${measurementId}', {
         page_title: document.title,
         page_location: window.location.href,
-        ${this.config?.ip_anonymization ? `anonymize_ip: true,` : ''}
-        ${this.config && Object.keys(this.config.custom_dimensions || {}).length > 0 ? 
-          `custom_map: ${JSON.stringify(this.config.custom_dimensions)},` : ''}
+        ${this.config?.ip_anonymization ? 'anonymize_ip: true,' : ''}
+        ${configOptions.custom_map ? `custom_map: ${JSON.stringify(configOptions.custom_map)},` : ''}
       });
     `;
     document.head.appendChild(script2);

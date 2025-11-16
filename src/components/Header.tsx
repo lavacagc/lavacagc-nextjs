@@ -11,6 +11,7 @@ import Image from "next/image";
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [servicesMenuOpen, setServicesMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -74,15 +75,29 @@ const Header = () => {
               />
               <div className="text-left">
                 <span className="font-bold text-sm min-[480px]:text-base md:text-lg text-text-primary block">La Vaca</span>
-                <p className="text-xs min-[480px]:text-sm md:text-sm text-text-muted -mt-0.5 md:-mt-1">General Contractors</p>
+                <p className="text-sm text-text-muted -mt-0.5 md:-mt-1">General Contractors</p>
               </div>
             </button>
 
             {/* Desktop Navigation - Centered */}
             <nav className="hidden lg:flex items-center justify-center space-x-8">
-              <div className="relative group">
+              <div
+                className="relative group"
+                onMouseLeave={() => setServicesMenuOpen(false)}
+              >
                 <button
-                  onClick={() => scrollToSection('services')}
+                  onClick={() => setServicesMenuOpen(!servicesMenuOpen)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setServicesMenuOpen(!servicesMenuOpen);
+                    }
+                    if (e.key === 'Escape' && servicesMenuOpen) {
+                      setServicesMenuOpen(false);
+                    }
+                  }}
+                  aria-expanded={servicesMenuOpen}
+                  aria-haspopup="true"
                   className="text-text-secondary hover:text-primary transition-colors font-medium flex items-center"
                 >
                   Services
@@ -90,27 +105,32 @@ const Header = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
-                <div className="absolute top-full left-0 mt-2 w-64 bg-card border rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                <div
+                  className={`absolute top-full left-0 mt-2 w-64 bg-card border rounded-lg shadow-lg transition-all duration-200 z-50 ${
+                    servicesMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible group-hover:opacity-100 group-hover:visible'
+                  }`}
+                  role="menu"
+                >
                   <div className="p-2">
-                    <Link href="/services/kitchen-remodeling" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors">
+                    <Link href="/services/kitchen-remodeling" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
                       Kitchen Remodeling
                     </Link>
-                    <Link href="/services/bathroom-renovation" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors">
+                    <Link href="/services/bathroom-renovation" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
                       Bathroom Renovation
                     </Link>
-                    <Link href="/services/basement-finishing" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors">
+                    <Link href="/services/basement-finishing" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
                       Basement Finishing
                     </Link>
-                    <Link href="/services/home-additions" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors">
+                    <Link href="/services/home-additions" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
                       Home Additions
                     </Link>
                   </div>
                 </div>
               </div>
               <button onClick={() => scrollToSection('projects')} className="text-text-secondary hover:text-primary transition-colors font-medium">Projects</button>
-              <button onClick={() => navigateToPage('/about')} className="text-text-secondary hover:text-primary transition-colors font-medium">About</button>
-              <button onClick={() => navigateToPage('/process')} className="text-text-secondary hover:text-primary transition-colors font-medium">Process</button>
-              <button onClick={() => navigateToPage('/blog')} className="text-text-secondary hover:text-primary transition-colors font-medium">Blog</button>
+              <Link href="/about" className="text-text-secondary hover:text-primary transition-colors font-medium">About</Link>
+              <Link href="/process" className="text-text-secondary hover:text-primary transition-colors font-medium">Process</Link>
+              <Link href="/blog" className="text-text-secondary hover:text-primary transition-colors font-medium">Blog</Link>
             </nav>
 
             {/* Right side - CTA and Menu */}
@@ -128,6 +148,9 @@ const Header = () => {
               <button
                 className="lg:hidden p-2"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+                aria-expanded={mobileMenuOpen}
+                aria-controls="mobile-menu"
               >
                 {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
               </button>
@@ -137,7 +160,7 @@ const Header = () => {
 
         {/* Mobile/Tablet Menu */}
         {mobileMenuOpen && (
-          <div className="lg:hidden bg-background border-t border-border">
+          <div id="mobile-menu" className="lg:hidden bg-background border-t border-border" role="navigation" aria-label="Mobile navigation">
             <div className="container mx-auto px-4 py-4 space-y-4">
               <div>
                 <p className="font-semibold text-text-primary mb-2">Services</p>

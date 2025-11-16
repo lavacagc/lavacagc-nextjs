@@ -18,10 +18,10 @@ const Footer = () => {
               <Image src={logo} alt="La Vaca General Contractors" className="h-6 md:h-12 w-auto" />
               <div>
                 <span className="font-bold text-base md:text-xl block">La Vaca General Contractors, LLC</span>
-                <p className="text-xs md:text-sm opacity-90">Premium Home Remodeling</p>
+                <p className="text-xs md:text-sm text-secondary-foreground/90">Premium Home Remodeling</p>
               </div>
             </div>
-            <p className="text-lg mb-6 opacity-90 max-w-md">
+            <p className="text-lg mb-6 text-secondary-foreground/90 max-w-md">
               Boutique contractor specializing in high-end residential transformations with personalized service and meticulous craftsmanship.
             </p>
 
@@ -41,7 +41,7 @@ const Footer = () => {
           {/* Company Pages */}
           <div>
             <h4 className="font-bold text-lg mb-6">Company</h4>
-            <ul className="space-y-3 text-sm opacity-90">
+            <ul className="space-y-3 text-sm text-secondary-foreground">
               <li><Link href="/about" className="hover:text-primary transition-colors">About Us</Link></li>
               <li><Link href="/process" className="hover:text-primary transition-colors">Our Process</Link></li>
               <li><Link href="/portfolio" className="hover:text-primary transition-colors">Portfolio</Link></li>
@@ -52,7 +52,7 @@ const Footer = () => {
           {/* Services */}
           <div>
             <h4 className="font-bold text-lg mb-6">Our Services</h4>
-            <ul className="space-y-3 text-sm opacity-90">
+            <ul className="space-y-3 text-sm text-secondary-foreground">
               <li><Link href="/services/kitchen-remodeling" className="hover:text-primary transition-colors">Kitchen Remodeling</Link></li>
               <li><Link href="/services/bathroom-renovation" className="hover:text-primary transition-colors">Bathroom Renovations</Link></li>
               <li><Link href="/services/basement-finishing" className="hover:text-primary transition-colors">Basement Finishing</Link></li>
@@ -63,7 +63,7 @@ const Footer = () => {
           {/* Service Areas */}
           <div className="sm:col-span-2">
             <h4 className="font-bold text-lg mb-6">Service Areas</h4>
-            <ul className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm opacity-90">
+            <ul className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-secondary-foreground">
               <li><Link href="/locations/alpine" className="hover:text-primary transition-colors">Alpine, NJ</Link></li>
               <li><Link href="/locations/caldwell" className="hover:text-primary transition-colors">Caldwell, NJ</Link></li>
               <li><Link href="/locations/essex-fells" className="hover:text-primary transition-colors">Essex Fells, NJ</Link></li>
@@ -83,23 +83,41 @@ const Footer = () => {
         {/* Bottom Section */}
         <div className="border-t border-secondary-foreground/20 mt-12 pt-8">
           <div className="flex flex-col md:flex-row items-center justify-between">
-            <div className="text-sm opacity-75 mb-4 md:mb-0">
+            <div className="text-sm text-secondary-foreground/80 mb-4 md:mb-0">
               <p>&copy; {currentYear} La Vaca General Contractors, LLC. All rights reserved.</p>
               <p className="mt-1">Licensed, Bonded, & Insured | HIC# 13VH13373800</p>
               <p className="mt-2">
                 <Link href="/privacy-policy" className="hover:text-primary transition-colors">Privacy Policy</Link>
                 {" | "}
                 <Link href="/terms-and-conditions" className="hover:text-primary transition-colors">Terms & Conditions</Link>
+                {" | "}
+                <Link href="/do-not-sell" className="hover:text-primary transition-colors">Do Not Sell My Info</Link>
+                {" | "}
+                <Link href="/data-rights" className="hover:text-primary transition-colors">Your Data Rights</Link>
               </p>
             </div>
 
             <div className="flex items-center space-x-4">
-              <span className="text-sm opacity-75 mr-4">Follow Us:</span>
-              <a href="https://www.facebook.com/p/La-Vaca-General-Contractor-61563600601660/" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">
+              <span className="text-sm text-secondary-foreground/80 mr-4">Follow Us:</span>
+              <a
+                href="https://www.facebook.com/p/La-Vaca-General-Contractor-61563600601660/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-primary transition-colors"
+                aria-label="Visit our Facebook page"
+              >
                 <Facebook className="h-5 w-5" />
+                <span className="sr-only">Facebook</span>
               </a>
-              <a href="https://www.instagram.com/lavacagc/" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">
+              <a
+                href="https://www.instagram.com/lavacagc/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-primary transition-colors"
+                aria-label="Follow us on Instagram"
+              >
                 <Instagram className="h-5 w-5" />
+                <span className="sr-only">Instagram</span>
               </a>
             </div>
           </div>

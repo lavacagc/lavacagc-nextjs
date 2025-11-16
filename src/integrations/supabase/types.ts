@@ -972,6 +972,51 @@ export type Database = {
         }
         Relationships: []
       }
+      data_rights_requests: {
+        Row: {
+          id: string
+          request_type: string
+          name: string
+          email: string
+          phone: string | null
+          details: string | null
+          ip_address: string | null
+          user_agent: string | null
+          status: string
+          created_at: string
+          processed_at: string | null
+          response_sent_at: string | null
+        }
+        Insert: {
+          id?: string
+          request_type: string
+          name: string
+          email: string
+          phone?: string | null
+          details?: string | null
+          ip_address?: string | null
+          user_agent?: string | null
+          status?: string
+          created_at?: string
+          processed_at?: string | null
+          response_sent_at?: string | null
+        }
+        Update: {
+          id?: string
+          request_type?: string
+          name?: string
+          email?: string
+          phone?: string | null
+          details?: string | null
+          ip_address?: string | null
+          user_agent?: string | null
+          status?: string
+          created_at?: string
+          processed_at?: string | null
+          response_sent_at?: string | null
+        }
+        Relationships: []
+      }
       page_revisions: {
         Row: {
           content: Json

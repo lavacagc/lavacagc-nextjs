@@ -5,6 +5,7 @@ import { Providers } from '@/components/providers'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import CookieConsent from '@/components/CookieConsent'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -30,10 +31,10 @@ export const metadata: Metadata = {
     description: 'Transform your NJ home with La Vaca GC\'s expert kitchen & bathroom remodeling, home additions, and renovation services. Licensed contractors. Free estimates. Call today!',
     images: [
       {
-        url: '/og-image.jpg',
-        width: 1200,
-        height: 630,
-        alt: 'Lavaca General Contracting',
+        url: '/logo.png',
+        width: 800,
+        height: 800,
+        alt: 'La Vaca General Contractors - Home Renovation NJ',
       }
     ],
   },
@@ -41,7 +42,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Home Renovation & Remodeling Contractor NJ | Kitchen, Bathroom & Additions',
     description: 'Transform your NJ home with La Vaca GC\'s expert kitchen & bathroom remodeling, home additions, and renovation services. Licensed contractors. Free estimates. Call today!',
-    images: ['/og-image.jpg'],
+    images: ['/logo.png'],
   },
   robots: {
     index: true,
@@ -69,11 +70,19 @@ export default function RootLayout({
         <meta name="theme-color" content="#EE9639" />
       </head>
       <body className={inter.className}>
+        {/* Skip to main content link for keyboard accessibility */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:bg-primary focus:text-primary-foreground focus:px-4 focus:py-2 focus:rounded focus:outline-none"
+        >
+          Skip to main content
+        </a>
         <Providers>
           <TooltipProvider>
             {children}
             <Toaster />
             <Sonner />
+            <CookieConsent />
           </TooltipProvider>
         </Providers>
       </body>
