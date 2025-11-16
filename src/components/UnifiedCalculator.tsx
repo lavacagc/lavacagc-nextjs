@@ -127,6 +127,11 @@ export default function UnifiedCalculator() {
 
         if (error) throw error;
 
+        // Store lead data in sessionStorage to avoid RLS fetch issues
+        if (response.lead_data) {
+          sessionStorage.setItem(`estimate_lead_${response.lead_id}`, JSON.stringify(response.lead_data));
+        }
+
         router.push(`/project-calculator/result/${response.lead_id}`);
       }
     } catch (error) {

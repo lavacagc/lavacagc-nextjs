@@ -48,6 +48,19 @@ export default function ResultsPage() {
   const loadLead = async () => {
     try {
       setLoading(true);
+
+      // First, check sessionStorage for cached lead data (avoids RLS issues)
+      const cachedData = sessionStorage.getItem(`estimate_lead_${leadId}`);
+      if (cachedData) {
+        const parsedData = JSON.parse(cachedData);
+        setLead(parsedData);
+        // Clean up sessionStorage after use
+        sessionStorage.removeItem(`estimate_lead_${leadId}`);
+        setLoading(false);
+        return;
+      }
+
+      // Fallback to database fetch if not in sessionStorage
       const { data, error } = await supabase
         .from("estimate_leads")
         .select("*")
@@ -55,7 +68,7 @@ export default function ResultsPage() {
         .maybeSingle();
 
       if (error) throw error;
-      
+
       if (!data) {
         toast({
           title: "Estimate Not Found",
