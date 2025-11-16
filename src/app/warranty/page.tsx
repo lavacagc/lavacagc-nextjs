@@ -1,16 +1,10 @@
 import { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, Clock, FileText } from 'lucide-react';
 import Link from 'next/link';
-
-// Dynamically import WarrantyForm with no SSR to avoid browser-only dependency issues
-const WarrantyForm = dynamic(() => import('@/components/WarrantyForm'), {
-  ssr: false,
-  loading: () => <div className="text-center py-8">Loading form...</div>,
-});
+import WarrantyFormWrapper from '@/components/WarrantyFormWrapper';
 
 export const metadata: Metadata = {
   title: '5-Year Warranty | Home Remodeling Guarantee | La Vaca General Contractors',
@@ -254,7 +248,7 @@ export default function WarrantyPage() {
                 Include photos of the issue to help us assess and resolve it quickly.
               </p>
             </div>
-            <WarrantyForm />
+            <WarrantyFormWrapper />
           </div>
         </section>
       </main>
