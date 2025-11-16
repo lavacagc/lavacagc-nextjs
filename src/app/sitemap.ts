@@ -4,8 +4,8 @@ import { Database } from '@/integrations/supabase/types'
 
 // Create a static client for build-time data fetching (no cookies/SSR)
 function getStaticSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  const supabaseUrl = "https://xrvbrnrbnyfdwkfdoepq.supabase.co"
+  const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhydmJybnJibnlmZHdrZmRvZXBxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3NzIyNTAsImV4cCI6MjA3NDM0ODI1MH0.TL9cUCyaApPjWl8YEW455JgCUSa6S2qsoRpZ8iATl10"
   return createSupabaseClient<Database>(supabaseUrl, supabaseKey)
 }
 
