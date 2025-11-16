@@ -1,14 +1,43 @@
-'use client'
-
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/integrations/supabase/client';
+import { Metadata } from 'next';
+import { createClient } from '@supabase/supabase-js';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import { formatDistanceToNow } from 'date-fns';
+import BlogPostGrid from '@/components/BlogPostGrid';
+
+// Server-side Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+);
+
+export const metadata: Metadata = {
+  title: 'Home Remodeling Blog & Resources | La Vaca General Contractors',
+  description: 'Expert insights on home remodeling trends, costs, and permits in Northern NJ. Get professional advice on kitchen renovations, bathroom upgrades, and home additions from licensed contractors.',
+  keywords: 'home remodeling blog, NJ renovation tips, kitchen remodel cost, bathroom renovation guide, home addition permits NJ',
+  openGraph: {
+    title: 'Home Remodeling Blog & Resources | La Vaca General Contractors',
+    description: 'Expert insights on home remodeling trends, costs, and permits in Northern NJ.',
+    type: 'website',
+    url: 'https://www.lavacagc.com/blog',
+    images: [
+      {
+        url: 'https://www.lavacagc.com/og-blog.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'La Vaca General Contractors Blog',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Home Remodeling Blog | La Vaca GC',
+    description: 'Expert insights on home remodeling in Northern NJ',
+  },
+  alternates: {
+    canonical: 'https://www.lavacagc.com/blog',
+  },
+};
 
 interface BlogPost {
   id: string;
@@ -21,52 +50,63 @@ interface BlogPost {
   created_at: string;
 }
 
-export default function Blog() {
-  const router = useRouter();
-  const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+async function getBlogPosts(): Promise<BlogPost[]> {
+  const { data, error } = await supabase
+    .from('blog_posts')
+    .select('id, title, slug, excerpt, author, category, featured_image, created_at')
+    .eq('published', true)
+    .order('created_at', { ascending: false });
 
-  useEffect(() => {
-    loadBlogPosts();
-  }, []);
-
-  const loadBlogPosts = async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('blog_posts')
-        .select('id, title, slug, excerpt, author, category, featured_image, created_at')
-        .eq('published', true)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      setBlogPosts(data || []);
-    } catch (error) {
-      console.error('Error loading blog posts:', error);
-      setBlogPosts([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const categories = [...new Set(blogPosts.map(post => post.category))];
-
-  if (isLoading) {
-    return (
-      <>
-        <Header />
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-        <Footer />
-      </>
-    );
+  if (error) {
+    console.error('Error loading blog posts:', error);
+    return [];
   }
+
+  return data || [];
+}
+
+export default async function Blog() {
+  const blogPosts = await getBlogPosts();
+
+  // JSON-LD Schema for Blog
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Blog',
+    name: 'La Vaca General Contractors Blog',
+    description: 'Expert insights on home remodeling trends, costs, and permits in Northern NJ',
+    url: 'https://www.lavacagc.com/blog',
+    publisher: {
+      '@type': 'Organization',
+      name: 'La Vaca General Contractors',
+      url: 'https://www.lavacagc.com',
+      logo: {
+        '@type': 'ImageObject',
+        url: 'https://www.lavacagc.com/logo.png',
+      },
+    },
+    blogPost: blogPosts.map((post) => ({
+      '@type': 'BlogPosting',
+      headline: post.title,
+      description: post.excerpt,
+      url: `https://www.lavacagc.com/blog/${post.slug}`,
+      datePublished: post.created_at,
+      author: {
+        '@type': 'Person',
+        name: post.author,
+      },
+      image: post.featured_image || 'https://www.lavacagc.com/default-blog-image.jpg',
+    })),
+  };
 
   return (
     <>
       <Header />
+
+      {/* JSON-LD Structured Data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
 
       <main className="min-h-screen bg-background">
         {/* Hero Section */}
@@ -94,51 +134,19 @@ export default function Blog() {
           </div>
         </section>
 
-        {/* Blog Posts Grid */}
+        {/* Blog Posts Grid - Client Component for interactivity */}
         <section className="py-20">
           <div className="container mx-auto px-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {blogPosts.map((post) => (
-                <Card
-                  key={post.id}
-                  className="cursor-pointer hover:shadow-card transition-all duration-300 group"
-                  onClick={() => router.push(`/blog/${post.slug}`)}
-                >
-                  <div className="aspect-video bg-muted rounded-t-lg overflow-hidden">
-                    {post.featured_image ? (
-                      <img
-                        src={post.featured_image}
-                        alt={post.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent-teal/20 flex items-center justify-center">
-                        <span className="text-text-muted text-sm">No Image</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-6">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Badge variant="outline" className="text-xs">
-                        {post.category}
-                      </Badge>
-                    </div>
-                    <h3 className="text-xl font-semibold group-hover:text-primary transition-colors mb-3">
-                      {post.title}
-                    </h3>
-
-                    <p className="text-muted-foreground mb-4">
-                      {post.excerpt}
-                    </p>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span>By {post.author}</span>
-                      <span>{formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}</span>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
+            {blogPosts.length > 0 ? (
+              <BlogPostGrid posts={blogPosts} />
+            ) : (
+              <div className="text-center py-12">
+                <h2 className="text-2xl font-semibold mb-4">No Blog Posts Yet</h2>
+                <p className="text-muted-foreground">
+                  Check back soon for expert insights on home remodeling!
+                </p>
+              </div>
+            )}
           </div>
         </section>
 
@@ -153,19 +161,18 @@ export default function Blog() {
                 Get expert advice and a free consultation from Northern NJ's trusted contractors
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button
-                  size="lg"
-                  onClick={() => router.push('/')}
+                <a
+                  href="/"
+                  className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-11 px-8"
                 >
                   Get Free Estimate
-                </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={() => router.push('/about')}
+                </a>
+                <a
+                  href="/about"
+                  className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-11 px-8"
                 >
                   Learn About Us
-                </Button>
+                </a>
               </div>
             </div>
           </div>

@@ -127,9 +127,24 @@ export default function UnifiedCalculator() {
 
         if (error) throw error;
 
-        // Store lead data in sessionStorage to avoid RLS fetch issues
+        // Store only non-sensitive lead data in sessionStorage to avoid RLS fetch issues
+        // Exclude PII like email, phone, full address for security
         if (response.lead_data) {
-          sessionStorage.setItem(`estimate_lead_${response.lead_id}`, JSON.stringify(response.lead_data));
+          const safeLeadData = {
+            id: response.lead_data.id,
+            first_name: response.lead_data.first_name,
+            project_type_name: response.lead_data.project_type_name,
+            square_footage: response.lead_data.square_footage,
+            estimate_range_min: response.lead_data.estimate_range_min,
+            estimate_range_max: response.lead_data.estimate_range_max,
+            total_material_cost: response.lead_data.total_material_cost,
+            total_labor_cost: response.lead_data.total_labor_cost,
+            combined_total: response.lead_data.combined_total,
+            requires_manual_estimate: response.lead_data.requires_manual_estimate,
+            selected_options: response.lead_data.selected_options,
+            created_at: response.lead_data.created_at,
+          };
+          sessionStorage.setItem(`estimate_lead_${response.lead_id}`, JSON.stringify(safeLeadData));
         }
 
         router.push(`/project-calculator/result/${response.lead_id}`);

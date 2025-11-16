@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Shield, CheckCircle, Mail, Phone, MapPin } from 'lucide-react';
 import Breadcrumb from '@/components/Breadcrumb';
+import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config';
 
 export default function DoNotSell() {
   const router = useRouter();
@@ -26,6 +27,57 @@ export default function DoNotSell() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmationNumber, setConfirmationNumber] = useState('');
   const { toast } = useToast();
+
+  // Load reCAPTCHA on user interaction
+  useEffect(() => {
+    let recaptchaLoaded = false;
+
+    const loadRecaptcha = () => {
+      if (recaptchaLoaded || document.getElementById('recaptcha-script')) return;
+      recaptchaLoaded = true;
+
+      const script = document.createElement('script');
+      script.id = 'recaptcha-script';
+      script.src = `https://www.google.com/recaptcha/enterprise.js?render=${RECAPTCHA_SITE_KEY}`;
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    };
+
+    const handleInteraction = () => {
+      loadRecaptcha();
+      document.removeEventListener('focus', handleInteraction, true);
+      document.removeEventListener('click', handleInteraction, true);
+    };
+
+    document.addEventListener('focus', handleInteraction, true);
+    document.addEventListener('click', handleInteraction, true);
+
+    return () => {
+      document.removeEventListener('focus', handleInteraction, true);
+      document.removeEventListener('click', handleInteraction, true);
+    };
+  }, []);
+
+  const executeRecaptcha = async (): Promise<string | null> => {
+    return new Promise((resolve) => {
+      if (typeof window !== 'undefined' && window.grecaptcha?.enterprise) {
+        window.grecaptcha.enterprise.ready(() => {
+          window.grecaptcha.enterprise.execute(RECAPTCHA_SITE_KEY, { action: 'opt_out_request' })
+            .then((token: string) => {
+              resolve(token);
+            })
+            .catch((error: any) => {
+              console.error('reCAPTCHA execution failed:', error);
+              resolve(null);
+            });
+        });
+      } else {
+        console.error('reCAPTCHA not loaded');
+        resolve(null);
+      }
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,12 +94,25 @@ export default function DoNotSell() {
     setIsSubmitting(true);
 
     try {
+      // Execute reCAPTCHA
+      const recaptchaToken = await executeRecaptcha();
+      if (!recaptchaToken) {
+        toast({
+          title: 'Security Verification Failed',
+          description: 'Please refresh the page and try again.',
+          variant: 'destructive'
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
       // Get client info
       const ipRes = await fetch('https://api.ipify.org?format=json');
       const ipData = await ipRes.json();
 
       const { data, error } = await supabase.functions.invoke('submit-opt-out', {
         body: {
+          recaptchaToken,
           name: formData.name,
           email: formData.email,
           phone: formData.phone || null,
@@ -59,7 +124,7 @@ export default function DoNotSell() {
 
       if (error) throw error;
 
-      setConfirmationNumber(data.confirmation_number);
+      setConfirmationNumber(data.confirmationNumber);
 
       toast({
         title: 'Request Submitted',

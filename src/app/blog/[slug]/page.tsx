@@ -1,15 +1,18 @@
-'use client'
-
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
+import { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { createClient } from '@supabase/supabase-js';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { MarkdownContent } from '@/components/MarkdownContent';
-import { Button } from '@/components/ui/button';
 import { ArrowLeft, Calendar, User, Tag } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
+import Link from 'next/link';
+
+// Server-side Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+);
 
 interface BlogPost {
   id: string;
@@ -28,115 +31,208 @@ interface BlogPost {
   updated_at: string;
 }
 
-export default function DynamicBlogPost() {
-  const params = useParams();
-  const slug = params?.slug as string;
-  const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
-  const [post, setPost] = useState<BlogPost | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+interface PageProps {
+  params: Promise<{ slug: string }>;
+}
 
-  useEffect(() => {
-    const fetchPost = async () => {
-      if (!slug || authLoading) return;
+async function getBlogPost(slug: string): Promise<BlogPost | null> {
+  const { data, error } = await supabase
+    .from('blog_posts')
+    .select('*')
+    .eq('slug', slug)
+    .eq('published', true)
+    .maybeSingle();
 
-      setIsLoading(true);
-      setNotFound(false);
+  if (error) {
+    console.error('Error loading blog post:', error);
+    return null;
+  }
 
-      try {
-        // Build query - authenticated users can view drafts
-        let query = supabase
-          .from('blog_posts')
-          .select('*')
-          .eq('slug', slug);
+  return data;
+}
 
-        // Only filter by published if not authenticated
-        if (!user) {
-          query = query.eq('published', true);
-        }
+// Generate static params for pre-rendering
+export async function generateStaticParams() {
+  const { data: posts } = await supabase
+    .from('blog_posts')
+    .select('slug')
+    .eq('published', true)
+    .limit(50);
 
-        const { data, error } = await query.maybeSingle();
+  return (posts || []).map((post) => ({
+    slug: post.slug,
+  }));
+}
 
-        if (error) throw error;
+// Dynamic metadata for SEO
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const post = await getBlogPost(slug);
 
-        if (!data) {
-          setNotFound(true);
-        } else {
-          setPost(data);
-        }
-      } catch (error) {
-        console.error('Error loading blog post:', error);
-        setNotFound(true);
-      } finally {
-        setIsLoading(false);
-      }
+  if (!post) {
+    return {
+      title: 'Blog Post Not Found | La Vaca General Contractors',
+      description: 'The requested blog post could not be found.',
     };
-
-    fetchPost();
-  }, [slug, authLoading, user]);
-
-  if (isLoading || authLoading) {
-    return (
-      <>
-        <Header />
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-        <Footer />
-      </>
-    );
   }
 
-  if (notFound || !post) {
-    return (
-      <>
-        <Header />
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <h1 className="text-4xl font-bold mb-4">Blog Post Not Found</h1>
-            <p className="text-muted-foreground mb-8">The blog post you're looking for doesn't exist or hasn't been published yet.</p>
-            <Button onClick={() => router.push('/blog')}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Blog
-            </Button>
-          </div>
-        </div>
-        <Footer />
-      </>
-    );
+  const title = post.meta_title || `${post.title} | La Vaca General Contractors`;
+  const description = post.meta_description || post.excerpt;
+  const keywords = post.meta_keywords || `${post.category}, home remodeling, NJ contractors`;
+
+  return {
+    title,
+    description,
+    keywords,
+    authors: [{ name: post.author }],
+    openGraph: {
+      title: post.title,
+      description,
+      type: 'article',
+      url: `https://www.lavacagc.com/blog/${post.slug}`,
+      publishedTime: post.created_at,
+      modifiedTime: post.updated_at,
+      authors: [post.author],
+      images: post.featured_image
+        ? [
+            {
+              url: post.featured_image,
+              width: 1200,
+              height: 630,
+              alt: post.title,
+            },
+          ]
+        : [],
+      siteName: 'La Vaca General Contractors',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: post.title,
+      description,
+      images: post.featured_image ? [post.featured_image] : [],
+    },
+    alternates: {
+      canonical: `https://www.lavacagc.com/blog/${post.slug}`,
+    },
+  };
+}
+
+export default async function BlogPostPage({ params }: PageProps) {
+  const { slug } = await params;
+  const post = await getBlogPost(slug);
+
+  if (!post) {
+    notFound();
   }
+
+  // JSON-LD Schema for BlogPosting
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: post.title,
+    description: post.excerpt,
+    image: post.featured_image || 'https://www.lavacagc.com/default-blog-image.jpg',
+    datePublished: post.created_at,
+    dateModified: post.updated_at,
+    author: {
+      '@type': 'Person',
+      name: post.author,
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: 'La Vaca General Contractors',
+      url: 'https://www.lavacagc.com',
+      logo: {
+        '@type': 'ImageObject',
+        url: 'https://www.lavacagc.com/logo.png',
+      },
+    },
+    mainEntityOfPage: {
+      '@type': 'WebPage',
+      '@id': `https://www.lavacagc.com/blog/${post.slug}`,
+    },
+    keywords: post.meta_keywords || post.category,
+    articleSection: post.category,
+    wordCount: post.content.split(/\s+/).length,
+  };
+
+  // Breadcrumb Schema
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Home',
+        item: 'https://www.lavacagc.com',
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Blog',
+        item: 'https://www.lavacagc.com/blog',
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
+        name: post.title,
+        item: `https://www.lavacagc.com/blog/${post.slug}`,
+      },
+    ],
+  };
 
   return (
     <>
       <Header />
 
+      {/* JSON-LD Structured Data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
+
       <main className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-12">
           {/* Back to Blog Button */}
           <div className="mb-8">
-            <Button
-              variant="ghost"
-              onClick={() => router.push('/blog')}
-              className="hover:bg-muted"
+            <Link
+              href="/blog"
+              className="inline-flex items-center text-sm text-muted-foreground hover:text-primary transition-colors"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Blog
-            </Button>
+            </Link>
           </div>
 
-          {/* Article Header */}
+          {/* Article */}
           <article className="max-w-4xl mx-auto">
-            {/* Draft Badge for Authenticated Users */}
-            {user && !post.published && (
-              <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                  📝 Draft Mode - This post is not published yet and is only visible to admins.
-                </p>
-              </div>
-            )}
-
             <header className="mb-12">
+              {/* Breadcrumb for SEO */}
+              <nav aria-label="Breadcrumb" className="mb-6">
+                <ol className="flex items-center space-x-2 text-sm text-muted-foreground">
+                  <li>
+                    <Link href="/" className="hover:text-primary">
+                      Home
+                    </Link>
+                  </li>
+                  <li>/</li>
+                  <li>
+                    <Link href="/blog" className="hover:text-primary">
+                      Blog
+                    </Link>
+                  </li>
+                  <li>/</li>
+                  <li className="text-foreground font-medium truncate max-w-[200px]">
+                    {post.title}
+                  </li>
+                </ol>
+              </nav>
+
               <div className="flex items-center gap-4 mb-6 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1">
                   <Tag className="w-4 h-4" />
@@ -146,7 +242,9 @@ export default function DynamicBlogPost() {
                 </div>
                 <div className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" />
-                  <span>{formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}</span>
+                  <time dateTime={post.created_at}>
+                    {format(new Date(post.created_at), 'MMMM d, yyyy')}
+                  </time>
                 </div>
                 <div className="flex items-center gap-1">
                   <User className="w-4 h-4" />
@@ -154,48 +252,57 @@ export default function DynamicBlogPost() {
                 </div>
               </div>
 
-              <h1 className="text-4xl md:text-5xl font-bold leading-tight mb-6">
-                {post.title}
-              </h1>
+              <h1 className="text-4xl md:text-5xl font-bold leading-tight mb-6">{post.title}</h1>
 
               {post.excerpt && (
-                <p className="text-xl text-muted-foreground leading-relaxed">
-                  {post.excerpt}
-                </p>
+                <p className="text-xl text-muted-foreground leading-relaxed">{post.excerpt}</p>
               )}
             </header>
 
             {/* Featured Image */}
             {post.featured_image && (
-              <div className="mb-12">
+              <figure className="mb-12">
                 <img
                   src={post.featured_image}
                   alt={post.title}
                   className="w-full h-96 object-cover rounded-lg shadow-lg"
+                  loading="eager"
                 />
-              </div>
+                <figcaption className="text-center text-sm text-muted-foreground mt-2">
+                  {post.title}
+                </figcaption>
+              </figure>
             )}
 
             {/* Article Content */}
-            <MarkdownContent content={post.content} />
+            <div className="prose prose-lg max-w-none">
+              <MarkdownContent content={post.content} />
+            </div>
 
             {/* Call to Action */}
-            <div className="mt-16 p-8 bg-primary/5 rounded-lg border border-primary/10">
+            <aside className="mt-16 p-8 bg-primary/5 rounded-lg border border-primary/10">
               <div className="text-center">
                 <h3 className="text-2xl font-semibold mb-4">Ready to Start Your Project?</h3>
                 <p className="text-muted-foreground mb-6">
-                  Contact us today for a free consultation and estimate on your home remodeling project.
+                  Contact us today for a free consultation and estimate on your home remodeling
+                  project.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <Button size="lg" onClick={() => router.push('/#estimate')}>
+                  <Link
+                    href="/#estimate"
+                    className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-11 px-8"
+                  >
                     Get Free Estimate
-                  </Button>
-                  <Button variant="outline" size="lg" onClick={() => router.push('/about')}>
+                  </Link>
+                  <Link
+                    href="/about"
+                    className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-11 px-8"
+                  >
                     Learn More About Us
-                  </Button>
+                  </Link>
                 </div>
               </div>
-            </div>
+            </aside>
           </article>
         </div>
       </main>
