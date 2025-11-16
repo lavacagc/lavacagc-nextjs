@@ -8,10 +8,10 @@ import BlogPostGrid from '@/components/BlogPostGrid';
 // Revalidate every 60 seconds (ISR - Incremental Static Regeneration)
 export const revalidate = 60;
 
-// Server-side Supabase client
+// Server-side Supabase client (trim to handle any whitespace in env vars)
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!.trim()
 );
 
 export const metadata: Metadata = {
