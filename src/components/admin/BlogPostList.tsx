@@ -223,7 +223,7 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
         </TabsContent>
         
         <TabsContent value="generate" className="mt-6">
-          <BlogPostGenerator />
+          <BlogPostGenerator onPostCreated={onEditPost} />
         </TabsContent>
       </Tabs>
     </div>

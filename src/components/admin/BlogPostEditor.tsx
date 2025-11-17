@@ -164,7 +164,8 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
   const handlePreview = () => {
     if (post.slug) {
-      window.open(`/blog/${post.slug}`, '_blank');
+      // Use the preview route which checks for authentication client-side
+      window.open(`/blog/preview/${post.slug}`, '_blank');
     }
   };
 
