@@ -1,6 +1,5 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { draftMode } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -18,13 +17,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!.trim()
 );
 
-// Admin client that bypasses RLS (for draft mode)
-const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
-  ? createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
-      process.env.SUPABASE_SERVICE_ROLE_KEY.trim()
-    )
-  : supabase;
+// Note: Draft preview is handled at /blog/preview/[slug] using client-side auth
+// This page only shows published posts for SEO
 
 interface BlogPost {
   id: string;
@@ -139,29 +133,9 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
 
 export default async function BlogPostPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
-  const { preview } = await searchParams;
-  const { isEnabled: isDraftMode } = await draftMode();
-
-  // Allow preview if draft mode is enabled OR preview query param is set
-  const isPreview = isDraftMode || preview === 'true';
-
-  // Use admin client for draft mode to bypass RLS
-  const client = isDraftMode ? supabaseAdmin : supabase;
-
-  let post: BlogPost | null = null;
-
-  if (isPreview) {
-    // In preview mode, fetch without published filter using admin client
-    const { data, error } = await client
-      .from('blog_posts')
-      .select('*')
-      .eq('slug', slug)
-      .maybeSingle();
-
-    if (!error) post = data;
-  } else {
-    post = await getBlogPost(slug, false);
-  }
+  // Note: Draft previews are handled at /blog/preview/[slug] with client-side auth
+  // This public page only shows published posts for SEO
+  const post = await getBlogPost(slug, false);
 
   if (!post) {
     notFound();
