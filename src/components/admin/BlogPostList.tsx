@@ -1,9 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
@@ -28,7 +35,7 @@ interface BlogPostListProps {
 }
 
 export function BlogPostList({ onEditPost }: BlogPostListProps) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -49,9 +56,9 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
     } catch (error) {
       console.error('Error loading posts:', error);
       toast({
-        title: "Error",
-        description: "Failed to load blog posts",
-        variant: "destructive"
+        title: 'Error',
+        description: 'Failed to load blog posts',
+        variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
@@ -66,21 +73,19 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
         .eq('id', id);
 
       if (error) throw error;
-      
-      setPosts(posts.map(post => 
-        post.id === id ? { ...post, published: !published } : post
-      ));
-      
+
+      setPosts(posts.map((post) => (post.id === id ? { ...post, published: !published } : post)));
+
       toast({
-        title: "Success",
-        description: `Post ${!published ? 'published' : 'unpublished'} successfully`
+        title: 'Success',
+        description: `Post ${!published ? 'published' : 'unpublished'} successfully`,
       });
     } catch (error) {
       console.error('Error updating post:', error);
       toast({
-        title: "Error",
-        description: "Failed to update post status",
-        variant: "destructive"
+        title: 'Error',
+        description: 'Failed to update post status',
+        variant: 'destructive',
       });
     }
   };
@@ -91,25 +96,22 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
     }
 
     try {
-      const { error } = await supabase
-        .from('blog_posts')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('blog_posts').delete().eq('id', id);
 
       if (error) throw error;
-      
-      setPosts(posts.filter(post => post.id !== id));
-      
+
+      setPosts(posts.filter((post) => post.id !== id));
+
       toast({
-        title: "Success",
-        description: "Post deleted successfully"
+        title: 'Success',
+        description: 'Post deleted successfully',
       });
     } catch (error) {
       console.error('Error deleting post:', error);
       toast({
-        title: "Error",
-        description: "Failed to delete post",
-        variant: "destructive"
+        title: 'Error',
+        description: 'Failed to delete post',
+        variant: 'destructive',
       });
     }
   };
@@ -140,88 +142,96 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
           <TabsTrigger value="enhance">Enhance Posts</TabsTrigger>
           <TabsTrigger value="generate">Generate New Post</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="posts" className="space-y-4 mt-6">
           <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Title</TableHead>
-            <TableHead>Category</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Author</TableHead>
-            <TableHead>Updated</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {posts.map((post) => (
-            <TableRow key={post.id}>
-              <TableCell className="font-medium">{post.title}</TableCell>
-              <TableCell>{post.category}</TableCell>
-              <TableCell>
-                <Badge variant={post.published ? "default" : "secondary"}>
-                  {post.published ? (
-                    <><Globe className="w-3 h-3 mr-1" /> Published</>
-                  ) : (
-                    <><FileX className="w-3 h-3 mr-1" /> Draft</>
-                  )}
-                </Badge>
-              </TableCell>
-              <TableCell>{post.author}</TableCell>
-              <TableCell>
-                {formatDistanceToNow(new Date(post.updated_at), { addSuffix: true })}
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex items-center gap-2 justify-end">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      console.log('View button clicked for:', post.slug);
-                      router.push(`/blog/${post.slug}`);
-                    }}
-                    title="View post"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onEditPost(post.id)}
-                    title="Edit post"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => togglePublished(post.id, post.published)}
-                    title={post.published ? 'Unpublish' : 'Publish'}
-                  >
-                    {post.published ? <FileX className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => deletePost(post.id, post.title)}
-                    className="text-destructive hover:text-destructive"
-                    title="Delete post"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Title</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Author</TableHead>
+                <TableHead>Updated</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {posts.map((post) => (
+                <TableRow key={post.id}>
+                  <TableCell className="font-medium">{post.title}</TableCell>
+                  <TableCell>{post.category}</TableCell>
+                  <TableCell>
+                    <Badge variant={post.published ? 'default' : 'secondary'}>
+                      {post.published ? (
+                        <>
+                          <Globe className="w-3 h-3 mr-1" /> Published
+                        </>
+                      ) : (
+                        <>
+                          <FileX className="w-3 h-3 mr-1" /> Draft
+                        </>
+                      )}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{post.author}</TableCell>
+                  <TableCell>
+                    {formatDistanceToNow(new Date(post.updated_at), { addSuffix: true })}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center gap-2 justify-end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          console.log('View button clicked for:', post.slug);
+                          navigate(`/blog/${post.slug}`);
+                        }}
+                        title="View post"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onEditPost(post.id)}
+                        title="Edit post"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => togglePublished(post.id, post.published)}
+                        title={post.published ? 'Unpublish' : 'Publish'}
+                      >
+                        {post.published ? (
+                          <FileX className="w-4 h-4" />
+                        ) : (
+                          <Globe className="w-4 h-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deletePost(post.id, post.title)}
+                        className="text-destructive hover:text-destructive"
+                        title="Delete post"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </TabsContent>
-        
+
         <TabsContent value="enhance" className="mt-6">
-          <BlogPostSelector />
+          <BlogPostSelector onEditPost={onEditPost} />
         </TabsContent>
-        
+
         <TabsContent value="generate" className="mt-6">
           <BlogPostGenerator onPostCreated={onEditPost} />
         </TabsContent>

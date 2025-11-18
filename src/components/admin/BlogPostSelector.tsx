@@ -5,7 +5,7 @@ import { AdminCheckbox } from '@/components/admin/ui/AdminCheckbox';
 import { Label } from '@/components/ui/label';
 import { AdminRadioGroup, AdminRadioGroupItem } from '@/components/admin/ui/AdminRadioGroup';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Sparkles, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Sparkles, Loader2, CheckCircle2, Edit } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -13,14 +13,20 @@ interface BlogPost {
   id: string;
   title: string;
   category: string;
+  published: boolean;
 }
 
-export function BlogPostSelector() {
+interface BlogPostSelectorProps {
+  onEditPost: (postId: string) => void;
+}
+
+export function BlogPostSelector({ onEditPost }: BlogPostSelectorProps) {
   const [posts, setPosts] = useState<BlogPost[]>([]);
-  const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
-  const [enhancementLevel, setEnhancementLevel] = useState<'light' | 'moderate' | 'heavy'>('moderate');
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [enhancementLevel, setEnhancementLevel] = useState<'light' | 'moderate' | 'heavy'>(
+    'moderate'
+  );
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processedPosts, setProcessedPosts] = useState<Record<string, 'success' | 'error'>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -31,7 +37,7 @@ export function BlogPostSelector() {
     try {
       const { data, error } = await supabase
         .from('blog_posts')
-        .select('id, title, category')
+        .select('id, title, category, published')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -44,86 +50,76 @@ export function BlogPostSelector() {
     }
   };
 
-  const togglePost = (postId: string) => {
-    const newSelected = new Set(selectedPosts);
-    if (newSelected.has(postId)) {
-      newSelected.delete(postId);
-    } else {
-      newSelected.add(postId);
-    }
-    setSelectedPosts(newSelected);
+  const selectPost = (postId: string) => {
+    setSelectedPostId(postId === selectedPostId ? null : postId);
   };
 
-  const selectAll = () => {
-    setSelectedPosts(new Set(posts.map(p => p.id)));
-  };
-
-  const deselectAll = () => {
-    setSelectedPosts(new Set());
-  };
-
-  const enhanceSelected = async () => {
-    if (selectedPosts.size === 0) {
-      toast.error('Please select at least one post');
+  const rewriteAndReview = async () => {
+    if (!selectedPostId) {
+      toast.error('Please select a post to rewrite');
       return;
     }
 
+    const selectedPost = posts.find((p) => p.id === selectedPostId);
+    if (!selectedPost) return;
+
     try {
       setIsProcessing(true);
-      setProcessedPosts({});
 
-      const postsToEnhance = posts.filter(p => selectedPosts.has(p.id));
+      // Get full post data
+      const { data: fullPost, error: fetchError } = await supabase
+        .from('blog_posts')
+        .select('content')
+        .eq('id', selectedPostId)
+        .single();
 
-      for (const post of postsToEnhance) {
-        try {
-          // Get full post data
-          const { data: fullPost, error: fetchError } = await supabase
-            .from('blog_posts')
-            .select('content')
-            .eq('id', post.id)
-            .single();
+      if (fetchError) throw fetchError;
 
-          if (fetchError) throw fetchError;
+      toast.loading(`Rewriting "${selectedPost.title}" with ${enhancementLevel} enhancement...`, {
+        id: 'rewrite-progress',
+      });
 
-          // Enhance the content
-          const { data: enhanceData, error: enhanceError } = await supabase.functions.invoke(
-            'enhance-blog-content',
-            {
-              body: {
-                title: post.title,
-                content: fullPost.content,
-                category: post.category,
-                enhancementLevel,
-              },
-            }
-          );
-
-          if (enhanceError) throw enhanceError;
-          if (!enhanceData?.enhancedContent) throw new Error('No enhanced content returned');
-
-          // Update the post
-          const { error: updateError } = await supabase
-            .from('blog_posts')
-            .update({ content: enhanceData.enhancedContent })
-            .eq('id', post.id);
-
-          if (updateError) throw updateError;
-
-          setProcessedPosts(prev => ({ ...prev, [post.id]: 'success' }));
-        } catch (error) {
-          console.error(`Error enhancing post ${post.title}:`, error);
-          setProcessedPosts(prev => ({ ...prev, [post.id]: 'error' }));
+      // Enhance the content with local SEO focus
+      const { data: enhanceData, error: enhanceError } = await supabase.functions.invoke(
+        'enhance-blog-content',
+        {
+          body: {
+            title: selectedPost.title,
+            content: fullPost.content,
+            category: selectedPost.category,
+            enhancementLevel,
+          },
         }
+      );
 
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+      if (enhanceError) throw enhanceError;
+      if (!enhanceData?.enhancedContent) throw new Error('No enhanced content returned');
 
-      const successCount = Object.values(processedPosts).filter(status => status === 'success').length;
-      toast.success(`Enhanced ${successCount} of ${postsToEnhance.length} posts`);
+      // Update the post and unpublish it for review
+      const { error: updateError } = await supabase
+        .from('blog_posts')
+        .update({
+          content: enhanceData.enhancedContent,
+          published: false, // Unpublish for manual review
+        })
+        .eq('id', selectedPostId);
+
+      if (updateError) throw updateError;
+
+      toast.success('Post rewritten successfully! Opening editor for review...', {
+        id: 'rewrite-progress',
+      });
+
+      // Wait a moment for user to see the success message
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Navigate to editor for manual review
+      onEditPost(selectedPostId);
     } catch (error) {
-      console.error('Error enhancing posts:', error);
-      toast.error('Failed to enhance posts');
+      console.error('Error rewriting post:', error);
+      toast.error('Failed to rewrite post', {
+        id: 'rewrite-progress',
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -139,107 +135,152 @@ export function BlogPostSelector() {
     );
   }
 
+  const selectedPost = posts.find((p) => p.id === selectedPostId);
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Sparkles className="h-5 w-5" />
-          Select Posts to Enhance
+          Rewrite Post with Local SEO
         </CardTitle>
         <CardDescription>
-          Choose which blog posts to enhance and set the enhancement level
+          Select a post to rewrite with enhanced local SEO optimization and contractor voice
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <Alert>
           <AlertDescription>
-            Select posts to enhance with AI. Choose your enhancement level:
-            <ul className="list-disc ml-5 mt-2 space-y-1">
-              <li><strong>Light:</strong> Minimal formatting improvements (1-2 styled boxes)</li>
-              <li><strong>Moderate:</strong> Balanced enhancements with better structure (2-4 boxes)</li>
-              <li><strong>Heavy:</strong> Complete transformation with maximum styling (4-6 boxes)</li>
+            <strong>New Local SEO Rewriter:</strong> Transforms your blog posts with:
+            <ul className="list-disc ml-5 mt-2 space-y-1 text-sm">
+              <li>
+                <strong>Light:</strong> Quick polish - Add local context, improve voice, minimal
+                restructuring
+              </li>
+              <li>
+                <strong>Moderate:</strong> Local SEO optimization - Contractor voice, town examples,
+                E-E-A-T signals
+              </li>
+              <li>
+                <strong>Heavy:</strong> Complete rewrite - Maximum local SEO, multiple town
+                mentions, full expertise
+              </li>
             </ul>
+            <p className="mt-3 text-sm font-medium">
+              ⚠️ Post will be unpublished after rewriting for your manual review
+            </p>
           </AlertDescription>
         </Alert>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label className="text-sm">Enhancement Level</Label>
-            <AdminRadioGroup value={enhancementLevel} onValueChange={(value) => setEnhancementLevel(value as any)} disabled={isProcessing}>
-              <div className="flex items-center space-x-3">
+            <Label className="text-sm font-medium">Enhancement Level</Label>
+            <AdminRadioGroup
+              value={enhancementLevel}
+              onValueChange={(value) =>
+                setEnhancementLevel(value as 'light' | 'moderate' | 'heavy')
+              }
+              disabled={isProcessing}
+            >
+              <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted/50">
                 <AdminRadioGroupItem value="light" id="light" />
-                <Label htmlFor="light" className="text-sm font-normal cursor-pointer">Light - Minimal changes</Label>
+                <Label htmlFor="light" className="text-sm font-normal cursor-pointer flex-1">
+                  <strong>Light</strong> - Quick polish with local context
+                </Label>
               </div>
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted/50">
                 <AdminRadioGroupItem value="moderate" id="moderate" />
-                <Label htmlFor="moderate" className="text-sm font-normal cursor-pointer">Moderate - Balanced improvements</Label>
+                <Label htmlFor="moderate" className="text-sm font-normal cursor-pointer flex-1">
+                  <strong>Moderate</strong> - Full local SEO optimization
+                </Label>
               </div>
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted/50">
                 <AdminRadioGroupItem value="heavy" id="heavy" />
-                <Label htmlFor="heavy" className="text-sm font-normal cursor-pointer">Heavy - Complete transformation</Label>
+                <Label htmlFor="heavy" className="text-sm font-normal cursor-pointer flex-1">
+                  <strong>Heavy</strong> - Complete rewrite with max local SEO
+                </Label>
               </div>
             </AdminRadioGroup>
           </div>
 
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={selectAll} disabled={isProcessing} className="h-8 text-xs">
-              Select All
-            </Button>
-            <Button variant="outline" size="sm" onClick={deselectAll} disabled={isProcessing} className="h-8 text-xs">
-              Deselect All
-            </Button>
-            <span className="text-xs text-muted-foreground flex items-center ml-auto">
-              {selectedPosts.size} of {posts.length} selected
-            </span>
+          <div>
+            <Label className="text-sm font-medium mb-2 block">Select Post to Rewrite</Label>
+            <div className="max-h-96 overflow-y-auto space-y-1 border rounded-md p-3">
+              {posts.map((post) => (
+                <div
+                  key={post.id}
+                  className={`flex items-center space-x-2 p-2 rounded-md cursor-pointer transition-colors ${
+                    selectedPostId === post.id
+                      ? 'bg-primary/10 border border-primary/20'
+                      : 'hover:bg-muted/50'
+                  }`}
+                  onClick={() => !isProcessing && selectPost(post.id)}
+                >
+                  <AdminCheckbox
+                    id={post.id}
+                    checked={selectedPostId === post.id}
+                    onCheckedChange={() => selectPost(post.id)}
+                    disabled={isProcessing}
+                    className="h-4 w-4"
+                  />
+                  <div className="flex-1">
+                    <Label htmlFor={post.id} className="text-sm font-normal cursor-pointer block">
+                      {post.title}
+                    </Label>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs text-muted-foreground">({post.category})</span>
+                      {post.published ? (
+                        <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
+                          Published
+                        </span>
+                      ) : (
+                        <span className="text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+                          Draft
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {selectedPostId === post.id && (
+                    <CheckCircle2 className="h-4 w-4 text-primary flex-shrink-0" />
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="max-h-96 overflow-y-auto space-y-1 border rounded-md p-3">
-            {posts.map((post) => (
-              <div
-                key={post.id}
-                className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50"
-              >
-                <AdminCheckbox
-                  id={post.id}
-                  checked={selectedPosts.has(post.id)}
-                  onCheckedChange={() => togglePost(post.id)}
-                  disabled={isProcessing}
-                  className="h-3 w-3"
-                />
-                <Label
-                  htmlFor={post.id}
-                  className="flex-1 text-sm font-normal cursor-pointer"
-                >
-                  {post.title}
-                  <span className="text-xs text-muted-foreground ml-2">({post.category})</span>
-                </Label>
-                {processedPosts[post.id] === 'success' && (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
-                )}
-                {processedPosts[post.id] === 'error' && (
-                  <XCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-                )}
-              </div>
-            ))}
-          </div>
+          {selectedPost && (
+            <div className="bg-muted/50 p-3 rounded-md text-sm">
+              <p className="font-medium">Selected: {selectedPost.title}</p>
+              <p className="text-muted-foreground text-xs mt-1">
+                This post will be rewritten with <strong>{enhancementLevel}</strong> enhancement and
+                unpublished for your review.
+              </p>
+            </div>
+          )}
 
           <Button
-            onClick={enhanceSelected}
-            disabled={isProcessing || selectedPosts.size === 0}
-            className="w-full h-9"
+            onClick={rewriteAndReview}
+            disabled={isProcessing || !selectedPostId}
+            className="w-full h-10"
           >
             {isProcessing ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Enhancing Posts...
+                Rewriting with Local SEO...
               </>
             ) : (
               <>
-                <Sparkles className="mr-2 h-4 w-4" />
-                Enhance Selected Posts ({selectedPosts.size})
+                <Edit className="mr-2 h-4 w-4" />
+                Rewrite & Review {selectedPost && `"${selectedPost.title}"`}
               </>
             )}
           </Button>
+
+          {selectedPostId && !isProcessing && (
+            <p className="text-xs text-center text-muted-foreground">
+              The editor will open automatically after rewriting
+            </p>
+          )}
         </div>
       </CardContent>
     </Card>

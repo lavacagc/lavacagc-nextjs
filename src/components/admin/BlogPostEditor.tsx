@@ -5,7 +5,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { MarkdownEditor } from './MarkdownEditor';
@@ -36,10 +42,10 @@ interface BlogPostEditorProps {
 
 const categories = [
   'Kitchen Remodeling',
-  'Bathroom Renovation', 
+  'Bathroom Renovation',
   'Home Additions',
   'Basement Finishing',
-  'General Remodeling'
+  'General Remodeling',
 ];
 
 export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps) {
@@ -48,13 +54,13 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     slug: '',
     excerpt: '',
     content: '',
-    author: 'Admin',
+    author: 'Alex T.',
     category: 'Kitchen Remodeling',
     featured_image: '',
     meta_title: '',
     meta_description: '',
     meta_keywords: '',
-    published: false
+    published: false,
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -83,9 +89,9 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     } catch (error) {
       console.error('Error loading post:', error);
       toast({
-        title: "Error",
-        description: "Failed to load blog post",
-        variant: "destructive"
+        title: 'Error',
+        description: 'Failed to load blog post',
+        variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
@@ -102,20 +108,20 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
   };
 
   const handleTitleChange = (title: string) => {
-    setPost(prev => ({
+    setPost((prev) => ({
       ...prev,
       title,
       slug: generateSlug(title),
-      meta_title: title
+      meta_title: title,
     }));
   };
 
   const handleSave = async () => {
     if (!post.title || !post.content || !post.category) {
       toast({
-        title: "Validation Error",
-        description: "Title, content, and category are required",
-        variant: "destructive"
+        title: 'Validation Error',
+        description: 'Title, content, and category are required',
+        variant: 'destructive',
       });
       return;
     }
@@ -127,25 +133,20 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
         slug: post.slug || generateSlug(post.title),
         excerpt: post.excerpt || '',
         content: post.content,
-        author: post.author || 'Admin',
+        author: post.author || 'Alex T.',
         category: post.category,
         featured_image: post.featured_image || '',
         meta_title: post.meta_title || post.title,
         meta_description: post.meta_description || post.excerpt || '',
         meta_keywords: post.meta_keywords || '',
-        published: post.published || false
+        published: post.published || false,
       };
 
       if (postId) {
-        const { error } = await supabase
-          .from('blog_posts')
-          .update(postData)
-          .eq('id', postId);
+        const { error } = await supabase.from('blog_posts').update(postData).eq('id', postId);
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from('blog_posts')
-          .insert(postData);
+        const { error } = await supabase.from('blog_posts').insert(postData);
         if (error) throw error;
       }
 
@@ -153,9 +154,9 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     } catch (error) {
       console.error('Error saving post:', error);
       toast({
-        title: "Error",
-        description: "Failed to save blog post",
-        variant: "destructive"
+        title: 'Error',
+        description: 'Failed to save blog post',
+        variant: 'destructive',
       });
     } finally {
       setIsSaving(false);
@@ -164,8 +165,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
   const handlePreview = () => {
     if (post.slug) {
-      // Use the preview route which checks for authentication client-side
-      window.open(`/blog/preview/${post.slug}`, '_blank');
+      window.open(`/blog/${post.slug}`, '_blank');
     }
   };
 
@@ -179,9 +179,9 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     } catch (error) {
       console.error('Error converting HEIC:', error);
       toast({
-        title: "Conversion Error",
+        title: 'Conversion Error',
         description: `Failed to convert ${file.name}. Please try a different format.`,
-        variant: "destructive"
+        variant: 'destructive',
       });
       return;
     }
@@ -198,21 +198,21 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('blog-images')
-        .getPublicUrl(filePath);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('blog-images').getPublicUrl(filePath);
 
-      setPost(prev => ({ ...prev, featured_image: publicUrl }));
+      setPost((prev) => ({ ...prev, featured_image: publicUrl }));
       toast({
-        title: "Success",
-        description: "Image uploaded successfully"
+        title: 'Success',
+        description: 'Image uploaded successfully',
       });
     } catch (error) {
       console.error('Error uploading image:', error);
       toast({
-        title: "Error",
-        description: "Failed to upload image",
-        variant: "destructive"
+        title: 'Error',
+        description: 'Failed to upload image',
+        variant: 'destructive',
       });
     } finally {
       setIsUploadingImage(false);
@@ -222,9 +222,9 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
   const handleGenerateImage = async () => {
     if (!imagePrompt.trim()) {
       toast({
-        title: "Error",
-        description: "Please enter an image prompt",
-        variant: "destructive"
+        title: 'Error',
+        description: 'Please enter an image prompt',
+        variant: 'destructive',
       });
       return;
     }
@@ -232,16 +232,16 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     setIsGeneratingImage(true);
     try {
       const { data, error } = await supabase.functions.invoke('generate-blog-image', {
-        body: { prompt: imagePrompt }
+        body: { prompt: imagePrompt },
       });
 
       if (error) throw error;
-      if (!data.imageUrl) throw new Error("No image URL returned");
+      if (!data.imageUrl) throw new Error('No image URL returned');
 
       // Convert base64 to blob and upload
       const base64Response = await fetch(data.imageUrl);
       const blob = await base64Response.blob();
-      
+
       const fileName = `${Math.random()}.png`;
       const filePath = fileName; // Remove the blog-images/ prefix
 
@@ -251,22 +251,22 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('blog-images')
-        .getPublicUrl(filePath);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('blog-images').getPublicUrl(filePath);
 
-      setPost(prev => ({ ...prev, featured_image: publicUrl }));
+      setPost((prev) => ({ ...prev, featured_image: publicUrl }));
       setImagePrompt('');
       toast({
-        title: "Success",
-        description: "Image generated successfully"
+        title: 'Success',
+        description: 'Image generated successfully',
       });
     } catch (error) {
       console.error('Error generating image:', error);
       toast({
-        title: "Error",
-        description: "Failed to generate image",
-        variant: "destructive"
+        title: 'Error',
+        description: 'Failed to generate image',
+        variant: 'destructive',
       });
     } finally {
       setIsGeneratingImage(false);
@@ -274,15 +274,15 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
   };
 
   const handleRemoveImage = () => {
-    setPost(prev => ({ ...prev, featured_image: '' }));
+    setPost((prev) => ({ ...prev, featured_image: '' }));
   };
 
   const handleGenerateSEO = async () => {
     if (!post.title || !post.content) {
       toast({
-        title: "Missing Content",
-        description: "Please add a title and content before generating SEO",
-        variant: "destructive",
+        title: 'Missing Content',
+        description: 'Please add a title and content before generating SEO',
+        variant: 'destructive',
       });
       return;
     }
@@ -290,16 +290,16 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     setIsGeneratingSEO(true);
     try {
       const { data, error } = await supabase.functions.invoke('generate-blog-seo', {
-        body: { 
+        body: {
           title: post.title,
           content: post.content,
-          excerpt: post.excerpt
-        }
+          excerpt: post.excerpt,
+        },
       });
 
       if (error) throw error;
 
-      setPost(prev => ({
+      setPost((prev) => ({
         ...prev,
         meta_title: data.metaTitle,
         meta_description: data.metaDescription,
@@ -307,15 +307,15 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
       }));
 
       toast({
-        title: "SEO Generated",
-        description: "Meta title, description, and keywords have been generated",
+        title: 'SEO Generated',
+        description: 'Meta title, description, and keywords have been generated',
       });
     } catch (error) {
       console.error('Error generating SEO:', error);
       toast({
-        title: "Generation Failed",
-        description: "Failed to generate SEO metadata",
-        variant: "destructive",
+        title: 'Generation Failed',
+        description: 'Failed to generate SEO metadata',
+        variant: 'destructive',
       });
     } finally {
       setIsGeneratingSEO(false);
@@ -351,7 +351,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
               <Input
                 id="slug"
                 value={post.slug || ''}
-                onChange={(e) => setPost(prev => ({ ...prev, slug: e.target.value }))}
+                onChange={(e) => setPost((prev) => ({ ...prev, slug: e.target.value }))}
                 placeholder="url-friendly-slug"
               />
             </div>
@@ -361,7 +361,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
               <Textarea
                 id="excerpt"
                 value={post.excerpt || ''}
-                onChange={(e) => setPost(prev => ({ ...prev, excerpt: e.target.value }))}
+                onChange={(e) => setPost((prev) => ({ ...prev, excerpt: e.target.value }))}
                 placeholder="Brief description of the blog post"
                 rows={3}
               />
@@ -371,7 +371,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
               <MarkdownEditor
                 label="Content"
                 value={post.content || ''}
-                onChange={(content) => setPost(prev => ({ ...prev, content }))}
+                onChange={(content) => setPost((prev) => ({ ...prev, content }))}
                 placeholder="Write your blog post content in Markdown..."
                 rows={20}
               />
@@ -388,9 +388,9 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
             <CardContent className="space-y-4">
               {post.featured_image && (
                 <div className="relative">
-                  <img 
-                    src={post.featured_image} 
-                    alt="Featured" 
+                  <img
+                    src={post.featured_image}
+                    alt="Featured"
                     className="w-full h-48 object-cover rounded-md"
                   />
                   <Button
@@ -403,7 +403,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
                   </Button>
                 </div>
               )}
-              
+
               <div>
                 <Label htmlFor="image-upload">Upload Image</Label>
                 <div className="flex gap-2 mt-2">
@@ -415,11 +415,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
                     disabled={isUploadingImage}
                     className="flex-1"
                   />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    disabled={isUploadingImage}
-                  >
+                  <Button variant="outline" size="icon" disabled={isUploadingImage}>
                     {isUploadingImage ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
@@ -473,20 +469,25 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
                 <Switch
                   id="published"
                   checked={post.published || false}
-                  onCheckedChange={(published) => setPost(prev => ({ ...prev, published }))}
+                  onCheckedChange={(published) => setPost((prev) => ({ ...prev, published }))}
                 />
                 <Label htmlFor="published">Published</Label>
               </div>
 
               <div>
                 <Label htmlFor="category">Category</Label>
-                <Select value={post.category} onValueChange={(category) => setPost(prev => ({ ...prev, category }))}>
+                <Select
+                  value={post.category}
+                  onValueChange={(category) => setPost((prev) => ({ ...prev, category }))}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map(cat => (
-                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -497,7 +498,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
                 <Input
                   id="author"
                   value={post.author || ''}
-                  onChange={(e) => setPost(prev => ({ ...prev, author: e.target.value }))}
+                  onChange={(e) => setPost((prev) => ({ ...prev, author: e.target.value }))}
                 />
               </div>
             </CardContent>
@@ -534,7 +535,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
                 <Input
                   id="meta_title"
                   value={post.meta_title || ''}
-                  onChange={(e) => setPost(prev => ({ ...prev, meta_title: e.target.value }))}
+                  onChange={(e) => setPost((prev) => ({ ...prev, meta_title: e.target.value }))}
                   placeholder="SEO title"
                 />
               </div>
@@ -544,7 +545,9 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
                 <Textarea
                   id="meta_description"
                   value={post.meta_description || ''}
-                  onChange={(e) => setPost(prev => ({ ...prev, meta_description: e.target.value }))}
+                  onChange={(e) =>
+                    setPost((prev) => ({ ...prev, meta_description: e.target.value }))
+                  }
                   placeholder="SEO description"
                   rows={3}
                 />
@@ -555,7 +558,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
                 <Input
                   id="meta_keywords"
                   value={post.meta_keywords || ''}
-                  onChange={(e) => setPost(prev => ({ ...prev, meta_keywords: e.target.value }))}
+                  onChange={(e) => setPost((prev) => ({ ...prev, meta_keywords: e.target.value }))}
                   placeholder="keyword1, keyword2, keyword3"
                 />
               </div>

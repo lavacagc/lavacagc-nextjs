@@ -1,22 +1,24 @@
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Sparkles, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-interface BlogPostGeneratorProps {
-  onPostCreated?: (postId: string) => void;
-}
-
-export function BlogPostGenerator({ onPostCreated }: BlogPostGeneratorProps) {
-  const router = useRouter();
+export function BlogPostGenerator() {
+  const navigate = useNavigate();
   const [topic, setTopic] = useState('');
   const [information, setInformation] = useState('');
   const [category, setCategory] = useState('Kitchen Remodeling');
@@ -70,9 +72,13 @@ export function BlogPostGenerator({ onPostCreated }: BlogPostGeneratorProps) {
           slug,
           content,
           category,
-          excerpt: content.substring(0, 200).replace(/[#*>\-]/g, '').trim() + '...',
+          excerpt:
+            content
+              .substring(0, 200)
+              .replace(/[#*>-]/g, '')
+              .trim() + '...',
           published: false,
-          author: 'admin',
+          author: 'Alex T.',
         })
         .select()
         .single();
@@ -81,13 +87,8 @@ export function BlogPostGenerator({ onPostCreated }: BlogPostGeneratorProps) {
 
       toast.success('Blog post generated as draft!');
 
-      // Call the callback to edit the post, or navigate to blog
-      if (onPostCreated && postData?.id) {
-        onPostCreated(postData.id);
-      } else {
-        // Fallback: navigate to blog list
-        router.push('/admin');
-      }
+      // Navigate to the blog post
+      navigate(`/blog/${slug}`);
     } catch (error) {
       console.error('Error generating post:', error);
       toast.error('Failed to generate blog post');
@@ -103,14 +104,13 @@ export function BlogPostGenerator({ onPostCreated }: BlogPostGeneratorProps) {
           <Sparkles className="h-5 w-5" />
           AI Blog Post Generator
         </CardTitle>
-        <CardDescription>
-          Create a new blog post from scratch using AI
-        </CardDescription>
+        <CardDescription>Create a new blog post from scratch using AI</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <Alert>
           <AlertDescription>
-            Provide a topic and any specific information you want included. The AI will create a complete, well-structured blog post with styled boxes and professional formatting.
+            Provide a topic and any specific information you want included. The AI will create a
+            complete, well-structured blog post with styled boxes and professional formatting.
           </AlertDescription>
         </Alert>
 
@@ -173,11 +173,7 @@ export function BlogPostGenerator({ onPostCreated }: BlogPostGeneratorProps) {
             </div>
           </div>
 
-          <Button
-            onClick={generatePost}
-            disabled={isGenerating}
-            className="w-full h-9"
-          >
+          <Button onClick={generatePost} disabled={isGenerating} className="w-full h-9">
             {isGenerating ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
