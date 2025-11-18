@@ -164,10 +164,25 @@ class AnalyticsManager {
       }
     }
 
+    // Check for saved cookie consent and apply it immediately during initialization
+    let analyticsConsent = 'denied';
+    let adConsent = 'denied';
+
+    try {
+      const savedConsent = localStorage.getItem('lavaca_cookie_consent');
+      if (savedConsent) {
+        const { settings } = JSON.parse(savedConsent);
+        analyticsConsent = settings.analytics ? 'granted' : 'denied';
+        adConsent = settings.marketing ? 'granted' : 'denied';
+      }
+    } catch (e) {
+      // If parsing fails, keep default 'denied'
+    }
+
     const consentBlock = this.config?.consent_mode_enabled ? `
       gtag('consent', 'default', {
-        'analytics_storage': 'denied',
-        'ad_storage': 'denied'
+        'analytics_storage': '${analyticsConsent}',
+        'ad_storage': '${adConsent}'
       });
     ` : '';
 
@@ -186,6 +201,7 @@ class AnalyticsManager {
     document.head.appendChild(script2);
 
     console.log('Google Analytics initialized with ID:', measurementId);
+    console.log('Initial consent mode:', { analyticsConsent, adConsent });
   }
 
   trackEvent(eventName: string, parameters?: Record<string, any>) {
