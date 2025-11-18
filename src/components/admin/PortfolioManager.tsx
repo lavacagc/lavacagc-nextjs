@@ -317,9 +317,15 @@ export function PortfolioManager({ onNewProject, onEditProject }: PortfolioManag
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Portfolio Manager</h2>
-          <p className="text-muted-foreground">
-            Manage your project portfolio ({filteredProjects.length} of {projects.length} projects)
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-muted-foreground">
+              Manage your project portfolio ({filteredProjects.length} of {projects.length} projects)
+            </p>
+            <div className="flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md text-sm">
+              <Star className="w-3 h-3 fill-current" />
+              <span className="font-medium">{projects.filter(p => p.featured).length} Featured on Homepage</span>
+            </div>
+          </div>
         </div>
         <Button onClick={onNewProject}>
           <Plus className="w-4 h-4 mr-2" />

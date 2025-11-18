@@ -391,6 +391,25 @@ export function ProjectsEditor() {
               </div>
             </div>
 
+            {editingProject.featured && (
+              <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <Label htmlFor="sort_order" className="text-sm font-medium mb-2 block">
+                  Display Order (Homepage)
+                </Label>
+                <Input
+                  id="sort_order"
+                  type="number"
+                  min="0"
+                  value={editingProject.sort_order || 0}
+                  onChange={(e) => setEditingProject({...editingProject, sort_order: parseInt(e.target.value) || 0})}
+                  className="w-32"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Lower numbers appear first on homepage (0, 1, 2, etc.)
+                </p>
+              </div>
+            )}
+
             {/* Project Images Section */}
             {editingProject.id !== 'new' && (
               <div className="space-y-4">
