@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -18,7 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export function BlogPostGenerator() {
-  const navigate = useNavigate();
+  const router = useRouter();
   const [topic, setTopic] = useState('');
   const [information, setInformation] = useState('');
   const [category, setCategory] = useState('Kitchen Remodeling');

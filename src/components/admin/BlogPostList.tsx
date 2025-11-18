@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,7 +35,7 @@ interface BlogPostListProps {
 }
 
 export function BlogPostList({ onEditPost }: BlogPostListProps) {
-  const navigate = useNavigate();
+  const router = useRouter();
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -185,7 +185,7 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
                         onClick={(e) => {
                           e.preventDefault();
                           console.log('View button clicked for:', post.slug);
-                          navigate(`/blog/${post.slug}`);
+                          router.push(`/blog/${post.slug}`);
                         }}
                         title="View post"
                       >
