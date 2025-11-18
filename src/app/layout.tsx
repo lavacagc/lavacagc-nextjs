@@ -6,6 +6,7 @@ import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import CookieConsent from '@/components/CookieConsent'
+import Analytics from '@/components/Analytics'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -87,6 +88,7 @@ export default function RootLayout({
         </a>
         <Providers>
           <TooltipProvider>
+            <Analytics />
             {children}
             <Toaster />
             <Sonner />
