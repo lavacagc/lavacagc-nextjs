@@ -17,7 +17,11 @@ import { Sparkles, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-export function BlogPostGenerator() {
+interface BlogPostGeneratorProps {
+  onPostCreated?: (id: string) => void;
+}
+
+export function BlogPostGenerator({ onPostCreated }: BlogPostGeneratorProps) {
   const router = useRouter();
   const [topic, setTopic] = useState('');
   const [information, setInformation] = useState('');
@@ -87,8 +91,12 @@ export function BlogPostGenerator() {
 
       toast.success('Blog post generated as draft!');
 
-      // Navigate to the blog post
-      router.push(`/blog/${slug}`);
+      // Call the callback if provided, otherwise navigate
+      if (onPostCreated && postData?.id) {
+        onPostCreated(postData.id);
+      } else {
+        router.push(`/blog/${slug}`);
+      }
     } catch (error) {
       console.error('Error generating post:', error);
       toast.error('Failed to generate blog post');
