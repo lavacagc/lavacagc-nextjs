@@ -9,10 +9,28 @@ import { supabase } from '@/integrations/supabase/client';
 const Hero = () => {
   const router = useRouter();
   const pathname = usePathname();
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const [selectedVideo, setSelectedVideo] = React.useState<string>('');
+
+  // List of available videos from Supabase Storage
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://xrvbrnrbnyfdwkfdoepq.supabase.co';
+  const availableVideos = [
+    `${supabaseUrl}/storage/v1/object/public/hero-videos/hero-background-1.mp4`,
+    `${supabaseUrl}/storage/v1/object/public/hero-videos/hero-background-2.mp4`,
+    `${supabaseUrl}/storage/v1/object/public/hero-videos/hero-background-3.mp4`,
+    `${supabaseUrl}/storage/v1/object/public/hero-videos/hero-background-4.mp4`,
+    `${supabaseUrl}/storage/v1/object/public/hero-videos/hero-background-5.mp4`,
+  ];
 
   // Start with static data, render immediately
   const [averageRating, setAverageRating] = React.useState('5.0');
   const [reviewCount, setReviewCount] = React.useState(0);
+
+  // Select random video on mount (client-side only)
+  React.useEffect(() => {
+    const randomIndex = Math.floor(Math.random() * availableVideos.length);
+    setSelectedVideo(availableVideos[randomIndex]);
+  }, []);
 
   // Fetch after initial render to not block LCP
   React.useEffect(() => {
@@ -30,6 +48,13 @@ const Hero = () => {
     }, 100);
     return () => clearTimeout(timer);
   }, []);
+
+  // Set video playback speed to 0.5x (slow motion)
+  React.useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = 0.5;
+    }
+  }, [selectedVideo]);
 
   const scrollToEstimate = () => {
     // On mobile and tablet (below lg breakpoint = 1024px), go to calculator
@@ -56,14 +81,34 @@ const Hero = () => {
   };
   return (
     <section className="relative bg-gradient-to-br from-background via-background to-muted py-10 md:py-20 lg:py-32 overflow-hidden">
-      {/* Background Pattern */}
-      <div className="absolute inset-0 opacity-5">
+      {/* Background Video Layer - Randomly selected from available videos */}
+      {selectedVideo && (
+        <video
+          ref={videoRef}
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover z-0"
+          aria-label="Background video of home remodeling project"
+          key={selectedVideo}
+        >
+          <source src={selectedVideo} type="video/mp4" />
+          {/* Fallback gradient if video doesn't load */}
+        </video>
+      )}
+
+      {/* White Overlay for Text Legibility - 75% opacity */}
+      <div className="absolute inset-0 bg-white/75 z-10"></div>
+
+      {/* Background Pattern (kept for fallback aesthetics) */}
+      <div className="absolute inset-0 opacity-5 z-10">
         <div className="absolute top-20 left-20 w-32 h-32 bg-primary rounded-full blur-3xl"></div>
         <div className="absolute bottom-20 right-20 w-40 h-40 bg-accent-sunset rounded-full blur-3xl"></div>
       </div>
 
-      <div className="container mx-auto px-4 relative">
-        <div className="max-w-4xl mx-auto text-center">
+      <div className="container mx-auto px-4 relative z-20">
+        <div className="max-w-4xl mx-auto text-center" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' }}>
           {/* Main Heading */}
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-text-primary mb-6 leading-tight">
             Premium Home Remodeling

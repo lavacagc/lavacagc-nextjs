@@ -43,3 +43,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+# Video files - hosted on Supabase Storage
+public/videos/*.mp4
