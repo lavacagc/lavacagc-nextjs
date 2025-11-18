@@ -17,17 +17,25 @@ export {
 const Analytics = () => {
   const pathname = usePathname();
 
-  useEffect(() => {
-    // Initialize GA on first load with configuration from database
-    analyticsManager.initializeGA();
-  }, []);
+  // Check if current page should be excluded from tracking
+  const isExcludedPage = pathname.startsWith('/admin') || pathname.startsWith('/auth');
 
   useEffect(() => {
-    // Track page views on route changes, but exclude admin pages
-    if (!pathname.startsWith('/admin')) {
+    // Don't initialize GA at all on admin or auth pages
+    if (isExcludedPage) {
+      return;
+    }
+
+    // Initialize GA on first load with configuration from database
+    analyticsManager.initializeGA();
+  }, [pathname, isExcludedPage]);
+
+  useEffect(() => {
+    // Track page views on route changes, but exclude admin and auth pages
+    if (!isExcludedPage) {
       analyticsManager.trackPageView(pathname);
     }
-  }, [pathname]);
+  }, [pathname, isExcludedPage]);
 
   return null;
 };
