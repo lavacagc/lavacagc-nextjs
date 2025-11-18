@@ -88,7 +88,7 @@ export function BlogPostGenerator() {
       toast.success('Blog post generated as draft!');
 
       // Navigate to the blog post
-      navigate(`/blog/${slug}`);
+      router.push(`/blog/${slug}`);
     } catch (error) {
       console.error('Error generating post:', error);
       toast.error('Failed to generate blog post');
