@@ -49,12 +49,12 @@ const Hero = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  // Set video playback speed - 0.5x on desktop, 1x on mobile
+  // Set video playback speed - 0.75x on desktop, 1x on mobile
   React.useEffect(() => {
     if (videoRef.current) {
       // Check if mobile device (screen width < 768px)
       const isMobile = window.innerWidth < 768;
-      videoRef.current.playbackRate = isMobile ? 1.0 : 0.5;
+      videoRef.current.playbackRate = isMobile ? 1.0 : 0.75;
     }
   }, [selectedVideo]);
 
