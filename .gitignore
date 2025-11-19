@@ -45,3 +45,6 @@ yarn-error.log*
 next-env.d.ts
 # Video files - hosted on Supabase Storage
 public/videos/*.mp4
+
+# Supabase temp files
+supabase/.temp/
