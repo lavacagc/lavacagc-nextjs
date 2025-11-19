@@ -103,6 +103,9 @@ const Hero = () => {
       {/* White Overlay for Text Legibility - 75% opacity */}
       <div className="absolute inset-0 bg-white/75 z-10"></div>
 
+      {/* Gradient overlay - transitions to muted color on lower 4/5ths for seamless transition to next section */}
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-muted/50 to-muted z-10" style={{ backgroundPosition: '0 20%' }}></div>
+
       {/* Background Pattern (kept for fallback aesthetics) */}
       <div className="absolute inset-0 opacity-5 z-10">
         <div className="absolute top-20 left-20 w-32 h-32 bg-primary rounded-full blur-3xl"></div>
