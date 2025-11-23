@@ -205,18 +205,14 @@ class AnalyticsManager {
   }
 
   trackEvent(eventName: string, parameters?: Record<string, any>) {
-    // Debug logging in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log('📊 GA Event:', eventName, parameters);
-    }
+    // Debug logging (always on for now to verify production deployment)
+    console.log('📊 GA Event:', eventName, parameters);
 
     if (!this.config?.tracking_enabled || typeof window.gtag === 'undefined') {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('⚠️ Tracking disabled or gtag not available:', {
-          tracking_enabled: this.config?.tracking_enabled,
-          gtag_available: typeof window.gtag !== 'undefined'
-        });
-      }
+      console.warn('⚠️ Tracking disabled or gtag not available:', {
+        tracking_enabled: this.config?.tracking_enabled,
+        gtag_available: typeof window.gtag !== 'undefined'
+      });
       return;
     }
 
