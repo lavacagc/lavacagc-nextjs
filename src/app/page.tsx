@@ -107,6 +107,7 @@ const WhyChoose = dynamic(() => import('@/components/WhyChoose'), {
 })
 
 const MobileContactBanner = dynamic(() => import('@/components/MobileContactBanner'))
+const TrackedSection = dynamic(() => import('@/components/TrackedSection'))
 
 export default function Home() {
   return (
@@ -117,7 +118,12 @@ export default function Home() {
         <Hero />
 
         {/* Quick Estimate Section */}
-        <section id="estimate" className="py-16 bg-muted relative scroll-mt-20">
+        <TrackedSection
+          sectionId="estimate-section"
+          sectionName="Quick Estimate Form"
+          id="estimate"
+          className="py-16 bg-muted relative scroll-mt-20"
+        >
           <div className="absolute inset-0 opacity-5">
             <div className="absolute top-10 right-10 w-24 h-24 bg-primary rounded-full blur-2xl"></div>
             <div className="absolute bottom-10 left-10 w-32 h-32 bg-accent-sunset rounded-full blur-2xl"></div>
@@ -143,23 +149,54 @@ export default function Home() {
             </div>
             <HomeEstimateForm />
           </div>
-        </section>
+        </TrackedSection>
 
-        {/* Testimonials Section */}
-        <Testimonials />
+        {/* Testimonials Section - Tracked */}
+        <TrackedSection
+          sectionId="testimonials-section"
+          sectionName="Testimonials Section"
+          className=""
+        >
+          <Testimonials />
+        </TrackedSection>
 
-        <Services />
+        {/* Services Section - Tracked */}
+        <TrackedSection
+          sectionId="services-section"
+          sectionName="Services Horizontal Scroll"
+          className=""
+        >
+          <Services />
+        </TrackedSection>
 
         <div id="projects" className="scroll-mt-20">
           <ProjectGallery />
         </div>
 
-        <ServiceAreas />
+        {/* Service Areas Section - Tracked */}
+        <TrackedSection
+          sectionId="service-areas-section"
+          sectionName="Service Areas Section"
+          className=""
+        >
+          <ServiceAreas />
+        </TrackedSection>
 
-        <WhyChoose />
+        {/* Why Choose Section - Tracked */}
+        <TrackedSection
+          sectionId="why-choose-section"
+          sectionName="Why Choose Us Section"
+          className=""
+        >
+          <WhyChoose />
+        </TrackedSection>
 
         {/* Featured Services Section */}
-        <section className="py-20 bg-background-soft">
+        <TrackedSection
+          sectionId="featured-services"
+          sectionName="Featured Services Grid"
+          className="py-20 bg-background-soft"
+        >
           <div className="container mx-auto px-4">
             <div className="text-center mb-16">
               <h2 className="text-4xl font-bold text-text-primary mb-6">
@@ -197,7 +234,7 @@ export default function Home() {
               </Link>
             </div>
           </div>
-        </section>
+        </TrackedSection>
       </main>
       <Footer />
       <MobileContactBanner />

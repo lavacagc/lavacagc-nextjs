@@ -8,6 +8,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Eye, Loader } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useScrollTracking } from "@/hooks/useScrollTracking";
+import { useHorizontalScrollTracking } from "@/hooks/useHorizontalScrollTracking";
+import { trackEvent } from "@/services/analyticsManager";
 
 interface Project {
   id: string;
@@ -27,6 +30,24 @@ const ProjectGallery = () => {
   const [selectedCategories, setSelectedCategories] = useState<string[]>(["All Projects"]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Scroll tracking for project gallery section
+  const gallerySectionRef = useScrollTracking({
+    sectionId: 'home-project-gallery',
+    sectionName: 'Home Page Project Gallery',
+    trackTimeOnSection: true,
+    trackScrollDepth: true,
+    scrollDepthThresholds: [25, 50, 75, 100],
+    trackElements: true,
+    minTimeThreshold: 3,
+  });
+
+  // Horizontal scroll tracking
+  const horizontalScrollRef = useHorizontalScrollTracking({
+    sectionId: 'home-project-gallery-scroll',
+    sectionName: 'Home Project Gallery Horizontal Scroll',
+    scrollDepthThresholds: [25, 50, 75, 100],
+  });
 
   useEffect(() => {
     fetchProjects();
@@ -110,6 +131,12 @@ const ProjectGallery = () => {
 
       setSelectedCategories(newCategories.length === 0 ? ["All Projects"] : newCategories);
     }
+
+    // Track filter interaction
+    trackEvent('project_gallery_filter', {
+      filter_type: category,
+      event_category: 'engagement',
+    });
   };
 
   const filteredProjects = selectedCategories.includes("All Projects")
@@ -132,7 +159,7 @@ const ProjectGallery = () => {
   }
 
   return (
-    <section className="py-20 bg-muted/30">
+    <section ref={gallerySectionRef} className="py-20 bg-muted/30">
       <div className="container mx-auto px-4">
         <div className="text-center mb-16">
           <h2 className="text-4xl md:text-5xl font-bold text-text-primary mb-6">
@@ -173,10 +200,10 @@ const ProjectGallery = () => {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto pb-4">
+            <div ref={horizontalScrollRef} className="overflow-x-auto pb-4">
               <div className="flex gap-8 min-w-max px-4">
                 {filteredProjects.map((project) => (
-                  <Card key={project.id} className="group overflow-hidden hover:shadow-elegant transition-all duration-300 hover:-translate-y-2 bg-card border-2 hover:border-primary/20 flex-shrink-0 w-80">
+                  <Card key={project.id} data-track="true" className="group overflow-hidden hover:shadow-elegant transition-all duration-300 hover:-translate-y-2 bg-card border-2 hover:border-primary/20 flex-shrink-0 w-80">
                      <div className="relative overflow-hidden">
                        {isVideo(getProjectImage(project)) ? (
                          <video

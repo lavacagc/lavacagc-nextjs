@@ -205,12 +205,23 @@ class AnalyticsManager {
   }
 
   trackEvent(eventName: string, parameters?: Record<string, any>) {
+    // Debug logging in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('📊 GA Event:', eventName, parameters);
+    }
+
     if (!this.config?.tracking_enabled || typeof window.gtag === 'undefined') {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('⚠️ Tracking disabled or gtag not available:', {
+          tracking_enabled: this.config?.tracking_enabled,
+          gtag_available: typeof window.gtag !== 'undefined'
+        });
+      }
       return;
     }
 
     const customEvent = this.customEvents.find(e => e.event_name === eventName);
-    
+
     if (customEvent) {
       window.gtag('event', customEvent.event_action, {
         event_category: customEvent.event_category,
@@ -275,8 +286,55 @@ export const trackEstimateRequest = (source: string = 'unknown') => {
 };
 
 export const trackProjectView = (projectTitle: string, projectId: string) => {
-  analyticsManager.trackEvent('project_view', { 
+  analyticsManager.trackEvent('project_view', {
     project_title: projectTitle,
-    project_id: projectId 
+    project_id: projectId
+  });
+};
+
+// Scroll tracking functions
+export const trackScrollDepth = (sectionName: string, depth: number, sectionId?: string) => {
+  analyticsManager.trackEvent('scroll_depth', {
+    section_name: sectionName,
+    section_id: sectionId,
+    depth_percentage: depth,
+    event_category: 'engagement',
+  });
+};
+
+export const trackSectionView = (sectionName: string, timeSpent?: number, sectionId?: string) => {
+  analyticsManager.trackEvent('section_view', {
+    section_name: sectionName,
+    section_id: sectionId,
+    time_spent_seconds: timeSpent,
+    event_category: 'engagement',
+  });
+};
+
+export const trackElementView = (elementName: string, sectionName: string, elementId?: string) => {
+  analyticsManager.trackEvent('element_view', {
+    element_name: elementName,
+    section_name: sectionName,
+    element_id: elementId,
+    event_category: 'engagement',
+  });
+};
+
+export const trackCalculatorStep = (stepNumber: number, stepName: string, action: 'enter' | 'exit' | 'complete', timeSpent?: number) => {
+  analyticsManager.trackEvent('calculator_step', {
+    step_number: stepNumber,
+    step_name: stepName,
+    action,
+    time_spent_seconds: timeSpent,
+    event_category: 'calculator',
+  });
+};
+
+export const trackHorizontalScroll = (sectionName: string, scrollPercentage: number, sectionId?: string) => {
+  analyticsManager.trackEvent('horizontal_scroll', {
+    section_name: sectionName,
+    section_id: sectionId,
+    scroll_percentage: scrollPercentage,
+    event_category: 'engagement',
   });
 };

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,12 +19,14 @@ import { ContactInfoStep, ContactInfoData } from "@/components/calculator/steps/
 import { ProjectOverviewStep, ProjectOverviewData } from "@/components/calculator/steps/ProjectOverviewStep";
 import { PDFUploadStep, PDFUploadData } from "@/components/calculator/steps/PDFUploadStep";
 import { ConfirmationStep } from "@/components/calculator/steps/ConfirmationStep";
+import { trackCalculatorStep } from "@/services/analyticsManager";
 
 export default function UnifiedCalculator() {
   const router = useRouter();
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const stepEntryTime = useRef<number>(Date.now());
 
   // Form data state
   const [projectTypeData, setProjectTypeData] = useState<ProjectTypeData | null>(null);
@@ -41,6 +43,39 @@ export default function UnifiedCalculator() {
     if (projectTypeData.requiresPDFUpload) return 4; // Type -> Overview -> Upload -> Contact -> Confirmation
     return 6; // Type -> Dimensions -> Quality -> Materials -> Features -> Contact
   };
+
+  // Get step name for analytics
+  const getStepName = (step: number): string => {
+    if (!projectTypeData) {
+      if (step === 1) return "Project Type Selection";
+      return `Step ${step}`;
+    }
+
+    if (projectTypeData.requiresPDFUpload) {
+      const pdfSteps = ["Project Type Selection", "Project Overview", "PDF Upload", "Contact Information", "Confirmation"];
+      return pdfSteps[step - 1] || `Step ${step}`;
+    }
+
+    const standardSteps = ["Project Type Selection", "Dimensions", "Quality Level", "Material Options", "Additional Features", "Contact Information"];
+    return standardSteps[step - 1] || `Step ${step}`;
+  };
+
+  // Track calculator step changes
+  useEffect(() => {
+    const stepName = getStepName(currentStep);
+
+    // Track entry to new step
+    trackCalculatorStep(currentStep, stepName, 'enter');
+    stepEntryTime.current = Date.now();
+
+    // Track exit from previous step when component unmounts or step changes
+    return () => {
+      const timeSpent = Math.round((Date.now() - stepEntryTime.current) / 1000);
+      if (timeSpent >= 1) { // Only track if user spent at least 1 second
+        trackCalculatorStep(currentStep, stepName, 'exit', timeSpent);
+      }
+    };
+  }, [currentStep, projectTypeData]);
 
   const handleProjectTypeNext = (data: ProjectTypeData) => {
     setProjectTypeData(data);
@@ -98,6 +133,8 @@ export default function UnifiedCalculator() {
 
         if (error) throw error;
 
+        // Track calculator completion
+        trackCalculatorStep(getTotalSteps() + 1, "Confirmation", 'complete');
         setCurrentStep(getTotalSteps() + 1); // Show confirmation
       } else {
         // Handle standard calculator submission
@@ -147,6 +184,8 @@ export default function UnifiedCalculator() {
           sessionStorage.setItem(`estimate_lead_${response.lead_id}`, JSON.stringify(safeLeadData));
         }
 
+        // Track calculator completion
+        trackCalculatorStep(getTotalSteps(), "Contact Information", 'complete');
         router.push(`/project-calculator/result/${response.lead_id}`);
       }
     } catch (error) {
