@@ -3,6 +3,7 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import Link from 'next/link';
 
 interface MarkdownContentProps {
   content: string;
@@ -78,9 +79,21 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
               </pre>
             );
           },
-          a: ({ node, ...props }) => (
-            <a className="text-primary hover:text-primary/80 underline font-medium" target="_blank" rel="noopener noreferrer" {...props} />
-          ),
+          a: ({ node, href, children, ...props }) => {
+            const isInternal = href?.startsWith('/');
+            if (isInternal && href) {
+              return (
+                <Link href={href} className="text-primary hover:text-primary/80 underline font-medium" {...props}>
+                  {children}
+                </Link>
+              );
+            }
+            return (
+              <a href={href} className="text-primary hover:text-primary/80 underline font-medium" target="_blank" rel="noopener noreferrer" {...props}>
+                {children}
+              </a>
+            );
+          },
           strong: ({ node, ...props }) => <strong className="font-bold text-text-primary" {...props} />,
           em: ({ node, ...props }) => <em className="italic" {...props} />,
           hr: ({ node, ...props }) => <hr className="my-8 border-border" {...props} />,

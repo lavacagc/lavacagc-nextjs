@@ -16,7 +16,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
 import { Edit, Eye, Trash2, Globe, FileX } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { BlogPostSelector } from './BlogPostSelector';
 import { BlogPostGenerator } from './BlogPostGenerator';
 
 interface BlogPost {
@@ -137,9 +136,8 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
   return (
     <div className="space-y-6">
       <Tabs defaultValue="posts" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="posts">All Posts</TabsTrigger>
-          <TabsTrigger value="enhance">Enhance Posts</TabsTrigger>
           <TabsTrigger value="generate">Generate New Post</TabsTrigger>
         </TabsList>
 
@@ -226,10 +224,6 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
               ))}
             </TableBody>
           </Table>
-        </TabsContent>
-
-        <TabsContent value="enhance" className="mt-6">
-          <BlogPostSelector onEditPost={onEditPost} />
         </TabsContent>
 
         <TabsContent value="generate" className="mt-6">

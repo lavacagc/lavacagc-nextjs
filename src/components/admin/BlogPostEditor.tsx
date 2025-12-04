@@ -16,7 +16,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { MarkdownEditor } from './MarkdownEditor';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, Save, Eye, Upload, Sparkles, X } from 'lucide-react';
+import { Loader2, Save, Eye, Upload, Sparkles, X, Wand2 } from 'lucide-react';
+import { AdminRadioGroup, AdminRadioGroupItem } from './ui/AdminRadioGroup';
 import { convertHeicToJpeg } from '@/utils/heicConverter';
 
 interface BlogPost {
@@ -68,6 +69,8 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isGeneratingSEO, setIsGeneratingSEO] = useState(false);
   const [imagePrompt, setImagePrompt] = useState('');
+  const [enhancementLevel, setEnhancementLevel] = useState<'light' | 'moderate' | 'heavy'>('moderate');
+  const [isEnhancing, setIsEnhancing] = useState(false);
 
   useEffect(() => {
     if (postId) {
@@ -322,6 +325,47 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     }
   };
 
+  const handleEnhanceContent = async () => {
+    if (!post.content?.trim()) {
+      toast({
+        title: 'No Content',
+        description: 'Please add content before enhancing',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsEnhancing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('enhance-blog-content', {
+        body: {
+          title: post.title || 'Untitled',
+          content: post.content,
+          category: post.category || 'General Remodeling',
+          enhancementLevel,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.enhancedContent) throw new Error('No enhanced content returned');
+
+      setPost((prev) => ({ ...prev, content: data.enhancedContent }));
+      toast({
+        title: 'Content Enhanced',
+        description: `Article enhanced with ${enhancementLevel} optimization`,
+      });
+    } catch (error) {
+      console.error('Enhancement error:', error);
+      toast({
+        title: 'Enhancement Failed',
+        description: 'Failed to enhance content',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -562,6 +606,69 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
                   placeholder="keyword1, keyword2, keyword3"
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">AI Enhancement</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Enhancement Level</Label>
+                <AdminRadioGroup
+                  value={enhancementLevel}
+                  onValueChange={(value) =>
+                    setEnhancementLevel(value as 'light' | 'moderate' | 'heavy')
+                  }
+                  disabled={isEnhancing}
+                >
+                  <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
+                    <AdminRadioGroupItem value="light" id="enhance-light" />
+                    <Label htmlFor="enhance-light" className="text-sm font-normal cursor-pointer flex-1">
+                      <span className="font-medium">Light</span>
+                      <span className="text-muted-foreground text-xs block">Quick polish with local context</span>
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
+                    <AdminRadioGroupItem value="moderate" id="enhance-moderate" />
+                    <Label htmlFor="enhance-moderate" className="text-sm font-normal cursor-pointer flex-1">
+                      <span className="font-medium">Moderate</span>
+                      <span className="text-muted-foreground text-xs block">Full local SEO optimization</span>
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
+                    <AdminRadioGroupItem value="heavy" id="enhance-heavy" />
+                    <Label htmlFor="enhance-heavy" className="text-sm font-normal cursor-pointer flex-1">
+                      <span className="font-medium">Heavy</span>
+                      <span className="text-muted-foreground text-xs block">Complete rewrite with max SEO</span>
+                    </Label>
+                  </div>
+                </AdminRadioGroup>
+              </div>
+
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleEnhanceContent}
+                disabled={isEnhancing || !post.content}
+              >
+                {isEnhancing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Enhancing...
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="w-4 h-4 mr-2" />
+                    Enhance Content
+                  </>
+                )}
+              </Button>
+
+              <p className="text-xs text-muted-foreground text-center">
+                AI will add internal links and optimize for local SEO
+              </p>
             </CardContent>
           </Card>
         </div>
