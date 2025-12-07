@@ -173,6 +173,12 @@ const nextConfig: NextConfig = {
       // ============================================
       { source: '/our-blog/:slug*', destination: '/blog', permanent: true },
 
+      // Legacy blog posts that no longer exist - redirect to blog listing
+      { source: '/blog/permit-requirements-northern-nj', destination: '/blog', permanent: true },
+      { source: '/blog/permit-requirements-northern-n', destination: '/blog', permanent: true },
+      { source: '/blog/bathroom-remodeling-costs-essex-county', destination: '/blog', permanent: true },
+      { source: '/blog/bathroom-remodeling-costs-essex-countyj', destination: '/blog', permanent: true },
+
       // ============================================
       // OLD "NEAR ME" URL FORMAT REDIRECTS
       // Specific cities that exist - redirect to proper location pages
