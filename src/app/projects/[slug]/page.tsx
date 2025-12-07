@@ -207,11 +207,36 @@ export default async function ProjectDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  // JSON-LD Schema for Service/Product
-  // Build review object only if testimonial exists
-  const reviewSchema = project.testimonial_text
-    ? {
+  // JSON-LD Schema - Use LocalBusiness as main type (supports Review in Google rich results)
+  // Google only supports Review on: LocalBusiness, Product, Book, Course, Event, etc.
+  // NOT on Service type
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'LocalBusiness',
+    '@id': 'https://www.lavacagc.com/#business',
+    name: 'La Vaca General Contractors',
+    description: `${project.title} - ${project.challenge || project.solution || `${project.service_types[0] || 'Renovation'} project in ${project.location}`}`,
+    url: 'https://www.lavacagc.com',
+    telephone: '(201) 212-4917',
+    address: {
+      '@type': 'PostalAddress',
+      addressLocality: project.location,
+      addressRegion: 'NJ',
+      addressCountry: 'US',
+    },
+    areaServed: {
+      '@type': 'City',
+      name: project.location,
+    },
+    image: project.project_images.length > 0 ? project.project_images.map((img) => img.image_url) : undefined,
+    // Include review only if testimonial exists - now valid because parent is LocalBusiness
+    ...(project.testimonial_text && {
+      review: {
         '@type': 'Review',
+        itemReviewed: {
+          '@type': 'LocalBusiness',
+          name: 'La Vaca General Contractors',
+        },
         reviewRating: {
           '@type': 'Rating',
           ratingValue: project.testimonial_rating || 5,
@@ -223,36 +248,19 @@ export default async function ProjectDetailPage({ params }: PageProps) {
           name: project.client_first_name || 'Verified Client',
         },
         reviewBody: project.testimonial_text,
-      }
-    : null;
-
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Service',
-    name: project.title,
-    description: project.challenge || project.solution || `${project.service_types[0] || 'Renovation'} project in ${project.location}`,
-    provider: {
-      '@type': 'LocalBusiness',
-      name: 'La Vaca General Contractors',
-      url: 'https://www.lavacagc.com',
-      telephone: '(201) 212-4917',
-      address: {
-        '@type': 'PostalAddress',
-        addressLocality: project.location,
-        addressRegion: 'NJ',
-        addressCountry: 'US',
+      },
+    }),
+    // Add makesOffer to describe the service provided
+    makesOffer: {
+      '@type': 'Offer',
+      itemOffered: {
+        '@type': 'Service',
+        name: project.title,
+        description: project.challenge || project.solution,
+        serviceType: project.service_types.length > 0 ? project.service_types.join(', ') : 'Home Renovation',
+        url: `https://www.lavacagc.com/projects/${project.url_slug}`,
       },
     },
-    areaServed: {
-      '@type': 'City',
-      name: project.location,
-    },
-    // serviceType must be a string, not an array
-    serviceType: project.service_types.length > 0 ? project.service_types.join(', ') : 'Home Renovation',
-    url: `https://www.lavacagc.com/projects/${project.url_slug}`,
-    image: project.project_images.length > 0 ? project.project_images.map((img) => img.image_url) : undefined,
-    // Only include review if it exists
-    ...(reviewSchema && { review: reviewSchema }),
   };
 
   // Remove undefined values to ensure clean JSON-LD
