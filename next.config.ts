@@ -99,15 +99,105 @@ const nextConfig: NextConfig = {
     ]
   },
 
-  // Redirects (add as needed)
+  // Redirects for legacy URLs from old website
   async redirects() {
     return [
-      // Example: Redirect old URLs to new ones
-      // {
-      //   source: '/old-path',
-      //   destination: '/new-path',
-      //   permanent: true,
-      // },
+      // ============================================
+      // OLD SERVICE + CITY URL FORMAT REDIRECTS
+      // Pattern: /service-city-nj → /locations/city/services/service
+      // ============================================
+
+      // Kitchen Remodeling
+      { source: '/kitchen-remodeling-alpine-nj', destination: '/locations/alpine/services/kitchen-remodeling', permanent: true },
+      { source: '/kitchen-remodeling-caldwell-nj', destination: '/locations/caldwell/services/kitchen-remodeling', permanent: true },
+      { source: '/kitchen-remodeling-essex-fells-nj', destination: '/locations/essex-fells/services/kitchen-remodeling', permanent: true },
+      { source: '/kitchen-remodeling-ho-ho-kus-nj', destination: '/locations/ho-ho-kus/services/kitchen-remodeling', permanent: true },
+      { source: '/kitchen-remodeling-livingston-nj', destination: '/locations/livingston/services/kitchen-remodeling', permanent: true },
+      { source: '/kitchen-remodeling-millburn-nj', destination: '/locations/millburn/services/kitchen-remodeling', permanent: true },
+      { source: '/kitchen-remodeling-montclair-nj', destination: '/locations/montclair/services/kitchen-remodeling', permanent: true },
+      { source: '/kitchen-remodeling-morristown-nj', destination: '/locations/morristown/services/kitchen-remodeling', permanent: true },
+      { source: '/kitchen-remodeling-saddle-river-nj', destination: '/locations/saddle-river/services/kitchen-remodeling', permanent: true },
+      { source: '/kitchen-remodeling-short-hills-nj', destination: '/locations/short-hills/services/kitchen-remodeling', permanent: true },
+      { source: '/kitchen-remodeling-verona-nj', destination: '/locations/verona/services/kitchen-remodeling', permanent: true },
+      { source: '/kitchen-remodeling-west-caldwell-nj', destination: '/locations/west-caldwell/services/kitchen-remodeling', permanent: true },
+      { source: '/kitchen-remodeling-west-orange-nj', destination: '/locations/west-orange/services/kitchen-remodeling', permanent: true },
+
+      // Bathroom Renovation
+      { source: '/bathroom-renovation-alpine-nj', destination: '/locations/alpine/services/bathroom-renovation', permanent: true },
+      { source: '/bathroom-renovation-caldwell-nj', destination: '/locations/caldwell/services/bathroom-renovation', permanent: true },
+      { source: '/bathroom-renovation-essex-fells-nj', destination: '/locations/essex-fells/services/bathroom-renovation', permanent: true },
+      { source: '/bathroom-renovation-ho-ho-kus-nj', destination: '/locations/ho-ho-kus/services/bathroom-renovation', permanent: true },
+      { source: '/bathroom-renovation-livingston-nj', destination: '/locations/livingston/services/bathroom-renovation', permanent: true },
+      { source: '/bathroom-renovation-millburn-nj', destination: '/locations/millburn/services/bathroom-renovation', permanent: true },
+      { source: '/bathroom-renovation-montclair-nj', destination: '/locations/montclair/services/bathroom-renovation', permanent: true },
+      { source: '/bathroom-renovation-morristown-nj', destination: '/locations/morristown/services/bathroom-renovation', permanent: true },
+      { source: '/bathroom-renovation-saddle-river-nj', destination: '/locations/saddle-river/services/bathroom-renovation', permanent: true },
+      { source: '/bathroom-renovation-short-hills-nj', destination: '/locations/short-hills/services/bathroom-renovation', permanent: true },
+      { source: '/bathroom-renovation-verona-nj', destination: '/locations/verona/services/bathroom-renovation', permanent: true },
+      { source: '/bathroom-renovation-west-caldwell-nj', destination: '/locations/west-caldwell/services/bathroom-renovation', permanent: true },
+      { source: '/bathroom-renovation-west-orange-nj', destination: '/locations/west-orange/services/bathroom-renovation', permanent: true },
+
+      // Basement Finishing
+      { source: '/basement-finishing-alpine-nj', destination: '/locations/alpine/services/basement-finishing', permanent: true },
+      { source: '/basement-finishing-caldwell-nj', destination: '/locations/caldwell/services/basement-finishing', permanent: true },
+      { source: '/basement-finishing-essex-fells-nj', destination: '/locations/essex-fells/services/basement-finishing', permanent: true },
+      { source: '/basement-finishing-ho-ho-kus-nj', destination: '/locations/ho-ho-kus/services/basement-finishing', permanent: true },
+      { source: '/basement-finishing-livingston-nj', destination: '/locations/livingston/services/basement-finishing', permanent: true },
+      { source: '/basement-finishing-millburn-nj', destination: '/locations/millburn/services/basement-finishing', permanent: true },
+      { source: '/basement-finishing-montclair-nj', destination: '/locations/montclair/services/basement-finishing', permanent: true },
+      { source: '/basement-finishing-morristown-nj', destination: '/locations/morristown/services/basement-finishing', permanent: true },
+      { source: '/basement-finishing-saddle-river-nj', destination: '/locations/saddle-river/services/basement-finishing', permanent: true },
+      { source: '/basement-finishing-short-hills-nj', destination: '/locations/short-hills/services/basement-finishing', permanent: true },
+      { source: '/basement-finishing-verona-nj', destination: '/locations/verona/services/basement-finishing', permanent: true },
+      { source: '/basement-finishing-west-caldwell-nj', destination: '/locations/west-caldwell/services/basement-finishing', permanent: true },
+      { source: '/basement-finishing-west-orange-nj', destination: '/locations/west-orange/services/basement-finishing', permanent: true },
+
+      // Home Additions
+      { source: '/home-additions-alpine-nj', destination: '/locations/alpine/services/home-additions', permanent: true },
+      { source: '/home-additions-caldwell-nj', destination: '/locations/caldwell/services/home-additions', permanent: true },
+      { source: '/home-additions-essex-fells-nj', destination: '/locations/essex-fells/services/home-additions', permanent: true },
+      { source: '/home-additions-ho-ho-kus-nj', destination: '/locations/ho-ho-kus/services/home-additions', permanent: true },
+      { source: '/home-additions-livingston-nj', destination: '/locations/livingston/services/home-additions', permanent: true },
+      { source: '/home-additions-millburn-nj', destination: '/locations/millburn/services/home-additions', permanent: true },
+      { source: '/home-additions-montclair-nj', destination: '/locations/montclair/services/home-additions', permanent: true },
+      { source: '/home-additions-morristown-nj', destination: '/locations/morristown/services/home-additions', permanent: true },
+      { source: '/home-additions-saddle-river-nj', destination: '/locations/saddle-river/services/home-additions', permanent: true },
+      { source: '/home-additions-short-hills-nj', destination: '/locations/short-hills/services/home-additions', permanent: true },
+      { source: '/home-additions-verona-nj', destination: '/locations/verona/services/home-additions', permanent: true },
+      { source: '/home-additions-west-caldwell-nj', destination: '/locations/west-caldwell/services/home-additions', permanent: true },
+      { source: '/home-additions-west-orange-nj', destination: '/locations/west-orange/services/home-additions', permanent: true },
+
+      // ============================================
+      // OLD BLOG URL FORMAT REDIRECTS
+      // Pattern: /our-blog/slug → /blog
+      // ============================================
+      { source: '/our-blog/:slug*', destination: '/blog', permanent: true },
+
+      // ============================================
+      // OLD "NEAR ME" URL FORMAT REDIRECTS
+      // Pattern: /near-me/service/city → /locations/city/services/service-slug
+      // ============================================
+      { source: '/near-me/kitchen-remodeling/:city', destination: '/locations/:city/services/kitchen-remodeling', permanent: true },
+      { source: '/near-me/bathroom-remodeling/:city', destination: '/locations/:city/services/bathroom-renovation', permanent: true },
+      { source: '/near-me/basement-finishing/:city', destination: '/locations/:city/services/basement-finishing', permanent: true },
+      { source: '/near-me/home-remodeling/:city', destination: '/locations/:city/services/kitchen-remodeling', permanent: true },
+      { source: '/near-me/home-additions/:city', destination: '/locations/:city/services/home-additions', permanent: true },
+
+      // ============================================
+      // SPANISH (ES) URL REDIRECTS
+      // All Spanish URLs redirect to English equivalents
+      // ============================================
+      { source: '/es/portfolio-collections/:path*', destination: '/portfolio', permanent: true },
+      { source: '/es/our-blog/:slug*', destination: '/blog', permanent: true },
+      { source: '/es/near-me/kitchen-remodeling/:city', destination: '/locations/:city/services/kitchen-remodeling', permanent: true },
+      { source: '/es/near-me/bathroom-remodeling/:city', destination: '/locations/:city/services/bathroom-renovation', permanent: true },
+      { source: '/es/near-me/home-remodeling/:city', destination: '/locations/:city/services/kitchen-remodeling', permanent: true },
+      { source: '/es/:path*', destination: '/', permanent: true },
+
+      // ============================================
+      // MALFORMED / MISC REDIRECTS
+      // ============================================
+      { source: '/&', destination: '/', permanent: true },
     ]
   },
 
