@@ -175,13 +175,25 @@ const nextConfig: NextConfig = {
 
       // ============================================
       // OLD "NEAR ME" URL FORMAT REDIRECTS
-      // Pattern: /near-me/service/city → /locations/city/services/service-slug
+      // Specific cities that exist - redirect to proper location pages
       // ============================================
-      { source: '/near-me/kitchen-remodeling/:city', destination: '/locations/:city/services/kitchen-remodeling', permanent: true },
-      { source: '/near-me/bathroom-remodeling/:city', destination: '/locations/:city/services/bathroom-renovation', permanent: true },
-      { source: '/near-me/basement-finishing/:city', destination: '/locations/:city/services/basement-finishing', permanent: true },
-      { source: '/near-me/home-remodeling/:city', destination: '/locations/:city/services/kitchen-remodeling', permanent: true },
-      { source: '/near-me/home-additions/:city', destination: '/locations/:city/services/home-additions', permanent: true },
+      { source: '/near-me/kitchen-remodeling/livingston', destination: '/locations/livingston/services/kitchen-remodeling', permanent: true },
+      { source: '/near-me/kitchen-remodeling/montclair', destination: '/locations/montclair/services/kitchen-remodeling', permanent: true },
+      { source: '/near-me/kitchen-remodeling/millburn', destination: '/locations/millburn/services/kitchen-remodeling', permanent: true },
+      { source: '/near-me/kitchen-remodeling/short-hills', destination: '/locations/short-hills/services/kitchen-remodeling', permanent: true },
+      { source: '/near-me/kitchen-remodeling/west-orange', destination: '/locations/west-orange/services/kitchen-remodeling', permanent: true },
+      { source: '/near-me/bathroom-remodeling/montclair', destination: '/locations/montclair/services/bathroom-renovation', permanent: true },
+      { source: '/near-me/bathroom-remodeling/livingston', destination: '/locations/livingston/services/bathroom-renovation', permanent: true },
+      { source: '/near-me/home-remodeling/montclair', destination: '/locations/montclair/services/kitchen-remodeling', permanent: true },
+      { source: '/near-me/home-remodeling/livingston', destination: '/locations/livingston/services/kitchen-remodeling', permanent: true },
+
+      // Unknown cities - redirect to services listing page instead of 404
+      { source: '/near-me/kitchen-remodeling/:city', destination: '/services', permanent: true },
+      { source: '/near-me/bathroom-remodeling/:city', destination: '/services', permanent: true },
+      { source: '/near-me/basement-finishing/:city', destination: '/services', permanent: true },
+      { source: '/near-me/home-remodeling/:city', destination: '/services', permanent: true },
+      { source: '/near-me/home-additions/:city', destination: '/services', permanent: true },
+      { source: '/near-me/:path*', destination: '/services', permanent: true },
 
       // ============================================
       // SPANISH (ES) URL REDIRECTS
@@ -189,10 +201,16 @@ const nextConfig: NextConfig = {
       // ============================================
       { source: '/es/portfolio-collections/:path*', destination: '/portfolio', permanent: true },
       { source: '/es/our-blog/:slug*', destination: '/blog', permanent: true },
-      { source: '/es/near-me/kitchen-remodeling/:city', destination: '/locations/:city/services/kitchen-remodeling', permanent: true },
-      { source: '/es/near-me/bathroom-remodeling/:city', destination: '/locations/:city/services/bathroom-renovation', permanent: true },
-      { source: '/es/near-me/home-remodeling/:city', destination: '/locations/:city/services/kitchen-remodeling', permanent: true },
+      { source: '/es/near-me/:path*', destination: '/services', permanent: true },
       { source: '/es/:path*', destination: '/', permanent: true },
+
+      // ============================================
+      // LEGACY PAGE REDIRECTS
+      // ============================================
+      { source: '/free-consultation', destination: '/project-calculator', permanent: true },
+      { source: '/consultation', destination: '/project-calculator', permanent: true },
+      { source: '/estimate', destination: '/project-calculator', permanent: true },
+      { source: '/quote', destination: '/project-calculator', permanent: true },
 
       // ============================================
       // MALFORMED / MISC REDIRECTS
