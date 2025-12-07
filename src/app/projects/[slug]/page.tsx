@@ -208,11 +208,29 @@ export default async function ProjectDetailPage({ params }: PageProps) {
   }
 
   // JSON-LD Schema for Service/Product
+  // Build review object only if testimonial exists
+  const reviewSchema = project.testimonial_text
+    ? {
+        '@type': 'Review',
+        reviewRating: {
+          '@type': 'Rating',
+          ratingValue: project.testimonial_rating || 5,
+          bestRating: 5,
+          worstRating: 1,
+        },
+        author: {
+          '@type': 'Person',
+          name: project.client_first_name || 'Verified Client',
+        },
+        reviewBody: project.testimonial_text,
+      }
+    : null;
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Service',
     name: project.title,
-    description: project.challenge || project.solution,
+    description: project.challenge || project.solution || `${project.service_types[0] || 'Renovation'} project in ${project.location}`,
     provider: {
       '@type': 'LocalBusiness',
       name: 'La Vaca General Contractors',
@@ -224,38 +242,21 @@ export default async function ProjectDetailPage({ params }: PageProps) {
         addressRegion: 'NJ',
         addressCountry: 'US',
       },
-      aggregateRating: project.testimonial_rating
-        ? {
-            '@type': 'AggregateRating',
-            ratingValue: project.testimonial_rating,
-            bestRating: 5,
-            ratingCount: 1,
-          }
-        : undefined,
     },
     areaServed: {
       '@type': 'City',
       name: project.location,
     },
-    serviceType: project.service_types,
+    // serviceType must be a string, not an array
+    serviceType: project.service_types.length > 0 ? project.service_types.join(', ') : 'Home Renovation',
     url: `https://www.lavacagc.com/projects/${project.url_slug}`,
-    image: project.project_images.map((img) => img.image_url),
-    ...(project.testimonial_text && {
-      review: {
-        '@type': 'Review',
-        reviewRating: {
-          '@type': 'Rating',
-          ratingValue: project.testimonial_rating,
-          bestRating: 5,
-        },
-        author: {
-          '@type': 'Person',
-          name: project.client_first_name || 'Client',
-        },
-        reviewBody: project.testimonial_text,
-      },
-    }),
+    image: project.project_images.length > 0 ? project.project_images.map((img) => img.image_url) : undefined,
+    // Only include review if it exists
+    ...(reviewSchema && { review: reviewSchema }),
   };
+
+  // Remove undefined values to ensure clean JSON-LD
+  const cleanJsonLd = JSON.parse(JSON.stringify(jsonLd));
 
   // Breadcrumb Schema
   const breadcrumbJsonLd = {
@@ -288,7 +289,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       <Header />
 
       {/* JSON-LD Structured Data */}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(cleanJsonLd) }} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
