@@ -75,6 +75,7 @@ const Footer = () => {
               <li><Link href="/locations/saddle-river" className="hover:text-primary transition-colors">Saddle River, NJ</Link></li>
               <li><Link href="/locations/short-hills" className="hover:text-primary transition-colors">Short Hills, NJ</Link></li>
               <li><Link href="/locations/verona" className="hover:text-primary transition-colors">Verona, NJ</Link></li>
+              <li><Link href="/locations/west-caldwell" className="hover:text-primary transition-colors">West Caldwell, NJ</Link></li>
               <li><Link href="/locations/west-orange" className="hover:text-primary transition-colors">West Orange, NJ</Link></li>
             </ul>
           </div>
