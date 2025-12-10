@@ -190,6 +190,7 @@ const nextConfig: NextConfig = {
       { source: '/near-me/kitchen-remodeling/west-orange', destination: '/locations/west-orange/services/kitchen-remodeling', permanent: true },
       { source: '/near-me/bathroom-remodeling/montclair', destination: '/locations/montclair/services/bathroom-renovation', permanent: true },
       { source: '/near-me/bathroom-remodeling/livingston', destination: '/locations/livingston/services/bathroom-renovation', permanent: true },
+      { source: '/near-me/bathroom-remodeling/west-orange', destination: '/locations/west-orange/services/bathroom-renovation', permanent: true },
       { source: '/near-me/home-remodeling/montclair', destination: '/locations/montclair/services/kitchen-remodeling', permanent: true },
       { source: '/near-me/home-remodeling/livingston', destination: '/locations/livingston/services/kitchen-remodeling', permanent: true },
 

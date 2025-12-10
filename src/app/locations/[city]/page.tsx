@@ -19,7 +19,7 @@ import Link from "next/link";
 const VALID_CITIES = [
   'alpine', 'caldwell', 'essex-fells', 'ho-ho-kus',
   'livingston', 'millburn', 'montclair', 'morristown',
-  'saddle-river', 'short-hills', 'verona', 'west-orange'
+  'saddle-river', 'short-hills', 'verona', 'west-caldwell', 'west-orange'
 ];
 
 // City-specific content
@@ -157,6 +157,9 @@ export async function generateMetadata({ params }: CityPageProps): Promise<Metad
   return {
     title: getLocationMetaTitle(city),
     description: getLocationMetaDescription(city),
+    alternates: {
+      canonical: `https://www.lavacagc.com/locations/${city}`,
+    },
     openGraph: {
       title: `Home Remodeling Contractor in ${locationData.name}, NJ | La Vaca General Contractors`,
       description: getLocationMetaDescription(city),

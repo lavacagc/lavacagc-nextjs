@@ -19,7 +19,7 @@ import type { Metadata } from 'next';
 const VALID_CITIES = [
   'alpine', 'caldwell', 'essex-fells', 'ho-ho-kus',
   'livingston', 'millburn', 'montclair', 'morristown',
-  'saddle-river', 'short-hills', 'verona', 'west-orange'
+  'saddle-river', 'short-hills', 'verona', 'west-caldwell', 'west-orange'
 ];
 
 const SERVICES = {
@@ -122,6 +122,9 @@ export async function generateMetadata({ params }: LocationServicePageProps): Pr
   return {
     title: getLocationMetaTitle(city, service),
     description: getLocationMetaDescription(city, service),
+    alternates: {
+      canonical: `https://www.lavacagc.com/locations/${city}/services/${service}`,
+    },
     openGraph: {
       title: `${serviceData.title} in ${locationData.name}, NJ | La Vaca General Contractors`,
       description: getLocationMetaDescription(city, service),
