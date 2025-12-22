@@ -54,6 +54,9 @@ export function BlogPostGenerator({ onPostCreated }: BlogPostGeneratorProps) {
       if (generateError) throw generateError;
       if (!generateData?.generatedContent) throw new Error('No content generated');
 
+      // Get the suggested image prompt (may be empty)
+      const suggestedImagePrompt = generateData.suggestedImagePrompt || '';
+
       // Extract title from the generated content (first line starting with #)
       const lines = generateData.generatedContent.split('\n');
       const titleLine = lines.find((line: string) => line.startsWith('# '));
@@ -83,6 +86,7 @@ export function BlogPostGenerator({ onPostCreated }: BlogPostGeneratorProps) {
               .trim() + '...',
           published: false,
           author: 'Alex T.',
+          suggested_image_prompt: suggestedImagePrompt || null,
         })
         .select()
         .single();

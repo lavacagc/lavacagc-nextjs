@@ -141,7 +141,9 @@ export type Database = {
           meta_keywords: string | null
           meta_title: string | null
           published: boolean
+          scheduled_publish_at: string | null
           slug: string
+          suggested_image_prompt: string | null
           title: string
           updated_at: string
         }
@@ -157,7 +159,9 @@ export type Database = {
           meta_keywords?: string | null
           meta_title?: string | null
           published?: boolean
+          scheduled_publish_at?: string | null
           slug: string
+          suggested_image_prompt?: string | null
           title: string
           updated_at?: string
         }
@@ -173,7 +177,9 @@ export type Database = {
           meta_keywords?: string | null
           meta_title?: string | null
           published?: boolean
+          scheduled_publish_at?: string | null
           slug?: string
+          suggested_image_prompt?: string | null
           title?: string
           updated_at?: string
         }

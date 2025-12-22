@@ -123,8 +123,66 @@ ${information ? `\nAdditional context to incorporate: ${information}` : ''}`;
 
     console.log("Blog post generated successfully, length:", generatedContent.length);
 
+    // Extract key details from the generated content for a more contextual image prompt
+    const contentPreview = generatedContent.substring(0, 1500);
+
+    // Generate a suggested image prompt based on the article content
+    const imagePromptRequest = `You are an expert at crafting image generation prompts for luxury home remodeling photography. Analyze this blog article and create ONE highly detailed, specific image prompt.
+
+ARTICLE TOPIC: "${topic}"
+CATEGORY: ${category}
+
+ARTICLE EXCERPT:
+${contentPreview}
+
+PROMPT REQUIREMENTS:
+1. Start with "Professional interior photography of" or "Architectural photography of"
+2. Specify the EXACT room type (master bathroom, chef's kitchen, finished basement, etc.)
+3. Include 3-4 SPECIFIC materials with finishes (e.g., "honed Calacatta marble countertops", "wire-brushed white oak cabinetry", "brushed brass Waterworks fixtures")
+4. Mention lighting style (e.g., "soft morning light through floor-to-ceiling windows", "warm recessed LED lighting", "statement pendant lights")
+5. Include architectural details (e.g., "coffered ceiling", "herringbone tile floor", "frameless glass shower enclosure")
+6. Add atmosphere words (e.g., "serene", "sophisticated", "inviting warmth")
+7. End with technical specs: "shot on Canon 5D Mark IV, 24mm tilt-shift lens, f/8, natural light"
+
+STYLE REFERENCE: Northern New Jersey luxury homes - think Montclair Victorians, Short Hills estates, Alpine contemporary mansions
+
+EXAMPLES OF GREAT PROMPTS:
+- "Professional interior photography of a luxury master bathroom renovation, featuring a freestanding Waterworks soaking tub against floor-to-ceiling Statuario marble walls, custom floating double vanity in rift-cut white oak with integrated LED mirrors, heated Carrara hexagon floor tiles, frameless glass walk-in shower with rainfall head, soft diffused daylight from frosted privacy windows, serene spa-like atmosphere, shot on Canon 5D Mark IV, 24mm tilt-shift lens, f/8"
+- "Architectural photography of a chef's kitchen in a Bergen County estate, white Shaker cabinetry with unlacquered brass hardware, waterfall-edge Taj Mahal quartzite island, Wolf 48-inch range with pot filler, custom walnut open shelving, subway tile backsplash in warm white, morning sunlight streaming through garden windows, inviting yet sophisticated ambiance, professional real estate photography style"
+
+Return ONLY the image prompt, nothing else. Make it 300-450 characters, rich with specific details that will generate a stunning, realistic luxury renovation photo.`;
+
+    let suggestedImagePrompt = "";
+    try {
+      const imagePromptResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{ text: imagePromptRequest }]
+            }],
+            generationConfig: {
+              temperature: 0.9,
+              maxOutputTokens: 512,
+            }
+          })
+        }
+      );
+
+      if (imagePromptResponse.ok) {
+        const imagePromptData = await imagePromptResponse.json();
+        suggestedImagePrompt = imagePromptData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+        console.log("Generated image prompt:", suggestedImagePrompt);
+      }
+    } catch (imagePromptError) {
+      console.error("Error generating image prompt (non-fatal):", imagePromptError);
+      // Continue without the image prompt - it's not critical
+    }
+
     return new Response(
-      JSON.stringify({ generatedContent }),
+      JSON.stringify({ generatedContent, suggestedImagePrompt }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

@@ -14,11 +14,20 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { MarkdownEditor } from './MarkdownEditor';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, Save, Eye, Upload, Sparkles, X, Wand2 } from 'lucide-react';
+import { Loader2, Save, Eye, Upload, Sparkles, X, Wand2, Clock, CalendarIcon } from 'lucide-react';
 import { AdminRadioGroup, AdminRadioGroupItem } from './ui/AdminRadioGroup';
 import { convertHeicToJpeg } from '@/utils/heicConverter';
+import { format, parse } from 'date-fns';
+import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz';
+import { cn } from '@/lib/utils';
 
 interface BlogPost {
   id: string;
@@ -33,7 +42,44 @@ interface BlogPost {
   meta_description: string;
   meta_keywords: string;
   published: boolean;
+  scheduled_publish_at: string | null;
+  suggested_image_prompt: string | null;
 }
+
+const EASTERN_TZ = 'America/New_York';
+
+// Convert UTC to Eastern for display
+const utcToEastern = (utcDate: string | null): { date: Date | undefined; time: string } => {
+  if (!utcDate) return { date: undefined, time: '09:00' };
+  const zonedDate = toZonedTime(new Date(utcDate), EASTERN_TZ);
+  return {
+    date: zonedDate,
+    time: format(zonedDate, 'HH:mm')
+  };
+};
+
+// Convert Eastern to UTC for storage
+const easternToUtc = (date: Date, time: string): string => {
+  const [hours, minutes] = time.split(':').map(Number);
+  const combinedDate = new Date(date);
+  combinedDate.setHours(hours, minutes, 0, 0);
+  return fromZonedTime(combinedDate, EASTERN_TZ).toISOString();
+};
+
+// Generate time options for the select (30-minute intervals)
+const generateTimeOptions = () => {
+  const options: { value: string; label: string }[] = [];
+  for (let hour = 0; hour < 24; hour++) {
+    for (const min of ['00', '30']) {
+      const value = `${hour.toString().padStart(2, '0')}:${min}`;
+      const label = format(parse(value, 'HH:mm', new Date()), 'h:mm a');
+      options.push({ value, label });
+    }
+  }
+  return options;
+};
+
+const timeOptions = generateTimeOptions();
 
 interface BlogPostEditorProps {
   postId?: string | null;
@@ -62,6 +108,8 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     meta_description: '',
     meta_keywords: '',
     published: false,
+    scheduled_publish_at: null,
+    suggested_image_prompt: null,
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -71,6 +119,11 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
   const [imagePrompt, setImagePrompt] = useState('');
   const [enhancementLevel, setEnhancementLevel] = useState<'light' | 'moderate' | 'heavy'>('moderate');
   const [isEnhancing, setIsEnhancing] = useState(false);
+
+  // Scheduling state
+  const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
+  const [scheduleTime, setScheduleTime] = useState<string>('09:00');
+  const [isScheduled, setIsScheduled] = useState(false);
 
   useEffect(() => {
     if (postId) {
@@ -89,6 +142,23 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
       if (error) throw error;
       setPost(data);
+
+      // Load scheduling info if present
+      if (data.scheduled_publish_at) {
+        const { date, time } = utcToEastern(data.scheduled_publish_at);
+        setScheduleDate(date);
+        setScheduleTime(time);
+        setIsScheduled(true);
+      } else {
+        setScheduleDate(undefined);
+        setScheduleTime('09:00');
+        setIsScheduled(false);
+      }
+
+      // Pre-fill image prompt with AI suggestion if available and no image exists yet
+      if (data.suggested_image_prompt && !data.featured_image) {
+        setImagePrompt(data.suggested_image_prompt);
+      }
     } catch (error) {
       console.error('Error loading post:', error);
       toast({
@@ -129,6 +199,19 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
       return;
     }
 
+    // Validate schedule if set
+    if (isScheduled && scheduleDate) {
+      const scheduledUtc = easternToUtc(scheduleDate, scheduleTime);
+      if (new Date(scheduledUtc) <= new Date()) {
+        toast({
+          title: 'Invalid Schedule',
+          description: 'Scheduled time must be in the future',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
       const postData = {
@@ -142,7 +225,12 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
         meta_title: post.meta_title || post.title,
         meta_description: post.meta_description || post.excerpt || '',
         meta_keywords: post.meta_keywords || '',
-        published: post.published || false,
+        // If scheduled, don't publish immediately
+        published: isScheduled ? false : (post.published || false),
+        // Set scheduled time if scheduling is enabled
+        scheduled_publish_at: isScheduled && scheduleDate
+          ? easternToUtc(scheduleDate, scheduleTime)
+          : null,
       };
 
       if (postId) {
@@ -151,6 +239,21 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
       } else {
         const { error } = await supabase.from('blog_posts').insert(postData);
         if (error) throw error;
+      }
+
+      // Show appropriate success message
+      if (isScheduled && scheduleDate) {
+        const formattedDate = format(scheduleDate, 'MMMM d, yyyy');
+        const formattedTime = format(parse(scheduleTime, 'HH:mm', new Date()), 'h:mm a');
+        toast({
+          title: 'Post Scheduled',
+          description: `Will be published on ${formattedDate} at ${formattedTime} ET`,
+        });
+      } else {
+        toast({
+          title: 'Success',
+          description: 'Blog post saved successfully',
+        });
       }
 
       onSave();
@@ -545,6 +648,131 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
                   onChange={(e) => setPost((prev) => ({ ...prev, author: e.target.value }))}
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                Schedule Publication
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {post.published ? (
+                <p className="text-sm text-muted-foreground">
+                  This post is already published.
+                </p>
+              ) : (
+                <>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="schedule"
+                      checked={isScheduled}
+                      onCheckedChange={(checked) => {
+                        setIsScheduled(checked);
+                        if (!checked) {
+                          setScheduleDate(undefined);
+                          setPost(prev => ({ ...prev, scheduled_publish_at: null }));
+                        }
+                      }}
+                    />
+                    <Label htmlFor="schedule">Schedule for later</Label>
+                  </div>
+
+                  {isScheduled && (
+                    <div className="space-y-4 pt-2">
+                      {/* Date Picker */}
+                      <div className="space-y-2">
+                        <Label>Publish Date</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal",
+                                !scheduleDate && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {scheduleDate
+                                ? format(scheduleDate, "MMMM d, yyyy")
+                                : "Select date"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={scheduleDate}
+                              onSelect={setScheduleDate}
+                              disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+
+                      {/* Time Picker */}
+                      <div className="space-y-2">
+                        <Label>Publish Time (Eastern)</Label>
+                        <Select value={scheduleTime} onValueChange={setScheduleTime}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {timeOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          All times are Eastern Time (ET)
+                        </p>
+                      </div>
+
+                      {scheduleDate && (
+                        <div className="p-3 bg-primary/5 rounded-md border border-primary/10">
+                          <p className="text-sm font-medium">
+                            Scheduled for:
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {format(scheduleDate, 'EEEE, MMMM d, yyyy')} at{' '}
+                            {format(parse(scheduleTime, 'HH:mm', new Date()), 'h:mm a')} ET
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {post.scheduled_publish_at && !isScheduled && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                      <p className="text-sm text-amber-800">
+                        Currently scheduled for:{' '}
+                        {formatInTimeZone(
+                          new Date(post.scheduled_publish_at),
+                          EASTERN_TZ,
+                          "MMMM d, yyyy 'at' h:mm a"
+                        )} ET
+                      </p>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="p-0 h-auto text-amber-700"
+                        onClick={() => {
+                          const { date, time } = utcToEastern(post.scheduled_publish_at ?? null);
+                          setScheduleDate(date);
+                          setScheduleTime(time);
+                          setIsScheduled(true);
+                        }}
+                      >
+                        Edit schedule
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
 

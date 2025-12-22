@@ -28,6 +28,9 @@ const getCorsHeaders = (origin: string | null) => {
 // Style enhancement for professional remodeling images
 const STYLE_SUFFIX = ", professional photography, luxury home renovation, high-end finishes, bright natural lighting, architectural photography style, photorealistic, 8k quality, interior design magazine";
 
+// Nano Banana Pro (Gemini 3 Pro Image) - highest quality, up to 4K resolution
+const MODEL = "gemini-3-pro-image-preview";
+
 const handler = async (req: Request): Promise<Response> => {
   const origin = req.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
@@ -55,16 +58,10 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Enhance prompt with professional styling
     const enhancedPrompt = `${prompt.trim()}${STYLE_SUFFIX}`;
-    console.log("Generating image with prompt:", enhancedPrompt.substring(0, 100) + "...");
+    console.log("Generating image with Nano Banana Pro:", enhancedPrompt.substring(0, 100) + "...");
 
-    // Primary: Gemini 3 Pro Image (highest quality, up to 4K, 16:9 aspect ratio)
-    // Fallback: Gemini 2.0 Flash experimental (if 3 Pro unavailable)
-    const PRIMARY_MODEL = "gemini-3-pro-image-preview";
-    const FALLBACK_MODEL = "gemini-2.0-flash-exp-image-generation";
-
-    console.log(`Trying primary model: ${PRIMARY_MODEL}`);
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${PRIMARY_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -84,56 +81,13 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (!geminiResponse.ok) {
       const errorText = await geminiResponse.text();
-      console.error("Primary model error:", errorText);
-
-      // Try fallback model (doesn't support aspect ratio)
-      console.log(`Trying fallback model: ${FALLBACK_MODEL}`);
-      const fallbackResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${FALLBACK_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{ text: enhancedPrompt }]
-            }],
-            generationConfig: {
-              responseModalities: ["TEXT", "IMAGE"]
-            }
-          })
-        }
-      );
-
-      if (!fallbackResponse.ok) {
-        const fallbackError = await fallbackResponse.text();
-        console.error("Fallback model error:", fallbackError);
-        throw new Error(`Image generation failed: ${geminiResponse.status} - ${errorText.substring(0, 200)}`);
-      }
-
-      const fallbackData = await fallbackResponse.json();
-      console.log("Fallback response structure:", JSON.stringify(fallbackData).substring(0, 300));
-
-      const imagePart = fallbackData.candidates?.[0]?.content?.parts?.find(
-        (part: { inlineData?: { data: string; mimeType: string } }) => part.inlineData
-      );
-
-      if (!imagePart?.inlineData?.data) {
-        throw new Error("No image data in fallback response");
-      }
-
-      const mimeType = imagePart.inlineData.mimeType || "image/png";
-      const imageUrl = `data:${mimeType};base64,${imagePart.inlineData.data}`;
-
-      console.log("Image generated successfully via fallback model");
-      return new Response(
-        JSON.stringify({ imageUrl, model: FALLBACK_MODEL }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      console.error("Nano Banana Pro error:", errorText);
+      throw new Error(`Image generation failed: ${geminiResponse.status} - ${errorText.substring(0, 200)}`);
     }
 
-    // Parse primary model response
+    // Parse response
     const data = await geminiResponse.json();
-    console.log("Primary response structure:", JSON.stringify(data).substring(0, 300));
+    console.log("Response structure:", JSON.stringify(data).substring(0, 300));
 
     // Find image part in response
     const imagePart = data.candidates?.[0]?.content?.parts?.find(
@@ -148,10 +102,10 @@ const handler = async (req: Request): Promise<Response> => {
     const mimeType = imagePart.inlineData.mimeType || "image/png";
     const imageUrl = `data:${mimeType};base64,${imagePart.inlineData.data}`;
 
-    console.log("Image generated successfully via primary model");
+    console.log("Image generated successfully with Nano Banana Pro");
 
     return new Response(
-      JSON.stringify({ imageUrl, model: PRIMARY_MODEL }),
+      JSON.stringify({ imageUrl, model: MODEL }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
