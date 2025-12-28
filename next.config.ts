@@ -223,6 +223,16 @@ const nextConfig: NextConfig = {
       // MALFORMED / MISC REDIRECTS
       // ============================================
       { source: '/&', destination: '/', permanent: true },
+
+      // ============================================
+      // LEGACY PAGES WITHOUT REDIRECTS (from GSC 404s)
+      // ============================================
+      { source: '/pricing-plans/:path*', destination: '/services', permanent: true },
+      { source: '/financing', destination: '/project-calculator', permanent: true },
+      { source: '/portfolio-collections/:path*', destination: '/portfolio', permanent: true },
+
+      // Typo redirects
+      { source: '/home-additions-west-orge-nj', destination: '/locations/west-orange/services/home-additions', permanent: true },
     ]
   },
 
