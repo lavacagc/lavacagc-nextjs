@@ -81,6 +81,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'weekly',
       priority: 0.8,
     },
+    {
+      url: `${baseUrl}/locations`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly',
+      priority: 0.8,
+    },
   ]
 
   // Service pages
@@ -103,6 +109,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   locations.forEach(location => {
     routes.push({
       url: `${baseUrl}/locations/${location}`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    })
+    // City services hub page
+    routes.push({
+      url: `${baseUrl}/locations/${location}/services`,
       lastModified: currentDate,
       changeFrequency: 'monthly',
       priority: 0.7,
