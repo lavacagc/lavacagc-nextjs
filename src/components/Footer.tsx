@@ -31,9 +31,9 @@ const Footer = () => {
                 <Phone className="h-5 w-5 mr-3 text-primary" />
                 <span className="font-semibold">(201) 212-4917</span>
               </a>
-              <a href="mailto:alex@lavacagc.com" className="flex items-center hover:text-primary transition-colors">
+              <a href="mailto:info@lavacagc.com" className="flex items-center hover:text-primary transition-colors">
                 <Mail className="h-5 w-5 mr-3 text-primary" />
-                <span>alex@lavacagc.com</span>
+                <span>info@lavacagc.com</span>
               </a>
             </div>
           </div>

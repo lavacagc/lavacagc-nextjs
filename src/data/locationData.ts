@@ -209,6 +209,23 @@ export const locationData: Record<string, LocationData> = {
       avgHomeValue: "$550,000+"
     }
   },
+  "west-caldwell": {
+    name: "West Caldwell",
+    slug: "west-caldwell",
+    county: "Essex County",
+    zipCodes: ["07006"],
+    neighborhoods: ["West Caldwell Township", "Westville Avenue", "Bloomfield Avenue"],
+    coordinates: { lat: 40.851944, lng: -74.290833 },
+    drivingDirections: "From NYC: Take I-280 West to Exit 5A (Livingston Ave) then Route 527 North, or I-80 West to Exit 47B. Located in northwestern Essex County.",
+    description: "Suburban Essex County township with excellent schools and easy NYC commute",
+    metaKeywords: ["West Caldwell NJ contractor", "Essex County remodeling", "home renovation West Caldwell", "07006 contractor"],
+    nearbyAreas: ["Caldwell", "North Caldwell", "Essex Fells", "Fairfield"],
+    demographics: {
+      population: 10527,
+      medianIncome: "$130,000+",
+      avgHomeValue: "$600,000+"
+    }
+  },
   "ho-ho-kus": {
     name: "Ho-Ho-Kus",
     slug: "ho-ho-kus",

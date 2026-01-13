@@ -15,7 +15,7 @@ const NAPInfo: React.FC<NAPInfoProps> = ({
   const businessInfo = {
     name: "La Vaca General Contractors, LLC",
     phone: "(201) 212-4917",
-    email: "alex@lavacagc.com",
+    email: "info@lavacagc.com",
     address: "West Orange, NJ",
     fullAddress: location 
       ? `${location}, NJ and surrounding areas`
@@ -71,7 +71,7 @@ const NAPInfo: React.FC<NAPInfoProps> = ({
             <div className="flex items-center gap-3">
               <Mail className="h-5 w-5 text-primary" />
               <a 
-                href="mailto:alex@lavacagc.com"
+                href="mailto:info@lavacagc.com"
                 className="text-text-secondary hover:text-primary transition-colors"
               >
                 {businessInfo.email}
@@ -123,7 +123,7 @@ const NAPInfo: React.FC<NAPInfoProps> = ({
             <div>
               <p className="font-medium text-text-primary">Email</p>
               <a 
-                href="mailto:alex@lavacagc.com"
+                href="mailto:info@lavacagc.com"
                 className="text-text-secondary hover:text-primary transition-colors"
               >
                 {businessInfo.email}

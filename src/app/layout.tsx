@@ -7,6 +7,7 @@ import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import CookieConsent from '@/components/CookieConsent'
 import Analytics from '@/components/Analytics'
+import StructuredData from '@/components/StructuredData'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -79,6 +80,9 @@ export default function RootLayout({
         <meta name="theme-color" content="#EE9639" />
       </head>
       <body className={inter.className}>
+        {/* Server-side structured data for SEO - visible to crawlers */}
+        <StructuredData type="organization" />
+
         {/* Skip to main content link for keyboard accessibility */}
         <a
           href="#main-content"

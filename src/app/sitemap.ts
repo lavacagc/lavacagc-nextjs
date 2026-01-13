@@ -88,11 +88,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })
   })
 
-  // Location pages
+  // Location pages - must match VALID_CITIES in location page components
   const locations = [
     'alpine', 'caldwell', 'essex-fells', 'ho-ho-kus', 'livingston',
     'millburn', 'montclair', 'morristown', 'saddle-river', 'short-hills',
-    'verona', 'west-orange'
+    'verona', 'west-caldwell', 'west-orange'
   ]
   locations.forEach(location => {
     routes.push({
@@ -103,12 +103,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })
   })
 
-  // Service-location combination pages (e.g., /kitchen-remodeling-alpine-nj)
+  // Service-location combination pages (e.g., /locations/alpine/services/kitchen-remodeling)
+  // These are the actual page URLs - the old format (/kitchen-remodeling-alpine-nj) redirects to these
   services.forEach(service => {
     locations.forEach(location => {
-      const slug = `${service}-${location}-nj`
       routes.push({
-        url: `${baseUrl}/${slug}`,
+        url: `${baseUrl}/locations/${location}/services/${service}`,
         lastModified: currentDate,
         changeFrequency: 'monthly',
         priority: 0.8,
