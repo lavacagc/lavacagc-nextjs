@@ -17,9 +17,9 @@ import Link from "next/link";
 
 // Define valid cities
 const VALID_CITIES = [
-  'alpine', 'caldwell', 'essex-fells', 'ho-ho-kus',
-  'livingston', 'millburn', 'montclair', 'morristown',
-  'saddle-river', 'short-hills', 'verona', 'west-caldwell', 'west-orange'
+  'alpine', 'bloomfield', 'caldwell', 'clifton', 'essex-fells', 'ho-ho-kus',
+  'livingston', 'madison', 'maplewood', 'millburn', 'montclair', 'morristown',
+  'parsippany', 'saddle-river', 'short-hills', 'verona', 'west-caldwell', 'west-orange'
 ];
 
 // City-specific content
@@ -302,6 +302,96 @@ export default async function CityLandingPage({ params }: CityPageProps) {
                     <p className="text-text-secondary">{card.description}</p>
                   </Card>
                 ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Pricing Guide Section */}
+        <section className="py-16 bg-muted/50">
+          <div className="container mx-auto px-4">
+            <div className="max-w-5xl mx-auto">
+              <div className="text-center mb-12">
+                <h2 className="text-3xl font-bold text-text-primary mb-4">
+                  {locationData.name} Remodeling Investment Guide
+                </h2>
+                <p className="text-lg text-text-secondary max-w-3xl mx-auto">
+                  Typical project costs for {locationData.name} homeowners. Final pricing depends on scope, materials, and complexity.
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <Card className="text-center p-6">
+                  <h3 className="font-bold text-text-primary mb-2">Kitchen Remodeling</h3>
+                  <div className="text-2xl font-bold text-primary mb-2">$55K - $150K+</div>
+                  <p className="text-sm text-text-secondary">Custom cabinetry, premium countertops, appliances</p>
+                </Card>
+                <Card className="text-center p-6">
+                  <h3 className="font-bold text-text-primary mb-2">Bathroom Renovation</h3>
+                  <div className="text-2xl font-bold text-primary mb-2">$25K - $110K+</div>
+                  <p className="text-sm text-text-secondary">Spa features, heated floors, luxury fixtures</p>
+                </Card>
+                <Card className="text-center p-6">
+                  <h3 className="font-bold text-text-primary mb-2">Basement Finishing</h3>
+                  <div className="text-2xl font-bold text-primary mb-2">$40K - $120K+</div>
+                  <p className="text-sm text-text-secondary">Entertainment spaces, home theaters, wet bars</p>
+                </Card>
+                <Card className="text-center p-6">
+                  <h3 className="font-bold text-text-primary mb-2">Home Additions</h3>
+                  <div className="text-2xl font-bold text-primary mb-2">$80K - $300K+</div>
+                  <p className="text-sm text-text-secondary">Master suites, second stories, extensions</p>
+                </Card>
+              </div>
+
+              <div className="text-center mt-8">
+                <p className="text-sm text-text-muted mb-4">
+                  * Prices reflect typical {locationData.county} luxury project ranges. Get a personalized estimate for your specific project.
+                </p>
+                <Link
+                  href="/project-calculator"
+                  className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-white h-10 px-6"
+                >
+                  Get Your Free Estimate
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Nearby Service Areas Section */}
+        <section className="py-16 bg-background-subtle">
+          <div className="container mx-auto px-4">
+            <div className="max-w-4xl mx-auto text-center">
+              <h2 className="text-3xl font-bold text-text-primary mb-4">
+                Also Serving Nearby Communities
+              </h2>
+              <p className="text-lg text-text-secondary mb-8">
+                In addition to {locationData.name}, we provide premium home remodeling services throughout {locationData.county} and surrounding areas.
+              </p>
+              <div className="flex flex-wrap justify-center gap-3">
+                {locationData.nearbyAreas.map((area, index) => {
+                  // Convert area name to slug format
+                  const slug = area.toLowerCase().replace(/\s+/g, '-');
+                  // Check if this area is one we have a page for
+                  const hasPage = VALID_CITIES.includes(slug);
+
+                  return hasPage ? (
+                    <Link
+                      key={index}
+                      href={`/locations/${slug}`}
+                      className="inline-flex items-center px-4 py-2 rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-white transition-colors font-medium"
+                    >
+                      {area}, NJ
+                    </Link>
+                  ) : (
+                    <span
+                      key={index}
+                      className="inline-flex items-center px-4 py-2 rounded-full bg-muted text-text-secondary font-medium"
+                    >
+                      {area}, NJ
+                    </span>
+                  );
+                })}
               </div>
             </div>
           </div>

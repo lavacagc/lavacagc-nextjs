@@ -242,6 +242,91 @@ export const locationData: Record<string, LocationData> = {
       medianIncome: "$160,000+",
       avgHomeValue: "$800,000+"
     }
+  },
+  maplewood: {
+    name: "Maplewood",
+    slug: "maplewood",
+    county: "Essex County",
+    zipCodes: ["07040"],
+    neighborhoods: ["Maplewood Village", "Jefferson", "Hilton", "Prospect Hill"],
+    coordinates: { lat: 40.733056, lng: -74.271667 },
+    drivingDirections: "From NYC: Take NJ Transit Midtown Direct to Maplewood Station or drive via I-78 West to Exit 50B (Millburn/Maplewood). Located in central Essex County.",
+    description: "Vibrant Essex County township known for arts scene, diverse community, and charming village center",
+    metaKeywords: ["Maplewood NJ contractor", "Essex County remodeling", "home renovation Maplewood", "07040 contractor"],
+    nearbyAreas: ["South Orange", "Millburn", "Irvington", "Newark"],
+    demographics: {
+      population: 24355,
+      medianIncome: "$130,000+",
+      avgHomeValue: "$600,000+"
+    }
+  },
+  madison: {
+    name: "Madison",
+    slug: "madison",
+    county: "Morris County",
+    zipCodes: ["07940"],
+    neighborhoods: ["Madison Borough", "Rose City", "Dodge Field Area", "Downtown Madison"],
+    coordinates: { lat: 40.759722, lng: -74.417222 },
+    drivingDirections: "From NYC: Take NJ Transit Morris & Essex Line to Madison Station or drive via I-287 to Route 24 West to Exit 2A (Madison Ave).",
+    description: "Charming Morris County borough known as the 'Rose City' with historic downtown and top schools",
+    metaKeywords: ["Madison NJ contractor", "Morris County remodeling", "home renovation Madison", "07940 contractor"],
+    nearbyAreas: ["Chatham", "Florham Park", "Morristown", "Summit"],
+    demographics: {
+      population: 16105,
+      medianIncome: "$150,000+",
+      avgHomeValue: "$750,000+"
+    }
+  },
+  parsippany: {
+    name: "Parsippany",
+    slug: "parsippany",
+    county: "Morris County",
+    zipCodes: ["07054", "07034"],
+    neighborhoods: ["Lake Hiawatha", "Troy Hills", "Parsippany", "Lake Parsippany"],
+    coordinates: { lat: 40.857778, lng: -74.426111 },
+    drivingDirections: "From NYC: Take I-80 West to Exit 47 (Parsippany) or I-287 to Exit 39 (Route 10). Major Morris County township with excellent highway access.",
+    description: "Major Morris County township with diverse housing options and corporate headquarters",
+    metaKeywords: ["Parsippany NJ contractor", "Morris County remodeling", "home renovation Parsippany", "07054 contractor"],
+    nearbyAreas: ["Morris Plains", "Boonton", "Mountain Lakes", "East Hanover"],
+    demographics: {
+      population: 53238,
+      medianIncome: "$110,000+",
+      avgHomeValue: "$500,000+"
+    }
+  },
+  clifton: {
+    name: "Clifton",
+    slug: "clifton",
+    county: "Passaic County",
+    zipCodes: ["07011", "07012", "07013", "07014"],
+    neighborhoods: ["Athenia", "Albion Place", "Richfield", "Montclair Heights", "Allwood"],
+    coordinates: { lat: 40.858611, lng: -74.163889 },
+    drivingDirections: "From NYC: Take Route 3 West to Clifton or I-80 West to Exit 61. Easily accessible Passaic County city near major highways.",
+    description: "Diverse Passaic County city with established neighborhoods and convenient NYC access",
+    metaKeywords: ["Clifton NJ contractor", "Passaic County remodeling", "home renovation Clifton", "07011 contractor"],
+    nearbyAreas: ["Passaic", "Nutley", "Bloomfield", "Little Falls"],
+    demographics: {
+      population: 85540,
+      medianIncome: "$75,000+",
+      avgHomeValue: "$450,000+"
+    }
+  },
+  bloomfield: {
+    name: "Bloomfield",
+    slug: "bloomfield",
+    county: "Essex County",
+    zipCodes: ["07003"],
+    neighborhoods: ["Brookdale", "Watsessing", "Silver Lake", "Center Bloomfield"],
+    coordinates: { lat: 40.806944, lng: -74.186111 },
+    drivingDirections: "From NYC: Take NJ Transit to Bloomfield Station or drive via Garden State Parkway Exit 151. Located in northeastern Essex County.",
+    description: "Historic Essex County township with diverse neighborhoods and strong community spirit",
+    metaKeywords: ["Bloomfield NJ contractor", "Essex County remodeling", "home renovation Bloomfield", "07003 contractor"],
+    nearbyAreas: ["Montclair", "Glen Ridge", "Nutley", "Belleville"],
+    demographics: {
+      population: 49139,
+      medianIncome: "$80,000+",
+      avgHomeValue: "$400,000+"
+    }
   }
 };
 

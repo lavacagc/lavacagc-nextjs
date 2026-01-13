@@ -17,9 +17,9 @@ import type { Metadata } from 'next';
 
 // Define valid cities and services
 const VALID_CITIES = [
-  'alpine', 'caldwell', 'essex-fells', 'ho-ho-kus',
-  'livingston', 'millburn', 'montclair', 'morristown',
-  'saddle-river', 'short-hills', 'verona', 'west-caldwell', 'west-orange'
+  'alpine', 'bloomfield', 'caldwell', 'clifton', 'essex-fells', 'ho-ho-kus',
+  'livingston', 'madison', 'maplewood', 'millburn', 'montclair', 'morristown',
+  'parsippany', 'saddle-river', 'short-hills', 'verona', 'west-caldwell', 'west-orange'
 ];
 
 const SERVICES = {
@@ -275,11 +275,26 @@ export default async function LocationServicePage({ params }: LocationServicePag
                     <p className="text-text-secondary">{locationData.description}</p>
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-text-primary mb-3">Service Areas</h3>
+                    <h3 className="text-xl font-bold text-text-primary mb-3">Nearby Service Areas</h3>
                     <div className="flex flex-wrap gap-2">
-                      {locationData.nearbyAreas.map((area, index) => (
-                        <Badge key={index} variant="secondary">{area}</Badge>
-                      ))}
+                      {locationData.nearbyAreas.map((area, index) => {
+                        // Convert area name to slug format
+                        const slug = area.toLowerCase().replace(/\s+/g, '-');
+                        // Check if this area is one we have a page for
+                        const hasPage = VALID_CITIES.includes(slug);
+
+                        return hasPage ? (
+                          <a
+                            key={index}
+                            href={`/locations/${slug}/services/${service}`}
+                            className="inline-flex items-center px-3 py-1 rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-white transition-colors text-sm font-medium"
+                          >
+                            {area}
+                          </a>
+                        ) : (
+                          <Badge key={index} variant="secondary">{area}</Badge>
+                        );
+                      })}
                     </div>
                   </div>
                   <NAPInfo />

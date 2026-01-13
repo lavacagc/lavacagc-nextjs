@@ -207,7 +207,7 @@ export default function Testimonials() {
 
         <div className="text-center mt-8">
           <a
-            href="https://www.google.com/maps/place/La+Vaca+General+Contractors/@40.8090131,-74.2089287,17z"
+            href="https://share.google/3IswCVlL2bgoYMBaK"
             target="_blank"
             rel="noopener noreferrer"
             aria-label="See more reviews on Google Maps"

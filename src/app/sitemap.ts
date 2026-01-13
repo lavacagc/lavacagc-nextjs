@@ -75,6 +75,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'monthly',
       priority: 0.8,
     },
+    {
+      url: `${baseUrl}/reviews`,
+      lastModified: currentDate,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
   ]
 
   // Service pages
@@ -90,9 +96,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // Location pages - must match VALID_CITIES in location page components
   const locations = [
-    'alpine', 'caldwell', 'essex-fells', 'ho-ho-kus', 'livingston',
-    'millburn', 'montclair', 'morristown', 'saddle-river', 'short-hills',
-    'verona', 'west-caldwell', 'west-orange'
+    'alpine', 'bloomfield', 'caldwell', 'clifton', 'essex-fells', 'ho-ho-kus',
+    'livingston', 'madison', 'maplewood', 'millburn', 'montclair', 'morristown',
+    'parsippany', 'saddle-river', 'short-hills', 'verona', 'west-caldwell', 'west-orange'
   ]
   locations.forEach(location => {
     routes.push({

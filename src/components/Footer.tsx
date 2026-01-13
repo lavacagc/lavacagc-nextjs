@@ -45,6 +45,7 @@ const Footer = () => {
               <li><Link href="/about" className="hover:text-primary transition-colors">About Us</Link></li>
               <li><Link href="/process" className="hover:text-primary transition-colors">Our Process</Link></li>
               <li><Link href="/portfolio" className="hover:text-primary transition-colors">Portfolio</Link></li>
+              <li><Link href="/reviews" className="hover:text-primary transition-colors">Reviews</Link></li>
               <li><Link href="/faq" className="hover:text-primary transition-colors">FAQ</Link></li>
               <li><Link href="/warranty" className="hover:text-primary transition-colors">Warranty Claims</Link></li>
             </ul>
@@ -66,13 +67,18 @@ const Footer = () => {
             <h4 className="font-bold text-lg mb-6">Service Areas</h4>
             <ul className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-secondary-foreground">
               <li><Link href="/locations/alpine" className="hover:text-primary transition-colors">Alpine, NJ</Link></li>
+              <li><Link href="/locations/bloomfield" className="hover:text-primary transition-colors">Bloomfield, NJ</Link></li>
               <li><Link href="/locations/caldwell" className="hover:text-primary transition-colors">Caldwell, NJ</Link></li>
+              <li><Link href="/locations/clifton" className="hover:text-primary transition-colors">Clifton, NJ</Link></li>
               <li><Link href="/locations/essex-fells" className="hover:text-primary transition-colors">Essex Fells, NJ</Link></li>
               <li><Link href="/locations/ho-ho-kus" className="hover:text-primary transition-colors">Ho-Ho-Kus, NJ</Link></li>
               <li><Link href="/locations/livingston" className="hover:text-primary transition-colors">Livingston, NJ</Link></li>
+              <li><Link href="/locations/madison" className="hover:text-primary transition-colors">Madison, NJ</Link></li>
+              <li><Link href="/locations/maplewood" className="hover:text-primary transition-colors">Maplewood, NJ</Link></li>
               <li><Link href="/locations/millburn" className="hover:text-primary transition-colors">Millburn, NJ</Link></li>
               <li><Link href="/locations/montclair" className="hover:text-primary transition-colors">Montclair, NJ</Link></li>
               <li><Link href="/locations/morristown" className="hover:text-primary transition-colors">Morristown, NJ</Link></li>
+              <li><Link href="/locations/parsippany" className="hover:text-primary transition-colors">Parsippany, NJ</Link></li>
               <li><Link href="/locations/saddle-river" className="hover:text-primary transition-colors">Saddle River, NJ</Link></li>
               <li><Link href="/locations/short-hills" className="hover:text-primary transition-colors">Short Hills, NJ</Link></li>
               <li><Link href="/locations/verona" className="hover:text-primary transition-colors">Verona, NJ</Link></li>
