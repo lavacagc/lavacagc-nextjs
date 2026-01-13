@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { MapPin, CheckCircle2 } from "lucide-react";
+import { MapPin, CheckCircle2, Phone, FileText, Clock, Building2, ExternalLink, HelpCircle, ChevronDown } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import SEOSchema from "@/components/SEOSchema";
@@ -220,6 +220,26 @@ export default async function CityLandingPage({ params }: CityPageProps) {
       />
       <LocalSEOSchema location={locationData} />
       <CanonicalUrl customUrl={`https://www.lavacagc.com/locations/${city}`} />
+
+      {/* FAQ JSON-LD Schema */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": locationData.faqs.map(faq => ({
+              "@type": "Question",
+              "name": faq.question,
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": faq.answer
+              }
+            }))
+          })
+        }}
+      />
+
       <Header />
 
       <main>
@@ -352,6 +372,142 @@ export default async function CityLandingPage({ params }: CityPageProps) {
                   className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-white h-10 px-6"
                 >
                   Get Your Free Estimate
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Permit Information Section */}
+        <section className="py-16 bg-background">
+          <div className="container mx-auto px-4">
+            <div className="max-w-5xl mx-auto">
+              <div className="text-center mb-12">
+                <h2 className="text-3xl font-bold text-text-primary mb-4">
+                  {locationData.name} Building Permits & Requirements
+                </h2>
+                <p className="text-lg text-text-secondary max-w-3xl mx-auto">
+                  We handle all permit applications and inspections for your {locationData.name} renovation project. Here's what you need to know about local requirements.
+                </p>
+              </div>
+
+              <div className="grid lg:grid-cols-2 gap-8">
+                {/* Contact Info Card */}
+                <Card className="p-6">
+                  <div className="flex items-start gap-4 mb-6">
+                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
+                      <Building2 className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-text-primary text-lg mb-1">{locationData.permitInfo.department}</h3>
+                      <p className="text-text-secondary text-sm">{locationData.permitInfo.address}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <Phone className="h-5 w-5 text-primary" />
+                      <a href={`tel:${locationData.permitInfo.phone.replace(/[^0-9]/g, '')}`} className="text-primary hover:underline font-medium">
+                        {locationData.permitInfo.phone}
+                      </a>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <Clock className="h-5 w-5 text-primary" />
+                      <span className="text-text-secondary">Processing Time: <span className="font-medium text-text-primary">{locationData.permitInfo.processingTime}</span></span>
+                    </div>
+
+                    {locationData.permitInfo.portalUrl && (
+                      <div className="flex items-center gap-3">
+                        <ExternalLink className="h-5 w-5 text-primary" />
+                        <a href={locationData.permitInfo.portalUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
+                          Online Permit Portal
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  {locationData.permitInfo.notes && (
+                    <div className="mt-6 p-4 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-text-secondary italic">{locationData.permitInfo.notes}</p>
+                    </div>
+                  )}
+                </Card>
+
+                {/* Requirements Card */}
+                <Card className="p-6">
+                  <div className="flex items-start gap-4 mb-6">
+                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
+                      <FileText className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-text-primary text-lg mb-1">Typical Permit Requirements</h3>
+                      <p className="text-text-secondary text-sm">Common permits needed for {locationData.name} renovations</p>
+                    </div>
+                  </div>
+
+                  <ul className="space-y-3">
+                    {locationData.permitInfo.requirements.map((requirement, index) => (
+                      <li key={index} className="flex items-start gap-3">
+                        <CheckCircle2 className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                        <span className="text-text-secondary">{requirement}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="mt-6 p-4 bg-gradient-to-r from-primary/5 to-accent-sunset/5 rounded-lg border border-primary/20">
+                    <p className="text-sm text-text-primary font-medium">
+                      Don't worry about permits – we handle everything from application to final inspection!
+                    </p>
+                  </div>
+                </Card>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* FAQ Section */}
+        <section className="py-16 bg-muted/50">
+          <div className="container mx-auto px-4">
+            <div className="max-w-4xl mx-auto">
+              <div className="text-center mb-12">
+                <div className="flex items-center justify-center gap-3 mb-4">
+                  <HelpCircle className="h-8 w-8 text-primary" />
+                  <h2 className="text-3xl font-bold text-text-primary">
+                    {locationData.name} Renovation FAQs
+                  </h2>
+                </div>
+                <p className="text-lg text-text-secondary">
+                  Common questions about home remodeling in {locationData.name}, NJ
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {locationData.faqs.map((faq, index) => (
+                  <details
+                    key={index}
+                    className="group bg-background rounded-lg border border-border overflow-hidden"
+                  >
+                    <summary className="flex items-center justify-between cursor-pointer p-6 hover:bg-muted/50 transition-colors">
+                      <span className="font-semibold text-text-primary pr-4">{faq.question}</span>
+                      <ChevronDown className="h-5 w-5 text-primary flex-shrink-0 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="px-6 pb-6 text-text-secondary leading-relaxed">
+                      {faq.answer}
+                    </div>
+                  </details>
+                ))}
+              </div>
+
+              <div className="text-center mt-8">
+                <p className="text-text-secondary mb-4">
+                  Have more questions about your {locationData.name} renovation project?
+                </p>
+                <Link
+                  href="/contact"
+                  className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-white h-10 px-6"
+                >
+                  Contact Us for Answers
                 </Link>
               </div>
             </div>
