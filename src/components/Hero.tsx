@@ -6,31 +6,18 @@ import { Star, Shield, Award, Users } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { supabase } from '@/integrations/supabase/client';
 
+// Hero background video - single optimized video for consistent LCP performance
+const SUPABASE_URL = 'https://xrvbrnrbnyfdwkfdoepq.supabase.co';
+const DEFAULT_VIDEO = `${SUPABASE_URL}/storage/v1/object/public/hero-videos/hero-background-1.mp4`;
+
 const Hero = () => {
   const router = useRouter();
   const pathname = usePathname();
   const videoRef = React.useRef<HTMLVideoElement>(null);
-  const [selectedVideo, setSelectedVideo] = React.useState<string>('');
-
-  // List of available videos from Supabase Storage
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://xrvbrnrbnyfdwkfdoepq.supabase.co';
-  const availableVideos = [
-    `${supabaseUrl}/storage/v1/object/public/hero-videos/hero-background-1.mp4`,
-    `${supabaseUrl}/storage/v1/object/public/hero-videos/hero-background-2.mp4`,
-    `${supabaseUrl}/storage/v1/object/public/hero-videos/hero-background-3.mp4`,
-    `${supabaseUrl}/storage/v1/object/public/hero-videos/hero-background-4.mp4`,
-    `${supabaseUrl}/storage/v1/object/public/hero-videos/hero-background-5.mp4`,
-  ];
 
   // Start with static data, render immediately
   const [averageRating, setAverageRating] = React.useState('5.0');
   const [reviewCount, setReviewCount] = React.useState(0);
-
-  // Select random video on mount (client-side only)
-  React.useEffect(() => {
-    const randomIndex = Math.floor(Math.random() * availableVideos.length);
-    setSelectedVideo(availableVideos[randomIndex]);
-  }, []);
 
   // Fetch after initial render to not block LCP
   React.useEffect(() => {
@@ -56,7 +43,7 @@ const Hero = () => {
       const isMobile = window.innerWidth < 768;
       videoRef.current.playbackRate = isMobile ? 1.0 : 0.75;
     }
-  }, [selectedVideo]);
+  }, []);
 
   const scrollToEstimate = () => {
     // On mobile and tablet (below lg breakpoint = 1024px), go to calculator
@@ -83,22 +70,19 @@ const Hero = () => {
   };
   return (
     <section className="relative bg-gradient-to-br from-background via-background to-muted py-10 md:py-20 lg:py-32 overflow-hidden">
-      {/* Background Video Layer - Randomly selected from available videos */}
-      {selectedVideo && (
-        <video
-          ref={videoRef}
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="absolute inset-0 w-full h-full object-cover z-0"
-          aria-label="Background video of home remodeling project"
-          key={selectedVideo}
-        >
-          <source src={selectedVideo} type="video/mp4" />
-          {/* Fallback gradient if video doesn't load */}
-        </video>
-      )}
+      {/* Background Video Layer - Single optimized video for consistent LCP */}
+      <video
+        ref={videoRef}
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="metadata"
+        className="absolute inset-0 w-full h-full object-cover z-0"
+        aria-label="Background video of home remodeling project"
+      >
+        <source src={DEFAULT_VIDEO} type="video/mp4" />
+      </video>
 
       {/* White Overlay for Text Legibility - 75% opacity */}
       <div className="absolute inset-0 bg-white/75 z-10"></div>

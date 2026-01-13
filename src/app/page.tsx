@@ -1,5 +1,6 @@
 import Header from '@/components/Header'
 import Footer from '@/components/Footer'
+import Hero from '@/components/Hero'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import type { Metadata } from 'next'
@@ -19,19 +20,6 @@ export const metadata: Metadata = {
 }
 
 const SEOSchema = dynamic(() => import('@/components/SEOSchema'))
-
-const Hero = dynamic(() => import('@/components/Hero'), {
-  loading: () => (
-    <section className="relative bg-gradient-to-br from-background via-background to-muted py-10 md:py-20 lg:py-32">
-      <div className="container mx-auto px-4">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="h-16 w-3/4 bg-muted animate-pulse rounded mx-auto mb-6" />
-          <div className="h-8 w-2/3 bg-muted animate-pulse rounded mx-auto mb-8" />
-        </div>
-      </div>
-    </section>
-  )
-})
 
 const HomeEstimateForm = dynamic(() => import('@/components/HomeEstimateForm'), {
   loading: () => (

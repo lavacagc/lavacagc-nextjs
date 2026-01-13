@@ -78,6 +78,9 @@ export default function RootLayout({
         <link rel="icon" href="/logo.webp" type="image/webp" />
         <link rel="alternate icon" href="/logo.png" type="image/png" />
         <meta name="theme-color" content="#EE9639" />
+        {/* Preconnect to Supabase storage for faster asset loading */}
+        <link rel="preconnect" href="https://xrvbrnrbnyfdwkfdoepq.supabase.co" />
+        <link rel="dns-prefetch" href="https://xrvbrnrbnyfdwkfdoepq.supabase.co" />
       </head>
       <body className={inter.className}>
         {/* Server-side structured data for SEO - visible to crawlers */}
