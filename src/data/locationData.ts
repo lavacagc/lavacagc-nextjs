@@ -951,15 +951,16 @@ export const getLocationMetaTitle = (location: string, service?: string): string
   if (service) {
     const serviceMap: Record<string, string> = {
       'kitchen-remodeling': 'Kitchen Remodeling',
-      'bathroom-renovation': 'Bathroom Renovation', 
+      'bathroom-renovation': 'Bathroom Renovation',
       'basement-finishing': 'Basement Finishing',
-      'home-additions': 'Home Addition'
+      'home-additions': 'Home Addition',
+      'interior-finishing': 'Interior Finishing'
     };
-    
+
     const serviceName = serviceMap[service] || service;
     return `${serviceName} Contractor in ${loc.name}, NJ | Licensed & Insured | La Vaca`;
   }
-  
+
   return `Home Remodeling Contractor in ${loc.name}, NJ | Licensed & Insured | La Vaca`;
 };
 
@@ -973,14 +974,15 @@ export const getLocationMetaDescription = (location: string, service?: string): 
   if (service) {
     const serviceMap: Record<string, string> = {
       'kitchen-remodeling': 'kitchen remodeling',
-      'bathroom-renovation': 'bathroom renovation', 
+      'bathroom-renovation': 'bathroom renovation',
       'basement-finishing': 'basement finishing',
-      'home-additions': 'home addition'
+      'home-additions': 'home addition',
+      'interior-finishing': 'interior finishing'
     };
-    
+
     const serviceName = serviceMap[service] || service;
     return `Expert ${serviceName} contractor serving ${loc.name}, ${neighborhoods} (${zipCode}). Licensed, insured, 5-star rated. Free estimates for ${loc.county} homeowners.`;
   }
-  
+
   return `Premier home remodeling contractor in ${loc.name}, ${loc.county}. Serving ${neighborhoods}, ${zipCode} and surrounding areas. Licensed, insured, 5-star rated. Free estimates.`;
 };

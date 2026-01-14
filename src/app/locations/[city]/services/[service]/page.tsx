@@ -74,6 +74,19 @@ const SERVICES = {
       "Room Extensions",
       "Structural Engineering"
     ]
+  },
+  'interior-finishing': {
+    title: 'Interior Finishing',
+    slug: 'interior-finishing',
+    description: 'Complete interior finishing services including drywall, flooring, doors, trim, and painting.',
+    features: [
+      "Professional Framing",
+      "Fiberglass Insulation",
+      "Drywall Installation & Finishing",
+      "Level 5 Skim Coat Available",
+      "LVP/Laminate/Tile Flooring",
+      "Interior Door Installation"
+    ]
   }
 };
 

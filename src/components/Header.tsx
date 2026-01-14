@@ -124,6 +124,9 @@ const Header = () => {
                     <Link href="/services/home-additions" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
                       Home Additions
                     </Link>
+                    <Link href="/services/interior-finishing" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
+                      Interior Finishing
+                    </Link>
                   </div>
                 </div>
               </div>
@@ -176,6 +179,9 @@ const Header = () => {
                   </Link>
                   <Link href="/services/home-additions" className="block text-text-secondary hover:text-primary transition-colors">
                     Home Additions
+                  </Link>
+                  <Link href="/services/interior-finishing" className="block text-text-secondary hover:text-primary transition-colors">
+                    Interior Finishing
                   </Link>
                 </div>
               </div>
