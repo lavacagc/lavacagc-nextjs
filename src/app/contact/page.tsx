@@ -10,6 +10,10 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Contact Us | La Vaca General Contractors',
     description: 'Get in touch with La Vaca General Contractors for your home renovation needs in Northern New Jersey.',
+    url: 'https://www.lavacagc.com/contact',
+  },
+  alternates: {
+    canonical: 'https://www.lavacagc.com/contact',
   },
 };
 

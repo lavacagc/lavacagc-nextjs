@@ -17,6 +17,9 @@ export const metadata: Metadata = {
     description: "La Vaca General Contractors serves Northern New Jersey's most prestigious communities.",
     url: "https://www.lavacagc.com/locations",
   },
+  alternates: {
+    canonical: "https://www.lavacagc.com/locations",
+  },
 };
 
 export default function LocationsPage() {

@@ -16,6 +16,9 @@ export const metadata: Metadata = {
     description: "Learn about La Vaca General Contractors' story, meet our expert team, and discover our commitment to quality home remodeling in Northern New Jersey.",
     url: "https://www.lavacagc.com/about",
   },
+  alternates: {
+    canonical: "https://www.lavacagc.com/about",
+  },
 }
 
 export default function About() {

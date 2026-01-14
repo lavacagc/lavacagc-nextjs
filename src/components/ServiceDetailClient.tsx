@@ -242,6 +242,82 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
         </div>
       </section>
 
+      {/* Related Services Section */}
+      <section className="py-16 bg-muted/50">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-text-primary mb-4">Explore Our Other Services</h2>
+            <p className="text-lg text-text-secondary max-w-3xl mx-auto">
+              Complete your home transformation with our full range of remodeling services.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 max-w-6xl mx-auto">
+            {slug !== 'kitchen-remodeling' && (
+              <Link href="/services/kitchen-remodeling" className="block group">
+                <Card className="h-full transition-shadow hover:shadow-lg">
+                  <CardContent className="p-4 text-center">
+                    <h3 className="font-semibold text-sm text-text-primary group-hover:text-primary transition-colors">
+                      Kitchen Remodeling
+                    </h3>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+            {slug !== 'bathroom-renovation' && (
+              <Link href="/services/bathroom-renovation" className="block group">
+                <Card className="h-full transition-shadow hover:shadow-lg">
+                  <CardContent className="p-4 text-center">
+                    <h3 className="font-semibold text-sm text-text-primary group-hover:text-primary transition-colors">
+                      Bathroom Renovation
+                    </h3>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+            {slug !== 'basement-finishing' && (
+              <Link href="/services/basement-finishing" className="block group">
+                <Card className="h-full transition-shadow hover:shadow-lg">
+                  <CardContent className="p-4 text-center">
+                    <h3 className="font-semibold text-sm text-text-primary group-hover:text-primary transition-colors">
+                      Basement Finishing
+                    </h3>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+            {slug !== 'home-additions' && (
+              <Link href="/services/home-additions" className="block group">
+                <Card className="h-full transition-shadow hover:shadow-lg">
+                  <CardContent className="p-4 text-center">
+                    <h3 className="font-semibold text-sm text-text-primary group-hover:text-primary transition-colors">
+                      Home Additions
+                    </h3>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+            <Link href="/services/whole-home-remodeling" className="block group">
+              <Card className="h-full transition-shadow hover:shadow-lg">
+                <CardContent className="p-4 text-center">
+                  <h3 className="font-semibold text-sm text-text-primary group-hover:text-primary transition-colors">
+                    Whole Home
+                  </h3>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link href="/services/interior-finishing" className="block group">
+              <Card className="h-full transition-shadow hover:shadow-lg">
+                <CardContent className="p-4 text-center">
+                  <h3 className="font-semibold text-sm text-text-primary group-hover:text-primary transition-colors">
+                    Interior Finishing
+                  </h3>
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="py-16 bg-gradient-to-r from-primary to-accent-teal text-white">
         <div className="container mx-auto px-4 text-center">

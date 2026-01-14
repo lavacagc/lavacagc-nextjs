@@ -361,6 +361,74 @@ export default function WholeHomeRemodelingPage() {
           </div>
         </section>
 
+        {/* Related Services Section */}
+        <section className="py-16 bg-background">
+          <div className="container mx-auto px-4">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">Looking for Specific Services?</h2>
+              <p className="text-lg text-text-secondary max-w-3xl mx-auto">
+                If you're focusing on a particular area of your home, explore our individual service offerings.
+              </p>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-6 max-w-6xl mx-auto">
+              <Link href="/services/kitchen-remodeling" className="block group">
+                <Card className="h-full transition-shadow hover:shadow-lg">
+                  <CardContent className="p-6 text-center">
+                    <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors">
+                      Kitchen Remodeling
+                    </h3>
+                    <p className="text-sm text-text-secondary mt-2">
+                      Custom kitchen designs
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href="/services/bathroom-renovation" className="block group">
+                <Card className="h-full transition-shadow hover:shadow-lg">
+                  <CardContent className="p-6 text-center">
+                    <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors">
+                      Bathroom Renovation
+                    </h3>
+                    <p className="text-sm text-text-secondary mt-2">Luxury bath upgrades</p>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href="/services/basement-finishing" className="block group">
+                <Card className="h-full transition-shadow hover:shadow-lg">
+                  <CardContent className="p-6 text-center">
+                    <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors">
+                      Basement Finishing
+                    </h3>
+                    <p className="text-sm text-text-secondary mt-2">
+                      Expand your living space
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href="/services/home-additions" className="block group">
+                <Card className="h-full transition-shadow hover:shadow-lg">
+                  <CardContent className="p-6 text-center">
+                    <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors">
+                      Home Additions
+                    </h3>
+                    <p className="text-sm text-text-secondary mt-2">Add square footage</p>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href="/services/interior-finishing" className="block group">
+                <Card className="h-full transition-shadow hover:shadow-lg">
+                  <CardContent className="p-6 text-center">
+                    <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors">
+                      Interior Finishing
+                    </h3>
+                    <p className="text-sm text-text-secondary mt-2">Drywall, flooring, trim</p>
+                  </CardContent>
+                </Card>
+              </Link>
+            </div>
+          </div>
+        </section>
+
         {/* CTA Section */}
         <section className="py-16 bg-gradient-to-br from-primary to-accent-sunset text-white">
           <div className="container mx-auto px-4 text-center">

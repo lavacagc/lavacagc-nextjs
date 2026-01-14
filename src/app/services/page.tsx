@@ -12,6 +12,9 @@ export const metadata: Metadata = {
     description: "Explore our comprehensive home remodeling services including kitchen remodeling, bathroom renovations, basement finishing, and home additions in Northern New Jersey.",
     url: "https://www.lavacagc.com/services",
   },
+  alternates: {
+    canonical: "https://www.lavacagc.com/services",
+  },
 }
 
 export default function ServicesPage() {
