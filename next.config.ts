@@ -231,6 +231,39 @@ const nextConfig: NextConfig = {
       { source: '/financing', destination: '/project-calculator', permanent: true },
       { source: '/portfolio-collections/:path*', destination: '/portfolio', permanent: true },
 
+      // ============================================
+      // OLD PROJECT URL REDIRECTS (from GSC 404s)
+      // Pattern: /projects/old-slug → /portfolio
+      // ============================================
+      { source: '/projects/spa-like-master-bathroom', destination: '/portfolio', permanent: true },
+      { source: '/projects/entertainment-basement', destination: '/portfolio', permanent: true },
+      { source: '/projects/modern-kitchen-renovation', destination: '/portfolio', permanent: true },
+      { source: '/projects/luxury-bathroom-remodel', destination: '/portfolio', permanent: true },
+      { source: '/projects/basement-transformation', destination: '/portfolio', permanent: true },
+      { source: '/projects/home-addition-project', destination: '/portfolio', permanent: true },
+
+      // ============================================
+      // ADDITIONAL NEAR-ME CITY REDIRECTS (from GSC 404s/Soft 404s)
+      // Cities that don't have dedicated pages → services listing
+      // ============================================
+      { source: '/near-me/home-remodeling/tenafly', destination: '/services', permanent: true },
+      { source: '/near-me/bathroom-remodeling/franklin-lakes', destination: '/services', permanent: true },
+      { source: '/near-me/bathroom-remodeling/chatham', destination: '/services', permanent: true },
+      { source: '/near-me/kitchen-remodeling/franklin-lakes', destination: '/services', permanent: true },
+      { source: '/near-me/home-remodeling/franklin-lakes', destination: '/services', permanent: true },
+      { source: '/near-me/basement-finishing/tenafly', destination: '/services', permanent: true },
+      { source: '/near-me/kitchen-remodeling/chatham', destination: '/services', permanent: true },
+      { source: '/near-me/home-remodeling/chatham', destination: '/services', permanent: true },
+
+      // ============================================
+      // ADDITIONAL ES (SPANISH) SPECIFIC REDIRECTS
+      // ============================================
+      { source: '/es/free-consultation', destination: '/project-calculator', permanent: true },
+      { source: '/es/consultation', destination: '/project-calculator', permanent: true },
+      { source: '/es/contact', destination: '/contact', permanent: true },
+      { source: '/es/about', destination: '/about', permanent: true },
+      { source: '/es/services', destination: '/services', permanent: true },
+
       // Typo redirects
       { source: '/home-additions-west-orge-nj', destination: '/locations/west-orange/services/home-additions', permanent: true },
     ]
