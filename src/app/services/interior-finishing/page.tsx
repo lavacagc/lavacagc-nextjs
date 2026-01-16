@@ -4,6 +4,7 @@ import Footer from '@/components/Footer';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import {
   CheckCircle,
   Clock,
@@ -299,24 +300,29 @@ export default function InteriorFinishingPage() {
         </section>
 
         {/* Hero Section */}
-        <section className="relative bg-gradient-to-br from-background via-background to-muted py-10 md:py-20 lg:py-32">
+        <section className="relative bg-gradient-to-br from-background via-background to-muted py-8 md:py-20 lg:py-32">
           <div className="container mx-auto px-4">
             <div className="max-w-4xl mx-auto text-center">
-              <h1 className="text-4xl md:text-6xl font-bold text-text-primary mb-6 leading-tight">
+              <h1 className="text-3xl md:text-6xl font-bold text-text-primary mb-4 md:mb-6 leading-tight">
                 Interior Finishing Services
                 <span className="block text-transparent bg-gradient-to-r from-primary to-accent-sunset bg-clip-text">
                   Northern New Jersey
                 </span>
               </h1>
-              <p className="text-xl text-text-secondary mb-8 leading-relaxed">
-                From framing to final coat, we deliver expert interior finishing for projects of any size throughout
-                Bergen, Essex, and Morris counties. Drywall, flooring, doors, trim, and painting - all handled by our
-                experienced in-house team serving Montclair, Short Hills, Morristown, and surrounding areas.
+              <p className="text-base md:text-xl text-text-secondary mb-6 md:mb-8 leading-relaxed">
+                <span className="md:hidden">
+                  Expert drywall, flooring, trim, and painting by our in-house team in Bergen, Essex, and Morris counties.
+                </span>
+                <span className="hidden md:inline">
+                  From framing to final coat, we deliver expert interior finishing for projects of any size throughout
+                  Bergen, Essex, and Morris counties. Drywall, flooring, doors, trim, and painting - all handled by our
+                  experienced in-house team serving Montclair, Short Hills, Morristown, and surrounding areas.
+                </span>
                 <span className="block font-semibold text-secondary mt-2">
                   Expert craftsmanship at every scale.
                 </span>
               </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-center">
                 <Button
                   size="lg"
                   className="bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button"
@@ -330,22 +336,22 @@ export default function InteriorFinishingPage() {
               </div>
 
               {/* Quick Stats */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-12">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mt-8 md:mt-12">
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-primary mb-2">10+</div>
-                  <div className="text-text-secondary text-sm">Years Experience</div>
+                  <div className="text-2xl md:text-3xl font-bold text-primary mb-1 md:mb-2">10+</div>
+                  <div className="text-text-secondary text-xs md:text-sm">Years Experience</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-primary mb-2">5-Star</div>
-                  <div className="text-text-secondary text-sm">Client Rating</div>
+                  <div className="text-2xl md:text-3xl font-bold text-primary mb-1 md:mb-2">5-Star</div>
+                  <div className="text-text-secondary text-xs md:text-sm">Client Rating</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-primary mb-2">Licensed</div>
-                  <div className="text-text-secondary text-sm">& Insured</div>
+                  <div className="text-2xl md:text-3xl font-bold text-primary mb-1 md:mb-2">Licensed</div>
+                  <div className="text-text-secondary text-xs md:text-sm">& Insured</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-primary mb-2">100%</div>
-                  <div className="text-text-secondary text-sm">Satisfaction</div>
+                  <div className="text-2xl md:text-3xl font-bold text-primary mb-1 md:mb-2">100%</div>
+                  <div className="text-text-secondary text-xs md:text-sm">Satisfaction</div>
                 </div>
               </div>
             </div>
@@ -353,24 +359,24 @@ export default function InteriorFinishingPage() {
         </section>
 
         {/* Wall Systems Section */}
-        <section className="py-16 bg-muted/50">
+        <section className="py-10 md:py-16 bg-muted/50">
           <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">Wall Systems & Drywall</h2>
-              <p className="text-lg text-text-secondary max-w-3xl mx-auto">
+            <div className="text-center mb-6 md:mb-12">
+              <h2 className="text-2xl md:text-4xl font-bold text-text-primary mb-3 md:mb-4">Wall Systems & Drywall</h2>
+              <p className="text-sm md:text-lg text-text-secondary max-w-3xl mx-auto">
                 Complete wall system services from framing through finish. We handle every phase of your interior wall
                 project with precision and expertise.
               </p>
             </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 max-w-5xl mx-auto">
               {wallSystemsServices.map((service, index) => (
                 <Card key={index}>
-                  <CardContent className="p-6">
+                  <CardContent className="p-4 md:p-6">
                     <div className="flex items-start gap-3">
-                      <CheckCircle className="h-6 w-6 text-primary flex-shrink-0 mt-1" />
+                      <CheckCircle className="h-5 w-5 md:h-6 md:w-6 text-primary flex-shrink-0 mt-0.5" />
                       <div>
-                        <h3 className="font-bold text-text-primary mb-1">{service.title}</h3>
-                        <p className="text-sm text-text-secondary">{service.description}</p>
+                        <h3 className="font-bold text-text-primary mb-1 text-sm md:text-base">{service.title}</h3>
+                        <p className="text-xs md:text-sm text-text-secondary">{service.description}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -381,23 +387,23 @@ export default function InteriorFinishingPage() {
         </section>
 
         {/* Finishing Trades Section */}
-        <section className="py-16 bg-background">
+        <section className="py-10 md:py-16 bg-background">
           <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">Finishing Trades</h2>
-              <p className="text-lg text-text-secondary max-w-3xl mx-auto">
+            <div className="text-center mb-6 md:mb-12">
+              <h2 className="text-2xl md:text-4xl font-bold text-text-primary mb-3 md:mb-4">Finishing Trades</h2>
+              <p className="text-sm md:text-lg text-text-secondary max-w-3xl mx-auto">
                 Complete your space with our expert finishing services. From flooring to trim work, we bring the same
                 attention to detail to every trade.
               </p>
             </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-6xl mx-auto">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-8 max-w-6xl mx-auto">
               {finishingTradesServices.map((service, index) => (
-                <Card key={index} className="text-center p-6">
-                  <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <service.icon className="h-8 w-8 text-primary" />
+                <Card key={index} className="text-center p-4 md:p-6">
+                  <div className="w-12 h-12 md:w-16 md:h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2 md:mb-4">
+                    <service.icon className="h-6 w-6 md:h-8 md:w-8 text-primary" />
                   </div>
-                  <h3 className="font-bold text-text-primary mb-2">{service.title}</h3>
-                  <p className="text-sm text-text-secondary">{service.description}</p>
+                  <h3 className="font-bold text-text-primary mb-1 md:mb-2 text-sm md:text-base">{service.title}</h3>
+                  <p className="text-xs md:text-sm text-text-secondary">{service.description}</p>
                 </Card>
               ))}
             </div>
@@ -405,22 +411,22 @@ export default function InteriorFinishingPage() {
         </section>
 
         {/* Premium Add-On Section */}
-        <section className="py-12 bg-muted/50">
+        <section className="py-8 md:py-12 bg-muted/50">
           <div className="container mx-auto px-4">
             <div className="max-w-4xl mx-auto">
               <Card className="border-primary border-2">
-                <CardContent className="p-8">
-                  <div className="flex flex-col md:flex-row items-center gap-6">
-                    <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                      <Sparkles className="h-10 w-10 text-primary" />
+                <CardContent className="p-4 md:p-8">
+                  <div className="flex flex-col md:flex-row items-center gap-4 md:gap-6">
+                    <div className="w-14 h-14 md:w-20 md:h-20 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
+                      <Sparkles className="h-7 w-7 md:h-10 md:w-10 text-primary" />
                     </div>
                     <div className="text-center md:text-left">
-                      <div className="text-xs font-bold text-primary mb-2">QUALITY ASSURANCE ADD-ON</div>
-                      <h3 className="text-2xl font-bold text-text-primary mb-2">Primer Application Service</h3>
-                      <p className="text-text-secondary">
+                      <div className="text-xs font-bold text-primary mb-1 md:mb-2">QUALITY ASSURANCE ADD-ON</div>
+                      <h3 className="text-lg md:text-2xl font-bold text-text-primary mb-1 md:mb-2">Primer Application Service</h3>
+                      <p className="text-text-secondary text-sm md:text-base">
                         Our premium primer application reveals wall and ceiling imperfections before final paint. This
                         quality assurance step ensures flawless results by allowing us to address any issues that become
-                        visible under the primer coat - delivering the perfect finish you deserve.
+                        visible under the primer coat.
                       </p>
                     </div>
                   </div>
@@ -431,24 +437,24 @@ export default function InteriorFinishingPage() {
         </section>
 
         {/* Benefits Section */}
-        <section className="py-16 bg-background">
+        <section className="py-10 md:py-16 bg-background">
           <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
+            <div className="text-center mb-6 md:mb-12">
+              <h2 className="text-2xl md:text-4xl font-bold text-text-primary mb-3 md:mb-4">
                 Why Choose La Vaca for Interior Finishing?
               </h2>
-              <p className="text-lg text-text-secondary max-w-3xl mx-auto">
+              <p className="text-sm md:text-lg text-text-secondary max-w-3xl mx-auto">
                 Our experienced, dedicated team delivers consistent quality on every project, large or small.
               </p>
             </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-6xl mx-auto">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-8 max-w-6xl mx-auto">
               {benefits.map((benefit, index) => (
-                <Card key={index} className="text-center p-6">
-                  <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <benefit.icon className="h-8 w-8 text-primary" />
+                <Card key={index} className="text-center p-4 md:p-6">
+                  <div className="w-12 h-12 md:w-16 md:h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2 md:mb-4">
+                    <benefit.icon className="h-6 w-6 md:h-8 md:w-8 text-primary" />
                   </div>
-                  <h3 className="font-bold text-text-primary mb-2">{benefit.title}</h3>
-                  <p className="text-sm text-text-secondary">{benefit.description}</p>
+                  <h3 className="font-bold text-text-primary mb-1 md:mb-2 text-sm md:text-base">{benefit.title}</h3>
+                  <p className="text-xs md:text-sm text-text-secondary">{benefit.description}</p>
                 </Card>
               ))}
             </div>
@@ -456,15 +462,33 @@ export default function InteriorFinishingPage() {
         </section>
 
         {/* Process Section */}
-        <section className="py-16 bg-muted/50">
+        <section className="py-10 md:py-16 bg-muted/50">
           <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">Our Process</h2>
-              <p className="text-lg text-text-secondary max-w-3xl mx-auto">
+            <div className="text-center mb-6 md:mb-12">
+              <h2 className="text-2xl md:text-4xl font-bold text-text-primary mb-3 md:mb-4">Our Process</h2>
+              <p className="text-sm md:text-lg text-text-secondary max-w-3xl mx-auto">
                 A proven approach to delivering quality interior finishing on every project.
               </p>
             </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            {/* Mobile: Compact list view */}
+            <div className="md:hidden max-w-lg mx-auto space-y-3">
+              {processSteps.map((step) => (
+                <div key={step.step} className="flex items-start gap-3 bg-card rounded-lg p-3 border">
+                  <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                    {step.step}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="font-bold text-text-primary text-sm">{step.title}</h3>
+                      <span className="text-xs text-primary whitespace-nowrap">{step.duration}</span>
+                    </div>
+                    <p className="text-xs text-text-secondary mt-1">{step.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Desktop: Grid view */}
+            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
               {processSteps.map((step) => (
                 <Card key={step.step} className="relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-12 h-12 bg-primary flex items-center justify-center text-white font-bold text-xl">
@@ -485,60 +509,103 @@ export default function InteriorFinishingPage() {
         </section>
 
         {/* FAQ Section */}
-        <section className="py-16 bg-background">
+        <section className="py-10 md:py-16 bg-background">
           <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">Frequently Asked Questions</h2>
-              <p className="text-lg text-text-secondary max-w-3xl mx-auto">
+            <div className="text-center mb-8 md:mb-12">
+              <h2 className="text-2xl md:text-4xl font-bold text-text-primary mb-3 md:mb-4">Frequently Asked Questions</h2>
+              <p className="text-base md:text-lg text-text-secondary max-w-3xl mx-auto">
                 Common questions about our interior finishing services.
               </p>
             </div>
-            <div className="max-w-4xl mx-auto space-y-6">
-              {faqs.map((faq, index) => (
-                <Card key={index}>
-                  <CardContent className="p-6">
-                    <h3 className="font-bold text-text-primary mb-2">{faq.question}</h3>
-                    <p className="text-text-secondary">{faq.answer}</p>
-                  </CardContent>
-                </Card>
-              ))}
+            <div className="max-w-4xl mx-auto">
+              <Accordion type="single" collapsible className="space-y-3">
+                {faqs.map((faq, index) => (
+                  <AccordionItem key={index} value={`faq-${index}`} className="border rounded-lg px-4 md:px-6 bg-card">
+                    <AccordionTrigger className="text-left text-sm md:text-base font-bold text-text-primary hover:no-underline py-4">
+                      {faq.question}
+                    </AccordionTrigger>
+                    <AccordionContent className="text-text-secondary text-sm md:text-base">
+                      {faq.answer}
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
             </div>
           </div>
         </section>
 
         {/* Service Area Section */}
-        <section className="py-16 bg-muted/50">
+        <section className="py-10 md:py-16 bg-muted/50">
           <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
+            <div className="text-center mb-6 md:mb-12">
+              <h2 className="text-2xl md:text-4xl font-bold text-text-primary mb-3 md:mb-4">
                 Interior Finishing Services Throughout Northern NJ
               </h2>
-              <p className="text-lg text-text-secondary max-w-3xl mx-auto">
+              <p className="text-sm md:text-lg text-text-secondary max-w-3xl mx-auto">
                 Our drywall contractors and interior finishing specialists proudly serve homeowners across Bergen, Essex,
                 and Morris counties.
               </p>
             </div>
             <div className="max-w-5xl mx-auto">
-              <div className="grid md:grid-cols-3 gap-8">
+              {/* Mobile: Accordion layout */}
+              <div className="md:hidden">
+                <Accordion type="single" collapsible className="space-y-3">
+                  <AccordionItem value="bergen" className="border rounded-lg px-4 bg-card">
+                    <AccordionTrigger className="text-left font-bold text-text-primary hover:no-underline py-3">
+                      Bergen County (3 areas)
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <ul className="space-y-2 text-text-secondary text-sm pb-2">
+                        <li><Link href="/locations/alpine/services/interior-finishing" className="hover:text-primary">Alpine</Link></li>
+                        <li><Link href="/locations/ho-ho-kus/services/interior-finishing" className="hover:text-primary">Ho-Ho-Kus</Link></li>
+                        <li><Link href="/locations/saddle-river/services/interior-finishing" className="hover:text-primary">Saddle River</Link></li>
+                      </ul>
+                    </AccordionContent>
+                  </AccordionItem>
+                  <AccordionItem value="essex" className="border rounded-lg px-4 bg-card">
+                    <AccordionTrigger className="text-left font-bold text-text-primary hover:no-underline py-3">
+                      Essex County (12 areas)
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <ul className="grid grid-cols-2 gap-2 text-text-secondary text-sm pb-2">
+                        <li><Link href="/locations/montclair/services/interior-finishing" className="hover:text-primary">Montclair</Link></li>
+                        <li><Link href="/locations/short-hills/services/interior-finishing" className="hover:text-primary">Short Hills</Link></li>
+                        <li><Link href="/locations/millburn/services/interior-finishing" className="hover:text-primary">Millburn</Link></li>
+                        <li><Link href="/locations/livingston/services/interior-finishing" className="hover:text-primary">Livingston</Link></li>
+                        <li><Link href="/locations/west-orange/services/interior-finishing" className="hover:text-primary">West Orange</Link></li>
+                        <li><Link href="/locations/maplewood/services/interior-finishing" className="hover:text-primary">Maplewood</Link></li>
+                        <li><Link href="/locations/bloomfield/services/interior-finishing" className="hover:text-primary">Bloomfield</Link></li>
+                        <li><Link href="/locations/verona/services/interior-finishing" className="hover:text-primary">Verona</Link></li>
+                        <li><Link href="/locations/essex-fells/services/interior-finishing" className="hover:text-primary">Essex Fells</Link></li>
+                        <li><Link href="/locations/caldwell/services/interior-finishing" className="hover:text-primary">Caldwell</Link></li>
+                        <li><Link href="/locations/west-caldwell/services/interior-finishing" className="hover:text-primary">West Caldwell</Link></li>
+                        <li><Link href="/locations/clifton/services/interior-finishing" className="hover:text-primary">Clifton</Link></li>
+                      </ul>
+                    </AccordionContent>
+                  </AccordionItem>
+                  <AccordionItem value="morris" className="border rounded-lg px-4 bg-card">
+                    <AccordionTrigger className="text-left font-bold text-text-primary hover:no-underline py-3">
+                      Morris County (3 areas)
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <ul className="space-y-2 text-text-secondary text-sm pb-2">
+                        <li><Link href="/locations/morristown/services/interior-finishing" className="hover:text-primary">Morristown</Link></li>
+                        <li><Link href="/locations/madison/services/interior-finishing" className="hover:text-primary">Madison</Link></li>
+                        <li><Link href="/locations/parsippany/services/interior-finishing" className="hover:text-primary">Parsippany</Link></li>
+                      </ul>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              </div>
+              {/* Desktop: Grid layout */}
+              <div className="hidden md:grid md:grid-cols-3 gap-8">
                 <Card>
                   <CardContent className="p-6">
                     <h3 className="font-bold text-text-primary mb-4 text-lg">Bergen County</h3>
                     <ul className="space-y-2 text-text-secondary">
-                      <li>
-                        <Link href="/locations/alpine/services/interior-finishing" className="hover:text-primary">
-                          Alpine
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/ho-ho-kus/services/interior-finishing" className="hover:text-primary">
-                          Ho-Ho-Kus
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/saddle-river/services/interior-finishing" className="hover:text-primary">
-                          Saddle River
-                        </Link>
-                      </li>
+                      <li><Link href="/locations/alpine/services/interior-finishing" className="hover:text-primary">Alpine</Link></li>
+                      <li><Link href="/locations/ho-ho-kus/services/interior-finishing" className="hover:text-primary">Ho-Ho-Kus</Link></li>
+                      <li><Link href="/locations/saddle-river/services/interior-finishing" className="hover:text-primary">Saddle River</Link></li>
                     </ul>
                   </CardContent>
                 </Card>
@@ -546,66 +613,18 @@ export default function InteriorFinishingPage() {
                   <CardContent className="p-6">
                     <h3 className="font-bold text-text-primary mb-4 text-lg">Essex County</h3>
                     <ul className="space-y-2 text-text-secondary">
-                      <li>
-                        <Link href="/locations/montclair/services/interior-finishing" className="hover:text-primary">
-                          Montclair
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/short-hills/services/interior-finishing" className="hover:text-primary">
-                          Short Hills
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/millburn/services/interior-finishing" className="hover:text-primary">
-                          Millburn
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/livingston/services/interior-finishing" className="hover:text-primary">
-                          Livingston
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/west-orange/services/interior-finishing" className="hover:text-primary">
-                          West Orange
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/maplewood/services/interior-finishing" className="hover:text-primary">
-                          Maplewood
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/bloomfield/services/interior-finishing" className="hover:text-primary">
-                          Bloomfield
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/verona/services/interior-finishing" className="hover:text-primary">
-                          Verona
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/essex-fells/services/interior-finishing" className="hover:text-primary">
-                          Essex Fells
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/caldwell/services/interior-finishing" className="hover:text-primary">
-                          Caldwell
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/west-caldwell/services/interior-finishing" className="hover:text-primary">
-                          West Caldwell
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/clifton/services/interior-finishing" className="hover:text-primary">
-                          Clifton
-                        </Link>
-                      </li>
+                      <li><Link href="/locations/montclair/services/interior-finishing" className="hover:text-primary">Montclair</Link></li>
+                      <li><Link href="/locations/short-hills/services/interior-finishing" className="hover:text-primary">Short Hills</Link></li>
+                      <li><Link href="/locations/millburn/services/interior-finishing" className="hover:text-primary">Millburn</Link></li>
+                      <li><Link href="/locations/livingston/services/interior-finishing" className="hover:text-primary">Livingston</Link></li>
+                      <li><Link href="/locations/west-orange/services/interior-finishing" className="hover:text-primary">West Orange</Link></li>
+                      <li><Link href="/locations/maplewood/services/interior-finishing" className="hover:text-primary">Maplewood</Link></li>
+                      <li><Link href="/locations/bloomfield/services/interior-finishing" className="hover:text-primary">Bloomfield</Link></li>
+                      <li><Link href="/locations/verona/services/interior-finishing" className="hover:text-primary">Verona</Link></li>
+                      <li><Link href="/locations/essex-fells/services/interior-finishing" className="hover:text-primary">Essex Fells</Link></li>
+                      <li><Link href="/locations/caldwell/services/interior-finishing" className="hover:text-primary">Caldwell</Link></li>
+                      <li><Link href="/locations/west-caldwell/services/interior-finishing" className="hover:text-primary">West Caldwell</Link></li>
+                      <li><Link href="/locations/clifton/services/interior-finishing" className="hover:text-primary">Clifton</Link></li>
                     </ul>
                   </CardContent>
                 </Card>
@@ -613,26 +632,14 @@ export default function InteriorFinishingPage() {
                   <CardContent className="p-6">
                     <h3 className="font-bold text-text-primary mb-4 text-lg">Morris County</h3>
                     <ul className="space-y-2 text-text-secondary">
-                      <li>
-                        <Link href="/locations/morristown/services/interior-finishing" className="hover:text-primary">
-                          Morristown
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/madison/services/interior-finishing" className="hover:text-primary">
-                          Madison
-                        </Link>
-                      </li>
-                      <li>
-                        <Link href="/locations/parsippany/services/interior-finishing" className="hover:text-primary">
-                          Parsippany
-                        </Link>
-                      </li>
+                      <li><Link href="/locations/morristown/services/interior-finishing" className="hover:text-primary">Morristown</Link></li>
+                      <li><Link href="/locations/madison/services/interior-finishing" className="hover:text-primary">Madison</Link></li>
+                      <li><Link href="/locations/parsippany/services/interior-finishing" className="hover:text-primary">Parsippany</Link></li>
                     </ul>
                   </CardContent>
                 </Card>
               </div>
-              <p className="text-center text-text-muted mt-8">
+              <p className="text-center text-text-muted mt-6 md:mt-8 text-sm md:text-base">
                 Don't see your town? We serve all of Northern New Jersey.{' '}
                 <Link href="/contact" className="text-primary hover:underline">
                   Contact us
@@ -644,22 +651,22 @@ export default function InteriorFinishingPage() {
         </section>
 
         {/* Cross-Sell Section */}
-        <section className="py-16 bg-muted/50">
+        <section className="py-10 md:py-16 bg-muted/50">
           <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">Part of a Bigger Project?</h2>
-              <p className="text-lg text-text-secondary max-w-3xl mx-auto">
+            <div className="text-center mb-6 md:mb-12">
+              <h2 className="text-2xl md:text-4xl font-bold text-text-primary mb-3 md:mb-4">Part of a Bigger Project?</h2>
+              <p className="text-sm md:text-lg text-text-secondary max-w-3xl mx-auto">
                 Our interior finishing services are a natural complement to our comprehensive renovation offerings.
               </p>
             </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 max-w-5xl mx-auto">
               <Link href="/services/kitchen-remodeling" className="block group">
                 <Card className="h-full transition-shadow hover:shadow-lg">
-                  <CardContent className="p-6 text-center">
-                    <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors">
+                  <CardContent className="p-3 md:p-6 text-center">
+                    <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors text-sm md:text-base">
                       Kitchen Remodeling
                     </h3>
-                    <p className="text-sm text-text-secondary mt-2">
+                    <p className="text-xs md:text-sm text-text-secondary mt-1 md:mt-2 hidden md:block">
                       Complete kitchen transformations with expert finishing
                     </p>
                   </CardContent>
@@ -667,21 +674,21 @@ export default function InteriorFinishingPage() {
               </Link>
               <Link href="/services/bathroom-renovation" className="block group">
                 <Card className="h-full transition-shadow hover:shadow-lg">
-                  <CardContent className="p-6 text-center">
-                    <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors">
+                  <CardContent className="p-3 md:p-6 text-center">
+                    <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors text-sm md:text-base">
                       Bathroom Renovation
                     </h3>
-                    <p className="text-sm text-text-secondary mt-2">Luxury bathroom updates with premium finishes</p>
+                    <p className="text-xs md:text-sm text-text-secondary mt-1 md:mt-2 hidden md:block">Luxury bathroom updates with premium finishes</p>
                   </CardContent>
                 </Card>
               </Link>
               <Link href="/services/basement-finishing" className="block group">
                 <Card className="h-full transition-shadow hover:shadow-lg">
-                  <CardContent className="p-6 text-center">
-                    <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors">
+                  <CardContent className="p-3 md:p-6 text-center">
+                    <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors text-sm md:text-base">
                       Basement Finishing
                     </h3>
-                    <p className="text-sm text-text-secondary mt-2">
+                    <p className="text-xs md:text-sm text-text-secondary mt-1 md:mt-2 hidden md:block">
                       Transform unfinished space into living areas
                     </p>
                   </CardContent>
@@ -689,11 +696,11 @@ export default function InteriorFinishingPage() {
               </Link>
               <Link href="/services/whole-home-remodeling" className="block group">
                 <Card className="h-full transition-shadow hover:shadow-lg">
-                  <CardContent className="p-6 text-center">
-                    <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors">
-                      Whole Home Remodeling
+                  <CardContent className="p-3 md:p-6 text-center">
+                    <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors text-sm md:text-base">
+                      Whole Home
                     </h3>
-                    <p className="text-sm text-text-secondary mt-2">Complete home transformations</p>
+                    <p className="text-xs md:text-sm text-text-secondary mt-1 md:mt-2 hidden md:block">Complete home transformations</p>
                   </CardContent>
                 </Card>
               </Link>
@@ -702,20 +709,20 @@ export default function InteriorFinishingPage() {
         </section>
 
         {/* Additional Services Mention */}
-        <section className="py-12 bg-background">
+        <section className="py-8 md:py-12 bg-background">
           <div className="container mx-auto px-4">
             <div className="max-w-4xl mx-auto text-center">
-              <h2 className="text-2xl font-bold text-text-primary mb-4">We Also Offer</h2>
-              <p className="text-text-secondary mb-6">
+              <h2 className="text-xl md:text-2xl font-bold text-text-primary mb-3 md:mb-4">We Also Offer</h2>
+              <p className="text-text-secondary text-sm md:text-base mb-4 md:mb-6">
                 In addition to interior finishing, La Vaca General Contractors provides comprehensive construction
                 services including:
               </p>
-              <div className="flex flex-wrap justify-center gap-4">
-                <span className="px-4 py-2 bg-muted rounded-full text-text-secondary">Exterior Work</span>
-                <span className="px-4 py-2 bg-muted rounded-full text-text-secondary">Electrical</span>
-                <span className="px-4 py-2 bg-muted rounded-full text-text-secondary">Plumbing</span>
+              <div className="flex flex-wrap justify-center gap-2 md:gap-4">
+                <span className="px-3 md:px-4 py-1.5 md:py-2 bg-muted rounded-full text-text-secondary text-sm">Exterior Work</span>
+                <span className="px-3 md:px-4 py-1.5 md:py-2 bg-muted rounded-full text-text-secondary text-sm">Electrical</span>
+                <span className="px-3 md:px-4 py-1.5 md:py-2 bg-muted rounded-full text-text-secondary text-sm">Plumbing</span>
               </div>
-              <p className="text-sm text-text-muted mt-4">
+              <p className="text-xs md:text-sm text-text-muted mt-3 md:mt-4">
                 Contact us to discuss your complete project needs.
               </p>
             </div>
@@ -723,14 +730,14 @@ export default function InteriorFinishingPage() {
         </section>
 
         {/* CTA Section */}
-        <section className="py-16 bg-gradient-to-br from-primary to-accent-sunset text-white">
+        <section className="py-10 md:py-16 bg-gradient-to-br from-primary to-accent-sunset text-white">
           <div className="container mx-auto px-4 text-center">
-            <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to Start Your Interior Finishing Project?</h2>
-            <p className="text-xl mb-8 opacity-90 max-w-2xl mx-auto">
+            <h2 className="text-2xl md:text-4xl font-bold mb-4 md:mb-6">Ready to Start Your Interior Finishing Project?</h2>
+            <p className="text-base md:text-xl mb-6 md:mb-8 opacity-90 max-w-2xl mx-auto">
               Whether you need a single room finished or a complete interior transformation, our expert team is ready to
               deliver exceptional results.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-center">
               <Button size="lg" variant="secondary" asChild>
                 <Link href="/contact">Schedule Consultation</Link>
               </Button>
