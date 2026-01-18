@@ -3,6 +3,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Breadcrumb from "@/components/Breadcrumb";
 import TeamMember from "@/components/TeamMember";
+import { ComplianceDocuments } from "@/components/ComplianceDocuments";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Shield, Award, Users, Calendar, CheckCircle, Heart } from "lucide-react";
 import alexHeadshot from "@/assets/alex-headshot.png";
@@ -237,9 +238,10 @@ export default function About() {
 
                   <p className="text-text-secondary leading-relaxed">
                     We maintain all required licensing, bonding, and insurance to protect both
-                    your property and our team throughout every project. Copies of our
-                    credentials are available upon request.
+                    your property and our team throughout every project.
                   </p>
+
+                  <ComplianceDocuments />
                 </CardContent>
               </Card>
             </div>

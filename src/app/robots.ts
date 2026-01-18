@@ -6,17 +6,17 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: '*',
         allow: '/',
-        disallow: ['/admin/', '/api/', '/auth/', '/_next/', '/private/'],
+        disallow: ['/admin/', '/api/', '/auth/', '/_next/', '/private/', '/insurance', '/bond', '/license'],
       },
       {
         userAgent: 'Googlebot',
         allow: '/',
-        disallow: ['/admin/', '/auth/'],
+        disallow: ['/admin/', '/auth/', '/insurance', '/bond', '/license'],
       },
       {
         userAgent: 'Bingbot',
         allow: '/',
-        disallow: ['/admin/', '/auth/'],
+        disallow: ['/admin/', '/auth/', '/insurance', '/bond', '/license'],
       },
     ],
     sitemap: 'https://www.lavacagc.com/sitemap.xml',

@@ -24,6 +24,7 @@ import { LeadsManager } from '@/components/admin/LeadsManager';
 import { EstimatesManager } from '@/components/admin/EstimatesManager';
 import { PricingManager } from '@/components/admin/PricingManager';
 import { NonNegotiablesManager } from '@/components/admin/NonNegotiablesManager';
+import { ComplianceDocumentsManager } from '@/components/admin/ComplianceDocumentsManager';
 import { ReportsPage } from '@/components/admin/ReportsPage';
 import { LogOut, Menu } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
@@ -243,6 +244,10 @@ export default function AdminContent() {
 
           <TabsContent value="non-negotiables">
             <NonNegotiablesManager />
+          </TabsContent>
+
+          <TabsContent value="compliance">
+            <ComplianceDocumentsManager />
           </TabsContent>
 
           <TabsContent value="reports">

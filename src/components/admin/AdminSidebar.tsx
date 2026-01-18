@@ -1,20 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  LayoutDashboard, 
-  Activity, 
-  Bot, 
-  FileText, 
-  Wrench, 
-  MapPin, 
-  FolderKanban, 
-  Globe, 
+import {
+  LayoutDashboard,
+  Activity,
+  Bot,
+  FileText,
+  Wrench,
+  MapPin,
+  FolderKanban,
+  Globe,
   Plus,
   X,
   Inbox,
   Calculator,
   DollarSign,
   Shield,
-  BarChart
+  BarChart,
+  FileCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -45,6 +46,7 @@ export default function AdminSidebar({ activeTab, onTabChange, isMobileOpen, onM
     { id: 'estimates', icon: Calculator, label: 'Calculator Estimates' },
     { id: 'pricing', icon: DollarSign, label: 'Pricing Management' },
     { id: 'non-negotiables', icon: Shield, label: 'Non-Negotiables' },
+    { id: 'compliance', icon: FileCheck, label: 'Compliance Docs' },
     { id: 'reports', icon: BarChart, label: 'Reports' },
   ];
 

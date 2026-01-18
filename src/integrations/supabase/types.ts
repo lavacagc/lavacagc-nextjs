@@ -128,6 +128,45 @@ export type Database = {
         }
         Relationships: []
       }
+      compliance_documents: {
+        Row: {
+          id: string
+          document_type: "insurance" | "bond" | "license"
+          display_name: string
+          description: string | null
+          file_url: string | null
+          file_name: string | null
+          file_size: number | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          document_type: "insurance" | "bond" | "license"
+          display_name: string
+          description?: string | null
+          file_url?: string | null
+          file_name?: string | null
+          file_size?: number | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          document_type?: "insurance" | "bond" | "license"
+          display_name?: string
+          description?: string | null
+          file_url?: string | null
+          file_name?: string | null
+          file_size?: number | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       blog_posts: {
         Row: {
           author: string
