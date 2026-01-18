@@ -15,6 +15,8 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid document type' }, { status: 400 });
   }
 
+  const documentType = type as DocumentType;
+
   try {
     const supabase = getServerSupabaseClient();
 
@@ -22,7 +24,7 @@ export async function GET(
     const { data: doc, error: dbError } = await supabase
       .from('compliance_documents')
       .select('file_url, display_name')
-      .eq('document_type', type)
+      .eq('document_type', documentType)
       .eq('is_active', true)
       .not('file_url', 'is', null)
       .single();
