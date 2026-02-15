@@ -138,13 +138,13 @@ export default function About() {
                     </p>
 
                     <p className="text-text-secondary text-lg leading-relaxed mb-6">
-                      What started as a small family business has grown into one of the region's most trusted remodeling companies. We've completed projects all over north jersey, from intimate bathroom renovations to extensive whole-home transformations, always maintaining our commitment to excellence and client satisfaction.
+                      What started as a small family business has grown into one of the region&apos;s most trusted remodeling companies. We&apos;ve completed projects all over north jersey, from intimate bathroom renovations to extensive whole-home transformations, always maintaining our commitment to excellence and client satisfaction.
                     </p>
 
                     <p className="text-text-secondary text-lg leading-relaxed mb-6">
                       Our boutique approach means we take on a limited number of projects at a time,
                       ensuring each client receives the dedicated attention they deserve. We believe
-                      that your home is your sanctuary, and we're honored to help you create spaces
+                      that your home is your sanctuary, and we&apos;re honored to help you create spaces
                       that reflect your style and enhance your daily life.
                     </p>
 

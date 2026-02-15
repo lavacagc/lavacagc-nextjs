@@ -8,8 +8,8 @@ interface AnalyticsConfig {
   consent_mode_enabled: boolean;
   ip_anonymization: boolean;
   enhanced_ecommerce: boolean;
-  custom_dimensions: Record<string, any>;
-  privacy_settings: Record<string, any>;
+  custom_dimensions: Record<string, unknown>;
+  privacy_settings: Record<string, unknown>;
 }
 
 interface CustomEvent {
@@ -19,7 +19,7 @@ interface CustomEvent {
   event_action: string;
   event_label: string | null;
   event_value: number | null;
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
   active: boolean;
   description: string | null;
 }
@@ -63,7 +63,9 @@ class AnalyticsManager {
     await this.loadConfiguration();
 
     if (!this.config?.tracking_enabled) {
-      console.log('Analytics tracking is disabled');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Analytics tracking is disabled');
+      }
       return;
     }
 
@@ -121,7 +123,9 @@ class AnalyticsManager {
     noscript.appendChild(iframe);
     document.body.insertBefore(noscript, document.body.firstChild);
 
-    console.log('Google Tag Manager initialized with ID:', containerId);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Google Tag Manager initialized with ID:', containerId);
+    }
   }
 
   private initializeGA4(measurementId: string) {
@@ -175,7 +179,7 @@ class AnalyticsManager {
         analyticsConsent = settings.analytics ? 'granted' : 'denied';
         adConsent = settings.marketing ? 'granted' : 'denied';
       }
-    } catch (e) {
+    } catch {
       // If parsing fails, keep default 'denied'
     }
 
@@ -200,13 +204,16 @@ class AnalyticsManager {
     `;
     document.head.appendChild(script2);
 
-    console.log('Google Analytics initialized with ID:', measurementId);
-    console.log('Initial consent mode:', { analyticsConsent, adConsent });
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Google Analytics initialized with ID:', measurementId);
+      console.log('Initial consent mode:', { analyticsConsent, adConsent });
+    }
   }
 
-  trackEvent(eventName: string, parameters?: Record<string, any>) {
-    // Debug logging (always on for now to verify production deployment)
-    console.log('📊 GA Event:', eventName, parameters);
+  trackEvent(eventName: string, parameters?: Record<string, unknown>) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('📊 GA Event:', eventName, parameters);
+    }
 
     if (!this.config?.tracking_enabled || typeof window.gtag === 'undefined') {
       console.warn('⚠️ Tracking disabled or gtag not available:', {
@@ -265,7 +272,7 @@ class AnalyticsManager {
 export const analyticsManager = new AnalyticsManager();
 
 // Convenience functions for backward compatibility
-export const trackEvent = (eventName: string, parameters?: Record<string, any>) => {
+export const trackEvent = (eventName: string, parameters?: Record<string, unknown>) => {
   analyticsManager.trackEvent(eventName, parameters);
 };
 

@@ -3,7 +3,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Separator } from '@/components/ui/separator';
 import { 
   useGMBConfig, 
   useGoogleReviews, 
@@ -35,8 +34,20 @@ import { format } from 'date-fns';
 export function GMBSettings() {
   const [selectedAccount, setSelectedAccount] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
-  const [accounts, setAccounts] = useState<any[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<{ id: string; name: string }[]>([]);
+  const [locations, setLocations] = useState<{
+    id: string;
+    name: string;
+    title?: string;
+    address?: string;
+    storefrontAddress?: {
+      addressLines?: string[];
+      locality?: string;
+      administrativeArea?: string;
+      postalCode?: string;
+    };
+    phoneNumbers?: { primaryPhone?: string };
+  }[]>([]);
 
   const { data: config, isLoading: configLoading } = useGMBConfig();
   const { data: reviews, isLoading: reviewsLoading } = useGoogleReviews();
@@ -145,7 +156,7 @@ export function GMBSettings() {
     }
 
     const location = locations.find(l => l.name === selectedLocation);
-    const businessName = location?.title || 'Unknown';
+    const businessName = location?.name || 'Unknown';
 
     try {
       await saveConfig.mutateAsync({
@@ -171,8 +182,8 @@ export function GMBSettings() {
       } else {
         toast.success(result.message || `Synced ${result.reviewCount} review(s)`);
       }
-    } catch (error: any) {
-      const errorMessage = error?.message || 'Failed to sync reviews';
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to sync reviews';
       toast.error(errorMessage);
       console.error('Sync error:', error);
     }
@@ -284,10 +295,10 @@ export function GMBSettings() {
             <AlertDescription>
               Follow these steps to configure your Google My Business connection:
               <ol className="mt-2 ml-4 list-decimal space-y-1">
-                <li>Click "Fetch Accounts" to retrieve your GMB accounts</li>
+                <li>Click &quot;Fetch Accounts&quot; to retrieve your GMB accounts</li>
                 <li>Select your account from the list</li>
-                <li>Click "Fetch Locations" to get your business locations</li>
-                <li>Select your location and click "Save Configuration"</li>
+                <li>Click &quot;Fetch Locations&quot; to get your business locations</li>
+                <li>Select your location and click &quot;Save Configuration&quot;</li>
               </ol>
             </AlertDescription>
           </Alert>
@@ -312,7 +323,7 @@ export function GMBSettings() {
                   <option value="">-- Select Account --</option>
                   {accounts.map((account) => (
                     <option key={account.name} value={account.name}>
-                      {account.accountName || account.name}
+                      {account.name}
                     </option>
                   ))}
                 </select>
@@ -417,7 +428,7 @@ export function GMBSettings() {
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
-              No reviews found. Click "Sync Reviews" to fetch them.
+              No reviews found. Click &quot;Sync Reviews&quot; to fetch them.
             </div>
           )}
         </CardContent>
@@ -442,7 +453,7 @@ export function GMBSettings() {
             </div>
           ) : syncLogs && syncLogs.length > 0 ? (
             <div className="space-y-2">
-              {syncLogs.slice(0, 10).map((log: any) => (
+              {syncLogs.slice(0, 10).map((log) => (
                 <div key={log.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div className="flex items-center gap-3">
                     {log.status === 'success' && <CheckCircle className="h-4 w-4 text-green-600" />}

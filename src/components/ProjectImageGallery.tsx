@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Carousel,
@@ -52,9 +53,6 @@ const ProjectImageGallery = ({ images = [], title }: ProjectImageGalleryProps) =
 
   if (images.length === 0) return null;
 
-  const currentImage = images[currentIndex];
-  const isLegacyImage = 'before' in currentImage;
-
   return (
     <>
       <div className="space-y-6">
@@ -86,11 +84,14 @@ const ProjectImageGallery = ({ images = [], title }: ProjectImageGalleryProps) =
                       >
                         {isLegacy ? (
                           // Legacy before/after image support
-                          <img
+                          <Image
                             src={image.before}
                             alt={image.caption || 'Home renovation project before and after transformation by La Vaca General Contractors'}
                             className="w-full h-full object-cover pointer-events-none"
-                            draggable="false"
+                            fill
+                            sizes="(max-width: 768px) 100vw, 50vw"
+                            draggable={false}
+                            unoptimized
                           />
                         ) : image.media_type === 'video' ? (
                           // Video support with autoplay muted
@@ -118,12 +119,15 @@ const ProjectImageGallery = ({ images = [], title }: ProjectImageGalleryProps) =
 
                             {/* Main centered image */}
                             <div className="absolute inset-0 flex items-center justify-center">
-                              <img
+                              <Image
                                 src={image.url}
                                 alt={image.caption || 'Professional home renovation and remodeling project by La Vaca General Contractors Northern NJ'}
                                 className="max-w-full max-h-full object-contain pointer-events-none"
                                 style={{ zIndex: 1 }}
-                                draggable="false"
+                                fill
+                                sizes="(max-width: 768px) 100vw, 50vw"
+                                draggable={false}
+                                unoptimized
                               />
                             </div>
                           </div>

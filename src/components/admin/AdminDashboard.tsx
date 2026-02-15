@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
-  PlusCircle, 
   FileText, 
   Settings, 
   Users, 
@@ -17,12 +16,11 @@ import {
   Mail,
   Calendar,
   Eye,
-  X,
   Phone,
   MapPin,
   DollarSign
 } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -77,7 +75,8 @@ interface Project {
 export function AdminDashboard({ onNavigateToTab }: { onNavigateToTab: (tab: string) => void }) {
   const router = useRouter();
   const [selectedSubmission, setSelectedSubmission] = useState<RecentSubmission | null>(null);
-  const [fullSubmissionData, setFullSubmissionData] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+const [fullSubmissionData, setFullSubmissionData] = useState<any>(null);
   const [stats, setStats] = useState<DashboardStats>({
     totalBlogs: 0,
     totalProjects: 0,
@@ -108,7 +107,7 @@ export function AdminDashboard({ onNavigateToTab }: { onNavigateToTab: (tab: str
       const weekAgo = new Date(today);
       weekAgo.setDate(weekAgo.getDate() - 7);
 
-      const [blogsData, projectsData, leadsData, warrantyData, seoData, estimateLeadsData] = await Promise.all([
+      const [blogsData, projectsData, leadsData, , seoData, estimateLeadsData] = await Promise.all([
         supabase.from('blog_posts').select('id, published'),
         supabase.from('projects').select('id, title, challenge, solution, location, featured_image_id'),
         supabase.from('leads').select('id'),

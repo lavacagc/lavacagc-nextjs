@@ -1,8 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import {
   CalculatorProjectType,
-  CalculatorOptionCategory,
-  CalculatorOptionItem,
   CalculatorCategoryWithItems,
   EstimateLead,
   LeadSelection,
@@ -72,7 +70,7 @@ export const calculatorService = {
           .filter((item) => item.option_category_id === category.id)
           .map((item) => ({
             ...item,
-            materials_list: (item.materials_list as any) || [],
+            materials_list: (item.materials_list as Array<Record<string, unknown>>) || [],
             modifier_type: item.modifier_type as 'additive' | 'multiplicative' | 'reductive' | 'fixed',
           })),
       })
@@ -120,9 +118,10 @@ export const calculatorService = {
   // Calculate estimate and submit lead
   async calculateEstimate(
     projectType: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- formData is a dynamic shape from calculator steps
     formData: any,
     selectedOptions: string[]
-  ): Promise<any> {
+  ): Promise<Record<string, unknown>> {
     const { data, error } = await supabase.functions.invoke(
       "calculate-estimate",
       {
@@ -177,12 +176,13 @@ export const calculatorService = {
   },
 
   // Submit home addition lead
+   
   async submitHomeAddition(
     projectDescription: string,
     projectLocation: string,
     uploadedPlans: PDFUpload[],
-    leadData: any
-  ): Promise<any> {
+    leadData: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
     const { data, error } = await supabase.functions.invoke(
       "submit-home-addition",
       {
@@ -219,8 +219,8 @@ export const calculatorService = {
     // Prepare lead data for insertion - cast JSON fields
     const leadInsert = {
       ...lead,
-      uploaded_images: (lead.uploaded_images || []) as any,
-      uploaded_plans: (lead.uploaded_plans || []) as any,
+      uploaded_images: (lead.uploaded_images || []) as unknown as string[],
+      uploaded_plans: (lead.uploaded_plans || []) as unknown as PDFUpload[],
     };
 
     // Insert lead
@@ -267,8 +267,8 @@ export const calculatorService = {
     if (data) {
       return {
         ...data,
-        uploaded_images: (data.uploaded_images as any) || [],
-        uploaded_plans: (data.uploaded_plans as any) || [],
+        uploaded_images: (data.uploaded_images as unknown as string[]) || [],
+        uploaded_plans: (data.uploaded_plans as unknown as PDFUpload[]) || [],
       };
     }
     

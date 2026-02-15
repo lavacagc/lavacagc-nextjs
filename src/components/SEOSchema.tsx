@@ -24,7 +24,8 @@ interface SEOSchemaProps {
  * @deprecated Use StructuredData.tsx (server-side) instead
  * This component is kept for backward compatibility only
  */
-const SEOSchema = ({ title, description, type }: SEOSchemaProps = {}) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const SEOSchema = (_props: SEOSchemaProps = {}) => {
   // DEPRECATED: Return null - schema is now rendered server-side via StructuredData.tsx in layout.tsx
   // See src/components/StructuredData.tsx for the new implementation
   return null;

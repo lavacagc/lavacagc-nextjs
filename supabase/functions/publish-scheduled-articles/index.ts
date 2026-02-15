@@ -47,7 +47,8 @@ function formatToEastern(date: Date): string {
   });
 }
 
-const handler = async (req: Request): Promise<Response> => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const handler = async (_req: Request): Promise<Response> => {
   // This function is called by pg_cron, no CORS needed for internal calls
   // But we'll add basic headers for manual testing
   const headers = {

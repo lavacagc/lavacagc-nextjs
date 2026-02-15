@@ -27,7 +27,7 @@ const LocalSEOContent: React.FC<LocalSEOContentProps> = ({ location, service }) 
               Why Choose Local {location.name} Contractors?
             </h2>
             <p className="text-xl text-text-secondary">
-              We understand {location.name}'s unique architectural styles, building codes, and community standards
+              We understand {location.name}&apos;s unique architectural styles, building codes, and community standards
             </p>
           </div>
 
@@ -60,7 +60,7 @@ const LocalSEOContent: React.FC<LocalSEOContentProps> = ({ location, service }) 
                       {location.name} {serviceName ? serviceName.charAt(0).toUpperCase() + serviceName.slice(1) : 'Remodeling'} Specialists
                     </h3>
                     <p className="text-text-secondary mb-3">
-                      Understanding {location.name}'s unique housing market and architectural requirements:
+                      Understanding {location.name}&apos;s unique housing market and architectural requirements:
                     </p>
                     <ul className="space-y-1 text-sm text-text-secondary">
                       <li>&#8226; Average home value: {location.demographics.avgHomeValue}</li>
@@ -77,19 +77,19 @@ const LocalSEOContent: React.FC<LocalSEOContentProps> = ({ location, service }) 
           {/* Near Me SEO Content */}
           <div className="bg-card border rounded-lg p-8">
             <h3 className="text-2xl font-bold text-text-primary mb-4">
-              Looking for "{serviceName} contractors near me" in {location.name}?
+              Looking for &quot;{serviceName} contractors near me&quot; in {location.name}?
             </h3>
             <div className="prose max-w-none text-text-secondary">
               <p className="mb-4">
-                When searching for "{serviceName} near me" or "local {serviceName} contractors," {location.name} homeowners
+                When searching for &quot;{serviceName} near me&quot; or &quot;local {serviceName} contractors,&quot; {location.name} homeowners
                 trust La Vaca General Contractors for premium renovations throughout {location.county}. Our licensed and
-                insured team specializes in {serviceName} projects that meet {location.name}'s high standards.
+                insured team specializes in {serviceName} projects that meet {location.name}&apos;s high standards.
               </p>
 
               <p className="mb-4">
                 We serve all {location.name} zip codes including {location.zipCodes.join(', ')} and surrounding areas.
-                Whether you're in {location.neighborhoods.slice(0, 3).join(', ')}, or nearby communities like{' '}
-                {location.nearbyAreas.slice(0, 3).join(', ')}, we're your local {serviceName} experts.
+                Whether you&apos;re in {location.neighborhoods.slice(0, 3).join(', ')}, or nearby communities like{' '}
+                {location.nearbyAreas.slice(0, 3).join(', ')}, we&apos;re your local {serviceName} experts.
               </p>
 
               <div className="grid md:grid-cols-3 gap-4 mt-6">

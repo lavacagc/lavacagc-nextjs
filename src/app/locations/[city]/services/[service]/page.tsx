@@ -1,7 +1,6 @@
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Phone, CheckCircle2, Star, Award, Clock } from "lucide-react";
+import { MapPin, CheckCircle2 } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import SEOSchema from "@/components/SEOSchema";
@@ -231,7 +230,7 @@ export default async function LocationServicePage({ params }: LocationServicePag
           <div className="container mx-auto px-4">
             <div className="max-w-6xl mx-auto">
               <h2 className="text-3xl md:text-4xl font-bold text-center text-text-primary mb-12">
-                What's Included
+                What&apos;s Included
               </h2>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {serviceData.features.map((feature, index) => (

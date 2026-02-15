@@ -36,6 +36,7 @@ const BrokenLinkDetector: React.FC = () => {
 
   useEffect(() => {
     loadBrokenLinks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadBrokenLinks is stable, only needs to run on mount
   }, []);
 
   const loadBrokenLinks = async () => {
@@ -69,7 +70,7 @@ const BrokenLinkDetector: React.FC = () => {
                 .single();
               contentTitle = project?.title || contentTitle;
             }
-          } catch (error) {
+          } catch {
             console.error('Error fetching content title:', error);
           }
 
@@ -78,7 +79,7 @@ const BrokenLinkDetector: React.FC = () => {
       );
 
       setBrokenLinks(enrichedLinks);
-    } catch (error) {
+    } catch {
       toast({
         title: "Loading Failed",
         description: "Could not load broken links.",
@@ -124,7 +125,7 @@ const BrokenLinkDetector: React.FC = () => {
               content: item.content || ''
             }
           });
-        } catch (error) {
+        } catch {
           console.error(`Link check failed for ${item.id}:`, error);
         }
         
@@ -138,7 +139,7 @@ const BrokenLinkDetector: React.FC = () => {
       });
 
       await loadBrokenLinks();
-    } catch (error) {
+    } catch {
       toast({
         title: "Check Failed",
         description: "Could not complete link check.",
@@ -164,7 +165,7 @@ const BrokenLinkDetector: React.FC = () => {
       });
 
       await loadBrokenLinks();
-    } catch (error) {
+    } catch {
       toast({
         title: "Recheck Failed",
         description: "Could not recheck broken links.",
@@ -188,7 +189,7 @@ const BrokenLinkDetector: React.FC = () => {
       });
 
       await loadBrokenLinks();
-    } catch (error) {
+    } catch {
       toast({
         title: "Update Failed",
         description: "Could not update link status.",

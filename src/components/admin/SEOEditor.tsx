@@ -15,7 +15,7 @@ interface SEOEditorProps {
   title: string;
   content: string;
   currentSlug?: string;
-  onSave: (seoData: any) => void;
+  onSave: (seoData: Record<string, string | string[]>) => void;
 }
 
 interface SEOAnalysis {
@@ -53,6 +53,7 @@ const SEOEditor: React.FC<SEOEditorProps> = ({
   useEffect(() => {
     loadExistingSEOData();
     generateSlugFromTitle();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when content identity changes
   }, [contentId, title]);
 
   useEffect(() => {
@@ -64,6 +65,7 @@ const SEOEditor: React.FC<SEOEditorProps> = ({
     }, 1000);
 
     return () => clearTimeout(debounceTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced analysis triggered by SEO field changes
   }, [seoData.metaTitle, seoData.metaDescription, seoData.focusKeyword, content]);
 
   const loadExistingSEOData = async () => {
@@ -168,7 +170,7 @@ const SEOEditor: React.FC<SEOEditorProps> = ({
 
       // Trigger fresh analysis
       performSEOAnalysis();
-    } catch (error) {
+    } catch {
       toast({
         title: "Save Failed",
         description: "Could not save SEO settings. Please try again.",
@@ -177,6 +179,7 @@ const SEOEditor: React.FC<SEOEditorProps> = ({
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-accent-emerald';
     if (score >= 60) return 'text-accent-tangerine';

@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, ArrowRight, Save, Grid, List, Filter, Search, Plus, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Grid, Loader2, Trash2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -134,7 +133,7 @@ export function ProjectUploadSystem({ mode, onModeChange, editProject }: Project
 
   const populateFormFromProject = async (project: Project) => {
     // Fetch project images
-    let projectImages: any[] = [];
+    let projectImages: Array<{ url?: string; media_type?: 'image' | 'video'; category: 'before' | 'during' | 'after'; alt_text: string; is_featured: boolean; sort_order: number }> = [];
     try {
       const { data: images } = await supabase
         .from('project_images')
@@ -249,7 +248,7 @@ export function ProjectUploadSystem({ mode, onModeChange, editProject }: Project
         const fileExt = imageData.file?.name.split('.').pop() || 'jpg';
         const fileName = `drafts/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
         
-        const { data, error } = await supabase.storage
+        const { error } = await supabase.storage
           .from('project-images')
           .upload(fileName, imageData.file!);
 
@@ -354,7 +353,8 @@ export function ProjectUploadSystem({ mode, onModeChange, editProject }: Project
     }
   };
 
-  const generateSlug = async (title: string, location: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _generateSlug = async (title: string, location: string) => {
     try {
       const { data, error } = await supabase.rpc('generate_project_slug', {
         project_title: title,
@@ -574,7 +574,7 @@ export function ProjectUploadSystem({ mode, onModeChange, editProject }: Project
       <PortfolioManager 
         onNewProject={() => onModeChange('upload')}
         onEditProject={(project) => {
-          onModeChange('edit', project as any);
+          onModeChange('edit', project as Project);
         }}
       />
     );

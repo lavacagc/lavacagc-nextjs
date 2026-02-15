@@ -50,7 +50,7 @@ export const useSEOStats = () => {
         redirectsResult,
         brokenLinksResult,
         blogPostsResult,
-        pagesResult
+        // pagesResult available for future page-level SEO checks
       ] = await Promise.all([
         supabase.from('redirects').select('active, hit_count, created_at'),
         supabase.from('broken_links').select('resolved, last_checked, url'),
@@ -74,9 +74,7 @@ export const useSEOStats = () => {
 
       // Calculate SEO health stats
       const blogPosts = blogPostsResult.data || [];
-      const pages = pagesResult.data || [];
-      const totalContentPages = blogPosts.length + pages.length;
-
+      // pagesResult.data available for future page-level SEO checks
       // Count pages with proper SEO (has meta description)
       const blogPostsWithMeta = blogPosts.filter(p => p.meta_description && p.meta_description.trim().length > 0);
       const pagesOptimized = blogPostsWithMeta.length;

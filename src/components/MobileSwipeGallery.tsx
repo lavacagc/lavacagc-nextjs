@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import Image from "next/image";
 import { X } from "lucide-react";
 
 interface GalleryImage {
@@ -46,6 +47,18 @@ const MobileSwipeGallery = ({ images, isOpen, initialIndex, onClose }: MobileSwi
     };
   }, [isOpen]);
 
+  const handleNext = useCallback(() => {
+    if (currentIndex < images.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+    }
+  }, [currentIndex, images.length]);
+
+  const handlePrev = useCallback(() => {
+    if (currentIndex > 0) {
+      setCurrentIndex(prev => prev - 1);
+    }
+  }, [currentIndex]);
+
   useEffect(() => {
     const handleKeyboard = (e: KeyboardEvent) => {
       if (!isOpen) return;
@@ -65,7 +78,7 @@ const MobileSwipeGallery = ({ images, isOpen, initialIndex, onClose }: MobileSwi
 
     document.addEventListener('keydown', handleKeyboard);
     return () => document.removeEventListener('keydown', handleKeyboard);
-  }, [isOpen, currentIndex, onClose]);
+  }, [isOpen, currentIndex, onClose, handleNext, handlePrev]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     setStartX(e.touches[0].clientX);
@@ -102,18 +115,6 @@ const MobileSwipeGallery = ({ images, isOpen, initialIndex, onClose }: MobileSwi
 
     setTranslateX(0);
     setIsDragging(false);
-  };
-
-  const handleNext = () => {
-    if (currentIndex < images.length - 1) {
-      setCurrentIndex(prev => prev + 1);
-    }
-  };
-
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(prev => prev - 1);
-    }
   };
 
   const goToSlide = (index: number) => {
@@ -156,12 +157,12 @@ const MobileSwipeGallery = ({ images, isOpen, initialIndex, onClose }: MobileSwi
           {images.map((image, index) => (
             <div
               key={index}
-              className="flex-shrink-0 w-screen h-full flex items-center justify-center px-4 md:px-8 py-16 md:py-20 box-border"
+              className="flex-shrink-0 w-screen h-full relative px-4 md:px-8 py-16 md:py-20 box-border"
             >
               {image.media_type === 'video' ? (
                 <video
                   src={image.url}
-                  className="max-w-full max-h-full object-contain select-none"
+                  className="max-w-full max-h-full object-contain select-none absolute inset-0 m-auto"
                   autoPlay
                   muted
                   loop
@@ -169,11 +170,14 @@ const MobileSwipeGallery = ({ images, isOpen, initialIndex, onClose }: MobileSwi
                   controls
                 />
               ) : (
-                <img
+                <Image
                   src={image.url}
                   alt={image.caption || `Project image ${index + 1}`}
-                  className="max-w-full max-h-full object-contain select-none pointer-events-none"
-                  draggable="false"
+                  className="object-contain select-none pointer-events-none"
+                  fill
+                  sizes="100vw"
+                  draggable={false}
+                  unoptimized
                 />
               )}
             </div>

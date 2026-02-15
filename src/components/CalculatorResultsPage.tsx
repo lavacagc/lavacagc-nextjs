@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { CheckCircle2, DollarSign, FileText, Phone, Calendar, AlertCircle, Star, Shield, Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -37,15 +36,7 @@ export default function ResultsPage() {
   const [ctaType, setCtaType] = useState<"assessment" | "phone" | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (!leadId) {
-      router.push("/project-calculator");
-      return;
-    }
-    loadLead();
-  }, [leadId]);
-
-  const loadLead = async () => {
+  const loadLead = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -80,7 +71,7 @@ export default function ResultsPage() {
       }
 
       setLead(data);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error loading lead:", error);
       toast({
         title: "Error",
@@ -91,7 +82,15 @@ export default function ResultsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [leadId, router]);
+
+  useEffect(() => {
+    if (!leadId) {
+      router.push("/project-calculator");
+      return;
+    }
+    loadLead();
+  }, [leadId, router, loadLead]);
 
   const handleCTAClick = (type: "assessment" | "phone") => {
     setCtaType(type);
@@ -121,11 +120,11 @@ export default function ResultsPage() {
       });
       
       setTimelineModalOpen(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error requesting assessment:", error);
       toast({
         title: "Error",
-        description: error.message || "Failed to submit request. Please try again or call us directly.",
+        description: error instanceof Error ? error.message : "Failed to submit request. Please try again or call us directly.",
         variant: "destructive",
       });
     } finally {
@@ -177,7 +176,7 @@ export default function ResultsPage() {
                 <h1 className="text-3xl font-bold">Your Estimate is Ready!</h1>
               </div>
               <p className="text-muted-foreground">
-                Hi {lead.first_name}, here's your {lead.project_type_name} estimate
+                Hi {lead.first_name}, here&apos;s your {lead.project_type_name} estimate
               </p>
             </div>
 
@@ -212,7 +211,7 @@ export default function ResultsPage() {
                 <CardContent>
                   <p className="text-sm">
                     Your {lead.project_type_name} project requires a detailed in-person assessment. 
-                    We'll review your plans and contact you within 48 hours with a comprehensive quote.
+                    We&apos;ll review your plans and contact you within 48 hours with a comprehensive quote.
                   </p>
                 </CardContent>
               </Card>

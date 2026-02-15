@@ -140,7 +140,7 @@ const ReviewSchema: React.FC<ReviewSchemaProps> = ({
                     <div className="flex-1 mb-4">
                       <Quote className="h-4 w-4 text-muted mb-2" />
                       <p className="text-text-secondary text-sm leading-relaxed italic">
-                        "{review.text}"
+                        &quot;{review.text}&quot;
                       </p>
                     </div>
 

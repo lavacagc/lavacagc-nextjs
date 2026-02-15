@@ -2,7 +2,7 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
-import { Home, ArrowLeft, Search } from 'lucide-react';
+import { Home, Search } from 'lucide-react';
 
 export const metadata = {
   title: '404 - Page Not Found | La Vaca General Contractors',
@@ -24,13 +24,13 @@ export default function NotFound() {
               Page Not Found
             </h2>
             <p className="text-xl text-text-secondary mb-8">
-              Oops! The page you're looking for doesn't exist or has been moved.
+              Oops! The page you&apos;re looking for doesn&apos;t exist or has been moved.
             </p>
           </div>
 
           <div className="bg-background-subtle rounded-lg p-8 mb-8">
             <h3 className="text-xl font-semibold text-text-primary mb-4">
-              Here's what you can do:
+              Here&apos;s what you can do:
             </h3>
             <ul className="text-left space-y-3 text-text-secondary max-w-md mx-auto">
               <li className="flex items-start">

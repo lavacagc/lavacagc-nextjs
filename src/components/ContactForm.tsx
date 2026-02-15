@@ -113,7 +113,7 @@ const ContactForm = () => {
             .then((token: string) => {
               resolve(token);
             })
-            .catch((error: any) => {
+            .catch((error: unknown) => {
               console.error('reCAPTCHA execution failed:', error);
               resolve(null);
             });
@@ -441,7 +441,7 @@ const ContactForm = () => {
                 </Link>
                 , including consent to receive calls and text messages as described in Section 3.3 of the Terms and Conditions.
                 <br /><br />
-                <strong>TCPA Consent:</strong> By checking this box, I expressly consent to receive calls and text messages from lavacagc.com (NJHIC# 13VH12419200) at the phone number provided, including via automated dialing systems, for marketing and service-related purposes. I understand consent is not required to purchase services and I can opt out at any time by replying STOP to texts or contacting info@lavacagc.com.
+                <strong>TCPA Consent:</strong> By checking this box, I expressly consent to receive calls and text messages from lavacagc.com (NJHIC# 13VH13373800) at the phone number provided, including via automated dialing systems, for marketing and service-related purposes. I understand consent is not required to purchase services and I can opt out at any time by replying STOP to texts or contacting info@lavacagc.com.
               </Label>
             </div>
             {errors.termsConsent && (
@@ -468,7 +468,7 @@ const ContactForm = () => {
           </Button>
 
           <p className="text-sm text-text-muted text-center">
-            We'll respond within 24 hours. For urgent matters, call us directly at{" "}
+            We&apos;ll respond within 24 hours. For urgent matters, call us directly at{" "}
             <a href="tel:2012124917" className="text-primary hover:underline font-semibold">
               (201) 212-4917
             </a>

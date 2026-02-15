@@ -7,16 +7,14 @@ import {
   BarChart3,
   Search,
   Link,
-  Image,
+  Image as ImageIcon,
   FileText,
   ExternalLink,
   AlertTriangle,
   CheckCircle,
-  TrendingUp,
   RefreshCw,
   Loader2
 } from 'lucide-react';
-import SEOEditor from './SEOEditor';
 import BulkSEOEditor from './BulkSEOEditor';
 import RedirectManager from './RedirectManager';
 import BrokenLinkDetector from './BrokenLinkDetector';
@@ -59,7 +57,7 @@ const SEODashboard: React.FC = () => {
     { id: 'redirects', icon: ExternalLink, label: 'Redirects', width: '80px' },
     { id: 'links', icon: Link, label: 'Links', width: '55px' },
     { id: 'sitemap', icon: Search, label: 'Sitemap', width: '75px' },
-    { id: 'images', icon: Image, label: 'Images', width: '70px' },
+    { id: 'images', icon: ImageIcon, label: 'Images', width: '70px' },
   ];
 
   return (
@@ -228,7 +226,7 @@ const SEODashboard: React.FC = () => {
                     )}
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-text-secondary">This Month's Hits</span>
+                    <span className="text-sm text-text-secondary">This Month&apos;s Hits</span>
                     {stats.loading ? (
                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     ) : (
@@ -305,13 +303,13 @@ const SEODashboard: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
-                <Image className="h-5 w-5" />
+                <ImageIcon className="h-5 w-5" />
                 <span>Image Optimization</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-center py-12">
-                <Image className="h-12 w-12 text-muted mx-auto mb-4" />
+                <ImageIcon className="h-12 w-12 text-muted mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-text-primary mb-2">
                   Image Optimization Coming Soon
                 </h3>

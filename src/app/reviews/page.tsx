@@ -21,9 +21,9 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/reviews',
     images: [
       {
-        url: 'https://www.lavacagc.com/og-reviews.jpg',
-        width: 1200,
-        height: 630,
+        url: 'https://www.lavacagc.com/logo.png',
+        width: 800,
+        height: 800,
         alt: 'Customer Reviews - La Vaca General Contractors',
       },
     ],
@@ -32,6 +32,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Customer Reviews | La Vaca GC',
     description: '5-star rated NJ home remodeling contractor',
+    images: ['/logo.png'],
   },
   alternates: {
     canonical: 'https://www.lavacagc.com/reviews',
@@ -165,7 +166,7 @@ export default function ReviewsPage() {
                 Had a Great Experience?
               </h2>
               <p className="text-lg text-text-secondary mb-8">
-                We'd love to hear about your project! Your feedback helps other homeowners
+                We&apos;d love to hear about your project! Your feedback helps other homeowners
                 make informed decisions and helps us continue to improve our services.
               </p>
               <a

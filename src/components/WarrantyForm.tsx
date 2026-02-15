@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -358,7 +359,7 @@ const WarrantyForm = () => {
       }
 
       // Send email notification
-      const { data: emailData, error: emailError } = await supabase.functions.invoke('send-warranty-notification', {
+      const { error: emailError } = await supabase.functions.invoke('send-warranty-notification', {
         body: {
           recaptchaToken,
           formData,
@@ -678,10 +679,13 @@ const WarrantyForm = () => {
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {images.map((image, index) => (
                     <div key={index} className="relative group">
-                      <img
+                      <Image
                         src={URL.createObjectURL(image)}
-                        alt={`Upload ${index + 1}`}
+                        alt={`Warranty claim upload ${index + 1}`}
                         className="w-full h-24 object-cover rounded border"
+                        width={200}
+                        height={96}
+                        unoptimized
                       />
                       <button
                         type="button"

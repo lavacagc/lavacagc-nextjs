@@ -1,5 +1,6 @@
 'use client'
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -30,10 +31,10 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
           li: ({ node, ...props }) => <li className="text-text-secondary leading-relaxed" {...props} />,
           blockquote: ({ node, children, ...props }) => {
             // Helper to extract text content from React children
-            const getTextContent = (child: any): string => {
+            const getTextContent = (child: React.ReactNode): string => {
               if (typeof child === 'string') return child;
               if (Array.isArray(child)) return child.map(getTextContent).join('');
-              if (child?.props?.children) return getTextContent(child.props.children);
+              if (child && typeof child === 'object' && 'props' in child && child.props?.children) return getTextContent(child.props.children);
               return '';
             };
 
@@ -69,8 +70,9 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
 
             return <blockquote className={className} {...props}>{cleanChildren}</blockquote>;
           },
-          code: ({ node, inline, className, children, ...props }: any) => {
-            if (inline) {
+          code: ({ node, className: _className, children, ...props }: { node?: unknown; className?: string; children?: React.ReactNode; [key: string]: unknown }) => {
+            const isInline = !_className;
+            if (isInline) {
               return <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono text-text-primary" {...props}>{children}</code>;
             }
             return (

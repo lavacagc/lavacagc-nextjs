@@ -1,6 +1,7 @@
 import Header from '@/components/Header'
 import Footer from '@/components/Footer'
 import Hero from '@/components/Hero'
+import Services from '@/components/Services'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import type { Metadata } from 'next'
@@ -34,21 +35,6 @@ const Testimonials = dynamic(() => import('@/components/Testimonials'), {
         <div className="text-center">
           <div className="h-8 w-48 bg-muted animate-pulse rounded mx-auto mb-4" />
           <div className="h-4 w-64 bg-muted animate-pulse rounded mx-auto" />
-        </div>
-      </div>
-    </section>
-  )
-})
-
-const Services = dynamic(() => import('@/components/Services'), {
-  loading: () => (
-    <section className="py-10 md:py-20 bg-muted/30">
-      <div className="container mx-auto px-4">
-        <div className="h-12 w-1/3 bg-muted animate-pulse rounded mx-auto mb-16" />
-        <div className="flex gap-8">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="w-80 h-96 bg-muted animate-pulse rounded-lg flex-shrink-0" />
-          ))}
         </div>
       </div>
     </section>

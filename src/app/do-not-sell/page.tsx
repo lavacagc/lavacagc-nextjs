@@ -67,7 +67,7 @@ export default function DoNotSell() {
             .then((token: string) => {
               resolve(token);
             })
-            .catch((error: any) => {
+            .catch((error: Error) => {
               console.error('reCAPTCHA execution failed:', error);
               resolve(null);
             });
@@ -185,7 +185,7 @@ export default function DoNotSell() {
                 <p className="font-semibold mb-2">What This Means:</p>
                 <ul className="list-disc list-inside space-y-1 text-sm">
                   <li>We will stop sharing your browsing data with advertising partners</li>
-                  <li>You may still see ads from us, but they won't be targeted based on your behavior</li>
+                  <li>You may still see ads from us, but they won&apos;t be targeted based on your behavior</li>
                   <li>You can still receive quotes and services from us</li>
                 </ul>
               </div>
@@ -236,19 +236,19 @@ export default function DoNotSell() {
             <CardContent className="space-y-4">
               <p>
                 <strong>California residents:</strong> Under the California Consumer Privacy Act (CCPA) and
-                California Privacy Rights Act (CPRA), you have the right to opt out of the "sale" or "sharing"
+                California Privacy Rights Act (CPRA), you have the right to opt out of the &quot;sale&quot; or &quot;sharing&quot;
                 of your personal information.
               </p>
               <p>
                 We do not sell your information for money, but we do share information with advertising partners
-                (Google Ads, Facebook Pixel) for targeted advertising. This is considered "sharing" under California law.
+                (Google Ads, Facebook Pixel) for targeted advertising. This is considered &quot;sharing&quot; under California law.
               </p>
 
               <div className="bg-muted p-4 rounded-lg">
                 <p className="font-semibold mb-2">What happens when you opt out:</p>
                 <ul className="list-disc list-inside space-y-1">
                   <li>We will stop sharing your browsing data with advertising partners</li>
-                  <li>You may still see ads from us, but they won't be targeted based on your behavior</li>
+                  <li>You may still see ads from us, but they won&apos;t be targeted based on your behavior</li>
                   <li>You can still receive quotes and services from us</li>
                 </ul>
               </div>
@@ -353,7 +353,7 @@ export default function DoNotSell() {
                     <a href="mailto:alex@lavacagc.com" className="text-sm text-primary hover:underline">
                       alex@lavacagc.com
                     </a>
-                    <p className="text-xs text-muted-foreground">Subject: "Do Not Sell/Share Request"</p>
+                    <p className="text-xs text-muted-foreground">Subject: &quot;Do Not Sell/Share Request&quot;</p>
                   </div>
                 </div>
 
@@ -385,7 +385,7 @@ export default function DoNotSell() {
                 <ol className="list-decimal list-inside space-y-1 text-sm">
                   <li>We will send a confirmation email within 10 business days</li>
                   <li>Your opt-out will be processed within 15 business days</li>
-                  <li>You'll receive a final confirmation once your request is complete</li>
+                  <li>You&apos;ll receive a final confirmation once your request is complete</li>
                 </ol>
               </div>
             </CardContent>

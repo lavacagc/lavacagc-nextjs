@@ -8,6 +8,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import CookieConsent from '@/components/CookieConsent'
 import Analytics from '@/components/Analytics'
 import StructuredData from '@/components/StructuredData'
+import ChatWidget from '@/components/ChatWidget'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -19,7 +20,7 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://www.lavacagc.com'),
   title: {
     default: 'Home Renovation & Remodeling Contractor NJ | Kitchen, Bathroom & Additions',
-    template: '%s | Lavaca General Contracting'
+    template: '%s | La Vaca General Contractors'
   },
   description: 'Transform your NJ home with La Vaca GC\'s expert kitchen & bathroom remodeling, home additions, and renovation services. Licensed contractors. Free estimates. Call today!',
   keywords: ['home remodeling', 'kitchen renovation', 'bathroom remodeling', 'basement finishing', 'Northern New Jersey contractor', 'Alpine', 'Short Hills', 'Saddle River', 'Essex Fells'],
@@ -36,7 +37,7 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_US',
     url: 'https://www.lavacagc.com',
-    siteName: 'Lavaca General Contracting',
+    siteName: 'La Vaca General Contractors',
     title: 'Home Renovation & Remodeling Contractor NJ | Kitchen, Bathroom & Additions',
     description: 'Transform your NJ home with La Vaca GC\'s expert kitchen & bathroom remodeling, home additions, and renovation services. Licensed contractors. Free estimates. Call today!',
     images: [
@@ -100,6 +101,7 @@ export default function RootLayout({
             <Toaster />
             <Sonner />
             <CookieConsent />
+            <ChatWidget />
           </TooltipProvider>
         </Providers>
       </body>

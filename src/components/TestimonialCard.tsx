@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
 import { Star, Quote } from "lucide-react";
 
@@ -44,17 +45,20 @@ const TestimonialCard = ({
 
         {/* Testimonial */}
         <blockquote className="text-text-secondary leading-relaxed mb-6 italic">
-          "{testimonial}"
+          &quot;{testimonial}&quot;
         </blockquote>
 
         {/* Client Info */}
         <div className="flex items-center gap-4">
           <div className="flex-shrink-0">
             {imageUrl ? (
-              <img
+              <Image
                 src={imageUrl}
                 alt={`${name} from ${location} - La Vaca General Contractors client`}
                 className="w-12 h-12 rounded-full object-cover"
+                width={48}
+                height={48}
+                unoptimized
               />
             ) : (
               <div className="w-12 h-12 rounded-full bg-gradient-primary flex items-center justify-center text-white font-semibold">

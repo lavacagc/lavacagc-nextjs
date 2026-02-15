@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from '@/hooks/use-toast';
 import { 
@@ -78,7 +77,14 @@ export function AIContentAssistant() {
     topic: ''
   });
   const [bulkKeywords, setBulkKeywords] = useState('');
-  const [smartSuggestions, setSmartSuggestions] = useState<any>(null);
+  const [smartSuggestions, setSmartSuggestions] = useState<{
+    error?: string;
+    relatedPosts?: string[];
+    portfolioProjects?: string[];
+    callToActions?: string[];
+    keywords?: string[];
+    customerQuestions?: string[];
+  } | null>(null);
   const [selectedText, setSelectedText] = useState('');
 
   const aiNavItems = [
@@ -298,7 +304,7 @@ export function AIContentAssistant() {
         title: "Copied!",
         description: "Content copied to clipboard.",
       });
-    } catch (error) {
+    } catch {
       toast({
         title: "Copy Failed",
         description: "Could not copy to clipboard.",
@@ -384,7 +390,7 @@ export function AIContentAssistant() {
           <CardHeader>
             <CardTitle className="text-lg">Article Context</CardTitle>
             <CardDescription>
-              Provide context about the article you're working on for better AI generation
+              Provide context about the article you&apos;re working on for better AI generation
             </CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">

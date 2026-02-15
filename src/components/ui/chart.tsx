@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as React from "react";
 import * as RechartsPrimitive from "recharts";
 
@@ -60,7 +59,7 @@ const ChartContainer = React.forwardRef<
 ChartContainer.displayName = "Chart";
 
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
-  const colorConfig = Object.entries(config).filter(([_, config]) => config.theme || config.color);
+  const colorConfig = Object.entries(config).filter(([, configItem]) => configItem.theme || configItem.color);
 
   if (!colorConfig.length) {
     return null;
@@ -99,13 +98,13 @@ const ChartTooltipContent = React.forwardRef<
       indicator?: "line" | "dot" | "dashed";
       nameKey?: string;
       labelKey?: string;
-      payload?: any[];
+      payload?: Array<Record<string, unknown>>;
       active?: boolean;
-      label?: any;
-      labelFormatter?: any;
+      label?: string | number;
+      labelFormatter?: (value: unknown, payload: Array<Record<string, unknown>>) => React.ReactNode;
       labelClassName?: string;
-      formatter?: any;
-      color?: any;
+      formatter?: (value: unknown, name: string, item: Record<string, unknown>, index: number, payload: unknown) => React.ReactNode;
+      color?: string;
     }
 >(
   (

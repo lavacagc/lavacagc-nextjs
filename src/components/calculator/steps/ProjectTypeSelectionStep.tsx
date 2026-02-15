@@ -91,7 +91,7 @@ export const ProjectTypeSelectionStep = ({
           What type of project are you planning?
         </h2>
         <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
-          Select the area you'd like to renovate and we'll calculate your estimate
+          Select the area you&apos;d like to renovate and we&apos;ll calculate your estimate
         </p>
       </div>
 

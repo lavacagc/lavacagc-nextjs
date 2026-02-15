@@ -19,7 +19,7 @@ async function uploadVideos() {
 
     console.log(`Uploading ${videoFile}...`);
 
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('hero-videos')
       .upload(videoFile, fileBuffer, {
         contentType: 'video/mp4',

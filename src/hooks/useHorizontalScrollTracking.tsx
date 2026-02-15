@@ -56,21 +56,24 @@ export function useHorizontalScrollTracking(options: HorizontalScrollTrackingOpt
     }
   }, [sectionId, sectionName, scrollDepthThresholds]);
 
-  const throttledHandleScroll = useCallback(
-    throttle(handleHorizontalScroll, throttleMs),
-    [handleHorizontalScroll, throttleMs]
-  );
+  const throttledHandleScroll = useRef<ReturnType<typeof throttle> | null>(null);
+
+  // Keep the throttled function updated when dependencies change
+  useEffect(() => {
+    throttledHandleScroll.current = throttle(handleHorizontalScroll, throttleMs);
+  }, [handleHorizontalScroll, throttleMs]);
 
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
 
-    element.addEventListener('scroll', throttledHandleScroll as any, { passive: true });
+    const handler = (e: Event) => throttledHandleScroll.current?.(e);
+    element.addEventListener('scroll', handler, { passive: true });
 
     return () => {
-      element.removeEventListener('scroll', throttledHandleScroll as any);
+      element.removeEventListener('scroll', handler);
     };
-  }, [throttledHandleScroll]);
+  }, []);
 
   return scrollRef;
 }

@@ -1,6 +1,5 @@
 import Image, { StaticImageData } from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Mail, Phone, Calendar } from "lucide-react";
 
 interface TeamMemberProps {

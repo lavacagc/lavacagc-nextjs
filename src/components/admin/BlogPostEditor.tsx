@@ -28,6 +28,7 @@ import { convertHeicToJpeg } from '@/utils/heicConverter';
 import { format, parse } from 'date-fns';
 import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { cn } from '@/lib/utils';
+import Image from 'next/image';
 
 interface BlogPost {
   id: string;
@@ -129,6 +130,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     if (postId) {
       loadPost();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadPost depends on postId which is already in deps; including it would cause infinite loops
   }, [postId]);
 
   const loadPost = async () => {
@@ -535,9 +537,11 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
             <CardContent className="space-y-4">
               {post.featured_image && (
                 <div className="relative">
-                  <img
+                  <Image
                     src={post.featured_image}
                     alt="Featured"
+                    width={400}
+                    height={192}
                     className="w-full h-48 object-cover rounded-md"
                   />
                   <Button

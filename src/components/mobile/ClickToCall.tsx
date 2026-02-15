@@ -20,8 +20,6 @@ const ClickToCall: React.FC<ClickToCallProps> = ({
   variant = 'default',
   size = 'default',
   className = '',
-  showIcon = true,
-  children
 }) => {
   // Clean phone number for tel: link (remove all non-digits except +)
   const cleanPhoneNumber = phoneNumber.replace(/[^\d+]/g, '');
@@ -29,8 +27,8 @@ const ClickToCall: React.FC<ClickToCallProps> = ({
 
   const handleClick = () => {
     // Track click event for analytics
-    if (typeof window !== 'undefined' && (window as any).gtag) {
-      (window as any).gtag('event', 'phone_call', {
+    if (typeof window !== 'undefined' && window.gtag) {
+      window.gtag('event', 'phone_call', {
         event_category: 'engagement',
         event_label: cleanPhoneNumber,
       });

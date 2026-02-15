@@ -4,7 +4,7 @@ import Footer from '@/components/Footer';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { CheckCircle, Clock, Home, Sparkles, Shield, Users } from 'lucide-react';
+import { CheckCircle, Clock, Home, Sparkles, Shield } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Whole Home Remodeling Services in Northern NJ | La Vaca General Contractors',
@@ -252,7 +252,7 @@ export default function WholeHomeRemodelingPage() {
                 Why Choose Whole Home Remodeling?
               </h2>
               <p className="text-lg text-text-secondary max-w-3xl mx-auto">
-                A comprehensive renovation offers advantages that room-by-room projects can't match.
+                A comprehensive renovation offers advantages that room-by-room projects can&apos;t match.
               </p>
             </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-6xl mx-auto">
@@ -273,7 +273,7 @@ export default function WholeHomeRemodelingPage() {
         <section className="py-16 bg-muted/50">
           <div className="container mx-auto px-4">
             <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">What's Included</h2>
+              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">What&apos;s Included</h2>
               <p className="text-lg text-text-secondary max-w-3xl mx-auto">
                 Our whole-home remodeling service covers every aspect of your renovation.
               </p>
@@ -367,7 +367,7 @@ export default function WholeHomeRemodelingPage() {
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">Looking for Specific Services?</h2>
               <p className="text-lg text-text-secondary max-w-3xl mx-auto">
-                If you're focusing on a particular area of your home, explore our individual service offerings.
+                If you&apos;re focusing on a particular area of your home, explore our individual service offerings.
               </p>
             </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-6 max-w-6xl mx-auto">

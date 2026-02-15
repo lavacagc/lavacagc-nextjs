@@ -52,7 +52,7 @@ export const ConfirmationStep = ({
               2
             </div>
             <div>
-              <p className="font-semibold">We'll call you to discuss the project</p>
+              <p className="font-semibold">We&apos;ll call you to discuss the project</p>
               <p className="text-sm text-muted-foreground">
                 Initial consultation call within 48 hours to understand your vision
               </p>

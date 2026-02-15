@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -152,7 +153,7 @@ export default function PortfolioContent({ projects }: PortfolioContentProps) {
                   className="group overflow-hidden hover:shadow-elegant transition-all duration-300 hover:-translate-y-2 bg-card border-2 hover:border-primary/20 flex-shrink-0 w-80"
                 >
                   <div
-                    className="relative overflow-hidden cursor-pointer"
+                    className="relative overflow-hidden cursor-pointer h-64"
                     onClick={() => {
                       openLightbox(project, 0);
                       // Track lightbox open
@@ -166,18 +167,20 @@ export default function PortfolioContent({ projects }: PortfolioContentProps) {
                     {project.project_images?.[0]?.media_type === 'video' ? (
                       <video
                         src={getProjectImage(project)}
-                        className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         autoPlay
                         muted
                         loop
                         playsInline
                       />
                     ) : (
-                      <img
+                      <Image
                         src={getProjectImage(project)}
                         alt={`${project.title} - ${project.service_types[0]} renovation project in ${project.location} by La Vaca General Contractors`}
-                        className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-300"
-                        loading="lazy"
+                        className="object-cover group-hover:scale-105 transition-transform duration-300"
+                        fill
+                        sizes="320px"
+                        unoptimized
                       />
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />

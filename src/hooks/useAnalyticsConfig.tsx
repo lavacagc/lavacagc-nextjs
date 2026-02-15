@@ -10,8 +10,8 @@ export interface AnalyticsConfig {
   consent_mode_enabled: boolean;
   ip_anonymization: boolean;
   enhanced_ecommerce: boolean;
-  custom_dimensions: Record<string, any>;
-  privacy_settings: Record<string, any>;
+  custom_dimensions: Record<string, unknown>;
+  privacy_settings: Record<string, unknown>;
 }
 
 export interface CustomEvent {
@@ -21,7 +21,7 @@ export interface CustomEvent {
   event_action: string;
   event_label: string | null;
   event_value: number | null;
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
   active: boolean;
   description: string | null;
 }

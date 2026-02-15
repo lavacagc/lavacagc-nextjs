@@ -6,7 +6,8 @@ interface CanonicalUrlProps {
   customUrl?: string;
 }
 
-const CanonicalUrl: React.FC<CanonicalUrlProps> = ({ customUrl }) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const CanonicalUrl: React.FC<CanonicalUrlProps> = (_props) => {
   return null;
 };
 

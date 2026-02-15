@@ -1,12 +1,13 @@
 import React, { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AdminCheckbox } from '@/components/admin/ui/AdminCheckbox';
-import { Upload, Image, Star, Trash2, Edit, Sparkles, RotateCw, Crop, Sun } from 'lucide-react';
+import { Upload, Image as ImageIcon, Star, Trash2, RotateCw } from 'lucide-react';
+import NextImage from 'next/image';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { ProjectFormData } from '../ProjectUploadSystem';
@@ -20,7 +21,6 @@ interface ProjectPhotosStepProps {
 export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosStepProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
 
   const analyzeImage = async (file: File) => {
     console.log('Starting image analysis for:', file.name);
@@ -39,7 +39,7 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
       const tempFileName = `temp-analysis-${Date.now()}.${fileExt}`;
       
       console.log('Uploading temp file:', tempFileName);
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('project-images')
         .upload(tempFileName, file);
 
@@ -103,7 +103,8 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
     }
   };
 
-  const fileToBase64 = (file: File): Promise<string> => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
@@ -204,6 +205,7 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
     e.preventDefault();
     setIsDragging(false);
     handleFileUpload(e.dataTransfer.files);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleFileUpload is stable, formData.images is the relevant dep
   }, [formData.images]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -381,7 +383,7 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
               />
               <Button variant="outline" asChild>
                 <label htmlFor="image-upload" className="cursor-pointer">
-                  <Image className="w-4 h-4 mr-2" />
+                  <ImageIcon className="w-4 h-4 mr-2" />
                   Choose Media
                 </label>
               </Button>
@@ -426,10 +428,11 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
                             muted
                           />
                         ) : (
-                          <img
-                            src={image.url}
-                            alt={image.alt_text}
-                            className="w-full h-full object-cover"
+                          <NextImage
+                            src={image.url || ''}
+                            alt={image.alt_text || 'Project image'}
+                            fill
+                            className="object-cover"
                           />
                         )}
                       </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useRef } from 'react';
+import Image from 'next/image';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -28,7 +29,7 @@ export function ImageLightbox({
   const currentImage = images[currentIndex];
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
+  const [, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Minimum swipe distance (in px) to trigger navigation
@@ -132,10 +133,13 @@ export function ImageLightbox({
               playsInline
             />
           ) : (
-            <img
+            <Image
               src={currentImage.url}
               alt={currentImage.alt || 'Project image'}
               className="max-w-full max-h-full w-auto h-auto object-contain"
+              width={1200}
+              height={800}
+              unoptimized
             />
           )}
 

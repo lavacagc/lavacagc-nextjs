@@ -1,6 +1,5 @@
 import React from "react";
 import { Phone, Mail, Facebook, Instagram } from "lucide-react";
-import NAPInfo from "@/components/NAPInfo";
 import logo from "@/assets/logo.png";
 import Link from "next/link";
 import Image from "next/image";

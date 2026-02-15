@@ -3,7 +3,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -12,6 +11,7 @@ import { MarkdownEditor } from './MarkdownEditor';
 import { toast } from '@/hooks/use-toast';
 import { Plus, Edit, Trash2, Save, Star, Building, Upload, X } from 'lucide-react';
 import { convertHeicToJpeg } from '@/utils/heicConverter';
+import Image from 'next/image';
 
 interface Project {
   id: string;
@@ -452,10 +452,11 @@ export function ProjectsEditor() {
                             
                             {/* Main centered image */}
                             <div className="absolute inset-0 flex items-center justify-center">
-                              <img
+                              <Image
                                 src={image.url}
                                 alt={image.caption || 'Project image'}
-                                className="max-w-full max-h-full object-contain"
+                                fill
+                                className="object-contain"
                                 style={{ zIndex: 1 }}
                               />
                             </div>

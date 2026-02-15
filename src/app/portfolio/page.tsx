@@ -1,4 +1,5 @@
 import { Metadata } from 'next';
+import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -104,7 +105,6 @@ async function getProjects(): Promise<Project[]> {
       })
     );
 
-    console.log(`Loaded ${projectsWithImages.length} projects`);
     return projectsWithImages;
   } catch (err) {
     console.error('Failed to fetch projects:', err);
@@ -209,14 +209,14 @@ export default async function Portfolio() {
                 Ready to Start Your Dream Project?
               </h2>
               <p className="text-xl mb-8 text-primary-foreground/90">
-                Let's create a custom solution that fits your vision and budget.
+                Let&apos;s create a custom solution that fits your vision and budget.
               </p>
-              <a
+              <Link
                 href="/"
                 className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-background text-text-primary hover:bg-background/90 h-11 px-8"
               >
                 Get Your Free Estimate
-              </a>
+              </Link>
             </div>
           </div>
         </section>

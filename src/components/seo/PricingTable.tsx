@@ -54,7 +54,7 @@ const PricingTable: React.FC<PricingTableProps> = ({
       "highPrice": option.price.max,
       "priceCurrency": option.price.currency || "USD",
       "availability": "https://schema.org/InStock",
-      "priceValidUntil": new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      "priceValidUntil": "2026-12-31",
       "seller": {
         "@type": "Organization",
         "name": businessName
@@ -63,7 +63,7 @@ const PricingTable: React.FC<PricingTableProps> = ({
   };
 
   const formatPrice = (option: PricingOption) => {
-    const { min, max, unit, currency = "USD" } = option.price;
+    const { min, max, currency = "USD" } = option.price;
     const symbol = currency === "USD" ? "$" : currency;
 
     if (max && max !== min) {

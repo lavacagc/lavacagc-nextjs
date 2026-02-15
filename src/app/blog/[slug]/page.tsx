@@ -1,11 +1,12 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
+import Image from 'next/image';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { MarkdownContent } from '@/components/MarkdownContent';
 import { ArrowLeft, Calendar, User, Tag } from 'lucide-react';
-import { formatDistanceToNow, format } from 'date-fns';
+import { format } from 'date-fns';
 import Link from 'next/link';
 
 // Revalidate every 60 seconds (ISR - Incremental Static Regeneration)
@@ -131,7 +132,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   };
 }
 
-export default async function BlogPostPage({ params, searchParams }: PageProps) {
+export default async function BlogPostPage({ params }: PageProps) {
   const { slug } = await params;
   // Note: Draft previews are handled at /blog/preview/[slug] with client-side auth
   // This public page only shows published posts for SEO
@@ -287,11 +288,13 @@ export default async function BlogPostPage({ params, searchParams }: PageProps) 
             {/* Featured Image */}
             {post.featured_image && (
               <figure className="mb-12">
-                <img
+                <Image
                   src={post.featured_image}
                   alt={post.title}
+                  width={1200}
+                  height={384}
                   className="w-full h-96 object-cover rounded-lg shadow-lg"
-                  loading="eager"
+                  priority
                 />
                 <figcaption className="text-center text-sm text-muted-foreground mt-2">
                   {post.title}

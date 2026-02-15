@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -31,13 +32,14 @@ export default function BlogPostGrid({ posts }: BlogPostGridProps) {
           className="cursor-pointer hover:shadow-card transition-all duration-300 group"
           onClick={() => router.push(`/blog/${post.slug}`)}
         >
-          <div className="aspect-video bg-muted rounded-t-lg overflow-hidden">
+          <div className="aspect-video bg-muted rounded-t-lg overflow-hidden relative">
             {post.featured_image ? (
-              <img
+              <Image
                 src={post.featured_image}
                 alt={post.title}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                loading="lazy"
+                fill
+                sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
               />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent-teal/20 flex items-center justify-center">

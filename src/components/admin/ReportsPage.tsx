@@ -31,6 +31,7 @@ export function ReportsPage() {
 
   useEffect(() => {
     loadReports();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadReports uses dateRange from closure which is in deps
   }, [dateRange]);
 
   const getDateRangeFilter = () => {
@@ -74,7 +75,8 @@ export function ReportsPage() {
       let totalMaterials = 0;
       let totalLabor = 0;
       let estimateSum = 0;
-      let countWithEstimates = 0;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      let _countWithEstimates = 0;
 
       leads?.forEach(lead => {
         if (!typeStats[lead.project_type_name]) {
@@ -85,7 +87,7 @@ export function ReportsPage() {
         if (lead.combined_total) {
           typeStats[lead.project_type_name].totalEstimate += lead.combined_total;
           estimateSum += lead.combined_total;
-          countWithEstimates++;
+          _countWithEstimates++;
           
           if (lead.total_material_cost && lead.total_labor_cost) {
             totalMaterials += lead.total_material_cost;

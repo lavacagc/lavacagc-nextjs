@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +10,6 @@ import {
   Grid, 
   List, 
   Search, 
-  Filter, 
   Plus, 
   Edit, 
   Trash2, 
@@ -25,6 +24,7 @@ import {
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import Image from 'next/image';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 interface Project {
@@ -72,6 +72,7 @@ export function PortfolioManager({ onNewProject, onEditProject }: PortfolioManag
 
   useEffect(() => {
     filterProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- filterProjects reads from state vars already listed in deps
   }, [projects, searchTerm, serviceFilter, locationFilter, statusFilter, sortBy]);
 
   const loadProjects = async () => {
@@ -185,7 +186,7 @@ export function PortfolioManager({ onNewProject, onEditProject }: PortfolioManag
     if (!confirm(confirmMessage)) return;
 
     try {
-      let updateData: any = {};
+      let updateData: Record<string, boolean> = {};
       
       switch (action) {
         case 'delete':
@@ -258,7 +259,8 @@ export function PortfolioManager({ onNewProject, onEditProject }: PortfolioManag
 
   const duplicateProject = async (project: Project) => {
     try {
-      const { id, created_at, project_images, ...projectData } = project;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { id: _id, created_at: _created_at, project_images: _project_images, ...projectData } = project;
       const duplicatedProject = {
         ...projectData,
         title: `${project.title} (Copy)`,
@@ -479,10 +481,11 @@ export function PortfolioManager({ onNewProject, onEditProject }: PortfolioManag
                 {/* Project Image */}
                 <div className={`relative ${viewMode === 'list' ? 'w-48 flex-shrink-0' : 'aspect-video'} bg-muted`}>
                   {getFeaturedImage(project) ? (
-                    <img
-                      src={getFeaturedImage(project)}
+                    <Image
+                      src={getFeaturedImage(project)!}
                       alt={project.title}
-                      className="w-full h-full object-cover"
+                      fill
+                      className="object-cover"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">

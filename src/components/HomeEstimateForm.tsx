@@ -110,13 +110,13 @@ const HomeEstimateForm = () => {
 
   const executeRecaptcha = async (): Promise<string | null> => {
     return new Promise((resolve) => {
-      if (typeof window !== 'undefined' && (window as any).grecaptcha?.enterprise) {
-        (window as any).grecaptcha.enterprise.ready(() => {
-          (window as any).grecaptcha.enterprise.execute(RECAPTCHA_SITE_KEY, { action: 'estimate_request' })
+      if (typeof window !== 'undefined' && window.grecaptcha?.enterprise) {
+        window.grecaptcha.enterprise.ready(() => {
+          window.grecaptcha.enterprise!.execute(RECAPTCHA_SITE_KEY, { action: 'estimate_request' })
             .then((token: string) => {
               resolve(token);
             })
-            .catch((error: any) => {
+            .catch((error: unknown) => {
               console.error('reCAPTCHA execution failed:', error);
               resolve(null);
             });
@@ -163,26 +163,6 @@ const HomeEstimateForm = () => {
         newErrors[field] = issue.message;
       });
       setErrors(newErrors);
-      return false;
-    }
-    return true;
-  };
-
-  const validateStep2 = () => {
-    const step2Schema = quickEstimateSchema.pick({
-      projectType: true,
-      budgetRange: true,
-      zipCode: true
-    });
-
-    const result = step2Schema.safeParse(formData);
-    if (!result.success) {
-      const newErrors: Partial<Record<keyof QuickEstimateData, string>> = {};
-      result.error.issues.forEach((issue) => {
-        const field = issue.path[0] as keyof QuickEstimateData;
-        newErrors[field] = issue.message;
-      });
-      setErrors(prev => ({ ...prev, ...newErrors }));
       return false;
     }
     return true;
@@ -327,10 +307,10 @@ const HomeEstimateForm = () => {
           <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
           <h3 className="text-2xl font-bold text-text-primary mb-2">Thank You!</h3>
           <p className="text-text-secondary mb-4">
-            We've received your estimate request for your {formData.projectType} project.
+            We&apos;ve received your estimate request for your {formData.projectType} project.
           </p>
           <p className="text-sm text-text-muted mb-6">
-            We'll call you at {formData.phone} within 24 hours to discuss details.
+            We&apos;ll call you at {formData.phone} within 24 hours to discuss details.
           </p>
           <Button
             onClick={() => {

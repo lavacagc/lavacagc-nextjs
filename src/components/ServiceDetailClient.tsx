@@ -121,7 +121,7 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
         <div className="container mx-auto px-4">
           <div className="max-w-4xl mx-auto">
             <h2 className="text-4xl font-bold text-text-primary mb-6 text-center">
-              What's Included in Our
+              What&apos;s Included in Our
               <span className="text-transparent bg-gradient-to-r from-primary to-accent-sunset bg-clip-text">
                 {' '}
                 {service.title}
@@ -224,7 +224,7 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
                   <h3 className="text-xl font-bold text-text-primary">100% Satisfaction</h3>
                 </div>
                 <p className="text-text-secondary">
-                  We don't consider the job done until you're completely satisfied with the results.
+                  We don&apos;t consider the job done until you&apos;re completely satisfied with the results.
                 </p>
               </Card>
 
@@ -323,7 +323,7 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-3xl font-bold mb-4">Ready to Transform Your Space?</h2>
           <p className="text-xl mb-8 opacity-90 max-w-2xl mx-auto">
-            Let's discuss your vision and create a custom {service.title.toLowerCase()} solution that fits your
+            Let&apos;s discuss your vision and create a custom {service.title.toLowerCase()} solution that fits your
             needs and budget.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">

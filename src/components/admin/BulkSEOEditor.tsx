@@ -1,16 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { CheckboxIcon } from '@/components/ui/checkbox-icon';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { 
-  Edit, 
   CheckCircle, 
   AlertCircle, 
-  Download, 
-  Upload,
   Sparkles,
   RefreshCw
 } from 'lucide-react';
@@ -36,11 +32,11 @@ const BulkSEOEditor: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [bulkOperation, setBulkOperation] = useState<'metadata' | 'descriptions' | 'analysis'>('metadata');
   const { toast } = useToast();
 
   useEffect(() => {
     loadAllContent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only needs to run on mount
   }, []);
 
   const loadAllContent = async () => {
@@ -121,7 +117,7 @@ const BulkSEOEditor: React.FC = () => {
       ];
 
       setContentItems(allItems);
-    } catch (error) {
+    } catch {
       toast({
         title: "Loading Failed",
         description: "Could not load content items.",
@@ -163,7 +159,7 @@ const BulkSEOEditor: React.FC = () => {
 
       // Reload data
       await loadAllContent();
-    } catch (error) {
+    } catch {
       toast({
         title: "Generation Failed",
         description: "Could not generate meta descriptions.",
@@ -214,7 +210,7 @@ const BulkSEOEditor: React.FC = () => {
       });
 
       await loadAllContent();
-    } catch (error) {
+    } catch {
       toast({
         title: "Update Failed",
         description: "Could not update SEO scores.",

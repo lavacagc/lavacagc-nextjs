@@ -1,5 +1,5 @@
 #!/usr/bin/env npx ts-node
-import { chromium, Browser, Page } from '@playwright/test';
+import { chromium, Page } from '@playwright/test';
 
 interface AuditResult {
   category: string;

@@ -65,12 +65,11 @@ export default function Testimonials() {
       { threshold: 0.2 }
     );
 
-    observer.observe(sectionRef.current);
+    const currentSection = sectionRef.current;
+    observer.observe(currentSection);
 
     return () => {
-      if (sectionRef.current) {
-        observer.unobserve(sectionRef.current);
-      }
+      observer.unobserve(currentSection);
     };
   }, [isMobile]);
 

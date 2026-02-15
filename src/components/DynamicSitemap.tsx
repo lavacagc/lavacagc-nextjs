@@ -34,9 +34,8 @@ const DynamicSitemap: React.FC = () => {
     return 'https://lavacagc.com/sitemap.xml';
   };
 
-  useEffect(() => {
-    loadSitemapStats();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadSitemapStats(); }, []);
 
   const loadSitemapStats = async () => {
     setLoading(true);
@@ -65,7 +64,7 @@ const DynamicSitemap: React.FC = () => {
         servicePages: 4
       });
 
-    } catch (error) {
+    } catch {
       toast({
         title: "Loading Failed",
         description: "Could not load sitemap statistics.",
@@ -79,9 +78,9 @@ const DynamicSitemap: React.FC = () => {
   const generateSitemap = async () => {
     setGenerating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('dynamic-sitemap');
+      const { error: invokeError } = await supabase.functions.invoke('dynamic-sitemap');
       
-      if (error) throw error;
+      if (invokeError) throw invokeError;
 
       toast({
         title: "Sitemap Generated",
@@ -89,7 +88,7 @@ const DynamicSitemap: React.FC = () => {
       });
 
       await loadSitemapStats();
-    } catch (error) {
+    } catch {
       toast({
         title: "Generation Failed", 
         description: "Could not generate dynamic sitemap.",
@@ -102,11 +101,11 @@ const DynamicSitemap: React.FC = () => {
 
   const downloadSitemap = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('dynamic-sitemap');
+      const { data: sitemapData, error: dlError } = await supabase.functions.invoke('dynamic-sitemap');
       
-      if (error) throw error;
+      if (dlError) throw dlError;
 
-      const blob = new Blob([data], { type: 'application/xml' });
+      const blob = new Blob([sitemapData], { type: 'application/xml' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -120,7 +119,7 @@ const DynamicSitemap: React.FC = () => {
         title: "Download Complete",
         description: "Sitemap XML has been downloaded."
       });
-    } catch (error) {
+    } catch {
       toast({
         title: "Download Failed",
         description: "Could not download sitemap.",

@@ -1,5 +1,4 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { MapPin, CheckCircle2, Phone, FileText, Clock, Building2, ExternalLink, HelpCircle, ChevronDown } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -265,7 +264,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
                 </span>
               </h1>
               <p className="text-xl text-text-secondary mb-8 leading-relaxed max-w-3xl mx-auto">
-                Looking for "contractors near me" in {locationData.name}, NJ? La Vaca specializes in luxury renovations for {locationData.name}'s prestigious homes in {locationData.county}.
+                Looking for &quot;contractors near me&quot; in {locationData.name}, NJ? La Vaca specializes in luxury renovations for {locationData.name}&apos;s prestigious homes in {locationData.county}.
                 <span className="font-semibold text-secondary"> Licensed {locationData.name} contractor serving {locationData.zipCodes?.[0] || ''} and surrounding areas.</span>
               </p>
               <CityHeroButtons cityName={locationData.name} />
@@ -303,7 +302,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
                   <span className="text-transparent bg-gradient-to-r from-primary to-accent-sunset bg-clip-text"> Expertise</span>
                 </h2>
                 <p className="text-xl text-text-secondary mb-8 leading-relaxed">
-                  {locationData.name}'s luxury real estate market demands the highest standards of craftsmanship and design.
+                  {locationData.name}&apos;s luxury real estate market demands the highest standards of craftsmanship and design.
                   We understand the unique requirements of renovating in this prestigious community.
                 </p>
                 <div className="space-y-4">
@@ -387,7 +386,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
                   {locationData.name} Building Permits & Requirements
                 </h2>
                 <p className="text-lg text-text-secondary max-w-3xl mx-auto">
-                  We handle all permit applications and inspections for your {locationData.name} renovation project. Here's what you need to know about local requirements.
+                  We handle all permit applications and inspections for your {locationData.name} renovation project. Here&apos;s what you need to know about local requirements.
                 </p>
               </div>
 
@@ -457,7 +456,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
 
                   <div className="mt-6 p-4 bg-gradient-to-r from-primary/5 to-accent-sunset/5 rounded-lg border border-primary/20">
                     <p className="text-sm text-text-primary font-medium">
-                      Don't worry about permits – we handle everything from application to final inspection!
+                      Don&apos;t worry about permits – we handle everything from application to final inspection!
                     </p>
                   </div>
                 </Card>

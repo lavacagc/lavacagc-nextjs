@@ -10,7 +10,6 @@ import { DimensionsData } from "./DimensionsStep";
 import { QualityLevelData } from "./QualityLevelStep";
 import { MaterialOptionsData } from "./MaterialOptionsStep";
 import { AdditionalFeaturesData } from "./AdditionalFeaturesStep";
-import { ContactInfoData } from "./ContactInfoStep";
 
 interface ResultsStepProps {
   onBack: () => void;
@@ -19,7 +18,6 @@ interface ResultsStepProps {
   qualityLevel?: QualityLevelData;
   materialOptions?: MaterialOptionsData;
   additionalFeatures?: AdditionalFeaturesData;
-  contactInfo?: ContactInfoData;
 }
 
 export const ResultsStep = ({
@@ -29,10 +27,9 @@ export const ResultsStep = ({
   qualityLevel,
   materialOptions,
   additionalFeatures,
-  contactInfo,
 }: ResultsStepProps) => {
   const [timelineModalOpen, setTimelineModalOpen] = useState(false);
-  const [selectedTimeline, setSelectedTimeline] = useState<string | null>(null);
+  const [, setSelectedTimeline] = useState<string | null>(null);
   const [ctaType, setCtaType] = useState<"assessment" | "phone" | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Calculate base cost based on dimensions and quality level
@@ -127,7 +124,7 @@ export const ResultsStep = ({
     setIsSubmitting(true);
     
     try {
-      const { data, error } = await supabase.functions.invoke('request-calculator-assessment', {
+      const { error } = await supabase.functions.invoke('request-calculator-assessment', {
         body: {
           lead_id: leadId,
           assessment_type: ctaType === "assessment" ? "in-person" : "phone",
@@ -144,11 +141,11 @@ export const ResultsStep = ({
       });
       
       setTimelineModalOpen(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error requesting assessment:", error);
       toast({
         title: "Error",
-        description: error.message || "Failed to submit request. Please try again or call us directly.",
+        description: error instanceof Error ? error.message : "Failed to submit request. Please try again or call us directly.",
         variant: "destructive",
       });
     } finally {
@@ -164,7 +161,7 @@ export const ResultsStep = ({
           <h2 className="text-2xl font-bold">Your Estimate is Ready!</h2>
         </div>
         <p className="text-muted-foreground">
-          Here's a detailed breakdown of your bathroom remodeling project
+          Here&apos;s a detailed breakdown of your bathroom remodeling project
         </p>
       </div>
 
@@ -246,7 +243,7 @@ export const ResultsStep = ({
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Dimensions:</span>
-              <span>{dimensions.length}' × {dimensions.width}'</span>
+              <span>{dimensions.length}&apos; × {dimensions.width}&apos;</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Square Footage:</span>

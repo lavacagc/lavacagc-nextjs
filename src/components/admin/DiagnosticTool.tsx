@@ -13,7 +13,7 @@ interface TestResult {
   status: "pending" | "running" | "success" | "error" | "warning";
   message?: string;
   duration?: number;
-  details?: any;
+  details?: Record<string, unknown> | Record<string, unknown>[] | string[];
 }
 
 export const DiagnosticTool = () => {
@@ -73,7 +73,7 @@ export const DiagnosticTool = () => {
     updateTest("Database Connection", { status: "running" });
     
     try {
-      const { data, error } = await supabase.from("site_content").select("count").single();
+      const { error } = await supabase.from("site_content").select("count").single();
       
       if (error) throw error;
       
@@ -82,10 +82,10 @@ export const DiagnosticTool = () => {
         message: "Connected successfully",
         duration: Date.now() - start,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Database Connection", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -113,10 +113,10 @@ export const DiagnosticTool = () => {
           duration: Date.now() - start,
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Authentication System", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -128,13 +128,13 @@ export const DiagnosticTool = () => {
     
     try {
       // Check if grecaptcha is loaded
-      if (typeof (window as any).grecaptcha === "undefined") {
+      if (typeof window.grecaptcha === "undefined") {
         throw new Error("reCAPTCHA script not loaded");
       }
 
       // Test token generation
-      await (window as any).grecaptcha.enterprise.ready(async () => {
-        const token = await (window as any).grecaptcha.enterprise.execute(
+      await window.grecaptcha.enterprise!.ready(async () => {
+        const token = await window.grecaptcha.enterprise!.execute(
           RECAPTCHA_SITE_KEY,
           { action: "diagnostic_test" }
         );
@@ -153,10 +153,10 @@ export const DiagnosticTool = () => {
           details: data,
         });
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("reCAPTCHA Enterprise", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -189,10 +189,10 @@ export const DiagnosticTool = () => {
         duration: Date.now() - start,
         details: data,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Email Notifications", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -214,10 +214,10 @@ export const DiagnosticTool = () => {
         message: `Found ${data.length} buckets: ${buckets}`,
         duration: Date.now() - start,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Storage Buckets", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -249,10 +249,10 @@ export const DiagnosticTool = () => {
         message: `${successful}/${functions.length} functions responding`,
         duration: Date.now() - start,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Edge Functions", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -280,10 +280,10 @@ export const DiagnosticTool = () => {
         message: `${leadCount} leads, ${warrantyCount} warranty claims`,
         duration: Date.now() - start,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Form Submissions", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -307,10 +307,10 @@ export const DiagnosticTool = () => {
         message: data.length > 0 ? "SEO data available" : "No SEO data yet",
         duration: Date.now() - start,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("SEO Analysis", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -332,10 +332,10 @@ export const DiagnosticTool = () => {
         message: `${count} blog posts in database`,
         duration: Date.now() - start,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Blog Posts", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -357,10 +357,10 @@ export const DiagnosticTool = () => {
         message: `${count} projects in portfolio`,
         duration: Date.now() - start,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Projects Portfolio", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -423,10 +423,10 @@ export const DiagnosticTool = () => {
         duration: Date.now() - start,
         details: results,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("RLS Policy Security", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -449,8 +449,9 @@ export const DiagnosticTool = () => {
         "Referrer-Policy": headers.get("referrer-policy") !== null,
       };
 
-      const passedChecks = Object.values(securityChecks).filter(Boolean).length;
-      const totalChecks = Object.keys(securityChecks).length;
+      // passedChecks and totalChecks computed for production_config details below
+      void Object.values(securityChecks).filter(Boolean).length;
+      void Object.keys(securityChecks).length;
 
       // Production-ready configuration details
       const details = {
@@ -475,10 +476,10 @@ export const DiagnosticTool = () => {
         duration: Date.now() - start,
         details,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Security Headers", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -513,10 +514,10 @@ export const DiagnosticTool = () => {
         duration: Date.now() - start,
         details: securityChecks,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Storage Security", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -577,7 +578,7 @@ export const DiagnosticTool = () => {
       }
 
       // Test 3: Check if admin functions are accessible (they should be for admin)
-      const { data: aiData, error: aiError } = await supabase.functions.invoke("ai-content-assistant", {
+      const { error: aiError } = await supabase.functions.invoke("ai-content-assistant", {
         body: { test: true }
       });
 
@@ -609,10 +610,10 @@ export const DiagnosticTool = () => {
         duration: Date.now() - start,
         details: exposureTests,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Data Exposure Check", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -654,10 +655,10 @@ export const DiagnosticTool = () => {
         duration: Date.now() - start,
         details,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Analytics Config", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -687,10 +688,10 @@ export const DiagnosticTool = () => {
           action: e.event_action,
         })),
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Custom Events", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -734,10 +735,10 @@ export const DiagnosticTool = () => {
           details,
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("GA Script Loading", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -772,10 +773,10 @@ export const DiagnosticTool = () => {
           details,
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Analytics Manager", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -824,10 +825,10 @@ export const DiagnosticTool = () => {
           duration: Date.now() - start,
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Event Tracking", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -868,10 +869,10 @@ export const DiagnosticTool = () => {
         duration: Date.now() - start,
         details,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Consent Mode", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -924,10 +925,10 @@ export const DiagnosticTool = () => {
           details,
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("Measurement ID", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -966,10 +967,10 @@ export const DiagnosticTool = () => {
           duration: Date.now() - start,
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("GMB Configuration", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -997,10 +998,10 @@ export const DiagnosticTool = () => {
           duration: Date.now() - start,
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("GMB OAuth Connection", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -1023,10 +1024,10 @@ export const DiagnosticTool = () => {
         message: count > 0 ? `${count} reviews in database` : "No reviews synced yet",
         duration: Date.now() - start,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("GMB Reviews Sync", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -1074,10 +1075,10 @@ export const DiagnosticTool = () => {
           duration: Date.now() - start,
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateTest("GMB API Access", {
         status: "error",
-        message: error.message,
+        message: error instanceof Error ? error.message : String(error),
         duration: Date.now() - start,
       });
     }
@@ -1142,7 +1143,8 @@ export const DiagnosticTool = () => {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, any> = {
+    type BadgeVariant = "secondary" | "destructive" | "default" | "outline";
+    const variants: Record<string, BadgeVariant> = {
       pending: "outline",
       running: "default",
       success: "default",
@@ -1151,7 +1153,7 @@ export const DiagnosticTool = () => {
     };
 
     return (
-      <Badge variant={variants[status]} className="ml-auto">
+      <Badge variant={variants[status] ?? "default"} className="ml-auto">
         {status}
       </Badge>
     );

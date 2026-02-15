@@ -210,7 +210,7 @@ const ProjectGallery = () => {
             <span className="text-transparent bg-gradient-to-r from-primary to-accent-sunset bg-clip-text"> Project Gallery</span>
           </h2>
           <p className="text-xl text-text-secondary max-w-3xl mx-auto mb-8">
-            Explore our latest luxury home renovations across Northern New Jersey's premier communities
+            Explore our latest luxury home renovations across Northern New Jersey&apos;s premier communities
           </p>
 
           {categories.length > 1 && (

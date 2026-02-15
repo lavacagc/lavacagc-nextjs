@@ -108,7 +108,7 @@ const Hero = () => {
 
           {/* Subheading */}
           <p className="text-xl md:text-2xl text-text-secondary mb-8 max-w-3xl mx-auto leading-relaxed">
-            Transform Your Kitchen, Bathroom, Basement, or Entire Home with Northern NJ's
+            Transform Your Kitchen, Bathroom, Basement, or Entire Home with Northern NJ&apos;s
             <span className="font-semibold text-secondary"> Trusted Renovation Experts</span>
           </p>
 

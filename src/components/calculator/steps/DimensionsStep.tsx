@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -30,14 +30,20 @@ export const DimensionsStep = ({ onNext, onBack, initialData }: DimensionsStepPr
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Auto-calculate square footage when using length × width
-  useEffect(() => {
+  const calculatedSquareFootage = useMemo(() => {
     if (inputMethod === "calculated" && length && width) {
       const calculated = parseFloat(length) * parseFloat(width);
       if (!isNaN(calculated)) {
-        setSquareFootage(calculated.toFixed(2));
+        return calculated.toFixed(2);
       }
     }
+    return null;
   }, [length, width, inputMethod]);
+
+  // Use the calculated value when in calculated mode
+  const effectiveSquareFootage = inputMethod === "calculated" && calculatedSquareFootage
+    ? calculatedSquareFootage
+    : squareFootage;
 
   const validateField = (name: string, value: string): string => {
     const numValue = parseFloat(value);
@@ -117,7 +123,7 @@ export const DimensionsStep = ({ onNext, onBack, initialData }: DimensionsStepPr
 
     if (Object.keys(newErrors).length === 0) {
       onNext({
-        squareFootage: parseFloat(squareFootage),
+        squareFootage: parseFloat(effectiveSquareFootage),
         ceilingHeight: parseFloat(ceilingHeight),
         inputMethod,
         ...(inputMethod === "calculated" && {
@@ -238,10 +244,10 @@ export const DimensionsStep = ({ onNext, onBack, initialData }: DimensionsStepPr
               </div>
             </div>
 
-            {squareFootage && !errors.length && !errors.width && (
+            {effectiveSquareFootage && !errors.length && !errors.width && (
               <div className="p-4 bg-primary/10 rounded-lg text-center">
                 <p className="text-sm text-muted-foreground">Calculated Square Footage</p>
-                <p className="text-2xl font-bold text-primary">{squareFootage} sq ft</p>
+                <p className="text-2xl font-bold text-primary">{effectiveSquareFootage} sq ft</p>
               </div>
             )}
           </CardContent>

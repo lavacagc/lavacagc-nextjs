@@ -40,7 +40,8 @@ const budgetRanges = [
 ];
 
 export function ProjectBasicInfoStep({ formData, updateFormData }: ProjectBasicInfoStepProps) {
-  const [locations] = useState(getAllLocations());
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_locations] = useState(getAllLocations());
   const [serviceAreas, setServiceAreas] = useState<Array<{id: string, name: string}>>([]);
   const [locationOpen, setLocationOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
@@ -110,6 +111,7 @@ export function ProjectBasicInfoStep({ formData, updateFormData }: ProjectBasicI
       }, 1000);
       return () => clearTimeout(timer);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only trigger on service_types/location changes, generateProjectTitle is stable
   }, [formData.service_types, formData.location]);
 
   return (
@@ -196,7 +198,7 @@ export function ProjectBasicInfoStep({ formData, updateFormData }: ProjectBasicI
                         }}
                       >
                         <MapPin className="mr-2 h-4 w-4" />
-                        Use "{formData.location}"
+                        Use &quot;{formData.location}&quot;
                       </Button>
                     </div>
                   ) : (

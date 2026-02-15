@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from "react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ChevronLeft, ChevronRight, Eye } from "lucide-react";
@@ -44,10 +45,12 @@ const BeforeAfterGallery = ({ images, title }: BeforeAfterGalleryProps) => {
         <CardContent className="p-0">
           {/* Main Image Display */}
           <div className="relative aspect-video bg-gray-100">
-            <img
+            <Image
               src={showAfter ? currentImage.after : currentImage.before}
               alt={`${showAfter ? 'After' : 'Before'} - ${currentImage.caption}`}
               className="w-full h-full object-cover transition-all duration-500"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
             />
 
             {/* Before/After Toggle */}
@@ -119,7 +122,7 @@ const BeforeAfterGallery = ({ images, title }: BeforeAfterGalleryProps) => {
 
       {/* Instructions */}
       <div className="text-center text-sm text-text-secondary">
-        <p>Click "Show After" to see the transformation</p>
+        <p>Click &quot;Show After&quot; to see the transformation</p>
         {images.length > 1 && (
           <p className="mt-1">Use arrows or dots to navigate between images</p>
         )}

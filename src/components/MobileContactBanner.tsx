@@ -6,18 +6,15 @@ import { Button } from '@/components/ui/button';
 
 const MobileContactBanner = () => {
   const [isVisible, setIsVisible] = useState(false);
-  const [isDismissed, setIsDismissed] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return !!localStorage.getItem('mobile-contact-banner-dismissed');
+  });
 
   useEffect(() => {
-    // Check if banner was previously dismissed
-    const dismissed = localStorage.getItem('mobile-contact-banner-dismissed');
-    if (dismissed) {
-      setIsDismissed(true);
-      return;
-    }
+    if (isDismissed) return;
 
     // Show banner after user scrolls or after 3 seconds
-    let timeoutId: NodeJS.Timeout;
     let hasScrolled = false;
 
     const handleScroll = () => {
@@ -29,7 +26,7 @@ const MobileContactBanner = () => {
     };
 
     // Show after 3 seconds if no scroll
-    timeoutId = setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       if (!hasScrolled) {
         setIsVisible(true);
       }
@@ -41,7 +38,7 @@ const MobileContactBanner = () => {
       window.removeEventListener('scroll', handleScroll);
       clearTimeout(timeoutId);
     };
-  }, []);
+  }, [isDismissed]);
 
   const handleDismiss = () => {
     setIsVisible(false);

@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { supabase } from '@/integrations/supabase/client';
+import Image from 'next/image';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { MarkdownContent } from '@/components/MarkdownContent';
@@ -32,7 +32,6 @@ export default function BlogPostPreviewPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
-  const router = useRouter();
   const [post, setPost] = useState<BlogPost | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -207,11 +206,13 @@ export default function BlogPostPreviewPage({
             {/* Featured Image */}
             {post.featured_image && (
               <figure className="mb-12">
-                <img
+                <Image
                   src={post.featured_image}
                   alt={post.title}
+                  width={1200}
+                  height={384}
                   className="w-full h-96 object-cover rounded-lg shadow-lg"
-                  loading="eager"
+                  priority
                 />
               </figure>
             )}

@@ -273,7 +273,7 @@ export const MaterialOptionsStep = ({
       <div className="text-center space-y-2">
         <h2 className="text-2xl font-bold">Select Your Features</h2>
         <p className="text-muted-foreground">
-          Choose the options you'd like (you can select multiple)
+          Choose the options you&apos;d like (you can select multiple)
         </p>
       </div>
 

@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
@@ -33,9 +32,10 @@ export default function AdminContent() {
   const router = useRouter();
   const { user, loading, signOut } = useAuth();
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTabRaw] = useState('dashboard');
   const [editingPost, setEditingPost] = useState<string | null>(null);
   const [projectMode, setProjectMode] = useState<'manage' | 'upload' | 'edit'>('manage');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editingProject, setEditingProject] = useState<any>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -45,18 +45,14 @@ export default function AdminContent() {
     }
   }, [user, loading, router]);
 
-  useEffect(() => {
-    // Reset project mode to manage when switching to projects tab
-    if (activeTab === 'projects') {
+  // Reset project mode when switching to projects tab
+  const setActiveTab = useCallback((tab: string) => {
+    setActiveTabRaw(tab);
+    if (tab === 'projects') {
       setProjectMode('manage');
       setEditingProject(null);
     }
-  }, [activeTab]);
-
-  const handleEditProject = (project: any) => {
-    setEditingProject(project);
-    setProjectMode('edit');
-  };
+  }, []);
 
   const handleSignOut = async () => {
     try {
@@ -66,7 +62,7 @@ export default function AdminContent() {
         description: "You have been signed out successfully.",
       });
       router.push('/auth');
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to sign out. Please try again.",

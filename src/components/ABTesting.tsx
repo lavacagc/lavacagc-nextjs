@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { trackEvent } from './Analytics';
 
 // A/B Testing Configuration
@@ -70,23 +70,18 @@ const getUserVariant = (test: ABTest): string => {
 
 // Hook for using A/B test variants
 export const useABTest = (testId: string): string => {
-  const [variant, setVariant] = useState<string>('');
-
-  useEffect(() => {
+  // Initialize variant from localStorage synchronously (client-only, lazy initializer)
+  // This avoids calling setState in an effect which causes cascading renders
+  const [variant] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
     const test = ACTIVE_TESTS.find(t => t.testId === testId);
     if (!test) {
       console.warn(`A/B Test not found: ${testId}`);
-      return;
+      return '';
     }
-
-    if (test.conditions && !test.conditions()) {
-      setVariant(test.variants[0]);
-      return;
-    }
-
-    const userVariant = getUserVariant(test);
-    setVariant(userVariant);
-  }, [testId]);
+    if (test.conditions && !test.conditions()) return test.variants[0];
+    return getUserVariant(test);
+  });
 
   return variant;
 };

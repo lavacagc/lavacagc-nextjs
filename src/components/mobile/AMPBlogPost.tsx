@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react';
+import Image from 'next/image';
 import Script from 'next/script';
 import DOMPurify from 'dompurify';
 import { Metadata } from 'next';
@@ -127,12 +128,13 @@ const AMPBlogPost: React.FC<AMPBlogPostProps> = ({
             </header>
 
             {featuredImage && (
-              <img
+              <Image
                 src={featuredImage}
-                width="800"
-                height="400"
+                width={800}
+                height={400}
                 className="w-full h-auto mb-8"
                 alt={title}
+                unoptimized
               />
             )}
 
@@ -148,7 +150,7 @@ const AMPBlogPost: React.FC<AMPBlogPostProps> = ({
 
             <div className="bg-gradient-to-r from-primary to-accent-tangerine text-white rounded-lg p-6 mt-8 text-center">
               <h3 className="text-xl font-bold mb-2 text-white">Ready to Start Your Remodeling Project?</h3>
-              <p className="mb-4 text-white/90">Get a free estimate from Northern NJ's trusted renovation experts.</p>
+              <p className="mb-4 text-white/90">Get a free estimate from Northern NJ&apos;s trusted renovation experts.</p>
               <a href="tel:(201)555-0123" className="inline-block bg-white/20 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/30 transition-colors no-underline">
                 Call (201) 555-0123
               </a>
@@ -180,11 +182,13 @@ const AMPBlogPost: React.FC<AMPBlogPostProps> = ({
         </header>
 
         {featuredImage && (
-          <img
+          <Image
             src={featuredImage}
             alt={title}
             className="w-full h-64 md:h-80 object-cover rounded-lg mb-8"
-            loading="lazy"
+            width={800}
+            height={400}
+            unoptimized
           />
         )}
 
@@ -200,7 +204,7 @@ const AMPBlogPost: React.FC<AMPBlogPostProps> = ({
 
         <div className="bg-gradient-to-r from-primary to-accent-tangerine text-white rounded-lg p-6 mt-8 text-center">
           <h3 className="text-xl font-bold mb-2 text-white">Ready to Start Your Remodeling Project?</h3>
-          <p className="mb-4 text-white/90">Get a free estimate from Northern NJ's trusted renovation experts.</p>
+          <p className="mb-4 text-white/90">Get a free estimate from Northern NJ&apos;s trusted renovation experts.</p>
           <a
             href="tel:(201)555-0123"
             className="inline-block bg-white/20 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/30 transition-colors no-underline"

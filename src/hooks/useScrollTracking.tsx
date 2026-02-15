@@ -114,10 +114,11 @@ export function useScrollTracking(options: ScrollTrackingOptions) {
   }, [sectionId, sectionName, trackScrollDepth, scrollDepthThresholds]);
 
   // Debounced scroll handler
-  const debouncedHandleScroll = useCallback(
-    debounce(handleScroll, debounceMs),
-    [handleScroll, debounceMs]
-  );
+  const debouncedHandleScrollRef = useRef<ReturnType<typeof debounce> | null>(null);
+
+  useEffect(() => {
+    debouncedHandleScrollRef.current = debounce(handleScroll, debounceMs);
+  }, [handleScroll, debounceMs]);
 
   // Track individual child elements (portfolio items, project cards, etc.)
   const handleElementIntersection = useCallback(
@@ -151,8 +152,9 @@ export function useScrollTracking(options: ScrollTrackingOptions) {
     observerRef.current.observe(section);
 
     // Setup scroll listener for depth tracking
-    if (trackScrollDepth) {
-      window.addEventListener('scroll', debouncedHandleScroll, { passive: true });
+    const debouncedScroll = debouncedHandleScrollRef.current;
+    if (trackScrollDepth && debouncedScroll) {
+      window.addEventListener('scroll', debouncedScroll, { passive: true });
     }
 
     // Setup IntersectionObserver for individual elements
@@ -177,8 +179,8 @@ export function useScrollTracking(options: ScrollTrackingOptions) {
       if (elementObserverRef.current) {
         elementObserverRef.current.disconnect();
       }
-      if (trackScrollDepth) {
-        window.removeEventListener('scroll', debouncedHandleScroll as any);
+      if (trackScrollDepth && debouncedScroll) {
+        window.removeEventListener('scroll', debouncedScroll);
       }
     };
   }, [
@@ -186,7 +188,6 @@ export function useScrollTracking(options: ScrollTrackingOptions) {
     trackScrollDepth,
     trackElements,
     handleIntersection,
-    debouncedHandleScroll,
     handleElementIntersection,
   ]);
 

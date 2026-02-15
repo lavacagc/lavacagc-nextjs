@@ -152,7 +152,7 @@ const EstimateForm = () => {
             .then((token: string) => {
               resolve(token);
             })
-            .catch((error: any) => {
+            .catch((error: unknown) => {
               console.error('reCAPTCHA execution failed:', error);
               resolve(null);
             });
@@ -389,7 +389,7 @@ const EstimateForm = () => {
             <div className="text-center mb-6">
               <Home className="h-12 w-12 text-primary mx-auto mb-3" />
               <h3 className="text-xl font-semibold text-text-primary">Contact Information</h3>
-              <p className="text-text-secondary">Let's start with your basic details</p>
+              <p className="text-text-secondary">Let&apos;s start with your basic details</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -629,7 +629,7 @@ const EstimateForm = () => {
               <div className="bg-muted p-4 rounded-lg">
                 <h4 className="font-semibold text-text-primary mb-2">What happens next?</h4>
                 <ul className="text-sm text-text-secondary space-y-1">
-                  <li>• We'll review your project details within 24 hours</li>
+                  <li>• We&apos;ll review your project details within 24 hours</li>
                   <li>• Schedule a consultation at your property</li>
                   <li>• Provide a detailed written estimate</li>
                   <li>• Discuss timeline and next steps</li>

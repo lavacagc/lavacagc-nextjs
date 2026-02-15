@@ -120,7 +120,7 @@ export const OptionalUpgradesStep = ({
           Customize Your Project
         </h2>
         <p className="text-lg text-muted-foreground">
-          Select any upgrades you'd like to include (optional)
+          Select any upgrades you&apos;d like to include (optional)
         </p>
       </div>
 

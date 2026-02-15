@@ -8,10 +8,11 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, Filter, Download, Eye, MapPin, Phone, Mail, Calendar, DollarSign, FileText, Image as ImageIcon, Archive, Trash2 } from 'lucide-react';
+import { Search, Download, Eye, MapPin, Phone, Mail, Calendar, DollarSign, FileText, Image as ImageIcon, Archive, Trash2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import Image from 'next/image';
 
 interface EstimateLead {
   id: string;
@@ -39,8 +40,8 @@ interface EstimateLead {
   requires_manual_estimate: boolean;
   assessment_requested: boolean;
   consultation_requested: boolean;
-  uploaded_images: any;
-  uploaded_plans: any;
+  uploaded_images: Array<{ url: string; label?: string; filename?: string }> | null;
+  uploaded_plans: Array<{ url: string; label?: string; filename?: string }> | null;
   lead_status: string;
   admin_notes: string | null;
   created_at: string;
@@ -75,10 +76,12 @@ export function EstimatesManager() {
 
   useEffect(() => {
     loadLeads();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadLeads uses showArchived from closure, only re-run when showArchived changes
   }, [showArchived]);
 
   useEffect(() => {
     applyFilters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- applyFilters reads from state already in deps array
   }, [leads, searchTerm, filterProjectType, filterStatus, filterTimeline, showArchived]);
 
   const loadLeads = async () => {
@@ -732,11 +735,13 @@ export function EstimatesManager() {
                           Images ({selectedLead.uploaded_images.length})
                         </h4>
                         <div className="grid grid-cols-3 gap-2">
-                          {selectedLead.uploaded_images.map((img: any, idx: number) => (
-                            <img
+                          {selectedLead.uploaded_images.map((img, idx: number) => (
+                            <Image
                               key={idx}
                               src={img.url}
                               alt={`Upload ${idx + 1}`}
+                              width={200}
+                              height={96}
                               className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-75 transition-opacity"
                               onClick={() => {
                                 setSelectedImage(img.url);
@@ -755,7 +760,7 @@ export function EstimatesManager() {
                           PDFs ({selectedLead.uploaded_plans.length})
                         </h4>
                         <div className="space-y-2">
-                          {selectedLead.uploaded_plans.map((pdf: any, idx: number) => (
+                          {selectedLead.uploaded_plans.map((pdf, idx: number) => (
                             <div key={idx} className="flex items-center justify-between p-3 border rounded">
                               <div>
                                 <p className="font-medium">{pdf.label || `Document ${idx + 1}`}</p>
@@ -850,7 +855,7 @@ export function EstimatesManager() {
           <DialogHeader>
             <DialogTitle>Image Preview</DialogTitle>
           </DialogHeader>
-          <img src={selectedImage} alt="Full size" className="w-full h-auto" />
+          <Image src={selectedImage} alt="Full size" width={800} height={600} className="w-full h-auto" />
         </DialogContent>
       </Dialog>
 
@@ -860,7 +865,7 @@ export function EstimatesManager() {
           <AlertDialogHeader>
             <AlertDialogTitle>Archive this lead?</AlertDialogTitle>
             <AlertDialogDescription>
-              This lead will be moved to the archived section. You can view archived leads by clicking "Show Archived".
+              This lead will be moved to the archived section. You can view archived leads by clicking &quot;Show Archived&quot;.
               {leadToArchive && (
                 <div className="mt-2 font-medium">
                   {leadToArchive.first_name} {leadToArchive.last_name} - {leadToArchive.email}

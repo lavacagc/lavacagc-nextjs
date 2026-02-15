@@ -187,7 +187,7 @@ export default function WarrantyPage() {
                     <p className="text-text-secondary mb-4">
                       During the first year, we provide full coverage for all materials and workmanship.
                     </p>
-                    <h4 className="font-semibold text-text-primary mb-2">What's Covered:</h4>
+                    <h4 className="font-semibold text-text-primary mb-2">What&apos;s Covered:</h4>
                     <ul className="space-y-2 text-text-secondary text-sm mb-4">
                       <li>• All materials provided and installed by us</li>
                       <li>• All workmanship performed by us and our subcontractors</li>

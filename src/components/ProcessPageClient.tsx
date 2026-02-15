@@ -98,7 +98,7 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
                         <AccordionContent className="px-6 pb-4">
                           <p className="text-text-secondary leading-relaxed mb-4">{step.description}</p>
                           <div className="bg-muted/30 rounded-lg p-4">
-                            <h4 className="font-semibold text-text-primary mb-3">What's Included:</h4>
+                            <h4 className="font-semibold text-text-primary mb-3">What&apos;s Included:</h4>
                             <ul className="space-y-2">
                               {step.details.map((detail, detailIndex) => (
                                 <li key={detailIndex} className="flex items-start gap-2">
@@ -145,7 +145,7 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
                               </div>
                               <p className="text-text-secondary text-lg leading-relaxed mb-6">{step.description}</p>
                               <div className="bg-muted/30 rounded-lg p-6">
-                                <h4 className="font-semibold text-text-primary mb-3">What's Included:</h4>
+                                <h4 className="font-semibold text-text-primary mb-3">What&apos;s Included:</h4>
                                 <ul className="grid md:grid-cols-2 gap-2">
                                   {step.details.map((detail, detailIndex) => (
                                     <li key={detailIndex} className="flex items-start gap-2">
@@ -272,7 +272,7 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
           <div className="max-w-4xl mx-auto text-center">
             <h2 className="text-3xl font-bold mb-6">Ready to Start Your Project?</h2>
             <p className="text-xl mb-8 opacity-90">
-              Let's discuss your vision and begin the journey to your dream home transformation.
+              Let&apos;s discuss your vision and begin the journey to your dream home transformation.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100" asChild>

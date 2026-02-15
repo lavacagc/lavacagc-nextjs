@@ -24,7 +24,7 @@ const getCorsHeaders = (origin)=>{
 };
 // Rate limiting helper
 const checkRateLimit = async (supabase, ip)=>{
-  const { data, error } = await supabase.from("rate_limits").select("count, last_reset").eq("ip_address", ip).single();
+  const { data } = await supabase.from("rate_limits").select("count, last_reset").eq("ip_address", ip).single();
   const now = new Date();
   const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
   if (!data) {

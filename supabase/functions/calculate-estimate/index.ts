@@ -54,10 +54,8 @@ const requestSchema = z.object({
   uploaded_image_path: z.string().max(500).optional()
 });
 // Rate limiting helper (IP-based)
-const rateLimitKey = (ip)=>`rate_limit:${ip}`;
 const checkRateLimit = async (supabase, ip)=>{
-  const key = rateLimitKey(ip);
-  const { data, error } = await supabase.from("rate_limits").select("count, last_reset").eq("ip_address", ip).single();
+  const { data } = await supabase.from("rate_limits").select("count, last_reset").eq("ip_address", ip).single();
   const now = new Date();
   const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
   if (!data) {
@@ -116,24 +114,6 @@ const checkEmailRateLimit = async (supabase, email, endpoint, maxRequests = 5, w
     count: data.count + 1
   }).eq("email", normalizedEmail).eq("endpoint", endpoint);
   return true;
-};
-// Format materials list
-const formatMaterialsList = (materials)=>{
-  const grouped = materials.reduce((acc, mat)=>{
-    const key = `${mat.material_name}|${mat.unit}`;
-    if (!acc[key]) {
-      acc[key] = {
-        ...mat,
-        estimated_quantity: 0
-      };
-    }
-    acc[key].estimated_quantity += Number(mat.estimated_quantity);
-    return acc;
-  }, {});
-  return Object.values(grouped).map((mat)=>{
-    const qty = Math.ceil(mat.estimated_quantity * 100) / 100;
-    return `<li>${mat.material_name}: <strong>${qty} ${mat.unit}</strong></li>`;
-  }).join("\n");
 };
 const handler = async (req)=>{
   const origin = req.headers.get('origin');
@@ -195,8 +175,7 @@ const handler = async (req)=>{
     if (ptError || !projectType) {
       throw new Error(`Project type not found: ${body.project_type}`);
     }
-    // Calculate base cost
-    const baseCost = projectType.base_price_per_sqft * squareFootage;
+    // Calculate costs
     let totalMaterialCost = projectType.base_material_cost_per_sqft * squareFootage;
     let totalLaborCost = projectType.base_labor_cost_per_sqft * squareFootage;
     // Get selected options and calculate costs
@@ -300,8 +279,6 @@ const handler = async (req)=>{
       const { error: matError } = await supabase.from("material_estimates").insert(estimates);
       if (matError) console.error("Error creating material estimates:", matError);
     }
-    // Get selected options details for email
-    const selectedOptionsDetails = options?.map((opt)=>`<li><strong>${opt.name}:</strong> ${opt.description || ''}</li>`).join("\n") || "";
     // Send customer email
     try {
       const emailResult = await resend.emails.send({

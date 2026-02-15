@@ -4,12 +4,19 @@ import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Check, Download, RotateCcw } from "lucide-react";
 
+interface UpgradeOption {
+  id: string;
+  name: string;
+  description?: string;
+  percentageIncrease: number;
+}
+
 interface EstimateResultsStepProps {
   projectTypeName: string;
   squareFootage: number;
   basePrice: number;
   selectedUpgrades: string[];
-  upgradeOptions: any[];
+  upgradeOptions: UpgradeOption[];
   onStartOver: () => void;
   onGetQuote: () => void;
 }
@@ -57,7 +64,7 @@ export const EstimateResultsStep = ({
             Your Project Summary
           </h2>
           <p className="text-muted-foreground">
-            Based on your selections, here's what we estimated
+            Based on your selections, here&apos;s what we estimated
           </p>
         </div>
 

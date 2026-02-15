@@ -150,8 +150,6 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
 
   // Computed values for tabs
   const scheduledPosts = posts.filter(p => p.scheduled_publish_at && !p.published);
-  const publishedPosts = posts.filter(p => p.published);
-  const draftPosts = posts.filter(p => !p.published && !p.scheduled_publish_at);
 
   if (isLoading) {
     return (

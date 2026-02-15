@@ -68,7 +68,7 @@ export default function LocationsPage() {
                 </span>
               </h1>
               <p className="text-xl text-text-secondary mb-8 leading-relaxed max-w-3xl mx-auto">
-                La Vaca General Contractors proudly serves Northern New Jersey's most prestigious communities.
+                La Vaca General Contractors proudly serves Northern New Jersey&apos;s most prestigious communities.
                 From luxury estates in Alpine to historic homes in Morristown, we bring expert craftsmanship to every project.
               </p>
             </div>
@@ -120,7 +120,7 @@ export default function LocationsPage() {
         <section className="py-16 bg-secondary text-secondary-foreground">
           <div className="container mx-auto px-4 text-center">
             <h2 className="text-3xl md:text-4xl font-bold mb-6">
-              Don't See Your Town?
+              Don&apos;t See Your Town?
             </h2>
             <p className="text-xl mb-8 max-w-2xl mx-auto opacity-90">
               We serve many additional communities throughout Northern New Jersey.

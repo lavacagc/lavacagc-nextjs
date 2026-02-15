@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, ArrowRight } from 'lucide-react';
 
 interface TOCItem {
@@ -22,14 +22,13 @@ const TableOfContents: React.FC<TableOfContentsProps> = ({
   title = "Table of Contents",
   className = ""
 }) => {
-  const [tocItems, setTocItems] = useState<TOCItem[]>(items);
   const [activeId, setActiveId] = useState<string>('');
 
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
+  // Auto-generate TOC from headings — derives items from DOM headings
+  const tocItems = useMemo<TOCItem[]>(() => {
+    if (typeof document === 'undefined') return items;
 
     if (autoGenerate) {
-      // Auto-generate TOC from headings on the page
       const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
       const generatedItems: TOCItem[] = [];
 
@@ -48,9 +47,11 @@ const TableOfContents: React.FC<TableOfContentsProps> = ({
         generatedItems.push({ id, title, level });
       });
 
-      setTocItems(generatedItems);
+      return generatedItems;
     }
-  }, [autoGenerate]);
+
+    return items;
+  }, [autoGenerate, items]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

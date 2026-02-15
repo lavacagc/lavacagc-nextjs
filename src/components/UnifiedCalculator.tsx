@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -45,7 +45,7 @@ export default function UnifiedCalculator() {
   };
 
   // Get step name for analytics
-  const getStepName = (step: number): string => {
+  const getStepName = useCallback((step: number): string => {
     if (!projectTypeData) {
       if (step === 1) return "Project Type Selection";
       return `Step ${step}`;
@@ -58,7 +58,7 @@ export default function UnifiedCalculator() {
 
     const standardSteps = ["Project Type Selection", "Dimensions", "Quality Level", "Material Options", "Additional Features", "Contact Information"];
     return standardSteps[step - 1] || `Step ${step}`;
-  };
+  }, [projectTypeData]);
 
   // Track calculator step changes
   useEffect(() => {
@@ -75,7 +75,7 @@ export default function UnifiedCalculator() {
         trackCalculatorStep(currentStep, stepName, 'exit', timeSpent);
       }
     };
-  }, [currentStep, projectTypeData]);
+  }, [currentStep, projectTypeData, getStepName]);
 
   const handleProjectTypeNext = (data: ProjectTypeData) => {
     setProjectTypeData(data);
@@ -110,7 +110,7 @@ export default function UnifiedCalculator() {
     try {
       if (projectTypeData.requiresPDFUpload) {
         // Handle home addition submission
-        const { data: response, error } = await supabase.functions.invoke("submit-home-addition", {
+        const { error } = await supabase.functions.invoke("submit-home-addition", {
           body: {
             project_description: projectOverviewData?.projectDescription || "",
             project_location: projectOverviewData?.projectLocation || "",

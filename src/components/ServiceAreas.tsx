@@ -1,7 +1,5 @@
 'use client'
 
-import { Card, CardContent } from "@/components/ui/card";
-import { MapPin, Star } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
@@ -83,11 +81,11 @@ const ServiceAreas = () => {
         <div className="text-center mb-16">
           <h2 className="text-4xl md:text-5xl font-bold text-text-primary mb-6">
             Proudly Serving
-            <span className="text-transparent bg-gradient-to-r from-primary to-accent-sunset bg-clip-text"> Northern New Jersey's</span>
+            <span className="text-transparent bg-gradient-to-r from-primary to-accent-sunset bg-clip-text"> Northern New Jersey&apos;s</span>
             <br />Premier Communities
           </h2>
           <p className="text-xl text-text-secondary max-w-3xl mx-auto">
-            Specializing in luxury home renovations in Northern New Jersey's most distinguished neighborhoods
+            Specializing in luxury home renovations in Northern New Jersey&apos;s most distinguished neighborhoods
           </p>
         </div>
 
@@ -119,7 +117,7 @@ const ServiceAreas = () => {
                 </div>
               ))}
               <p className="text-text-muted mt-6 text-lg text-center px-4">
-                Don't see your town? <button onClick={scrollToEstimate} className="text-primary font-semibold hover:text-primary/80 transition-colors cursor-pointer">
+                Don&apos;t see your town? <button onClick={scrollToEstimate} className="text-primary font-semibold hover:text-primary/80 transition-colors cursor-pointer">
                   Contact us
                 </button> - we likely service your area too!
               </p>
@@ -161,7 +159,7 @@ const ServiceAreas = () => {
                 )}
               </div>
               <p className="text-text-muted mt-6 text-lg text-center">
-                Don't see your town? <button onClick={scrollToEstimate} className="text-primary font-semibold hover:text-primary/80 transition-colors cursor-pointer">
+                Don&apos;t see your town? <button onClick={scrollToEstimate} className="text-primary font-semibold hover:text-primary/80 transition-colors cursor-pointer">
                   Contact us
                 </button> - we likely service your area too!
               </p>

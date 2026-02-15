@@ -45,9 +45,9 @@ export default function ContactPage() {
                     Get In Touch
                   </h2>
                   <p className="text-text-secondary mb-8">
-                    Have questions about your renovation project? We're here to help.
+                    Have questions about your renovation project? We&apos;re here to help.
                     Reach out to us through any of the methods below, or fill out the
-                    contact form and we'll get back to you within 24 hours.
+                    contact form and we&apos;ll get back to you within 24 hours.
                   </p>
                 </div>
 
@@ -128,7 +128,7 @@ export default function ContactPage() {
                     Licensed & Insured
                   </h3>
                   <p className="text-text-secondary text-sm">
-                    NJ Home Improvement Contractor License: HIC# 13VH12419200
+                    NJ Home Improvement Contractor License: HIC# 13VH13373800
                   </p>
                   <p className="text-text-muted text-sm mt-2">
                     Fully bonded and insured for your protection

@@ -28,9 +28,9 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/faq',
     images: [
       {
-        url: 'https://www.lavacagc.com/og-faq.jpg',
-        width: 1200,
-        height: 630,
+        url: 'https://www.lavacagc.com/logo.png',
+        width: 800,
+        height: 800,
         alt: 'Home Remodeling FAQ - La Vaca General Contractors',
       },
     ],
@@ -39,6 +39,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Home Remodeling FAQ | La Vaca GC',
     description: '50+ answers to common renovation questions',
+    images: ['/logo.png'],
   },
   alternates: {
     canonical: 'https://www.lavacagc.com/faq',
@@ -134,11 +135,11 @@ export default function FAQPage() {
               </h1>
               <p className="text-xl text-text-secondary leading-relaxed mb-4">
                 Get expert answers to your home renovation questions. From costs and timelines to
-                choosing the right contractor, we've compiled {faqCount}+ answers based on what New
+                choosing the right contractor, we&apos;ve compiled {faqCount}+ answers based on what New
                 Jersey homeowners ask most.
               </p>
               <p className="text-lg text-text-muted">
-                Can't find what you're looking for?{' '}
+                Can&apos;t find what you&apos;re looking for?{' '}
                 <Link href="/contact" className="text-primary hover:underline">
                   Contact us
                 </Link>{' '}

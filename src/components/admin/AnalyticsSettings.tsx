@@ -27,7 +27,7 @@ import {
 
 const AnalyticsSettings = () => {
   const { config, customEvents, isLoading, updateConfig, createEvent, updateEvent, deleteEvent } = useAnalyticsConfig();
-  const [editingEvent, setEditingEvent] = useState<any>(null);
+  const [editingEvent, setEditingEvent] = useState<{ id: string; event_name: string; event_category: string; event_action: string; event_label: string | null; description: string | null; active: boolean | null } | null>(null);
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
   const [eventForm, setEventForm] = useState({
     event_name: '',
@@ -38,7 +38,7 @@ const AnalyticsSettings = () => {
     active: true,
   });
 
-  const handleConfigUpdate = (field: string, value: any) => {
+  const handleConfigUpdate = (field: string, value: unknown) => {
     updateConfig({ [field]: value });
   };
 
@@ -66,15 +66,15 @@ const AnalyticsSettings = () => {
     });
   };
 
-  const handleEditEvent = (event: any) => {
+  const handleEditEvent = (event: { id: string; event_name: string; event_category: string; event_action: string; event_label: string | null; description: string | null; active: boolean | null }) => {
     setEditingEvent(event);
     setEventForm({
-      event_name: event.event_name,
-      event_category: event.event_category,
-      event_action: event.event_action,
-      event_label: event.event_label || '',
-      description: event.description || '',
-      active: event.active,
+      event_name: String(event.event_name ?? ''),
+      event_category: String(event.event_category ?? ''),
+      event_action: String(event.event_action ?? ''),
+      event_label: String(event.event_label ?? ''),
+      description: String(event.description ?? ''),
+      active: Boolean(event.active),
     });
     setIsEventDialogOpen(true);
   };

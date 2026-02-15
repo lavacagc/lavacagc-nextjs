@@ -1,18 +1,16 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Archive, 
-  ArchiveRestore, 
   Trash2, 
   Mail, 
   Phone, 
   MapPin,
-  Calendar,
   AlertCircle,
   CheckSquare
 } from 'lucide-react';
@@ -85,10 +83,10 @@ export function LeadsManager() {
 
       if (archivedError) throw archivedError;
       setArchivedLeads(archived || []);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error fetching leads",
-        description: error.message,
+        description: error instanceof Error ? error.message : String(error),
         variant: "destructive",
       });
     } finally {
@@ -98,80 +96,10 @@ export function LeadsManager() {
 
   useEffect(() => {
     fetchLeads();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only needs to run on mount
   }, []);
 
-  const archiveLead = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('leads')
-        .update({ archived_at: new Date().toISOString() })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      toast({
-        title: "Lead archived",
-        description: "The lead has been archived successfully.",
-      });
-
-      fetchLeads();
-    } catch (error: any) {
-      toast({
-        title: "Error archiving lead",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const restoreLead = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('leads')
-        .update({ archived_at: null })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      toast({
-        title: "Lead restored",
-        description: "The lead has been restored successfully.",
-      });
-
-      fetchLeads();
-    } catch (error: any) {
-      toast({
-        title: "Error restoring lead",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const deleteLead = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('leads')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-
-      toast({
-        title: "Lead deleted",
-        description: "The lead has been permanently deleted.",
-      });
-
-      setSelectedLeads(new Set());
-      fetchLeads();
-    } catch (error: any) {
-      toast({
-        title: "Error deleting lead",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
+  /* archiveLead, restoreLead, deleteLead removed — using bulk operations instead */
 
   const bulkArchive = async () => {
     try {
@@ -189,10 +117,10 @@ export function LeadsManager() {
 
       setSelectedLeads(new Set());
       fetchLeads();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error archiving leads",
-        description: error.message,
+        description: error instanceof Error ? error.message : String(error),
         variant: "destructive",
       });
     }
@@ -216,10 +144,10 @@ export function LeadsManager() {
       setShowDeleteConfirm(false);
       setShowSecondDeleteConfirm(false);
       fetchLeads();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error deleting leads",
-        description: error.message,
+        description: error instanceof Error ? error.message : String(error),
         variant: "destructive",
       });
     }
@@ -243,28 +171,10 @@ export function LeadsManager() {
     }
   };
 
-  const cleanOldLeads = async () => {
-    try {
-      const { error } = await supabase.rpc('delete_old_leads');
+  /* cleanOldLeads removed — not currently used */
 
-      if (error) throw error;
-
-      toast({
-        title: "Old leads deleted",
-        description: "All leads older than 2 years have been removed.",
-      });
-
-      fetchLeads();
-    } catch (error: any) {
-      toast({
-        title: "Error cleaning old leads",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const LeadCard = ({ lead, isArchived }: { lead: Lead; isArchived: boolean }) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const LeadCard = ({ lead, isArchived: _isArchived }: { lead: Lead; isArchived: boolean }) => {
     const isExpanded = expandedLeadId === lead.id;
     const isSelected = selectedLeads.has(lead.id);
     
@@ -434,7 +344,7 @@ export function LeadsManager() {
                       <AlertDialogTitle className="text-destructive">🚨 FINAL WARNING - This Cannot Be Undone!</AlertDialogTitle>
                       <AlertDialogDescription className="space-y-2">
                         <p className="font-semibold">This is your LAST chance to cancel!</p>
-                        <p>Once you click "Permanently Delete", these {selectedLeads.size} lead(s) will be:</p>
+                        <p>Once you click &quot;Permanently Delete&quot;, these {selectedLeads.size} lead(s) will be:</p>
                         <ul className="list-disc list-inside space-y-1 text-sm">
                           <li>Completely removed from the database</li>
                           <li>Unrecoverable by any means</li>

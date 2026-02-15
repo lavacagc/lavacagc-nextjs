@@ -24,11 +24,11 @@ class PerformanceMonitor {
       try {
         const lcpObserver = new PerformanceObserver((list) => {
           const entries = list.getEntries();
-          const lastEntry = entries[entries.length - 1] as any;
+          const lastEntry = entries[entries.length - 1] as PerformanceEntry & { startTime: number };
           this.metrics.lcp = lastEntry.startTime;
         });
         lcpObserver.observe({ type: 'largest-contentful-paint', buffered: true });
-      } catch (e) {
+      } catch {
         // LCP observer not supported
       }
 
@@ -36,12 +36,13 @@ class PerformanceMonitor {
       try {
         const fidObserver = new PerformanceObserver((list) => {
           const entries = list.getEntries();
-          entries.forEach((entry: any) => {
-            this.metrics.fid = entry.processingStart - entry.startTime;
+          entries.forEach((entry) => {
+            const fidEntry = entry as PerformanceEntry & { processingStart: number; startTime: number };
+            this.metrics.fid = fidEntry.processingStart - fidEntry.startTime;
           });
         });
         fidObserver.observe({ type: 'first-input', buffered: true });
-      } catch (e) {
+      } catch {
         // FID observer not supported
       }
 
@@ -50,22 +51,23 @@ class PerformanceMonitor {
         let clsValue = 0;
         const clsObserver = new PerformanceObserver((list) => {
           const entries = list.getEntries();
-          entries.forEach((entry: any) => {
-            if (!entry.hadRecentInput) {
-              clsValue += entry.value;
+          entries.forEach((entry) => {
+            const clsEntry = entry as PerformanceEntry & { hadRecentInput: boolean; value: number };
+            if (!clsEntry.hadRecentInput) {
+              clsValue += clsEntry.value;
             }
           });
           this.metrics.cls = clsValue;
         });
         clsObserver.observe({ type: 'layout-shift', buffered: true });
-      } catch (e) {
+      } catch {
         // CLS observer not supported
       }
     }
 
     // First Contentful Paint
     window.addEventListener('load', () => {
-      const navigation = performance.getEntriesByType('navigation')[0] as any;
+      const navigation = performance.getEntriesByType('navigation')[0] as PerformanceEntry & { responseStart: number; requestStart: number } | undefined;
       if (navigation) {
         this.metrics.ttfb = navigation.responseStart - navigation.requestStart;
       }
@@ -83,7 +85,9 @@ class PerformanceMonitor {
   }
 
   logMetrics(): void {
-    console.log('Performance Metrics:', this.getMetrics());
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Performance Metrics:', this.getMetrics());
+    }
   }
 
   // Resource loading optimization
@@ -128,21 +132,23 @@ class PerformanceMonitor {
   analyzeBundleSize(): void {
     if (typeof window === 'undefined') return;
     if ('performance' in window && 'getEntriesByType' in performance) {
-      const resources = performance.getEntriesByType('resource') as any[];
+      const resources = performance.getEntriesByType('resource') as (PerformanceEntry & { transferSize: number; duration: number })[];
       const jsResources = resources.filter(r => r.name.endsWith('.js'));
       const cssResources = resources.filter(r => r.name.endsWith('.css'));
 
-      console.log('JS Bundle Sizes:', jsResources.map(r => ({
-        name: r.name,
-        size: r.transferSize,
-        loadTime: r.duration
-      })));
+      if (process.env.NODE_ENV === 'development') {
+        console.log('JS Bundle Sizes:', jsResources.map(r => ({
+          name: r.name,
+          size: r.transferSize,
+          loadTime: r.duration
+        })));
 
-      console.log('CSS Bundle Sizes:', cssResources.map(r => ({
-        name: r.name,
-        size: r.transferSize,
-        loadTime: r.duration
-      })));
+        console.log('CSS Bundle Sizes:', cssResources.map(r => ({
+          name: r.name,
+          size: r.transferSize,
+          loadTime: r.duration
+        })));
+      }
     }
   }
 }

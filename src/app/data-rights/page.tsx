@@ -379,7 +379,7 @@ export default function DataRightsPage() {
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>Identity verification: 10 business days</li>
                     <li>Request fulfillment: 30 days (GDPR) / 45 days (CCPA)</li>
-                    <li>Complex requests may require an extension (we'll notify you)</li>
+                    <li>Complex requests may require an extension (we&apos;ll notify you)</li>
                   </ul>
                 </div>
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -227,13 +228,16 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                         playsInline
                       />
                     ) : (
-                      <img
+                      <Image
                         src={getProjectImages()[0].image_url}
                         alt={
                           getProjectImages()[0].alt_text ||
                           `${project.title} - Featured ${project.service_types[0]} project in ${project.location} by La Vaca General Contractors`
                         }
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        className="object-cover transition-transform duration-300 group-hover:scale-105"
+                        fill
+                        sizes="(max-width: 768px) 100vw, 50vw"
+                        unoptimized
                       />
                     )}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
@@ -265,13 +269,16 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                             playsInline
                           />
                         ) : (
-                          <img
+                          <Image
                             src={image.image_url}
                             alt={
                               image.alt_text ||
                               `${project.title} - ${project.service_types[0]} project detail image ${index + 2} by La Vaca General Contractors in ${project.location}`
                             }
-                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            className="object-cover transition-transform duration-300 group-hover:scale-105"
+                            fill
+                            sizes="(max-width: 768px) 100vw, 25vw"
+                            unoptimized
                           />
                         )}
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
@@ -378,7 +385,7 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                     <div className="relative">
                       <Quote className="w-8 h-8 text-muted-foreground/30 absolute -top-2 -left-1" />
                       <blockquote className="text-muted-foreground italic pl-6">
-                        "{project.testimonial_text}"
+                        &quot;{project.testimonial_text}&quot;
                       </blockquote>
                       <div className="flex items-center gap-3 mt-4 pl-6">
                         {project.client_first_name && (
@@ -478,7 +485,7 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                         {getProjectImages().map((image, index) => (
                           <div
                             key={image.id}
-                            className="relative group cursor-pointer"
+                            className="relative group cursor-pointer h-32"
                             onClick={() => {
                               setLightboxIndex(index);
                               setLightboxOpen(true);
@@ -494,10 +501,13 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                                 playsInline
                               />
                             ) : (
-                              <img
+                              <Image
                                 src={image.image_url}
                                 alt={image.alt_text || `${project.title} - Image ${index + 1}`}
-                                className="w-full h-32 object-cover rounded-lg transition-transform group-hover:scale-[1.02]"
+                                className="object-cover rounded-lg transition-transform group-hover:scale-[1.02]"
+                                fill
+                                sizes="(max-width: 768px) 50vw, 25vw"
+                                unoptimized
                               />
                             )}
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
@@ -536,7 +546,7 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-3xl font-bold mb-4">Ready to Start Your Own Project?</h2>
           <p className="text-xl mb-8 opacity-90">
-            Let's bring your vision to life with our expert craftsmanship.
+            Let&apos;s bring your vision to life with our expert craftsmanship.
           </p>
           <Link
             href="/#estimate"

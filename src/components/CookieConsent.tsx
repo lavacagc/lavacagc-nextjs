@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -19,53 +19,58 @@ interface ConsentSettings {
 const CONSENT_STORAGE_KEY = 'lavaca_cookie_consent';
 const CONSENT_VERSION = '1.0';
 
+function getSavedConsent(): ConsentSettings | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const savedConsent = localStorage.getItem(CONSENT_STORAGE_KEY);
+    if (!savedConsent) return null;
+    const { version, settings: savedSettings, timestamp } = JSON.parse(savedConsent);
+    const consentAge = Date.now() - timestamp;
+    const oneYear = 365 * 24 * 60 * 60 * 1000;
+    if (version === CONSENT_VERSION && consentAge < oneYear) {
+      return savedSettings;
+    }
+  } catch {
+    // Invalid saved consent
+  }
+  return null;
+}
+
 export default function CookieConsent() {
   const [showBanner, setShowBanner] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
-  const [settings, setSettings] = useState<ConsentSettings>({
-    necessary: true, // Always required
-    analytics: false,
-    marketing: false,
-    preferences: false,
+  const [settings, setSettings] = useState<ConsentSettings>(() => {
+    const saved = getSavedConsent();
+    return saved ?? {
+      necessary: true,
+      analytics: false,
+      marketing: false,
+      preferences: false,
+    };
   });
 
-  useEffect(() => {
-    // Check if user has already consented
-    const savedConsent = localStorage.getItem(CONSENT_STORAGE_KEY);
-
-    if (savedConsent) {
-      try {
-        const { version, settings: savedSettings, timestamp } = JSON.parse(savedConsent);
-
-        // Check if consent is still valid (within 1 year)
-        const consentAge = Date.now() - timestamp;
-        const oneYear = 365 * 24 * 60 * 60 * 1000;
-
-        if (version === CONSENT_VERSION && consentAge < oneYear) {
-          setSettings(savedSettings);
-          applyConsentSettings(savedSettings);
-          return;
-        }
-      } catch (e) {
-        // Invalid saved consent, show banner
-      }
-    }
-
-    // Show banner after a short delay
-    const timer = setTimeout(() => setShowBanner(true), 1000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const applyConsentSettings = (consentSettings: ConsentSettings) => {
-    // Update Google Analytics consent
+  const applyConsentSettings = useCallback((consentSettings: ConsentSettings) => {
     const analyticsConsent = consentSettings.analytics ? 'granted' : 'denied';
     const adConsent = consentSettings.marketing ? 'granted' : 'denied';
-
     analyticsManager.updateConsent(analyticsConsent, adConsent);
-
-    // Log consent for compliance
     console.log('Cookie consent applied:', consentSettings);
-  };
+  }, []);
+
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
+    const saved = getSavedConsent();
+    if (saved) {
+      applyConsentSettings(saved);
+      return;
+    }
+
+    const timer = setTimeout(() => setShowBanner(true), 1000);
+    return () => clearTimeout(timer);
+  }, [applyConsentSettings]);
 
   const saveConsent = (consentSettings: ConsentSettings) => {
     const consentData = {
@@ -133,7 +138,7 @@ export default function CookieConsent() {
         <div className="mb-6">
           <p className="text-sm text-muted-foreground mb-3">
             We use cookies to enhance your browsing experience, serve personalized ads or content, and analyze our traffic.
-            By clicking "Accept All", you consent to our use of cookies. You can customize your preferences or reject non-essential cookies.
+            By clicking &quot;Accept All&quot;, you consent to our use of cookies. You can customize your preferences or reject non-essential cookies.
           </p>
 
           <div className="flex gap-2 text-sm">

@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -267,10 +268,13 @@ export const AdditionalFeaturesStep = ({
             <div className="flex items-start gap-4">
               <div className="relative w-32 h-32 rounded-lg overflow-hidden bg-muted flex-shrink-0">
                 {previewUrl ? (
-                  <img
+                  <Image
                     src={previewUrl}
-                    alt="Preview"
+                    alt="Uploaded project inspiration photo preview"
                     className="w-full h-full object-cover"
+                    width={128}
+                    height={128}
+                    unoptimized
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">

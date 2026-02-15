@@ -6,8 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AdminCheckbox } from '@/components/admin/ui/AdminCheckbox';
-import { Star, Sparkles, Plus, X, Clock, Award, Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Star, Sparkles, Plus, X, Clock, Award, Upload, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { ProjectFormData } from '../ProjectUploadSystem';
@@ -81,8 +80,9 @@ export function ProjectDetailsStep({ formData, updateFormData }: ProjectDetailsS
   const [newMaterial, setNewMaterial] = useState('');
   const [newFeature, setNewFeature] = useState('');
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
-  const [googleReviews, setGoogleReviews] = useState<any[]>([]);
-  const [loadingReviews, setLoadingReviews] = useState(false);
+  const [googleReviews, setGoogleReviews] = useState<Array<{ id: string; reviewer_name: string; comment: string; star_rating: number }>>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_loadingReviews, setLoadingReviews] = useState(false);
 
   useEffect(() => {
     fetchGoogleReviews();
@@ -225,7 +225,7 @@ export function ProjectDetailsStep({ formData, updateFormData }: ProjectDetailsS
       // Upload to Supabase storage
       const fileExt = file.name.split('.').pop();
       const fileName = `${type}-${Date.now()}.${fileExt}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('project-images')
         .upload(fileName, file);
 
@@ -266,7 +266,7 @@ export function ProjectDetailsStep({ formData, updateFormData }: ProjectDetailsS
     }
   };
 
-  const selectReview = (review: any) => {
+  const selectReview = (review: { comment: string; star_rating: number; reviewer_name: string }) => {
     updateFormData({
       testimonial_text: review.comment,
       testimonial_rating: review.star_rating,
@@ -321,7 +321,7 @@ export function ProjectDetailsStep({ formData, updateFormData }: ProjectDetailsS
             </div>
           </div>
           <p className="text-sm text-muted-foreground">
-            Describe the challenges OR upload a "before" photo for AI analysis
+            Describe the challenges OR upload a &quot;before&quot; photo for AI analysis
           </p>
         </CardHeader>
         <CardContent>
@@ -376,7 +376,7 @@ export function ProjectDetailsStep({ formData, updateFormData }: ProjectDetailsS
             </div>
           </div>
           <p className="text-sm text-muted-foreground">
-            Describe your solution OR upload an "after" photo for AI analysis
+            Describe your solution OR upload an &quot;after&quot; photo for AI analysis
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -618,7 +618,7 @@ export function ProjectDetailsStep({ formData, updateFormData }: ProjectDetailsS
                             </div>
                           </div>
                           <p className="text-xs text-muted-foreground line-clamp-2">
-                            "{review.comment}"
+                            &quot;{review.comment}&quot;
                           </p>
                         </div>
                         <Button size="sm" variant="outline" className="shrink-0">

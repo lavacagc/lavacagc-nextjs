@@ -10,7 +10,22 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Our Services | Premium Home Remodeling NJ",
     description: "Explore our comprehensive home remodeling services including kitchen remodeling, bathroom renovations, basement finishing, and home additions in Northern New Jersey.",
+    type: "website",
     url: "https://www.lavacagc.com/services",
+    images: [
+      {
+        url: "https://www.lavacagc.com/logo.png",
+        width: 800,
+        height: 800,
+        alt: "La Vaca General Contractors - Home Remodeling Services NJ",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Our Services | Premium Home Remodeling NJ",
+    description: "Explore our comprehensive home remodeling services including kitchen remodeling, bathroom renovations, basement finishing, and home additions in Northern New Jersey.",
+    images: ["/logo.png"],
   },
   alternates: {
     canonical: "https://www.lavacagc.com/services",

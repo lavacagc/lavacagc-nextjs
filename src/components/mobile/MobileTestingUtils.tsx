@@ -9,11 +9,7 @@ interface MobileTestingUtilsProps {
   enableLighthouseAudit?: boolean;
 }
 
-const MobileTestingUtils: React.FC<MobileTestingUtilsProps> = ({
-  enableGoogleMobileFriendlyTest = true,
-  enablePageSpeedInsights = true,
-  enableLighthouseAudit = true
-}) => {
+const MobileTestingUtils: React.FC<MobileTestingUtilsProps> = () => {
   // Generate testing schema for Google's mobile testing tools
   const mobileTestingSchema = {
     "@context": "https://schema.org",

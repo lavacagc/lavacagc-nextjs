@@ -1,6 +1,5 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -153,7 +152,8 @@ export const PDFUploadStep = ({
   const handleRemoveFile = (id: string) => {
     setUploadedFiles(prev => prev.filter(f => f.id !== id));
     setUploadProgress(prev => {
-      const { [id]: _, ...rest } = prev;
+      const rest = { ...prev };
+      delete rest[id];
       return rest;
     });
   };

@@ -65,6 +65,7 @@ export const ContactInfoStep = ({
     },
   });
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- React Hook Form's watch() API is expected to be non-memoizable
   const termsConsent = watch("termsConsent");
   const notes = watch("notes") || "";
   const phoneValue = watch("phone");
@@ -92,7 +93,7 @@ export const ContactInfoStep = ({
       <div className="text-center space-y-2">
         <h2 className="text-2xl font-bold">Get Your Estimate</h2>
         <p className="text-muted-foreground">
-          We'll email you a detailed estimate immediately
+          We&apos;ll email you a detailed estimate immediately
         </p>
       </div>
 

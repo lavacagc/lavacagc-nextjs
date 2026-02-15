@@ -13,7 +13,6 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
 import { Save, Plus, Trash2, Edit, GripVertical, TestTube, X } from 'lucide-react';
-import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useCalculator } from '@/hooks/useCalculator';
 import { useCalculatorOptions } from '@/hooks/useCalculatorOptions';
@@ -52,7 +51,7 @@ interface OptionItem {
   modifier_type: string | null;
   modifier_value: number | null;
   display_label: string | null;
-  materials_list: any;
+  materials_list: Material[] | null;
   display_order: number;
   active: boolean;
 }
@@ -81,7 +80,7 @@ export function PricingManager() {
   const { data: testCategories = [] } = useCalculatorOptions(selectedProjectType);
   const currentProjectType = projectTypes.find(pt => pt.id === selectedProjectType);
   const { formData: testFormData, updateFormData: updateTestFormData, calculateEstimate: calculateTestEstimate } = useCalculator(
-    currentProjectType as any || null,
+    currentProjectType ? { ...currentProjectType, requires_pdf_upload: false, has_calculator_options: true, seasonal_multiplier: 1, created_at: '', updated_at: '' } : null,
     testCategories
   );
   const [showBulkAdjustDialog, setShowBulkAdjustDialog] = useState(false);
@@ -98,6 +97,7 @@ export function PricingManager() {
       loadCategories();
       loadItems();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadCategories and loadItems depend on selectedProjectType which is in deps
   }, [selectedProjectType]);
 
   const loadProjectTypes = async () => {
@@ -196,7 +196,7 @@ export function PricingManager() {
       } else {
         const { error } = await supabase
           .from('calculator_option_categories')
-          .insert(categoryFormData as any);
+          .insert(categoryFormData as { name: string; project_type_id: string; description?: string | null; display_order?: number; required?: boolean; active?: boolean });
 
         if (error) throw error;
       }
@@ -231,7 +231,7 @@ export function PricingManager() {
         material_cost: materialCost,
         labor_cost: laborCost,
         total_cost: totalCost,
-        materials_list: itemMaterials.length > 0 ? itemMaterials as any : []
+        materials_list: itemMaterials.length > 0 ? itemMaterials : []
       };
 
       if (editingItem?.id) {
@@ -244,7 +244,7 @@ export function PricingManager() {
       } else {
         const { error } = await supabase
           .from('calculator_option_items')
-          .insert(itemData as any);
+          .insert(itemData as { option_category_id: string; name: string; description?: string | null; material_cost: number; labor_cost: number; total_cost: number; labor_hours?: number | null; modifier_type?: string | null; modifier_value?: number | null; display_label?: string | null; materials_list?: Material[]; display_order?: number; active?: boolean });
 
         if (error) throw error;
       }

@@ -27,7 +27,7 @@ const Breadcrumb: React.FC<BreadcrumbProps> = ({ items, className = '' }) => {
 
     let currentPath = '';
     
-    pathSegments.forEach((segment, index) => {
+    pathSegments.forEach((segment) => {
       currentPath += `/${segment}`;
       
       // Format segment for display

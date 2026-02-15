@@ -640,7 +640,7 @@ export default function InteriorFinishingPage() {
                 </Card>
               </div>
               <p className="text-center text-text-muted mt-6 md:mt-8 text-sm md:text-base">
-                Don't see your town? We serve all of Northern New Jersey.{' '}
+                Don&apos;t see your town? We serve all of Northern New Jersey.{' '}
                 <Link href="/contact" className="text-primary hover:underline">
                   Contact us
                 </Link>{' '}
