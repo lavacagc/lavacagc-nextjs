@@ -35,29 +35,33 @@ export default function LeaveReviewClient() {
     setSubmitting(true);
 
     try {
-      // Store internal feedback in Supabase leads table (with review source)
-      await supabase.from('leads').insert({
-        source: 'review-feedback',
-        project_type: `${rating}-star review`,
-        additional_info: feedback.trim(),
-        referral_source: 'leave-a-review',
-        ...(name.trim() ? { first_name: name.trim().split(' ')[0], last_name: name.trim().split(' ').slice(1).join(' ') || null } : {}),
-        ...(email.trim() ? { email: email.trim() } : {}),
+      // Try internal_feedback table first (preferred)
+      const { error: fbError } = await supabase.from('internal_feedback').insert({
+        rating,
+        name: name.trim() || null,
+        email: email.trim() || null,
+        feedback: feedback.trim(),
+        source: 'leave-a-review',
       });
-    } catch {
-      // Try the internal_feedback table as fallback
-      try {
-        await supabase.from('internal_feedback').insert({
-          rating,
-          name: name.trim() || null,
-          email: email.trim() || null,
-          feedback: feedback.trim(),
-          source: 'leave-a-review',
+
+      // If internal_feedback table doesn't exist, store as a chat conversation
+      if (fbError) {
+        await supabase.from('chat_conversations').insert({
+          visitor_id: `review-${Date.now()}`,
+          lead_captured: !!(name.trim() || email.trim()),
+          lead_data: {
+            type: 'review-feedback',
+            rating,
+            name: name.trim() || null,
+            email: email.trim() || null,
+            feedback: feedback.trim(),
+          },
+          page_url: '/leave-a-review',
         });
-      } catch {
-        // Silently fail — we don't want to block the user
-        console.error('Failed to save feedback');
       }
+    } catch {
+      // Silently fail — we don't want to block the user
+      console.error('Failed to save feedback');
     }
 
     setSubmitting(false);
