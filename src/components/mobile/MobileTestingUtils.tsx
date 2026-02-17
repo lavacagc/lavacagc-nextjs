@@ -94,12 +94,14 @@ export const mobilePerfMonitor = {
     if (typeof window !== 'undefined') {
       import('web-vitals').then((webVitals) => {
         const { onCLS, onFCP, onLCP, onTTFB } = webVitals;
-        onCLS(console.log);
-        onFCP(console.log);
-        onLCP(console.log);
-        onTTFB(console.log);
+        // Metrics are captured but not logged in production
+        const noop = () => {};
+        onCLS(noop);
+        onFCP(noop);
+        onLCP(noop);
+        onTTFB(noop);
       }).catch(() => {
-        console.log('Web Vitals not available');
+        // Web Vitals not available
       });
     }
   },
@@ -116,7 +118,7 @@ export const mobilePerfMonitor = {
       document.addEventListener('touchend', () => {
         const touchDuration = performance.now() - touchStartTime;
         if (touchDuration > 100) {
-          console.log('Long touch detected:', touchDuration);
+          // Long touch detected — could be used for diagnostics
         }
       });
     }

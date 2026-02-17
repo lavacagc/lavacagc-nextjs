@@ -23,7 +23,6 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const analyzeImage = async (file: File) => {
-    console.log('Starting image analysis for:', file.name);
     try {
       // Simple categorization based on filename or default to 'after'
       const filename = file.name.toLowerCase();
@@ -32,13 +31,10 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
       if (filename.includes('before')) category = 'before';
       else if (filename.includes('during') || filename.includes('progress')) category = 'during';
       
-      console.log('Image category determined:', category);
-      
       // Upload to temporary storage to get URL for AI analysis
       const fileExt = file.name.split('.').pop();
       const tempFileName = `temp-analysis-${Date.now()}.${fileExt}`;
       
-      console.log('Uploading temp file:', tempFileName);
       const { error: uploadError } = await supabase.storage
         .from('project-images')
         .upload(tempFileName, file);
@@ -55,7 +51,6 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
         .from('project-images')
         .getPublicUrl(tempFileName);
 
-      console.log('Calling AI vision analysis with URL:', publicUrl);
       // Call AI vision analysis
       const { data: aiData, error: aiError } = await supabase.functions.invoke('analyze-project-images', {
         body: {
@@ -65,8 +60,6 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
           location: formData.location
         }
       });
-
-      console.log('AI response:', { aiData, aiError });
 
       // Delete temporary file
       await supabase.storage
@@ -83,8 +76,6 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
 
       // Use the full AI analysis as alt text (it should be concise now)
       const fullAnalysis = aiData.analysis;
-      console.log('Generated alt text:', fullAnalysis);
-
       return {
         category,
         alt_text: fullAnalysis

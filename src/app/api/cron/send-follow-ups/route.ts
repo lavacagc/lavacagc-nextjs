@@ -73,8 +73,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ status: 'ok', processed: 0, message: 'No pending follow-ups' });
     }
 
-    console.log(`📧 Processing ${pendingItems.length} pending follow-up(s)...`);
-
     let sent = 0;
     let failed = 0;
 
@@ -127,7 +125,6 @@ export async function GET(request: NextRequest) {
             })
             .eq('id', item.id);
           sent++;
-          console.log(`✅ Sent ${item.follow_up_type} follow-up to ${item.lead_email}`);
         }
       } catch (itemError) {
         console.error(`Error processing follow-up ${item.id}:`, itemError);
@@ -146,7 +143,6 @@ export async function GET(request: NextRequest) {
       await delay(1000);
     }
 
-    console.log(`📧 Follow-up batch complete: ${sent} sent, ${failed} failed`);
     return NextResponse.json({
       status: 'ok',
       processed: pendingItems.length,

@@ -39,7 +39,6 @@ async function sendInstantAck(email: string, subject: string, html: string): Pro
       return false;
     }
 
-    console.log(`✅ Instant ack email sent to ${email}`);
     return true;
   } catch (err) {
     console.error('Error sending instant ack:', err);
@@ -104,7 +103,6 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (existingFollowUps && existingFollowUps.length > 0) {
-      console.log(`Follow-up sequence already exists for ${email}, skipping duplicate`);
       return NextResponse.json({
         status: 'skipped',
         reason: 'duplicate_email',
@@ -181,9 +179,6 @@ export async function POST(request: NextRequest) {
       console.error('Error creating follow-up sequence:', error);
       return NextResponse.json({ error: 'Failed to create follow-up sequence' }, { status: 500 });
     }
-
-    console.log(`✅ Follow-up sequence created for ${name} (${email}) from ${source || 'unknown'}`);
-    console.log(`   ${data?.length || 0} follow-ups scheduled${instantSent ? ' (instant ack sent)' : ''}`);
 
     return NextResponse.json({
       status: 'created',

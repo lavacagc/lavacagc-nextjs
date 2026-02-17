@@ -73,7 +73,6 @@ const WarrantyForm = () => {
       script.async = true;
       script.defer = true;
       script.onload = () => {
-        console.log('reCAPTCHA Enterprise script loaded successfully');
         setRecaptchaLoaded(true);
       };
       script.onerror = () => {
@@ -258,7 +257,6 @@ const WarrantyForm = () => {
     
     // Prevent submission if not on final step
     if (currentStep !== totalSteps) {
-      console.log('Form submission blocked - not on final step');
       return;
     }
     
@@ -289,7 +287,6 @@ const WarrantyForm = () => {
                 .catch(reject);
             });
           });
-          console.log('reCAPTCHA Enterprise token obtained');
         } catch (error) {
           console.error('reCAPTCHA Enterprise execution failed:', error);
           toast({

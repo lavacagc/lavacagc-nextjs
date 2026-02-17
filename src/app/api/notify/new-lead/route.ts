@@ -44,7 +44,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'failed', error: error.message }, { status: 500 });
     }
 
-    console.log(`✅ Lead notification email sent to alex@vacamoo.com (id: ${data?.id})`);
     return NextResponse.json({ status: 'sent', emailId: data?.id });
   } catch (error) {
     console.error('Notification endpoint error:', error);

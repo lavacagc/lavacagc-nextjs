@@ -66,10 +66,10 @@ const Header = () => {
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-20 min-[480px]:h-24 md:h-28 lg:grid lg:grid-cols-3">
             {/* Logo */}
-            <button 
-              onClick={() => router.push('/')} 
+            <Link 
+              href="/"
               className="flex items-center space-x-1.5 sm:space-x-2 md:space-x-3 hover:opacity-80 transition-opacity"
-              aria-label="La Vaca General Contractors - Go to homepage"
+              aria-label="La Vaca General Contractors - Home"
             >
               <Image
                 src={logo}
@@ -81,7 +81,7 @@ const Header = () => {
                 <span className="font-bold text-sm min-[480px]:text-base md:text-lg text-text-primary block">La Vaca</span>
                 <p className="text-sm text-text-muted -mt-0.5 md:-mt-1">General Contractors</p>
               </div>
-            </button>
+            </Link>
 
             {/* Desktop Navigation - Centered */}
             <nav className="hidden lg:flex items-center justify-center space-x-8">

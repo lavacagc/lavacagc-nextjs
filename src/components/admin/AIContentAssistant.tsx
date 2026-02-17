@@ -61,8 +61,6 @@ interface QuickPrompt {
 }
 
 export function AIContentAssistant() {
-  console.log('AIContentAssistant component is rendering');
-  
   const [activeTab, setActiveTab] = useState('quick-prompts');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedContent, setGeneratedContent] = useState('');

@@ -63,9 +63,6 @@ class AnalyticsManager {
     await this.loadConfiguration();
 
     if (!this.config?.tracking_enabled) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Analytics tracking is disabled');
-      }
       return;
     }
 
@@ -122,10 +119,6 @@ class AnalyticsManager {
     iframe.style.visibility = 'hidden';
     noscript.appendChild(iframe);
     document.body.insertBefore(noscript, document.body.firstChild);
-
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Google Tag Manager initialized with ID:', containerId);
-    }
   }
 
   private initializeGA4(measurementId: string) {
@@ -203,18 +196,9 @@ class AnalyticsManager {
       });
     `;
     document.head.appendChild(script2);
-
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Google Analytics initialized with ID:', measurementId);
-      console.log('Initial consent mode:', { analyticsConsent, adConsent });
-    }
   }
 
   trackEvent(eventName: string, parameters?: Record<string, unknown>) {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('📊 GA Event:', eventName, parameters);
-    }
-
     if (!this.config?.tracking_enabled || typeof window.gtag === 'undefined') {
       console.warn('⚠️ Tracking disabled or gtag not available:', {
         tracking_enabled: this.config?.tracking_enabled,

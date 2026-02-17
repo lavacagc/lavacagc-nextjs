@@ -14,13 +14,19 @@ export const metadata: Metadata = {
     title: 'Premium Home Remodeling Northern New Jersey | La Vaca General Contractors',
     description: 'Transform your home with Northern NJ\'s trusted renovation experts.',
     url: 'https://www.lavacagc.com',
+    images: [
+      {
+        url: 'https://www.lavacagc.com/logo.webp',
+        width: 800,
+        height: 800,
+        alt: 'La Vaca General Contractors - Premium Home Remodeling NJ',
+      },
+    ],
   },
   alternates: {
     canonical: 'https://www.lavacagc.com',
   },
 }
-
-const SEOSchema = dynamic(() => import('@/components/SEOSchema'))
 
 const HomeEstimateForm = dynamic(() => import('@/components/HomeEstimateForm'), {
   loading: () => (
@@ -86,7 +92,6 @@ const TrackedSection = dynamic(() => import('@/components/TrackedSection'))
 export default function Home() {
   return (
     <div className="min-h-screen bg-background">
-      <SEOSchema />
       <Header />
       <main id="main-content" className="pb-20 md:pb-0">
         <Hero />

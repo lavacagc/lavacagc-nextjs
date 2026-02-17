@@ -73,13 +73,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ status: 'cancelled', reason: 'lead_responded' });
       }
 
-      // "Send" the email (log for now, actual email integration later)
-      console.log('📧 SENDING FOLLOW-UP EMAIL:');
-      console.log(`  To: ${followUp.lead_email} (${followUp.lead_name})`);
-      console.log(`  Subject: ${followUp.email_subject}`);
-      console.log(`  Type: ${followUp.follow_up_type}`);
-      console.log(`  Body preview: ${(followUp.email_body as string).substring(0, 100)}...`);
-
       // Mark as sent
       const { error: updateError } = await supabase
         .from('follow_up_queue')
@@ -131,8 +124,6 @@ export async function POST(request: NextRequest) {
           results.push({ id: followUp.id, status: 'cancelled' });
           continue;
         }
-
-        console.log(`📧 SENDING: ${followUp.follow_up_type} to ${followUp.lead_email}`);
 
         await supabase
           .from('follow_up_queue')

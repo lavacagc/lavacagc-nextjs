@@ -218,7 +218,6 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
             size="sm"
             onClick={(e) => {
               e.preventDefault();
-              console.log('View button clicked for:', post.slug);
               router.push(`/blog/${post.slug}`);
             }}
             title="View post"

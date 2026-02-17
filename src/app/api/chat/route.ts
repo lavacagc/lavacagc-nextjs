@@ -399,8 +399,6 @@ export async function POST(request: NextRequest) {
 
           if (insertError) {
             console.error('Failed to insert lead:', insertError);
-          } else {
-            console.log(`✅ Lead inserted for ${firstName} ${lastName} (${currentMsgLeadInfo.email || currentMsgLeadInfo.phone})`);
           }
 
           // Trigger follow-up sequence via webhook
@@ -439,8 +437,6 @@ export async function POST(request: NextRequest) {
             });
             if (emailError) {
               console.error('Edge Function email notification failed:', emailError);
-            } else {
-              console.log(`✅ Lead notification sent via Edge Function for ${firstName}`);
             }
           } catch (notifyErr) {
             console.error('Failed to send lead notification:', notifyErr);
@@ -463,7 +459,6 @@ export async function POST(request: NextRequest) {
                 source: 'chatbot',
               }),
             });
-            console.log(`✅ Telegram notification sent for ${firstName}`);
           } catch (telegramErr) {
             console.error('Failed to send Telegram notification:', telegramErr);
           }

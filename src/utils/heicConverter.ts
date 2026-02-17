@@ -17,8 +17,6 @@ export async function convertHeicToJpeg(file: File): Promise<File> {
   }
 
   try {
-    console.log('Converting HEIC to JPEG:', file.name);
-    
     // Convert HEIC to JPEG blob with multiple fallback attempts
     let convertedBlob;
     
@@ -48,7 +46,6 @@ export async function convertHeicToJpeg(file: File): Promise<File> {
       lastModified: Date.now()
     });
 
-    console.log('HEIC conversion successful:', newFileName);
     return convertedFile;
   } catch (error) {
     console.error('All HEIC conversion attempts failed:', error);

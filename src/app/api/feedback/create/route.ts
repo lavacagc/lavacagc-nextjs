@@ -51,7 +51,6 @@ export async function POST(request: NextRequest) {
           console.error('Failed to send Day 0 feedback email:', sendError);
         } else {
           day0Sent = true;
-          console.log(`✅ Day 0 feedback email sent immediately to ${email}`);
         }
       } catch (err) {
         console.error('Error sending Day 0 email:', err);
@@ -99,7 +98,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create feedback sequence' }, { status: 500 });
     }
 
-    console.log(`✅ Feedback sequence created for ${customerName} (${email})${day0Sent ? ' — Day 0 sent immediately' : ''}`);
     return NextResponse.json({
       status: 'created',
       day0Sent,

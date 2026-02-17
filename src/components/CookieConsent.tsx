@@ -53,7 +53,6 @@ export default function CookieConsent() {
     const analyticsConsent = consentSettings.analytics ? 'granted' : 'denied';
     const adConsent = consentSettings.marketing ? 'granted' : 'denied';
     analyticsManager.updateConsent(analyticsConsent, adConsent);
-    console.log('Cookie consent applied:', consentSettings);
   }, []);
 
   const initializedRef = useRef(false);

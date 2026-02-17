@@ -121,7 +121,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`✅ Telegram notification sent for lead: ${name || 'Unknown'} (${tier || 'no tier'})`);
     return NextResponse.json({ 
       status: 'sent', 
       messageId: result.result?.message_id 

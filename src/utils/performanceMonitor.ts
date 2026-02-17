@@ -85,9 +85,7 @@ class PerformanceMonitor {
   }
 
   logMetrics(): void {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Performance Metrics:', this.getMetrics());
-    }
+    // Metrics available via getMetrics() — no console output in production
   }
 
   // Resource loading optimization
@@ -136,19 +134,7 @@ class PerformanceMonitor {
       const jsResources = resources.filter(r => r.name.endsWith('.js'));
       const cssResources = resources.filter(r => r.name.endsWith('.css'));
 
-      if (process.env.NODE_ENV === 'development') {
-        console.log('JS Bundle Sizes:', jsResources.map(r => ({
-          name: r.name,
-          size: r.transferSize,
-          loadTime: r.duration
-        })));
-
-        console.log('CSS Bundle Sizes:', cssResources.map(r => ({
-          name: r.name,
-          size: r.transferSize,
-          loadTime: r.duration
-        })));
-      }
+      // Bundle size data available via resources — no console output in production
     }
   }
 }

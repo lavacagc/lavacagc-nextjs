@@ -34,7 +34,6 @@ export function InactivityTimer() {
       }
 
       inactivityTimerRef.current = setTimeout(async () => {
-        console.log('Admin session expired due to inactivity');
         await supabase.auth.signOut();
       }, INACTIVITY_TIMEOUT);
     };
