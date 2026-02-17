@@ -359,7 +359,7 @@ export async function POST(request: NextRequest) {
                 last_name: lastName,
                 email: currentMsgLeadInfo.email || 'chatbot@lavacagc.com',
                 phone: currentMsgLeadInfo.phone || '0000000000',
-                inquiry_type: currentMsgLeadInfo.projectType || 'General Inquiry',
+                inquiry_type: 'estimate',
                 project_type: currentMsgLeadInfo.projectType || null,
                 city: currentMsgLeadInfo.location || null,
                 message: `[Chatbot Lead] ${allUserText.substring(0, 500)}`,
