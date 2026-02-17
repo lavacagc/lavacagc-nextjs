@@ -388,21 +388,28 @@ export async function POST(request: NextRequest) {
               console.error('Failed to trigger follow-up webhook:', webhookErr);
             }
 
-            // Send instant notification to Alex
+            // Send notification via Supabase Edge Function (same as ContactForm)
             try {
-              const baseUrl = request.nextUrl.origin;
-              await fetch(`${baseUrl}/api/notify/new-lead`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  name: `${firstName} ${lastName}`,
-                  email: currentMsgLeadInfo.email || null,
-                  phone: currentMsgLeadInfo.phone || null,
-                  projectType: currentMsgLeadInfo.projectType || null,
-                  location: currentMsgLeadInfo.location || null,
-                  source: 'chatbot',
-                }),
+              const { error: emailError } = await supabase.functions.invoke('send-lead-notification', {
+                body: {
+                  type: 'chatbot',
+                  data: {
+                    firstName,
+                    lastName,
+                    email: currentMsgLeadInfo.email || '',
+                    phone: currentMsgLeadInfo.phone || '',
+                    message: `[Chatbot Lead] ${allUserText.substring(0, 500)}`,
+                    preferredContactMethod: currentMsgLeadInfo.email ? 'email' : 'phone',
+                    projectType: currentMsgLeadInfo.projectType || 'General Inquiry',
+                    city: currentMsgLeadInfo.location || '',
+                  },
+                },
               });
+              if (emailError) {
+                console.error('Edge Function email notification failed:', emailError);
+              } else {
+                console.log(`✅ Lead notification sent via Edge Function for ${firstName}`);
+              }
             } catch (notifyErr) {
               console.error('Failed to send lead notification:', notifyErr);
             }
