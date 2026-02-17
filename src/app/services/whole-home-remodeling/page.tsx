@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { CheckCircle, Clock, Home, Sparkles, Shield } from 'lucide-react';
+import CallTrackingWrapper from '@/components/CallTrackingWrapper';
 
 export const metadata: Metadata = {
   title: 'Whole Home Remodeling Services in Northern NJ | La Vaca General Contractors',
@@ -217,7 +218,7 @@ export default function WholeHomeRemodelingPage() {
                   <Link href="/#estimate">Get Free Estimate</Link>
                 </Button>
                 <Button variant="outline" size="lg" asChild>
-                  <a href="tel:2012124917">Call (201) 212-4917</a>
+                  <CallTrackingWrapper href="tel:2012124917">Call (201) 212-4917</CallTrackingWrapper>
                 </Button>
               </div>
 

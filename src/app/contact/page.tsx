@@ -2,6 +2,7 @@ import { Metadata } from 'next';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import ContactForm from '@/components/ContactForm';
+import CallTrackingWrapper from '@/components/CallTrackingWrapper';
 import { Phone, Mail, MapPin, Clock } from 'lucide-react';
 
 export const metadata: Metadata = {
@@ -58,12 +59,12 @@ export default function ContactPage() {
                     </div>
                     <div>
                       <h3 className="font-semibold text-text-primary">Phone</h3>
-                      <a
+                      <CallTrackingWrapper
                         href="tel:2012124917"
                         className="text-primary hover:underline font-medium text-lg"
                       >
                         (201) 212-4917
-                      </a>
+                      </CallTrackingWrapper>
                       <p className="text-sm text-text-muted">
                         Call us for immediate assistance
                       </p>

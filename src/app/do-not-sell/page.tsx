@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Shield, CheckCircle, Mail, Phone, MapPin } from 'lucide-react';
 import Breadcrumb from '@/components/Breadcrumb';
 import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config';
+import CallTrackingWrapper from '@/components/CallTrackingWrapper';
 
 export default function DoNotSell() {
   const router = useRouter();
@@ -361,9 +362,9 @@ export default function DoNotSell() {
                   <Phone className="w-5 h-5 text-primary mt-1" />
                   <div>
                     <p className="font-semibold">Phone</p>
-                    <a href="tel:+12012124917" className="text-sm text-primary hover:underline">
+                    <CallTrackingWrapper href="tel:+12012124917" className="text-sm text-primary hover:underline">
                       (201) 212-4917
-                    </a>
+                    </CallTrackingWrapper>
                   </div>
                 </div>
 

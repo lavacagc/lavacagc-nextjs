@@ -15,7 +15,12 @@ import {
   DollarSign,
   Shield,
   BarChart,
-  FileCheck
+  FileCheck,
+  Mail,
+  MessageSquare,
+  Gauge,
+  TrendingUp,
+  HeartPulse,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -43,11 +48,16 @@ export default function AdminSidebar({ activeTab, onTabChange, isMobileOpen, onM
     { id: 'analytics', icon: Activity, label: 'Analytics' },
     { id: 'gmb', icon: Activity, label: 'Google Reviews' },
     { id: 'leads', icon: Inbox, label: 'Leads' },
+    { id: 'follow-ups', icon: Mail, label: 'Follow-Ups' },
+    { id: 'feedback', icon: MessageSquare, label: 'Feedback Requests' },
     { id: 'estimates', icon: Calculator, label: 'Calculator Estimates' },
     { id: 'pricing', icon: DollarSign, label: 'Pricing Management' },
     { id: 'non-negotiables', icon: Shield, label: 'Non-Negotiables' },
     { id: 'compliance', icon: FileCheck, label: 'Compliance Docs' },
     { id: 'reports', icon: BarChart, label: 'Reports' },
+    { id: 'conversions', icon: TrendingUp, label: 'Conversions' },
+    { id: 'performance', icon: Gauge, label: 'PageSpeed' },
+    { id: 'uptime', icon: HeartPulse, label: 'Uptime' },
   ];
 
   const handleTabChange = (tab: string) => {

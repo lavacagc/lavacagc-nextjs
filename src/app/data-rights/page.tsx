@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import CallTrackingWrapper from '@/components/CallTrackingWrapper';
 import {
   Select,
   SelectContent,
@@ -412,9 +413,9 @@ export default function DataRightsPage() {
                 </p>
                 <p>
                   <strong>Phone:</strong>{' '}
-                  <a href="tel:+12012124917" className="text-primary hover:underline">
+                  <CallTrackingWrapper href="tel:+12012124917" className="text-primary hover:underline">
                     (201) 212-4917
-                  </a>
+                  </CallTrackingWrapper>
                 </p>
                 <p>
                   <strong>Mail:</strong> La Vaca General Contractors, LLC, Attn: Privacy Officer,

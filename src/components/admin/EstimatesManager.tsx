@@ -855,7 +855,7 @@ export function EstimatesManager() {
           <DialogHeader>
             <DialogTitle>Image Preview</DialogTitle>
           </DialogHeader>
-          <Image src={selectedImage} alt="Full size" width={800} height={600} className="w-full h-auto" />
+          <Image src={selectedImage} alt="Estimate attachment preview" width={800} height={600} className="w-full h-auto" />
         </DialogContent>
       </Dialog>
 

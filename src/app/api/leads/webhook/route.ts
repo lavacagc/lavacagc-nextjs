@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import {
+  leadInstantAckHtml,
+  lead24hHtml,
+  lead48hHtml,
+  lead7dHtml,
+} from '@/lib/emailTemplates';
 
 export const dynamic = 'force-dynamic';
 
-const SUPABASE_URL = "https://xrvbrnrbnyfdwkfdoepq.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhydmJybnJibnlmZHdrZmRvZXBxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3NzIyNTAsImV4cCI6MjA3NDM0ODI1MH0.TL9cUCyaApPjWl8YEW455JgCUSa6S2qsoRpZ8iATl10";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /**
  * Send the instant acknowledgment email immediately via Resend.
- * Gracefully handles missing API key.
  */
-async function sendInstantAck(email: string, subject: string, body: string): Promise<boolean> {
+async function sendInstantAck(email: string, subject: string, html: string): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.warn('⚠️ RESEND_API_KEY not configured — skipping instant ack email');
@@ -23,10 +28,10 @@ async function sendInstantAck(email: string, subject: string, body: string): Pro
   try {
     const resend = new Resend(apiKey);
     const { error } = await resend.emails.send({
-      from: 'La Vaca General Contractors <info@lavacagc.com>',
+      from: 'La Vaca General Contractors <info@email.lavaca.link>',
       to: [email],
       subject,
-      text: body,
+      html,
     });
 
     if (error) {
@@ -42,86 +47,27 @@ async function sendInstantAck(email: string, subject: string, body: string): Pro
   }
 }
 
-// Email templates for follow-up sequence
+// Generate email subjects and HTML for follow-up sequence
 function generateFollowUpEmails(name: string, projectType?: string) {
   const firstName = name.split(' ')[0] || name;
-  const projectMention = projectType
-    ? ` about your ${projectType} project`
-    : '';
+  const projectMention = projectType ? ` about your ${projectType} project` : '';
 
   return {
     instant_ack: {
       subject: `Thanks for reaching out, ${firstName}! — La Vaca General Contractors`,
-      body: `Hi ${firstName},
-
-Thank you for contacting La Vaca General Contractors${projectMention}! We're excited to learn more about what you have in mind.
-
-One of our team members will be reaching out to you shortly to discuss your project and schedule a free estimate at your convenience.
-
-In the meantime, feel free to:
-• Browse our portfolio: lavacagc.com/portfolio
-• Learn about our process: lavacagc.com/process
-• Call us directly: (201) 212-4917
-
-We look forward to working with you!
-
-Best regards,
-The La Vaca Team
-Licensed, Bonded, & Insured | HIC# 13VH13373800`,
+      html: leadInstantAckHtml(name, projectType),
     },
     '24h': {
       subject: `Following up on your home renovation inquiry — La Vaca GC`,
-      body: `Hi ${firstName},
-
-Just wanted to follow up on your recent inquiry${projectMention}. We know choosing the right contractor is a big decision, and we're here to make the process as smooth as possible.
-
-Here's what makes working with La Vaca different:
-• Dedicated project manager for your project
-• Transparent pricing with no hidden costs
-• Warranty-backed craftsmanship
-• 5.0 Google Rating from homeowners like you
-
-Would you like to schedule a free, no-obligation estimate? Just reply to this email or call us at (201) 212-4917.
-
-We'd love to help bring your vision to life!
-
-Best regards,
-The La Vaca Team`,
+      html: lead24hHtml(name, projectType),
     },
     '48h': {
       subject: `Your home renovation dreams — let's make them happen, ${firstName}`,
-      body: `Hi ${firstName},
-
-We hope we're not being a bother! We just wanted to make sure you saw our previous messages${projectMention}.
-
-Here's what one of our recent clients had to say:
-"Unbelievably communicative and transparent... The final result is beyond anything we could have imagined." — Gerrick K.
-
-If you're still exploring options, we'd be happy to provide a free estimate and answer any questions. No pressure at all — just reply to this email or give us a call at (201) 212-4917.
-
-Wishing you the best with your project!
-
-Warm regards,
-The La Vaca Team
-Family-Owned & Operated in Northern NJ`,
+      html: lead48hHtml(name, projectType),
     },
     '7d': {
       subject: `Still thinking about your renovation? We're here when you're ready`,
-      body: `Hi ${firstName},
-
-It's been about a week since you reached out, and we just wanted to let you know — we're here whenever you're ready!
-
-Home renovations are a big step, and we understand it takes time to plan. Whether you're ready to move forward or just have questions, our team is always happy to chat.
-
-• Free estimates: No commitment required
-• Portfolio: See our latest work at lavacagc.com/portfolio
-• Call anytime: (201) 212-4917
-• Email: info@lavacagc.com
-
-We'll leave the ball in your court from here. Wishing you all the best, ${firstName}!
-
-Best regards,
-The La Vaca Team`,
+      html: lead7dHtml(name),
     },
   };
 }
@@ -181,7 +127,7 @@ export async function POST(request: NextRequest) {
         scheduled_at: now.toISOString(),
         status: 'pending' as const,
         email_subject: emails.instant_ack.subject,
-        email_body: emails.instant_ack.body,
+        email_body: emails.instant_ack.html,
       },
       {
         lead_id: leadId || null,
@@ -192,7 +138,7 @@ export async function POST(request: NextRequest) {
         scheduled_at: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
         status: 'pending' as const,
         email_subject: emails['24h'].subject,
-        email_body: emails['24h'].body,
+        email_body: emails['24h'].html,
       },
       {
         lead_id: leadId || null,
@@ -203,7 +149,7 @@ export async function POST(request: NextRequest) {
         scheduled_at: new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString(),
         status: 'pending' as const,
         email_subject: emails['48h'].subject,
-        email_body: emails['48h'].body,
+        email_body: emails['48h'].html,
       },
       {
         lead_id: leadId || null,
@@ -214,14 +160,14 @@ export async function POST(request: NextRequest) {
         scheduled_at: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         status: 'pending' as const,
         email_subject: emails['7d'].subject,
-        email_body: emails['7d'].body,
+        email_body: emails['7d'].html,
       },
     ];
 
-    // Send the instant ack email immediately (don't just queue it)
-    const instantSent = await sendInstantAck(email, emails.instant_ack.subject, emails.instant_ack.body);
+    // Send the instant ack email immediately
+    const instantSent = await sendInstantAck(email, emails.instant_ack.subject, emails.instant_ack.html);
 
-    // Mark instant_ack as sent if we sent it successfully
+    // Mark instant_ack as sent if successful
     if (instantSent) {
       followUps[0].status = 'sent' as const;
     }

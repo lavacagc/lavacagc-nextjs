@@ -15,6 +15,8 @@ import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config';
 import { trackFormSubmission } from '@/components/Analytics';
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
+import CallTrackingWrapper from "@/components/CallTrackingWrapper";
+import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
 
 interface ContactFormData {
   firstName: string;
@@ -191,13 +193,29 @@ const ContactForm = () => {
         phone: sanitizeInput(formData.phone),
         message: sanitizeInput(formData.message),
         inquiry_type: 'contact' as const,
-        preferred_contact_method: formData.preferredContactMethod
+        preferred_contact_method: formData.preferredContactMethod,
+        source: 'contact_form'
+      };
+
+      // Apply lead scoring
+      const scoringInput = prepareLeadForScoring({
+        ...sanitizedData,
+        project_type: sanitizedData.inquiry_type,
+      });
+      const scoringResult = scoreLead(scoringInput);
+
+      // Add scoring to data
+      const leadDataWithScoring = {
+        ...sanitizedData,
+        score: scoringResult.score,
+        tier: scoringResult.tier,
+        scoring_reasons: scoringResult.reasons,
       };
 
       // Submit to database
       const { error: dbError } = await supabase
         .from('leads')
-        .insert(sanitizedData);
+        .insert(leadDataWithScoring);
 
       if (dbError) throw dbError;
 
@@ -220,6 +238,26 @@ const ContactForm = () => {
       if (emailError) {
         console.error('Email notification failed:', emailError);
         // Don't throw here - form submission was successful
+      }
+
+      // Send Telegram notification
+      try {
+        await fetch('/api/notify/telegram-lead', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: `${sanitizedData.first_name} ${sanitizedData.last_name}`,
+            email: sanitizedData.email,
+            phone: sanitizedData.phone,
+            projectType: sanitizedData.inquiry_type,
+            score: scoringResult.score,
+            tier: scoringResult.tier,
+            source: 'contact_form',
+          }),
+        });
+      } catch (telegramError) {
+        console.error('Telegram notification failed:', telegramError);
+        // Don't throw - form submission was successful
       }
 
       // Log consent
@@ -469,9 +507,9 @@ const ContactForm = () => {
 
           <p className="text-sm text-text-muted text-center">
             We&apos;ll respond within 24 hours. For urgent matters, call us directly at{" "}
-            <a href="tel:2012124917" className="text-primary hover:underline font-semibold">
+            <CallTrackingWrapper href="tel:2012124917" className="text-primary hover:underline font-semibold">
               (201) 212-4917
-            </a>
+            </CallTrackingWrapper>
           </p>
         </form>
       </CardContent>

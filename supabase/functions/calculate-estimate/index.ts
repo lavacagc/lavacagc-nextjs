@@ -220,7 +220,53 @@ const handler = async (req)=>{
     const rangeMin = Math.round(combinedTotal * 0.8);
     const rangeMax = Math.round(combinedTotal * 1.2);
     const seasonalMultiplier = Number(projectType.seasonal_multiplier || 1.0);
-    // Create lead record
+    // Apply lead scoring
+    const scoringInput = {
+      projectType: body.project_type,
+      inquiry_type: 'estimate',
+      city: body.lead_data.city,
+      zip_code: body.lead_data.zip_code,
+      email: body.lead_data.email,
+      phone: body.lead_data.phone,
+      source: 'calculator',
+      combined_total: combinedTotal,
+      estimate_range_max: rangeMax,
+      metadata: {
+        selected_options: body.selected_options,
+        square_footage: squareFootage,
+        project_timeline: body.lead_data.project_timeline
+      }
+    };
+
+    // Calculate score (inline scoring logic for Deno)
+    let score = 0;
+    const scoringReasons: string[] = [];
+    
+    const projectTypeLower = (body.project_type || '').toLowerCase();
+    if (projectTypeLower.includes('whole')) { score += 95; scoringReasons.push('Whole home (+95pts)'); }
+    else if (projectTypeLower.includes('kitchen')) { score += 90; scoringReasons.push('Kitchen (+90pts)'); }
+    else if (projectTypeLower.includes('addition')) { score += 85; scoringReasons.push('Addition (+85pts)'); }
+    else if (projectTypeLower.includes('bathroom')) { score += 80; scoringReasons.push('Bathroom (+80pts)'); }
+    else if (projectTypeLower.includes('basement')) { score += 70; scoringReasons.push('Basement (+70pts)'); }
+    else { score += 50; scoringReasons.push('Other (+50pts)'); }
+    
+    // Location check
+    const serviceAreas = ['montclair', 'west orange', 'livingston', 'short hills', 'maplewood', 'millburn', 'summit', 'chatham', 'madison', 'morristown'];
+    const serviceZips = ['07042', '07043', '07052', '07078', '07040', '07039', '07041', '07092', '07901', '07902'];
+    if (serviceAreas.some(a => body.lead_data.city.toLowerCase().includes(a)) || serviceZips.includes(body.lead_data.zip_code)) {
+      score += 20; scoringReasons.push(`Service area: ${body.lead_data.city} (+20pts)`);
+    }
+    
+    if (body.lead_data.phone) { score += 15; scoringReasons.push('Has phone (+15pts)'); }
+    if (body.lead_data.email) { score += 10; scoringReasons.push('Has email (+10pts)'); }
+    score += 20; scoringReasons.push('Calculator lead (+20pts)');
+    
+    if (combinedTotal > 50000) { score += 20; scoringReasons.push(`High budget: $${Math.round(combinedTotal).toLocaleString()} (+20pts)`); }
+    else if (combinedTotal > 25000) { score += 10; scoringReasons.push(`Mid budget: $${Math.round(combinedTotal).toLocaleString()} (+10pts)`); }
+    
+    const tier = score >= 80 ? 'hot' : score >= 50 ? 'warm' : 'cold';
+
+    // Create lead record with scoring
     const { data: lead, error: leadError } = await supabase.from("estimate_leads").insert({
       first_name: body.lead_data.first_name,
       last_name: body.lead_data.last_name,
@@ -250,7 +296,12 @@ const handler = async (req)=>{
       uploaded_images: body.uploaded_image_path ? [
         body.uploaded_image_path
       ] : [],
-      lead_status: "new"
+      lead_status: "new",
+      source: 'calculator',
+      score: score,
+      tier: tier,
+      scoring_reasons: scoringReasons,
+      metadata: scoringInput.metadata
     }).select().single();
     if (leadError) throw leadError;
     // Create lead selections with full option details
@@ -581,6 +632,43 @@ const handler = async (req)=>{
     } catch (emailError) {
       console.error("Error sending admin email:", emailError);
     // Don't throw - we want the lead to be created even if email fails
+    }
+
+    // Send Telegram notification
+    const telegramToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
+    const telegramChatId = Deno.env.get("TELEGRAM_CHAT_ID");
+    
+    if (telegramToken && telegramChatId) {
+      try {
+        const tierEmoji = tier === 'hot' ? '🔥' : tier === 'warm' ? '🟡' : '🔵';
+        const message = [
+          `${tierEmoji} <b>New ${tier.toUpperCase()} Lead!</b>`,
+          '',
+          `👤 <b>Name:</b> ${body.lead_data.first_name} ${body.lead_data.last_name}`,
+          `📱 <b>Phone:</b> <code>${body.lead_data.phone}</code>`,
+          `📧 <b>Email:</b> ${body.lead_data.email}`,
+          `🏠 <b>Project:</b> ${projectType.display_name}`,
+          `📍 <b>Location:</b> ${body.lead_data.city}, ${body.lead_data.state}`,
+          `💰 <b>Estimate:</b> $${Math.round(combinedTotal).toLocaleString()}`,
+          `⭐ <b>Score:</b> ${score}/100`,
+          `📊 <b>Source:</b> calculator`,
+        ].join('\n');
+
+        await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: telegramChatId,
+            text: message,
+            parse_mode: 'HTML',
+            disable_web_page_preview: true,
+          }),
+        });
+        
+        console.log("Telegram notification sent successfully");
+      } catch (telegramError) {
+        console.error("Error sending Telegram notification:", telegramError);
+      }
     }
     return new Response(JSON.stringify({
       success: true,

@@ -14,6 +14,7 @@ import { z } from "zod";
 import { trackEstimateRequest } from '@/components/Analytics';
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
+import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 
 interface QuickEstimateData {
   firstName: string;
@@ -555,7 +556,7 @@ const HomeEstimateForm = () => {
 
         <div className="text-center pt-2">
           <p className="text-sm text-text-muted">
-            Questions? Call us at <a href="tel:2012124917" className="text-primary hover:underline font-semibold">(201) 212-4917</a>
+            Questions? Call us at <CallTrackingWrapper href="tel:2012124917" className="text-primary hover:underline font-semibold">(201) 212-4917</CallTrackingWrapper>
           </p>
           <p className="text-xs text-text-muted mt-2">
             Protected by reCAPTCHA v3. No visible captcha required.

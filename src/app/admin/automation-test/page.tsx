@@ -39,8 +39,8 @@ interface Lead {
   message: string | null;
 }
 
-const SUPABASE_URL = "https://xrvbrnrbnyfdwkfdoepq.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhydmJybnJibnlmZHdrZmRvZXBxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3NzIyNTAsImV4cCI6MjA3NDM0ODI1MH0.TL9cUCyaApPjWl8YEW455JgCUSa6S2qsoRpZ8iATl10";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 async function supabaseGet<T>(table: string, params = ''): Promise<T[]> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
@@ -74,7 +74,7 @@ export default function AutomationTestPage() {
       const [convos, fups, lds] = await Promise.all([
         supabaseGet<ChatConversation>('chat_conversations', 'select=*&order=created_at.desc&limit=20'),
         supabaseGet<FollowUpItem>('follow_up_queue', 'select=*&order=created_at.desc&limit=50'),
-        supabaseGet<Lead>('leads', 'select=*&order=created_at.desc&limit=20'),
+        fetch('/api/leads/list').then(r => r.ok ? r.json() : []).catch(() => []) as Promise<Lead[]>,
       ]);
       setConversations(convos);
       setFollowUps(fups);

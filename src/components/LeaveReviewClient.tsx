@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 
-const GOOGLE_REVIEW_URL = 'https://share.google/3IswCVlL2bgoYMBaK';
+const GOOGLE_REVIEW_URL = 'https://g.page/r/CflitSa4DKHAEBM/review';
 
 type Step = 'rating' | 'google' | 'feedback' | 'thanks';
 

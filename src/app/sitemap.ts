@@ -1,11 +1,12 @@
 import { MetadataRoute } from 'next'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { Database } from '@/integrations/supabase/types'
+import { getAllResourceSlugs } from '@/data/resourceData'
 
 // Create a static client for build-time data fetching (no cookies/SSR)
 function getStaticSupabaseClient() {
-  const supabaseUrl = "https://xrvbrnrbnyfdwkfdoepq.supabase.co"
-  const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhydmJybnJibnlmZHdrZmRvZXBxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3NzIyNTAsImV4cCI6MjA3NDM0ODI1MH0.TL9cUCyaApPjWl8YEW455JgCUSa6S2qsoRpZ8iATl10"
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   return createSupabaseClient<Database>(supabaseUrl, supabaseKey)
 }
 
@@ -87,7 +88,30 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'monthly',
       priority: 0.8,
     },
+    {
+      url: `${baseUrl}/referral`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly',
+      priority: 0.6,
+    },
+    {
+      url: `${baseUrl}/resources`,
+      lastModified: currentDate,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
   ]
+
+  // Resource article pages
+  const resourceSlugs = getAllResourceSlugs()
+  resourceSlugs.forEach(slug => {
+    routes.push({
+      url: `${baseUrl}/resources/${slug}`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    })
+  })
 
   // Service pages
   const services = ['kitchen-remodeling', 'bathroom-renovation', 'basement-finishing', 'home-additions', 'whole-home-remodeling', 'interior-finishing']

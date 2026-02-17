@@ -7,7 +7,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { supabase } from '@/integrations/supabase/client';
 
 // Hero background video - single optimized video for consistent LCP performance
-const SUPABASE_URL = 'https://xrvbrnrbnyfdwkfdoepq.supabase.co';
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const DEFAULT_VIDEO = `${SUPABASE_URL}/storage/v1/object/public/hero-videos/hero-background-1.mp4`;
 
 const Hero = () => {

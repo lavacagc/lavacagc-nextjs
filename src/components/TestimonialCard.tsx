@@ -59,6 +59,7 @@ const TestimonialCard = ({
                 width={48}
                 height={48}
                 unoptimized
+                loading="lazy"
               />
             ) : (
               <div className="w-12 h-12 rounded-full bg-gradient-primary flex items-center justify-center text-white font-semibold">

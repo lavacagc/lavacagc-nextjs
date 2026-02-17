@@ -36,10 +36,11 @@ export default function BlogPostGrid({ posts }: BlogPostGridProps) {
             {post.featured_image ? (
               <Image
                 src={post.featured_image}
-                alt={post.title}
+                alt={`${post.title} - La Vaca General Contractors blog`}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 fill
                 sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                loading="lazy"
               />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent-teal/20 flex items-center justify-center">

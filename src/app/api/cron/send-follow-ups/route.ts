@@ -4,7 +4,7 @@ import { Resend } from 'resend';
 
 export const dynamic = 'force-dynamic';
 
-const SUPABASE_URL = "https://xrvbrnrbnyfdwkfdoepq.supabase.co";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
 /**
  * GET /api/cron/send-follow-ups
@@ -15,7 +15,7 @@ const SUPABASE_URL = "https://xrvbrnrbnyfdwkfdoepq.supabase.co";
  *
  * Setup required:
  * 1. Sign up at https://resend.com
- * 2. Verify the lavacagc.com domain in Resend dashboard
+ * 2. Verify the email.lavaca.link domain in Resend dashboard
  * 3. Add RESEND_API_KEY to Vercel env vars:
  *    vercel env add RESEND_API_KEY production
  * 4. Add a Vercel cron job in vercel.json:
@@ -78,6 +78,9 @@ export async function GET(request: NextRequest) {
     let sent = 0;
     let failed = 0;
 
+    // Helper: wait between sends to respect Resend 2 req/s rate limit
+    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
     for (const item of pendingItems) {
       try {
         // Validate email before sending
@@ -95,11 +98,13 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
+        // Detect if body is HTML or plain text
+        const isHtml = item.email_body?.trim().startsWith('<!DOCTYPE') || item.email_body?.trim().startsWith('<html');
         const { error: sendError } = await resend.emails.send({
-          from: 'La Vaca General Contractors <info@lavacagc.com>',
+          from: 'La Vaca General Contractors <info@email.lavaca.link>',
           to: [item.lead_email],
           subject: item.email_subject,
-          text: item.email_body,
+          ...(isHtml ? { html: item.email_body } : { text: item.email_body }),
         });
 
         if (sendError) {
@@ -136,6 +141,9 @@ export async function GET(request: NextRequest) {
           .eq('id', item.id);
         failed++;
       }
+
+      // Rate limit: wait 1 second between sends (Resend limit is 2 req/s)
+      await delay(1000);
     }
 
     console.log(`📧 Follow-up batch complete: ${sent} sent, ${failed} failed`);

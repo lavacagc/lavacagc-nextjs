@@ -9,6 +9,7 @@ import CookieConsent from '@/components/CookieConsent'
 import Analytics from '@/components/Analytics'
 import StructuredData from '@/components/StructuredData'
 import ChatWidget from '@/components/ChatWidget'
+import { ClientLeadGenWidgets } from '@/components/ClientLeadGenWidgets'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -80,12 +81,12 @@ export default function RootLayout({
         <link rel="alternate icon" href="/logo.png" type="image/png" />
         <meta name="theme-color" content="#EE9639" />
         {/* Preconnect to Supabase storage for faster asset loading */}
-        <link rel="preconnect" href="https://xrvbrnrbnyfdwkfdoepq.supabase.co" />
-        <link rel="dns-prefetch" href="https://xrvbrnrbnyfdwkfdoepq.supabase.co" />
+        <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
+        <link rel="dns-prefetch" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
         {/* Preload hero video for faster LCP */}
         <link 
           rel="preload" 
-          href="https://xrvbrnrbnyfdwkfdoepq.supabase.co/storage/v1/object/public/hero-videos/hero-background-1.mp4" 
+          href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/hero-videos/hero-background-1.mp4`} 
           as="video" 
           type="video/mp4"
         />
@@ -109,6 +110,7 @@ export default function RootLayout({
             <Sonner />
             <CookieConsent />
             <ChatWidget />
+            <ClientLeadGenWidgets />
           </TooltipProvider>
         </Providers>
       </body>

@@ -108,34 +108,17 @@ export function LeadsManager() {
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch active leads
-      const { data: active, error: activeError } = await supabase
-        .from('leads')
-        .select('*')
-        .is('archived_at', null)
-        .order('created_at', { ascending: false });
+      // Fetch leads via server API route (bypasses RLS)
+      const leadsRes = await fetch('/api/leads/list');
+      const allLeads: Lead[] = leadsRes.ok ? await leadsRes.json() : [];
+      
+      setActiveLeads(allLeads.filter(l => !l.archived_at));
+      setArchivedLeads(allLeads.filter(l => !!l.archived_at));
 
-      if (activeError) throw activeError;
-      setActiveLeads(active || []);
-
-      // Fetch archived leads
-      const { data: archived, error: archivedError } = await supabase
-        .from('leads')
-        .select('*')
-        .not('archived_at', 'is', null)
-        .order('archived_at', { ascending: false });
-
-      if (archivedError) throw archivedError;
-      setArchivedLeads(archived || []);
-
-      // Fetch chat conversations
-      const { data: chats, error: chatsError } = await supabase
-        .from('chat_conversations')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (chatsError) throw chatsError;
-      setChatConversations((chats || []) as unknown as ChatConversation[]);
+      // Fetch chat conversations via server API route (bypasses RLS)
+      const chatsRes = await fetch('/api/leads/conversations');
+      const chats: ChatConversation[] = chatsRes.ok ? await chatsRes.json() : [];
+      setChatConversations(chats);
     } catch (error: unknown) {
       toast({
         title: "Error fetching leads",

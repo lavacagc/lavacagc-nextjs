@@ -1,23 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
+import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
 
 export const dynamic = 'force-dynamic';
 
-const SUPABASE_URL = "https://xrvbrnrbnyfdwkfdoepq.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhydmJybnJibnlmZHdrZmRvZXBxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3NzIyNTAsImV4cCI6MjA3NDM0ODI1MH0.TL9cUCyaApPjWl8YEW455JgCUSa6S2qsoRpZ8iATl10";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // Anon client for chat_conversations (permissive RLS)
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Service-role client for leads table (bypasses RLS)
-function getServiceClient() {
+// Direct REST helper for leads table (bypasses RLS with secret key)
+async function leadsQuery(method: 'GET' | 'POST', params?: string, body?: Record<string, unknown>): Promise<{ data: Record<string, unknown>[] | null; error: string | null }> {
   const secretKey = process.env.SUPABASE_SECRET_KEY;
   if (!secretKey) {
-    console.error('SUPABASE_SECRET_KEY not configured — leads insert will fail');
-    return null;
+    console.error('SUPABASE_SECRET_KEY not configured — leads query will fail');
+    return { data: null, error: 'No secret key' };
   }
-  return createClient(SUPABASE_URL, secretKey);
+  try {
+    const url = `${SUPABASE_URL}/rest/v1/leads${params ? `?${params}` : ''}`;
+    const headers: Record<string, string> = {
+      'apikey': secretKey,
+      'Authorization': `Bearer ${secretKey}`,
+      'Content-Type': 'application/json',
+    };
+    if (method === 'POST') {
+      headers['Prefer'] = 'return=representation';
+    }
+    const res = await fetch(url, {
+      method,
+      headers,
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`Leads ${method} failed:`, res.status, errText);
+      return { data: null, error: errText };
+    }
+    const data = await res.json();
+    return { data: Array.isArray(data) ? data : [data], error: null };
+  } catch (err) {
+    console.error(`Leads ${method} exception:`, err);
+    return { data: null, error: String(err) };
+  }
 }
 
 const KNOWLEDGE_BASE = `# La Vaca General Contractors — AI Chatbot Knowledge Base
@@ -328,95 +354,122 @@ export async function POST(request: NextRequest) {
 
     // If lead info was just captured, also insert into leads table
     if (justCaptured && !previouslyCaptured && (currentMsgLeadInfo.email || currentMsgLeadInfo.phone)) {
-      const serviceClient = getServiceClient();
-      if (!serviceClient) {
-        console.error('No service client available — skipping leads insert');
-      } else {
-        try {
-          // Check for existing lead with same email
-          let existingLead = null;
-          if (currentMsgLeadInfo.email) {
-            const { data } = await serviceClient
-              .from('leads')
-              .select('id')
-              .eq('email', currentMsgLeadInfo.email)
-              .limit(1);
-            if (data && data.length > 0) existingLead = data[0];
-          }
-
-          if (!existingLead) {
-            // Parse name if provided in conversation
-            const nameMatch = allUserText.match(/(?:my name is|i'm|i am|this is|name:?)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i);
-            const firstName = nameMatch ? nameMatch[1].split(' ')[0] : 'Chat';
-            const lastName = nameMatch && nameMatch[1].split(' ').length > 1
-              ? nameMatch[1].split(' ').slice(1).join(' ')
-              : 'Visitor';
-
-            const { error: insertError } = await serviceClient
-              .from('leads')
-              .insert({
-                first_name: firstName,
-                last_name: lastName,
-                email: currentMsgLeadInfo.email || 'chatbot@lavacagc.com',
-                phone: currentMsgLeadInfo.phone || '0000000000',
-                inquiry_type: 'estimate',
-                project_type: currentMsgLeadInfo.projectType || null,
-                city: currentMsgLeadInfo.location || null,
-                message: `[Chatbot Lead] ${allUserText.substring(0, 500)}`,
-              });
-
-            if (insertError) {
-              console.error('Failed to insert lead:', insertError);
-            } else {
-              console.log(`✅ Lead inserted for ${firstName} ${lastName} (${currentMsgLeadInfo.email || currentMsgLeadInfo.phone})`);
-            }
-
-            // Trigger follow-up sequence via webhook
-            try {
-              const baseUrl = request.nextUrl.origin;
-              await fetch(`${baseUrl}/api/leads/webhook`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  name: `${firstName} ${lastName}`,
-                  email: currentMsgLeadInfo.email || 'chatbot@lavacagc.com',
-                  source: 'chatbot',
-                  projectType: currentMsgLeadInfo.projectType,
-                }),
-              });
-            } catch (webhookErr) {
-              console.error('Failed to trigger follow-up webhook:', webhookErr);
-            }
-
-            // Send notification via Supabase Edge Function (same as ContactForm)
-            try {
-              const { error: emailError } = await supabase.functions.invoke('send-lead-notification', {
-                body: {
-                  type: 'chatbot',
-                  data: {
-                    firstName,
-                    lastName,
-                    email: currentMsgLeadInfo.email || '',
-                    phone: currentMsgLeadInfo.phone || '',
-                    message: `[Chatbot Lead] ${allUserText.substring(0, 500)}`,
-                    preferredContactMethod: currentMsgLeadInfo.email ? 'email' : 'phone',
-                    projectType: currentMsgLeadInfo.projectType || 'General Inquiry',
-                    city: currentMsgLeadInfo.location || '',
-                  },
-                },
-              });
-              if (emailError) {
-                console.error('Edge Function email notification failed:', emailError);
-              } else {
-                console.log(`✅ Lead notification sent via Edge Function for ${firstName}`);
-              }
-            } catch (notifyErr) {
-              console.error('Failed to send lead notification:', notifyErr);
-            }
-          }
-        } catch (leadErr) {
-          console.error('Failed to insert lead:', leadErr);
+      try {
+        // Check for existing lead with same email
+        let existingLead = null;
+        if (currentMsgLeadInfo.email) {
+          const { data } = await leadsQuery('GET', `select=id&email=eq.${encodeURIComponent(currentMsgLeadInfo.email)}&limit=1`);
+          if (data && data.length > 0) existingLead = data[0];
         }
+
+        if (!existingLead) {
+          // Parse name if provided in conversation
+          const nameMatch = allUserText.match(/(?:my name is|i'm|i am|this is|name:?)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i);
+          const firstName = nameMatch ? nameMatch[1].split(' ')[0] : 'Chat';
+          const lastName = nameMatch && nameMatch[1].split(' ').length > 1
+            ? nameMatch[1].split(' ').slice(1).join(' ')
+            : 'Visitor';
+
+          // Prepare lead data with scoring
+          const leadData = {
+            first_name: firstName,
+            last_name: lastName,
+            email: currentMsgLeadInfo.email || 'chatbot@lavacagc.com',
+            phone: currentMsgLeadInfo.phone || '0000000000',
+            inquiry_type: 'estimate',
+            project_type: currentMsgLeadInfo.projectType || null,
+            city: currentMsgLeadInfo.location || null,
+            message: `[Chatbot Lead] ${allUserText.substring(0, 500)}`,
+            source: 'chatbot'
+          };
+
+          // Apply lead scoring
+          const scoringInput = prepareLeadForScoring(leadData);
+          const scoringResult = scoreLead(scoringInput);
+
+          // Add scoring to lead data
+          const leadDataWithScoring = {
+            ...leadData,
+            score: scoringResult.score,
+            tier: scoringResult.tier,
+            scoring_reasons: scoringResult.reasons,
+          };
+
+          const { error: insertError } = await leadsQuery('POST', undefined, leadDataWithScoring);
+
+          if (insertError) {
+            console.error('Failed to insert lead:', insertError);
+          } else {
+            console.log(`✅ Lead inserted for ${firstName} ${lastName} (${currentMsgLeadInfo.email || currentMsgLeadInfo.phone})`);
+          }
+
+          // Trigger follow-up sequence via webhook
+          try {
+            const baseUrl = request.nextUrl.origin;
+            await fetch(`${baseUrl}/api/leads/webhook`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: `${firstName} ${lastName}`,
+                email: currentMsgLeadInfo.email || 'chatbot@lavacagc.com',
+                source: 'chatbot',
+                projectType: currentMsgLeadInfo.projectType,
+              }),
+            });
+          } catch (webhookErr) {
+            console.error('Failed to trigger follow-up webhook:', webhookErr);
+          }
+
+          // Send notification via Supabase Edge Function (same as ContactForm)
+          try {
+            const { error: emailError } = await supabase.functions.invoke('send-lead-notification', {
+              body: {
+                type: 'chatbot',
+                data: {
+                  firstName,
+                  lastName,
+                  email: currentMsgLeadInfo.email || '',
+                  phone: currentMsgLeadInfo.phone || '',
+                  message: `[Chatbot Lead] ${allUserText.substring(0, 500)}`,
+                  preferredContactMethod: currentMsgLeadInfo.email ? 'email' : 'phone',
+                  projectType: currentMsgLeadInfo.projectType || 'General Inquiry',
+                  city: currentMsgLeadInfo.location || '',
+                },
+              },
+            });
+            if (emailError) {
+              console.error('Edge Function email notification failed:', emailError);
+            } else {
+              console.log(`✅ Lead notification sent via Edge Function for ${firstName}`);
+            }
+          } catch (notifyErr) {
+            console.error('Failed to send lead notification:', notifyErr);
+          }
+
+          // Send Telegram notification
+          try {
+            const baseUrl = request.nextUrl.origin;
+            await fetch(`${baseUrl}/api/notify/telegram-lead`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: `${firstName} ${lastName}`,
+                email: currentMsgLeadInfo.email || '',
+                phone: currentMsgLeadInfo.phone || '',
+                projectType: currentMsgLeadInfo.projectType || 'General Inquiry',
+                location: currentMsgLeadInfo.location || '',
+                score: scoringResult.score,
+                tier: scoringResult.tier,
+                source: 'chatbot',
+              }),
+            });
+            console.log(`✅ Telegram notification sent for ${firstName}`);
+          } catch (telegramErr) {
+            console.error('Failed to send Telegram notification:', telegramErr);
+          }
+        }
+      } catch (leadErr) {
+        console.error('Failed to insert lead:', leadErr);
       }
     }
 

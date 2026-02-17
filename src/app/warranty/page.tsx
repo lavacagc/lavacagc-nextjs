@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, Clock, FileText, Wrench, Home, AlertTriangle, Phone } from 'lucide-react';
 import Link from 'next/link';
 import WarrantyFormWrapper from '@/components/WarrantyFormWrapper';
+import CallTrackingWrapper from '@/components/CallTrackingWrapper';
 
 export const metadata: Metadata = {
   title: '5-Year Two-Tier Warranty | Home Remodeling Guarantee | La Vaca General Contractors',
@@ -321,9 +322,9 @@ export default function WarrantyPage() {
                     <ul className="space-y-2 text-text-secondary text-sm">
                       <li>
                         • <strong>Call immediately:</strong>{' '}
-                        <a href="tel:2012124917" className="text-primary font-semibold hover:underline">
+                        <CallTrackingWrapper href="tel:2012124917" className="text-primary font-semibold hover:underline">
                           (201) 212-4917
-                        </a>
+                        </CallTrackingWrapper>
                       </li>
                       <li>• We respond within 24 hours to assess and address emergencies</li>
                       <li>

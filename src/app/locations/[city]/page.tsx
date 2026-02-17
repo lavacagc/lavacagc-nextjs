@@ -8,6 +8,7 @@ import GoogleMaps from "@/components/GoogleMaps";
 import NAPInfo from "@/components/NAPInfo";
 import CanonicalUrl from "@/components/CanonicalUrl";
 import Breadcrumb from "@/components/Breadcrumb";
+import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 import { CityHeroButtons, CityServiceCard, CityCTAButtons } from "@/components/CityLandingClient";
 import { getLocationBySlug, getLocationMetaTitle, getLocationMetaDescription, getAllLocations } from "@/data/locationData";
 import { getServerSupabaseClient } from "@/lib/supabase-server";
@@ -369,9 +370,9 @@ export default async function CityLandingPage({ params }: CityPageProps) {
                   <div className="space-y-4">
                     <div className="flex items-center gap-3">
                       <Phone className="h-5 w-5 text-primary" />
-                      <a href={`tel:${locationData.permitInfo.phone.replace(/[^0-9]/g, '')}`} className="text-primary hover:underline font-medium">
+                      <CallTrackingWrapper href={`tel:${locationData.permitInfo.phone.replace(/[^0-9]/g, '')}`} className="text-primary hover:underline font-medium">
                         {locationData.permitInfo.phone}
-                      </a>
+                      </CallTrackingWrapper>
                     </div>
 
                     <div className="flex items-center gap-3">

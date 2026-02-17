@@ -1,0 +1,267 @@
+'use client'
+
+import React, { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { CheckCircle, Loader2 } from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
+import { supabase } from '@/integrations/supabase/client'
+import { Checkbox } from '@/components/ui/checkbox'
+import Link from 'next/link'
+
+interface LandingPageLeadFormProps {
+  source: string
+  projectType: string
+  heading?: string
+  subheading?: string
+  buttonText?: string
+  className?: string
+}
+
+const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
+  source,
+  projectType,
+  heading = 'Get Your Free Estimate',
+  subheading = 'Fill out the form and we\'ll get back to you within 24 hours.',
+  buttonText = 'Get My Free Estimate',
+  className = '',
+}) => {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    zipCode: '',
+    termsConsent: false,
+  })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSubmitted, setIsSubmitted] = useState(false)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const { toast } = useToast()
+
+  const validate = () => {
+    const newErrors: Record<string, string> = {}
+    if (!formData.name.trim()) newErrors.name = 'Name is required'
+    if (!formData.email.trim()) newErrors.email = 'Email is required'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) newErrors.email = 'Valid email required'
+    if (!formData.phone.trim()) newErrors.phone = 'Phone is required'
+    else if (!/^[\+]?[0-9\(\)\s\-\.]{7,20}$/.test(formData.phone)) newErrors.phone = 'Valid phone required'
+    if (!formData.zipCode.trim()) newErrors.zipCode = 'ZIP code is required'
+    else if (!/^\d{5}(-\d{4})?$/.test(formData.zipCode)) newErrors.zipCode = 'Valid ZIP required'
+    if (!formData.termsConsent) newErrors.termsConsent = 'You must agree to continue'
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!validate()) return
+
+    setIsSubmitting(true)
+    try {
+      // Split name into first/last
+      const nameParts = formData.name.trim().split(/\s+/)
+      const firstName = nameParts[0]
+      const lastName = nameParts.slice(1).join(' ') || ''
+
+      // Insert lead into Supabase
+      const { error: dbError } = await supabase.from('leads').insert({
+        first_name: firstName,
+        last_name: lastName,
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        zip_code: formData.zipCode.trim(),
+        inquiry_type: 'estimate',
+        project_type: projectType,
+        source,
+        preferred_contact_method: 'phone',
+      })
+
+      if (dbError) throw dbError
+
+      // Trigger follow-up sequence
+      try {
+        await fetch('/api/leads/webhook', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formData.name.trim(),
+            email: formData.email.trim(),
+            source,
+            projectType,
+          }),
+        })
+      } catch {
+        // Non-blocking
+      }
+
+      // Telegram notification
+      try {
+        await fetch('/api/notify/telegram-lead', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formData.name.trim(),
+            email: formData.email.trim(),
+            phone: formData.phone.trim(),
+            projectType,
+            source,
+          }),
+        })
+      } catch {
+        // Non-blocking
+      }
+
+      setIsSubmitted(true)
+      toast({
+        title: 'Request Sent!',
+        description: "We'll contact you within 24 hours.",
+      })
+    } catch (error) {
+      console.error('Lead form error:', error)
+      toast({
+        title: 'Error',
+        description: 'Something went wrong. Please try again or call us.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  if (isSubmitted) {
+    return (
+      <div className={`bg-card rounded-xl p-8 text-center shadow-lg ${className}`}>
+        <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
+        <h3 className="text-2xl font-bold text-text-primary mb-2">Thank You!</h3>
+        <p className="text-text-secondary mb-2">
+          We&apos;ve received your request for a free {projectType} estimate.
+        </p>
+        <p className="text-sm text-text-muted">
+          A team member will contact you within 24 hours.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`bg-card rounded-xl p-6 md:p-8 shadow-lg ${className}`}>
+      <div className="text-center mb-6">
+        <h3 className="text-xl md:text-2xl font-bold text-text-primary">{heading}</h3>
+        <p className="text-sm text-text-secondary mt-1">{subheading}</p>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <input type="hidden" name="source" value={source} />
+
+        <div className="space-y-1.5">
+          <Label htmlFor="lp-name" className="text-sm">Full Name *</Label>
+          <Input
+            id="lp-name"
+            name="name"
+            value={formData.name}
+            onChange={handleChange}
+            placeholder="John Smith"
+            className={errors.name ? 'border-red-500' : ''}
+          />
+          {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="lp-email" className="text-sm">Email *</Label>
+          <Input
+            id="lp-email"
+            name="email"
+            type="email"
+            value={formData.email}
+            onChange={handleChange}
+            placeholder="john@example.com"
+            className={errors.email ? 'border-red-500' : ''}
+          />
+          {errors.email && <p className="text-xs text-red-500">{errors.email}</p>}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="lp-phone" className="text-sm">Phone *</Label>
+          <Input
+            id="lp-phone"
+            name="phone"
+            type="tel"
+            value={formData.phone}
+            onChange={handleChange}
+            placeholder="(555) 123-4567"
+            className={errors.phone ? 'border-red-500' : ''}
+          />
+          {errors.phone && <p className="text-xs text-red-500">{errors.phone}</p>}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="lp-zip" className="text-sm">ZIP Code *</Label>
+          <Input
+            id="lp-zip"
+            name="zipCode"
+            value={formData.zipCode}
+            onChange={handleChange}
+            placeholder="07620"
+            maxLength={10}
+            className={errors.zipCode ? 'border-red-500' : ''}
+          />
+          {errors.zipCode && <p className="text-xs text-red-500">{errors.zipCode}</p>}
+        </div>
+
+        {/* TCPA Consent */}
+        <div className="flex items-start space-x-2 p-3 border rounded-lg bg-background">
+          <Checkbox
+            id="lp-terms"
+            checked={formData.termsConsent}
+            onCheckedChange={(checked) => {
+              setFormData((prev) => ({ ...prev, termsConsent: checked === true }))
+              if (errors.termsConsent) setErrors((prev) => ({ ...prev, termsConsent: '' }))
+            }}
+            className={`mt-0.5 ${errors.termsConsent ? 'border-red-500' : ''}`}
+          />
+          <div className="grid gap-1 leading-none">
+            <label htmlFor="lp-terms" className="text-xs leading-relaxed text-text-muted cursor-pointer">
+              I agree to the{' '}
+              <Link href="/terms-and-conditions" target="_blank" className="text-primary hover:underline">
+                Terms &amp; Conditions
+              </Link>{' '}
+              and{' '}
+              <Link href="/privacy-policy" target="_blank" className="text-primary hover:underline">
+                Privacy Policy
+              </Link>
+              . I consent to receive calls, texts, and emails about my project.
+            </label>
+            {errors.termsConsent && <p className="text-xs text-red-500">{errors.termsConsent}</p>}
+          </div>
+        </div>
+
+        <Button
+          type="submit"
+          disabled={isSubmitting || !formData.termsConsent}
+          className="w-full bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-lg py-6 font-semibold transition-all duration-300"
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              Submitting...
+            </>
+          ) : (
+            buttonText
+          )}
+        </Button>
+
+        <p className="text-xs text-text-muted text-center">
+          No spam. No obligation. 100% free estimate.
+        </p>
+      </form>
+    </div>
+  )
+}
+
+export default LandingPageLeadForm

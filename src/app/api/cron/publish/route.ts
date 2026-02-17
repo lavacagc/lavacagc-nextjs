@@ -1,19 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://xrvbrnrbnyfdwkfdoepq.supabase.co";
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhydmJybnJibnlmZHdrZmRvZXBxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3NzIyNTAsImV4cCI6MjA3NDM0ODI1MH0.TL9cUCyaApPjWl8YEW455JgCUSa6S2qsoRpZ8iATl10";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Direct REST helper using secret key (bypasses RLS properly with sb_secret_ format)
+async function supabaseRest(method: 'GET' | 'PATCH', path: string, body?: Record<string, unknown>) {
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
+  if (!secretKey) throw new Error('SUPABASE_SECRET_KEY not configured');
+
+  const headers: Record<string, string> = {
+    'apikey': secretKey,
+    'Authorization': `Bearer ${secretKey}`,
+    'Content-Type': 'application/json',
+    'Prefer': method === 'PATCH' ? 'return=minimal' : 'return=representation',
+  };
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method,
+    headers,
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase ${method} ${path} failed: ${res.status} ${text}`);
+  }
+
+  if (method === 'PATCH') return null;
+  return res.json();
+}
 
 // Cron-triggered endpoint to auto-publish scheduled blog posts
-// Call via: GET /api/cron/publish?key=lavaca-cron-2026
 export async function GET(request: NextRequest) {
-  // Simple auth key check
-  const key = request.nextUrl.searchParams.get('key');
-  if (key !== 'lavaca-cron-2026') {
+  // Verify request is from Vercel Cron
+  const authHeader = request.headers.get('authorization');
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -21,17 +45,10 @@ export async function GET(request: NextRequest) {
     const now = new Date().toISOString();
 
     // Find posts that are scheduled and past their publish time
-    const { data: posts, error: fetchError } = await supabase
-      .from('blog_posts')
-      .select('id, title, slug, scheduled_publish_at')
-      .eq('published', false)
-      .not('scheduled_publish_at', 'is', null)
-      .lte('scheduled_publish_at', now);
-
-    if (fetchError) {
-      console.error('Error fetching scheduled posts:', fetchError);
-      return NextResponse.json({ error: 'Failed to fetch posts' }, { status: 500 });
-    }
+    const posts = await supabaseRest(
+      'GET',
+      `blog_posts?select=id,title,slug,scheduled_publish_at&published=eq.false&scheduled_publish_at=not.is.null&scheduled_publish_at=lte.${encodeURIComponent(now)}`
+    );
 
     if (!posts || posts.length === 0) {
       return NextResponse.json({ message: 'No posts to publish', published: 0 });
@@ -40,19 +57,15 @@ export async function GET(request: NextRequest) {
     // Publish each post
     const published: string[] = [];
     for (const post of posts) {
-      const { error: updateError } = await supabase
-        .from('blog_posts')
-        .update({
-          published: true,
-          scheduled_publish_at: null,
-          updated_at: now,
-        })
-        .eq('id', post.id);
-
-      if (!updateError) {
+      try {
+        await supabaseRest(
+          'PATCH',
+          `blog_posts?id=eq.${post.id}`,
+          { published: true, scheduled_publish_at: null, updated_at: now }
+        );
         published.push(post.title);
-      } else {
-        console.error(`Failed to publish "${post.title}":`, updateError);
+      } catch (err) {
+        console.error(`Failed to publish "${post.title}":`, err);
       }
     }
 

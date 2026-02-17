@@ -3,11 +3,11 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Phone, Menu, X } from "lucide-react";
-import { trackPhoneClick } from "@/components/Analytics";
 import logo from "@/assets/logo.png";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -143,6 +143,7 @@ const Header = () => {
               </button>
               <Link href="/about" className="text-text-secondary hover:text-primary transition-colors font-medium">About</Link>
               <Link href="/process" className="text-text-secondary hover:text-primary transition-colors font-medium">Process</Link>
+              <Link href="/resources" className="text-text-secondary hover:text-primary transition-colors font-medium">Resources</Link>
               <Link href="/blog" className="text-text-secondary hover:text-primary transition-colors font-medium">Blog</Link>
             </nav>
 
@@ -229,22 +230,29 @@ const Header = () => {
               </button>
 
               <button 
+                onClick={() => navigateToPage('/resources')} 
+                className="block text-text-secondary hover:text-primary transition-colors font-medium"
+                aria-label="Go to homeowner resources page"
+              >
+                Resources
+              </button>
+
+              <button 
                 onClick={() => navigateToPage('/blog')} 
                 className="block text-text-secondary hover:text-primary transition-colors font-medium"
-                aria-label="Go to blog and resources page"
+                aria-label="Go to blog page"
               >
-                Blog & Resources
+                Blog
               </button>
 
               <div className="pt-4 border-t border-border space-y-3">
-                <a
+                <CallTrackingWrapper
                   href="tel:2012124917"
-                  onClick={trackPhoneClick}
                   className="flex items-center text-secondary font-semibold"
                 >
                   <Phone className="h-4 w-4 mr-2" />
                   (201) 212-4917
-                </a>
+                </CallTrackingWrapper>
               </div>
             </div>
           </div>

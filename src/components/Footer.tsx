@@ -3,6 +3,7 @@ import { Phone, Mail, Facebook, Instagram } from "lucide-react";
 import logo from "@/assets/logo.png";
 import Link from "next/link";
 import Image from "next/image";
+import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -26,10 +27,10 @@ const Footer = () => {
 
             {/* NAP Information */}
             <div className="space-y-3 mb-6">
-              <a href="tel:2012124917" className="flex items-center hover:text-primary transition-colors">
+              <CallTrackingWrapper href="tel:2012124917" className="flex items-center hover:text-primary transition-colors">
                 <Phone className="h-5 w-5 mr-3 text-primary" />
                 <span className="font-semibold">(201) 212-4917</span>
-              </a>
+              </CallTrackingWrapper>
               <a href="mailto:info@lavacagc.com" className="flex items-center hover:text-primary transition-colors">
                 <Mail className="h-5 w-5 mr-3 text-primary" />
                 <span>info@lavacagc.com</span>
@@ -47,6 +48,8 @@ const Footer = () => {
               <li><Link href="/reviews" className="hover:text-primary transition-colors">Reviews</Link></li>
               <li><Link href="/faq" className="hover:text-primary transition-colors">FAQ</Link></li>
               <li><Link href="/warranty" className="hover:text-primary transition-colors">Warranty Claims</Link></li>
+              <li><Link href="/resources" className="hover:text-primary transition-colors">Resources</Link></li>
+              <li><Link href="/referral" className="hover:text-primary transition-colors">Referral Program</Link></li>
             </ul>
           </div>
 

@@ -539,7 +539,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
                 <div className="relative">
                   <Image
                     src={post.featured_image}
-                    alt="Featured"
+                    alt={`Featured image for ${post.title || 'blog post'}`}
                     width={400}
                     height={192}
                     className="w-full h-48 object-cover rounded-md"

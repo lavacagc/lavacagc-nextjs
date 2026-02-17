@@ -21,6 +21,14 @@ import AnalyticsSettings from '@/components/admin/AnalyticsSettings';
 import { GMBSettings } from '@/components/admin/GMBSettings';
 import { LeadsManager } from '@/components/admin/LeadsManager';
 import { EstimatesManager } from '@/components/admin/EstimatesManager';
+import dynamic from 'next/dynamic';
+
+// Dynamically import follow-ups and feedback pages
+const FollowUpsPage = dynamic(() => import('@/app/admin/follow-ups/page'), { ssr: false });
+const FeedbackPage = dynamic(() => import('@/app/admin/feedback/page'), { ssr: false });
+const PageSpeedMonitor = dynamic(() => import('@/components/admin/PageSpeedMonitor'), { ssr: false });
+const ConversionDashboard = dynamic(() => import('@/components/admin/ConversionDashboard'), { ssr: false });
+const UptimeMonitor = dynamic(() => import('@/components/admin/UptimeMonitor'), { ssr: false });
 import { PricingManager } from '@/components/admin/PricingManager';
 import { NonNegotiablesManager } from '@/components/admin/NonNegotiablesManager';
 import { ComplianceDocumentsManager } from '@/components/admin/ComplianceDocumentsManager';
@@ -230,6 +238,14 @@ export default function AdminContent() {
             <LeadsManager />
           </TabsContent>
 
+          <TabsContent value="follow-ups">
+            <FollowUpsPage />
+          </TabsContent>
+
+          <TabsContent value="feedback">
+            <FeedbackPage />
+          </TabsContent>
+
           <TabsContent value="estimates">
             <EstimatesManager />
           </TabsContent>
@@ -248,6 +264,18 @@ export default function AdminContent() {
 
           <TabsContent value="reports">
             <ReportsPage />
+          </TabsContent>
+
+          <TabsContent value="conversions">
+            <ConversionDashboard />
+          </TabsContent>
+
+          <TabsContent value="performance">
+            <PageSpeedMonitor />
+          </TabsContent>
+
+          <TabsContent value="uptime">
+            <UptimeMonitor />
           </TabsContent>
 
           <TabsContent value="new-post">
