@@ -29,6 +29,7 @@ const FeedbackPage = dynamic(() => import('@/app/admin/feedback/page'), { ssr: f
 const PageSpeedMonitor = dynamic(() => import('@/components/admin/PageSpeedMonitor'), { ssr: false });
 const ConversionDashboard = dynamic(() => import('@/components/admin/ConversionDashboard'), { ssr: false });
 const UptimeMonitor = dynamic(() => import('@/components/admin/UptimeMonitor'), { ssr: false });
+const CMSPageEditor = dynamic(() => import('@/components/admin/CMSPageEditor').then(m => ({ default: m.CMSPageEditor })), { ssr: false });
 import { PricingManager } from '@/components/admin/PricingManager';
 import { NonNegotiablesManager } from '@/components/admin/NonNegotiablesManager';
 import { ComplianceDocumentsManager } from '@/components/admin/ComplianceDocumentsManager';
@@ -177,6 +178,10 @@ export default function AdminContent() {
                 />
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="pages">
+            <CMSPageEditor />
           </TabsContent>
 
           <TabsContent value="services">
