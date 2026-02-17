@@ -1499,9 +1499,12 @@ export type Database = {
           active: boolean
           created_at: string
           description: string | null
+          expertise_cards: Json
           has_page: boolean
           id: string
           name: string
+          neighborhood_features: Json
+          slug: string | null
           sort_order: number
           updated_at: string
           zip_code: string | null
@@ -1510,9 +1513,12 @@ export type Database = {
           active?: boolean
           created_at?: string
           description?: string | null
+          expertise_cards?: Json
           has_page?: boolean
           id?: string
           name: string
+          neighborhood_features?: Json
+          slug?: string | null
           sort_order?: number
           updated_at?: string
           zip_code?: string | null
@@ -1521,9 +1527,12 @@ export type Database = {
           active?: boolean
           created_at?: string
           description?: string | null
+          expertise_cards?: Json
           has_page?: boolean
           id?: string
           name?: string
+          neighborhood_features?: Json
+          slug?: string | null
           sort_order?: number
           updated_at?: string
           zip_code?: string | null

@@ -9,380 +9,64 @@ import NAPInfo from "@/components/NAPInfo";
 import CanonicalUrl from "@/components/CanonicalUrl";
 import Breadcrumb from "@/components/Breadcrumb";
 import { CityHeroButtons, CityServiceCard, CityCTAButtons } from "@/components/CityLandingClient";
-import { getLocationBySlug, getLocationMetaTitle, getLocationMetaDescription } from "@/data/locationData";
+import { getLocationBySlug, getLocationMetaTitle, getLocationMetaDescription, getAllLocations } from "@/data/locationData";
+import { getServerSupabaseClient } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import type { Metadata } from 'next';
 import Link from "next/link";
 
-// Define valid cities
-const VALID_CITIES = [
+// Fallback valid cities (used if DB fetch fails)
+const FALLBACK_CITIES = [
   'alpine', 'bloomfield', 'caldwell', 'clifton', 'essex-fells', 'ho-ho-kus',
   'livingston', 'madison', 'maplewood', 'millburn', 'montclair', 'morristown',
   'parsippany', 'saddle-river', 'short-hills', 'verona', 'west-caldwell', 'west-orange'
 ];
 
-// City-specific content
-const CITY_CONTENT: Record<string, {
+// Fetch city content from Supabase service_areas table
+async function getCityContentFromDB(slug: string): Promise<{
   neighborhoodFeatures: string[];
   expertiseCards: { title: string; description: string }[];
-}> = {
-  'alpine': {
-    neighborhoodFeatures: [
-      "Historic estates and modern luxury homes",
-      "Strict architectural guidelines",
-      "Premium material requirements",
-      "High-end finish expectations",
-      "Excellent return on investment"
-    ],
-    expertiseCards: [
-      {
-        title: "Alpine Estate Expertise",
-        description: "Specialized knowledge of Alpine's luxury estate requirements, architectural review boards, and exclusive community standards for high-end renovations."
-      },
-      {
-        title: "Luxury Materials & Finishes",
-        description: "Access to the finest imported materials, custom millwork, and premium finishes that meet Alpine's discerning standards and HOA requirements."
-      },
-      {
-        title: "Maximum Investment Returns",
-        description: "Strategic renovations designed to maximize property values in Alpine's exclusive $2M+ market, with proven ROI for luxury homeowners."
-      }
-    ]
-  },
-  'short-hills': {
-    neighborhoodFeatures: [
-      "Historic Tudor and Colonial architecture",
-      "High property values requiring quality finishes",
-      "Strong demand for modern amenities",
-      "Excellent school district driving home values",
-      "Strict township regulations"
-    ],
-    expertiseCards: [
-      {
-        title: "Short Hills Architectural Expertise",
-        description: "Deep understanding of Short Hills' diverse architectural styles, from historic Tudors to contemporary designs, ensuring seamless renovations."
-      },
-      {
-        title: "Premium Material Selection",
-        description: "Curated selection of high-end materials and finishes that complement Short Hills' luxury market expectations."
-      },
-      {
-        title: "Value-Adding Renovations",
-        description: "Strategic improvements that maximize ROI in Short Hills' competitive real estate market, with average home values exceeding $1.5M."
-      }
-    ]
-  },
-  'saddle-river': {
-    neighborhoodFeatures: [
-      "Sprawling estate properties",
-      "Equestrian-friendly community",
-      "Minimum lot size requirements",
-      "Prestigious neighborhood standards",
-      "Private, secluded settings"
-    ],
-    expertiseCards: [
-      {
-        title: "Saddle River Estate Specialists",
-        description: "Expert knowledge of Saddle River's unique estate requirements and zoning regulations for luxury property renovations."
-      },
-      {
-        title: "Custom Estate Features",
-        description: "Specialized in high-end amenities including home theaters, wine cellars, and indoor pools that Saddle River homeowners expect."
-      },
-      {
-        title: "Privacy-Focused Design",
-        description: "Renovations designed to enhance privacy and exclusivity while maintaining the natural beauty of Saddle River properties."
-      }
-    ]
-  },
-  'bloomfield': {
-    neighborhoodFeatures: [
-      "Diverse historic housing stock from Victorians to Cape Cods",
-      "Neighborhoods like Brookdale and Watsessing with distinct character",
-      "Competitive $400K average home values with strong renovation ROI",
-      "Mix of original architectural details worth preserving",
-      "Convenient online permit applications through township"
-    ],
-    expertiseCards: [
-      {
-        title: "Historic Home Modernization",
-        description: "Expertise updating Bloomfield's diverse Victorian, Colonial, and Cape Cod homes while preserving original character and architectural details."
-      },
-      {
-        title: "Value-Driven Renovations",
-        description: "Strategic improvements that maximize equity in Bloomfield's competitive $400K market, delivering measurable ROI for neighborhood comparables."
-      }
-    ]
-  },
-  'caldwell': {
-    neighborhoodFeatures: [
-      "Historic borough with Grover Cleveland birthplace heritage",
-      "Preservation guidelines near downtown core",
-      "$550K average home values in family-oriented community",
-      "Mix of historic and updated homes requiring sensitive renovations",
-      "Efficient 7-14 day permit processing times"
-    ],
-    expertiseCards: [
-      {
-        title: "Historic Preservation Compliance",
-        description: "Navigate Caldwell's historic preservation guidelines with expertise in period-appropriate renovations that respect the borough's Grover Cleveland-era character."
-      },
-      {
-        title: "System Modernization",
-        description: "Specialize in updating electrical, plumbing, and HVAC in Caldwell's older homes while maintaining exterior charm and historic integrity."
-      }
-    ]
-  },
-  'clifton': {
-    neighborhoodFeatures: [
-      "Large diverse city with established neighborhoods like Athenia and Richfield",
-      "Fast 5-10 day permit processing—among quickest in the region",
-      "$450K average home values with excellent renovation potential",
-      "Passaic County's largest city with varied housing types",
-      "Convenient highway access attracting buyers seeking updated homes"
-    ],
-    expertiseCards: [
-      {
-        title: "Streamlined Project Execution",
-        description: "Leverage Clifton's fast permit processing to complete renovations efficiently across all neighborhoods from Athenia to Montclair Heights."
-      },
-      {
-        title: "Energy-Efficient Modernization",
-        description: "Update Clifton's older housing stock with modern kitchens, bathrooms, and energy-efficient systems that reduce costs and increase marketability."
-      }
-    ]
-  },
-  'essex-fells': {
-    neighborhoodFeatures: [
-      "Exclusive $1.7M average home values on wooded estate lots",
-      "Strict tree preservation ordinances protecting natural character",
-      "Custom homes requiring sophisticated renovation approaches",
-      "Small borough with just 2,100 residents and high standards",
-      "Careful zoning requirements for additions and modifications"
-    ],
-    expertiseCards: [
-      {
-        title: "Estate Property Expertise",
-        description: "Specialized knowledge of Essex Fells' tree preservation ordinances, working with arborists to plan renovations around protected specimens on wooded lots."
-      },
-      {
-        title: "Luxury Custom Renovations",
-        description: "Tailored renovations for Essex Fells' custom homes, respecting natural settings while incorporating high-end finishes and modern amenities."
-      }
-    ]
-  },
-  'ho-ho-kus': {
-    neighborhoodFeatures: [
-      "Quaint borough known for tree-lined streets and historic charm",
-      "$800K average home values with architectural character",
-      "Strict guidelines preserving historic neighborhood aesthetics",
-      "Bergen County location with strong community identity",
-      "Renovations must respect streetscape and architectural continuity"
-    ],
-    expertiseCards: [
-      {
-        title: "Historic Character Preservation",
-        description: "Expert renovations that comply with Ho-Ho-Kus architectural guidelines while updating interiors with modern functionality and premium finishes."
-      },
-      {
-        title: "Seamless Period Integration",
-        description: "Blend modern kitchens, bathrooms, and systems into Ho-Ho-Kus historic homes without compromising the streetscape charm that defines the borough."
-      }
-    ]
-  },
-  'livingston': {
-    neighborhoodFeatures: [
-      "Family-friendly township with top-rated school system",
-      "$700K average home values driven by education quality",
-      "Neighborhoods from Livingston Center to Riker Hill",
-      "High demand for functional family spaces and home offices",
-      "Online permit applications and efficient processing"
-    ],
-    expertiseCards: [
-      {
-        title: "Family-Focused Renovations",
-        description: "Design practical spaces Livingston families need—expanded kitchens for entertaining, finished basements for play areas, home offices, and mudrooms."
-      },
-      {
-        title: "School District Investment",
-        description: "Strategic renovations that capitalize on Livingston's excellent schools, maximizing home value for families investing in this top-rated district."
-      }
-    ]
-  },
-  'madison': {
-    neighborhoodFeatures: [
-      "Known as 'Rose City' with charming historic downtown",
-      "$750K average home values in Morris County location",
-      "Diverse architecture from Colonials to contemporary",
-      "Historic Preservation review in designated districts",
-      "Top-rated schools attracting families seeking quality homes"
-    ],
-    expertiseCards: [
-      {
-        title: "Rose City Architectural Expertise",
-        description: "Navigate Madison's diverse architectural styles and historic preservation requirements while delivering renovations that enhance Rose City's distinctive character."
-      },
-      {
-        title: "Family-Oriented Upgrades",
-        description: "Create spaces that leverage Madison's top schools and community—larger kitchens, additional bathrooms, finished basements—maximizing family appeal."
-      }
-    ]
-  },
-  'maplewood': {
-    neighborhoodFeatures: [
-      "Vibrant arts scene with diverse community and charming village center",
-      "Multiple historic districts requiring commission review",
-      "$600K average home values in competitive Essex County market",
-      "Housing ranges from Victorian to mid-century modern",
-      "Strong demand for character-preserving renovations"
-    ],
-    expertiseCards: [
-      {
-        title: "Historic District Expertise",
-        description: "Navigate Maplewood's multiple historic districts and Historic Commission review process while preserving the architectural character that makes each neighborhood unique."
-      },
-      {
-        title: "Period-Appropriate Modernization",
-        description: "Update Victorian, Colonial, and mid-century homes with modern kitchens and bathrooms while respecting original details and Maplewood's artistic character."
-      }
-    ]
-  },
-  'millburn': {
-    neighborhoodFeatures: [
-      "Includes Short Hills with $900K+ average home values",
-      "Excellent school district driving strong real estate demand",
-      "Diverse neighborhoods from Wyoming to Old Short Hills",
-      "Same permit process as Short Hills through township",
-      "High expectations for quality finishes and craftsmanship"
-    ],
-    expertiseCards: [
-      {
-        title: "Millburn Township Specialists",
-        description: "Deep expertise with Millburn's diverse neighborhoods and township permit requirements, ensuring smooth approvals for renovations across all areas."
-      },
-      {
-        title: "Quality-Driven Renovations",
-        description: "Premium materials and skilled craftsmanship meeting Millburn homeowners' high standards, with focus on ROI in this competitive $900K+ market."
-      }
-    ]
-  },
-  'montclair': {
-    neighborhoodFeatures: [
-      "Vibrant Essex County township with arts, culture, and diverse neighborhoods",
-      "Multiple historic districts from Upper Montclair to Montclair Heights",
-      "$650K average home values with competitive market dynamics",
-      "Housing from Victorian mansions to contemporary updates",
-      "Historic Preservation Commission review for designated areas"
-    ],
-    expertiseCards: [
-      {
-        title: "Multi-District Expertise",
-        description: "Navigate Montclair's various neighborhoods and Historic Preservation requirements, from Upper Montclair estates to South Montclair homes."
-      },
-      {
-        title: "Character-Conscious Modernization",
-        description: "Blend modern kitchens and bathrooms into Montclair's diverse housing stock while preserving the original details and artistic character defining each area."
-      }
-    ]
-  },
-  'morristown': {
-    neighborhoodFeatures: [
-      "Historic Morris County seat with Revolutionary War heritage",
-      "$550K average home values in walkable downtown location",
-      "Historic District requiring architectural review",
-      "Mix of historic homes, condos, and townhomes",
-      "Strong demand balancing preservation with modern updates"
-    ],
-    expertiseCards: [
-      {
-        title: "Historic District Navigation",
-        description: "Expert guidance through Morristown Historic District architectural review, preserving Revolutionary War-era character while modernizing interiors."
-      },
-      {
-        title: "Multi-Unit Expertise",
-        description: "Handle renovations for Morristown's single-family homes, condos, and townhomes, coordinating with HOAs while delivering quality craftsmanship."
-      }
-    ]
-  },
-  'parsippany': {
-    neighborhoodFeatures: [
-      "Large Morris County township with corporate headquarters presence",
-      "Neighborhoods from Lake Hiawatha to Troy Hills",
-      "$500K average home values with strong professional buyer demand",
-      "Online permit applications and efficient processing",
-      "Diverse housing requiring tailored renovation approaches"
-    ],
-    expertiseCards: [
-      {
-        title: "Corporate Market Expertise",
-        description: "Renovations appealing to Parsippany's professional demographic, with focus on quality finishes and modern amenities that corporate relocations expect."
-      },
-      {
-        title: "Multi-Neighborhood Knowledge",
-        description: "Tailored approaches for Parsippany's distinct neighborhoods from Lake Hiawatha waterfront to Troy Hills estates, understanding each area's unique character."
-      }
-    ]
-  },
-  'verona': {
-    neighborhoodFeatures: [
-      "Charming borough known for small-town feel and excellent schools",
-      "$650K average home values with strong family appeal",
-      "Efficient 7-10 day permit processing—among fastest in Essex County",
-      "Neighborhoods from Verona Center to Forest Avenue",
-      "Rising property values making renovations excellent investments"
-    ],
-    expertiseCards: [
-      {
-        title: "Fast-Track Project Execution",
-        description: "Leverage Verona's efficient 7-10 day permit processing to move quickly from planning to construction, minimizing disruption for busy families."
-      },
-      {
-        title: "Value Maximization Strategy",
-        description: "Strategic renovations capitalizing on Verona's rising $650K market, with focus on kitchen and bathroom updates delivering strong ROI."
-      }
-    ]
-  },
-  'west-caldwell': {
-    neighborhoodFeatures: [
-      "Suburban Essex County township with excellent schools and NYC commute",
-      "$600K average home values attracting professional families",
-      "Distinct from Caldwell Borough despite sharing 07006 zip code",
-      "Family-oriented neighborhoods valuing functional spaces",
-      "Strong demand for home offices and finished basements"
-    ],
-    expertiseCards: [
-      {
-        title: "Suburban Family Renovations",
-        description: "Design functional spaces West Caldwell families need—expanded kitchens, home offices for commuters, finished basements, and additional bathrooms."
-      },
-      {
-        title: "Professional Household Solutions",
-        description: "Renovations meeting needs of West Caldwell's professional families, balancing work-from-home functionality with family living and entertaining spaces."
-      }
-    ]
-  },
-  'west-orange': {
-    neighborhoodFeatures: [
-      "Historic township home to Thomas Edison's laboratory and Llewellyn Park",
-      "$500K average home values with diverse neighborhoods",
-      "Llewellyn Park private community with additional architectural requirements",
-      "Neighborhoods from Pleasantdale to Rock Spring with varied character",
-      "Mix of historic preservation and modern renovation needs"
-    ],
-    expertiseCards: [
-      {
-        title: "Llewellyn Park Specialists",
-        description: "Navigate America's first planned community with expertise in Llewellyn Park Association requirements and historic architectural guidelines."
-      },
-      {
-        title: "Historic Modernization",
-        description: "Update West Orange's diverse housing stock while preserving period details, from Thomas Edison-era homes to mid-century properties across all neighborhoods."
-      }
-    ]
+} | null> {
+  try {
+    const supabase = getServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('service_areas')
+      .select('neighborhood_features, expertise_cards')
+      .eq('slug', slug)
+      .single();
+    
+    if (error || !data) return null;
+    
+    const features = Array.isArray(data.neighborhood_features) ? data.neighborhood_features as string[] : [];
+    const cards = Array.isArray(data.expertise_cards) ? data.expertise_cards as { title: string; description: string }[] : [];
+    
+    if (features.length === 0 && cards.length === 0) return null;
+    
+    return { neighborhoodFeatures: features, expertiseCards: cards };
+  } catch {
+    return null;
   }
-};
+}
 
-// Default content for cities without specific data
+// Fetch all valid city slugs from DB
+async function getValidCitySlugs(): Promise<string[]> {
+  try {
+    const supabase = getServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('service_areas')
+      .select('slug')
+      .eq('active', true)
+      .not('slug', 'is', null);
+    
+    if (error || !data || data.length === 0) return FALLBACK_CITIES;
+    
+    return data.map(row => row.slug).filter((s): s is string => s !== null);
+  } catch {
+    return FALLBACK_CITIES;
+  }
+}
+
+// Default content fallback when DB returns empty
 const DEFAULT_CONTENT = {
   neighborhoodFeatures: [
     "Established residential community",
@@ -413,22 +97,19 @@ interface CityPageProps {
   }>;
 }
 
-// Generate static params for all 12 cities
+// Generate static params from DB + fallback
 export async function generateStaticParams() {
-  return VALID_CITIES.map((city) => ({
-    city
-  }));
+  const slugs = await getValidCitySlugs();
+  // Merge with static locationData slugs so pages with full data always build
+  const allLocations = getAllLocations();
+  const staticSlugs = allLocations.map(l => l.slug);
+  const merged = [...new Set([...slugs, ...staticSlugs])];
+  return merged.map((city) => ({ city }));
 }
 
 // Generate metadata for each city page
 export async function generateMetadata({ params }: CityPageProps): Promise<Metadata> {
   const { city } = await params;
-
-  if (!VALID_CITIES.includes(city)) {
-    return {
-      title: 'Page Not Found'
-    };
-  }
 
   const locationData = getLocationBySlug(city);
 
@@ -455,18 +136,15 @@ export async function generateMetadata({ params }: CityPageProps): Promise<Metad
 export default async function CityLandingPage({ params }: CityPageProps) {
   const { city } = await params;
 
-  // Validate city
-  if (!VALID_CITIES.includes(city)) {
-    notFound();
-  }
-
   const locationData = getLocationBySlug(city);
 
   if (!locationData) {
     notFound();
   }
 
-  const cityContent = CITY_CONTENT[city] || DEFAULT_CONTENT;
+  // Fetch neighborhood/expertise content from Supabase, fall back to defaults
+  const dbContent = await getCityContentFromDB(city);
+  const cityContent = dbContent || DEFAULT_CONTENT;
 
   const services = [
     {
@@ -813,7 +491,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
                   // Convert area name to slug format
                   const slug = area.toLowerCase().replace(/\s+/g, '-');
                   // Check if this area is one we have a page for
-                  const hasPage = VALID_CITIES.includes(slug);
+                  const hasPage = FALLBACK_CITIES.includes(slug);
 
                   return hasPage ? (
                     <Link
