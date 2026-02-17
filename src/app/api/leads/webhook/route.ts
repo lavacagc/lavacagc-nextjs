@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { Resend } from 'resend';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,6 +8,39 @@ const SUPABASE_URL = "https://xrvbrnrbnyfdwkfdoepq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhydmJybnJibnlmZHdrZmRvZXBxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3NzIyNTAsImV4cCI6MjA3NDM0ODI1MH0.TL9cUCyaApPjWl8YEW455JgCUSa6S2qsoRpZ8iATl10";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/**
+ * Send the instant acknowledgment email immediately via Resend.
+ * Gracefully handles missing API key.
+ */
+async function sendInstantAck(email: string, subject: string, body: string): Promise<boolean> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn('⚠️ RESEND_API_KEY not configured — skipping instant ack email');
+    return false;
+  }
+
+  try {
+    const resend = new Resend(apiKey);
+    const { error } = await resend.emails.send({
+      from: 'La Vaca General Contractors <info@lavacagc.com>',
+      to: [email],
+      subject,
+      text: body,
+    });
+
+    if (error) {
+      console.error('Failed to send instant ack:', error);
+      return false;
+    }
+
+    console.log(`✅ Instant ack email sent to ${email}`);
+    return true;
+  } catch (err) {
+    console.error('Error sending instant ack:', err);
+    return false;
+  }
+}
 
 // Email templates for follow-up sequence
 function generateFollowUpEmails(name: string, projectType?: string) {
@@ -184,6 +218,14 @@ export async function POST(request: NextRequest) {
       },
     ];
 
+    // Send the instant ack email immediately (don't just queue it)
+    const instantSent = await sendInstantAck(email, emails.instant_ack.subject, emails.instant_ack.body);
+
+    // Mark instant_ack as sent if we sent it successfully
+    if (instantSent) {
+      followUps[0].status = 'sent' as const;
+    }
+
     const { data, error } = await supabase
       .from('follow_up_queue')
       .insert(followUps)
@@ -195,7 +237,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ Follow-up sequence created for ${name} (${email}) from ${source || 'unknown'}`);
-    console.log(`   ${data?.length || 0} follow-ups scheduled`);
+    console.log(`   ${data?.length || 0} follow-ups scheduled${instantSent ? ' (instant ack sent)' : ''}`);
 
     return NextResponse.json({
       status: 'created',

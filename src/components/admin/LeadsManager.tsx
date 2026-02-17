@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,13 @@ import {
   Phone, 
   MapPin,
   AlertCircle,
-  CheckSquare
+  CheckSquare,
+  MessageSquare,
+  User,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Clock,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import {
@@ -27,6 +33,12 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface Lead {
   id: string;
@@ -47,21 +59,53 @@ interface Lead {
   archived_at?: string;
 }
 
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
+interface LeadData {
+  email?: string;
+  phone?: string;
+  projectType?: string;
+  location?: string;
+  name?: string;
+  timeline?: string;
+}
+
+interface ChatConversation {
+  id: string;
+  visitor_id: string;
+  messages: ChatMessage[];
+  lead_captured: boolean;
+  lead_data: LeadData | null;
+  ip_address: string | null;
+  page_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export function LeadsManager() {
   const [activeLeads, setActiveLeads] = useState<Lead[]>([]);
   const [archivedLeads, setArchivedLeads] = useState<Lead[]>([]);
+  const [chatConversations, setChatConversations] = useState<ChatConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
+  const [expandedChatId, setExpandedChatId] = useState<string | null>(null);
+  const [viewingConversation, setViewingConversation] = useState<ChatConversation | null>(null);
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [archivedPage, setArchivedPage] = useState(1);
+  const [chatPage, setChatPage] = useState(1);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showSecondDeleteConfirm, setShowSecondDeleteConfirm] = useState(false);
+  const [creatingLeadFromChat, setCreatingLeadFromChat] = useState(false);
   const { toast } = useToast();
   
   const LEADS_PER_PAGE = 10;
 
-  const fetchLeads = async () => {
+  const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
       // Fetch active leads
@@ -83,6 +127,15 @@ export function LeadsManager() {
 
       if (archivedError) throw archivedError;
       setArchivedLeads(archived || []);
+
+      // Fetch chat conversations
+      const { data: chats, error: chatsError } = await supabase
+        .from('chat_conversations')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (chatsError) throw chatsError;
+      setChatConversations((chats || []) as unknown as ChatConversation[]);
     } catch (error: unknown) {
       toast({
         title: "Error fetching leads",
@@ -92,12 +145,59 @@ export function LeadsManager() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
     fetchLeads();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only needs to run on mount
-  }, []);
+  }, [fetchLeads]);
+
+  const createLeadFromConversation = async (conversation: ChatConversation) => {
+    setCreatingLeadFromChat(true);
+    try {
+      const leadData = conversation.lead_data;
+      const allUserText = (conversation.messages || [])
+        .filter((m: ChatMessage) => m.role === 'user')
+        .map((m: ChatMessage) => m.content)
+        .join(' ');
+
+      // Parse name from conversation
+      const nameMatch = allUserText.match(/(?:my name is|i'm|i am|this is|name:?)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i);
+      const firstName = nameMatch ? nameMatch[1].split(' ')[0] : (leadData?.name?.split(' ')[0] || 'Chat');
+      const lastName = nameMatch && nameMatch[1].split(' ').length > 1
+        ? nameMatch[1].split(' ').slice(1).join(' ')
+        : (leadData?.name?.split(' ').slice(1).join(' ') || 'Visitor');
+
+      const { error } = await supabase
+        .from('leads')
+        .insert({
+          first_name: firstName,
+          last_name: lastName,
+          email: leadData?.email || 'chatbot@lavacagc.com',
+          phone: leadData?.phone || '0000000000',
+          inquiry_type: leadData?.projectType || 'General Inquiry',
+          project_type: leadData?.projectType || null,
+          city: leadData?.location || null,
+          message: `[Created from chat conversation] ${allUserText.substring(0, 500)}`,
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Lead created",
+        description: `Lead created from chat conversation ${conversation.visitor_id}`,
+      });
+
+      fetchLeads();
+    } catch (error: unknown) {
+      toast({
+        title: "Error creating lead",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setCreatingLeadFromChat(false);
+    }
+  };
 
   /* archiveLead, restoreLead, deleteLead removed — using bulk operations instead */
 
@@ -371,9 +471,13 @@ export function LeadsManager() {
       )}
 
       <Tabs defaultValue="active" className="w-full" onValueChange={() => setSelectedLeads(new Set())}>
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="grid w-full max-w-lg grid-cols-3">
           <TabsTrigger value="active">
             Active Leads ({activeLeads.length})
+          </TabsTrigger>
+          <TabsTrigger value="conversations">
+            <MessageSquare className="w-4 h-4 mr-1" />
+            Chats ({chatConversations.length})
           </TabsTrigger>
           <TabsTrigger value="archived">
             Archived ({archivedLeads.length})
@@ -431,6 +535,234 @@ export function LeadsManager() {
             </>
           )}
         </TabsContent>
+
+        <TabsContent value="conversations" className="mt-6 space-y-4">
+          {chatConversations.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center p-8">
+                <MessageSquare className="w-12 h-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground text-center">
+                  No chat conversations yet
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <div className="space-y-2">
+                {chatConversations
+                  .slice((chatPage - 1) * LEADS_PER_PAGE, chatPage * LEADS_PER_PAGE)
+                  .map((convo) => {
+                    const isExpanded = expandedChatId === convo.id;
+                    const messageCount = (convo.messages || []).length;
+                    const leadData = convo.lead_data;
+                    return (
+                      <Card key={convo.id} className="mb-2">
+                        <CardHeader className="py-3 px-4">
+                          <div className="flex justify-between items-center">
+                            <div
+                              className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                              onClick={() => setExpandedChatId(isExpanded ? null : convo.id)}
+                            >
+                              <User className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <CardTitle className="text-base font-medium truncate">
+                                  {convo.visitor_id.substring(0, 12)}...
+                                </CardTitle>
+                                <p className="text-xs text-muted-foreground">
+                                  {messageCount} message{messageCount !== 1 ? 's' : ''}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {convo.lead_captured && (
+                                  <Badge variant="default" className="bg-green-600 text-xs">
+                                    Lead Captured
+                                  </Badge>
+                                )}
+                                {leadData?.email && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    <Mail className="w-3 h-3 mr-1" />
+                                    {leadData.email}
+                                  </Badge>
+                                )}
+                                {leadData?.phone && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    <Phone className="w-3 h-3 mr-1" />
+                                    {leadData.phone}
+                                  </Badge>
+                                )}
+                                <span className="text-xs text-muted-foreground whitespace-nowrap flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {format(new Date(convo.created_at), 'MMM dd, h:mm a')}
+                                </span>
+                                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </div>
+                            </div>
+                          </div>
+                        </CardHeader>
+
+                        {isExpanded && (
+                          <CardContent className="pt-0 pb-4 px-4 space-y-3">
+                            {/* Lead data summary */}
+                            {leadData && (
+                              <div className="flex flex-wrap gap-2">
+                                {leadData.projectType && (
+                                  <Badge variant="outline">{leadData.projectType}</Badge>
+                                )}
+                                {leadData.location && (
+                                  <Badge variant="outline">
+                                    <MapPin className="w-3 h-3 mr-1" />
+                                    {leadData.location}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Quick preview of last 3 messages */}
+                            <div className="space-y-2 border rounded-lg p-3 bg-muted/30 max-h-48 overflow-y-auto">
+                              {(convo.messages || []).slice(-4).map((msg: ChatMessage, idx: number) => (
+                                <div key={idx} className={`text-sm ${msg.role === 'user' ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                  <span className="font-medium">
+                                    {msg.role === 'user' ? '👤 Visitor: ' : '🤖 Bot: '}
+                                  </span>
+                                  <span className="line-clamp-2">{msg.content}</span>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Action buttons */}
+                            <div className="flex gap-2 pt-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setViewingConversation(convo)}
+                              >
+                                <MessageSquare className="w-4 h-4 mr-2" />
+                                View Full Conversation
+                              </Button>
+                              {convo.lead_captured && (
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  onClick={() => createLeadFromConversation(convo)}
+                                  disabled={creatingLeadFromChat}
+                                >
+                                  <Plus className="w-4 h-4 mr-2" />
+                                  Create Lead
+                                </Button>
+                              )}
+                            </div>
+                          </CardContent>
+                        )}
+                      </Card>
+                    );
+                  })}
+              </div>
+              {Math.ceil(chatConversations.length / LEADS_PER_PAGE) > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setChatPage(p => Math.max(1, p - 1))}
+                    disabled={chatPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm">
+                    Page {chatPage} of {Math.ceil(chatConversations.length / LEADS_PER_PAGE)}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setChatPage(p => Math.min(Math.ceil(chatConversations.length / LEADS_PER_PAGE), p + 1))}
+                    disabled={chatPage === Math.ceil(chatConversations.length / LEADS_PER_PAGE)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </TabsContent>
+
+        {/* Full conversation viewer dialog */}
+        <Dialog open={!!viewingConversation} onOpenChange={(open) => !open && setViewingConversation(null)}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <MessageSquare className="w-5 h-5" />
+                Conversation — {viewingConversation?.visitor_id.substring(0, 12)}...
+                {viewingConversation?.lead_captured && (
+                  <Badge variant="default" className="bg-green-600 text-xs ml-2">
+                    Lead Captured
+                  </Badge>
+                )}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="overflow-y-auto flex-1 space-y-3 pr-2">
+              {(viewingConversation?.messages || []).map((msg: ChatMessage, idx: number) => (
+                <div
+                  key={idx}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[80%] rounded-lg px-4 py-2 text-sm ${
+                      msg.role === 'user'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted'
+                    }`}
+                  >
+                    <p>{msg.content}</p>
+                    <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                      {msg.timestamp ? format(new Date(msg.timestamp), 'h:mm a') : ''}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {viewingConversation?.lead_data && (
+              <div className="border-t pt-3 mt-3">
+                <p className="text-sm font-medium mb-2">Captured Lead Data:</p>
+                <div className="flex flex-wrap gap-2">
+                  {viewingConversation.lead_data.email && (
+                    <Badge variant="secondary">
+                      <Mail className="w-3 h-3 mr-1" />
+                      {viewingConversation.lead_data.email}
+                    </Badge>
+                  )}
+                  {viewingConversation.lead_data.phone && (
+                    <Badge variant="secondary">
+                      <Phone className="w-3 h-3 mr-1" />
+                      {viewingConversation.lead_data.phone}
+                    </Badge>
+                  )}
+                  {viewingConversation.lead_data.projectType && (
+                    <Badge variant="outline">{viewingConversation.lead_data.projectType}</Badge>
+                  )}
+                  {viewingConversation.lead_data.location && (
+                    <Badge variant="outline">
+                      <MapPin className="w-3 h-3 mr-1" />
+                      {viewingConversation.lead_data.location}
+                    </Badge>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => {
+                    if (viewingConversation) {
+                      createLeadFromConversation(viewingConversation);
+                      setViewingConversation(null);
+                    }
+                  }}
+                  disabled={creatingLeadFromChat}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Lead from This Conversation
+                </Button>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         <TabsContent value="archived" className="mt-6 space-y-4">
           {archivedLeads.length === 0 ? (
