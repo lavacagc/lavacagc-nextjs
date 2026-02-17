@@ -223,13 +223,16 @@ const MobileSwipeGallery = ({ images, isOpen, initialIndex, onClose }: MobileSwi
             <button
               key={index}
               onClick={() => goToSlide(index)}
-              className={`transition-all ${
+              className="p-3 transition-all"
+              aria-label={`Go to image ${index + 1}`}
+              style={{ minWidth: '44px', minHeight: '44px' }}
+            >
+              <span className={`block transition-all ${
                 index === currentIndex
                   ? 'w-6 h-2 bg-white rounded-full'
                   : 'w-2 h-2 bg-white/40 hover:bg-white/60 rounded-full'
-              }`}
-              aria-label={`Go to image ${index + 1}`}
-            />
+              }`} />
+            </button>
           ))}
         </div>
       )}

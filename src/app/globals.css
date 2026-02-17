@@ -38,7 +38,7 @@ All colors MUST be HSL.
     /* Text Colors */
     --text-primary: 0 0% 10.2%; /* #1A1A1A */
     --text-secondary: 0 0% 18.8%; /* #303030 */
-    --text-muted: 0 0% 45%;
+    --text-muted: 0 0% 40%; /* Improved contrast ratio for WCAG AA compliance */
 
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
@@ -178,14 +178,19 @@ html {
     line-height: 1.6;
   }
 
-  /* Touch-friendly interactive elements */
+  /* Touch-friendly interactive elements - minimum 44x44px for WCAG AAA */
   button,
   [role="button"],
   input[type="submit"],
-  input[type="button"],
+  input[type="button"] {
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: manipulation;
+  }
+  
   .touch-target {
-    min-height: 48px;
-    min-width: 48px;
+    min-height: 44px;
+    min-width: 44px;
     touch-action: manipulation;
   }
 
@@ -372,11 +377,7 @@ html {
   display: none;
 }
 
-/* Mobile Contact Banner Styles */
-.touch-target {
-  min-height: 44px;
-  min-width: 44px;
-}
+/* Mobile Contact Banner Styles are defined in base layer above */
 
 /* Gradient Button Animation */
 @keyframes gradient {

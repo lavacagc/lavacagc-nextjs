@@ -66,7 +66,11 @@ const Header = () => {
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-20 min-[480px]:h-24 md:h-28 lg:grid lg:grid-cols-3">
             {/* Logo */}
-            <button onClick={() => router.push('/')} className="flex items-center space-x-1.5 sm:space-x-2 md:space-x-3 hover:opacity-80 transition-opacity">
+            <button 
+              onClick={() => router.push('/')} 
+              className="flex items-center space-x-1.5 sm:space-x-2 md:space-x-3 hover:opacity-80 transition-opacity"
+              aria-label="La Vaca General Contractors - Go to homepage"
+            >
               <Image
                 src={logo}
                 alt="La Vaca General Contractors"
@@ -130,7 +134,13 @@ const Header = () => {
                   </div>
                 </div>
               </div>
-              <button onClick={() => scrollToSection('projects')} className="text-text-secondary hover:text-primary transition-colors font-medium">Projects</button>
+              <button 
+                onClick={() => scrollToSection('projects')} 
+                className="text-text-secondary hover:text-primary transition-colors font-medium"
+                aria-label="View our project gallery"
+              >
+                Projects
+              </button>
               <Link href="/about" className="text-text-secondary hover:text-primary transition-colors font-medium">About</Link>
               <Link href="/process" className="text-text-secondary hover:text-primary transition-colors font-medium">Process</Link>
               <Link href="/blog" className="text-text-secondary hover:text-primary transition-colors font-medium">Blog</Link>
@@ -186,23 +196,43 @@ const Header = () => {
                 </div>
               </div>
 
-              <button onClick={() => scrollToSection('projects')} className="block text-text-secondary hover:text-primary transition-colors font-medium">
+              <button 
+                onClick={() => scrollToSection('projects')} 
+                className="block text-text-secondary hover:text-primary transition-colors font-medium"
+                aria-label="View our project gallery"
+              >
                 Projects
               </button>
 
-              <button onClick={() => navigateToPage('/project-calculator')} className="block text-text-secondary hover:text-primary transition-colors font-medium">
+              <button 
+                onClick={() => navigateToPage('/project-calculator')} 
+                className="block text-text-secondary hover:text-primary transition-colors font-medium"
+                aria-label="Go to project calculator page"
+              >
                 Project Calculator
               </button>
 
-              <button onClick={() => navigateToPage('/about')} className="block text-text-secondary hover:text-primary transition-colors font-medium">
+              <button 
+                onClick={() => navigateToPage('/about')} 
+                className="block text-text-secondary hover:text-primary transition-colors font-medium"
+                aria-label="Go to about us page"
+              >
                 About Us
               </button>
 
-              <button onClick={() => navigateToPage('/process')} className="block text-text-secondary hover:text-primary transition-colors font-medium">
+              <button 
+                onClick={() => navigateToPage('/process')} 
+                className="block text-text-secondary hover:text-primary transition-colors font-medium"
+                aria-label="Go to our process page"
+              >
                 Our Process
               </button>
 
-              <button onClick={() => navigateToPage('/blog')} className="block text-text-secondary hover:text-primary transition-colors font-medium">
+              <button 
+                onClick={() => navigateToPage('/blog')} 
+                className="block text-text-secondary hover:text-primary transition-colors font-medium"
+                aria-label="Go to blog and resources page"
+              >
                 Blog & Resources
               </button>
 

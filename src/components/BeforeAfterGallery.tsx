@@ -78,6 +78,7 @@ const BeforeAfterGallery = ({ images, title }: BeforeAfterGalleryProps) => {
                   variant="ghost"
                   size="sm"
                   className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white"
+                  aria-label="Previous image"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
@@ -86,6 +87,7 @@ const BeforeAfterGallery = ({ images, title }: BeforeAfterGalleryProps) => {
                   variant="ghost"
                   size="sm"
                   className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white"
+                  aria-label="Next image"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -110,12 +112,21 @@ const BeforeAfterGallery = ({ images, title }: BeforeAfterGalleryProps) => {
                 setCurrentIndex(index);
                 setShowAfter(false);
               }}
-              className={`w-3 h-3 rounded-full transition-all ${
+              className={`rounded-full transition-all p-2 ${
+                index === currentIndex
+                  ? 'bg-primary/20'
+                  : 'bg-gray-300/20 hover:bg-gray-400/20'
+              }`}
+              aria-label={`Go to image ${index + 1}`}
+              aria-current={index === currentIndex ? 'true' : 'false'}
+              style={{ minWidth: '44px', minHeight: '44px' }}
+            >
+              <span className={`block w-3 h-3 rounded-full ${
                 index === currentIndex
                   ? 'bg-primary'
-                  : 'bg-gray-300 hover:bg-gray-400'
-              }`}
-            />
+                  : 'bg-gray-500'
+              }`} />
+            </button>
           ))}
         </div>
       )}

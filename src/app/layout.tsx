@@ -82,6 +82,13 @@ export default function RootLayout({
         {/* Preconnect to Supabase storage for faster asset loading */}
         <link rel="preconnect" href="https://xrvbrnrbnyfdwkfdoepq.supabase.co" />
         <link rel="dns-prefetch" href="https://xrvbrnrbnyfdwkfdoepq.supabase.co" />
+        {/* Preload hero video for faster LCP */}
+        <link 
+          rel="preload" 
+          href="https://xrvbrnrbnyfdwkfdoepq.supabase.co/storage/v1/object/public/hero-videos/hero-background-1.mp4" 
+          as="video" 
+          type="video/mp4"
+        />
       </head>
       <body className={inter.className}>
         {/* Server-side structured data for SEO - visible to crawlers */}
