@@ -1,33 +1,33 @@
-import type { Metadata } from 'next'
-import Header from '@/components/Header'
-import Footer from '@/components/Footer'
-import SpringRenovationClient from './SpringRenovationClient'
+import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { getCMSPage } from '@/lib/cms';
+import CMSPageLayout from '@/components/CMSPageLayout';
 
-export const metadata: Metadata = {
-  title: 'Spring 2026 Renovation Special | Free Consultation | La Vaca GC',
-  description:
-    'Transform your home this spring with La Vaca General Contractors. Limited-time free consultation for kitchen, bathroom, and basement renovations in Northern NJ. Licensed & insured.',
-  keywords:
-    'spring renovation NJ, spring home remodel New Jersey, spring kitchen renovation, spring bathroom remodel NJ, home renovation deals NJ, 2026 renovation specials',
-  openGraph: {
-    title: 'Spring 2026 Renovation Special | La Vaca General Contractors',
-    description:
-      'Limited-time free consultation for your spring renovation project. Kitchen, bathroom, basement, and more. Northern NJ\'s trusted contractor.',
-    url: 'https://www.lavacagc.com/spring-renovation',
-  },
-  alternates: {
-    canonical: 'https://www.lavacagc.com/spring-renovation',
-  },
+export const revalidate = 60;
+
+const SLUG = 'spring-renovation';
+
+export async function generateMetadata(): Promise<Metadata> {
+  const page = await getCMSPage(SLUG);
+  const title = page?.title || 'Spring 2026 Renovation Special';
+  const description = page?.meta_description || 'Transform your home this spring with La Vaca General Contractors.';
+
+  return {
+    title: `${title} | La Vaca General Contractors`,
+    description,
+    openGraph: {
+      title: `${title} | La Vaca General Contractors`,
+      description,
+      url: `https://www.lavacagc.com/${SLUG}`,
+    },
+    alternates: { canonical: `https://www.lavacagc.com/${SLUG}` },
+  };
 }
 
-export default function SpringRenovationPage() {
-  return (
-    <>
-      <Header />
-      <main id="main-content">
-        <SpringRenovationClient />
-      </main>
-      <Footer />
-    </>
-  )
+export default async function SpringRenovationPage() {
+  const page = await getCMSPage(SLUG);
+  if (!page) notFound();
+
+  const sections = Array.isArray(page.sections) ? page.sections : [];
+  return <CMSPageLayout sections={sections} />;
 }

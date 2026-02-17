@@ -1,62 +1,15 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
-import LandingPageHeader from '@/components/LandingPageHeader';
-import CMSPageRenderer from '@/components/CMSPageRenderer';
-import type { CMSSection } from '@/types/cms';
+import { getCMSPage, getAllPublishedSlugs } from '@/lib/cms';
+import CMSPageLayout from '@/components/CMSPageLayout';
 
-// ISR: revalidate every 60 seconds
 export const revalidate = 60;
 
-// Server-side Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!.trim()
-);
-
-interface CMSPageRow {
-  id: string;
-  slug: string;
-  title: string;
-  meta_description: string | null;
-  status: string;
-  page_type: string;
-  sections: CMSSection[];
-  created_at: string;
-  updated_at: string;
-  published_at: string | null;
-}
-
-async function getCMSPage(slug: string): Promise<CMSPageRow | null> {
-  const { data, error } = await supabase
-    .from('cms_pages')
-    .select('*')
-    .eq('slug', slug)
-    .eq('status', 'published')
-    .maybeSingle();
-
-  if (error) {
-    console.error('Error loading CMS page:', error);
-    return null;
-  }
-
-  return data as CMSPageRow | null;
-}
-
-// Generate static params for pre-rendering published pages
 export async function generateStaticParams() {
-  const { data: pages } = await supabase
-    .from('cms_pages')
-    .select('slug')
-    .eq('status', 'published')
-    .limit(100);
-
-  return (pages || []).map((page: { slug: string }) => ({
-    slug: page.slug.split('/'),
-  }));
+  const slugs = await getAllPublishedSlugs();
+  return slugs.map((slug) => ({ slug: slug.split('/') }));
 }
 
-// Dynamic metadata for SEO
 interface PageProps {
   params: Promise<{ slug: string[] }>;
 }
@@ -66,9 +19,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const slug = resolvedParams.slug.join('/');
   const page = await getCMSPage(slug);
 
-  if (!page) {
-    return { title: 'Page Not Found' };
-  }
+  if (!page) return { title: 'Page Not Found' };
 
   return {
     title: `${page.title} | La Vaca General Contractors`,
@@ -76,12 +27,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     openGraph: {
       title: `${page.title} | La Vaca General Contractors`,
       description: page.meta_description || undefined,
-      url: `https://www.lavacagc.com/cms/${page.slug}`,
-      type: 'website',
+      url: `https://www.lavacagc.com/${page.slug}`,
     },
-    alternates: {
-      canonical: `https://www.lavacagc.com/cms/${page.slug}`,
-    },
+    alternates: { canonical: `https://www.lavacagc.com/${page.slug}` },
   };
 }
 
@@ -90,24 +38,8 @@ export default async function CMSPageRoute({ params }: PageProps) {
   const slug = resolvedParams.slug.join('/');
   const page = await getCMSPage(slug);
 
-  if (!page) {
-    notFound();
-  }
+  if (!page) notFound();
 
   const sections = Array.isArray(page.sections) ? page.sections : [];
-
-  return (
-    <div className="min-h-screen bg-background">
-      <LandingPageHeader />
-      <main id="main-content">
-        <CMSPageRenderer sections={sections} />
-      </main>
-      <footer className="bg-secondary/95 text-secondary-foreground/70 py-6 text-center text-sm">
-        <div className="container mx-auto px-4">
-          <p>&copy; {new Date().getFullYear()} La Vaca General Contractors, LLC. All rights reserved.</p>
-          <p className="mt-1">Licensed, Bonded, &amp; Insured | HIC# 13VH13373800</p>
-        </div>
-      </footer>
-    </div>
-  );
+  return <CMSPageLayout sections={sections} />;
 }
