@@ -24,33 +24,82 @@ import type {
   CMSPage, CMSSection, CMSSectionType,
   HeroSection, BeforeAfterSection, FeaturesSection,
   TestimonialsSection, TextSection, CTASection,
-  FAQSection, GallerySection,
+  FAQSection, GallerySection, ProjectsSection, LeadFormSection,
 } from '@/types/cms';
 import { SECTION_TYPE_LABELS, createDefaultSection } from '@/types/cms';
 
 // ─── Section Editors ───────────────────────────────────────────────
 
 function HeroEditor({ section, onChange }: { section: HeroSection; onChange: (s: HeroSection) => void }) {
+  const layout = section.layout || 'centered';
   return (
     <div className="space-y-3">
       <div>
+        <Label>Layout</Label>
+        <Select value={layout} onValueChange={(v: 'centered' | 'split-form') => onChange({ ...section, layout: v })}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="centered">Centered (Campaign style)</SelectItem>
+            <SelectItem value="split-form">Split with Lead Form (LP style)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
         <Label>Heading</Label>
         <Input value={section.heading} onChange={e => onChange({ ...section, heading: e.target.value })} placeholder="Main headline..." />
+        <p className="text-xs text-muted-foreground mt-1">Wrap text in **double asterisks** to highlight with gradient</p>
       </div>
       <div>
         <Label>Subheading</Label>
         <Textarea value={section.subheading} onChange={e => onChange({ ...section, subheading: e.target.value })} placeholder="Supporting text..." rows={2} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label>CTA Text</Label>
-          <Input value={section.ctaText} onChange={e => onChange({ ...section, ctaText: e.target.value })} placeholder="Get Free Estimate" />
-        </div>
-        <div>
-          <Label>CTA Link</Label>
-          <Input value={section.ctaLink} onChange={e => onChange({ ...section, ctaLink: e.target.value })} placeholder="/contact" />
-        </div>
-      </div>
+      {layout === 'centered' && (
+        <>
+          <div>
+            <Label>Urgency Badge</Label>
+            <Input value={section.urgencyBadge || ''} onChange={e => onChange({ ...section, urgencyBadge: e.target.value })} placeholder="Spring 2026 Special — Limited Time Offer" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>CTA Text</Label>
+              <Input value={section.ctaText} onChange={e => onChange({ ...section, ctaText: e.target.value })} placeholder="Get Free Estimate" />
+            </div>
+            <div>
+              <Label>CTA Link</Label>
+              <Input value={section.ctaLink} onChange={e => onChange({ ...section, ctaLink: e.target.value })} placeholder="/contact" />
+            </div>
+          </div>
+        </>
+      )}
+      {layout === 'split-form' && (
+        <Card className="border-dashed">
+          <CardContent className="pt-4 space-y-2">
+            <span className="text-sm font-medium text-muted-foreground">Lead Form Configuration</span>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Form Source</Label>
+                <Input value={section.formSource || ''} onChange={e => onChange({ ...section, formSource: e.target.value })} placeholder="google-ads-kitchen" />
+              </div>
+              <div>
+                <Label>Project Type</Label>
+                <Input value={section.formProjectType || ''} onChange={e => onChange({ ...section, formProjectType: e.target.value })} placeholder="kitchen" />
+              </div>
+            </div>
+            <div>
+              <Label>Form Heading</Label>
+              <Input value={section.formHeading || ''} onChange={e => onChange({ ...section, formHeading: e.target.value })} placeholder="Get Your Free Estimate" />
+            </div>
+            <div>
+              <Label>Form Subheading</Label>
+              <Input value={section.formSubheading || ''} onChange={e => onChange({ ...section, formSubheading: e.target.value })} placeholder="No obligation. We'll call within 24 hours." />
+            </div>
+            <div>
+              <Label>Form Button Text</Label>
+              <Input value={section.formButtonText || ''} onChange={e => onChange({ ...section, formButtonText: e.target.value })} placeholder="Get My Free Estimate" />
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <div>
         <Label>Background Image URL</Label>
         <Input value={section.backgroundImage} onChange={e => onChange({ ...section, backgroundImage: e.target.value })} placeholder="/images/hero.jpg" />
@@ -73,6 +122,7 @@ function BeforeAfterEditor({ section, onChange }: { section: BeforeAfterSection;
       <div>
         <Label>Heading</Label>
         <Input value={section.heading} onChange={e => onChange({ ...section, heading: e.target.value })} placeholder="See the Transformation" />
+        <p className="text-xs text-muted-foreground mt-1">Wrap text in **double asterisks** to highlight with gradient</p>
       </div>
       {section.items.map((item, idx) => (
         <Card key={idx} className="border-dashed">
@@ -118,6 +168,7 @@ function FeaturesEditor({ section, onChange }: { section: FeaturesSection; onCha
       <div>
         <Label>Heading</Label>
         <Input value={section.heading} onChange={e => onChange({ ...section, heading: e.target.value })} placeholder="Why Choose Us" />
+        <p className="text-xs text-muted-foreground mt-1">Wrap text in **double asterisks** to highlight with gradient</p>
       </div>
       {section.items.map((item, idx) => (
         <Card key={idx} className="border-dashed">
@@ -169,6 +220,7 @@ function TestimonialsEditor({ section, onChange }: { section: TestimonialsSectio
       <div>
         <Label>Heading</Label>
         <Input value={section.heading} onChange={e => onChange({ ...section, heading: e.target.value })} placeholder="What Our Clients Say" />
+        <p className="text-xs text-muted-foreground mt-1">Wrap text in **double asterisks** to highlight with gradient</p>
       </div>
       {section.items.map((item, idx) => (
         <Card key={idx} className="border-dashed">
@@ -214,6 +266,7 @@ function TextEditor({ section, onChange }: { section: TextSection; onChange: (s:
       <div>
         <Label>Heading</Label>
         <Input value={section.heading} onChange={e => onChange({ ...section, heading: e.target.value })} placeholder="Section heading" />
+        <p className="text-xs text-muted-foreground mt-1">Wrap text in **double asterisks** to highlight with gradient</p>
       </div>
       <div>
         <Label>Content (Markdown supported)</Label>
@@ -229,6 +282,7 @@ function CTAEditor({ section, onChange }: { section: CTASection; onChange: (s: C
       <div>
         <Label>Heading</Label>
         <Input value={section.heading} onChange={e => onChange({ ...section, heading: e.target.value })} placeholder="Ready to Start?" />
+        <p className="text-xs text-muted-foreground mt-1">Wrap text in **double asterisks** to highlight with gradient</p>
       </div>
       <div>
         <Label>Description</Label>
@@ -266,6 +320,7 @@ function FAQEditor({ section, onChange }: { section: FAQSection; onChange: (s: F
       <div>
         <Label>Heading</Label>
         <Input value={section.heading} onChange={e => onChange({ ...section, heading: e.target.value })} placeholder="Frequently Asked Questions" />
+        <p className="text-xs text-muted-foreground mt-1">Wrap text in **double asterisks** to highlight with gradient</p>
       </div>
       {section.items.map((item, idx) => (
         <Card key={idx} className="border-dashed">
@@ -306,6 +361,7 @@ function GalleryEditor({ section, onChange }: { section: GallerySection; onChang
       <div>
         <Label>Heading</Label>
         <Input value={section.heading} onChange={e => onChange({ ...section, heading: e.target.value })} placeholder="Our Work" />
+        <p className="text-xs text-muted-foreground mt-1">Wrap text in **double asterisks** to highlight with gradient</p>
       </div>
       {section.images.map((img, idx) => (
         <Card key={idx} className="border-dashed">
@@ -338,6 +394,159 @@ function GalleryEditor({ section, onChange }: { section: GallerySection; onChang
   );
 }
 
+// ─── Projects Editor ───────────────────────────────────────────────
+
+function ProjectsEditor({ section, onChange }: { section: ProjectsSection; onChange: (s: ProjectsSection) => void }) {
+  const updateItem = (idx: number, field: string, value: string | string[]) => {
+    const items = [...section.items];
+    items[idx] = { ...items[idx], [field]: value };
+    onChange({ ...section, items });
+  };
+  const updateBullet = (itemIdx: number, bulletIdx: number, value: string) => {
+    const items = [...section.items];
+    const bullets = [...items[itemIdx].items];
+    bullets[bulletIdx] = value;
+    items[itemIdx] = { ...items[itemIdx], items: bullets };
+    onChange({ ...section, items });
+  };
+  const addBullet = (itemIdx: number) => {
+    const items = [...section.items];
+    items[itemIdx] = { ...items[itemIdx], items: [...items[itemIdx].items, ''] };
+    onChange({ ...section, items });
+  };
+  const removeBullet = (itemIdx: number, bulletIdx: number) => {
+    const items = [...section.items];
+    items[itemIdx] = { ...items[itemIdx], items: items[itemIdx].items.filter((_, i) => i !== bulletIdx) };
+    onChange({ ...section, items });
+  };
+  const addItem = () => onChange({ ...section, items: [...section.items, { image: '', title: '', items: [''] }] });
+  const removeItem = (idx: number) => onChange({ ...section, items: section.items.filter((_, i) => i !== idx) });
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <Label>Heading</Label>
+        <Input value={section.heading} onChange={e => onChange({ ...section, heading: e.target.value })} placeholder="Popular Renovation Projects" />
+        <p className="text-xs text-muted-foreground mt-1">Wrap text in **double asterisks** to highlight with gradient</p>
+      </div>
+      {section.items.map((item, idx) => (
+        <Card key={idx} className="border-dashed">
+          <CardContent className="pt-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-muted-foreground">Project {idx + 1}</span>
+              {section.items.length > 1 && (
+                <Button variant="ghost" size="sm" onClick={() => removeItem(idx)}><Trash2 className="h-3 w-3" /></Button>
+              )}
+            </div>
+            <div>
+              <Label>Image URL</Label>
+              <Input value={item.image} onChange={e => updateItem(idx, 'image', e.target.value)} placeholder="/images/kitchen.jpg" />
+            </div>
+            <div>
+              <Label>Title</Label>
+              <Input value={item.title} onChange={e => updateItem(idx, 'title', e.target.value)} placeholder="Kitchen Remodeling" />
+            </div>
+            <div>
+              <Label>Bullet Points</Label>
+              {item.items.map((bullet, bIdx) => (
+                <div key={bIdx} className="flex items-center gap-2 mt-1">
+                  <Input value={bullet} onChange={e => updateBullet(idx, bIdx, e.target.value)} placeholder="Custom cabinetry" />
+                  {item.items.length > 1 && (
+                    <Button variant="ghost" size="sm" onClick={() => removeBullet(idx, bIdx)} className="h-8 w-8 p-0 flex-shrink-0">
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              <Button variant="ghost" size="sm" onClick={() => addBullet(idx)} className="mt-1 text-xs">
+                <Plus className="h-3 w-3 mr-1" /> Add Bullet
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+      <Button variant="outline" size="sm" onClick={addItem}><Plus className="h-3 w-3 mr-1" /> Add Project</Button>
+    </div>
+  );
+}
+
+// ─── Lead Form Editor ──────────────────────────────────────────────
+
+function LeadFormEditor({ section, onChange }: { section: LeadFormSection; onChange: (s: LeadFormSection) => void }) {
+  const updateBullet = (idx: number, value: string) => {
+    const bulletPoints = [...(section.bulletPoints || [])];
+    bulletPoints[idx] = value;
+    onChange({ ...section, bulletPoints });
+  };
+  const addBullet = () => onChange({ ...section, bulletPoints: [...(section.bulletPoints || []), ''] });
+  const removeBullet = (idx: number) => onChange({ ...section, bulletPoints: (section.bulletPoints || []).filter((_, i) => i !== idx) });
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <Label>Heading</Label>
+        <Input value={section.heading} onChange={e => onChange({ ...section, heading: e.target.value })} placeholder="Don't Miss This Offer" />
+        <p className="text-xs text-muted-foreground mt-1">Wrap text in **double asterisks** to highlight with gradient</p>
+      </div>
+      <div>
+        <Label>Subheading</Label>
+        <Textarea value={section.subheading || ''} onChange={e => onChange({ ...section, subheading: e.target.value })} placeholder="Supporting text..." rows={2} />
+      </div>
+      <div>
+        <Label>Urgency Badge</Label>
+        <Input value={section.urgencyBadge || ''} onChange={e => onChange({ ...section, urgencyBadge: e.target.value })} placeholder="Spring 2026 Special" />
+      </div>
+      <div>
+        <Label>Bullet Points (left side)</Label>
+        {(section.bulletPoints || []).map((bullet, idx) => (
+          <div key={idx} className="flex items-center gap-2 mt-1">
+            <Input value={bullet} onChange={e => updateBullet(idx, e.target.value)} placeholder="Free in-home consultation" />
+            {(section.bulletPoints || []).length > 1 && (
+              <Button variant="ghost" size="sm" onClick={() => removeBullet(idx)} className="h-8 w-8 p-0 flex-shrink-0">
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        ))}
+        <Button variant="ghost" size="sm" onClick={addBullet} className="mt-1 text-xs">
+          <Plus className="h-3 w-3 mr-1" /> Add Bullet
+        </Button>
+      </div>
+      <div>
+        <Label>Phone Number</Label>
+        <Input value={section.phone || ''} onChange={e => onChange({ ...section, phone: e.target.value })} placeholder="(201) 212-4917" />
+      </div>
+      <Card className="border-dashed">
+        <CardContent className="pt-4 space-y-2">
+          <span className="text-sm font-medium text-muted-foreground">Lead Form Configuration</span>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Form Source</Label>
+              <Input value={section.formSource} onChange={e => onChange({ ...section, formSource: e.target.value })} placeholder="spring-renovation-2026" />
+            </div>
+            <div>
+              <Label>Project Type</Label>
+              <Input value={section.formProjectType} onChange={e => onChange({ ...section, formProjectType: e.target.value })} placeholder="spring-renovation" />
+            </div>
+          </div>
+          <div>
+            <Label>Form Heading</Label>
+            <Input value={section.formHeading} onChange={e => onChange({ ...section, formHeading: e.target.value })} placeholder="Get Your Free Estimate" />
+          </div>
+          <div>
+            <Label>Form Subheading</Label>
+            <Input value={section.formSubheading} onChange={e => onChange({ ...section, formSubheading: e.target.value })} placeholder="Fill out the form..." />
+          </div>
+          <div>
+            <Label>Form Button Text</Label>
+            <Input value={section.formButtonText} onChange={e => onChange({ ...section, formButtonText: e.target.value })} placeholder="Get My Free Estimate" />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ─── Section Editor Dispatcher ─────────────────────────────────────
 
 function SectionEditor({ section, onChange }: { section: CMSSection; onChange: (s: CMSSection) => void }) {
@@ -350,6 +559,8 @@ function SectionEditor({ section, onChange }: { section: CMSSection; onChange: (
     case 'cta': return <CTAEditor section={section} onChange={onChange} />;
     case 'faq': return <FAQEditor section={section} onChange={onChange} />;
     case 'gallery': return <GalleryEditor section={section} onChange={onChange} />;
+    case 'projects': return <ProjectsEditor section={section} onChange={onChange} />;
+    case 'lead-form': return <LeadFormEditor section={section} onChange={onChange} />;
     default: return null;
   }
 }
@@ -387,7 +598,7 @@ function SectionBuilder({ sections, onChange }: { sections: CMSSection[]; onChan
     setAddMenuOpen(false);
   };
 
-  const sectionTypes: CMSSectionType[] = ['hero', 'before-after', 'features', 'testimonials', 'text', 'cta', 'faq', 'gallery'];
+  const sectionTypes: CMSSectionType[] = ['hero', 'before-after', 'features', 'testimonials', 'text', 'cta', 'faq', 'gallery', 'projects', 'lead-form'];
 
   return (
     <div className="space-y-3">

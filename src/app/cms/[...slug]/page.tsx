@@ -1,8 +1,7 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
-import Header from '@/components/Header';
-import Footer from '@/components/Footer';
+import LandingPageHeader from '@/components/LandingPageHeader';
 import CMSPageRenderer from '@/components/CMSPageRenderer';
 import type { CMSSection } from '@/types/cms';
 
@@ -98,12 +97,17 @@ export default async function CMSPageRoute({ params }: PageProps) {
   const sections = Array.isArray(page.sections) ? page.sections : [];
 
   return (
-    <>
-      <Header />
+    <div className="min-h-screen bg-background">
+      <LandingPageHeader />
       <main id="main-content">
         <CMSPageRenderer sections={sections} />
       </main>
-      <Footer />
-    </>
+      <footer className="bg-secondary/95 text-secondary-foreground/70 py-6 text-center text-sm">
+        <div className="container mx-auto px-4">
+          <p>&copy; {new Date().getFullYear()} La Vaca General Contractors, LLC. All rights reserved.</p>
+          <p className="mt-1">Licensed, Bonded, &amp; Insured | HIC# 13VH13373800</p>
+        </div>
+      </footer>
+    </div>
   );
 }

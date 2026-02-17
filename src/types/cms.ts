@@ -7,6 +7,13 @@ export interface HeroSection {
   ctaText: string;
   ctaLink: string;
   backgroundImage: string;
+  layout?: 'centered' | 'split-form';
+  formSource?: string;
+  formProjectType?: string;
+  formHeading?: string;
+  formSubheading?: string;
+  formButtonText?: string;
+  urgencyBadge?: string;
 }
 
 export interface BeforeAfterItem {
@@ -83,6 +90,32 @@ export interface GallerySection {
   images: GalleryImage[];
 }
 
+export interface ProjectItem {
+  image: string;
+  title: string;
+  items: string[];
+}
+
+export interface ProjectsSection {
+  type: 'projects';
+  heading: string;
+  items: ProjectItem[];
+}
+
+export interface LeadFormSection {
+  type: 'lead-form';
+  heading: string;
+  subheading?: string;
+  urgencyBadge?: string;
+  bulletPoints?: string[];
+  phone?: string;
+  formSource: string;
+  formProjectType: string;
+  formHeading: string;
+  formSubheading: string;
+  formButtonText: string;
+}
+
 export type CMSSection =
   | HeroSection
   | BeforeAfterSection
@@ -91,7 +124,9 @@ export type CMSSection =
   | TextSection
   | CTASection
   | FAQSection
-  | GallerySection;
+  | GallerySection
+  | ProjectsSection
+  | LeadFormSection;
 
 export type CMSSectionType = CMSSection['type'];
 
@@ -117,12 +152,14 @@ export const SECTION_TYPE_LABELS: Record<CMSSectionType, string> = {
   'cta': 'Call to Action',
   'faq': 'FAQ',
   'gallery': 'Image Gallery',
+  'projects': 'Projects Grid',
+  'lead-form': 'Lead Capture Form',
 };
 
 export function createDefaultSection(type: CMSSectionType): CMSSection {
   switch (type) {
     case 'hero':
-      return { type: 'hero', heading: '', subheading: '', ctaText: 'Get Free Estimate', ctaLink: '/contact', backgroundImage: '' };
+      return { type: 'hero', heading: '', subheading: '', ctaText: 'Get Free Estimate', ctaLink: '/contact', backgroundImage: '', layout: 'centered' };
     case 'before-after':
       return { type: 'before-after', heading: '', items: [{ beforeImage: '', afterImage: '', caption: '' }] };
     case 'features':
@@ -137,5 +174,21 @@ export function createDefaultSection(type: CMSSectionType): CMSSection {
       return { type: 'faq', heading: '', items: [{ question: '', answer: '' }] };
     case 'gallery':
       return { type: 'gallery', heading: '', images: [{ src: '', alt: '', caption: '' }] };
+    case 'projects':
+      return { type: 'projects', heading: '', items: [{ image: '', title: '', items: [''] }] };
+    case 'lead-form':
+      return {
+        type: 'lead-form',
+        heading: '',
+        subheading: '',
+        urgencyBadge: '',
+        bulletPoints: [''],
+        phone: '(201) 212-4917',
+        formSource: '',
+        formProjectType: '',
+        formHeading: 'Get Your Free Estimate',
+        formSubheading: 'Fill out the form and we\'ll get back to you within 24 hours.',
+        formButtonText: 'Get My Free Estimate',
+      };
   }
 }

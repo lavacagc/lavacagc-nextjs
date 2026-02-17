@@ -10,13 +10,16 @@ import {
 } from '@/components/ui/accordion';
 import {
   Star, Shield, Award, Clock, Calendar, Home, Hammer, Wrench,
-  Paintbrush, Zap, Phone, DollarSign, Heart, ThumbsUp, CheckCircle,
+  Paintbrush, Zap, Phone, DollarSign, Heart, ThumbsUp, CheckCircle, Sparkles,
 } from 'lucide-react';
 import BeforeAfterSlider from '@/components/BeforeAfterSlider';
+import LandingPageLeadForm from '@/components/LandingPageLeadForm';
+import CallTrackingWrapper from '@/components/CallTrackingWrapper';
 import Link from 'next/link';
 import type {
   CMSSection, HeroSection, BeforeAfterSection, FeaturesSection,
   TestimonialsSection, TextSection, CTASection, FAQSection, GallerySection,
+  ProjectsSection, LeadFormSection,
 } from '@/types/cms';
 
 // ─── Icon Resolver ─────────────────────────────────────────────────
@@ -31,9 +34,101 @@ function IconComponent({ name, className }: { name: string; className?: string }
   return <Icon className={className} />;
 }
 
+// ─── Gradient Text Helper ──────────────────────────────────────────
+// Renders text with **double asterisks** as gradient-highlighted spans
+
+function renderGradientText(text: string): React.ReactNode {
+  if (!text) return null;
+
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      const inner = part.slice(2, -2);
+      return (
+        <span
+          key={i}
+          className="text-transparent bg-gradient-to-r from-primary to-accent-sunset bg-clip-text"
+        >
+          {inner}
+        </span>
+      );
+    }
+    return <React.Fragment key={i}>{part}</React.Fragment>;
+  });
+}
+
+// ─── Section Background Helper ─────────────────────────────────────
+
+function getSectionBackground(sectionType: string, index: number): string {
+  if (sectionType === 'hero' || sectionType === 'cta' || sectionType === 'lead-form') {
+    return 'bg-secondary text-secondary-foreground';
+  }
+  return index % 2 === 0 ? 'bg-background' : 'bg-muted/30';
+}
+
 // ─── Hero Section ──────────────────────────────────────────────────
 
 function HeroRenderer({ section }: { section: HeroSection }) {
+  const layout = section.layout || 'centered';
+
+  if (layout === 'split-form') {
+    return (
+      <section className="relative bg-secondary text-secondary-foreground overflow-hidden">
+        {section.backgroundImage && (
+          <div className="absolute inset-0 opacity-20">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={section.backgroundImage}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          </div>
+        )}
+        <div className="relative container mx-auto px-4 py-12 md:py-20">
+          <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center">
+            {/* Left side */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-4">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="h-5 w-5 fill-yellow-400 text-yellow-400" />
+                ))}
+                <span className="ml-2 text-sm font-medium">5.0 Rating on Google</span>
+              </div>
+              <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4 leading-tight">
+                {renderGradientText(section.heading)}
+              </h1>
+              {section.subheading && (
+                <p className="text-lg md:text-xl text-secondary-foreground/90 mb-6">
+                  {section.subheading}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span className="flex items-center gap-1.5">
+                  <Shield className="h-4 w-4 text-primary" /> Licensed &amp; Insured
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Award className="h-4 w-4 text-primary" /> NJ HIC# 13VH13373800
+                </span>
+              </div>
+            </div>
+
+            {/* Right side — Lead Form */}
+            <div>
+              <LandingPageLeadForm
+                source={section.formSource || 'cms-page'}
+                projectType={section.formProjectType || 'general'}
+                heading={section.formHeading}
+                subheading={section.formSubheading}
+                buttonText={section.formButtonText}
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // Centered layout (default)
   return (
     <section className="relative bg-secondary text-secondary-foreground overflow-hidden">
       {section.backgroundImage && (
@@ -48,8 +143,16 @@ function HeroRenderer({ section }: { section: HeroSection }) {
       )}
       <div className="relative container mx-auto px-4 py-16 md:py-24">
         <div className="max-w-3xl mx-auto text-center">
+          {/* Urgency badge */}
+          {section.urgencyBadge && (
+            <div className="inline-flex items-center gap-2 bg-primary/20 text-primary-foreground px-4 py-2 rounded-full text-sm font-medium mb-6 border border-primary/30">
+              <Sparkles className="h-4 w-4" />
+              {section.urgencyBadge}
+            </div>
+          )}
+
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight">
-            {section.heading}
+            {renderGradientText(section.heading)}
           </h1>
           {section.subheading && (
             <p className="text-xl md:text-2xl text-secondary-foreground/90 mb-8 max-w-2xl mx-auto">
@@ -92,14 +195,14 @@ function HeroRenderer({ section }: { section: HeroSection }) {
 
 // ─── Before & After Section ────────────────────────────────────────
 
-function BeforeAfterRenderer({ section }: { section: BeforeAfterSection }) {
+function BeforeAfterRenderer({ section, bgClass }: { section: BeforeAfterSection; bgClass: string }) {
   if (!section.items?.length) return null;
   return (
-    <section className="py-16 bg-background">
+    <section className={`py-16 ${bgClass}`}>
       <div className="container mx-auto px-4">
         {section.heading && (
           <h2 className="text-2xl md:text-3xl font-bold text-text-primary text-center mb-4">
-            {section.heading}
+            {renderGradientText(section.heading)}
           </h2>
         )}
         <div className={`grid gap-8 ${section.items.length > 1 ? 'md:grid-cols-2' : 'max-w-2xl mx-auto'} mt-8`}>
@@ -122,14 +225,14 @@ function BeforeAfterRenderer({ section }: { section: BeforeAfterSection }) {
 
 // ─── Features Section ──────────────────────────────────────────────
 
-function FeaturesRenderer({ section }: { section: FeaturesSection }) {
+function FeaturesRenderer({ section, bgClass }: { section: FeaturesSection; bgClass: string }) {
   if (!section.items?.length) return null;
   return (
-    <section className="py-16 bg-background">
+    <section className={`py-16 ${bgClass}`}>
       <div className="container mx-auto px-4">
         {section.heading && (
           <h2 className="text-2xl md:text-3xl font-bold text-text-primary text-center mb-12">
-            {section.heading}
+            {renderGradientText(section.heading)}
           </h2>
         )}
         <div className="grid md:grid-cols-3 gap-8">
@@ -150,14 +253,14 @@ function FeaturesRenderer({ section }: { section: FeaturesSection }) {
 
 // ─── Testimonials Section ──────────────────────────────────────────
 
-function TestimonialsRenderer({ section }: { section: TestimonialsSection }) {
+function TestimonialsRenderer({ section, bgClass }: { section: TestimonialsSection; bgClass: string }) {
   if (!section.items?.length) return null;
   return (
-    <section className="py-16 bg-muted/30">
+    <section className={`py-16 ${bgClass}`}>
       <div className="container mx-auto px-4">
         {section.heading && (
           <h2 className="text-2xl md:text-3xl font-bold text-text-primary text-center mb-12">
-            {section.heading}
+            {renderGradientText(section.heading)}
           </h2>
         )}
         <div className={`grid gap-8 ${section.items.length > 1 ? 'md:grid-cols-2' : 'max-w-3xl mx-auto'}`}>
@@ -185,8 +288,7 @@ function TestimonialsRenderer({ section }: { section: TestimonialsSection }) {
 
 // ─── Text Section ──────────────────────────────────────────────────
 
-function TextRenderer({ section }: { section: TextSection }) {
-  // Simple markdown-like rendering (handles lists, bold, italic)
+function TextRenderer({ section, bgClass }: { section: TextSection; bgClass: string }) {
   const renderContent = (content: string) => {
     const lines = content.split('\n');
     const elements: React.ReactNode[] = [];
@@ -229,11 +331,11 @@ function TextRenderer({ section }: { section: TextSection }) {
   };
 
   return (
-    <section className="py-16 bg-muted/30">
+    <section className={`py-16 ${bgClass}`}>
       <div className="container mx-auto px-4">
         {section.heading && (
           <h2 className="text-2xl md:text-3xl font-bold text-text-primary text-center mb-8">
-            {section.heading}
+            {renderGradientText(section.heading)}
           </h2>
         )}
         <div className="space-y-4">
@@ -251,7 +353,9 @@ function CTARenderer({ section }: { section: CTASection }) {
     <section className="py-12 bg-secondary text-secondary-foreground">
       <div className="container mx-auto px-4 text-center">
         {section.heading && (
-          <h2 className="text-2xl md:text-3xl font-bold mb-4">{section.heading}</h2>
+          <h2 className="text-2xl md:text-3xl font-bold mb-4">
+            {renderGradientText(section.heading)}
+          </h2>
         )}
         {section.description && (
           <p className="text-lg mb-6 text-secondary-foreground/90">{section.description}</p>
@@ -269,13 +373,13 @@ function CTARenderer({ section }: { section: CTASection }) {
             </Button>
           )}
           {section.phone && (
-            <a
+            <CallTrackingWrapper
               href={`tel:${section.phone.replace(/[^0-9+]/g, '')}`}
               className="inline-flex items-center gap-2 text-secondary-foreground hover:text-primary transition-colors font-medium text-lg"
             >
               <Phone className="h-5 w-5" />
               {section.phone}
-            </a>
+            </CallTrackingWrapper>
           )}
         </div>
       </div>
@@ -285,14 +389,14 @@ function CTARenderer({ section }: { section: CTASection }) {
 
 // ─── FAQ Section ───────────────────────────────────────────────────
 
-function FAQRenderer({ section }: { section: FAQSection }) {
+function FAQRenderer({ section, bgClass }: { section: FAQSection; bgClass: string }) {
   if (!section.items?.length) return null;
   return (
-    <section className="py-16 bg-background">
+    <section className={`py-16 ${bgClass}`}>
       <div className="container mx-auto px-4 max-w-3xl">
         {section.heading && (
           <h2 className="text-2xl md:text-3xl font-bold text-text-primary text-center mb-8">
-            {section.heading}
+            {renderGradientText(section.heading)}
           </h2>
         )}
         <Accordion type="single" collapsible className="w-full">
@@ -314,14 +418,14 @@ function FAQRenderer({ section }: { section: FAQSection }) {
 
 // ─── Gallery Section ───────────────────────────────────────────────
 
-function GalleryRenderer({ section }: { section: GallerySection }) {
+function GalleryRenderer({ section, bgClass }: { section: GallerySection; bgClass: string }) {
   if (!section.images?.length) return null;
   return (
-    <section className="py-16 bg-muted/30">
+    <section className={`py-16 ${bgClass}`}>
       <div className="container mx-auto px-4">
         {section.heading && (
           <h2 className="text-2xl md:text-3xl font-bold text-text-primary text-center mb-8">
-            {section.heading}
+            {renderGradientText(section.heading)}
           </h2>
         )}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -346,18 +450,129 @@ function GalleryRenderer({ section }: { section: GallerySection }) {
   );
 }
 
+// ─── Projects Section ──────────────────────────────────────────────
+
+function ProjectsRenderer({ section, bgClass }: { section: ProjectsSection; bgClass: string }) {
+  if (!section.items?.length) return null;
+  return (
+    <section className={`py-16 ${bgClass}`}>
+      <div className="container mx-auto px-4">
+        {section.heading && (
+          <h2 className="text-2xl md:text-3xl font-bold text-text-primary text-center mb-12">
+            {renderGradientText(section.heading)}
+          </h2>
+        )}
+        <div className="grid md:grid-cols-3 gap-8">
+          {section.items.map((project, idx) => (
+            <div
+              key={idx}
+              className="rounded-xl overflow-hidden bg-card shadow-sm border border-border"
+            >
+              {project.image && (
+                <div className="relative h-48">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={project.image}
+                    alt={project.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-text-primary mb-3">{project.title}</h3>
+                <ul className="space-y-2">
+                  {project.items.map((item, itemIdx) => (
+                    <li key={itemIdx} className="flex items-center gap-2 text-sm text-text-secondary">
+                      <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Lead Form Section ─────────────────────────────────────────────
+
+function LeadFormRenderer({ section }: { section: LeadFormSection }) {
+  return (
+    <section className="py-16 bg-secondary text-secondary-foreground">
+      <div className="container mx-auto px-4">
+        <div className="grid md:grid-cols-2 gap-12 items-center max-w-5xl mx-auto">
+          {/* Left side */}
+          <div>
+            {section.urgencyBadge && (
+              <div className="inline-flex items-center gap-2 bg-primary/20 text-primary-foreground px-4 py-2 rounded-full text-sm font-medium mb-6 border border-primary/30">
+                <Sparkles className="h-4 w-4" />
+                {section.urgencyBadge}
+              </div>
+            )}
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              {renderGradientText(section.heading)}
+            </h2>
+            {section.subheading && (
+              <p className="text-lg text-secondary-foreground/90 mb-6">
+                {section.subheading}
+              </p>
+            )}
+            {section.bulletPoints && section.bulletPoints.length > 0 && (
+              <ul className="space-y-3 mb-6">
+                {section.bulletPoints.filter(Boolean).map((item, idx) => (
+                  <li key={idx} className="flex items-center gap-2 text-secondary-foreground/90">
+                    <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {section.phone && (
+              <CallTrackingWrapper
+                href={`tel:${section.phone.replace(/[^0-9+]/g, '')}`}
+                className="inline-flex items-center gap-2 text-primary hover:text-primary-light transition-colors font-semibold"
+              >
+                <Phone className="h-5 w-5" />
+                Or call us: {section.phone}
+              </CallTrackingWrapper>
+            )}
+          </div>
+
+          {/* Right side — Lead Form */}
+          <div>
+            <LandingPageLeadForm
+              source={section.formSource}
+              projectType={section.formProjectType}
+              heading={section.formHeading}
+              subheading={section.formSubheading}
+              buttonText={section.formButtonText}
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ─── Main Renderer ─────────────────────────────────────────────────
 
-function SectionRenderer({ section }: { section: CMSSection }) {
+function SectionRenderer({ section, index }: { section: CMSSection; index: number }) {
+  const bgClass = getSectionBackground(section.type, index);
+
   switch (section.type) {
     case 'hero': return <HeroRenderer section={section} />;
-    case 'before-after': return <BeforeAfterRenderer section={section} />;
-    case 'features': return <FeaturesRenderer section={section} />;
-    case 'testimonials': return <TestimonialsRenderer section={section} />;
-    case 'text': return <TextRenderer section={section} />;
+    case 'before-after': return <BeforeAfterRenderer section={section} bgClass={bgClass} />;
+    case 'features': return <FeaturesRenderer section={section} bgClass={bgClass} />;
+    case 'testimonials': return <TestimonialsRenderer section={section} bgClass={bgClass} />;
+    case 'text': return <TextRenderer section={section} bgClass={bgClass} />;
     case 'cta': return <CTARenderer section={section} />;
-    case 'faq': return <FAQRenderer section={section} />;
-    case 'gallery': return <GalleryRenderer section={section} />;
+    case 'faq': return <FAQRenderer section={section} bgClass={bgClass} />;
+    case 'gallery': return <GalleryRenderer section={section} bgClass={bgClass} />;
+    case 'projects': return <ProjectsRenderer section={section} bgClass={bgClass} />;
+    case 'lead-form': return <LeadFormRenderer section={section} />;
     default: return null;
   }
 }
@@ -366,7 +581,7 @@ export default function CMSPageRenderer({ sections }: { sections: CMSSection[] }
   return (
     <div>
       {sections.map((section, idx) => (
-        <SectionRenderer key={idx} section={section} />
+        <SectionRenderer key={idx} section={section} index={idx} />
       ))}
     </div>
   );
