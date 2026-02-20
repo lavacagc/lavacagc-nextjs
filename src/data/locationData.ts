@@ -958,10 +958,10 @@ export const getLocationMetaTitle = (location: string, service?: string): string
     };
 
     const serviceName = serviceMap[service] || service;
-    return `${serviceName} in ${loc.name}, NJ — Licensed ${loc.county} Contractor | La Vaca GC`;
+    return `${serviceName} in ${loc.name}, NJ — Licensed ${loc.county} Contractor`;
   }
 
-  return `${loc.name} Home Remodeling & Renovation Contractor | Free Estimates | La Vaca GC`;
+  return `${loc.name} Home Remodeling & Renovation Contractor | Free Estimates`;
 };
 
 export const getLocationMetaDescription = (location: string, service?: string): string => {
