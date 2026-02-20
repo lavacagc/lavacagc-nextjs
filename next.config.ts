@@ -108,6 +108,15 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       // ============================================
+      // NON-WWW → WWW REDIRECT (SEO consolidation)
+      // ============================================
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'lavacagc.com' }],
+        destination: 'https://www.lavacagc.com/:path*',
+        permanent: true,
+      },
+      // ============================================
       // OLD SERVICE + CITY URL FORMAT REDIRECTS
       // Pattern: /service-city-nj → /locations/city/services/service
       // ============================================

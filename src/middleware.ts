@@ -3,11 +3,10 @@ import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
   const host = request.headers.get('host') || '';
-  // Redirect non-www to www
+  // 301 redirect non-www to www (permanent — tells Google to consolidate)
   if (host === 'lavacagc.com') {
-    const url = request.nextUrl.clone();
-    url.host = 'www.lavacagc.com';
-    return NextResponse.redirect(url, 301);
+    const destination = `https://www.lavacagc.com${request.nextUrl.pathname}${request.nextUrl.search}`;
+    return NextResponse.redirect(destination, { status: 301 });
   }
   return NextResponse.next();
 }
