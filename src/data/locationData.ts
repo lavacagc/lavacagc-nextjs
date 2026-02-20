@@ -953,15 +953,15 @@ export const getLocationMetaTitle = (location: string, service?: string): string
       'kitchen-remodeling': 'Kitchen Remodeling',
       'bathroom-renovation': 'Bathroom Renovation',
       'basement-finishing': 'Basement Finishing',
-      'home-additions': 'Home Addition',
+      'home-additions': 'Home Additions',
       'interior-finishing': 'Interior Finishing'
     };
 
     const serviceName = serviceMap[service] || service;
-    return `${serviceName} Contractor in ${loc.name}, NJ | Licensed & Insured | La Vaca`;
+    return `${serviceName} in ${loc.name}, NJ — Licensed ${loc.county} Contractor | La Vaca GC`;
   }
 
-  return `Home Remodeling Contractor in ${loc.name}, NJ | Licensed & Insured | La Vaca`;
+  return `${loc.name} Home Remodeling & Renovation Contractor | Free Estimates | La Vaca GC`;
 };
 
 export const getLocationMetaDescription = (location: string, service?: string): string => {
@@ -976,13 +976,13 @@ export const getLocationMetaDescription = (location: string, service?: string): 
       'kitchen-remodeling': 'kitchen remodeling',
       'bathroom-renovation': 'bathroom renovation',
       'basement-finishing': 'basement finishing',
-      'home-additions': 'home addition',
+      'home-additions': 'home additions',
       'interior-finishing': 'interior finishing'
     };
 
     const serviceName = serviceMap[service] || service;
-    return `Expert ${serviceName} contractor serving ${loc.name}, ${neighborhoods} (${zipCode}). Licensed, insured, 5-star rated. Free estimates for ${loc.county} homeowners.`;
+    return `Professional ${serviceName} in ${loc.name}, NJ. Licensed, insured, 5-star rated contractor serving ${neighborhoods} (${zipCode}). See our ${loc.name} projects. Free estimates — call (201) 241-1580.`;
   }
 
-  return `Premier home remodeling contractor in ${loc.name}, ${loc.county}. Serving ${neighborhoods}, ${zipCode} and surrounding areas. Licensed, insured, 5-star rated. Free estimates.`;
+  return `Top-rated home remodeling contractor in ${loc.name}, NJ. Kitchen, bathroom, basement & additions. Licensed & insured. Serving ${neighborhoods} (${zipCode}). Call (201) 241-1580 for a free estimate.`;
 };

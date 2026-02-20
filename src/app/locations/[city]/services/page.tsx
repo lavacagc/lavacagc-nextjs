@@ -89,6 +89,9 @@ export async function generateMetadata({ params }: ServicesPageProps): Promise<M
   return {
     title: `Remodeling Services in ${locationData.name}, NJ | La Vaca General Contractors`,
     description: `Professional home remodeling services in ${locationData.name}, NJ. Kitchen remodeling, bathroom renovation, basement finishing, and home additions. Licensed & insured contractor.`,
+    alternates: {
+      canonical: `https://www.lavacagc.com/locations/${city}/services`,
+    },
     openGraph: {
       title: `Remodeling Services in ${locationData.name}, NJ | La Vaca General Contractors`,
       description: `Professional home remodeling services in ${locationData.name}, NJ.`,
