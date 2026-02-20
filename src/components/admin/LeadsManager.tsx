@@ -134,6 +134,31 @@ export function LeadsManager() {
     fetchLeads();
   }, [fetchLeads]);
 
+  const deleteConversation = async (conversationId: string) => {
+    try {
+      const res = await fetch(`/api/leads/conversations?id=${encodeURIComponent(conversationId)}`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to delete conversation');
+      }
+
+      setChatConversations(prev => prev.filter(c => c.id !== conversationId));
+      toast({
+        title: "Conversation deleted",
+        description: "Chat conversation has been permanently deleted.",
+      });
+    } catch (error: unknown) {
+      toast({
+        title: "Error deleting conversation",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    }
+  };
+
   const createLeadFromConversation = async (conversation: ChatConversation) => {
     setCreatingLeadFromChat(true);
     try {
@@ -633,6 +658,34 @@ export function LeadsManager() {
                                   Create Lead
                                 </Button>
                               )}
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Delete
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete Conversation</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This will permanently delete this chat conversation. This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => deleteConversation(convo.id)}
+                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    >
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                             </div>
                           </CardContent>
                         )}

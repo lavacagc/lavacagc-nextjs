@@ -28,11 +28,26 @@ export default function ChatWidget() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize visitor ID
+  // Initialize visitor ID and check session expiration
   useEffect(() => {
     setVisitorId(generateVisitorId());
 
-    // Restore conversation from localStorage
+    // Check if session has expired (24 hours)
+    const SESSION_TTL = 24 * 60 * 60 * 1000; // 24 hours in ms
+    const sessionStart = localStorage.getItem('lavaca_session_start');
+    const now = Date.now();
+
+    if (!sessionStart || now - Number(sessionStart) > SESSION_TTL) {
+      // Session expired or missing — clear old conversation, start fresh
+      localStorage.removeItem('lavaca_convo_id');
+      localStorage.removeItem('lavaca_messages');
+      localStorage.removeItem('lavaca_session_start');
+      // Keep lavaca_visitor_id for lead tracking
+      localStorage.setItem('lavaca_session_start', String(now));
+      return; // Don't restore anything — fresh session
+    }
+
+    // Session still valid — restore conversation from localStorage
     const savedConvoId = localStorage.getItem('lavaca_convo_id');
     const savedMessages = localStorage.getItem('lavaca_messages');
     if (savedConvoId) setConversationId(savedConvoId);
@@ -121,6 +136,10 @@ export default function ChatWidget() {
 
       if (data.conversationId) {
         setConversationId(data.conversationId);
+        // Ensure session start is set when conversation begins
+        if (!localStorage.getItem('lavaca_session_start')) {
+          localStorage.setItem('lavaca_session_start', String(Date.now()));
+        }
       }
 
       if (!isOpen) {
