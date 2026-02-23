@@ -45,6 +45,7 @@ const Header = () => {
   };
 
   const navigateToPage = (path: string) => {
+    setMobileMenuOpen(false);
     router.push(path);
     // Scroll to top after navigation
     setTimeout(() => {
@@ -64,7 +65,7 @@ const Header = () => {
       {/* Main Header */}
       <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between h-20 min-[480px]:h-24 md:h-28 lg:grid lg:grid-cols-3">
+          <div className="flex items-center justify-between h-20 min-[480px]:h-24 md:h-28 lg:grid lg:grid-cols-[auto_1fr_auto]">
             {/* Logo */}
             <Link 
               href="/"

@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
         await supabaseRest(
           'PATCH',
           `blog_posts?id=eq.${post.id}`,
-          { published: true, scheduled_publish_at: null, updated_at: now }
+          { published: true, scheduled_publish_at: null, created_at: now, updated_at: now }
         );
         published.push(post.title);
       } catch (err) {
