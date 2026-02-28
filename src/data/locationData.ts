@@ -958,10 +958,10 @@ export const getLocationMetaTitle = (location: string, service?: string): string
     };
 
     const serviceName = serviceMap[service] || service;
-    return `${serviceName} in ${loc.name}, NJ — Licensed ${loc.county} Contractor`;
+    return `#1 ${serviceName} Contractor in ${loc.name}, NJ | Free Estimates`;
   }
 
-  return `${loc.name} Home Remodeling & Renovation Contractor | Free Estimates`;
+  return `${loc.name}, NJ Home Remodeling | 5-Star Rated Contractor | Free Estimates`;
 };
 
 export const getLocationMetaDescription = (location: string, service?: string): string => {
@@ -981,8 +981,8 @@ export const getLocationMetaDescription = (location: string, service?: string): 
     };
 
     const serviceName = serviceMap[service] || service;
-    return `Professional ${serviceName} in ${loc.name}, NJ. Licensed, insured, 5-star rated contractor serving ${neighborhoods} (${zipCode}). See our ${loc.name} projects. Free estimates — call (201) 241-1580.`;
+    return `Looking for ${serviceName} in ${loc.name}, NJ? La Vaca GC is a 5-star rated, licensed & insured contractor serving ${neighborhoods} (${zipCode}). See real projects. Call (201) 241-1580 for a free estimate.`;
   }
 
-  return `Top-rated home remodeling contractor in ${loc.name}, NJ. Kitchen, bathroom, basement & additions. Licensed & insured. Serving ${neighborhoods} (${zipCode}). Call (201) 241-1580 for a free estimate.`;
+  return `${loc.name}'s trusted home remodeling contractor. Kitchen, bathroom, basement & additions. 5-star Google reviews. Licensed & insured (HIC #13VH13373800). Serving ${neighborhoods} (${zipCode}). Call (201) 241-1580.`;
 };

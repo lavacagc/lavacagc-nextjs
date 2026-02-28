@@ -5,6 +5,8 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import ServiceDetailClient from '@/components/ServiceDetailClient';
 import Link from 'next/link';
+import { getAllLocations } from '@/data/locationData';
+import { MapPin } from 'lucide-react';
 
 // Revalidate every 60 seconds (ISR - Incremental Static Regeneration)
 export const revalidate = 60;
@@ -275,6 +277,32 @@ export default async function ServiceDetailPage({ params }: PageProps) {
 
         {/* Interactive Service Content - Client Component */}
         <ServiceDetailClient service={service} slug={slug} />
+
+        {/* Service Areas - Internal Linking */}
+        <section className="py-16 bg-muted/50">
+          <div className="container mx-auto px-4">
+            <div className="text-center mb-10">
+              <h2 className="text-3xl font-bold text-text-primary mb-3">
+                {service.title} in Northern NJ
+              </h2>
+              <p className="text-text-secondary max-w-2xl mx-auto">
+                We provide {service.title.toLowerCase()} services throughout Essex, Bergen, Morris, and Passaic counties. Click your town to learn more.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {getAllLocations().map((loc) => (
+                <Link
+                  key={loc.slug}
+                  href={`/locations/${loc.slug}/services/${slug}`}
+                  className="flex items-center gap-2 px-4 py-3 bg-background rounded-lg border border-border hover:border-primary hover:shadow-sm transition-all text-sm font-medium text-text-primary hover:text-primary"
+                >
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-primary" />
+                  {loc.name}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
       </main>
 
       <Footer />

@@ -184,6 +184,56 @@ export default async function CityLandingPage({ params }: CityPageProps) {
       <LocalSEOSchema location={locationData} />
       <CanonicalUrl customUrl={`https://www.lavacagc.com/locations/${city}`} />
 
+      {/* LocalBusiness JSON-LD Schema */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "HomeAndConstructionBusiness",
+            "name": "La Vaca General Contractors",
+            "description": getLocationMetaDescription(city),
+            "url": `https://www.lavacagc.com/locations/${city}`,
+            "telephone": "(201) 241-1580",
+            "email": "alex@vacamoo.com",
+            "areaServed": {
+              "@type": "City",
+              "name": `${locationData.name}, NJ`
+            },
+            "address": {
+              "@type": "PostalAddress",
+              "addressLocality": locationData.name,
+              "addressRegion": "NJ",
+              "postalCode": locationData.zipCodes[0],
+              "addressCountry": "US"
+            },
+            "aggregateRating": {
+              "@type": "AggregateRating",
+              "ratingValue": "5.0",
+              "reviewCount": "12",
+              "bestRating": "5",
+              "worstRating": "1"
+            },
+            "priceRange": "$$",
+            "image": "https://www.lavacagc.com/og-image.jpg",
+            "sameAs": [
+              "https://www.facebook.com/lavacagc",
+              "https://www.instagram.com/lavacagc"
+            ],
+            "hasOfferCatalog": {
+              "@type": "OfferCatalog",
+              "name": "Home Remodeling Services",
+              "itemListElement": [
+                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Kitchen Remodeling" } },
+                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Bathroom Renovation" } },
+                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Basement Finishing" } },
+                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Home Additions" } }
+              ]
+            }
+          })
+        }}
+      />
+
       {/* FAQ JSON-LD Schema */}
       <script
         type="application/ld+json"
