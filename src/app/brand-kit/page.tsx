@@ -176,6 +176,70 @@ export default function BrandKitPage() {
           </div>
         </section>
 
+        {/* Marketing Spacing Guide */}
+        <section>
+          <h2 className="text-2xl font-bold mb-2">Marketing Image Standards</h2>
+          <p className="text-gray-500 mb-8">Spacing, margins, and typography rules for all La Vaca social media and ad creatives.</p>
+
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-gray-200 p-8">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">Canvas Margins (Safe Zones)</p>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="font-semibold text-gray-700">Feed (1080×1080)</p>
+                  <ul className="mt-2 space-y-1 text-gray-600">
+                    <li>Left / Right: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">50px</code></li>
+                    <li>Top / Bottom: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">40px</code></li>
+                  </ul>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-700">Story (1080×1920)</p>
+                  <ul className="mt-2 space-y-1 text-gray-600">
+                    <li>Left / Right: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">50px</code></li>
+                    <li>Top: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">50px</code></li>
+                    <li>Bottom: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">80px</code> (swipe-up zone)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 p-8">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">Vertical Rhythm</p>
+              <p className="text-sm text-gray-500 mb-3">Base unit: <strong>24px</strong>. All spacing derives from this.</p>
+              <div className="space-y-2 text-sm text-gray-600">
+                <div className="flex justify-between"><span>Headline → Subtext</span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">24px</code></div>
+                <div className="flex justify-between"><span>Subtext → Features</span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">32px</code></div>
+                <div className="flex justify-between"><span>Feature → Feature</span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">56px</code></div>
+                <div className="flex justify-between"><span>Content → CTA Button</span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">40px</code></div>
+                <div className="flex justify-between"><span>CTA Button → URL</span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">20px</code></div>
+                <div className="flex justify-between"><span>URL → License</span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">16px</code></div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 p-8">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">CTA Buttons</p>
+              <div className="space-y-2 text-sm text-gray-600">
+                <div className="flex justify-between"><span>Padding</span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">40px H × 20px V</code></div>
+                <div className="flex justify-between"><span>Min Height</span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">88px</code></div>
+                <div className="flex justify-between"><span>Corner Radius</span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">12px (feed) / 14px (story)</code></div>
+                <div className="flex justify-between"><span>Fill Color</span><code className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded text-xs">#EE9639</code></div>
+                <div className="flex justify-between"><span>Text</span><span>Centered H+V, white, bold</span></div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 p-8">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">Font Sizes (Feed / Story)</p>
+              <div className="space-y-2 text-sm text-gray-600">
+                <div className="flex justify-between"><span>Headline</span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">82-90pt / 88-96pt Bold</code></div>
+                <div className="flex justify-between"><span>Subtext</span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">38-42pt / 44-48pt</code></div>
+                <div className="flex justify-between"><span>CTA Text</span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">34-36pt / 48pt Bold</code></div>
+                <div className="flex justify-between"><span>URL</span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">32-34pt / 44pt Bold</code></div>
+                <div className="flex justify-between"><span>License</span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">26pt / 30pt</code></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Do's & Don'ts */}
         <section>
           <h2 className="text-2xl font-bold mb-2">Do&rsquo;s &amp; Don&rsquo;ts</h2>
