@@ -10,6 +10,7 @@ import CanonicalUrl from "@/components/CanonicalUrl";
 import Breadcrumb from "@/components/Breadcrumb";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 import { CityHeroButtons, CityServiceCard, CityCTAButtons } from "@/components/CityLandingClient";
+import PageViewTracker from "@/components/PageViewTracker";
 import { getLocationBySlug, getLocationMetaTitle, getLocationMetaDescription, getAllLocations } from "@/data/locationData";
 import { getServerSupabaseClient } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
@@ -183,6 +184,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
       />
       <LocalSEOSchema location={locationData} />
       <CanonicalUrl customUrl={`https://www.lavacagc.com/locations/${city}`} />
+      <PageViewTracker eventName="location_page_view" eventData={{ content_name: locationData.name, content_category: 'Location Page', content_type: 'location' }} />
 
       {/* LocalBusiness JSON-LD Schema */}
       <script

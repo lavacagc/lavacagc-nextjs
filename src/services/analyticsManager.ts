@@ -199,26 +199,34 @@ class AnalyticsManager {
   }
 
   trackEvent(eventName: string, parameters?: Record<string, unknown>) {
-    if (!this.config?.tracking_enabled || typeof window.gtag === 'undefined') {
-      console.warn('⚠️ Tracking disabled or gtag not available:', {
-        tracking_enabled: this.config?.tracking_enabled,
-        gtag_available: typeof window.gtag !== 'undefined'
-      });
+    if (!this.config?.tracking_enabled) {
       return;
     }
 
-    const customEvent = this.customEvents.find(e => e.event_name === eventName);
-
-    if (customEvent) {
-      window.gtag('event', customEvent.event_action, {
-        event_category: customEvent.event_category,
-        event_label: customEvent.event_label || parameters?.label,
-        value: customEvent.event_value || parameters?.value,
-        ...customEvent.parameters,
-        ...parameters,
+    // Always push to dataLayer for GTM triggers (Meta Pixel, etc.)
+    if (typeof window !== 'undefined') {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        event: eventName,
+        eventData: parameters || {},
       });
-    } else {
-      window.gtag('event', eventName, parameters);
+    }
+
+    // Also send to gtag if available (GA4 direct)
+    if (typeof window.gtag !== 'undefined') {
+      const customEvent = this.customEvents.find(e => e.event_name === eventName);
+
+      if (customEvent) {
+        window.gtag('event', customEvent.event_action, {
+          event_category: customEvent.event_category,
+          event_label: customEvent.event_label || parameters?.label,
+          value: customEvent.event_value || parameters?.value,
+          ...customEvent.parameters,
+          ...parameters,
+        });
+      } else {
+        window.gtag('event', eventName, parameters);
+      }
     }
   }
 
@@ -270,6 +278,12 @@ export const trackPhoneClick = () => {
 
 export const trackEstimateRequest = (source: string = 'unknown') => {
   analyticsManager.trackEvent('estimate_request', { source });
+  // Also fire calculator_complete for GTM/Meta Pixel trigger
+  analyticsManager.trackEvent('calculator_complete', {
+    content_name: 'Cost Calculator Completed',
+    content_category: 'Estimate Tool',
+    source,
+  });
 };
 
 export const trackProjectView = (projectTitle: string, projectId: string) => {

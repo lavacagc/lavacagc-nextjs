@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import ServiceDetailClient from '@/components/ServiceDetailClient';
+import PageViewTracker from '@/components/PageViewTracker';
 import Link from 'next/link';
 import { getAllLocations } from '@/data/locationData';
 import { MapPin } from 'lucide-react';
@@ -274,6 +275,9 @@ export default async function ServiceDetailPage({ params }: PageProps) {
             </nav>
           </div>
         </section>
+
+        {/* GTM/Pixel Service Page View Tracking */}
+        <PageViewTracker eventName="service_page_view" eventData={{ content_name: service.title, content_category: 'Service Page', content_type: 'service' }} />
 
         {/* Interactive Service Content - Client Component */}
         <ServiceDetailClient service={service} slug={slug} />

@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/send-follow-ups",
-      "schedule": "0 12 * * *"
+      "schedule": "0 9 * * *"
     }
   ]
 }
