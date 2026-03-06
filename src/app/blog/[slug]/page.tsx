@@ -8,6 +8,7 @@ import { MarkdownContent } from '@/components/MarkdownContent';
 import { ArrowLeft, Calendar, User, Tag } from 'lucide-react';
 import { format } from 'date-fns';
 import Link from 'next/link';
+import PageViewTracker from '@/components/PageViewTracker';
 
 // Revalidate every 60 seconds (ISR - Incremental Static Regeneration)
 export const revalidate = 60;
@@ -202,6 +203,7 @@ export default async function BlogPostPage({ params }: PageProps) {
   return (
     <>
       <Header />
+      <PageViewTracker eventName="blog_read" eventData={{ content_name: post.title, content_category: post.category, content_type: 'blog' }} />
 
       {/* JSON-LD Structured Data */}
       <script
