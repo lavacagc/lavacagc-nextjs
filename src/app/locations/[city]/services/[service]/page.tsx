@@ -10,6 +10,7 @@ import NAPInfo from "@/components/NAPInfo";
 import CanonicalUrl from "@/components/CanonicalUrl";
 import Breadcrumb from "@/components/Breadcrumb";
 import { GetEstimateButton, CTAButton } from "@/components/LocationServiceClient";
+import PageViewTracker from "@/components/PageViewTracker";
 import { getLocationBySlug, getLocationMetaTitle, getLocationMetaDescription } from "@/data/locationData";
 import { notFound } from "next/navigation";
 import type { Metadata } from 'next';
@@ -195,6 +196,7 @@ export default async function LocationServicePage({ params }: LocationServicePag
         service={service}
       />
       <CanonicalUrl customUrl={`https://www.lavacagc.com/locations/${city}/services/${service}`} />
+      <PageViewTracker eventName="service_page_view" eventData={{ content_name: `${serviceData.title} - ${locationData.name}`, content_category: 'Service Page', content_type: 'service' }} />
 
       <Header />
 
