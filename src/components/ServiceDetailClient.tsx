@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { CheckCircle, Clock, DollarSign, Star, Wrench } from 'lucide-react';
+import CallTrackingWrapper from '@/components/CallTrackingWrapper';
 
 interface ServiceData {
   id: string;
@@ -86,7 +87,7 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
                 <Link href="/#estimate">Get Free Estimate</Link>
               </Button>
               <Button variant="outline" size="lg" asChild>
-                <a href="tel:2012124917">Call (201) 212-4917</a>
+                <CallTrackingWrapper href="tel:2012124917">Call (201) 212-4917</CallTrackingWrapper>
               </Button>
             </div>
 
@@ -336,7 +337,7 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
               className="bg-white/10 text-white border border-white/20 hover:bg-white hover:text-primary"
               asChild
             >
-              <a href="tel:2012124917">Call (201) 212-4917</a>
+              <CallTrackingWrapper href="tel:2012124917">Call (201) 212-4917</CallTrackingWrapper>
             </Button>
           </div>
         </div>
