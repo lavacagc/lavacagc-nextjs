@@ -3,6 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Shield, Clock, Users, Award, FileText, Home } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
+import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 
 const features = [
   {
@@ -106,11 +107,11 @@ const WhyChoose = () => {
               >
                 Schedule Your Estimate
               </button>
-              <a href="tel:2012124917">
+              <CallTrackingWrapper href="tel:2012124917">
                 <button className="border-2 border-secondary text-secondary hover:bg-secondary hover:text-secondary-foreground px-8 py-3 rounded-lg font-semibold transition-all duration-300">
                   Call (201) 212-4917
                 </button>
-              </a>
+              </CallTrackingWrapper>
             </div>
           </div>
         </div>

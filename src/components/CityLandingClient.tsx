@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 
 interface CityHeroButtonsProps {
   cityName: string;
@@ -23,11 +24,11 @@ export function CityHeroButtons({ cityName }: CityHeroButtonsProps) {
       >
         Get Free {cityName} Estimate
       </Button>
-      <a href="tel:2019312726">
+      <CallTrackingWrapper href="tel:2019312726">
         <Button variant="outline" size="lg">
           Call (201) 931-2726
         </Button>
-      </a>
+      </CallTrackingWrapper>
     </div>
   );
 }
@@ -91,11 +92,11 @@ export function CityCTAButtons() {
       >
         Get Free Estimate
       </Button>
-      <a href="tel:2019312726">
+      <CallTrackingWrapper href="tel:2019312726">
         <Button size="lg" className="bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-elegant">
           Call (201) 931-2726
         </Button>
-      </a>
+      </CallTrackingWrapper>
     </div>
   );
 }

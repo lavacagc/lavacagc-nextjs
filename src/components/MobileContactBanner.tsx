@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react';
+import CallTrackingWrapper from '@/components/CallTrackingWrapper';
 import { Phone, MessageCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -62,7 +63,7 @@ const MobileContactBanner = () => {
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-border shadow-lg md:hidden">
         <div className="flex items-center justify-between p-3">
           <div className="flex-1 flex items-center space-x-2">
-            <a
+            <CallTrackingWrapper
               href="tel:2012124917"
               className="flex-1"
             >
@@ -73,7 +74,7 @@ const MobileContactBanner = () => {
                 <Phone className="h-4 w-4 mr-1" />
                 Call Now
               </Button>
-            </a>
+            </CallTrackingWrapper>
 
             <Button
               onClick={handleGetQuote}
