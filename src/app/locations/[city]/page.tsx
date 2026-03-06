@@ -184,7 +184,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
       />
       <LocalSEOSchema location={locationData} />
       <CanonicalUrl customUrl={`https://www.lavacagc.com/locations/${city}`} />
-      <PageViewTracker eventName="location_page_view" eventData={{ content_name: locationData.name, content_category: 'Location Page', content_type: 'location' }} />
+      <PageViewTracker eventName="location_page_view" eventData={{ content_name: locationData.name, content_category: 'Location Page', content_type: 'location', city: locationData.name, county: locationData.county, state: 'NJ' }} />
 
       {/* LocalBusiness JSON-LD Schema */}
       <script

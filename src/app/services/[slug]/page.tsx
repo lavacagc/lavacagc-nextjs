@@ -277,7 +277,7 @@ export default async function ServiceDetailPage({ params }: PageProps) {
         </section>
 
         {/* GTM/Pixel Service Page View Tracking */}
-        <PageViewTracker eventName="service_page_view" eventData={{ content_name: service.title, content_category: 'Service Page', content_type: 'service' }} />
+        <PageViewTracker eventName="service_page_view" eventData={{ content_name: service.title, content_category: 'Service Page', content_type: 'service', service: service.title }} />
 
         {/* Interactive Service Content - Client Component */}
         <ServiceDetailClient service={service} slug={slug} />

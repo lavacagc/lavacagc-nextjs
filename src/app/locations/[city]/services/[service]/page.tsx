@@ -196,7 +196,7 @@ export default async function LocationServicePage({ params }: LocationServicePag
         service={service}
       />
       <CanonicalUrl customUrl={`https://www.lavacagc.com/locations/${city}/services/${service}`} />
-      <PageViewTracker eventName="service_page_view" eventData={{ content_name: `${serviceData.title} - ${locationData.name}`, content_category: 'Service Page', content_type: 'service' }} />
+      <PageViewTracker eventName="service_page_view" eventData={{ content_name: `${serviceData.title} - ${locationData.name}`, content_category: 'Service Page', content_type: 'service', service: serviceData.title, city: locationData.name, county: locationData.county, state: 'NJ' }} />
 
       <Header />
 
