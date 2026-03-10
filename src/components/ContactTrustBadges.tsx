@@ -33,20 +33,28 @@ export default function ContactTrustBadges() {
   return (
     <section ref={badgesRef} className="py-6 bg-background border-b border-border">
       <div className="container mx-auto px-4">
-        <div className="flex flex-wrap items-center justify-center gap-6 md:gap-10">
-          <div className="flex items-center gap-2 text-sm md:text-base">
+        {/* Mobile: only "Response within 2 hours" */}
+        <div className="flex md:hidden items-center justify-center gap-2">
+          <div className="bg-green-100 p-2 rounded-full">
+            <Zap className="h-5 w-5 text-green-600" />
+          </div>
+          <span className="font-semibold text-text-primary text-sm">Response within 2 hours</span>
+        </div>
+        {/* Desktop: all three badges */}
+        <div className="hidden md:flex items-center justify-center gap-10">
+          <div className="flex items-center gap-2 text-base">
             <div className="bg-green-100 p-2 rounded-full">
               <Zap className="h-5 w-5 text-green-600" />
             </div>
             <span className="font-semibold text-text-primary">Response within 2 hours</span>
           </div>
-          <div className="flex items-center gap-2 text-sm md:text-base">
+          <div className="flex items-center gap-2 text-base">
             <div className="bg-blue-100 p-2 rounded-full">
               <Shield className="h-5 w-5 text-blue-600" />
             </div>
             <span className="font-semibold text-text-primary">Licensed &amp; Insured — HIC# 13VH13373800</span>
           </div>
-          <div className="flex items-center gap-2 text-sm md:text-base">
+          <div className="flex items-center gap-2 text-base">
             <div className="bg-yellow-100 p-2 rounded-full">
               <Star className="h-5 w-5 text-yellow-500 fill-yellow-500" />
             </div>
