@@ -269,11 +269,42 @@ export const trackEvent = (eventName: string, parameters?: Record<string, unknow
 };
 
 export const trackFormSubmission = (formName: string) => {
+  // Use generate_lead as the primary event (GA4 recommended event for lead gen)
+  analyticsManager.trackEvent('generate_lead', { 
+    form_name: formName,
+    currency: 'USD',
+    value: 1,
+  });
+  // Also fire form_submit for backwards compatibility
   analyticsManager.trackEvent('form_submit', { form_name: formName });
+  // Direct gtag call as backup in case analyticsManager hasn't initialized
+  if (typeof window !== 'undefined' && typeof window.gtag !== 'undefined') {
+    window.gtag('event', 'generate_lead', {
+      form_name: formName,
+      currency: 'USD',
+      value: 1,
+    });
+  }
+};
+
+export const trackFormFieldFocus = (formName: string, fieldName: string) => {
+  analyticsManager.trackEvent('form_field_focus', { form_name: formName, field_name: fieldName });
+};
+
+export const trackFormAbandon = (formName: string, lastField: string, fieldsCompleted: number) => {
+  analyticsManager.trackEvent('form_abandon', { 
+    form_name: formName, 
+    last_field: lastField,
+    fields_completed: fieldsCompleted,
+  });
 };
 
 export const trackPhoneClick = () => {
   analyticsManager.trackEvent('phone_click');
+  // Direct gtag backup
+  if (typeof window !== 'undefined' && typeof window.gtag !== 'undefined') {
+    window.gtag('event', 'phone_click');
+  }
 };
 
 export const trackEstimateRequest = (source: string = 'unknown') => {

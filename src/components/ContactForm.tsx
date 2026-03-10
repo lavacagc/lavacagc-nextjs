@@ -13,6 +13,7 @@ import { z } from "zod";
 import DOMPurify from "dompurify";
 import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config';
 import { trackFormSubmission } from '@/components/Analytics';
+import { trackFormFieldFocus, trackFormAbandon } from '@/services/analyticsManager';
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
@@ -72,7 +73,30 @@ const ContactForm = () => {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof ContactFormData, string>>>({});
+  const [formStarted, setFormStarted] = useState(false);
+  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [lastFocusedField, setLastFocusedField] = useState('');
+  const [focusedFields] = useState(new Set<string>());
   const { toast } = useToast();
+
+  // Track form abandonment on unmount
+  useEffect(() => {
+    return () => {
+      if (formStarted && !formSubmitted && focusedFields.size > 0) {
+        trackFormAbandon('contact_form', lastFocusedField, focusedFields.size);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formStarted, formSubmitted, lastFocusedField]);
+
+  const handleFieldFocus = (fieldName: string) => {
+    if (!formStarted) setFormStarted(true);
+    if (!focusedFields.has(fieldName)) {
+      focusedFields.add(fieldName);
+      trackFormFieldFocus('contact_form', fieldName);
+    }
+    setLastFocusedField(fieldName);
+  };
 
   // Load reCAPTCHA only when user interacts with form
   useEffect(() => {
@@ -277,6 +301,9 @@ const ContactForm = () => {
         console.error('Consent logging failed:', consentError);
       }
 
+      // Mark as submitted before tracking (prevents abandonment event)
+      setFormSubmitted(true);
+
       // Track successful form submission in GA4
       trackFormSubmission('contact_form');
 
@@ -327,6 +354,7 @@ const ContactForm = () => {
                 type="text"
                 value={formData.firstName}
                 onChange={handleInputChange}
+                onFocus={() => handleFieldFocus('firstName')}
                 required
                 placeholder="John"
                 maxLength={50}
@@ -347,6 +375,7 @@ const ContactForm = () => {
                 type="text"
                 value={formData.lastName}
                 onChange={handleInputChange}
+                onFocus={() => handleFieldFocus('lastName')}
                 required
                 placeholder="Smith"
                 maxLength={50}
@@ -370,6 +399,7 @@ const ContactForm = () => {
                 type="email"
                 value={formData.email}
                 onChange={handleInputChange}
+                onFocus={() => handleFieldFocus('email')}
                 required
                 placeholder="john@example.com"
                 maxLength={255}
@@ -390,6 +420,7 @@ const ContactForm = () => {
                 type="tel"
                 value={formData.phone}
                 onChange={handleInputChange}
+                onFocus={() => handleFieldFocus('phone')}
                 required
                 placeholder="(555) 123-4567"
                 maxLength={20}
@@ -441,6 +472,7 @@ const ContactForm = () => {
               name="message"
               value={formData.message}
               onChange={handleInputChange}
+              onFocus={() => handleFieldFocus('message')}
               required
               placeholder="Tell us about your project or ask any questions..."
               rows={5}
