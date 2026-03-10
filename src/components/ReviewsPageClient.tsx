@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Star, ExternalLink } from 'lucide-react';
@@ -7,7 +8,7 @@ import { format } from 'date-fns';
 import { Card, CardContent } from './ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import Link from 'next/link';
-import { trackEvent, trackEstimateRequest } from '@/services/analyticsManager';
+import { trackEvent, trackEstimateRequest, trackPhoneClick } from '@/services/analyticsManager';
 
 interface GoogleReview {
   id: string;
@@ -122,9 +123,39 @@ export default function ReviewsPageClient() {
 
         {/* Reviews Grid with Mid-Page CTA */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-          {reviews.slice(0, 6).map((review) => (
+          {reviews.slice(0, 6).map((review, index) => (
+            <React.Fragment key={review.id}>
+            {/* Mobile CTA: after 2 reviews */}
+            {index === 2 && reviews.length > 2 && (
+              <div className="md:hidden col-span-full my-4 p-6 bg-gradient-to-r from-primary/10 to-accent-sunset/10 rounded-2xl border border-primary/20 text-center">
+                <h3 className="text-xl font-bold text-text-primary mb-2">Like What You See?</h3>
+                <p className="text-text-secondary mb-4">Get a free estimate and see what we can do for your home.</p>
+                <div className="flex flex-col gap-3">
+                  <Link href="/contact" onClick={() => { trackEvent('cta_click', { location: 'reviews_mid_mobile', destination: 'contact' }); trackEstimateRequest('reviews_mid_mobile'); }} className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-primary to-accent-tangerine text-white font-semibold py-3 px-6 rounded-lg hover:shadow-lg transition-all">
+                    Get Your Free Estimate
+                  </Link>
+                  <a href="tel:2016142814" onClick={() => { trackPhoneClick(); trackEvent('cta_click', { location: 'reviews_mid_mobile', destination: 'phone' }); }} className="text-primary font-semibold hover:underline">
+                    Or call (201) 614-2814
+                  </a>
+                </div>
+              </div>
+            )}
+            {/* Desktop CTA: after 3 reviews (first row on lg grid) */}
+            {index === 3 && reviews.length > 3 && (
+              <div className="hidden md:block col-span-full my-4 p-8 bg-gradient-to-r from-primary/10 to-accent-sunset/10 rounded-2xl border border-primary/20 text-center">
+                <h3 className="text-2xl md:text-3xl font-bold text-text-primary mb-3">Like What You See?</h3>
+                <p className="text-lg text-text-secondary mb-6">Our homeowners love their results. Get a free estimate and see what we can do for your home.</p>
+                <div className="flex gap-4 justify-center">
+                  <Link href="/contact" onClick={() => { trackEvent('cta_click', { location: 'reviews_mid_desktop', destination: 'contact' }); trackEstimateRequest('reviews_mid_desktop'); }} className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-primary to-accent-tangerine text-white font-semibold py-3 px-8 rounded-lg hover:shadow-lg transition-all text-lg">
+                    Get Your Free Estimate
+                  </Link>
+                  <Link href="/calculator" onClick={() => { trackEvent('cta_click', { location: 'reviews_mid_desktop', destination: 'calculator' }); }} className="inline-flex items-center justify-center gap-2 bg-white text-primary font-semibold py-3 px-8 rounded-lg border-2 border-primary hover:bg-primary/5 transition-all text-lg">
+                    Try Our Cost Calculator
+                  </Link>
+                </div>
+              </div>
+            )}
             <Card
-              key={review.id}
               className="hover:shadow-elegant transition-shadow duration-300"
             >
               <CardContent className="p-6">
@@ -170,11 +201,40 @@ export default function ReviewsPageClient() {
                 )}
               </CardContent>
             </Card>
+            </React.Fragment>
           ))}
         </div>
 
-        {/* Mid-Page CTA - After first 6 reviews */}
+        {/* Remaining reviews after first 6 */}
         {reviews.length > 6 && (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto mt-6">
+            {reviews.slice(6).map((review) => (
+              <Card key={review.id} className="hover:shadow-elegant transition-shadow duration-300">
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4 mb-4">
+                    <Avatar className="h-12 w-12">
+                      {review.reviewer_photo_url && <AvatarImage src={review.reviewer_photo_url} alt={review.reviewer_name || 'Reviewer'} />}
+                      <AvatarFallback className="bg-primary/10 text-primary font-semibold">{(review.reviewer_name || 'A').charAt(0).toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <h3 className="font-semibold text-text-primary">{review.reviewer_name || 'Anonymous'}</h3>
+                      <div className="flex gap-0.5 my-1">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star key={i} className={`h-4 w-4 ${i < (review.rating || 5) ? 'fill-yellow-400 text-yellow-400' : 'fill-muted text-muted'}`} />
+                        ))}
+                      </div>
+                      {review.create_time && <div className="text-sm text-text-secondary">{format(new Date(review.create_time), 'MMMM d, yyyy')}</div>}
+                    </div>
+                  </div>
+                  {review.comment && <p className="text-text-secondary leading-relaxed">{review.comment}</p>}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* REMOVED: Old mid-page CTA that was after 6 reviews — now inline in grid above */}
+        {false && (
           <div className="max-w-4xl mx-auto my-12 p-8 bg-gradient-to-r from-primary/10 to-accent-sunset/10 rounded-2xl border border-primary/20 text-center">
             <h3 className="text-2xl md:text-3xl font-bold text-text-primary mb-3">
               Like What You See?
