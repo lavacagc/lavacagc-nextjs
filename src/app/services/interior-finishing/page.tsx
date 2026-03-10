@@ -228,7 +228,7 @@ export default function InteriorFinishingPage() {
       aggregateRating: {
         '@type': 'AggregateRating',
         ratingValue: '5',
-        reviewCount: '50',
+        reviewCount: '12',
       },
     },
     areaServed: [

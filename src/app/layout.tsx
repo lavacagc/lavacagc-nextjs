@@ -10,6 +10,7 @@ import Analytics from '@/components/Analytics'
 import StructuredData from '@/components/StructuredData'
 import ChatWidget from '@/components/ChatWidget'
 import { ClientLeadGenWidgets } from '@/components/ClientLeadGenWidgets'
+import StickyCTA from '@/components/StickyCTA'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -111,6 +112,7 @@ export default function RootLayout({
             <CookieConsent />
             <ChatWidget />
             <ClientLeadGenWidgets />
+            <StickyCTA />
           </TooltipProvider>
         </Providers>
       </body>

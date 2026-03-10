@@ -98,7 +98,7 @@ const WhyChoose = () => {
           <div className="max-w-4xl mx-auto p-8 bg-gradient-to-r from-secondary/5 to-primary/5 rounded-2xl border border-primary/10">
             <h3 className="text-2xl font-bold text-text-primary mb-4">Ready to Transform Your Home?</h3>
             <p className="text-lg text-text-secondary mb-6">
-              Join over 100 satisfied homeowners who have trusted La Vaca with their luxury renovation projects
+              Trusted by New Jersey homeowners for quality craftsmanship and exceptional renovation results
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button

@@ -5,7 +5,8 @@ import Breadcrumb from '@/components/Breadcrumb';
 import ReviewsPageClient from '@/components/ReviewsPageClient';
 import { BUSINESS_INFO } from '@/components/StructuredData';
 import { Star, Shield, Award, CheckCircle } from 'lucide-react';
-import Link from 'next/link';
+
+import ReviewsBottomCTA from '@/components/ReviewsBottomCTA';
 
 export const metadata: Metadata = {
   title: 'Customer Reviews | 5-Star Rated NJ Contractor | La Vaca GC',
@@ -181,34 +182,8 @@ export default function ReviewsPage() {
           </div>
         </section>
 
-        {/* CTA Section */}
-        <section className="py-12 md:py-20 bg-gradient-subtle">
-          <div className="container mx-auto px-4">
-            <div className="max-w-4xl mx-auto text-center">
-              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-6">
-                Ready to Start Your Project?
-              </h2>
-              <p className="text-xl text-text-secondary leading-relaxed mb-8">
-                Join our growing list of satisfied homeowners. Schedule a free consultation
-                to discuss your renovation vision with our expert team.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link
-                  href="/contact"
-                  className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-white h-12 px-8"
-                >
-                  Schedule Free Consultation
-                </Link>
-                <Link
-                  href="/portfolio"
-                  className="inline-flex items-center justify-center rounded-md text-sm font-medium border-2 border-primary text-primary hover:bg-primary/10 h-12 px-8"
-                >
-                  View Our Work
-                </Link>
-              </div>
-            </div>
-          </div>
-        </section>
+        {/* Bottom CTA Section */}
+        <ReviewsBottomCTA />
       </main>
 
       <Footer />
