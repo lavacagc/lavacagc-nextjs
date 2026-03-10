@@ -1,7 +1,5 @@
 import Header from '@/components/Header'
 import Footer from '@/components/Footer'
-import Hero from '@/components/Hero'
-import Services from '@/components/Services'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import type { Metadata } from 'next'
@@ -28,62 +26,80 @@ export const metadata: Metadata = {
   },
 }
 
-const HomeEstimateForm = dynamic(() => import('@/components/HomeEstimateForm'), {
-  loading: () => (
-    <div className="w-full max-w-lg mx-auto h-96 bg-muted animate-pulse rounded-lg" />
-  )
+// Redesigned components
+const HeroRedesign = dynamic(() => import('@/components/redesign/HeroRedesign'), {
+  loading: () => <div className="h-screen bg-slate-900 animate-pulse" />,
 })
 
-const Testimonials = dynamic(() => import('@/components/Testimonials'), {
+const ServicesBento = dynamic(() => import('@/components/redesign/ServicesBento'), {
   loading: () => (
     <section className="py-20 bg-background">
       <div className="container mx-auto px-4">
-        <div className="text-center">
-          <div className="h-8 w-48 bg-muted animate-pulse rounded mx-auto mb-4" />
-          <div className="h-4 w-64 bg-muted animate-pulse rounded mx-auto" />
+        <div className="h-8 w-48 bg-muted animate-pulse rounded mx-auto mb-16" />
+        <div className="grid grid-cols-3 gap-6 h-[500px]">
+          <div className="col-span-2 row-span-2 bg-muted animate-pulse rounded-2xl" />
+          <div className="bg-muted animate-pulse rounded-2xl" />
+          <div className="bg-muted animate-pulse rounded-2xl" />
         </div>
       </div>
     </section>
-  )
+  ),
+})
+
+const HomeEstimateForm = dynamic(() => import('@/components/HomeEstimateForm'), {
+  loading: () => (
+    <div className="w-full max-w-lg mx-auto h-96 bg-muted animate-pulse rounded-lg" />
+  ),
+})
+
+const TestimonialsMarquee = dynamic(() => import('@/components/redesign/TestimonialsMarquee'), {
+  loading: () => (
+    <section className="py-20 bg-background">
+      <div className="container mx-auto px-4 text-center">
+        <div className="h-8 w-48 bg-muted animate-pulse rounded mx-auto mb-4" />
+      </div>
+    </section>
+  ),
+})
+
+const WhyChooseRedesign = dynamic(() => import('@/components/redesign/WhyChooseRedesign'), {
+  loading: () => (
+    <section className="py-20 bg-muted/30">
+      <div className="container mx-auto px-4">
+        <div className="h-8 w-48 bg-muted animate-pulse rounded mx-auto mb-16" />
+        <div className="grid grid-cols-3 gap-6">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-64 bg-muted animate-pulse rounded-2xl" />
+          ))}
+        </div>
+      </div>
+    </section>
+  ),
+})
+
+const ServiceAreasRedesign = dynamic(() => import('@/components/redesign/ServiceAreasRedesign'), {
+  loading: () => (
+    <section className="py-20 bg-background">
+      <div className="container mx-auto px-4">
+        <div className="h-8 w-48 bg-muted animate-pulse rounded mx-auto mb-16" />
+      </div>
+    </section>
+  ),
+})
+
+const FinalCTA = dynamic(() => import('@/components/redesign/FinalCTA'), {
+  loading: () => <div className="h-96 bg-slate-900 animate-pulse" />,
 })
 
 const ProjectGallery = dynamic(() => import('@/components/ProjectGallery'), {
   loading: () => (
     <section className="py-20 bg-muted/30">
-      <div className="container mx-auto px-4">
-        <div className="text-center">
-          <div className="w-8 h-8 animate-spin mx-auto mb-4 border-4 border-primary border-t-transparent rounded-full" />
-          <p>Loading projects...</p>
-        </div>
+      <div className="container mx-auto px-4 text-center">
+        <div className="w-8 h-8 animate-spin mx-auto mb-4 border-4 border-primary border-t-transparent rounded-full" />
+        <p>Loading projects...</p>
       </div>
     </section>
-  )
-})
-
-const ServiceAreas = dynamic(() => import('@/components/ServiceAreas'), {
-  loading: () => (
-    <section className="py-20 bg-background">
-      <div className="container mx-auto px-4">
-        <div className="h-12 w-1/2 bg-muted animate-pulse rounded mx-auto mb-16" />
-        <div className="h-48 w-full bg-muted animate-pulse rounded" />
-      </div>
-    </section>
-  )
-})
-
-const WhyChoose = dynamic(() => import('@/components/WhyChoose'), {
-  loading: () => (
-    <section className="py-20 bg-background">
-      <div className="container mx-auto px-4">
-        <div className="h-12 w-1/3 bg-muted animate-pulse rounded mx-auto mb-16" />
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-8">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="h-48 bg-muted animate-pulse rounded-lg" />
-          ))}
-        </div>
-      </div>
-    </section>
-  )
+  ),
 })
 
 const MobileContactBanner = dynamic(() => import('@/components/MobileContactBanner'))
@@ -94,7 +110,8 @@ export default function Home() {
     <div className="min-h-screen bg-background">
       <Header />
       <main id="main-content" className="pb-20 md:pb-0">
-        <Hero />
+        {/* Hero — Full viewport with scroll zoom */}
+        <HeroRedesign />
 
         {/* Quick Estimate Section */}
         <TrackedSection
@@ -130,89 +147,54 @@ export default function Home() {
           </div>
         </TrackedSection>
 
-        {/* Testimonials Section - Tracked */}
-        <TrackedSection
-          sectionId="testimonials-section"
-          sectionName="Testimonials Section"
-          className=""
-        >
-          <Testimonials />
-        </TrackedSection>
-
-        {/* Services Section - Tracked */}
+        {/* Services — Bento Grid */}
         <TrackedSection
           sectionId="services-section"
-          sectionName="Services Horizontal Scroll"
+          sectionName="Services Bento Grid"
           className=""
         >
-          <Services />
+          <ServicesBento />
         </TrackedSection>
 
+        {/* Testimonials — Animated Marquee */}
+        <TrackedSection
+          sectionId="testimonials-section"
+          sectionName="Testimonials Marquee"
+          className=""
+        >
+          <TestimonialsMarquee />
+        </TrackedSection>
+
+        {/* Project Gallery */}
         <div id="projects" className="scroll-mt-20">
           <ProjectGallery />
         </div>
 
-        {/* Service Areas Section - Tracked */}
-        <TrackedSection
-          sectionId="service-areas-section"
-          sectionName="Service Areas Section"
-          className=""
-        >
-          <ServiceAreas />
-        </TrackedSection>
-
-        {/* Why Choose Section - Tracked */}
+        {/* Why Choose Us — Feature Cards */}
         <TrackedSection
           sectionId="why-choose-section"
-          sectionName="Why Choose Us Section"
+          sectionName="Why Choose Us"
           className=""
         >
-          <WhyChoose />
+          <WhyChooseRedesign />
         </TrackedSection>
 
-        {/* Featured Services Section */}
+        {/* Service Areas — Animated Tags */}
         <TrackedSection
-          sectionId="featured-services"
-          sectionName="Featured Services Grid"
-          className="py-20 bg-background-soft"
+          sectionId="service-areas-section"
+          sectionName="Service Areas"
+          className=""
         >
-          <div className="container mx-auto px-4">
-            <div className="text-center mb-16">
-              <h2 className="text-4xl font-bold text-text-primary mb-6">
-                Our Specialty
-                <span className="text-transparent bg-gradient-to-r from-primary to-accent-sunset bg-clip-text"> Services</span>
-              </h2>
-              <p className="text-xl text-text-secondary max-w-3xl mx-auto">
-                Expert craftsmanship in every area of home renovation
-              </p>
-            </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Link href="/services/kitchen-remodeling" className="group">
-                <div className="p-6 bg-card border rounded-lg hover:shadow-elegant transition-all duration-300 hover:-translate-y-1">
-                  <h3 className="text-xl font-bold text-text-primary mb-3 group-hover:text-primary transition-colors">Kitchen Remodeling</h3>
-                  <p className="text-text-secondary">Transform your kitchen with luxury finishes and expert craftsmanship</p>
-                </div>
-              </Link>
-              <Link href="/services/bathroom-renovation" className="group">
-                <div className="p-6 bg-card border rounded-lg hover:shadow-elegant transition-all duration-300 hover:-translate-y-1">
-                  <h3 className="text-xl font-bold text-text-primary mb-3 group-hover:text-primary transition-colors">Bathroom Renovation</h3>
-                  <p className="text-text-secondary">Create your perfect spa-like retreat with modern amenities</p>
-                </div>
-              </Link>
-              <Link href="/services/basement-finishing" className="group">
-                <div className="p-6 bg-card border rounded-lg hover:shadow-elegant transition-all duration-300 hover:-translate-y-1">
-                  <h3 className="text-xl font-bold text-text-primary mb-3 group-hover:text-primary transition-colors">Basement Finishing</h3>
-                  <p className="text-text-secondary">Add valuable living space with professional basement finishing</p>
-                </div>
-              </Link>
-              <Link href="/services/home-additions" className="group">
-                <div className="p-6 bg-card border rounded-lg hover:shadow-elegant transition-all duration-300 hover:-translate-y-1">
-                  <h3 className="text-xl font-bold text-text-primary mb-3 group-hover:text-primary transition-colors">Home Additions</h3>
-                  <p className="text-text-secondary">Expand your home with seamless, custom-designed additions</p>
-                </div>
-              </Link>
-            </div>
-          </div>
+          <ServiceAreasRedesign />
+        </TrackedSection>
+
+        {/* Final CTA — Aurora Background */}
+        <TrackedSection
+          sectionId="final-cta"
+          sectionName="Final CTA"
+          className=""
+        >
+          <FinalCTA />
         </TrackedSection>
       </main>
       <Footer />

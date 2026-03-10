@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { CheckCircle, Clock, DollarSign, Star, Wrench } from 'lucide-react';
+import { CheckCircle, Clock, DollarSign, Star, Wrench, Phone, ArrowRight } from 'lucide-react';
 import CallTrackingWrapper from '@/components/CallTrackingWrapper';
+import { trackEvent, trackEstimateRequest, trackPhoneClick } from '@/services/analyticsManager';
 
 interface ServiceData {
   id: string;
@@ -319,6 +320,35 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
         </div>
       </section>
 
+      {/* Reviews Snippet */}
+      <section className="py-10 bg-background-subtle">
+        <div className="container mx-auto px-4 text-center">
+          <Link
+            href="/reviews"
+            onClick={() => {
+              trackEvent('cta_click', {
+                location: `service_${slug}`,
+                destination: 'reviews',
+                variant: 'reviews_snippet',
+              });
+            }}
+            className="inline-flex flex-col items-center gap-2 group cursor-pointer"
+          >
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <Star key={s} className="h-6 w-6 text-yellow-400 fill-yellow-400" />
+              ))}
+            </div>
+            <p className="text-lg font-semibold text-text-primary group-hover:text-primary transition-colors">
+              ★★★★★ 5-Star Rated NJ Contractor
+            </p>
+            <span className="text-sm text-primary font-medium group-hover:underline">
+              Read our reviews →
+            </span>
+          </Link>
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="py-16 bg-gradient-to-r from-primary to-accent-teal text-white">
         <div className="container mx-auto px-4 text-center">
@@ -327,19 +357,39 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
             Let&apos;s discuss your vision and create a custom {service.title.toLowerCase()} solution that fits your
             needs and budget.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100" asChild>
-              <Link href="/#estimate">Get Your Free Estimate</Link>
-            </Button>
-            <Button
-              size="lg"
-              variant="secondary"
-              className="bg-white/10 text-white border border-white/20 hover:bg-white hover:text-primary"
-              asChild
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">
+            <Link
+              href="/contact"
+              onClick={() => {
+                trackEvent('cta_click', {
+                  location: `service_${slug}`,
+                  destination: 'contact',
+                  variant: 'Get Free Estimate',
+                });
+                trackEstimateRequest(`service_${slug}`);
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-md text-base font-semibold bg-white text-primary hover:bg-gray-100 h-14 px-10 transition-all duration-300 hover:scale-105 cursor-pointer"
             >
-              <CallTrackingWrapper href="tel:2012124917">Call (201) 212-4917</CallTrackingWrapper>
-            </Button>
+              Get Free Estimate
+              <ArrowRight className="h-5 w-5" />
+            </Link>
+            <a
+              href="tel:2016142814"
+              onClick={() => {
+                trackPhoneClick();
+                trackEvent('cta_click', {
+                  location: `service_${slug}`,
+                  destination: 'phone',
+                  variant: 'Call Now',
+                });
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-md text-base font-semibold bg-white/10 border border-white/30 text-white hover:bg-white hover:text-primary h-14 px-10 transition-all duration-300 cursor-pointer"
+            >
+              <Phone className="h-5 w-5" />
+              Call (201) 614-2814
+            </a>
           </div>
+          <p className="text-sm opacity-70">Licensed &amp; Insured — HIC# 13VH13373800</p>
         </div>
       </section>
     </>

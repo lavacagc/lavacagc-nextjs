@@ -6,6 +6,8 @@ import { Star, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 import { Card, CardContent } from './ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import Link from 'next/link';
+import { trackEvent, trackEstimateRequest } from '@/services/analyticsManager';
 
 interface GoogleReview {
   id: string;
@@ -118,9 +120,9 @@ export default function ReviewsPageClient() {
           </div>
         </div>
 
-        {/* Reviews Grid */}
+        {/* Reviews Grid with Mid-Page CTA */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-          {reviews.map((review) => (
+          {reviews.slice(0, 6).map((review) => (
             <Card
               key={review.id}
               className="hover:shadow-elegant transition-shadow duration-300"
@@ -170,6 +172,102 @@ export default function ReviewsPageClient() {
             </Card>
           ))}
         </div>
+
+        {/* Mid-Page CTA - After first 6 reviews */}
+        {reviews.length > 6 && (
+          <div className="max-w-4xl mx-auto my-12 p-8 bg-gradient-to-r from-primary/10 to-accent-sunset/10 rounded-2xl border border-primary/20 text-center">
+            <h3 className="text-2xl md:text-3xl font-bold text-text-primary mb-3">
+              Like What You See?
+            </h3>
+            <p className="text-lg text-text-secondary mb-6">
+              Our homeowners love their results. Get a free estimate and see what we can do for your home.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link
+                href="/contact"
+                onClick={() => {
+                  trackEvent('cta_click', {
+                    location: 'reviews_mid_page',
+                    destination: 'contact',
+                    variant: 'Get Your Free Estimate',
+                  });
+                  trackEstimateRequest('reviews_mid_page');
+                }}
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-white h-12 px-8 transition-all duration-300 hover:scale-105 cursor-pointer"
+              >
+                Get Your Free Estimate
+              </Link>
+              <Link
+                href="/project-calculator"
+                onClick={() => {
+                  trackEvent('cta_click', {
+                    location: 'reviews_mid_page',
+                    destination: 'calculator',
+                    variant: 'Calculate Your Project Cost',
+                  });
+                }}
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium border-2 border-primary text-primary hover:bg-primary/10 h-12 px-8 transition-all duration-300 cursor-pointer"
+              >
+                Calculate Your Project Cost
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Remaining Reviews */}
+        {reviews.length > 6 && (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+            {reviews.slice(6).map((review) => (
+              <Card
+                key={review.id}
+                className="hover:shadow-elegant transition-shadow duration-300"
+              >
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4 mb-4">
+                    <Avatar className="h-12 w-12">
+                      {review.reviewer_photo_url && (
+                        <AvatarImage
+                          src={review.reviewer_photo_url}
+                          alt={review.reviewer_name || 'Reviewer'}
+                        />
+                      )}
+                      <AvatarFallback className="bg-primary/10 text-primary">
+                        {review.reviewer_name?.charAt(0) || 'G'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <div className="font-semibold text-text-primary mb-1">
+                        {review.reviewer_name || 'Google User'}
+                      </div>
+                      <div className="flex items-center gap-1 mb-2">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star
+                            key={i}
+                            className={`h-4 w-4 ${
+                              i < review.star_rating
+                                ? 'fill-yellow-400 text-yellow-400'
+                                : 'fill-muted text-muted'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      {review.create_time && (
+                        <div className="text-sm text-text-secondary">
+                          {format(new Date(review.create_time), 'MMMM d, yyyy')}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {review.comment && (
+                    <p className="text-text-secondary leading-relaxed">
+                      {review.comment}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
         {/* Google Attribution */}
         <div className="text-center mt-12">

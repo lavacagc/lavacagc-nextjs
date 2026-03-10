@@ -4,6 +4,8 @@ import Footer from '@/components/Footer';
 import ContactForm from '@/components/ContactForm';
 import CallTrackingWrapper from '@/components/CallTrackingWrapper';
 import { Phone, Mail, MapPin, Clock } from 'lucide-react';
+import ContactTrustBadges from '@/components/ContactTrustBadges';
+import ContactHeroPhone from '@/components/ContactHeroPhone';
 
 export const metadata: Metadata = {
   title: 'Contact Us',
@@ -29,11 +31,16 @@ export default function ContactPage() {
             <h1 className="text-4xl md:text-5xl font-bold text-text-primary mb-4">
               Contact Us
             </h1>
-            <p className="text-xl text-text-secondary max-w-2xl mx-auto">
+            <p className="text-xl text-text-secondary max-w-2xl mx-auto mb-6">
               Ready to start your renovation project? Get in touch with our team for a free consultation.
             </p>
+            {/* Prominent Phone Number */}
+            <ContactHeroPhone />
           </div>
         </section>
+
+        {/* Trust Badges */}
+        <ContactTrustBadges />
 
         {/* Contact Info & Form */}
         <section className="py-16">

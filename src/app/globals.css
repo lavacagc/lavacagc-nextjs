@@ -395,3 +395,15 @@ html {
 .animate-gradient {
   animation: gradient 3s ease infinite;
 }
+
+/* Safe area padding for sticky mobile CTA */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Add bottom padding on mobile for sticky CTA clearance */
+@media (max-width: 767px) {
+  main {
+    padding-bottom: 80px;
+  }
+}
