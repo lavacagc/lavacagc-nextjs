@@ -138,9 +138,10 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
     if (newImages.length > 0) {
       updateFormData({ images: [...formData.images, ...newImages] });
 
-      // Auto-categorize with AI if we have the API
-      if (newImages.some(img => img.media_type === 'image')) {
-        await smartCategorize(newImages, formData.images.length);
+      // Auto-categorize with AI (images only — skip videos)
+      const imageOnly = newImages.filter(img => img.media_type === 'image');
+      if (imageOnly.length > 0) {
+        await smartCategorize(imageOnly, formData.images.length);
       }
 
       toast({
@@ -227,11 +228,24 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
 
     setIsAnalyzing(true);
     try {
+      // Only send images to AI (not videos)
+      const beforeImageOnly = beforeImages.filter(img => img.media_type !== 'video');
+      const afterImageOnly = afterImages.filter(img => img.media_type !== 'video');
+
+      if (beforeImageOnly.length === 0 || afterImageOnly.length === 0) {
+        toast({
+          title: "Need Photos",
+          description: "AI analysis requires at least one before and one after photo (not video).",
+          variant: "destructive",
+        });
+        setIsAnalyzing(false);
+        return;
+      }
+
       // Convert images to compressed base64 (max 1200px, 70% JPEG)
       const beforeBase64 = await Promise.all(
-        beforeImages.slice(0, 3).map(async (img) => {
+        beforeImageOnly.slice(0, 3).map(async (img) => {
           if (img.file) return compressImageForAPI(img.file);
-          // For existing URLs, fetch and compress
           const resp = await fetch(img.url || '');
           const blob = await resp.blob();
           return compressImageForAPI(new File([blob], 'image.jpg'));
@@ -239,7 +253,7 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
       );
 
       const afterBase64 = await Promise.all(
-        afterImages.slice(0, 3).map(async (img) => {
+        afterImageOnly.slice(0, 3).map(async (img) => {
           if (img.file) return compressImageForAPI(img.file);
           const resp = await fetch(img.url || '');
           const blob = await resp.blob();
