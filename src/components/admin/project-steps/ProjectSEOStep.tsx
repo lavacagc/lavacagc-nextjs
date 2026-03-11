@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react';
+'use client';
+
+import React, { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Sparkles, Search, Link, Target, AlertCircle, CheckCircle } from 'lucide-react';
+import { 
+  Sparkles, Search, Link, Target, TrendingUp, 
+  ArrowRight, CheckCircle, Lightbulb, BarChart3,
+  Loader2, Copy, RefreshCw
+} from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { ProjectFormData } from '../ProjectUploadSystem';
 
 interface ProjectSEOStepProps {
@@ -15,380 +19,300 @@ interface ProjectSEOStepProps {
   updateFormData: (updates: Partial<ProjectFormData>) => void;
 }
 
-interface SEOAnalysis {
-  score: number;
-  issues: string[];
-  suggestions: string[];
+interface KeywordResult {
+  keyword: string;
+  source: 'autocomplete' | 'related' | 'ai';
+  searchIntent: 'informational' | 'commercial' | 'transactional' | 'navigational';
+  competitiveness: 'low' | 'medium' | 'high';
+  relevance: number;
 }
 
-interface EnhancedMessage {
-  original: string;
-  enhanced: string;
-  location: string;
-  icon: string;
+interface KeywordResearch {
+  primaryKeyword: string;
+  keywords: KeywordResult[];
+  suggestedTitle: string;
+  suggestedMetaDescription: string;
+  suggestedSlug: string;
+  titleVariations: string[];
+  searchInsights: string[];
+  rawSuggestions: string[];
 }
 
 export function ProjectSEOStep({ formData, updateFormData }: ProjectSEOStepProps) {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [seoAnalysis, setSeoAnalysis] = useState<SEOAnalysis | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isResearching, setIsResearching] = useState(false);
+  const [research, setResearch] = useState<KeywordResearch | null>(null);
 
-  // Auto-generate SEO fields when basic info changes
-  useEffect(() => {
-    if (formData.title && formData.location && formData.service_types.length > 0 && !formData.seo_title) {
-      generateSEOTitle();
+  const runKeywordResearch = async () => {
+    if (!formData.service_types.length || !formData.location) {
+      toast({
+        title: "Missing Info",
+        description: "Go back and fill in service types and location first.",
+        variant: "destructive",
+      });
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- generateSEOTitle is stable, only trigger on data changes
-  }, [formData.title, formData.location, formData.service_types]);
 
-  useEffect(() => {
-    if (formData.seo_title && !formData.meta_description) {
-      generateMetaDescription();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- generateMetaDescription is stable, only trigger on seo_title change
-  }, [formData.seo_title]);
-
-  useEffect(() => {
-    if (formData.title && formData.location && !formData.url_slug) {
-      generateSlug();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- generateSlug is stable, only trigger on title/location change
-  }, [formData.title, formData.location]);
-
-  const generateSEOTitle = async () => {
+    setIsResearching(true);
     try {
-      const primaryService = formData.service_types[0];
-      // Generate concise title within 50-60 character limit
-      const baseTitle = `${primaryService} in ${formData.location}`;
-      
-      // Only add project descriptor if it fits within limit
-      let title = baseTitle;
-      if (baseTitle.length < 45 && formData.title) {
-        const shortTitle = formData.title.substring(0, 20);
-        title = `${shortTitle} - ${baseTitle}`;
-      }
-      
-      // Ensure we're under 60 characters
-      if (title.length > 60) {
-        title = baseTitle;
-      }
-      
-      updateFormData({ seo_title: title });
-    } catch (error) {
-      console.error('Error generating SEO title:', error);
-    }
-  };
-
-  const generateMetaDescription = async () => {
-    setIsGenerating(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('ai-project-assistant', {
-        body: {
-          action: 'generate_meta_description',
-          data: {
-            title: formData.title,
-            location: formData.location,
-            service_types: formData.service_types,
-            challenge: formData.challenge,
-            solution: formData.solution,
-            materials_used: formData.materials_used,
-            special_features: formData.special_features
-          }
-        }
+      const response = await fetch('/api/admin/keyword-research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serviceTypes: formData.service_types,
+          location: formData.location,
+          projectTitle: formData.title,
+          challenge: formData.challenge,
+          solution: formData.solution,
+          materials: formData.materials_used,
+          features: formData.special_features,
+        }),
       });
 
-      if (error) throw error;
-      
-      if (data.meta_description) {
-        updateFormData({ meta_description: data.meta_description });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Research failed');
       }
-    } catch (error) {
-      console.error('Error generating meta description:', error);
+
+      const data: KeywordResearch = await response.json();
+      setResearch(data);
+
+      // Auto-fill fields if they're empty
+      if (!formData.seo_title && data.suggestedTitle) {
+        updateFormData({ seo_title: data.suggestedTitle });
+      }
+      if (!formData.meta_description && data.suggestedMetaDescription) {
+        updateFormData({ meta_description: data.suggestedMetaDescription });
+      }
+      if (!formData.url_slug && data.suggestedSlug) {
+        updateFormData({ url_slug: data.suggestedSlug });
+      }
+      if (!formData.focus_keyword && data.primaryKeyword) {
+        updateFormData({ focus_keyword: data.primaryKeyword });
+      }
+
       toast({
-        title: "Error",
-        description: "Failed to generate meta description",
-        variant: "destructive"
+        title: "Research Complete! 🎯",
+        description: `Found ${data.keywords.length} keyword opportunities from real search data.`,
+      });
+    } catch (error) {
+      console.error('Keyword research error:', error);
+      toast({
+        title: "Research Failed",
+        description: error instanceof Error ? error.message : "Try again",
+        variant: "destructive",
       });
     } finally {
-      setIsGenerating(false);
+      setIsResearching(false);
     }
   };
 
-  const generateSlug = () => {
-    const slug = `${formData.title}-${formData.location}`
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-+|-+$/g, '');
-    updateFormData({ url_slug: slug });
+  const applyTitle = (title: string) => {
+    updateFormData({ seo_title: title });
+    toast({ title: "Applied", description: "SEO title updated" });
   };
 
-  const generateFocusKeyword = () => {
-    if (formData.service_types.length > 0 && formData.location) {
-      const primaryService = formData.service_types[0].toLowerCase();
-      const keyword = `${primaryService} ${formData.location.toLowerCase()}`;
-      updateFormData({ focus_keyword: keyword });
+  const getIntentColor = (intent: string) => {
+    switch (intent) {
+      case 'transactional': return 'bg-green-100 text-green-800 border-green-200';
+      case 'commercial': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'informational': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const analyzeSEO = async () => {
-    setIsAnalyzing(true);
-    try {
-      const content = `
-        ${formData.title}
-        ${formData.challenge}
-        ${formData.solution}
-        ${formData.materials_used.join(' ')}
-        ${formData.special_features.join(' ')}
-      `;
-
-      const { data, error } = await supabase.functions.invoke('seo-analyzer', {
-        body: {
-          title: formData.seo_title,
-          content: content,
-          meta_description: formData.meta_description,
-          focus_keyword: formData.focus_keyword,
-          content_type: 'project',
-          url_slug: formData.url_slug
-        }
-      });
-
-      if (error) throw error;
-      
-      if (data.analysis) {
-        setSeoAnalysis({
-          score: data.analysis.score,
-          issues: data.analysis.issues || [],
-          suggestions: data.analysis.suggestions || []
-        });
-      }
-    } catch (error) {
-      console.error('Error analyzing SEO:', error);
-      toast({
-        title: "Error",
-        description: "Failed to analyze SEO",
-        variant: "destructive"
-      });
-    } finally {
-      setIsAnalyzing(false);
+  const getCompColor = (comp: string) => {
+    switch (comp) {
+      case 'low': return 'bg-green-50 text-green-700';
+      case 'medium': return 'bg-yellow-50 text-yellow-700';
+      case 'high': return 'bg-red-50 text-red-700';
+      default: return 'bg-gray-50 text-gray-700';
     }
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _getSEOScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  const getSEOScoreBadge = (score: number) => {
-    if (score >= 80) return 'bg-green-100 text-green-800';
-    if (score >= 60) return 'bg-yellow-100 text-yellow-800';
-    return 'bg-red-100 text-red-800';
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const enhanceMessage = (message: string, _type: 'issue' | 'suggestion'): EnhancedMessage => {
-    const lower = message.toLowerCase();
-    
-    // Content length issues
-    if (lower.includes('content too short') || lower.includes('add more content')) {
-      return {
-        original: message,
-        enhanced: 'Your project description needs more detail. Add at least 300 words total across all sections.',
-        location: '📍 Go to "Project Details" step → Expand "Project Challenge" and "Project Solution" sections → Add detailed descriptions',
-        icon: 'FileText'
-      };
-    }
-    
-    // Title issues
-    if (lower.includes('title too long')) {
-      return {
-        original: message,
-        enhanced: `Your SEO title is ${formData.seo_title.length} characters. Reduce it to under 60 characters for optimal search display.`,
-        location: '📍 Edit the "SEO Title" field above → Remove unnecessary words or shorten the description',
-        icon: 'ArrowUp'
-      };
-    }
-    
-    if (lower.includes('title') && lower.includes('descriptive')) {
-      return {
-        original: message,
-        enhanced: 'Your title is too short. Make it more descriptive (aim for 30-60 characters).',
-        location: '📍 Edit the "SEO Title" field above → Add more specific details about the project',
-        icon: 'ArrowUp'
-      };
-    }
-    
-    // Keyword issues
-    if (lower.includes('focus keyword not in title')) {
-      return {
-        original: message,
-        enhanced: `Your focus keyword "${formData.focus_keyword}" is missing from the SEO title. This is crucial for search rankings.`,
-        location: '📍 Edit the "SEO Title" field above → Rewrite to naturally include your focus keyword',
-        icon: 'Target'
-      };
-    }
-    
-    if (lower.includes('keyword') && (lower.includes('more frequently') || lower.includes('density'))) {
-      return {
-        original: message,
-        enhanced: 'Use your focus keyword more naturally throughout your content (aim for 0.5-3% density).',
-        location: '📍 Go to "Project Details" step → Add your focus keyword naturally in Challenge and Solution sections',
-        icon: 'Target'
-      };
-    }
-    
-    if (lower.includes('keyword stuffing') || lower.includes('keyword density too high')) {
-      return {
-        original: message,
-        enhanced: 'You\'re overusing your focus keyword. Reduce usage to avoid search penalties.',
-        location: '📍 Go to "Project Details" step → Rewrite Challenge and Solution to use keyword more sparingly',
-        icon: 'Target'
-      };
-    }
-    
-    // H1 tag issues
-    if (lower.includes('missing h1') || lower.includes('h1 tag')) {
-      return {
-        original: message,
-        enhanced: 'H1 tags are automatically generated from your project title on the live page.',
-        location: '📍 No action needed - The project title becomes the H1 heading automatically when published',
-        icon: 'Heading1'
-      };
-    }
-    
-    // H2 headings
-    if (lower.includes('h2 heading')) {
-      return {
-        original: message,
-        enhanced: 'Break up long content with subheadings for better readability and SEO.',
-        location: '📍 Go to "Project Details" step → Use the rich text editor to add H2 headings in your Challenge and Solution sections',
-        icon: 'Heading1'
-      };
-    }
-    
-    // Meta description
-    if (lower.includes('meta description')) {
-      return {
-        original: message,
-        enhanced: 'Optimize your meta description to 150-160 characters with a clear call-to-action.',
-        location: '📍 Edit the "Meta Description" field above → Use the AI Generate button for optimization',
-        icon: 'AlignLeft'
-      };
-    }
-    
-    // Default fallback
-    return {
-      original: message,
-      enhanced: message,
-      location: '📍 Review the SEO fields on this page and Project Details step',
-      icon: 'AlertCircle'
-    };
   };
 
   return (
     <div className="space-y-6">
-      {/* SEO Analysis Card */}
-      {seoAnalysis && (
-        <Card className="border-primary/20">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <Target className="w-5 h-5" />
-                SEO Analysis
-              </CardTitle>
-              <Badge className={getSEOScoreBadge(seoAnalysis.score)}>
-                Score: {seoAnalysis.score}/100
-              </Badge>
+      {/* Research Button — THE MAIN CTA */}
+      <Card className="border-primary/30 bg-gradient-to-r from-blue-50 to-purple-50">
+        <CardContent className="p-6 text-center space-y-3">
+          <div className="flex items-center justify-center gap-2 text-lg font-semibold">
+            <Search className="w-5 h-5 text-primary" />
+            What Are People Actually Searching?
+          </div>
+          <p className="text-sm text-muted-foreground max-w-lg mx-auto">
+            Pulls real Google autocomplete data for your service + location, then uses AI to pick the best keywords and generate optimized titles
+          </p>
+          <Button
+            onClick={runKeywordResearch}
+            disabled={isResearching}
+            size="lg"
+            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+          >
+            {isResearching ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Researching keywords...
+              </>
+            ) : (
+              <>
+                <TrendingUp className="w-4 h-4 mr-2" />
+                {research ? 'Re-run Research' : 'Research Keywords'}
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Search Insights */}
+      {research?.searchInsights && research.searchInsights.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50/50">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Lightbulb className="w-4 h-4 text-amber-600" />
+              <span className="font-semibold text-amber-900 text-sm">Search Insights</span>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {seoAnalysis.issues.length > 0 && (
-              <Alert className="border-red-300 bg-red-50">
-                <AlertCircle className="h-4 w-4 text-red-600" />
-                <AlertDescription>
-                  <div className="space-y-3">
-                    <strong className="text-red-900 text-base">Issues to fix:</strong>
-                    <div className="space-y-4">
-                      {seoAnalysis.issues.map((issue, index) => {
-                        const enhanced = enhanceMessage(issue, 'issue');
-                        return (
-                          <div key={index} className="bg-white p-3 rounded-md border border-red-200">
-                            <div className="flex items-start gap-2 mb-2">
-                              <div className="text-red-600 font-medium">{enhanced.enhanced}</div>
-                            </div>
-                            <div className="text-sm text-gray-700 bg-gray-50 p-2 rounded border-l-2 border-red-400 mt-2">
-                              {enhanced.location}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
-            
-            {seoAnalysis.suggestions.length > 0 && (
-              <Alert className="border-green-300 bg-green-50">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <AlertDescription>
-                  <div className="space-y-3">
-                    <strong className="text-green-900 text-base">Suggestions:</strong>
-                    <div className="space-y-4">
-                      {seoAnalysis.suggestions.map((suggestion, index) => {
-                        const enhanced = enhanceMessage(suggestion, 'suggestion');
-                        return (
-                          <div key={index} className="bg-white p-3 rounded-md border border-green-200">
-                            <div className="flex items-start gap-2 mb-2">
-                              <div className="text-green-700 font-medium">{enhanced.enhanced}</div>
-                            </div>
-                            <div className="text-sm text-gray-700 bg-gray-50 p-2 rounded border-l-2 border-green-400 mt-2">
-                              {enhanced.location}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
+            <ul className="space-y-1">
+              {research.searchInsights.map((insight, i) => (
+                <li key={i} className="text-sm text-amber-800 flex items-start gap-2">
+                  <ArrowRight className="w-3 h-3 mt-1 flex-shrink-0" />
+                  {insight}
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}
 
-      {/* SEO Title */}
+      {/* Keyword Opportunities */}
+      {research?.keywords && research.keywords.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <BarChart3 className="w-5 h-5" />
+              Keyword Opportunities ({research.keywords.length})
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Real searches from Google Autocomplete • Click any keyword to use as focus keyword
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {research.keywords
+                .sort((a, b) => b.relevance - a.relevance)
+                .slice(0, 12)
+                .map((kw, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between p-2 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+                  onClick={() => {
+                    updateFormData({ focus_keyword: kw.keyword });
+                    toast({ title: "Focus keyword set", description: kw.keyword });
+                  }}
+                >
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div className="w-8 text-center">
+                      <span className="text-xs font-bold text-muted-foreground">#{i + 1}</span>
+                    </div>
+                    <span className="text-sm font-medium truncate">{kw.keyword}</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Badge variant="outline" className={`text-[10px] ${getIntentColor(kw.searchIntent)}`}>
+                      {kw.searchIntent}
+                    </Badge>
+                    <Badge variant="outline" className={`text-[10px] ${getCompColor(kw.competitiveness)}`}>
+                      {kw.competitiveness}
+                    </Badge>
+                    <div className="w-12 bg-muted rounded-full h-1.5">
+                      <div 
+                        className="bg-primary rounded-full h-1.5 transition-all"
+                        style={{ width: `${kw.relevance}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* SEO Title with Variations */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">SEO Title</CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={generateSEOTitle}
-            >
-              <Sparkles className="w-4 h-4 mr-2" />
-              Auto-Generate
-            </Button>
+            <div className="flex items-center gap-2">
+              {formData.seo_title && (
+                <Badge variant={
+                  formData.seo_title.length <= 60 
+                    ? formData.seo_title.length >= 30 ? 'default' : 'secondary'
+                    : 'destructive'
+                }>
+                  {formData.seo_title.length}/60
+                </Badge>
+              )}
+              {research?.suggestedTitle && formData.seo_title !== research.suggestedTitle && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyTitle(research.suggestedTitle)}
+                >
+                  <Sparkles className="w-3 h-3 mr-1" />
+                  Use AI Pick
+                </Button>
+              )}
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Optimal length: 50-60 characters • Current: {formData.seo_title.length}
-          </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <Input
             value={formData.seo_title}
             onChange={(e) => updateFormData({ seo_title: e.target.value })}
-            placeholder="e.g., Modern Kitchen Remodel in Short Hills, NJ | AJS Construction"
+            placeholder="Run keyword research first for data-driven suggestions"
             className={formData.seo_title.length > 60 ? 'border-red-300' : ''}
           />
-          {formData.seo_title.length > 60 && (
-            <p className="text-sm text-red-600 mt-1">
-              Title is too long. Consider shortening it for better SEO.
-            </p>
+
+          {/* Google Preview */}
+          {formData.seo_title && (
+            <div className="border rounded-lg p-3 bg-white">
+              <p className="text-xs text-muted-foreground mb-1">Google Preview:</p>
+              <div className="space-y-0.5">
+                <p className="text-blue-700 text-lg font-normal leading-tight hover:underline cursor-default truncate">
+                  {formData.seo_title}
+                </p>
+                <p className="text-green-700 text-sm truncate">
+                  www.lavacagc.com/portfolio/{formData.url_slug || '...'}
+                </p>
+                <p className="text-gray-600 text-sm line-clamp-2">
+                  {formData.meta_description || 'Add a meta description...'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Title Variations */}
+          {research?.titleVariations && research.titleVariations.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                Alternative titles (click to use):
+              </p>
+              <div className="space-y-1.5">
+                {research.titleVariations.map((title, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between p-2 rounded border hover:bg-muted/50 cursor-pointer group transition-colors"
+                    onClick={() => applyTitle(title)}
+                  >
+                    <span className="text-sm truncate flex-1">{title}</span>
+                    <div className="flex items-center gap-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Badge variant="secondary" className="text-[10px]">
+                        {title.length}/60
+                      </Badge>
+                      <Copy className="w-3 h-3 text-muted-foreground" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -398,108 +322,142 @@ export function ProjectSEOStep({ formData, updateFormData }: ProjectSEOStepProps
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">Meta Description</CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={generateMetaDescription}
-              disabled={isGenerating}
-            >
-              <Sparkles className="w-4 h-4 mr-2" />
-              {isGenerating ? 'Generating...' : 'AI Generate'}
-            </Button>
+            <div className="flex items-center gap-2">
+              {formData.meta_description && (
+                <Badge variant={
+                  formData.meta_description.length <= 160
+                    ? formData.meta_description.length >= 120 ? 'default' : 'secondary'
+                    : 'destructive'
+                }>
+                  {formData.meta_description.length}/160
+                </Badge>
+              )}
+              {research?.suggestedMetaDescription && formData.meta_description !== research.suggestedMetaDescription && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    updateFormData({ meta_description: research!.suggestedMetaDescription });
+                    toast({ title: "Applied", description: "Meta description updated" });
+                  }}
+                >
+                  <Sparkles className="w-3 h-3 mr-1" />
+                  Use AI Pick
+                </Button>
+              )}
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Optimal length: 150-160 characters • Current: {formData.meta_description.length}
-          </p>
         </CardHeader>
         <CardContent>
           <Textarea
             value={formData.meta_description}
             onChange={(e) => updateFormData({ meta_description: e.target.value })}
-            placeholder="Brief description of the project that will appear in search results..."
+            placeholder="Run keyword research for a data-driven meta description"
             rows={3}
             className={formData.meta_description.length > 160 ? 'border-red-300' : ''}
           />
-          {formData.meta_description.length > 160 && (
-            <p className="text-sm text-red-600 mt-1">
-              Description is too long. Consider shortening it for better SEO.
-            </p>
-          )}
         </CardContent>
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* URL Slug */}
+        {/* Focus Keyword */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
-              <Link className="w-5 h-5" />
-              URL Slug
+              <Target className="w-5 h-5" />
+              Focus Keyword
             </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Project URL: /portfolio/{formData.url_slug}
+            {formData.focus_keyword && (
+              <div className="space-y-1">
+                {formData.seo_title.toLowerCase().includes(formData.focus_keyword.toLowerCase()) ? (
+                  <p className="text-xs text-green-600 flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" /> In title ✓
+                  </p>
+                ) : (
+                  <p className="text-xs text-red-600">⚠️ Not in title — add it for better ranking</p>
+                )}
+                {formData.meta_description.toLowerCase().includes(formData.focus_keyword.toLowerCase()) ? (
+                  <p className="text-xs text-green-600 flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" /> In description ✓
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-600">⚠️ Not in description</p>
+                )}
+              </div>
+            )}
+          </CardHeader>
+          <CardContent>
+            <Input
+              value={formData.focus_keyword}
+              onChange={(e) => updateFormData({ focus_keyword: e.target.value })}
+              placeholder="Click a keyword from research above"
+            />
+          </CardContent>
+        </Card>
+
+        {/* URL Slug */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Link className="w-5 h-5" />
+                URL Slug
+              </CardTitle>
+              {research?.suggestedSlug && formData.url_slug !== research.suggestedSlug && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    updateFormData({ url_slug: research!.suggestedSlug });
+                    toast({ title: "Applied" });
+                  }}
+                >
+                  <RefreshCw className="w-3 h-3 mr-1" />
+                  AI Slug
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground truncate">
+              lavacagc.com/portfolio/<span className="font-medium">{formData.url_slug || '...'}</span>
             </p>
           </CardHeader>
           <CardContent>
             <Input
               value={formData.url_slug}
               onChange={(e) => updateFormData({ url_slug: e.target.value })}
-              placeholder="modern-kitchen-short-hills"
-            />
-          </CardContent>
-        </Card>
-
-        {/* Focus Keyword */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Target className="w-5 h-5" />
-                Focus Keyword
-              </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={generateFocusKeyword}
-              >
-                <Sparkles className="w-4 h-4 mr-2" />
-                Suggest
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Input
-              value={formData.focus_keyword}
-              onChange={(e) => updateFormData({ focus_keyword: e.target.value })}
-              placeholder="e.g., kitchen remodeling short hills"
+              placeholder="auto-generated-from-research"
             />
           </CardContent>
         </Card>
       </div>
 
-      {/* SEO Analysis Button */}
-      <div className="flex justify-center">
-        <Button
-          onClick={analyzeSEO}
-          disabled={isAnalyzing || !formData.seo_title || !formData.meta_description}
-          className="bg-blue-600 hover:bg-blue-700"
-        >
-          <Search className="w-4 h-4 mr-2" />
-          {isAnalyzing ? 'Analyzing...' : 'Analyze SEO'}
-        </Button>
-      </div>
-
-      {/* SEO Tips */}
-      <Card className="bg-blue-50 border-blue-200">
+      {/* SEO Checklist */}
+      <Card className="bg-gray-50">
         <CardContent className="p-4">
-          <h4 className="font-semibold text-blue-900 mb-2">SEO Tips</h4>
-          <ul className="text-sm text-blue-800 space-y-1">
-            <li>• Include your main service and location in the title</li>
-            <li>• Use your focus keyword naturally in the description</li>
-            <li>• Keep URLs short and descriptive</li>
-            <li>• Mention specific materials and features for long-tail keywords</li>
-            <li>• Project pages help with local SEO and showcase expertise</li>
-          </ul>
+          <h4 className="font-semibold text-gray-900 mb-3 text-sm">SEO Checklist</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {[
+              { check: !!formData.seo_title && formData.seo_title.length <= 60 && formData.seo_title.length >= 30, label: 'Title 30-60 chars' },
+              { check: !!formData.meta_description && formData.meta_description.length <= 160 && formData.meta_description.length >= 120, label: 'Description 120-160 chars' },
+              { check: !!formData.focus_keyword, label: 'Focus keyword set' },
+              { check: !!formData.focus_keyword && formData.seo_title.toLowerCase().includes(formData.focus_keyword.toLowerCase()), label: 'Keyword in title' },
+              { check: !!formData.url_slug, label: 'URL slug set' },
+              { check: !!formData.focus_keyword && formData.url_slug.includes(formData.focus_keyword.split(' ')[0]?.toLowerCase()), label: 'Keyword in URL' },
+              { check: formData.meta_description.includes('(201)') || formData.meta_description.includes('201-'), label: 'Phone in description' },
+              { check: !!formData.location && formData.seo_title.toLowerCase().includes(formData.location.toLowerCase().split(',')[0]), label: 'Location in title' },
+            ].map((item, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm">
+                <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
+                  item.check ? 'bg-green-500' : 'bg-gray-300'
+                }`}>
+                  {item.check && <CheckCircle className="w-3 h-3 text-white" />}
+                </div>
+                <span className={item.check ? 'text-green-700' : 'text-gray-500'}>
+                  {item.label}
+                </span>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>
