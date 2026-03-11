@@ -39,6 +39,36 @@ async function fileToBase64(file: File): Promise<string> {
   });
 }
 
+// Compress image to max dimensions and JPEG quality to stay under Vercel's 4.5MB payload limit
+async function compressImageForAPI(file: File, maxDim = 1200, quality = 0.7): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+      
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Canvas context failed')); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => reject(new Error('Image load failed'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosStepProps) {
   const [isDraggingBefore, setIsDraggingBefore] = useState(false);
   const [isDraggingAfter, setIsDraggingAfter] = useState(false);
@@ -131,7 +161,7 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
         const img = newImages[i];
         if (img.media_type !== 'image' || !img.file) continue;
 
-        const base64 = await fileToBase64(img.file);
+        const base64 = await compressImageForAPI(img.file);
         const response = await fetch('/api/admin/analyze-project', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -197,23 +227,23 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
 
     setIsAnalyzing(true);
     try {
-      // Convert images to base64
+      // Convert images to compressed base64 (max 1200px, 70% JPEG)
       const beforeBase64 = await Promise.all(
         beforeImages.slice(0, 3).map(async (img) => {
-          if (img.file) return fileToBase64(img.file);
-          // For existing URLs, fetch and convert
-          const response = await fetch(img.url || '');
-          const blob = await response.blob();
-          return fileToBase64(new File([blob], 'image.jpg'));
+          if (img.file) return compressImageForAPI(img.file);
+          // For existing URLs, fetch and compress
+          const resp = await fetch(img.url || '');
+          const blob = await resp.blob();
+          return compressImageForAPI(new File([blob], 'image.jpg'));
         })
       );
 
       const afterBase64 = await Promise.all(
         afterImages.slice(0, 3).map(async (img) => {
-          if (img.file) return fileToBase64(img.file);
-          const response = await fetch(img.url || '');
-          const blob = await response.blob();
-          return fileToBase64(new File([blob], 'image.jpg'));
+          if (img.file) return compressImageForAPI(img.file);
+          const resp = await fetch(img.url || '');
+          const blob = await resp.blob();
+          return compressImageForAPI(new File([blob], 'image.jpg'));
         })
       );
 
