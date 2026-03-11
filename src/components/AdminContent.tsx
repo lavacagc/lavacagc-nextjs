@@ -146,7 +146,7 @@ export default function AdminContent() {
           </div>
         </div>
 
-        <div className="container mx-auto px-2 md:px-4 py-4 md:py-8 max-w-7xl overflow-x-hidden">
+        <div className="container mx-auto px-2 md:px-4 py-4 md:py-8 pb-20 max-w-7xl overflow-x-hidden">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
 
           <TabsContent value="dashboard">
