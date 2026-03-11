@@ -65,6 +65,7 @@ interface Project {
   url_slug: string;
   project_images: Array<{
     image_url: string;
+    is_featured?: boolean;
   }>;
 }
 
@@ -120,7 +121,7 @@ const ProjectGallery = () => {
         (projectsData || []).map(async (project) => {
           const { data: images } = await supabase
             .from('project_images')
-            .select('image_url')
+            .select('image_url, is_featured')
             .eq('project_id', project.id)
             .order('sort_order');
 
@@ -140,7 +141,8 @@ const ProjectGallery = () => {
   };
 
   const getProjectImage = (project: Project) => {
-    return project.project_images?.[0]?.image_url || '/placeholder.svg';
+    const featured = project.project_images?.find(img => img.is_featured);
+    return featured?.image_url || project.project_images?.[0]?.image_url || '/placeholder.svg';
   };
 
   const isVideo = (url: string) => {

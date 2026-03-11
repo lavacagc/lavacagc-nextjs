@@ -25,6 +25,7 @@ interface Project {
     image_category: string;
     alt_text: string;
     media_type?: 'image' | 'video';
+    is_featured?: boolean;
   }>;
 }
 
@@ -60,7 +61,8 @@ export default function PortfolioContent({ projects }: PortfolioContentProps) {
   });
 
   const getProjectImage = (project: Project) => {
-    return project.project_images?.[0]?.image_url || '/placeholder.svg';
+    const featured = project.project_images?.find(img => img.is_featured);
+    return featured?.image_url || project.project_images?.[0]?.image_url || '/placeholder.svg';
   };
 
   const getProjectDescription = (project: Project) => {
@@ -164,7 +166,7 @@ export default function PortfolioContent({ projects }: PortfolioContentProps) {
                       });
                     }}
                   >
-                    {project.project_images?.[0]?.media_type === 'video' ? (
+                    {(project.project_images?.find(img => img.is_featured) || project.project_images?.[0])?.media_type === 'video' ? (
                       <video
                         src={getProjectImage(project)}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"

@@ -59,6 +59,7 @@ interface Project {
     image_category: string;
     alt_text: string;
     media_type?: 'image' | 'video';
+    is_featured?: boolean;
   }>;
 }
 
@@ -91,7 +92,7 @@ async function getProjects(): Promise<Project[]> {
       (projectsData || []).map(async (project) => {
         const { data: images } = await supabase
           .from('project_images')
-          .select('image_url, image_category, alt_text, media_type')
+          .select('image_url, image_category, alt_text, media_type, is_featured')
           .eq('project_id', project.id)
           .order('sort_order');
 
@@ -142,7 +143,7 @@ export default async function Portfolio() {
             name: project.location,
           },
           url: `https://www.lavacagc.com/projects/${project.url_slug}`,
-          image: project.project_images?.[0]?.image_url,
+          image: project.project_images?.find(img => img.is_featured)?.image_url || project.project_images?.[0]?.image_url,
         },
       })),
     },
