@@ -139,6 +139,10 @@ export default function Home() {
           <Testimonials />
         </TrackedSection>
 
+        <div id="projects" className="scroll-mt-20">
+          <ProjectGallery />
+        </div>
+
         {/* Services Section - Tracked */}
         <TrackedSection
           sectionId="services-section"
@@ -147,10 +151,6 @@ export default function Home() {
         >
           <Services />
         </TrackedSection>
-
-        <div id="projects" className="scroll-mt-20">
-          <ProjectGallery />
-        </div>
 
         {/* Service Areas Section - Tracked */}
         <TrackedSection
