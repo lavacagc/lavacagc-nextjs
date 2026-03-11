@@ -62,6 +62,7 @@ export interface ProjectFormData {
     alt_text: string;
     is_featured: boolean;
     sort_order: number;
+    room?: string;
   }>;
   
   // Details
@@ -143,8 +144,8 @@ export function ProjectUploadSystem({ mode, onModeChange, editProject }: Project
       
       projectImages = (images || []).map(img => ({
         url: img.image_url,
-        media_type: img.media_type || 'image',
-        category: img.image_category || 'after',
+        media_type: (img.media_type || 'image') as 'image' | 'video',
+        category: (img.image_category || 'after') as 'before' | 'during' | 'after',
         alt_text: img.alt_text || '',
         is_featured: img.is_featured,
         sort_order: img.sort_order
@@ -224,9 +225,12 @@ export function ProjectUploadSystem({ mode, onModeChange, editProject }: Project
     }
   };
 
-  // Auto-generate project content from images
+  // Auto-generate project content from images using Gemini API
   const generateProjectContent = async () => {
-    if (formData.images.length === 0) {
+    const beforeImgs = formData.images.filter(img => img.category === 'before');
+    const afterImgs = formData.images.filter(img => img.category === 'after');
+
+    if (beforeImgs.length === 0 && afterImgs.length === 0) {
       toast({
         title: "No Images",
         description: "Please upload some images first",
@@ -235,70 +239,58 @@ export function ProjectUploadSystem({ mode, onModeChange, editProject }: Project
       return;
     }
 
+    if (beforeImgs.length === 0 || afterImgs.length === 0) {
+      toast({
+        title: "Missing Images",
+        description: "Upload at least one before AND one after photo for best AI analysis",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsGenerating(true);
     try {
-      // Helper function to upload image to storage in a temp/draft folder
-      const uploadImageToStorage = async (imageData: typeof formData.images[0]) => {
-        // If URL is already a public URL (not a blob), return it
-        if (imageData.url.startsWith('http://') || imageData.url.startsWith('https://')) {
-          return imageData.url;
-        }
-
-        // Upload blob to storage in 'drafts' folder
-        const fileExt = imageData.file?.name.split('.').pop() || 'jpg';
-        const fileName = `drafts/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-        
-        const { error } = await supabase.storage
-          .from('project-images')
-          .upload(fileName, imageData.file!);
-
-        if (error) throw error;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('project-images')
-          .getPublicUrl(fileName);
-
-        return publicUrl;
+      const fileToBase64 = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = error => reject(error);
+        });
       };
 
-      // Get before and after images (limit to 1 each to avoid AI extraction errors)
-      const beforeImageData = formData.images
-        .filter(img => img.category === 'before')
-        .slice(0, 1);  // Only use first before image
-      
-      const afterImageData = formData.images
-        .filter(img => img.category === 'after')
-        .slice(0, 1);  // Only use first after image
-
-      if (beforeImageData.length === 0 || afterImageData.length === 0) {
-        toast({
-          title: "Missing Images",
-          description: "Please upload at least one before and one after image",
-          variant: "destructive",
-        });
-        setIsGenerating(false);
-        return;
-      }
-
-      // Upload images to storage and get real URLs
-      const beforeImages = await Promise.all(
-        beforeImageData.map(img => uploadImageToStorage(img))
-      );
-      
-      const afterImages = await Promise.all(
-        afterImageData.map(img => uploadImageToStorage(img))
+      const beforeBase64 = await Promise.all(
+        beforeImgs.slice(0, 3).map(async (img) => {
+          if (img.file) return fileToBase64(img.file);
+          return img.url || '';
+        })
       );
 
-      const { data, error } = await supabase.functions.invoke('generate-project-content', {
-        body: {
-          beforeImages,
-          afterImages,
+      const afterBase64 = await Promise.all(
+        afterImgs.slice(0, 3).map(async (img) => {
+          if (img.file) return fileToBase64(img.file);
+          return img.url || '';
+        })
+      );
+
+      const rooms = [...new Set(formData.images.map(img => img.room).filter(Boolean))];
+
+      const response = await fetch('/api/admin/analyze-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          beforeImages: beforeBase64.filter(Boolean),
+          afterImages: afterBase64.filter(Boolean),
           location: formData.location || 'New Jersey',
-          serviceTypes: formData.service_types.length > 0 ? formData.service_types : ['renovation']
-        }
+          serviceTypes: formData.service_types.length > 0 ? formData.service_types : ['renovation'],
+          rooms,
+          mode: 'compare',
+        }),
       });
 
-      if (error) throw error;
+      if (!response.ok) throw new Error('Analysis failed');
+
+      const data = await response.json();
 
       if (data.content) {
         updateFormData({
@@ -307,7 +299,6 @@ export function ProjectUploadSystem({ mode, onModeChange, editProject }: Project
           solution: data.content.solution || '',
           special_features: data.content.specialFeatures || [],
           materials_used: data.content.materialsUsed || [],
-          testimonial_text: data.content.testimonialText || '',
           seo_title: data.content.seoTitle || '',
           meta_description: data.content.metaDescription || ''
         });

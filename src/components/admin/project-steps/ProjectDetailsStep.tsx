@@ -109,35 +109,63 @@ export function ProjectDetailsStep({ formData, updateFormData }: ProjectDetailsS
   const generateProjectContent = async (type: 'challenge' | 'solution') => {
     setIsGeneratingContent(true);
     try {
-      // Get relevant images based on type
       const relevantImages = type === 'challenge' 
         ? formData.images.filter(img => img.category === 'before')
         : formData.images.filter(img => img.category === 'after');
 
-      const { data, error } = await supabase.functions.invoke('ai-project-assistant', {
-        body: {
-          action: `generate_${type}`,
-          data: {
-            title: formData.title,
-            service_types: formData.service_types,
-            location: formData.location,
-            materials_used: formData.materials_used,
-            special_features: formData.special_features,
-            existing_challenge: formData.challenge,
-            existing_solution: formData.solution,
-            uploaded_images: relevantImages.map(img => ({
-              category: img.category,
-              alt_text: img.alt_text
-            }))
-          }
-        }
+      if (relevantImages.length === 0) {
+        toast({
+          title: "No Images",
+          description: `Upload ${type === 'challenge' ? 'before' : 'after'} photos first, or write manually.`,
+          variant: "destructive"
+        });
+        setIsGeneratingContent(false);
+        return;
+      }
+
+      // Convert to base64
+      const fileToBase64 = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = error => reject(error);
+        });
+      };
+
+      const imageBase64 = await Promise.all(
+        relevantImages.slice(0, 2).map(async (img) => {
+          if (img.file) return fileToBase64(img.file);
+          return img.url || '';
+        })
+      );
+
+      const response = await fetch('/api/admin/analyze-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          beforeImages: type === 'challenge' ? imageBase64.filter(Boolean) : [],
+          afterImages: type === 'solution' ? imageBase64.filter(Boolean) : [],
+          location: formData.location || 'New Jersey',
+          serviceTypes: formData.service_types.length > 0 ? formData.service_types : ['renovation'],
+          mode: 'full',
+        }),
       });
 
-      if (error) throw error;
+      if (!response.ok) throw new Error('Analysis failed');
+
+      const data = await response.json();
       
-      const content = data[type]; // Use the type as the property key
-      if (content) {
-        updateFormData({ [type]: content.replace(/^"(.*)"$/, '$1') }); // Remove quotes if present
+      if (data.content) {
+        const content = data.content[type] || data.content;
+        if (typeof content === 'string') {
+          updateFormData({ [type]: content });
+        } else if (content.challenge && type === 'challenge') {
+          updateFormData({ challenge: content.challenge });
+        } else if (content.solution && type === 'solution') {
+          updateFormData({ solution: content.solution });
+        }
+        
         toast({
           title: "Success",
           description: `${type.charAt(0).toUpperCase() + type.slice(1)} generated successfully`
@@ -222,33 +250,38 @@ export function ProjectDetailsStep({ formData, updateFormData }: ProjectDetailsS
 
     setIsAnalyzingImage(true);
     try {
-      // Upload to Supabase storage
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${type}-${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage
-        .from('project-images')
-        .upload(fileName, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('project-images')
-        .getPublicUrl(fileName);
-
-      // Analyze image with AI
-      const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-project-images', {
-        body: {
-          imageUrl: publicUrl,
-          type,
-          serviceTypes: formData.service_types,
-          location: formData.location
-        }
+      // Convert to base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
       });
 
-      if (analysisError) throw analysisError;
+      // Analyze with Gemini via our API route
+      const response = await fetch('/api/admin/analyze-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          beforeImages: type === 'challenge' ? [base64] : [],
+          afterImages: type === 'solution' ? [base64] : [],
+          location: formData.location || 'New Jersey',
+          serviceTypes: formData.service_types.length > 0 ? formData.service_types : ['renovation'],
+          mode: 'full',
+        }),
+      });
 
-      // Update form data with generated content
-      updateFormData({ [type]: analysisData.analysis });
+      if (!response.ok) throw new Error('Analysis failed');
+
+      const data = await response.json();
+      
+      if (data.content) {
+        const fieldKey = type === 'challenge' ? 'challenge' : 'solution';
+        const content = data.content[fieldKey];
+        if (content) {
+          updateFormData({ [fieldKey]: content });
+        }
+      }
       
       toast({
         title: "Success",
