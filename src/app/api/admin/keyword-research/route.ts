@@ -36,33 +36,63 @@ async function getGoogleSuggestions(query: string): Promise<string[]> {
 }
 
 // Get keyword ideas from multiple seed queries
+// Falls back to broader geo (state) if local town returns nothing
 async function getKeywordIdeas(
   serviceTypes: string[],
   location: string
 ): Promise<string[]> {
   const allSuggestions: string[] = [];
   
-  const seedQueries = [
-    // Direct service + location
-    ...serviceTypes.map(s => `${s} ${location}`),
-    ...serviceTypes.map(s => `${s} contractor ${location}`),
-    ...serviceTypes.map(s => `${s} cost ${location}`),
+  // Build location variants: exact → state
+  const locationVariants = [location];
+  // Extract state if location has comma (e.g., "Rochelle Park, NJ")
+  const parts = location.split(',').map(p => p.trim());
+  if (parts.length > 1) {
+    locationVariants.push(parts[1]); // state abbreviation
+  }
+  // Always add "new jersey" and "nj" as fallbacks
+  if (!location.toLowerCase().includes('new jersey')) {
+    locationVariants.push('New Jersey');
+    locationVariants.push('NJ');
+  }
+
+  const buildQueries = (loc: string) => [
+    ...serviceTypes.map(s => `${s} ${loc}`),
+    ...serviceTypes.map(s => `${s} contractor ${loc}`),
+    ...serviceTypes.map(s => `${s} cost ${loc}`),
     ...serviceTypes.map(s => `${s} near me`),
-    // Before/after intent
     ...serviceTypes.map(s => `${s} before and after`),
-    // How much / cost queries
     ...serviceTypes.map(s => `how much does ${s} cost`),
-    // Best contractor queries
-    `best contractor ${location}`,
-    `home renovation ${location}`,
+    `best contractor ${loc}`,
+    `home renovation ${loc}`,
   ];
 
-  // Run queries in parallel (limit to 6 to avoid rate limiting)
-  const queries = seedQueries.slice(0, 6);
-  const results = await Promise.all(queries.map(q => getGoogleSuggestions(q)));
-  
-  for (const suggestions of results) {
-    allSuggestions.push(...suggestions);
+  // Try each location variant until we get results
+  for (const loc of locationVariants) {
+    const queries = buildQueries(loc).slice(0, 8);
+    const results = await Promise.all(queries.map(q => getGoogleSuggestions(q)));
+    
+    for (const suggestions of results) {
+      allSuggestions.push(...suggestions);
+    }
+
+    // If we got enough results, stop
+    if (allSuggestions.length >= 5) break;
+  }
+
+  // If still empty, try just the service types without location
+  if (allSuggestions.length === 0) {
+    const genericQueries = serviceTypes.flatMap(s => [
+      `${s} contractor near me`,
+      `${s} cost`,
+      `${s} ideas`,
+      `${s} before and after`,
+    ]).slice(0, 6);
+    
+    const results = await Promise.all(genericQueries.map(q => getGoogleSuggestions(q)));
+    for (const suggestions of results) {
+      allSuggestions.push(...suggestions);
+    }
   }
 
   // Deduplicate
