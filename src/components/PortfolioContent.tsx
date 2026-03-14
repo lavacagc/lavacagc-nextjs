@@ -31,10 +31,11 @@ interface Project {
 
 interface PortfolioContentProps {
   projects: Project[];
+  defaultFilter?: string;
 }
 
-export default function PortfolioContent({ projects }: PortfolioContentProps) {
-  const [selectedFilter, setSelectedFilter] = useState('All Projects');
+export default function PortfolioContent({ projects, defaultFilter }: PortfolioContentProps) {
+  const [selectedFilter, setSelectedFilter] = useState(defaultFilter || 'All Projects');
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxImages, setLightboxImages] = useState<
     Array<{ url: string; alt?: string; category?: string; media_type?: 'image' | 'video' }>

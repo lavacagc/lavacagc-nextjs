@@ -90,38 +90,27 @@ interface GoogleReview {
   create_time: string | null;
 }
 
-async function getProjects(serviceFilter: string[]): Promise<Project[]> {
+async function getProjects(): Promise<Project[]> {
   try {
-    let query = supabase
+    const { data, error } = await supabase
       .from('projects')
       .select(`
         id, title, location, service_types, challenge, solution, url_slug
       `)
       .order('created_at', { ascending: false });
 
-    const { data, error } = await query;
     if (error || !data) return [];
 
-    // Filter by service type if specified
     type ProjectRow = typeof data[number];
-    let filtered: ProjectRow[] = data;
-    if (serviceFilter.length > 0) {
-      filtered = data.filter((p: ProjectRow) =>
-        p.service_types?.some((st: string) =>
-          serviceFilter.some((sf: string) => st.toLowerCase().includes(sf.toLowerCase()))
-        )
-      );
-    }
+    const projectIds = data.map((p: ProjectRow) => p.id);
 
-    // Fetch images for filtered projects
-    const subset = (filtered.length > 0 ? filtered : data).slice(0, 6);
-    const projectIds = subset.map((p: ProjectRow) => p.id);
+    // Fetch all images for all projects
     const { data: images } = await supabase
       .from('project_images')
       .select('project_id, image_url, image_category, alt_text, is_featured')
       .in('project_id', projectIds);
 
-    const projectsWithImages: Project[] = subset.map((p: ProjectRow) => ({
+    const projectsWithImages: Project[] = data.map((p: ProjectRow) => ({
       ...p,
       project_images: (images || []).filter((img: { project_id: string }) => img.project_id === p.id),
     }));
@@ -186,8 +175,17 @@ export default async function FreeEstimatePage({ searchParams }: { searchParams:
     ? CITY_HEADLINES[city]
     : config.headline;
 
+  // Map service param to portfolio filter name
+  const SERVICE_TO_FILTER: Record<string, string> = {
+    basement: 'Basement Finishing',
+    kitchen: 'Kitchen Remodeling',
+    bathroom: 'Bathroom Renovation',
+    general: 'All Projects',
+  };
+  const defaultFilter = SERVICE_TO_FILTER[service] || 'All Projects';
+
   const [projects, reviews, blogPost] = await Promise.all([
-    getProjects(config.serviceFilter),
+    getProjects(),
     getReviews(),
     getBlogPost(service),
   ]);
@@ -202,6 +200,7 @@ export default async function FreeEstimatePage({ searchParams }: { searchParams:
       blogPost={blogPost}
       utmCampaign={params.utm_campaign}
       utmContent={params.utm_content}
+      defaultFilter={defaultFilter}
     />
   );
 }

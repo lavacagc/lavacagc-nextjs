@@ -6,30 +6,23 @@ import Link from 'next/link';
 import logo from '@/assets/logo.png';
 import { Phone, Star, Shield, Award, Clock, ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import LandingPageLeadForm from '@/components/LandingPageLeadForm';
-import { ImageLightbox } from '@/components/ImageLightbox';
 import CallTrackingWrapper from '@/components/CallTrackingWrapper';
 import { trackEvent, trackScrollDepth } from '@/services/analyticsManager';
+import PortfolioContent from '@/components/PortfolioContent';
 
-// Wrapper for ImageLightbox with the correct prop interface
-function LightboxWrapper({
-  images,
-  initialIndex,
-  onClose,
-}: {
-  images: Array<{ url: string; alt?: string }>;
-  initialIndex: number;
-  onClose: () => void;
-}) {
-  const [currentIndex, setCurrentIndex] = React.useState(initialIndex);
-  return (
-    <ImageLightbox
-      images={images}
-      currentIndex={currentIndex}
-      isOpen={true}
-      onClose={onClose}
-      onNavigate={setCurrentIndex}
-    />
-  );
+// PortfolioContent wrapper that accepts a defaultFilter and renders within landing page
+function LandingPortfolioContent({ projects, defaultFilter }: { projects: Project[]; defaultFilter: string }) {
+  // Map Project type (landing page) to PortfolioContent's expected type
+  const portfolioProjects = projects.map((p) => ({
+    ...p,
+    featured_image_id: '',
+    project_images: p.project_images.map((img) => ({
+      ...img,
+      media_type: ('image' as const),
+    })),
+  }));
+
+  return <PortfolioContent projects={portfolioProjects} defaultFilter={defaultFilter} />;
 }
 
 interface Project {
@@ -65,6 +58,7 @@ interface FreeEstimateLandingProps {
   blogPost: { title: string; slug: string; excerpt: string } | null;
   utmCampaign?: string;
   utmContent?: string;
+  defaultFilter?: string;
 }
 
 export default function FreeEstimateLanding({
@@ -76,11 +70,9 @@ export default function FreeEstimateLanding({
   blogPost,
   utmCampaign,
   utmContent,
+  defaultFilter = 'All Projects',
 }: FreeEstimateLandingProps) {
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
-  const [lightboxImages, setLightboxImages] = useState<Array<{ url: string; alt?: string }>>([]);
-  const [lightboxIndex, setLightboxIndex] = useState(0);
 
   // Scroll depth tracking — fires at 25%, 50%, 75%, 100%
   useEffect(() => {
@@ -138,33 +130,12 @@ export default function FreeEstimateLanding({
     setCurrentReviewIndex((prev) => (prev - 1 + reviews.length) % reviews.length);
   }, [reviews.length]);
 
-  // Get hero image from first project
-  const heroProject = projects[0];
+  // Get hero image from first project matching the service filter, or fallback to first project
+  const heroProject = defaultFilter !== 'All Projects'
+    ? projects.find((p) => p.service_types?.some((st) => st === defaultFilter)) || projects[0]
+    : projects[0];
   const heroImage = heroProject?.project_images?.find((img) => img.is_featured)?.image_url
     || heroProject?.project_images?.[0]?.image_url;
-
-  // Get before/after pairs
-  const beforeAfterPairs = projects.flatMap((p) => {
-    const befores = p.project_images.filter((img) => img.image_category?.toLowerCase() === 'before');
-    const afters = p.project_images.filter((img) => img.image_category?.toLowerCase() === 'after');
-    if (befores.length > 0 && afters.length > 0) {
-      return [{ before: befores[0], after: afters[0], project: p }];
-    }
-    return [];
-  }).slice(0, 3);
-
-  // Get gallery images (all project photos)
-  const galleryImages = projects.flatMap((p) =>
-    p.project_images
-      .filter((img) => img.image_category?.toLowerCase() !== 'before')
-      .map((img) => ({ ...img, projectTitle: p.title, projectLocation: p.location }))
-  ).slice(0, 8);
-
-  const openLightbox = (images: Array<{ url: string; alt?: string }>, index: number) => {
-    setLightboxImages(images);
-    setLightboxIndex(index);
-    setLightboxOpen(true);
-  };
 
   const formSource = `landing-free-estimate${service !== 'general' ? `-${service}` : ''}${city ? `-${city}` : ''}`;
   const projectType = service !== 'general' ? service : 'home renovation';
@@ -367,90 +338,15 @@ export default function FreeEstimateLanding({
         </section>
       )}
 
-      {/* Before/After Gallery */}
-      {beforeAfterPairs.length > 0 && (
-        <section className="py-12 md:py-16 bg-muted/30">
-          <div className="container mx-auto px-4">
-            <h2 className="text-2xl md:text-3xl font-bold text-text-primary text-center mb-10">
+      {/* Portfolio — See the Transformation */}
+      {projects.length > 0 && (
+        <section className="bg-muted/30">
+          <div className="container mx-auto px-4 pt-12 md:pt-16">
+            <h2 className="text-2xl md:text-3xl font-bold text-text-primary text-center mb-0">
               See the Transformation
             </h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-              {beforeAfterPairs.map((pair, i) => (
-                <div key={i} className="bg-white rounded-xl overflow-hidden shadow-sm border">
-                  <div className="grid grid-cols-2">
-                    <div className="relative aspect-square">
-                      <Image
-                        src={pair.before.image_url}
-                        alt={pair.before.alt_text || 'Before renovation'}
-                        fill
-                        className="object-cover cursor-pointer"
-                        onClick={() => openLightbox(
-                          [{ url: pair.before.image_url, alt: 'Before' }, { url: pair.after.image_url, alt: 'After' }],
-                          0
-                        )}
-                      />
-                      <span className="absolute bottom-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">Before</span>
-                    </div>
-                    <div className="relative aspect-square">
-                      <Image
-                        src={pair.after.image_url}
-                        alt={pair.after.alt_text || 'After renovation'}
-                        fill
-                        className="object-cover cursor-pointer"
-                        onClick={() => openLightbox(
-                          [{ url: pair.before.image_url, alt: 'Before' }, { url: pair.after.image_url, alt: 'After' }],
-                          1
-                        )}
-                      />
-                      <span className="absolute bottom-2 left-2 bg-primary text-white text-xs px-2 py-1 rounded">After</span>
-                    </div>
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-semibold text-text-primary">{pair.project.title}</h3>
-                    <p className="text-sm text-text-muted">{pair.project.location}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
-        </section>
-      )}
-
-      {/* Project Gallery */}
-      {galleryImages.length > 0 && (
-        <section className="py-12 md:py-16 bg-white">
-          <div className="container mx-auto px-4">
-            <h2 className="text-2xl md:text-3xl font-bold text-text-primary text-center mb-4">
-              Our Recent Work
-            </h2>
-            <p className="text-text-secondary text-center mb-10 max-w-2xl mx-auto">
-              Real projects, real results. Every project is completed by our licensed team.
-            </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-6xl mx-auto">
-              {galleryImages.map((img, i) => (
-                <div
-                  key={i}
-                  className="relative aspect-square rounded-lg overflow-hidden group cursor-pointer"
-                  onClick={() => openLightbox(
-                    galleryImages.map((g) => ({ url: g.image_url, alt: g.alt_text })),
-                    i
-                  )}
-                >
-                  <Image
-                    src={img.image_url}
-                    alt={img.alt_text || img.projectTitle}
-                    fill
-                    className="object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors duration-300" />
-                  <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <p className="text-white text-sm font-medium truncate">{img.projectTitle}</p>
-                    <p className="text-white/80 text-xs">{img.projectLocation}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <LandingPortfolioContent projects={projects} defaultFilter={defaultFilter} />
         </section>
       )}
 
@@ -501,14 +397,6 @@ export default function FreeEstimateLanding({
       {/* Bottom spacer for mobile sticky bar */}
       <div className="h-20 md:hidden" />
 
-      {/* Lightbox */}
-      {lightboxOpen && (
-        <LightboxWrapper
-          images={lightboxImages}
-          initialIndex={lightboxIndex}
-          onClose={() => setLightboxOpen(false)}
-        />
-      )}
     </div>
   );
 }
