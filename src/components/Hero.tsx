@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { Star, Shield, Award, Users } from "lucide-react";
+import { Star, Shield, Award, Users, ChevronDown } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { supabase } from '@/integrations/supabase/client';
 
@@ -198,6 +198,21 @@ const Hero = () => {
               <p className="text-sm text-text-muted">& Operated</p>
             </div>
           </div>
+
+          {/* Scroll anchor — encourages users to scroll past the fold */}
+          <button
+            onClick={() => {
+              document.getElementById('projects')?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+              });
+            }}
+            className="mt-10 flex flex-col items-center gap-1 text-text-muted hover:text-primary transition-colors cursor-pointer mx-auto group"
+            aria-label="See our work"
+          >
+            <span className="text-sm font-medium">See Our Work</span>
+            <ChevronDown className="h-5 w-5 animate-bounce" />
+          </button>
         </div>
       </div>
     </section>

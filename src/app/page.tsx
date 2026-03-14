@@ -96,6 +96,11 @@ export default function Home() {
       <main id="main-content" className="pb-20 md:pb-0">
         <Hero />
 
+        {/* Project Gallery — moved up for immediate visual impact */}
+        <div id="projects" className="scroll-mt-20">
+          <ProjectGallery />
+        </div>
+
         {/* Quick Estimate Section */}
         <TrackedSection
           sectionId="estimate-section"
@@ -139,10 +144,6 @@ export default function Home() {
           <Testimonials />
         </TrackedSection>
 
-        <div id="projects" className="scroll-mt-20">
-          <ProjectGallery />
-        </div>
-
         {/* Services Section - Tracked */}
         <TrackedSection
           sectionId="services-section"
@@ -150,15 +151,6 @@ export default function Home() {
           className=""
         >
           <Services />
-        </TrackedSection>
-
-        {/* Service Areas Section - Tracked */}
-        <TrackedSection
-          sectionId="service-areas-section"
-          sectionName="Service Areas Section"
-          className=""
-        >
-          <ServiceAreas />
         </TrackedSection>
 
         {/* Why Choose Section - Tracked */}
@@ -213,6 +205,15 @@ export default function Home() {
               </Link>
             </div>
           </div>
+        </TrackedSection>
+
+        {/* Service Areas Section — moved to bottom (SEO value, less critical for ad traffic) */}
+        <TrackedSection
+          sectionId="service-areas-section"
+          sectionName="Service Areas Section"
+          className=""
+        >
+          <ServiceAreas />
         </TrackedSection>
       </main>
       <Footer />
