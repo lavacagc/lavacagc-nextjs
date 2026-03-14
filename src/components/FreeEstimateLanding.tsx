@@ -12,13 +12,12 @@ import PortfolioContent from '@/components/PortfolioContent';
 
 // PortfolioContent wrapper that accepts a defaultFilter and renders within landing page
 function LandingPortfolioContent({ projects, defaultFilter }: { projects: Project[]; defaultFilter: string }) {
-  // Map Project type (landing page) to PortfolioContent's expected type
   const portfolioProjects = projects.map((p) => ({
     ...p,
     featured_image_id: '',
     project_images: p.project_images.map((img) => ({
       ...img,
-      media_type: ('image' as const),
+      media_type: (img.media_type === 'video' ? 'video' : 'image') as 'image' | 'video',
     })),
   }));
 
@@ -38,6 +37,7 @@ interface Project {
     image_category: string;
     alt_text: string;
     is_featured?: boolean;
+    media_type?: string;
   }>;
 }
 
@@ -259,7 +259,19 @@ export default function FreeEstimateLanding({
         </div>
       </section>
 
-      {/* Reviews Carousel */}
+      {/* Portfolio — See the Transformation */}
+      {projects.length > 0 && (
+        <section className="bg-white">
+          <div className="container mx-auto px-4 pt-12 md:pt-16">
+            <h2 className="text-2xl md:text-3xl font-bold text-text-primary text-center mb-0">
+              See the Transformation
+            </h2>
+          </div>
+          <LandingPortfolioContent projects={projects} defaultFilter={defaultFilter} />
+        </section>
+      )}
+
+      {/* Reviews Carousel — below portfolio */}
       {reviews.length > 0 && (
         <section className="py-12 md:py-16 bg-white">
           <div className="container mx-auto px-4">
@@ -335,18 +347,6 @@ export default function FreeEstimateLanding({
               )}
             </div>
           </div>
-        </section>
-      )}
-
-      {/* Portfolio — See the Transformation */}
-      {projects.length > 0 && (
-        <section className="bg-muted/30">
-          <div className="container mx-auto px-4 pt-12 md:pt-16">
-            <h2 className="text-2xl md:text-3xl font-bold text-text-primary text-center mb-0">
-              See the Transformation
-            </h2>
-          </div>
-          <LandingPortfolioContent projects={projects} defaultFilter={defaultFilter} />
         </section>
       )}
 

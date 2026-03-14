@@ -79,6 +79,7 @@ interface Project {
     image_category: string;
     alt_text: string;
     is_featured?: boolean;
+    media_type?: string;
   }>;
 }
 
@@ -107,7 +108,7 @@ async function getProjects(): Promise<Project[]> {
     // Fetch all images for all projects
     const { data: images } = await supabase
       .from('project_images')
-      .select('project_id, image_url, image_category, alt_text, is_featured')
+      .select('project_id, image_url, image_category, alt_text, is_featured, media_type')
       .in('project_id', projectIds);
 
     const projectsWithImages: Project[] = data.map((p: ProjectRow) => ({
