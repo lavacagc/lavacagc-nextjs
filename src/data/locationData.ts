@@ -958,10 +958,14 @@ export const getLocationMetaTitle = (location: string, service?: string): string
     };
 
     const serviceName = serviceMap[service] || service;
-    return `#1 ${serviceName} Contractor in ${loc.name}, NJ | Free Estimates`;
+    // Pattern: "[Service] in [City], NJ" — matches top rankers like Mudosi, WA Construct, G&L Sons
+    // Brand appended by root layout template: "| La Vaca General Contractors"
+    return `Expert ${serviceName} in ${loc.name}, NJ`;
   }
 
-  return `${loc.name}, NJ Home Remodeling | 5-Star Rated Contractor | Free Estimates`;
+  // Pattern: "Home Remodeling [City] NJ" — keyword-first like Magnolia, Gomez, Blackbirdz
+  // Brand appended by root layout template: "| La Vaca General Contractors"
+  return `Home Remodeling Contractor in ${loc.name}, NJ`;
 };
 
 export const getLocationMetaDescription = (location: string, service?: string): string => {
@@ -981,8 +985,10 @@ export const getLocationMetaDescription = (location: string, service?: string): 
     };
 
     const serviceName = serviceMap[service] || service;
-    return `Looking for ${serviceName} in ${loc.name}, NJ? La Vaca GC is a 5-star rated, licensed & insured contractor serving ${neighborhoods} (${zipCode}). See real projects. Call (201) 241-1580 for a free estimate.`;
+    // Action verb opener + specific services + trust + CTA — matches G&L Sons, Mudosi, Alleva pattern
+    return `Transform your ${loc.name} home with expert ${serviceName}. Licensed & insured NJ contractor serving ${neighborhoods} (${zipCode}). 5-star rated. Call (201) 241-1580 for a free estimate.`;
   }
 
-  return `${loc.name}'s trusted home remodeling contractor. Kitchen, bathroom, basement & additions. 5-star Google reviews. Licensed & insured (HIC #13VH13373800). Serving ${neighborhoods} (${zipCode}). Call (201) 241-1580.`;
+  // Action verb opener + service list + trust signals + phone CTA — matches top-ranking competitor patterns
+  return `Transform your ${loc.name} home with expert kitchen, bathroom, basement & addition remodeling. Licensed & insured NJ contractor serving ${neighborhoods} (${zipCode}). 5-star rated. Call (201) 241-1580.`;
 };
