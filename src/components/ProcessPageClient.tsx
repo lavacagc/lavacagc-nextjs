@@ -292,7 +292,7 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
                   Our client portal is powered by
                 </p>
                 <a
-                  href="https://www.specnook.app"
+                  href="https://www.specnook.app?utm_source=lavacagc&utm_medium=website&utm_campaign=client_portal&utm_content=process_page"
                   target="_blank"
                   rel="noopener"
                   className="inline-flex items-center gap-2 text-primary hover:text-primary/80 font-semibold text-lg transition-colors"
