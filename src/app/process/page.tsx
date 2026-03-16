@@ -6,9 +6,9 @@ import HowToSchema from '@/components/seo/HowToSchema';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Our Remodeling Process | 6-Step Home Renovation | La Vaca General Contractors',
+  title: 'Our Process & Client Portal | Transparent Home Remodeling | La Vaca General Contractors',
   description:
-    'Discover our proven 6-step home remodeling process in Northern NJ. From initial consultation to final walkthrough, we ensure quality results on time and on budget.',
+    'See our 6-step remodeling process and the client portal every La Vaca project includes. Daily photo updates, material selections, digital contracts, and complete project transparency.',
   keywords:
     'home remodeling process, renovation steps, NJ contractor process, kitchen remodel timeline, bathroom renovation process, home improvement steps',
   openGraph: {
@@ -193,8 +193,8 @@ export default function ProcessPage() {
                 Our Proven Remodeling Process
               </h1>
               <p className="text-xl text-text-secondary leading-relaxed mb-8">
-                Discover how we transform your vision into reality through our systematic, transparent 6-step
-                process that ensures quality results every time.
+                From first consultation to final walkthrough — plus a personal project portal where you can 
+                track every selection, see daily photos, and approve contracts from your phone.
               </p>
               <Link
                 href="/#estimate"

@@ -17,6 +17,12 @@ import {
   Truck,
   Home,
   Award,
+  Monitor,
+  Camera,
+  ClipboardCheck,
+  Shield,
+  Eye,
+  Smartphone,
 } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
@@ -163,6 +169,140 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
                   );
                 })}
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════
+          YOUR PROJECT PORTAL — SpecNook Technology Section
+          ═══════════════════════════════════════════════════════ */}
+      <section className="py-12 md:py-20 bg-background">
+        <div className="container mx-auto px-4">
+          <div className="max-w-6xl mx-auto">
+            {/* Section Header */}
+            <div className="text-center mb-12 md:mb-16">
+              <Badge variant="secondary" className="mb-4 text-sm px-4 py-1.5">
+                <Monitor className="h-3.5 w-3.5 mr-1.5" />
+                Included With Every Project
+              </Badge>
+              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
+                Your Own Project Portal
+              </h2>
+              <p className="text-lg text-text-secondary max-w-2xl mx-auto">
+                Every La Vaca client gets a personal project portal — a private online space where you can 
+                track selections, view daily progress photos, approve contracts, and see exactly where 
+                your project stands. No more guessing.
+              </p>
+            </div>
+
+            {/* Three Pillars */}
+            <div className="grid md:grid-cols-3 gap-8 mb-12 md:mb-16">
+              <div className="text-center">
+                <div className="bg-primary/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Eye className="h-8 w-8 text-primary" />
+                </div>
+                <h3 className="text-xl font-bold text-text-primary mb-3">Full Transparency</h3>
+                <p className="text-text-secondary leading-relaxed">
+                  See every selection, every contract, every change order, and every dollar in one place. 
+                  No surprises, no hidden costs, no &quot;we&apos;ll figure it out later.&quot; Your portal 
+                  is the single source of truth for your entire project.
+                </p>
+              </div>
+              <div className="text-center">
+                <div className="bg-primary/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Camera className="h-8 w-8 text-primary" />
+                </div>
+                <h3 className="text-xl font-bold text-text-primary mb-3">Daily Communication</h3>
+                <p className="text-text-secondary leading-relaxed">
+                  Get daily photo updates showing exactly what was accomplished on your job site. 
+                  No more wondering what&apos;s happening or calling for updates — log in anytime 
+                  and see your home taking shape.
+                </p>
+              </div>
+              <div className="text-center">
+                <div className="bg-primary/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Shield className="h-8 w-8 text-primary" />
+                </div>
+                <h3 className="text-xl font-bold text-text-primary mb-3">Quality You Can Track</h3>
+                <p className="text-text-secondary leading-relaxed">
+                  Every material selection is documented with photos, prices, and your approval. 
+                  Every punch list item is tracked to completion. Every document is signed and 
+                  stored. Quality isn&apos;t just promised — it&apos;s proven.
+                </p>
+              </div>
+            </div>
+
+            {/* Feature Details */}
+            <div className="bg-muted/30 rounded-2xl p-6 md:p-10">
+              <h3 className="text-2xl font-bold text-text-primary text-center mb-8">
+                What You Get in Your Portal
+              </h3>
+              <div className="grid md:grid-cols-2 gap-6">
+                {[
+                  {
+                    icon: ClipboardCheck,
+                    title: 'Material Selections',
+                    desc: 'Browse tile, countertop, fixture, and hardware options we\'ve curated for your project. Compare choices side by side with photos and prices, then approve with one click.',
+                  },
+                  {
+                    icon: Camera,
+                    title: 'Daily Progress Photos',
+                    desc: 'Every day our crew is on your site, you\'ll see photos and a summary of what was done. Watch your renovation come together from anywhere — phone, tablet, or computer.',
+                  },
+                  {
+                    icon: FileText,
+                    title: 'Contracts & Change Orders',
+                    desc: 'Review and sign contracts digitally. If the scope changes, you\'ll see a clear change order with line items before any work proceeds. Everything documented.',
+                  },
+                  {
+                    icon: CheckCircle,
+                    title: 'Punch List Tracking',
+                    desc: 'At the end of your project, every touch-up and final detail is tracked with photos and status updates. Nothing falls through the cracks.',
+                  },
+                  {
+                    icon: Shield,
+                    title: 'Complete Documentation',
+                    desc: 'Lien waivers, insurance certificates, signed contracts, warranties — every document your project generates is stored and accessible in your portal.',
+                  },
+                  {
+                    icon: Smartphone,
+                    title: 'Access From Any Device',
+                    desc: 'No app to download, no account to create. Just open the link we send you on your phone, tablet, or laptop and everything is right there.',
+                  },
+                ].map((feature) => (
+                  <div key={feature.title} className="flex gap-4 items-start">
+                    <div className="bg-primary/10 w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <feature.icon className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-text-primary mb-1">{feature.title}</h4>
+                      <p className="text-text-secondary text-sm leading-relaxed">{feature.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Promise Statement */}
+            <div className="mt-12 md:mt-16 text-center max-w-3xl mx-auto">
+              <h3 className="text-2xl font-bold text-text-primary mb-4">Our Promise to Every Client</h3>
+              <p className="text-text-secondary text-lg leading-relaxed mb-6">
+                We believe you shouldn&apos;t have to wonder what&apos;s happening with your renovation. 
+                That&apos;s why we invested in technology that keeps you informed at every step — not because 
+                it&apos;s trendy, but because it&apos;s the right way to treat someone who&apos;s trusting you 
+                with their home. Every La Vaca project comes with your own portal, daily updates, and 
+                complete documentation. No extra cost. It&apos;s just how we work.
+              </p>
+              <Button
+                size="lg"
+                className="bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-white"
+                asChild
+              >
+                <Link href="/#estimate">
+                  Start Your Project
+                </Link>
+              </Button>
             </div>
           </div>
         </div>
