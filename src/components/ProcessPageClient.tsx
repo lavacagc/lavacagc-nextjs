@@ -23,8 +23,10 @@ import {
   Shield,
   Eye,
   Smartphone,
+  ExternalLink,
 } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { useEffect, useRef, useState } from 'react';
 
 interface ProcessStep {
   number: number;
@@ -70,14 +72,261 @@ const qualityStandards = [
   },
 ];
 
+const tabs = [
+  { id: 'portal', label: 'Your Project Portal' },
+  { id: 'process', label: 'How We Work' },
+];
+
 export default function ProcessPageClient({ processSteps }: ProcessPageClientProps) {
+  const [activeTab, setActiveTab] = useState('portal');
+  const [isSticky, setIsSticky] = useState(false);
+  const tabBarRef = useRef<HTMLDivElement>(null);
+  const portalRef = useRef<HTMLDivElement>(null);
+  const processRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // IntersectionObserver for sticky detection
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsSticky(!entry.isIntersecting);
+      },
+      { threshold: 0, rootMargin: '-1px 0px 0px 0px' }
+    );
+
+    observer.observe(sentinel);
+
+    // Scroll spy to update active tab
+    const handleScroll = () => {
+      const processEl = processRef.current;
+      if (!processEl) return;
+
+      const offset = 120; // account for sticky header + tab bar
+      const processTop = processEl.getBoundingClientRect().top;
+
+      if (processTop <= offset) {
+        setActiveTab('process');
+      } else {
+        setActiveTab('portal');
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
+  const scrollToSection = (id: string) => {
+    const el = id === 'portal' ? portalRef.current : processRef.current;
+    if (!el) return;
+    const offset = 100; // sticky header + tab bar height
+    const top = el.getBoundingClientRect().top + window.scrollY - offset;
+    window.scrollTo({ top, behavior: 'smooth' });
+  };
+
   return (
     <>
-      {/* Process Steps Section */}
-      <section className="py-8 md:py-16 bg-background-subtle">
+      {/* Sentinel — when this scrolls out of view, tabs become sticky */}
+      <div ref={sentinelRef} className="h-0" />
+
+      {/* ═══════════════════════════════════════════════════════
+          STICKY TAB BAR
+          ═══════════════════════════════════════════════════════ */}
+      <div
+        ref={tabBarRef}
+        className={`${
+          isSticky ? 'fixed top-0 left-0 right-0 shadow-md z-40' : ''
+        } bg-background/95 backdrop-blur-sm border-b transition-shadow duration-200`}
+      >
+        <div className="container mx-auto px-4">
+          <div className="flex items-center justify-center gap-1 md:gap-2 py-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => scrollToSection(tab.id)}
+                className={`px-4 md:px-6 py-2.5 rounded-full text-sm md:text-base font-medium transition-all duration-200 cursor-pointer ${
+                  activeTab === tab.id
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-muted'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Spacer when sticky to prevent content jump */}
+      {isSticky && <div className="h-[52px]" />}
+
+      {/* ═══════════════════════════════════════════════════════
+          SECTION 1: YOUR PROJECT PORTAL (FIRST)
+          ═══════════════════════════════════════════════════════ */}
+      <section ref={portalRef} id="portal" className="py-12 md:py-20 bg-background scroll-mt-28">
         <div className="container mx-auto px-4">
           <div className="max-w-6xl mx-auto">
-            <h2 className="text-3xl font-bold text-text-primary text-center mb-12">How We Work</h2>
+            {/* Section Header */}
+            <div className="text-center mb-12 md:mb-16">
+              <Badge variant="secondary" className="mb-4 text-sm px-4 py-1.5">
+                <Monitor className="h-3.5 w-3.5 mr-1.5" />
+                Included With Every Project
+              </Badge>
+              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
+                Your Own Project Portal
+              </h2>
+              <p className="text-lg text-text-secondary max-w-2xl mx-auto">
+                Every La Vaca client gets a personal project portal — a private online space where you can
+                track selections, view daily progress photos, approve contracts, and see exactly where
+                your project stands. No more guessing.
+              </p>
+            </div>
+
+            {/* Three Pillars */}
+            <div className="grid md:grid-cols-3 gap-8 mb-12 md:mb-16">
+              <div className="text-center">
+                <div className="bg-primary/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Eye className="h-8 w-8 text-primary" />
+                </div>
+                <h3 className="text-xl font-bold text-text-primary mb-3">Full Transparency</h3>
+                <p className="text-text-secondary leading-relaxed">
+                  See every selection, every contract, every change order, and every dollar in one place.
+                  No surprises, no hidden costs, no &quot;we&apos;ll figure it out later.&quot; Your portal
+                  is the single source of truth for your entire project.
+                </p>
+              </div>
+              <div className="text-center">
+                <div className="bg-primary/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Camera className="h-8 w-8 text-primary" />
+                </div>
+                <h3 className="text-xl font-bold text-text-primary mb-3">Daily Communication</h3>
+                <p className="text-text-secondary leading-relaxed">
+                  Get daily photo updates showing exactly what was accomplished on your job site.
+                  No more wondering what&apos;s happening or calling for updates — log in anytime
+                  and see your home taking shape.
+                </p>
+              </div>
+              <div className="text-center">
+                <div className="bg-primary/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Shield className="h-8 w-8 text-primary" />
+                </div>
+                <h3 className="text-xl font-bold text-text-primary mb-3">Quality You Can Track</h3>
+                <p className="text-text-secondary leading-relaxed">
+                  Every material selection is documented with photos, prices, and your approval.
+                  Every punch list item is tracked to completion. Every document is signed and
+                  stored. Quality isn&apos;t just promised — it&apos;s proven.
+                </p>
+              </div>
+            </div>
+
+            {/* Feature Details */}
+            <div className="bg-muted/30 rounded-2xl p-6 md:p-10">
+              <h3 className="text-2xl font-bold text-text-primary text-center mb-8">
+                What You Get in Your Portal
+              </h3>
+              <div className="grid md:grid-cols-2 gap-6">
+                {[
+                  {
+                    icon: ClipboardCheck,
+                    title: 'Material Selections',
+                    desc: "Browse tile, countertop, fixture, and hardware options we've curated for your project. Compare choices side by side with photos and prices, then approve with one click.",
+                  },
+                  {
+                    icon: Camera,
+                    title: 'Daily Progress Photos',
+                    desc: "Every day our crew is on your site, you'll see photos and a summary of what was done. Watch your renovation come together from anywhere — phone, tablet, or computer.",
+                  },
+                  {
+                    icon: FileText,
+                    title: 'Contracts & Change Orders',
+                    desc: "Review and sign contracts digitally. If the scope changes, you'll see a clear change order with line items before any work proceeds. Everything documented.",
+                  },
+                  {
+                    icon: CheckCircle,
+                    title: 'Punch List Tracking',
+                    desc: 'At the end of your project, every touch-up and final detail is tracked with photos and status updates. Nothing falls through the cracks.',
+                  },
+                  {
+                    icon: Shield,
+                    title: 'Complete Documentation',
+                    desc: 'Lien waivers, insurance certificates, signed contracts, warranties — every document your project generates is stored and accessible in your portal.',
+                  },
+                  {
+                    icon: Smartphone,
+                    title: 'Access From Any Device',
+                    desc: 'No app to download, no account to create. Just open the link we send you on your phone, tablet, or laptop and everything is right there.',
+                  },
+                ].map((feature) => (
+                  <div key={feature.title} className="flex gap-4 items-start">
+                    <div className="bg-primary/10 w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <feature.icon className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-text-primary mb-1">{feature.title}</h4>
+                      <p className="text-text-secondary text-sm leading-relaxed">{feature.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Promise + SpecNook CTA */}
+            <div className="mt-12 md:mt-16 text-center max-w-3xl mx-auto">
+              <h3 className="text-2xl font-bold text-text-primary mb-4">Our Promise to Every Client</h3>
+              <p className="text-text-secondary text-lg leading-relaxed mb-6">
+                We believe you shouldn&apos;t have to wonder what&apos;s happening with your renovation.
+                That&apos;s why we invested in technology that keeps you informed at every step — not because
+                it&apos;s trendy, but because it&apos;s the right way to treat someone who&apos;s trusting you
+                with their home. Every La Vaca project comes with your own portal, daily updates, and
+                complete documentation. No extra cost. It&apos;s just how we work.
+              </p>
+
+              {/* SEO-friendly SpecNook link */}
+              <div className="bg-muted/50 rounded-xl p-6 border mt-8">
+                <p className="text-sm text-text-secondary mb-3">
+                  Our client portal is powered by
+                </p>
+                <a
+                  href="https://www.specnook.app"
+                  target="_blank"
+                  rel="noopener"
+                  className="inline-flex items-center gap-2 text-primary hover:text-primary/80 font-semibold text-lg transition-colors"
+                >
+                  SpecNook — Construction Client Portal Software
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+                <p className="text-sm text-text-secondary mt-2">
+                  Selection tracking, daily updates, digital contracts, and client communication — built for contractors who care about the client experience.
+                </p>
+              </div>
+
+              <Button
+                size="lg"
+                className="bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-white mt-8"
+                asChild
+              >
+                <Link href="/#estimate">Start Your Project</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════
+          SECTION 2: HOW WE WORK (PROCESS STEPS)
+          ═══════════════════════════════════════════════════════ */}
+      <section ref={processRef} id="process" className="py-8 md:py-16 bg-background-subtle scroll-mt-28">
+        <div className="container mx-auto px-4">
+          <div className="max-w-6xl mx-auto">
+            <h2 className="text-3xl md:text-4xl font-bold text-text-primary text-center mb-4">How We Work</h2>
+            <p className="text-text-secondary text-center max-w-2xl mx-auto mb-12">
+              Our proven 6-step process ensures quality results from first conversation to final walkthrough.
+            </p>
 
             <div className="space-y-12">
               {/* Mobile: Accordion View */}
@@ -169,140 +418,6 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
                   );
                 })}
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════
-          YOUR PROJECT PORTAL — SpecNook Technology Section
-          ═══════════════════════════════════════════════════════ */}
-      <section className="py-12 md:py-20 bg-background">
-        <div className="container mx-auto px-4">
-          <div className="max-w-6xl mx-auto">
-            {/* Section Header */}
-            <div className="text-center mb-12 md:mb-16">
-              <Badge variant="secondary" className="mb-4 text-sm px-4 py-1.5">
-                <Monitor className="h-3.5 w-3.5 mr-1.5" />
-                Included With Every Project
-              </Badge>
-              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
-                Your Own Project Portal
-              </h2>
-              <p className="text-lg text-text-secondary max-w-2xl mx-auto">
-                Every La Vaca client gets a personal project portal — a private online space where you can 
-                track selections, view daily progress photos, approve contracts, and see exactly where 
-                your project stands. No more guessing.
-              </p>
-            </div>
-
-            {/* Three Pillars */}
-            <div className="grid md:grid-cols-3 gap-8 mb-12 md:mb-16">
-              <div className="text-center">
-                <div className="bg-primary/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Eye className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="text-xl font-bold text-text-primary mb-3">Full Transparency</h3>
-                <p className="text-text-secondary leading-relaxed">
-                  See every selection, every contract, every change order, and every dollar in one place. 
-                  No surprises, no hidden costs, no &quot;we&apos;ll figure it out later.&quot; Your portal 
-                  is the single source of truth for your entire project.
-                </p>
-              </div>
-              <div className="text-center">
-                <div className="bg-primary/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Camera className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="text-xl font-bold text-text-primary mb-3">Daily Communication</h3>
-                <p className="text-text-secondary leading-relaxed">
-                  Get daily photo updates showing exactly what was accomplished on your job site. 
-                  No more wondering what&apos;s happening or calling for updates — log in anytime 
-                  and see your home taking shape.
-                </p>
-              </div>
-              <div className="text-center">
-                <div className="bg-primary/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Shield className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="text-xl font-bold text-text-primary mb-3">Quality You Can Track</h3>
-                <p className="text-text-secondary leading-relaxed">
-                  Every material selection is documented with photos, prices, and your approval. 
-                  Every punch list item is tracked to completion. Every document is signed and 
-                  stored. Quality isn&apos;t just promised — it&apos;s proven.
-                </p>
-              </div>
-            </div>
-
-            {/* Feature Details */}
-            <div className="bg-muted/30 rounded-2xl p-6 md:p-10">
-              <h3 className="text-2xl font-bold text-text-primary text-center mb-8">
-                What You Get in Your Portal
-              </h3>
-              <div className="grid md:grid-cols-2 gap-6">
-                {[
-                  {
-                    icon: ClipboardCheck,
-                    title: 'Material Selections',
-                    desc: 'Browse tile, countertop, fixture, and hardware options we\'ve curated for your project. Compare choices side by side with photos and prices, then approve with one click.',
-                  },
-                  {
-                    icon: Camera,
-                    title: 'Daily Progress Photos',
-                    desc: 'Every day our crew is on your site, you\'ll see photos and a summary of what was done. Watch your renovation come together from anywhere — phone, tablet, or computer.',
-                  },
-                  {
-                    icon: FileText,
-                    title: 'Contracts & Change Orders',
-                    desc: 'Review and sign contracts digitally. If the scope changes, you\'ll see a clear change order with line items before any work proceeds. Everything documented.',
-                  },
-                  {
-                    icon: CheckCircle,
-                    title: 'Punch List Tracking',
-                    desc: 'At the end of your project, every touch-up and final detail is tracked with photos and status updates. Nothing falls through the cracks.',
-                  },
-                  {
-                    icon: Shield,
-                    title: 'Complete Documentation',
-                    desc: 'Lien waivers, insurance certificates, signed contracts, warranties — every document your project generates is stored and accessible in your portal.',
-                  },
-                  {
-                    icon: Smartphone,
-                    title: 'Access From Any Device',
-                    desc: 'No app to download, no account to create. Just open the link we send you on your phone, tablet, or laptop and everything is right there.',
-                  },
-                ].map((feature) => (
-                  <div key={feature.title} className="flex gap-4 items-start">
-                    <div className="bg-primary/10 w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <feature.icon className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-text-primary mb-1">{feature.title}</h4>
-                      <p className="text-text-secondary text-sm leading-relaxed">{feature.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Promise Statement */}
-            <div className="mt-12 md:mt-16 text-center max-w-3xl mx-auto">
-              <h3 className="text-2xl font-bold text-text-primary mb-4">Our Promise to Every Client</h3>
-              <p className="text-text-secondary text-lg leading-relaxed mb-6">
-                We believe you shouldn&apos;t have to wonder what&apos;s happening with your renovation. 
-                That&apos;s why we invested in technology that keeps you informed at every step — not because 
-                it&apos;s trendy, but because it&apos;s the right way to treat someone who&apos;s trusting you 
-                with their home. Every La Vaca project comes with your own portal, daily updates, and 
-                complete documentation. No extra cost. It&apos;s just how we work.
-              </p>
-              <Button
-                size="lg"
-                className="bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-white"
-                asChild
-              >
-                <Link href="/#estimate">
-                  Start Your Project
-                </Link>
-              </Button>
             </div>
           </div>
         </div>
