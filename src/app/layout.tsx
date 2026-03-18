@@ -9,6 +9,7 @@ import CookieConsent from '@/components/CookieConsent'
 import Analytics from '@/components/Analytics'
 import StructuredData from '@/components/StructuredData'
 import ChatWidget from '@/components/ChatWidget'
+import ReviewToast from '@/components/ReviewToast'
 import { ClientLeadGenWidgets } from '@/components/ClientLeadGenWidgets'
 import StickyCTA from '@/components/StickyCTA'
 
@@ -111,6 +112,7 @@ export default function RootLayout({
             <Sonner />
             <CookieConsent />
             <ChatWidget />
+            <ReviewToast />
             <ClientLeadGenWidgets />
             <StickyCTA />
           </TooltipProvider>

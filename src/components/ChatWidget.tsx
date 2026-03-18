@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -17,6 +18,7 @@ function generateVisitorId(): string {
 }
 
 export default function ChatWidget() {
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -163,6 +165,11 @@ export default function ChatWidget() {
       sendMessage();
     }
   };
+
+  // Hide chat widget on /free-estimate page
+  if (pathname === '/free-estimate') {
+    return null;
+  }
 
   return (
     <>

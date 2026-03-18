@@ -63,6 +63,25 @@ const processSteps = [
 export default function ServiceDetailClient({ service, slug }: ServiceDetailClientProps) {
   return (
     <>
+      {/* Top CTA Banner */}
+      <section className="bg-gradient-to-r from-[#EE9639] to-[#E08530] py-4">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="text-center md:text-left">
+              <h2 className="text-white text-xl md:text-2xl font-bold">Get Your Free Estimate Today</h2>
+              <p className="text-white/90 text-sm md:text-base">Call us: <a href="tel:2016145930" className="font-bold hover:underline">(201) 614-5930</a></p>
+            </div>
+            <Button
+              size="lg"
+              className="bg-white text-primary hover:bg-gray-100 hover:shadow-lg"
+              asChild
+            >
+              <Link href="/free-estimate">Get Free Estimate</Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+
       {/* Hero Section */}
       <section className="relative bg-gradient-to-br from-background via-background to-muted py-10 md:py-20 lg:py-32">
         <div className="container mx-auto px-4">
@@ -240,6 +259,68 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
                 </p>
               </Card>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Bottom CTA Section */}
+      <section className="py-16 bg-gradient-to-br from-background via-muted to-background">
+        <div className="container mx-auto px-4">
+          <div className="max-w-4xl mx-auto text-center">
+            <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
+              Ready to Start Your {service.title} Project?
+            </h2>
+            <p className="text-lg text-text-secondary mb-8 max-w-2xl mx-auto">
+              Get a free, no-obligation estimate from Northern NJ&apos;s most trusted contractor
+            </p>
+
+            {/* Value Props */}
+            <div className="grid md:grid-cols-3 gap-6 mb-10">
+              <div className="flex flex-col items-center">
+                <CheckCircle className="h-12 w-12 text-accent-teal mb-3" />
+                <h3 className="font-bold text-text-primary mb-1">Licensed & Insured</h3>
+                <p className="text-sm text-text-secondary">HIC# 13VH13373800</p>
+              </div>
+              <div className="flex flex-col items-center">
+                <DollarSign className="h-12 w-12 text-primary mb-3" />
+                <h3 className="font-bold text-text-primary mb-1">Free Estimates</h3>
+                <p className="text-sm text-text-secondary">No commitment required</p>
+              </div>
+              <div className="flex flex-col items-center">
+                <Star className="h-12 w-12 text-yellow-400 fill-yellow-400 mb-3" />
+                <h3 className="font-bold text-text-primary mb-1">5-Star Rated</h3>
+                <p className="text-sm text-text-secondary">100% customer satisfaction</p>
+              </div>
+            </div>
+
+            {/* CTA Buttons */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">
+              <Button
+                size="lg"
+                className="bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-lg px-8 py-6"
+                asChild
+              >
+                <Link href="/free-estimate">
+                  Get Free Estimate
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
+              </Button>
+              <Button
+                variant="outline"
+                size="lg"
+                className="text-lg px-8 py-6 border-2"
+                asChild
+              >
+                <a href="tel:2016145930">
+                  <Phone className="mr-2 h-5 w-5" />
+                  Call (201) 614-5930
+                </a>
+              </Button>
+            </div>
+
+            <p className="text-sm text-text-muted">
+              Or email us at <a href="mailto:info@lavacagc.com" className="text-primary hover:underline">info@lavacagc.com</a>
+            </p>
           </div>
         </div>
       </section>
