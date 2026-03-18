@@ -987,10 +987,10 @@ export const getLocationMetaDescription = (location: string, service?: string): 
 
     const serviceName = serviceMap[service] || service;
     // Competitor-proven pattern: specific service + city + trust + differentiator + phone CTA
-    return `Trusted ${serviceName} contractor in ${loc.name}, NJ. 100% transparent pricing, daily photo updates on your project — no surprises. Licensed & insured, 5-star rated. Serving ${neighborhoods} (${zipCode}). Call (201) 212-4917 for your free estimate.`;
+    return `Trusted ${serviceName} contractor in ${loc.name}, NJ. 100% transparent pricing, daily photo updates on your project — no surprises. Licensed & insured, 5-star rated. Serving ${neighborhoods} (${zipCode}). Call (201) 614-5930 for your free estimate.`;
   }
 
   // Competitor-proven: lead with services (JMC, Magnolia, G&L Sons pattern) + La Vaca differentiator
   // Key insight: competitors ranking #1-5 all list specific services, include phone, and mention trust signals
-  return `Top-rated kitchen, bathroom & basement remodeling contractor in ${loc.name}, NJ. You get 100% transparent pricing and daily updates on your project — we treat your home like it's ours. Licensed, insured, 5-star reviewed. Serving ${neighborhoods} (${zipCode}). Call (201) 212-4917.`;
+  return `Top-rated kitchen, bathroom & basement remodeling contractor in ${loc.name}, NJ. 100% transparent pricing and daily updates on your project — you'll always know exactly what's happening. Licensed, insured, 5-star reviewed. Serving ${neighborhoods} (${zipCode}). Call (201) 614-5930.`;
 };
