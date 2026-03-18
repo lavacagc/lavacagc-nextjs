@@ -280,6 +280,9 @@ const nextConfig: NextConfig = {
 
       // Typo redirects
       { source: '/home-additions-west-orge-nj', destination: '/locations/west-orange/services/home-additions', permanent: true },
+
+      // Common service slug mistakes (from ads/external links)
+      { source: '/services/basement-remodeling', destination: '/services/basement-finishing', permanent: true },
     ]
   },
 
