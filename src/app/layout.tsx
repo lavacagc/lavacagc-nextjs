@@ -13,6 +13,7 @@ import ChatWidget from '@/components/ChatWidget'
 import ReviewToast from '@/components/ReviewToast'
 import { ClientLeadGenWidgets } from '@/components/ClientLeadGenWidgets'
 import StickyCTA from '@/components/StickyCTA'
+import SectionTracker from '@/components/SectionTracker'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -124,6 +125,7 @@ export default function RootLayout({
             <ReviewToast />
             <ClientLeadGenWidgets />
             <StickyCTA />
+            <SectionTracker />
           </TooltipProvider>
         </Providers>
       </body>

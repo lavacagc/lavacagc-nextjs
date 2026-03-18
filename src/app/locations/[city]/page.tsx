@@ -266,7 +266,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
         </section>
 
         {/* Hero Section */}
-        <section className="relative bg-gradient-to-br from-background via-background to-muted py-20 lg:py-32">
+        <section data-section="hero" className="relative bg-gradient-to-br from-background via-background to-muted py-20 lg:py-32">
           <div className="container mx-auto px-4">
             <div className="text-center max-w-4xl mx-auto">
               <div className="flex items-center justify-center mb-6">
@@ -289,7 +289,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
         </section>
 
         {/* Services Section */}
-        <section className="py-20 bg-background">
+        <section data-section="services" className="py-20 bg-background">
           <div className="container mx-auto px-4">
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
@@ -309,7 +309,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
         </section>
 
         {/* Neighborhood Expertise Section */}
-        <section className="py-20 bg-background">
+        <section data-section="neighborhoods" className="py-20 bg-background">
           <div className="container mx-auto px-4">
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div>
@@ -343,7 +343,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
         </section>
 
         {/* Pricing Guide Section */}
-        <section className="py-16 bg-muted/50">
+        <section data-section="reviews" className="py-16 bg-muted/50">
           <div className="container mx-auto px-4">
             <div className="max-w-5xl mx-auto">
               <div className="text-center mb-12">
@@ -394,7 +394,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
         </section>
 
         {/* Permit Information Section */}
-        <section className="py-16 bg-background">
+        <section data-section="faq" className="py-16 bg-background">
           <div className="container mx-auto px-4">
             <div className="max-w-5xl mx-auto">
               <div className="text-center mb-12">
@@ -482,7 +482,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
         </section>
 
         {/* FAQ Section */}
-        <section className="py-16 bg-muted/50">
+        <section data-section="portfolio" className="py-16 bg-muted/50">
           <div className="container mx-auto px-4">
             <div className="max-w-4xl mx-auto">
               <div className="text-center mb-12">
@@ -583,7 +583,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
         </section>
 
         {/* CTA Section */}
-        <section id="estimate" className="py-16 bg-secondary text-secondary-foreground">
+        <section data-section="estimate-cta" id="estimate" className="py-16 bg-secondary text-secondary-foreground">
           <div className="container mx-auto px-4 text-center">
             <h2 className="text-3xl md:text-4xl font-bold mb-6">
               Ready to Transform Your {locationData.name} Home?

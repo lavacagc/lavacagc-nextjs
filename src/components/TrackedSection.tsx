@@ -50,7 +50,7 @@ export default function TrackedSection({
   });
 
   return (
-    <section ref={sectionRef} className={className} id={id}>
+    <section ref={sectionRef} className={className} id={id} data-section={sectionId}>
       {children}
     </section>
   );

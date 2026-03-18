@@ -107,7 +107,7 @@ export default function ReviewsPage() {
         </section>
 
         {/* Hero Section */}
-        <section className="py-8 md:py-16 bg-gradient-subtle">
+        <section data-section="reviews-hero" className="py-8 md:py-16 bg-gradient-subtle">
           <div className="container mx-auto px-4">
             <div className="max-w-4xl mx-auto text-center">
               <h1 className="text-4xl md:text-5xl font-bold text-text-primary mb-6">
@@ -160,7 +160,7 @@ export default function ReviewsPage() {
         <ReviewsPageClient />
 
         {/* Leave a Review CTA */}
-        <section className="py-12 md:py-16 bg-background-subtle">
+        <section data-section="reviews-list" className="py-12 md:py-16 bg-background-subtle">
           <div className="container mx-auto px-4">
             <div className="max-w-3xl mx-auto text-center">
               <h2 className="text-2xl md:text-3xl font-bold text-text-primary mb-4">

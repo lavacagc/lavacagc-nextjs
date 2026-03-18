@@ -64,7 +64,7 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
   return (
     <>
       {/* Top CTA Banner */}
-      <section className="bg-gradient-to-r from-[#EE9639] to-[#E08530] py-4">
+      <section data-section="top-cta" className="bg-gradient-to-r from-[#EE9639] to-[#E08530] py-4">
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="text-center md:text-left">
@@ -83,7 +83,7 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
       </section>
 
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-background via-background to-muted py-10 md:py-20 lg:py-32">
+      <section data-section="hero" className="relative bg-gradient-to-br from-background via-background to-muted py-10 md:py-20 lg:py-32">
         <div className="container mx-auto px-4">
           <div className="max-w-4xl mx-auto text-center">
             <h1 className="text-4xl md:text-6xl font-bold text-text-primary mb-6 leading-tight">
@@ -431,7 +431,7 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
       </section>
 
       {/* CTA Section */}
-      <section className="py-16 bg-gradient-to-r from-primary to-accent-teal text-white">
+      <section data-section="bottom-cta" className="py-16 bg-gradient-to-r from-primary to-accent-teal text-white">
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-3xl font-bold mb-4">Ready to Transform Your Space?</h2>
           <p className="text-xl mb-8 opacity-90 max-w-2xl mx-auto">

@@ -179,7 +179,7 @@ export default function FreeEstimateLanding({
       </header>
 
       {/* Hero Section */}
-      <section className="relative">
+      <section data-section="hero-form" className="relative">
         {/* Hero background */}
         <div className="absolute inset-0 z-0">
           {heroImage ? (
@@ -273,7 +273,7 @@ export default function FreeEstimateLanding({
 
       {/* Reviews Carousel — below portfolio */}
       {reviews.length > 0 && (
-        <section className="py-12 md:py-16 bg-white">
+        <section data-section="trust-signals" className="py-12 md:py-16 bg-white">
           <div className="container mx-auto px-4">
             <div className="max-w-3xl mx-auto text-center">
               <h2 className="text-2xl md:text-3xl font-bold text-text-primary mb-2">
@@ -352,7 +352,7 @@ export default function FreeEstimateLanding({
 
       {/* Engagement Content — Blog excerpt */}
       {blogPost && (
-        <section className="py-12 md:py-16 bg-muted/30">
+        <section data-section="reviews" className="py-12 md:py-16 bg-muted/30">
           <div className="container mx-auto px-4">
             <div className="max-w-3xl mx-auto bg-white rounded-xl p-8 shadow-sm border">
               <div className="flex items-start gap-4">
