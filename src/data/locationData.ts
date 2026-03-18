@@ -958,14 +958,15 @@ export const getLocationMetaTitle = (location: string, service?: string): string
     };
 
     const serviceName = serviceMap[service] || service;
-    // Pattern: "[Service] in [City], NJ" — matches top rankers like Mudosi, WA Construct, G&L Sons
+    // Pattern: "[Service] Contractor [City] NJ" — keyword-first like JMC, Magnolia, Blackbirdz (#1-3 rankers)
     // Brand appended by root layout template: "| La Vaca General Contractors"
-    return `Expert ${serviceName} in ${loc.name}, NJ`;
+    return `${serviceName} Contractor in ${loc.name}, NJ | Free Estimate`;
   }
 
-  // Pattern: "Home Remodeling [City] NJ" — keyword-first like Magnolia, Gomez, Blackbirdz
+  // Pattern: "Kitchen, Bathroom & Basement Remodeling [City] NJ" — specific services beat generic "home remodeling"
+  // Competitors ranking #1-3 (JMC, Magnolia, G&L Sons) all lead with specific service keywords
   // Brand appended by root layout template: "| La Vaca General Contractors"
-  return `Home Remodeling Contractor in ${loc.name}, NJ`;
+  return `Kitchen, Bathroom & Basement Remodeling in ${loc.name}, NJ`;
 };
 
 export const getLocationMetaDescription = (location: string, service?: string): string => {
@@ -985,10 +986,11 @@ export const getLocationMetaDescription = (location: string, service?: string): 
     };
 
     const serviceName = serviceMap[service] || service;
-    // Action verb opener + specific services + trust + CTA — matches G&L Sons, Mudosi, Alleva pattern
-    return `Transform your ${loc.name} home with expert ${serviceName}. Licensed & insured NJ contractor serving ${neighborhoods} (${zipCode}). 5-star rated. Call (201) 241-1580 for a free estimate.`;
+    // Competitor-proven pattern: specific service + city + trust + differentiator + phone CTA
+    return `Trusted ${serviceName} contractor in ${loc.name}, NJ. 100% transparent pricing, daily photo updates on your project — no surprises. Licensed & insured, 5-star rated. Serving ${neighborhoods} (${zipCode}). Call (201) 212-4917 for your free estimate.`;
   }
 
-  // Action verb opener + service list + trust signals + phone CTA — matches top-ranking competitor patterns
-  return `Transform your ${loc.name} home with expert kitchen, bathroom, basement & addition remodeling. Licensed & insured NJ contractor serving ${neighborhoods} (${zipCode}). 5-star rated. Call (201) 241-1580.`;
+  // Competitor-proven: lead with services (JMC, Magnolia, G&L Sons pattern) + La Vaca differentiator
+  // Key insight: competitors ranking #1-5 all list specific services, include phone, and mention trust signals
+  return `Top-rated kitchen, bathroom & basement remodeling contractor in ${loc.name}, NJ. You get 100% transparent pricing and daily updates on your project — we treat your home like it's ours. Licensed, insured, 5-star reviewed. Serving ${neighborhoods} (${zipCode}). Call (201) 212-4917.`;
 };

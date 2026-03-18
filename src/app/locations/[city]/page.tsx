@@ -196,7 +196,7 @@ export default async function CityLandingPage({ params }: CityPageProps) {
             "name": "La Vaca General Contractors",
             "description": getLocationMetaDescription(city),
             "url": `https://www.lavacagc.com/locations/${city}`,
-            "telephone": "(201) 241-1580",
+            "telephone": "(201) 212-4917",
             "email": "alex@vacamoo.com",
             "areaServed": {
               "@type": "City",
