@@ -217,7 +217,7 @@ export default function Home() {
         </TrackedSection>
       </main>
       <Footer />
-      <MobileContactBanner />
+      {/* MobileContactBanner removed — StickyCTA in layout.tsx handles mobile CTA */}
     </div>
   )
 }

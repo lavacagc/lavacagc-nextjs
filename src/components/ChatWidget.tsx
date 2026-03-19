@@ -171,11 +171,13 @@ export default function ChatWidget() {
     return null;
   }
 
+
+
   return (
     <>
       {/* Chat Window */}
       <div
-        className={`fixed bottom-20 right-4 z-[9999] transition-all duration-300 ease-out ${
+        className={`fixed bottom-20 right-4 z-[9999] hidden md:block transition-all duration-300 ease-out ${
           isOpen
             ? 'opacity-100 translate-y-0 scale-100'
             : 'opacity-0 translate-y-4 scale-95 pointer-events-none'
@@ -272,10 +274,10 @@ export default function ChatWidget() {
         </div>
       </div>
 
-      {/* Chat Bubble */}
+      {/* Chat Bubble — hidden on mobile (StickyCTA handles mobile actions) */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-4 right-4 z-[9999] w-14 h-14 bg-[#EE9639] hover:bg-[#E08530] rounded-full shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-300 cursor-pointer ${
+        className={`fixed bottom-4 right-4 z-[9999] w-14 h-14 bg-[#EE9639] hover:bg-[#E08530] rounded-full shadow-lg hover:shadow-xl hidden md:flex items-center justify-center transition-all duration-300 cursor-pointer ${
           isOpen ? 'rotate-0' : 'rotate-0'
         }`}
         aria-label={isOpen ? 'Close chat' : 'Open chat'}
