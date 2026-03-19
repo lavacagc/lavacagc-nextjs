@@ -60,6 +60,11 @@ class AnalyticsManager {
   async initializeGA() {
     if (this.initialized) return;
 
+    // Only load analytics on production domain — skip Vercel preview deploys
+    if (typeof window !== 'undefined' && window.location.hostname !== 'www.lavacagc.com') {
+      return;
+    }
+
     await this.loadConfiguration();
 
     if (!this.config?.tracking_enabled) {
