@@ -60,11 +60,10 @@ class AnalyticsManager {
   async initializeGA() {
     if (this.initialized) return;
 
-    // Only load analytics on production domain — skip Vercel preview deploys and bots
-    if (typeof window !== 'undefined') {
-      if (window.location.hostname !== 'www.lavacagc.com') return;
-      const ua = navigator.userAgent || '';
-      if (/bot|crawl|spider|facebookexternalhit|facebookcatalog|slurp|preview|fetch|google|bing|headless/i.test(ua)) return;
+    // Only load analytics on production domain — skip Vercel preview deploys
+    // GA4 has built-in bot filtering — no need to block client-side
+    if (typeof window !== 'undefined' && window.location.hostname !== 'www.lavacagc.com') {
+      return;
     }
 
     await this.loadConfiguration();
