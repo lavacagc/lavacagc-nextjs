@@ -118,6 +118,14 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
         // Non-blocking
       }
 
+      // Track Facebook Pixel conversion
+      if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
+        window.fbq('track', 'Lead', {
+          content_name: projectType,
+          content_category: source,
+        });
+      }
+
       setIsSubmitted(true)
       toast({
         title: 'Request Sent!',
