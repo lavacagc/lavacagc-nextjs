@@ -60,9 +60,11 @@ class AnalyticsManager {
   async initializeGA() {
     if (this.initialized) return;
 
-    // Only load analytics on production domain — skip Vercel preview deploys
-    if (typeof window !== 'undefined' && window.location.hostname !== 'www.lavacagc.com') {
-      return;
+    // Only load analytics on production domain — skip Vercel preview deploys and bots
+    if (typeof window !== 'undefined') {
+      if (window.location.hostname !== 'www.lavacagc.com') return;
+      const ua = navigator.userAgent || '';
+      if (/bot|crawl|spider|facebookexternalhit|facebookcatalog|slurp|preview|fetch|google|bing|headless/i.test(ua)) return;
     }
 
     await this.loadConfiguration();
