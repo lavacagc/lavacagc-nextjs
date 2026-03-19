@@ -51,6 +51,7 @@ interface GoogleReview {
 
 interface FreeEstimateLandingProps {
   headline: string;
+  subheadline?: string;
   service: string;
   city?: string;
   projects: Project[];
@@ -59,10 +60,13 @@ interface FreeEstimateLandingProps {
   utmCampaign?: string;
   utmContent?: string;
   defaultFilter?: string;
+  formHeading?: string;
+  formSubheading?: string;
 }
 
 export default function FreeEstimateLanding({
   headline,
+  subheadline,
   service,
   city,
   projects,
@@ -71,6 +75,8 @@ export default function FreeEstimateLanding({
   utmCampaign,
   utmContent,
   defaultFilter = 'All Projects',
+  formHeading,
+  formSubheading,
 }: FreeEstimateLandingProps) {
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
 
@@ -204,7 +210,7 @@ export default function FreeEstimateLanding({
                 {headline}
               </h1>
               <p className="text-lg md:text-xl text-white/90 mb-6">
-                Northern NJ&apos;s trusted renovation experts. Free estimates, no obligation.
+                {subheadline || 'Northern NJ\u2019s trusted renovation experts. Free estimates, no obligation.'}
               </p>
 
               {/* Trust badges */}
@@ -250,8 +256,8 @@ export default function FreeEstimateLanding({
               <LandingPageLeadForm
                 source={formSource}
                 projectType={projectType}
-                heading="Get Your Free Estimate"
-                subheading="Tell us about your project — we'll respond within 2 hours."
+                heading={formHeading || 'Get Your Free Estimate'}
+                subheading={formSubheading || "Tell us about your project — we'll respond within 2 hours."}
                 buttonText="Get My Free Estimate →"
               />
             </div>
