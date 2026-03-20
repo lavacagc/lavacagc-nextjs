@@ -198,12 +198,14 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                   </div>
                 </div>
               )}
-            {/* Mobile image gallery — right below title, above the fold */}
+            </div>
+            {/* Mobile image gallery — below title metadata, full width */}
             {getProjectImages().length > 0 && (
-              <div>
+              <div className="w-full">
                 {/* Main Image — blurred bg fill + centered actual image */}
                 <div
-                  className="relative group cursor-pointer rounded-xl mb-2 overflow-hidden h-[250px]"
+                  className="relative group cursor-pointer rounded-xl mb-2 overflow-hidden w-full"
+                  style={{ height: '250px' }}
                   onClick={() => {
                     setLightboxIndex(0);
                     setLightboxOpen(true);
@@ -232,8 +234,8 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                         src={getProjectImages()[0].image_url}
                         alt={getProjectImages()[0].alt_text || `${project.title} - Featured project photo`}
                         fill
-                        className="object-contain z-10"
-                        sizes="100vw"
+                        className="object-contain z-10 relative"
+                        sizes="(max-width: 768px) calc(100vw - 32px), 100vw"
                         priority
                         unoptimized
                       />
@@ -251,14 +253,17 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                       {getProjectImages()[0].image_category}
                     </Badge>
                   )}
-                  <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">
+                  <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full z-20">
                     {getProjectImages().length} photos
                   </div>
                 </div>
 
-                {/* Thumbnail Strip */}
+                {/* Thumbnail Strip — horizontally scrollable */}
                 {getProjectImages().length > 1 && (
-                  <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  <div
+                    className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none"
+                    style={{ WebkitOverflowScrolling: 'touch' }}
+                  >
                     {getProjectImages().map((image, index) => (
                       <div
                         key={image.id}
@@ -287,7 +292,6 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                 )}
               </div>
             )}
-            </div>
 
           {/* Desktop: original two-column layout */}
           <div className="hidden md:grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-8 lg:gap-16 items-start">
