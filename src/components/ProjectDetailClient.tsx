@@ -201,9 +201,10 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
             {/* Mobile image gallery — right below title, above the fold */}
             {getProjectImages().length > 0 && (
               <div>
-                {/* Main Image — 16:9 container, shows full width without excessive zoom */}
+                {/* Main Image — 250px max height, full width */}
                 <div
-                  className="relative group cursor-pointer overflow-hidden rounded-xl mb-2 aspect-video"
+                  className="relative group cursor-pointer overflow-hidden rounded-xl mb-2"
+                  style={{ height: '250px' }}
                   onClick={() => {
                     setLightboxIndex(0);
                     setLightboxOpen(true);
@@ -219,8 +220,8 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                     <Image
                       src={getProjectImages()[0].image_url}
                       alt={getProjectImages()[0].alt_text || `${project.title} - Featured project photo`}
-                      className="object-cover"
                       fill
+                      className="object-cover object-center"
                       sizes="(max-width: 768px) 100vw, 50vw"
                       priority
                     />
