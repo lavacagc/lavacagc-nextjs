@@ -136,7 +136,7 @@ export default function BlogPostPreviewPage({
           <div className="container mx-auto px-4 py-12">
             <div className="text-center">
               <h1 className="text-2xl font-bold mb-4">Post Not Found</h1>
-              <Link href="/admin" className="text-primary hover:underline">
+              <Link href="/vaca-mgmt" className="text-primary hover:underline">
                 Back to Admin
               </Link>
             </div>
@@ -166,7 +166,7 @@ export default function BlogPostPreviewPage({
           {/* Back to Admin Button */}
           <div className="mb-8">
             <Link
-              href="/admin"
+              href="/vaca-mgmt"
               className="inline-flex items-center text-sm text-muted-foreground hover:text-primary transition-colors"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />

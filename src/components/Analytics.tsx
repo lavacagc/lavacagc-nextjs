@@ -18,7 +18,7 @@ const Analytics = () => {
   const pathname = usePathname();
 
   // Check if current page should be excluded from tracking
-  const isExcludedPage = pathname.startsWith('/admin') || pathname.startsWith('/auth');
+  const isExcludedPage = pathname.startsWith('/admin') || pathname.startsWith('/vaca-mgmt') || pathname.startsWith('/auth');
 
   useEffect(() => {
     // Don't initialize GA at all on admin or auth pages

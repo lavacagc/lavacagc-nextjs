@@ -26,7 +26,7 @@ const ExitIntentPopup = () => {
   const shouldShowOnPage = () => {
     // Don't show on admin, auth, blog, or other excluded pages
     if (
-      pathname.startsWith('/admin') ||
+      pathname.startsWith('/admin') || pathname.startsWith('/vaca-mgmt') ||
       pathname.startsWith('/auth') ||
       pathname.startsWith('/blog') ||
       pathname.startsWith('/do-not-sell') ||

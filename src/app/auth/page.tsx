@@ -29,7 +29,7 @@ export default function Auth() {
   // Redirect if already authenticated
   useEffect(() => {
     if (user && !loading) {
-      router.push('/admin');
+      router.push('/vaca-mgmt');
     }
   }, [user, loading, router]);
 
@@ -70,7 +70,7 @@ export default function Auth() {
           title: "Welcome Back",
           description: "You have been signed in successfully.",
         });
-        router.push('/admin');
+        router.push('/vaca-mgmt');
       }
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {

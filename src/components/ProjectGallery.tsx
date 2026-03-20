@@ -239,7 +239,7 @@ const ProjectGallery = () => {
         {projects.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-xl text-text-secondary mb-8">No projects available yet.</p>
-            <Button onClick={() => router.push('/admin')} variant="outline">
+            <Button onClick={() => router.push('/vaca-mgmt')} variant="outline">
               Add Projects
             </Button>
           </div>

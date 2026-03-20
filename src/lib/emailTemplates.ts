@@ -325,7 +325,7 @@ export function newLeadNotificationHtml(data: {
          </tr>
        </table>
      </div>
-     ${button('View in Admin Dashboard', `${WEBSITE_URL}/admin`)}
+     ${button('View in Admin Dashboard', `${WEBSITE_URL}/vaca-mgmt`)}
      ${spacer(8)}`,
     `New lead from ${data.source || 'website'}: ${data.name || 'Unknown'}`
   );

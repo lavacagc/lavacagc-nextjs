@@ -88,7 +88,7 @@ const SocialProofPopup = () => {
     if (messages.length === 0) return;
 
     // Don't show on admin pages
-    if (pathname.startsWith('/admin') || pathname.startsWith('/auth')) {
+    if (pathname.startsWith('/admin') || pathname.startsWith('/vaca-mgmt') || pathname.startsWith('/auth')) {
       return;
     }
 

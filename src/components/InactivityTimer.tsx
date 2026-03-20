@@ -17,7 +17,7 @@ export function InactivityTimer() {
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    const isAdminRoute = pathname?.startsWith('/admin') || pathname?.startsWith('/auth');
+    const isAdminRoute = pathname?.startsWith('/admin') || pathname?.startsWith('/vaca-mgmt') || pathname?.startsWith('/auth');
 
     if (!user || !isAdminRoute) {
       // Clear timer if not on admin route or not logged in
