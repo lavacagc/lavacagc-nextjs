@@ -201,9 +201,9 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
             {/* Mobile image gallery — right below title, above the fold */}
             {getProjectImages().length > 0 && (
               <div>
-                {/* Main Image — 4:3 container with cover */}
+                {/* Main Image — 16:9 container, shows full width without excessive zoom */}
                 <div
-                  className="relative group cursor-pointer overflow-hidden rounded-xl mb-2 aspect-[4/3]"
+                  className="relative group cursor-pointer overflow-hidden rounded-xl mb-2 aspect-video"
                   onClick={() => {
                     setLightboxIndex(0);
                     setLightboxOpen(true);
