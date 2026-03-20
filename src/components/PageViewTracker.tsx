@@ -21,6 +21,15 @@ export default function PageViewTracker({ eventName, eventData }: PageViewTracke
         event: eventName,
         eventData,
       });
+
+      // Fire Facebook Pixel events for location/service views
+      if (typeof window.fbq === 'function') {
+        if (eventName === 'location_page_view') {
+          window.fbq('trackCustom', 'LocationView', eventData);
+        } else if (eventName === 'service_page_view') {
+          window.fbq('trackCustom', 'ServiceView', eventData);
+        }
+      }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

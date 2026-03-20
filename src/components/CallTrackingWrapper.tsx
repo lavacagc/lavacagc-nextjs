@@ -27,6 +27,14 @@ const CallTrackingWrapper: React.FC<CallTrackingWrapperProps> = ({
         phone_number: href,
       });
 
+      // Track Facebook Pixel Contact event
+      if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
+        window.fbq('track', 'Contact', {
+          content_name: 'Phone Call',
+          content_category: pageUrl,
+        });
+      }
+
       // Save to Supabase lead_events table
       // Note: This table needs to be created via migration
       await supabase.from('lead_events').insert({

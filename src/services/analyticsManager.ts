@@ -321,6 +321,15 @@ export const trackEstimateRequest = (source: string = 'unknown') => {
     content_category: 'Estimate Tool',
     source,
   });
+
+  // Fire Facebook Pixel event for calculator completion
+  if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
+    window.fbq('trackCustom', 'CalculatorDone', {
+      content_name: 'Cost Calculator Completed',
+      content_category: 'Estimate Tool',
+      source,
+    });
+  }
 };
 
 export const trackProjectView = (projectTitle: string, projectId: string) => {
