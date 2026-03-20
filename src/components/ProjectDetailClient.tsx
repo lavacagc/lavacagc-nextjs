@@ -111,41 +111,173 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
 
   return (
     <>
-      {/* Header with Back Button */}
+      {/* Header with Back Button — compact on mobile */}
       <section className="bg-background border-b sticky top-0 z-40">
-        <div className="container mx-auto px-4 md:px-10 py-4">
-          <nav aria-label="Breadcrumb" className="mb-2">
-            <ol className="flex items-center space-x-2 text-sm text-muted-foreground">
-              <li>
-                <Link href="/" className="hover:text-primary">
-                  Home
-                </Link>
-              </li>
-              <li>/</li>
-              <li>
-                <Link href="/portfolio" className="hover:text-primary">
-                  Portfolio
-                </Link>
-              </li>
-              <li>/</li>
-              <li className="text-foreground font-medium truncate max-w-[200px]">{project.title}</li>
-            </ol>
-          </nav>
-          <Button
-            variant="ghost"
-            onClick={() => router.push('/portfolio')}
-            className="flex items-center gap-2 hover:bg-muted"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Portfolio
-          </Button>
+        <div className="container mx-auto px-4 md:px-10 py-2 md:py-4">
+          {/* Mobile: inline back arrow + breadcrumb in one row */}
+          <div className="flex items-center gap-2 md:hidden">
+            <button
+              onClick={() => router.push('/portfolio')}
+              className="p-1 -ml-1 cursor-pointer"
+              aria-label="Back to Portfolio"
+            >
+              <ArrowLeft className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <nav aria-label="Breadcrumb">
+              <ol className="flex items-center space-x-1.5 text-xs text-muted-foreground">
+                <li><Link href="/" className="hover:text-primary">Home</Link></li>
+                <li>/</li>
+                <li><Link href="/portfolio" className="hover:text-primary">Portfolio</Link></li>
+              </ol>
+            </nav>
+          </div>
+          {/* Desktop: full breadcrumb + back button */}
+          <div className="hidden md:block">
+            <nav aria-label="Breadcrumb" className="mb-2">
+              <ol className="flex items-center space-x-2 text-sm text-muted-foreground">
+                <li><Link href="/" className="hover:text-primary">Home</Link></li>
+                <li>/</li>
+                <li><Link href="/portfolio" className="hover:text-primary">Portfolio</Link></li>
+                <li>/</li>
+                <li className="text-foreground font-medium truncate max-w-[200px]">{project.title}</li>
+              </ol>
+            </nav>
+            <Button
+              variant="ghost"
+              onClick={() => router.push('/portfolio')}
+              className="flex items-center gap-2 hover:bg-muted"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Portfolio
+            </Button>
+          </div>
         </div>
       </section>
 
       {/* Hero Section - Two Column Layout */}
-      <section className="py-10 md:py-16">
+      <section className="py-4 md:py-16">
         <div className="container mx-auto px-4 md:px-10">
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-8 lg:gap-16 items-start">
+          {/* Mobile: image first, then compact title below */}
+          <div className="md:hidden">
+            {/* Service badges + title — compact */}
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {project.service_types.map((service) => (
+                <Badge
+                  key={service}
+                  className="bg-primary text-primary-foreground px-3 py-0.5 text-[10px] font-semibold rounded-full"
+                >
+                  {service}
+                </Badge>
+              ))}
+            </div>
+            <h1 className="text-xl font-bold mb-2 leading-snug">
+              {project.title}
+            </h1>
+            <div className="flex flex-wrap items-center gap-3 mb-3 text-muted-foreground text-xs">
+              <div className="flex items-center gap-1">
+                <MapPin className="w-3.5 h-3.5" />
+                <span>{project.location}</span>
+              </div>
+              {project.duration && (
+                <div className="flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>{project.duration}</span>
+                </div>
+              )}
+              {project.testimonial_rating > 0 && (
+                <div className="flex items-center gap-1">
+                  <div className="flex">
+                    {[...Array(5)].map((_, i) => (
+                      <Star
+                        key={i}
+                        className={`w-3 h-3 ${
+                          i < project.testimonial_rating ? 'text-yellow-400 fill-yellow-400' : 'text-muted'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            {/* Mobile image gallery — right below title, above the fold */}
+            {getProjectImages().length > 0 && (
+              <div>
+                {/* Main Image */}
+                <div
+                  className="relative group cursor-pointer h-[280px] overflow-hidden rounded-xl mb-2"
+                  onClick={() => {
+                    setLightboxIndex(0);
+                    setLightboxOpen(true);
+                  }}
+                >
+                  {getProjectImages()[0].media_type === 'video' ? (
+                    <video
+                      src={getProjectImages()[0].image_url}
+                      className="w-full h-full object-cover"
+                      autoPlay muted loop playsInline
+                    />
+                  ) : (
+                    <Image
+                      src={getProjectImages()[0].image_url}
+                      alt={getProjectImages()[0].alt_text || `${project.title} - Featured project photo`}
+                      className="object-cover"
+                      fill
+                      sizes="100vw"
+                      priority
+                      unoptimized
+                    />
+                  )}
+                  {getProjectImages()[0].image_category && (
+                    <Badge
+                      className="absolute top-2 left-2 capitalize text-[10px]"
+                      variant={
+                        getProjectImages()[0].image_category === 'before' ? 'destructive'
+                        : getProjectImages()[0].image_category === 'during' ? 'secondary'
+                        : 'default'
+                      }
+                    >
+                      {getProjectImages()[0].image_category}
+                    </Badge>
+                  )}
+                  <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">
+                    {getProjectImages().length} photos
+                  </div>
+                </div>
+
+                {/* Thumbnail Strip */}
+                {getProjectImages().length > 1 && (
+                  <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                    {getProjectImages().map((image, index) => (
+                      <div
+                        key={image.id}
+                        className={`relative flex-shrink-0 w-14 h-14 rounded-md overflow-hidden cursor-pointer border-2 transition-all ${
+                          index === 0 ? 'border-primary' : 'border-transparent'
+                        }`}
+                        onClick={() => { setLightboxIndex(index); setLightboxOpen(true); }}
+                      >
+                        {image.media_type === 'video' ? (
+                          <video src={image.image_url} className="w-full h-full object-cover" muted playsInline />
+                        ) : (
+                          <Image src={image.image_url} alt={image.alt_text || `Photo ${index + 1}`} className="object-cover" fill sizes="56px" unoptimized />
+                        )}
+                        {image.image_category && (
+                          <div className={`absolute bottom-0 left-0 right-0 text-[8px] text-center py-0.5 capitalize font-medium ${
+                            image.image_category === 'before' ? 'bg-red-500/80 text-white'
+                            : image.image_category === 'after' ? 'bg-green-500/80 text-white'
+                            : 'bg-black/50 text-white'
+                          }`}>
+                            {image.image_category}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            </div>
+
+          {/* Desktop: original two-column layout */}
+          <div className="hidden md:grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-8 lg:gap-16 items-start">
             {/* Left Column - Project Info (Sticky) */}
             <div className="lg:sticky lg:top-32">
               <div className="flex flex-wrap gap-2 mb-6">
@@ -159,11 +291,11 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                 ))}
               </div>
 
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold mb-6 leading-tight">
+              <h1 className="text-5xl lg:text-6xl font-extrabold mb-6 leading-tight">
                 {project.title}
               </h1>
 
-              <div className="flex flex-wrap items-center gap-6 mb-5 text-muted-foreground text-sm md:text-base">
+              <div className="flex flex-wrap items-center gap-6 mb-5 text-muted-foreground text-base">
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4" />
                   <span>{project.location}</span>
@@ -206,7 +338,7 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
               )}
             </div>
 
-            {/* Right Column - Image Gallery */}
+            {/* Right Column - Image Gallery (Desktop only) */}
             <div className="w-full">
               {getProjectImages().length > 0 && (
                 <>
@@ -292,107 +424,12 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                       ))}
                   </div>
 
-                  {/* Mobile: Main image + horizontal thumbnail strip */}
-                  <div className="md:hidden">
-                    {/* Main Image */}
-                    <div
-                      className="relative group cursor-pointer h-[300px] overflow-hidden rounded-xl mb-3"
-                      onClick={() => {
-                        setLightboxIndex(0);
-                        setLightboxOpen(true);
-                      }}
-                    >
-                      {getProjectImages()[0].media_type === 'video' ? (
-                        <video
-                          src={getProjectImages()[0].image_url}
-                          className="w-full h-full object-cover"
-                          autoPlay
-                          muted
-                          loop
-                          playsInline
-                        />
-                      ) : (
-                        <Image
-                          src={getProjectImages()[0].image_url}
-                          alt={
-                            getProjectImages()[0].alt_text ||
-                            `${project.title} - Featured project photo`
-                          }
-                          className="object-cover"
-                          fill
-                          sizes="100vw"
-                          priority
-                          unoptimized
-                        />
-                      )}
-                      {getProjectImages()[0].image_category && (
-                        <Badge
-                          className="absolute top-3 left-3 capitalize text-xs"
-                          variant={
-                            getProjectImages()[0].image_category === 'before'
-                              ? 'destructive'
-                              : getProjectImages()[0].image_category === 'during'
-                                ? 'secondary'
-                                : 'default'
-                          }
-                        >
-                          {getProjectImages()[0].image_category}
-                        </Badge>
-                      )}
-                      <div className="absolute bottom-3 right-3 bg-black/60 text-white text-xs px-2.5 py-1 rounded-full">
-                        {getProjectImages().length} photos
-                      </div>
-                    </div>
-
-                    {/* Thumbnail Strip — horizontal scroll */}
-                    {getProjectImages().length > 1 && (
-                      <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-none">
-                        {getProjectImages().map((image, index) => (
-                          <div
-                            key={image.id}
-                            className={`relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
-                              index === 0 ? 'border-primary' : 'border-transparent hover:border-primary/50'
-                            }`}
-                            onClick={() => {
-                              setLightboxIndex(index);
-                              setLightboxOpen(true);
-                            }}
-                          >
-                            {image.media_type === 'video' ? (
-                              <video
-                                src={image.image_url}
-                                className="w-full h-full object-cover"
-                                muted
-                                playsInline
-                              />
-                            ) : (
-                              <Image
-                                src={image.image_url}
-                                alt={image.alt_text || `Photo ${index + 1}`}
-                                className="object-cover"
-                                fill
-                                sizes="64px"
-                                unoptimized
-                              />
-                            )}
-                            {image.image_category && (
-                              <div className={`absolute bottom-0 left-0 right-0 text-[9px] text-center py-0.5 capitalize font-medium ${
-                                image.image_category === 'before' ? 'bg-red-500/80 text-white'
-                                : image.image_category === 'after' ? 'bg-green-500/80 text-white'
-                                : 'bg-black/50 text-white'
-                              }`}>
-                                {image.image_category}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  {/* Mobile gallery is rendered above the desktop grid */}
                 </>
               )}
             </div>
           </div>
+        </div>
         </div>
       </section>
 
