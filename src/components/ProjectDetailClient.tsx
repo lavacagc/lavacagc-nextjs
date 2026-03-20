@@ -209,86 +209,187 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
             {/* Right Column - Image Gallery */}
             <div className="w-full">
               {getProjectImages().length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-2xl overflow-hidden">
-                  {/* Main Large Image */}
-                  <div
-                    className="relative group cursor-pointer md:row-span-2 h-[400px] md:h-auto overflow-hidden rounded-2xl"
-                    onClick={() => {
-                      setLightboxIndex(0);
-                      setLightboxOpen(true);
-                    }}
-                  >
-                    {getProjectImages()[0].media_type === 'video' ? (
-                      <video
-                        src={getProjectImages()[0].image_url}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
-                      />
-                    ) : (
-                      <Image
-                        src={getProjectImages()[0].image_url}
-                        alt={
-                          getProjectImages()[0].alt_text ||
-                          `${project.title} - Featured ${project.service_types[0]} project in ${project.location} by La Vaca General Contractors`
-                        }
-                        className="object-cover transition-transform duration-300 group-hover:scale-105"
-                        fill
-                        sizes="(max-width: 768px) 100vw, 50vw"
-                        unoptimized
-                      />
-                    )}
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
-                      <div className="bg-white/0 group-hover:bg-white/90 p-0 group-hover:p-3 rounded-full transition-all duration-300">
-                        <Expand className="w-6 h-6 text-primary opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Smaller Images */}
-                  {getProjectImages()
-                    .slice(1, 3)
-                    .map((image, index) => (
-                      <div
-                        key={image.id}
-                        className="relative group cursor-pointer h-[200px] overflow-hidden rounded-2xl"
-                        onClick={() => {
-                          setLightboxIndex(index + 1);
-                          setLightboxOpen(true);
-                        }}
-                      >
-                        {image.media_type === 'video' ? (
-                          <video
-                            src={image.image_url}
-                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                            autoPlay
-                            muted
-                            loop
-                            playsInline
-                          />
-                        ) : (
-                          <Image
-                            src={image.image_url}
-                            alt={
-                              image.alt_text ||
-                              `${project.title} - ${project.service_types[0]} project detail image ${index + 2} by La Vaca General Contractors in ${project.location}`
-                            }
-                            className="object-cover transition-transform duration-300 group-hover:scale-105"
-                            fill
-                            sizes="(max-width: 768px) 100vw, 25vw"
-                            unoptimized
-                          />
-                        )}
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
-                          <div className="bg-white/0 group-hover:bg-white/90 p-0 group-hover:p-2 rounded-full transition-all duration-300">
-                            <Expand className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                          </div>
+                <>
+                  {/* Desktop: grid layout with main + 2 side images */}
+                  <div className="hidden md:grid grid-cols-2 gap-4 rounded-2xl overflow-hidden">
+                    {/* Main Large Image */}
+                    <div
+                      className="relative group cursor-pointer row-span-2 overflow-hidden rounded-2xl"
+                      onClick={() => {
+                        setLightboxIndex(0);
+                        setLightboxOpen(true);
+                      }}
+                    >
+                      {getProjectImages()[0].media_type === 'video' ? (
+                        <video
+                          src={getProjectImages()[0].image_url}
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                        />
+                      ) : (
+                        <Image
+                          src={getProjectImages()[0].image_url}
+                          alt={
+                            getProjectImages()[0].alt_text ||
+                            `${project.title} - Featured ${project.service_types[0]} project in ${project.location} by La Vaca General Contractors`
+                          }
+                          className="object-cover transition-transform duration-300 group-hover:scale-105"
+                          fill
+                          sizes="50vw"
+                          unoptimized
+                        />
+                      )}
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
+                        <div className="bg-white/0 group-hover:bg-white/90 p-0 group-hover:p-3 rounded-full transition-all duration-300">
+                          <Expand className="w-6 h-6 text-primary opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                         </div>
                       </div>
-                    ))}
-                </div>
+                    </div>
+
+                    {/* Smaller Images */}
+                    {getProjectImages()
+                      .slice(1, 3)
+                      .map((image, index) => (
+                        <div
+                          key={image.id}
+                          className="relative group cursor-pointer h-[200px] overflow-hidden rounded-2xl"
+                          onClick={() => {
+                            setLightboxIndex(index + 1);
+                            setLightboxOpen(true);
+                          }}
+                        >
+                          {image.media_type === 'video' ? (
+                            <video
+                              src={image.image_url}
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              autoPlay
+                              muted
+                              loop
+                              playsInline
+                            />
+                          ) : (
+                            <Image
+                              src={image.image_url}
+                              alt={
+                                image.alt_text ||
+                                `${project.title} - ${project.service_types[0]} project detail image ${index + 2} by La Vaca General Contractors in ${project.location}`
+                              }
+                              className="object-cover transition-transform duration-300 group-hover:scale-105"
+                              fill
+                              sizes="25vw"
+                              unoptimized
+                            />
+                          )}
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
+                            <div className="bg-white/0 group-hover:bg-white/90 p-0 group-hover:p-2 rounded-full transition-all duration-300">
+                              <Expand className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+
+                  {/* Mobile: Main image + horizontal thumbnail strip */}
+                  <div className="md:hidden">
+                    {/* Main Image */}
+                    <div
+                      className="relative group cursor-pointer h-[300px] overflow-hidden rounded-xl mb-3"
+                      onClick={() => {
+                        setLightboxIndex(0);
+                        setLightboxOpen(true);
+                      }}
+                    >
+                      {getProjectImages()[0].media_type === 'video' ? (
+                        <video
+                          src={getProjectImages()[0].image_url}
+                          className="w-full h-full object-cover"
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                        />
+                      ) : (
+                        <Image
+                          src={getProjectImages()[0].image_url}
+                          alt={
+                            getProjectImages()[0].alt_text ||
+                            `${project.title} - Featured project photo`
+                          }
+                          className="object-cover"
+                          fill
+                          sizes="100vw"
+                          priority
+                          unoptimized
+                        />
+                      )}
+                      {getProjectImages()[0].image_category && (
+                        <Badge
+                          className="absolute top-3 left-3 capitalize text-xs"
+                          variant={
+                            getProjectImages()[0].image_category === 'before'
+                              ? 'destructive'
+                              : getProjectImages()[0].image_category === 'during'
+                                ? 'secondary'
+                                : 'default'
+                          }
+                        >
+                          {getProjectImages()[0].image_category}
+                        </Badge>
+                      )}
+                      <div className="absolute bottom-3 right-3 bg-black/60 text-white text-xs px-2.5 py-1 rounded-full">
+                        {getProjectImages().length} photos
+                      </div>
+                    </div>
+
+                    {/* Thumbnail Strip — horizontal scroll */}
+                    {getProjectImages().length > 1 && (
+                      <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-none">
+                        {getProjectImages().map((image, index) => (
+                          <div
+                            key={image.id}
+                            className={`relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
+                              index === 0 ? 'border-primary' : 'border-transparent hover:border-primary/50'
+                            }`}
+                            onClick={() => {
+                              setLightboxIndex(index);
+                              setLightboxOpen(true);
+                            }}
+                          >
+                            {image.media_type === 'video' ? (
+                              <video
+                                src={image.image_url}
+                                className="w-full h-full object-cover"
+                                muted
+                                playsInline
+                              />
+                            ) : (
+                              <Image
+                                src={image.image_url}
+                                alt={image.alt_text || `Photo ${index + 1}`}
+                                className="object-cover"
+                                fill
+                                sizes="64px"
+                                unoptimized
+                              />
+                            )}
+                            {image.image_category && (
+                              <div className={`absolute bottom-0 left-0 right-0 text-[9px] text-center py-0.5 capitalize font-medium ${
+                                image.image_category === 'before' ? 'bg-red-500/80 text-white'
+                                : image.image_category === 'after' ? 'bg-green-500/80 text-white'
+                                : 'bg-black/50 text-white'
+                              }`}>
+                                {image.image_category}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>
