@@ -201,9 +201,9 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
             {/* Mobile image gallery — right below title, above the fold */}
             {getProjectImages().length > 0 && (
               <div>
-                {/* Main Image — 4:3 aspect ratio container, properly framed */}
+                {/* Main Image — 4:3 container with cover */}
                 <div
-                  className="relative group cursor-pointer overflow-hidden rounded-xl mb-2 aspect-[4/3] bg-muted"
+                  className="relative group cursor-pointer overflow-hidden rounded-xl mb-2 aspect-[4/3]"
                   onClick={() => {
                     setLightboxIndex(0);
                     setLightboxOpen(true);
@@ -212,18 +212,17 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                   {getProjectImages()[0].media_type === 'video' ? (
                     <video
                       src={getProjectImages()[0].image_url}
-                      className="w-full h-full object-contain"
+                      className="w-full h-full object-cover"
                       autoPlay muted loop playsInline
                     />
                   ) : (
                     <Image
                       src={getProjectImages()[0].image_url}
                       alt={getProjectImages()[0].alt_text || `${project.title} - Featured project photo`}
-                      className="object-contain"
+                      className="object-cover"
                       fill
-                      sizes="100vw"
+                      sizes="(max-width: 768px) 100vw, 50vw"
                       priority
-                      unoptimized
                     />
                   )}
                   {getProjectImages()[0].image_category && (
@@ -257,7 +256,7 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                         {image.media_type === 'video' ? (
                           <video src={image.image_url} className="w-full h-full object-cover" muted playsInline />
                         ) : (
-                          <Image src={image.image_url} alt={image.alt_text || `Photo ${index + 1}`} className="object-cover" fill sizes="56px" unoptimized />
+                          <Image src={image.image_url} alt={image.alt_text || `Photo ${index + 1}`} className="object-cover" fill sizes="56px" loading="lazy" />
                         )}
                         {image.image_category && (
                           <div className={`absolute bottom-0 left-0 right-0 text-[8px] text-center py-0.5 capitalize font-medium ${
@@ -371,7 +370,6 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                           className="object-cover transition-transform duration-300 group-hover:scale-105"
                           fill
                           sizes="50vw"
-                          unoptimized
                         />
                       )}
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
@@ -412,7 +410,6 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                               className="object-cover transition-transform duration-300 group-hover:scale-105"
                               fill
                               sizes="25vw"
-                              unoptimized
                             />
                           )}
                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
@@ -645,7 +642,6 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                                 className="object-cover rounded-lg transition-transform group-hover:scale-[1.02]"
                                 fill
                                 sizes="(max-width: 768px) 50vw, 25vw"
-                                unoptimized
                               />
                             )}
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
