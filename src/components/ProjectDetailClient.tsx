@@ -201,9 +201,9 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
             {/* Mobile image gallery — right below title, above the fold */}
             {getProjectImages().length > 0 && (
               <div>
-                {/* Main Image — natural aspect ratio, fits container */}
+                {/* Main Image — 4:3 aspect ratio container, properly framed */}
                 <div
-                  className="relative group cursor-pointer overflow-hidden rounded-xl mb-2"
+                  className="relative group cursor-pointer overflow-hidden rounded-xl mb-2 aspect-[4/3] bg-muted"
                   onClick={() => {
                     setLightboxIndex(0);
                     setLightboxOpen(true);
@@ -212,20 +212,18 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                   {getProjectImages()[0].media_type === 'video' ? (
                     <video
                       src={getProjectImages()[0].image_url}
-                      className="w-full h-auto rounded-xl"
+                      className="w-full h-full object-contain"
                       autoPlay muted loop playsInline
                     />
                   ) : (
                     <Image
                       src={getProjectImages()[0].image_url}
                       alt={getProjectImages()[0].alt_text || `${project.title} - Featured project photo`}
-                      className="w-full h-auto rounded-xl"
-                      width={800}
-                      height={600}
+                      className="object-contain"
+                      fill
                       sizes="100vw"
                       priority
                       unoptimized
-                      style={{ maxHeight: '350px', objectFit: 'cover' }}
                     />
                   )}
                   {getProjectImages()[0].image_category && (
