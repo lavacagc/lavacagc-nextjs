@@ -201,9 +201,9 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
             {/* Mobile image gallery — right below title, above the fold */}
             {getProjectImages().length > 0 && (
               <div>
-                {/* Main Image — scales to fit container naturally */}
+                {/* Main Image — fixed 250px height, full width, properly framed */}
                 <div
-                  className="group cursor-pointer rounded-xl mb-2 overflow-hidden"
+                  className="relative group cursor-pointer rounded-xl mb-2 overflow-hidden h-[250px]"
                   onClick={() => {
                     setLightboxIndex(0);
                     setLightboxOpen(true);
@@ -212,19 +212,18 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                   {getProjectImages()[0].media_type === 'video' ? (
                     <video
                       src={getProjectImages()[0].image_url}
-                      className="w-full h-auto rounded-xl max-h-[300px] object-cover"
+                      className="w-full h-full object-cover rounded-xl"
                       autoPlay muted loop playsInline
                     />
                   ) : (
                     <Image
                       src={getProjectImages()[0].image_url}
                       alt={getProjectImages()[0].alt_text || `${project.title} - Featured project photo`}
-                      width={800}
-                      height={600}
-                      className="w-full h-auto rounded-xl"
-                      style={{ maxHeight: '300px', objectFit: 'contain' }}
-                      sizes="(max-width: 768px) 100vw, 50vw"
+                      fill
+                      className="object-cover"
+                      sizes="100vw"
                       priority
+                      unoptimized
                     />
                   )}
                   {getProjectImages()[0].image_category && (
@@ -258,7 +257,7 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                         {image.media_type === 'video' ? (
                           <video src={image.image_url} className="w-full h-full object-cover" muted playsInline />
                         ) : (
-                          <Image src={image.image_url} alt={image.alt_text || `Photo ${index + 1}`} className="object-cover" fill sizes="56px" loading="lazy" />
+                          <Image src={image.image_url} alt={image.alt_text || `Photo ${index + 1}`} className="object-cover" fill sizes="56px" loading="lazy" unoptimized />
                         )}
                         {image.image_category && (
                           <div className={`absolute bottom-0 left-0 right-0 text-[8px] text-center py-0.5 capitalize font-medium ${
@@ -371,7 +370,7 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                           }
                           className="object-cover transition-transform duration-300 group-hover:scale-105"
                           fill
-                          sizes="50vw"
+                          sizes="50vw" unoptimized
                         />
                       )}
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
@@ -411,7 +410,7 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                               }
                               className="object-cover transition-transform duration-300 group-hover:scale-105"
                               fill
-                              sizes="25vw"
+                              sizes="25vw" unoptimized
                             />
                           )}
                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
@@ -643,7 +642,7 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                                 alt={image.alt_text || `${project.title} - Image ${index + 1}`}
                                 className="object-cover rounded-lg transition-transform group-hover:scale-[1.02]"
                                 fill
-                                sizes="(max-width: 768px) 50vw, 25vw"
+                                sizes="(max-width: 768px) 50vw, 25vw" unoptimized
                               />
                             )}
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
