@@ -201,7 +201,7 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
             {/* Mobile image gallery — right below title, above the fold */}
             {getProjectImages().length > 0 && (
               <div>
-                {/* Main Image — fixed 250px height, full width, properly framed */}
+                {/* Main Image — blurred bg fill + centered actual image */}
                 <div
                   className="relative group cursor-pointer rounded-xl mb-2 overflow-hidden h-[250px]"
                   onClick={() => {
@@ -216,15 +216,28 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                       autoPlay muted loop playsInline
                     />
                   ) : (
-                    <Image
-                      src={getProjectImages()[0].image_url}
-                      alt={getProjectImages()[0].alt_text || `${project.title} - Featured project photo`}
-                      fill
-                      className="object-cover"
-                      sizes="100vw"
-                      priority
-                      unoptimized
-                    />
+                    <>
+                      {/* Blurred background fill */}
+                      <Image
+                        src={getProjectImages()[0].image_url}
+                        alt=""
+                        fill
+                        className="object-cover blur-xl scale-110 brightness-75"
+                        sizes="100vw"
+                        unoptimized
+                        aria-hidden="true"
+                      />
+                      {/* Actual image — true proportions */}
+                      <Image
+                        src={getProjectImages()[0].image_url}
+                        alt={getProjectImages()[0].alt_text || `${project.title} - Featured project photo`}
+                        fill
+                        className="object-contain"
+                        sizes="100vw"
+                        priority
+                        unoptimized
+                      />
+                    </>
                   )}
                   {getProjectImages()[0].image_category && (
                     <Badge
