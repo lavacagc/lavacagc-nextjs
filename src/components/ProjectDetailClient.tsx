@@ -227,12 +227,12 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                         unoptimized
                         aria-hidden="true"
                       />
-                      {/* Actual image — true proportions */}
+                      {/* Actual image — true proportions, on top */}
                       <Image
                         src={getProjectImages()[0].image_url}
                         alt={getProjectImages()[0].alt_text || `${project.title} - Featured project photo`}
                         fill
-                        className="object-contain"
+                        className="object-contain z-10"
                         sizes="100vw"
                         priority
                         unoptimized
@@ -241,7 +241,7 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                   )}
                   {getProjectImages()[0].image_category && (
                     <Badge
-                      className="absolute top-2 left-2 capitalize text-[10px]"
+                      className="absolute top-2 left-2 capitalize text-[10px] z-20"
                       variant={
                         getProjectImages()[0].image_category === 'before' ? 'destructive'
                         : getProjectImages()[0].image_category === 'during' ? 'secondary'
