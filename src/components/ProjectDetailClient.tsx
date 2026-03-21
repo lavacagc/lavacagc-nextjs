@@ -292,6 +292,7 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                 )}
               </div>
             )}
+          </div>
 
           {/* Desktop: original two-column layout */}
           <div className="hidden md:grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-8 lg:gap-16 items-start">
@@ -444,7 +445,6 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
               )}
             </div>
           </div>
-        </div>
         </div>
       </section>
 
