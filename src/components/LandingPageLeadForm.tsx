@@ -103,17 +103,30 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
 
       // Telegram notification
       try {
-        await fetch('/api/notify/telegram-lead', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: formData.name.trim(),
-            email: formData.email.trim(),
-            phone: formData.phone.trim(),
-            projectType,
-            source,
+        await Promise.allSettled([
+          fetch('/api/notify/telegram-lead', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: formData.name.trim(),
+              email: formData.email.trim(),
+              phone: formData.phone.trim(),
+              projectType,
+              source,
+            }),
           }),
-        })
+          fetch('/api/notify/new-lead', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: formData.name.trim(),
+              email: formData.email.trim(),
+              phone: formData.phone.trim(),
+              projectType,
+              source,
+            }),
+          }),
+        ])
       } catch {
         // Non-blocking
       }

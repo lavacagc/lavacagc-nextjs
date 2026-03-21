@@ -266,21 +266,34 @@ const ContactForm = () => {
 
       // Send Telegram notification
       try {
-        await fetch('/api/notify/telegram-lead', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: `${sanitizedData.first_name} ${sanitizedData.last_name}`,
-            email: sanitizedData.email,
-            phone: sanitizedData.phone,
-            projectType: sanitizedData.inquiry_type,
-            score: scoringResult.score,
-            tier: scoringResult.tier,
-            source: 'contact_form',
+        await Promise.allSettled([
+          fetch('/api/notify/telegram-lead', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: `${sanitizedData.first_name} ${sanitizedData.last_name}`,
+              email: sanitizedData.email,
+              phone: sanitizedData.phone,
+              projectType: sanitizedData.inquiry_type,
+              score: scoringResult.score,
+              tier: scoringResult.tier,
+              source: 'contact_form',
+            }),
           }),
-        });
-      } catch (telegramError) {
-        console.error('Telegram notification failed:', telegramError);
+          fetch('/api/notify/new-lead', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: `${sanitizedData.first_name} ${sanitizedData.last_name}`,
+              email: sanitizedData.email,
+              phone: sanitizedData.phone,
+              projectType: sanitizedData.inquiry_type,
+              source: 'contact_form',
+            }),
+          }),
+        ]);
+      } catch (notifyError) {
+        console.error('Notification failed:', notifyError);
         // Don't throw - form submission was successful
       }
 
