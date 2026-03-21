@@ -360,10 +360,10 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
               {getProjectImages().length > 0 && (
                 <>
                   {/* Desktop: grid layout with main + 2 side images */}
-                  <div className="hidden md:grid grid-cols-2 gap-4 rounded-2xl overflow-hidden">
+                  <div className="hidden md:grid grid-cols-2 grid-rows-[200px_200px] gap-4 rounded-2xl overflow-hidden">
                     {/* Main Large Image */}
                     <div
-                      className="relative group cursor-pointer row-span-2 overflow-hidden rounded-2xl"
+                      className="relative group cursor-pointer row-span-2 overflow-hidden rounded-2xl min-h-[416px]"
                       onClick={() => {
                         setLightboxIndex(0);
                         setLightboxOpen(true);
