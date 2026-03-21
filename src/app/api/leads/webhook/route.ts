@@ -74,9 +74,10 @@ function generateFollowUpEmails(name: string, projectType?: string) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, email, source, projectType, leadId, estimateLeadId } = body as {
+    const { name, email, phone, source, projectType, leadId, estimateLeadId } = body as {
       name: string;
       email: string;
+      phone?: string;
       source?: string;
       projectType?: string;
       leadId?: string;
@@ -164,6 +165,36 @@ export async function POST(request: NextRequest) {
 
     // Send the instant ack email immediately
     const instantSent = await sendInstantAck(email, emails.instant_ack.subject, emails.instant_ack.html);
+
+    // Notify admin about the new lead
+    const adminEmail = 'alex@vacamoo.com';
+    try {
+      const apiKey = process.env.RESEND_API_KEY;
+      if (apiKey) {
+        const resendAdmin = new Resend(apiKey);
+        await resendAdmin.emails.send({
+          from: 'La Vaca General Contractors <info@email.lavaca.link>',
+          to: [adminEmail],
+          subject: `New Lead: ${name} — ${projectType || 'Home Renovation'}`,
+          html: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 500px; padding: 24px;">
+              <h2 style="color: #1e293b; margin: 0 0 16px;">New Lead Received</h2>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr><td style="padding: 8px 0; color: #64748b; width: 100px;">Name</td><td style="padding: 8px 0; font-weight: 600;">${name}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748b;">Email</td><td style="padding: 8px 0;"><a href="mailto:${email}">${email}</a></td></tr>
+                <tr><td style="padding: 8px 0; color: #64748b;">Phone</td><td style="padding: 8px 0;"><a href="tel:${phone || ''}">${phone || 'N/A'}</a></td></tr>
+                <tr><td style="padding: 8px 0; color: #64748b;">Project</td><td style="padding: 8px 0;">${projectType || 'Not specified'}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748b;">Source</td><td style="padding: 8px 0;">${source || 'Website'}</td></tr>
+              </table>
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 16px 0;">
+              <p style="color: #64748b; font-size: 13px; margin: 0;">Customer already received an instant acknowledgment email. Follow-up sequence is queued (24h, 48h, 7d).</p>
+            </div>
+          `,
+        });
+      }
+    } catch (adminErr) {
+      console.error('Failed to send admin notification:', adminErr);
+    }
 
     // Mark instant_ack as sent if successful
     if (instantSent) {
