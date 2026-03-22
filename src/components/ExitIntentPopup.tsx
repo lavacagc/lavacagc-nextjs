@@ -10,9 +10,17 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Phone, X } from 'lucide-react';
 import { usePathname } from 'next/navigation';
+import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
 
 const ExitIntentPopup = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [bannerShowing, setBannerShowing] = useState(false);
+
+  // Listen for SmartBanner visibility
+  useEffect(() => {
+    setBannerShowing(isBannerVisible());
+    return subscribeBannerState(setBannerShowing);
+  }, []);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -55,7 +63,7 @@ const ExitIntentPopup = () => {
 
     // Desktop: detect mouse leaving viewport
     const handleMouseLeave = (e: MouseEvent) => {
-      if (e.clientY <= 0 && !isOpen) {
+      if (e.clientY <= 0 && !isOpen && !bannerShowing) {
         timeoutId = setTimeout(() => {
           setIsOpen(true);
           sessionStorage.setItem('exit_intent_shown', 'true');
@@ -65,7 +73,7 @@ const ExitIntentPopup = () => {
 
     // Mobile: detect back button intent (popstate event)
     const handlePopState = () => {
-      if (!isOpen) {
+      if (!isOpen && !bannerShowing) {
         setIsOpen(true);
         sessionStorage.setItem('exit_intent_shown', 'true');
         // Push state back to prevent actual navigation

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Star, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
 
 interface Review {
   reviewer_name: string;
@@ -16,6 +17,13 @@ export default function ReviewToast() {
   const [isDismissed, setIsDismissed] = useState(false);
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [bannerShowing, setBannerShowing] = useState(false);
+
+  // Listen for SmartBanner visibility
+  useEffect(() => {
+    setBannerShowing(isBannerVisible());
+    return subscribeBannerState(setBannerShowing);
+  }, []);
 
   // Fetch real 5-star Google reviews from Supabase
   useEffect(() => {
@@ -83,7 +91,7 @@ export default function ReviewToast() {
     setIsDismissed(true);
   };
 
-  if (reviews.length === 0 || isDismissed) return null;
+  if (reviews.length === 0 || isDismissed || bannerShowing) return null;
 
   const review = reviews[currentReviewIndex];
   const excerpt =

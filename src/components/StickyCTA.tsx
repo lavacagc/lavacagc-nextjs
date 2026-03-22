@@ -5,10 +5,18 @@ import { usePathname } from 'next/navigation';
 import { Phone, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { trackEvent, trackPhoneClick } from '@/services/analyticsManager';
+import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
 
 export default function StickyCTA() {
   const pathname = usePathname();
   const [visible, setVisible] = useState(false);
+  const [bannerShowing, setBannerShowing] = useState(false);
+
+  // Listen for SmartBanner visibility
+  useEffect(() => {
+    setBannerShowing(isBannerVisible());
+    return subscribeBannerState(setBannerShowing);
+  }, []);
 
   // Hide on contact page
   const isContactPage = pathname === '/contact';
@@ -27,7 +35,7 @@ export default function StickyCTA() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [isContactPage]);
 
-  if (isContactPage || !visible) return null;
+  if (isContactPage || !visible || bannerShowing) return null;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white/95 backdrop-blur-sm border-t border-border shadow-lg safe-area-bottom">

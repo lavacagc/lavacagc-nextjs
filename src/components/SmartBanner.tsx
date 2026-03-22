@@ -6,6 +6,7 @@ import { X, Phone, ArrowRight, Eye } from 'lucide-react';
 import { useVisitor } from '@/hooks/useVisitor';
 import { type BannerRule } from '@/lib/bannerRules';
 import { trackEvent } from '@/services/analyticsManager';
+import { setBannerVisible } from '@/hooks/useBannerState';
 
 const DISMISS_KEY = 'lavaca_banner_dismiss';
 
@@ -96,36 +97,67 @@ function evaluateRule(
   return true;
 }
 
-// ---- TOP BAR COMPONENT ----
+// ---- TOP BAR COMPONENT (desktop: top bar, mobile: bottom floating card) ----
 function TopBar({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void }) {
   const d = rule.display;
   return (
-    <div className={`fixed top-0 left-0 right-0 z-[60] ${d.bgColor} ${d.textColor} shadow-lg animate-in slide-in-from-top duration-300`}>
-      <div className="container mx-auto px-4 py-2.5 flex items-center justify-center gap-3 text-sm md:text-base">
-        {d.icon && <span className="text-lg flex-shrink-0">{d.icon}</span>}
-        <span className="font-medium">{d.message}</span>
-        {d.ctaText && d.ctaLink && (
-          <a
-            href={d.ctaLink}
-            className="inline-flex items-center gap-1 font-semibold underline underline-offset-2 hover:no-underline whitespace-nowrap cursor-pointer"
-            onClick={() => trackEvent('smart_banner_cta', { banner_id: rule.id, cta_text: d.ctaText })}
-          >
-            {d.ctaPhone ? <Phone className="w-3.5 h-3.5" /> : null}
-            {d.ctaText}
-            {!d.ctaPhone && <ArrowRight className="w-3.5 h-3.5" />}
-          </a>
-        )}
-        {(d.dismissable !== false) && (
-          <button
-            onClick={onDismiss}
-            className="ml-2 p-1 rounded-full hover:bg-white/20 transition-colors flex-shrink-0 cursor-pointer"
-            aria-label="Dismiss banner"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
+    <>
+      {/* Desktop: slim top bar */}
+      <div className={`hidden md:block fixed top-0 left-0 right-0 z-[60] ${d.bgColor} ${d.textColor} shadow-lg animate-in slide-in-from-top duration-300`}>
+        <div className="container mx-auto px-4 py-2.5 flex items-center justify-center gap-3 text-base">
+          {d.icon && <span className="text-lg flex-shrink-0">{d.icon}</span>}
+          <span className="font-medium">{d.message}</span>
+          {d.ctaText && d.ctaLink && (
+            <a
+              href={d.ctaLink}
+              className="inline-flex items-center gap-1 font-semibold underline underline-offset-2 hover:no-underline whitespace-nowrap cursor-pointer"
+              onClick={() => trackEvent('smart_banner_cta', { banner_id: rule.id, cta_text: d.ctaText })}
+            >
+              {d.ctaPhone ? <Phone className="w-3.5 h-3.5" /> : null}
+              {d.ctaText}
+              {!d.ctaPhone && <ArrowRight className="w-3.5 h-3.5" />}
+            </a>
+          )}
+          {(d.dismissable !== false) && (
+            <button
+              onClick={onDismiss}
+              className="ml-2 p-1 rounded-full hover:bg-white/20 transition-colors flex-shrink-0 cursor-pointer"
+              aria-label="Dismiss banner"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* Mobile: bottom floating card */}
+      <div className={`md:hidden fixed bottom-20 left-3 right-3 z-[60] ${d.bgColor} ${d.textColor} rounded-2xl shadow-2xl animate-in slide-in-from-bottom duration-500`}>
+        <div className="p-3.5 flex items-center gap-3">
+          {d.icon && <span className="text-2xl flex-shrink-0">{d.icon}</span>}
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-sm leading-tight">{d.message}</p>
+          </div>
+          {d.ctaText && d.ctaLink && (
+            <a
+              href={d.ctaLink}
+              className="flex-shrink-0 bg-white/20 hover:bg-white/30 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer"
+              onClick={() => trackEvent('smart_banner_cta', { banner_id: rule.id, cta_text: d.ctaText })}
+            >
+              {d.ctaText}
+            </a>
+          )}
+          {(d.dismissable !== false) && (
+            <button
+              onClick={onDismiss}
+              className="p-1 rounded-full hover:bg-white/20 transition-colors flex-shrink-0 cursor-pointer"
+              aria-label="Dismiss banner"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -363,9 +395,16 @@ function SmartBannerInner() {
     return () => clearTimeout(timer);
   }, [findMatchingRule, isReturning, visitCount, rulesLoaded, previewId]);
 
+  // Broadcast banner visibility to other widgets
+  useEffect(() => {
+    setBannerVisible(visible);
+    return () => setBannerVisible(false);
+  }, [visible]);
+
   const handleDismiss = useCallback(() => {
     if (!activeRule) return;
     setVisible(false);
+    setBannerVisible(false);
     setDismissed(activeRule.id);
     // Also set session-scoped dismiss for dismissForHours=0 rules
     if ((activeRule.display.dismissForHours ?? 0) === 0) {
