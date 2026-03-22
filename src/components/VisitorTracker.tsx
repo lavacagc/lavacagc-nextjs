@@ -4,6 +4,13 @@ import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { useVisitor } from '@/hooks/useVisitor';
 
+// Microsoft Clarity global type
+declare global {
+  interface Window {
+    clarity?: (method: string, ...args: (string | undefined)[]) => void;
+  }
+}
+
 /**
  * Global visitor tracker — runs on every page.
  * 1. Tracks visitor identity, visit count, and page history in localStorage.
@@ -46,7 +53,7 @@ export default function VisitorTracker() {
   const { visitorId, visitCount, isReturning, firstSeen, trackPage } = useVisitor();
   const ga4Initialized = useRef(false);
 
-  // Set GA4 user properties once visitor data is ready
+  // Set GA4 user properties + Clarity identity once visitor data is ready
   useEffect(() => {
     if (!visitorId || ga4Initialized.current) return;
     if (typeof window === 'undefined' || typeof window.gtag === 'undefined') return;
@@ -63,6 +70,14 @@ export default function VisitorTracker() {
       visit_count: visitCount,
       days_since_first_visit: daysSinceFirst,
     });
+
+    // Link Microsoft Clarity sessions to our visitor ID
+    // This makes Clarity group recordings from the same visitor together
+    if (typeof window.clarity === 'function') {
+      window.clarity('identify', visitorId, undefined, undefined, visitorId);
+      window.clarity('set', 'visitor_type', isReturning ? 'returning' : 'new');
+      window.clarity('set', 'visit_count', String(visitCount));
+    }
 
     ga4Initialized.current = true;
   }, [visitorId, visitCount, isReturning, firstSeen]);
