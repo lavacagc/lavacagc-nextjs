@@ -459,7 +459,7 @@ export function ProjectUploadSystem({ mode, onModeChange, editProject }: Project
             ...projectData,
             featured: false,
             active: true,
-            sort_order: 0
+            sort_order: 999
           })
           .select()
           .single();
