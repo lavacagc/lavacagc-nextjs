@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { X, Phone, ArrowRight, Eye } from 'lucide-react';
+import { X, Phone, ArrowRight, Eye, MessageCircle } from 'lucide-react';
 import { useVisitor } from '@/hooks/useVisitor';
 import { type BannerRule } from '@/lib/bannerRules';
 import { trackEvent } from '@/services/analyticsManager';
@@ -113,9 +113,9 @@ function TopBar({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void }
               className="inline-flex items-center gap-1 font-semibold underline underline-offset-2 hover:no-underline whitespace-nowrap cursor-pointer"
               onClick={() => trackEvent('smart_banner_cta', { banner_id: rule.id, cta_text: d.ctaText })}
             >
-              {d.ctaPhone ? <Phone className="w-3.5 h-3.5" /> : null}
+              {d.ctaLink?.startsWith('sms:') ? <MessageCircle className="w-3.5 h-3.5" /> : d.ctaPhone ? <Phone className="w-3.5 h-3.5" /> : null}
               {d.ctaText}
-              {!d.ctaPhone && <ArrowRight className="w-3.5 h-3.5" />}
+              {!d.ctaPhone && !d.ctaLink?.startsWith('sms:') && <ArrowRight className="w-3.5 h-3.5" />}
             </a>
           )}
           {(d.dismissable !== false) && (
@@ -130,30 +130,31 @@ function TopBar({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void }
         </div>
       </div>
 
-      {/* Mobile: bottom floating card */}
+      {/* Mobile: bottom floating stacked card (Concept A) */}
       <div className={`md:hidden fixed bottom-20 left-3 right-3 z-[60] ${d.bgColor} ${d.textColor} rounded-2xl shadow-2xl animate-in slide-in-from-bottom duration-500`}>
-        <div className="p-3.5 flex items-center gap-3">
-          {d.icon && <span className="text-2xl flex-shrink-0">{d.icon}</span>}
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-sm leading-tight">{d.message}</p>
-          </div>
+        {(d.dismissable !== false) && (
+          <button
+            onClick={onDismiss}
+            className="absolute top-2.5 right-3 w-7 h-7 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/25 transition-colors cursor-pointer"
+            aria-label="Dismiss banner"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+        <div className="p-4 text-center">
+          <p className="font-bold text-base leading-snug">
+            {d.icon && <span className="mr-1">{d.icon}</span>}
+            {d.message}
+          </p>
           {d.ctaText && d.ctaLink && (
             <a
               href={d.ctaLink}
-              className="flex-shrink-0 bg-white/20 hover:bg-white/30 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 mt-3 bg-white text-green-700 font-bold text-sm px-6 py-2.5 rounded-xl hover:bg-white/90 transition-colors cursor-pointer"
               onClick={() => trackEvent('smart_banner_cta', { banner_id: rule.id, cta_text: d.ctaText })}
             >
+              {d.ctaLink?.startsWith('sms:') ? <MessageCircle className="w-4 h-4" /> : d.ctaPhone ? <Phone className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
               {d.ctaText}
             </a>
-          )}
-          {(d.dismissable !== false) && (
-            <button
-              onClick={onDismiss}
-              className="p-1 rounded-full hover:bg-white/20 transition-colors flex-shrink-0 cursor-pointer"
-              aria-label="Dismiss banner"
-            >
-              <X className="w-4 h-4" />
-            </button>
           )}
         </div>
       </div>
