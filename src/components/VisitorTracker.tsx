@@ -1,23 +1,87 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { useVisitor } from '@/hooks/useVisitor';
 
 /**
  * Global visitor tracker — runs on every page.
- * Tracks visitor identity, visit count, and page history in localStorage.
- * No API calls — lightweight client-side only.
+ * 1. Tracks visitor identity, visit count, and page history in localStorage.
+ * 2. Sets GA4 user properties (visitor_id, visitor_type, visit_count, days_since_first_visit).
+ * 3. Fires funnel milestone events for key pages.
  */
+
+// Map pathname patterns to funnel milestone events
+function getFunnelEvent(path: string): { event: string; params: Record<string, string> } | null {
+  // Service pages
+  if (path.startsWith('/services/') && path !== '/services') {
+    const service = path.split('/').pop() || '';
+    return { event: 'funnel_service_view', params: { service_name: service } };
+  }
+  // Project/portfolio pages
+  if (path.startsWith('/projects/') && path !== '/projects') {
+    return { event: 'funnel_project_view', params: { project_slug: path.split('/').pop() || '' } };
+  }
+  // Calculator/estimator entry
+  if (path === '/project-calculator' || path === '/free-estimate') {
+    return { event: 'funnel_estimate_start', params: { entry_point: path } };
+  }
+  // Contact page
+  if (path === '/contact') {
+    return { event: 'funnel_contact_view', params: {} };
+  }
+  // Reviews page (trust signal)
+  if (path === '/reviews') {
+    return { event: 'funnel_reviews_view', params: {} };
+  }
+  // Location pages
+  if (path.startsWith('/locations/') && path !== '/locations') {
+    return { event: 'funnel_location_view', params: { location: path.split('/').pop() || '' } };
+  }
+  return null;
+}
+
 export default function VisitorTracker() {
   const pathname = usePathname();
-  const { trackPage } = useVisitor();
+  const { visitorId, visitCount, isReturning, firstSeen, trackPage } = useVisitor();
+  const ga4Initialized = useRef(false);
 
+  // Set GA4 user properties once visitor data is ready
   useEffect(() => {
-    if (pathname) {
-      trackPage(pathname);
+    if (!visitorId || ga4Initialized.current) return;
+    if (typeof window === 'undefined' || typeof window.gtag === 'undefined') return;
+
+    // Calculate days since first visit
+    const daysSinceFirst = firstSeen
+      ? Math.floor((Date.now() - new Date(firstSeen).getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
+
+    // Set user properties — these appear as dimensions in GA4 reports
+    window.gtag('set', 'user_properties', {
+      visitor_id: visitorId,
+      visitor_type: isReturning ? 'returning' : 'new',
+      visit_count: visitCount,
+      days_since_first_visit: daysSinceFirst,
+    });
+
+    ga4Initialized.current = true;
+  }, [visitorId, visitCount, isReturning, firstSeen]);
+
+  // Track page + fire funnel events
+  useEffect(() => {
+    if (!pathname) return;
+    trackPage(pathname);
+
+    // Fire funnel milestone event if applicable
+    const funnel = getFunnelEvent(pathname);
+    if (funnel && typeof window !== 'undefined' && typeof window.gtag !== 'undefined') {
+      window.gtag('event', funnel.event, {
+        ...funnel.params,
+        visitor_type: isReturning ? 'returning' : 'new',
+        visit_number: visitCount,
+      });
     }
-  }, [pathname, trackPage]);
+  }, [pathname, trackPage, isReturning, visitCount]);
 
   return null;
 }

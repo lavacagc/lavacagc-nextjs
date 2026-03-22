@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { getVisitorId, getVisitorData } from '@/hooks/useVisitor';
 
 interface AnalyticsConfig {
   id: string;
@@ -209,12 +210,23 @@ class AnalyticsManager {
       return;
     }
 
+    // Enrich every event with visitor context
+    const visitorData = getVisitorData();
+    const visitorContext: Record<string, unknown> = {};
+    if (visitorData) {
+      visitorContext.visitor_id = visitorData.id;
+      visitorContext.visitor_type = visitorData.visit_count > 1 ? 'returning' : 'new';
+      visitorContext.visit_number = visitorData.visit_count;
+    }
+
+    const enrichedParams = { ...visitorContext, ...parameters };
+
     // Always push to dataLayer for GTM triggers (Meta Pixel, etc.)
     if (typeof window !== 'undefined') {
       window.dataLayer = window.dataLayer || [];
       window.dataLayer.push({
         event: eventName,
-        eventData: parameters || {},
+        eventData: enrichedParams,
       });
     }
 
@@ -225,13 +237,13 @@ class AnalyticsManager {
       if (customEvent) {
         window.gtag('event', customEvent.event_action, {
           event_category: customEvent.event_category,
-          event_label: customEvent.event_label || parameters?.label,
-          value: customEvent.event_value || parameters?.value,
+          event_label: customEvent.event_label || enrichedParams?.label,
+          value: customEvent.event_value || enrichedParams?.value,
           ...customEvent.parameters,
-          ...parameters,
+          ...enrichedParams,
         });
       } else {
-        window.gtag('event', eventName, parameters);
+        window.gtag('event', eventName, enrichedParams);
       }
     }
   }
@@ -285,10 +297,12 @@ export const trackFormSubmission = (formName: string) => {
   analyticsManager.trackEvent('form_submit', { form_name: formName });
   // Direct gtag call as backup in case analyticsManager hasn't initialized
   if (typeof window !== 'undefined' && typeof window.gtag !== 'undefined') {
+    const vid = getVisitorId();
     window.gtag('event', 'generate_lead', {
       form_name: formName,
       currency: 'USD',
       value: 1,
+      ...(vid ? { visitor_id: vid } : {}),
     });
   }
 };
