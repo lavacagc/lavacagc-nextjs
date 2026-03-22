@@ -2,19 +2,12 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
+import { getVisitorId } from '@/hooks/useVisitor';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
-}
-
-function generateVisitorId(): string {
-  const stored = typeof window !== 'undefined' ? localStorage.getItem('lavaca_visitor_id') : null;
-  if (stored) return stored;
-  const id = 'v_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-  if (typeof window !== 'undefined') localStorage.setItem('lavaca_visitor_id', id);
-  return id;
 }
 
 export default function ChatWidget() {
@@ -32,7 +25,7 @@ export default function ChatWidget() {
 
   // Initialize visitor ID and check session expiration
   useEffect(() => {
-    setVisitorId(generateVisitorId());
+    setVisitorId(getVisitorId() || 'v_' + Math.random().toString(36).substring(2) + Date.now().toString(36));
 
     // Check if session has expired (24 hours)
     const SESSION_TTL = 24 * 60 * 60 * 1000; // 24 hours in ms

@@ -6,6 +6,7 @@ import {
   LeadSelection,
   PDFUpload,
 } from "@/types/calculator";
+import { getVisitorData } from "@/hooks/useVisitor";
 
 export const calculatorService = {
   // Fetch all active project types
@@ -216,11 +217,16 @@ export const calculatorService = {
     lead: EstimateLead,
     selections: Omit<LeadSelection, "estimate_lead_id">[]
   ): Promise<string> {
-    // Prepare lead data for insertion - cast JSON fields
+    // Prepare lead data for insertion - cast JSON fields + visitor tracking
+    const visitorData = getVisitorData();
     const leadInsert = {
       ...lead,
       uploaded_images: (lead.uploaded_images || []) as unknown as string[],
       uploaded_plans: (lead.uploaded_plans || []) as unknown as PDFUpload[],
+      visitor_id: visitorData?.id || null,
+      visit_count: visitorData?.visit_count || 1,
+      first_seen: visitorData?.first_seen || null,
+      referrer: visitorData?.referrer || null,
     };
 
     // Insert lead

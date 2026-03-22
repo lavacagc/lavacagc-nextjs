@@ -45,6 +45,10 @@ interface EstimateLead {
   lead_status: string;
   admin_notes: string | null;
   created_at: string;
+  visitor_id?: string;
+  visit_count?: number;
+  first_seen?: string;
+  referrer?: string;
 }
 
 interface LeadSelection {
@@ -451,7 +455,14 @@ export function EstimatesManager() {
                   <TableRow key={lead.id} className="hover:bg-muted/50">
                     <TableCell>
                       <div>
-                        <p className="font-medium">{lead.first_name} {lead.last_name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{lead.first_name} {lead.last_name}</p>
+                          {(lead.visit_count ?? 0) > 1 && (
+                            <Badge className="bg-orange-500 text-white text-xs hover:bg-orange-600">
+                              ↩ {lead.visit_count} visits
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-sm text-muted-foreground">{lead.city}, {lead.state}</p>
                       </div>
                     </TableCell>

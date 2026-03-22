@@ -57,6 +57,10 @@ interface Lead {
   preferred_contact_method?: string;
   created_at: string;
   archived_at?: string;
+  visitor_id?: string;
+  visit_count?: number;
+  first_seen?: string;
+  referrer?: string;
 }
 
 interface ChatMessage {
@@ -308,6 +312,11 @@ export function LeadsManager() {
                 </CardTitle>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
+                {(lead.visit_count ?? 0) > 1 && (
+                  <Badge className="bg-orange-500 text-white text-xs hover:bg-orange-600">
+                    ↩ {lead.visit_count} visits
+                  </Badge>
+                )}
                 <Badge variant="secondary" className="text-xs">{lead.inquiry_type}</Badge>
                 <span className="text-xs text-muted-foreground whitespace-nowrap">
                   {format(new Date(lead.created_at), 'MMM dd')}
@@ -365,6 +374,34 @@ export function LeadsManager() {
               <div className="text-sm">
                 <span className="text-muted-foreground">Preferred contact: </span>
                 {lead.preferred_contact_method}
+              </div>
+            )}
+
+            {/* Visitor tracking info */}
+            {lead.visitor_id && (
+              <div className="border-t pt-3 mt-3 space-y-1">
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Visitor Info</div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                  <span>
+                    <span className="text-muted-foreground">Visits: </span>
+                    <span className="font-medium">{lead.visit_count ?? 1}</span>
+                  </span>
+                  {lead.first_seen && (
+                    <span>
+                      <span className="text-muted-foreground">First seen: </span>
+                      {format(new Date(lead.first_seen), 'MMM dd, yyyy')}
+                    </span>
+                  )}
+                  {lead.referrer && (
+                    <span>
+                      <span className="text-muted-foreground">Came from: </span>
+                      {(() => {
+                        try { return new URL(lead.referrer).hostname; }
+                        catch { return lead.referrer; }
+                      })()}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </CardContent>

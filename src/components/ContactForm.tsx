@@ -18,6 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
+import { getVisitorData } from '@/hooks/useVisitor';
 
 interface ContactFormData {
   firstName: string;
@@ -228,12 +229,17 @@ const ContactForm = () => {
       });
       const scoringResult = scoreLead(scoringInput);
 
-      // Add scoring to data
+      // Add scoring + visitor tracking data
+      const visitorData = getVisitorData();
       const leadDataWithScoring = {
         ...sanitizedData,
         score: scoringResult.score,
         tier: scoringResult.tier,
         scoring_reasons: scoringResult.reasons,
+        visitor_id: visitorData?.id || null,
+        visit_count: visitorData?.visit_count || 1,
+        first_seen: visitorData?.first_seen || null,
+        referrer: visitorData?.referrer || null,
       };
 
       // Submit to database
