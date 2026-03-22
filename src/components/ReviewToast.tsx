@@ -6,6 +6,8 @@ import { Star, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
 
+const REVIEW_COOLDOWN_KEY = 'lavaca_review_toast_cooldown';
+
 interface Review {
   reviewer_name: string;
   comment: string;
@@ -18,11 +20,31 @@ export default function ReviewToast() {
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [bannerShowing, setBannerShowing] = useState(false);
+  const [coolingDown, setCoolingDown] = useState(false);
 
-  // Listen for SmartBanner visibility
+  // Listen for SmartBanner visibility + set cooldown when banner is dismissed
   useEffect(() => {
     setBannerShowing(isBannerVisible());
-    return subscribeBannerState(setBannerShowing);
+    let wasBannerVisible = isBannerVisible();
+    return subscribeBannerState((visible) => {
+      setBannerShowing(visible);
+      // Banner just got dismissed — start 60s cooldown
+      if (wasBannerVisible && !visible) {
+        setCoolingDown(true);
+        localStorage.setItem(REVIEW_COOLDOWN_KEY, String(Date.now() + 60000));
+        setTimeout(() => setCoolingDown(false), 60000);
+      }
+      wasBannerVisible = visible;
+    });
+  }, []);
+
+  // Check cooldown on mount (in case page refreshed during cooldown)
+  useEffect(() => {
+    const cooldownUntil = parseInt(localStorage.getItem(REVIEW_COOLDOWN_KEY) || '0');
+    if (cooldownUntil > Date.now()) {
+      setCoolingDown(true);
+      setTimeout(() => setCoolingDown(false), cooldownUntil - Date.now());
+    }
   }, []);
 
   // Fetch real 5-star Google reviews from Supabase
@@ -67,16 +89,16 @@ export default function ReviewToast() {
   useEffect(() => {
     if (reviews.length === 0 || isDismissed) return;
 
-    // Show first toast after 3 seconds
+    // Show first toast after 10 seconds
     const initialDelay = setTimeout(() => {
       showNext();
-    }, 3000);
+    }, 10000);
 
-    // Rotate every 12-15 seconds
+    // Rotate every 2 minutes
     const rotationInterval = setInterval(() => {
       setCurrentReviewIndex((prev) => (prev + 1) % reviews.length);
       showNext();
-    }, 12000 + Math.random() * 3000);
+    }, 120000);
 
     return () => {
       clearTimeout(initialDelay);
@@ -91,7 +113,7 @@ export default function ReviewToast() {
     setIsDismissed(true);
   };
 
-  if (reviews.length === 0 || isDismissed || bannerShowing) return null;
+  if (reviews.length === 0 || isDismissed || bannerShowing || coolingDown) return null;
 
   const review = reviews[currentReviewIndex];
   const excerpt =
