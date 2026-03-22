@@ -20,7 +20,11 @@ import {
   MoreHorizontal,
   Calendar,
   MapPin,
-  DollarSign
+  DollarSign,
+  GripVertical,
+  ArrowUpDown,
+  Save,
+  X
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -65,6 +69,11 @@ export function PortfolioManager({ onNewProject, onEditProject }: PortfolioManag
   const [sortBy, setSortBy] = useState('created_at');
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isReordering, setIsReordering] = useState(false);
+  const [reorderList, setReorderList] = useState<Project[]>([]);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
 
   useEffect(() => {
     loadProjects();
@@ -302,6 +311,94 @@ export function PortfolioManager({ onNewProject, onEditProject }: PortfolioManag
     return featuredImg?.image_url || project.project_images?.[0]?.image_url || project.featured_image_id;
   };
 
+  // --- Drag & Drop Reorder ---
+  const startReordering = () => {
+    // Use featured projects sorted by current sort_order for reorder mode
+    const featured = projects
+      .filter(p => p.featured && p.active)
+      .sort((a, b) => a.sort_order - b.sort_order);
+    setReorderList(featured);
+    setIsReordering(true);
+  };
+
+  const cancelReordering = () => {
+    setIsReordering(false);
+    setReorderList([]);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === dropIndex) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+
+    const updated = [...reorderList];
+    const [moved] = updated.splice(draggedIndex, 1);
+    updated.splice(dropIndex, 0, moved);
+    setReorderList(updated);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const moveProject = (fromIndex: number, direction: 'up' | 'down') => {
+    const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1;
+    if (toIndex < 0 || toIndex >= reorderList.length) return;
+    const updated = [...reorderList];
+    [updated[fromIndex], updated[toIndex]] = [updated[toIndex], updated[fromIndex]];
+    setReorderList(updated);
+  };
+
+  const saveOrder = async () => {
+    setIsSavingOrder(true);
+    try {
+      const updates = reorderList.map((project, index) => 
+        supabase
+          .from('projects')
+          .update({ sort_order: index + 1 })
+          .eq('id', project.id)
+      );
+      
+      await Promise.all(updates);
+      
+      toast({
+        title: "Order Saved",
+        description: "Project display order updated successfully"
+      });
+      
+      setIsReordering(false);
+      setReorderList([]);
+      loadProjects();
+    } catch (error) {
+      console.error('Error saving order:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save project order",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
+
   const uniqueServices = [...new Set(projects.flatMap(p => p.service_types))];
   const uniqueLocations = [...new Set(projects.map(p => p.location))];
 
@@ -329,11 +426,117 @@ export function PortfolioManager({ onNewProject, onEditProject }: PortfolioManag
             </div>
           </div>
         </div>
-        <Button onClick={onNewProject}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add New Project
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={startReordering}>
+            <ArrowUpDown className="w-4 h-4 mr-2" />
+            Reorder
+          </Button>
+          <Button onClick={onNewProject}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add New Project
+          </Button>
+        </div>
       </div>
+
+      {/* Reorder Mode */}
+      {isReordering && (
+        <Card className="border-primary">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <ArrowUpDown className="w-5 h-5 text-primary" />
+                  Reorder Featured Projects
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Drag and drop to set the display order on the homepage. #1 shows first.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={cancelReordering} disabled={isSavingOrder}>
+                  <X className="w-4 h-4 mr-1" />
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={saveOrder} disabled={isSavingOrder}>
+                  <Save className="w-4 h-4 mr-1" />
+                  {isSavingOrder ? 'Saving...' : 'Save Order'}
+                </Button>
+              </div>
+            </div>
+
+            {reorderList.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No featured projects to reorder. Mark projects as featured first.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {reorderList.map((project, index) => (
+                  <div
+                    key={project.id}
+                    draggable
+                    onDragStart={() => handleDragStart(index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDrop={(e) => handleDrop(e, index)}
+                    onDragEnd={handleDragEnd}
+                    className={`flex items-center gap-3 p-3 rounded-lg border bg-background transition-all cursor-grab active:cursor-grabbing ${
+                      draggedIndex === index ? 'opacity-50 scale-[0.98]' : ''
+                    } ${
+                      dragOverIndex === index ? 'border-primary border-2 bg-primary/5' : 'border-border'
+                    }`}
+                  >
+                    <GripVertical className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                    
+                    <div className="w-8 h-8 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm flex-shrink-0">
+                      {index + 1}
+                    </div>
+
+                    <div className="relative w-12 h-12 rounded overflow-hidden bg-muted flex-shrink-0">
+                      {getFeaturedImage(project) ? (
+                        <Image
+                          src={getFeaturedImage(project)!}
+                          alt={project.title}
+                          fill
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Grid className="w-4 h-4 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{project.title}</p>
+                      <p className="text-sm text-muted-foreground truncate">{project.location}</p>
+                    </div>
+
+                    <div className="flex gap-1 flex-shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => moveProject(index, 'up')}
+                        disabled={index === 0}
+                      >
+                        ▲
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => moveProject(index, 'down')}
+                        disabled={index === reorderList.length - 1}
+                      >
+                        ▼
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters and Search */}
       <Card>
