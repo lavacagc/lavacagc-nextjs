@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
-import { Plus, Trash2, Edit, Eye, EyeOff, GripVertical, Save, X } from 'lucide-react';
+import { Plus, Trash2, Edit, Eye, EyeOff, GripVertical, Save, X, ExternalLink } from 'lucide-react';
 
 interface Banner {
   id: string;
@@ -363,6 +363,15 @@ export function BannerManager() {
 
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={cancelEdit}>Cancel</Button>
+          {!isCreating && editingId && (
+            <Button
+              variant="outline"
+              onClick={() => window.open(`/?banner_preview=${editingId}`, '_blank')}
+              className="cursor-pointer"
+            >
+              <ExternalLink className="w-4 h-4 mr-2" />Preview on Site
+            </Button>
+          )}
           <Button onClick={saveEdit}><Save className="w-4 h-4 mr-2" />{isCreating ? 'Create Banner' : 'Save Changes'}</Button>
         </div>
       </div>
@@ -416,6 +425,9 @@ export function BannerManager() {
                   </div>
 
                   <div className="flex items-center gap-2 flex-shrink-0">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 cursor-pointer" onClick={() => window.open(`/?banner_preview=${banner.id}`, '_blank')} title="Preview on site">
+                      <ExternalLink className="w-4 h-4 text-blue-600" />
+                    </Button>
                     <Button variant="ghost" size="icon" className="h-8 w-8 cursor-pointer" onClick={() => toggleEnabled(banner)} title={banner.enabled ? 'Disable' : 'Enable'}>
                       {banner.enabled ? <Eye className="w-4 h-4 text-green-600" /> : <EyeOff className="w-4 h-4 text-muted-foreground" />}
                     </Button>

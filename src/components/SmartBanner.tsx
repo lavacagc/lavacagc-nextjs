@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { usePathname } from 'next/navigation';
-import { X, Phone, ArrowRight } from 'lucide-react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { X, Phone, ArrowRight, Eye } from 'lucide-react';
 import { useVisitor } from '@/hooks/useVisitor';
 import { type BannerRule } from '@/lib/bannerRules';
 import { trackEvent } from '@/services/analyticsManager';
@@ -276,27 +276,42 @@ function dbToBannerRule(db: DBBanner): BannerRule {
 }
 
 // ---- MAIN SMART BANNER COMPONENT ----
-export default function SmartBanner() {
+function SmartBannerInner() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { visitorId, visitCount, isReturning, firstSeen, pagesVisited } = useVisitor();
   const [activeRule, setActiveRule] = useState<BannerRule | null>(null);
   const [visible, setVisible] = useState(false);
   const [rules, setRules] = useState<BannerRule[]>([]);
   const [rulesLoaded, setRulesLoaded] = useState(false);
+  const [isPreview, setIsPreview] = useState(false);
+
+  // Check for preview mode: ?banner_preview=<id>
+  const previewId = searchParams.get('banner_preview');
 
   // Fetch banner rules from DB
   useEffect(() => {
-    fetch('/api/banners')
+    // If previewing, fetch ALL banners (including disabled) so we can find the preview target
+    const url = previewId ? '/api/banners/admin' : '/api/banners';
+    fetch(url)
       .then(res => res.ok ? res.json() : [])
       .then((data: DBBanner[]) => {
         setRules(data.map(dbToBannerRule));
         setRulesLoaded(true);
       })
       .catch(() => setRulesLoaded(true));
-  }, []);
+  }, [previewId]);
 
   const findMatchingRule = useCallback(() => {
-    if (!visitorId || !rulesLoaded || rules.length === 0) return null;
+    if (!rulesLoaded || rules.length === 0) return null;
+
+    // Preview mode: force-show the specific banner, skip all conditions
+    if (previewId) {
+      const previewRule = rules.find(r => r.id === previewId);
+      if (previewRule) return previewRule;
+    }
+
+    if (!visitorId) return null;
 
     const visitorType = isReturning ? 'returning' : 'new';
     const daysSinceFirst = firstSeen
@@ -310,16 +325,29 @@ export default function SmartBanner() {
       }
     }
     return null;
-  }, [visitorId, isReturning, visitCount, firstSeen, pathname, pagesVisited, rules, rulesLoaded]);
+  }, [visitorId, isReturning, visitCount, firstSeen, pathname, pagesVisited, rules, rulesLoaded, previewId]);
 
   useEffect(() => {
     if (!rulesLoaded) return;
-    // Delay banner show by 1.5s so page content loads first
+
+    // In preview mode, show immediately with no delay
+    if (previewId) {
+      const rule = findMatchingRule();
+      if (rule) {
+        setActiveRule(rule);
+        setVisible(true);
+        setIsPreview(true);
+      }
+      return;
+    }
+
+    // Normal mode: delay banner show by 1.5s so page content loads first
     const timer = setTimeout(() => {
       const rule = findMatchingRule();
       if (rule) {
         setActiveRule(rule);
         setVisible(true);
+        setIsPreview(false);
         trackEvent('smart_banner_shown', {
           banner_id: rule.id,
           banner_type: rule.display.type,
@@ -333,7 +361,7 @@ export default function SmartBanner() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [findMatchingRule, isReturning, visitCount, rulesLoaded]);
+  }, [findMatchingRule, isReturning, visitCount, rulesLoaded, previewId]);
 
   const handleDismiss = useCallback(() => {
     if (!activeRule) return;
@@ -348,14 +376,38 @@ export default function SmartBanner() {
 
   if (!visible || !activeRule) return null;
 
-  switch (activeRule.display.type) {
-    case 'top-bar':
-      return <TopBar rule={activeRule} onDismiss={handleDismiss} />;
-    case 'slide-in':
-      return <SlideIn rule={activeRule} onDismiss={handleDismiss} />;
-    case 'modal':
-      return <BannerModal rule={activeRule} onDismiss={handleDismiss} />;
-    default:
-      return null;
-  }
+  const bannerElement = (() => {
+    switch (activeRule.display.type) {
+      case 'top-bar':
+        return <TopBar rule={activeRule} onDismiss={handleDismiss} />;
+      case 'slide-in':
+        return <SlideIn rule={activeRule} onDismiss={handleDismiss} />;
+      case 'modal':
+        return <BannerModal rule={activeRule} onDismiss={handleDismiss} />;
+      default:
+        return null;
+    }
+  })();
+
+  return (
+    <>
+      {bannerElement}
+      {isPreview && (
+        <div className="fixed top-0 left-0 z-[80] m-2">
+          <div className="bg-yellow-400 text-yellow-900 text-xs font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2 animate-pulse">
+            <Eye className="w-3.5 h-3.5" />
+            PREVIEW MODE
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+export default function SmartBanner() {
+  return (
+    <Suspense fallback={null}>
+      <SmartBannerInner />
+    </Suspense>
+  );
 }
