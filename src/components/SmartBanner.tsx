@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { X, Phone, ArrowRight } from 'lucide-react';
 import { useVisitor } from '@/hooks/useVisitor';
-import { bannerRules, type BannerRule } from '@/lib/bannerRules';
+import { type BannerRule } from '@/lib/bannerRules';
 import { trackEvent } from '@/services/analyticsManager';
 
 const DISMISS_KEY = 'lavaca_banner_dismiss';
@@ -211,33 +211,109 @@ function BannerModal({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => v
   );
 }
 
+// Convert DB row to BannerRule format
+interface DBBanner {
+  id: string;
+  name: string;
+  visitor_type: 'new' | 'returning' | 'all' | null;
+  min_visits: number;
+  max_visits: number | null;
+  min_days_since_first: number;
+  max_days_since_first: number | null;
+  show_on_paths: string[];
+  exclude_paths: string[];
+  require_viewed_pages: string[];
+  require_not_viewed_pages: string[];
+  display_type: 'top-bar' | 'slide-in' | 'modal';
+  icon: string | null;
+  title: string | null;
+  message: string;
+  cta_text: string | null;
+  cta_link: string | null;
+  cta_phone: string | null;
+  bg_color: string;
+  text_color: string;
+  dismissable: boolean;
+  dismiss_for_hours: number;
+  enabled: boolean;
+  priority: number;
+  start_date: string | null;
+  end_date: string | null;
+}
+
+function dbToBannerRule(db: DBBanner): BannerRule {
+  return {
+    id: db.id,
+    conditions: {
+      visitorType: db.visitor_type === 'all' ? undefined : (db.visitor_type || undefined),
+      minVisits: db.min_visits || undefined,
+      maxVisits: db.max_visits || undefined,
+      minDaysSinceFirst: db.min_days_since_first || undefined,
+      maxDaysSinceFirst: db.max_days_since_first || undefined,
+      paths: db.show_on_paths?.length > 0 ? db.show_on_paths : undefined,
+      excludePaths: db.exclude_paths?.length > 0 ? db.exclude_paths : undefined,
+      hasViewedPages: db.require_viewed_pages?.length > 0 ? db.require_viewed_pages : undefined,
+      hasNotViewedPages: db.require_not_viewed_pages?.length > 0 ? db.require_not_viewed_pages : undefined,
+    },
+    display: {
+      type: db.display_type,
+      title: db.title || undefined,
+      message: db.message,
+      ctaText: db.cta_text || undefined,
+      ctaLink: db.cta_link || undefined,
+      ctaPhone: db.cta_phone || undefined,
+      bgColor: db.bg_color,
+      textColor: db.text_color,
+      dismissable: db.dismissable,
+      dismissForHours: db.dismiss_for_hours,
+      icon: db.icon || undefined,
+    },
+    enabled: db.enabled,
+    startDate: db.start_date || undefined,
+    endDate: db.end_date || undefined,
+    priority: db.priority,
+  };
+}
+
 // ---- MAIN SMART BANNER COMPONENT ----
 export default function SmartBanner() {
   const pathname = usePathname();
   const { visitorId, visitCount, isReturning, firstSeen, pagesVisited } = useVisitor();
   const [activeRule, setActiveRule] = useState<BannerRule | null>(null);
   const [visible, setVisible] = useState(false);
+  const [rules, setRules] = useState<BannerRule[]>([]);
+  const [rulesLoaded, setRulesLoaded] = useState(false);
+
+  // Fetch banner rules from DB
+  useEffect(() => {
+    fetch('/api/banners')
+      .then(res => res.ok ? res.json() : [])
+      .then((data: DBBanner[]) => {
+        setRules(data.map(dbToBannerRule));
+        setRulesLoaded(true);
+      })
+      .catch(() => setRulesLoaded(true));
+  }, []);
 
   const findMatchingRule = useCallback(() => {
-    if (!visitorId) return null;
+    if (!visitorId || !rulesLoaded || rules.length === 0) return null;
 
     const visitorType = isReturning ? 'returning' : 'new';
     const daysSinceFirst = firstSeen
       ? Math.floor((Date.now() - new Date(firstSeen).getTime()) / (1000 * 60 * 60 * 24))
       : 0;
 
-    // Sort by priority (lower number = higher priority)
-    const sorted = [...bannerRules].sort((a, b) => a.priority - b.priority);
-
-    for (const rule of sorted) {
+    // Already sorted by priority from API
+    for (const rule of rules) {
       if (evaluateRule(rule, visitorType, visitCount, daysSinceFirst, pathname, pagesVisited)) {
         return rule;
       }
     }
     return null;
-  }, [visitorId, isReturning, visitCount, firstSeen, pathname, pagesVisited]);
+  }, [visitorId, isReturning, visitCount, firstSeen, pathname, pagesVisited, rules, rulesLoaded]);
 
   useEffect(() => {
+    if (!rulesLoaded) return;
     // Delay banner show by 1.5s so page content loads first
     const timer = setTimeout(() => {
       const rule = findMatchingRule();
@@ -257,7 +333,7 @@ export default function SmartBanner() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [findMatchingRule, isReturning, visitCount]);
+  }, [findMatchingRule, isReturning, visitCount, rulesLoaded]);
 
   const handleDismiss = useCallback(() => {
     if (!activeRule) return;

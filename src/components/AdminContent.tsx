@@ -31,6 +31,7 @@ const ConversionDashboard = dynamic(() => import('@/components/admin/ConversionD
 const UptimeMonitor = dynamic(() => import('@/components/admin/UptimeMonitor'), { ssr: false });
 const CMSPageEditor = dynamic(() => import('@/components/admin/CMSPageEditor').then(m => ({ default: m.CMSPageEditor })), { ssr: false });
 import { PricingManager } from '@/components/admin/PricingManager';
+import { BannerManager } from '@/components/admin/BannerManager';
 import { NonNegotiablesManager } from '@/components/admin/NonNegotiablesManager';
 import { ComplianceDocumentsManager } from '@/components/admin/ComplianceDocumentsManager';
 import { ReportsPage } from '@/components/admin/ReportsPage';
@@ -225,6 +226,10 @@ export default function AdminContent() {
               }}
               editProject={editingProject}
             />
+          </TabsContent>
+
+          <TabsContent value="banners">
+            <BannerManager />
           </TabsContent>
 
           <TabsContent value="seo">

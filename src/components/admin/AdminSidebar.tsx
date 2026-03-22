@@ -22,6 +22,7 @@ import {
   Gauge,
   TrendingUp,
   HeartPulse,
+  Megaphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -46,6 +47,7 @@ export default function AdminSidebar({ activeTab, onTabChange, isMobileOpen, onM
     { id: 'services', icon: Wrench, label: 'Services' },
     { id: 'service-areas', icon: MapPin, label: 'Service Areas' },
     { id: 'projects', icon: FolderKanban, label: 'Projects' },
+    { id: 'banners', icon: Megaphone, label: 'Smart Banners' },
     { id: 'seo', icon: Globe, label: 'SEO/Sitemap' },
     { id: 'analytics', icon: Activity, label: 'Analytics' },
     { id: 'gmb', icon: Activity, label: 'Google Reviews' },
