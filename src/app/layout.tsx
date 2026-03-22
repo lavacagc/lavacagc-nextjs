@@ -15,6 +15,7 @@ import { ClientLeadGenWidgets } from '@/components/ClientLeadGenWidgets'
 import StickyCTA from '@/components/StickyCTA'
 import SectionTracker from '@/components/SectionTracker'
 import VisitorTracker from '@/components/VisitorTracker'
+import SmartBanner from '@/components/SmartBanner'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -149,6 +150,7 @@ export default function RootLayout({
             <StickyCTA />
             <SectionTracker />
             <VisitorTracker />
+            <SmartBanner />
           </TooltipProvider>
         </Providers>
       </body>
