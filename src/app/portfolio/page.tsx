@@ -80,6 +80,7 @@ async function getProjects(): Promise<Project[]> {
       `
       )
       .eq('active', true)
+      .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false });
 
     if (error) {

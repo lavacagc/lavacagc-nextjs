@@ -166,36 +166,74 @@ function TopBar({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void }
 function SlideIn({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void }) {
   const d = rule.display;
   return (
-    <div className={`fixed bottom-4 right-4 z-[60] max-w-sm rounded-xl shadow-2xl ${d.bgColor} ${d.textColor} animate-in slide-in-from-right duration-500`}>
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1">
-            {d.icon && <span className="text-2xl">{d.icon}</span>}
-            {d.title && <h4 className="font-bold text-lg mt-1">{d.title}</h4>}
-            <p className="text-sm mt-1 opacity-90">{d.message}</p>
-            {d.ctaText && d.ctaLink && (
-              <a
-                href={d.ctaLink}
-                className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg font-semibold text-sm transition-colors cursor-pointer"
-                onClick={() => trackEvent('smart_banner_cta', { banner_id: rule.id, cta_text: d.ctaText })}
+    <>
+      {/* Desktop: bottom-right card */}
+      <div className={`hidden md:block fixed bottom-4 right-4 z-[60] max-w-sm rounded-xl shadow-2xl ${d.bgColor} ${d.textColor} animate-in slide-in-from-right duration-500`}>
+        <div className="p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              {d.icon && <span className="text-2xl">{d.icon}</span>}
+              {d.title && <h4 className="font-bold text-lg mt-1">{d.title}</h4>}
+              <p className="text-sm mt-1 opacity-90">{d.message}</p>
+              {d.ctaText && d.ctaLink && (
+                <a
+                  href={d.ctaLink}
+                  className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg font-semibold text-sm transition-colors cursor-pointer"
+                  onClick={() => trackEvent('smart_banner_cta', { banner_id: rule.id, cta_text: d.ctaText })}
+                >
+                  {d.ctaText}
+                  <ArrowRight className="w-4 h-4" />
+                </a>
+              )}
+            </div>
+            {(d.dismissable !== false) && (
+              <button
+                onClick={onDismiss}
+                className="p-1 rounded-full hover:bg-white/20 transition-colors flex-shrink-0 cursor-pointer"
+                aria-label="Dismiss"
               >
-                {d.ctaText}
-                <ArrowRight className="w-4 h-4" />
-              </a>
+                <X className="w-4 h-4" />
+              </button>
             )}
           </div>
-          {(d.dismissable !== false) && (
-            <button
-              onClick={onDismiss}
-              className="p-1 rounded-full hover:bg-white/20 transition-colors flex-shrink-0 cursor-pointer"
-              aria-label="Dismiss"
+        </div>
+      </div>
+
+      {/* Mobile: bottom floating stacked card (same as Concept A) */}
+      <div className={`md:hidden fixed bottom-20 left-3 right-3 z-[60] ${d.bgColor} ${d.textColor} rounded-2xl shadow-2xl animate-in slide-in-from-bottom duration-500`}>
+        {(d.dismissable !== false) && (
+          <button
+            onClick={onDismiss}
+            className="absolute top-2.5 right-3 w-7 h-7 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/25 transition-colors cursor-pointer"
+            aria-label="Dismiss banner"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+        <div className="p-4 text-center">
+          {d.title && (
+            <p className="font-bold text-base leading-snug">
+              {d.icon && <span className="mr-1">{d.icon}</span>}
+              {d.title}
+            </p>
+          )}
+          <p className={`text-sm opacity-90 ${d.title ? 'mt-1' : ''}`}>
+            {!d.title && d.icon && <span className="mr-1">{d.icon}</span>}
+            {d.message}
+          </p>
+          {d.ctaText && d.ctaLink && (
+            <a
+              href={d.ctaLink}
+              className="inline-flex items-center justify-center gap-2 mt-3 bg-white text-blue-700 font-bold text-sm px-6 py-2.5 rounded-xl hover:bg-white/90 transition-colors cursor-pointer"
+              onClick={() => trackEvent('smart_banner_cta', { banner_id: rule.id, cta_text: d.ctaText })}
             >
-              <X className="w-4 h-4" />
-            </button>
+              {d.ctaLink?.startsWith('sms:') ? <MessageCircle className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
+              {d.ctaText}
+            </a>
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
