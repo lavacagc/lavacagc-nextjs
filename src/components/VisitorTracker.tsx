@@ -72,29 +72,73 @@ export default function VisitorTracker() {
     });
 
     // Link Microsoft Clarity sessions to our visitor ID
-    // This makes Clarity group recordings from the same visitor together
     if (typeof window.clarity === 'function') {
       window.clarity('identify', visitorId, undefined, undefined, visitorId);
       window.clarity('set', 'visitor_type', isReturning ? 'returning' : 'new');
       window.clarity('set', 'visit_count', String(visitCount));
     }
 
+    // Pass visitor identity to Meta Pixel for audience building
+    // external_id lets Meta match this visitor across sessions for retargeting
+    if (typeof window.fbq === 'function') {
+      // Set user data with external_id for cross-session matching
+      window.fbq('init', '1461944528853241', {
+        external_id: visitorId,
+      });
+
+      // Fire custom events with visitor context for audience segmentation
+      window.fbq('trackCustom', 'VisitorIdentified', {
+        visitor_type: isReturning ? 'returning' : 'new',
+        visit_count: visitCount,
+        days_since_first_visit: daysSinceFirst,
+      });
+    }
+
     ga4Initialized.current = true;
   }, [visitorId, visitCount, isReturning, firstSeen]);
 
-  // Track page + fire funnel events
+  // Track page + fire funnel events (GA4 + Meta Pixel)
   useEffect(() => {
     if (!pathname) return;
     trackPage(pathname);
 
     // Fire funnel milestone event if applicable
     const funnel = getFunnelEvent(pathname);
-    if (funnel && typeof window !== 'undefined' && typeof window.gtag !== 'undefined') {
-      window.gtag('event', funnel.event, {
+    if (funnel && typeof window !== 'undefined') {
+      const eventParams = {
         ...funnel.params,
         visitor_type: isReturning ? 'returning' : 'new',
-        visit_number: visitCount,
-      });
+        visit_number: String(visitCount),
+      };
+
+      // GA4
+      if (typeof window.gtag !== 'undefined') {
+        window.gtag('event', funnel.event, eventParams);
+      }
+
+      // Meta Pixel — fire matching custom events for audience building
+      if (typeof window.fbq === 'function') {
+        // Map funnel events to Meta custom events
+        const metaEventMap: Record<string, string> = {
+          funnel_service_view: 'ViewContent',
+          funnel_estimate_start: 'InitiateCheckout',
+          funnel_contact_view: 'Contact',
+          funnel_reviews_view: 'ViewContent',
+          funnel_location_view: 'ViewContent',
+          funnel_project_view: 'ViewContent',
+        };
+
+        const metaEvent = metaEventMap[funnel.event];
+        if (metaEvent) {
+          // Use standard events where possible (better for optimization)
+          window.fbq('track', metaEvent, {
+            content_category: funnel.event,
+            ...funnel.params,
+            visitor_type: isReturning ? 'returning' : 'new',
+            visit_count: visitCount,
+          });
+        }
+      }
     }
   }, [pathname, trackPage, isReturning, visitCount]);
 

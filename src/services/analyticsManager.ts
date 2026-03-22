@@ -305,6 +305,13 @@ export const trackFormSubmission = (formName: string) => {
       ...(vid ? { visitor_id: vid } : {}),
     });
   }
+  // Meta Pixel — fire Lead event for audience building + conversion tracking
+  if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
+    window.fbq('track', 'Lead', {
+      content_name: formName,
+      content_category: 'form_submission',
+    });
+  }
 };
 
 export const trackFormFieldFocus = (formName: string, fieldName: string) => {
@@ -324,6 +331,12 @@ export const trackPhoneClick = () => {
   // Direct gtag backup
   if (typeof window !== 'undefined' && typeof window.gtag !== 'undefined') {
     window.gtag('event', 'phone_click');
+  }
+  // Meta Pixel — Contact event for phone clicks
+  if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
+    window.fbq('track', 'Contact', {
+      content_category: 'phone_click',
+    });
   }
 };
 
