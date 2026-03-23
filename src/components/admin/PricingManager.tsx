@@ -151,7 +151,7 @@ export function PricingManager() {
         .order('display_order');
 
       if (error) throw error;
-      setItems(data || []);
+      setItems((data || []) as unknown as OptionItem[]);
     } catch (error) {
       console.error('Error loading items:', error);
     }
@@ -234,17 +234,21 @@ export function PricingManager() {
         materials_list: itemMaterials.length > 0 ? itemMaterials : []
       };
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const itemDataForDb = { ...itemData, materials_list: itemData.materials_list as any };
+
       if (editingItem?.id) {
         const { error } = await supabase
           .from('calculator_option_items')
-          .update(itemData)
+          .update(itemDataForDb)
           .eq('id', editingItem.id);
 
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('calculator_option_items')
-          .insert(itemData as { option_category_id: string; name: string; description?: string | null; material_cost: number; labor_cost: number; total_cost: number; labor_hours?: number | null; modifier_type?: string | null; modifier_value?: number | null; display_label?: string | null; materials_list?: Material[]; display_order?: number; active?: boolean });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .insert(itemDataForDb as any);
 
         if (error) throw error;
       }

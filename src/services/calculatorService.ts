@@ -71,11 +71,11 @@ export const calculatorService = {
           .filter((item) => item.option_category_id === category.id)
           .map((item) => ({
             ...item,
-            materials_list: (item.materials_list as Array<Record<string, unknown>>) || [],
+            materials_list: (item.materials_list || []) as unknown as string[],
             modifier_type: item.modifier_type as 'additive' | 'multiplicative' | 'reductive' | 'fixed',
           })),
       })
-    );
+    ) as unknown as CalculatorCategoryWithItems[];
 
     return categoriesWithItems;
   },
@@ -219,10 +219,11 @@ export const calculatorService = {
   ): Promise<string> {
     // Prepare lead data for insertion - cast JSON fields + visitor tracking
     const visitorData = getVisitorData();
+    /* eslint-disable @typescript-eslint/no-explicit-any */
     const leadInsert = {
       ...lead,
-      uploaded_images: (lead.uploaded_images || []) as unknown as string[],
-      uploaded_plans: (lead.uploaded_plans || []) as unknown as PDFUpload[],
+      uploaded_images: (lead.uploaded_images || []) as any,
+      uploaded_plans: (lead.uploaded_plans || []) as any,
       visitor_id: visitorData?.id || null,
       visit_count: visitorData?.visit_count || 1,
       first_seen: visitorData?.first_seen || null,
@@ -232,7 +233,8 @@ export const calculatorService = {
     // Insert lead
     const { data: leadData, error: leadError } = await supabase
       .from("estimate_leads")
-      .insert([leadInsert])
+      .insert([leadInsert] as any)
+    /* eslint-enable @typescript-eslint/no-explicit-any */
       .select()
       .single();
 

@@ -125,8 +125,8 @@ const BrokenLinkDetector: React.FC = () => {
               content: item.content || ''
             }
           });
-        } catch {
-          console.error(`Link check failed for ${item.id}:`, error);
+        } catch (err) {
+          console.error(`Link check failed for ${item.id}:`, err);
         }
         
         completed++;

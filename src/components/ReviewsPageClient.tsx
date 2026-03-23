@@ -220,7 +220,7 @@ export default function ReviewsPageClient() {
                       <h3 className="font-semibold text-text-primary">{review.reviewer_name || 'Anonymous'}</h3>
                       <div className="flex gap-0.5 my-1">
                         {Array.from({ length: 5 }).map((_, i) => (
-                          <Star key={i} className={`h-4 w-4 ${i < (review.rating || 5) ? 'fill-yellow-400 text-yellow-400' : 'fill-muted text-muted'}`} />
+                          <Star key={i} className={`h-4 w-4 ${i < (review.star_rating || 5) ? 'fill-yellow-400 text-yellow-400' : 'fill-muted text-muted'}`} />
                         ))}
                       </div>
                       {review.create_time && <div className="text-sm text-text-secondary">{format(new Date(review.create_time), 'MMMM d, yyyy')}</div>}

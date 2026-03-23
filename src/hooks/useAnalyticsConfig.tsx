@@ -59,10 +59,12 @@ export const useAnalyticsConfig = () => {
 
   const updateConfig = useMutation({
     mutationFn: async (updates: Partial<AnalyticsConfig>) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const dbUpdates = updates as any;
       if (!config?.id) {
         const { data, error } = await supabase
           .from('analytics_config')
-          .insert(updates)
+          .insert(dbUpdates)
           .select()
           .single();
         if (error) throw error;
@@ -71,7 +73,7 @@ export const useAnalyticsConfig = () => {
 
       const { data, error } = await supabase
         .from('analytics_config')
-        .update(updates)
+        .update(dbUpdates)
         .eq('id', config.id)
         .select()
         .single();
@@ -99,7 +101,8 @@ export const useAnalyticsConfig = () => {
     mutationFn: async (event: Omit<CustomEvent, 'id' | 'created_at' | 'updated_at'>) => {
       const { data, error } = await supabase
         .from('custom_events')
-        .insert(event)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .insert(event as any)
         .select()
         .single();
 
@@ -126,7 +129,8 @@ export const useAnalyticsConfig = () => {
     mutationFn: async ({ id, ...updates }: Partial<CustomEvent> & { id: string }) => {
       const { data, error } = await supabase
         .from('custom_events')
-        .update(updates)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .update(updates as any)
         .eq('id', id)
         .select()
         .single();

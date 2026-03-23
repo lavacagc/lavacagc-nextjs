@@ -106,7 +106,7 @@ export function EstimatesManager() {
       const { data, error } = await query;
 
       if (error) throw error;
-      setLeads(data || []);
+      setLeads((data || []) as unknown as EstimateLead[]);
     } catch (error) {
       console.error('Error loading leads:', error);
       toast({

@@ -98,8 +98,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Check for existing follow-up sequence for this email (prevent duplicates)
-    const { data: existingFollowUps } = await supabase
-      .from('follow_up_queue')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: existingFollowUps } = await (supabase.from as any)('follow_up_queue')
       .select('id, status')
       .eq('lead_email', email)
       .in('status', ['pending', 'sent'])
@@ -118,7 +118,17 @@ export async function POST(request: NextRequest) {
     const now = new Date();
 
     // Create follow-up sequence
-    const followUps = [
+    const followUps: Array<{
+      lead_id: string | null;
+      estimate_lead_id: string | null;
+      lead_email: string;
+      lead_name: string;
+      follow_up_type: string;
+      scheduled_at: string;
+      status: string;
+      email_subject: string;
+      email_body: string;
+    }> = [
       {
         lead_id: leadId || null,
         estimate_lead_id: estimateLeadId || null,
@@ -174,8 +184,8 @@ export async function POST(request: NextRequest) {
       followUps[0].status = 'sent' as const;
     }
 
-    const { data, error } = await supabase
-      .from('follow_up_queue')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase.from as any)('follow_up_queue')
       .insert(followUps)
       .select('id, follow_up_type, scheduled_at');
 

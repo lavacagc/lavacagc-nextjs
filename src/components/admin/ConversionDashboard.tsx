@@ -124,12 +124,13 @@ export default function ConversionDashboard() {
       const [leadsRes, estimateLeadsRes, followUpsRes] = await Promise.all([
         supabase.from('leads').select('id, created_at, inquiry_type, project_type').order('created_at', { ascending: false }),
         supabase.from('estimate_leads').select('id, created_at, lead_source, lead_status').order('created_at', { ascending: false }),
-        supabase.from('follow_up_queue').select('id, status, created_at, sent_at').order('created_at', { ascending: false }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase.from as any)('follow_up_queue').select('id, status, created_at, sent_at').order('created_at', { ascending: false }),
       ]);
 
       const leads = (leadsRes.data || []) as LeadRow[];
       const estimateLeads = (estimateLeadsRes.data || []) as EstimateLeadRow[];
-      const followUps = (followUpsRes.data || []) as FollowUpRow[];
+      const followUps = (followUpsRes.data || []) as unknown as FollowUpRow[];
 
       // Combine for time-based metrics
       const allLeadDates = [

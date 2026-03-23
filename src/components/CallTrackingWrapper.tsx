@@ -37,7 +37,8 @@ const CallTrackingWrapper: React.FC<CallTrackingWrapperProps> = ({
 
       // Save to Supabase lead_events table
       // Note: This table needs to be created via migration
-      await supabase.from('lead_events').insert({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from as any)('lead_events').insert({
         event_type: 'phone_click',
         page_url: pageUrl,
         metadata: {

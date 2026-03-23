@@ -44,8 +44,8 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServerSupabaseClient();
 
-    const { error } = await supabase
-      .from('referrals')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase.from as any)('referrals')
       .insert({
         referrer_name: referrerName.trim(),
         referrer_email: referrerEmail.trim().toLowerCase(),

@@ -37,7 +37,8 @@ export default function LeaveReviewClient() {
 
     try {
       // Try internal_feedback table first (preferred)
-      const { error: fbError } = await supabase.from('internal_feedback').insert({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: fbError } = await (supabase.from as any)('internal_feedback').insert({
         rating,
         name: name.trim() || null,
         email: email.trim() || null,
@@ -47,7 +48,8 @@ export default function LeaveReviewClient() {
 
       // If internal_feedback table doesn't exist, store as a chat conversation
       if (fbError) {
-        await supabase.from('chat_conversations').insert({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase.from as any)('chat_conversations').insert({
           visitor_id: `review-${Date.now()}`,
           lead_captured: !!(name.trim() || email.trim()),
           lead_data: {

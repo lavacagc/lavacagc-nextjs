@@ -33,14 +33,14 @@ export default function FollowUpsPage() {
   const fetchFollowUps = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('follow_up_queue')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.from as any)('follow_up_queue')
         .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      const followUpData = data || [];
+      const followUpData = (data || []) as FollowUpItem[];
       setFollowUps(followUpData);
 
       // Calculate stats
@@ -79,8 +79,8 @@ export default function FollowUpsPage() {
   const handleMarkResponded = async (followUpId: string, leadEmail: string) => {
     try {
       // Cancel all pending follow-ups for this lead
-      const { error } = await supabase
-        .from('follow_up_queue')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase.from as any)('follow_up_queue')
         .update({ status: 'responded' })
         .eq('lead_email', leadEmail)
         .in('status', ['pending', 'sent']);
@@ -104,8 +104,8 @@ export default function FollowUpsPage() {
 
   const handleCancel = async (followUpId: string) => {
     try {
-      const { error } = await supabase
-        .from('follow_up_queue')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase.from as any)('follow_up_queue')
         .update({ status: 'cancelled' })
         .eq('id', followUpId);
 
@@ -129,8 +129,8 @@ export default function FollowUpsPage() {
   const handleResend = async (followUp: FollowUpItem) => {
     try {
       // Create a new follow-up with immediate scheduling
-      const { error } = await supabase
-        .from('follow_up_queue')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase.from as any)('follow_up_queue')
         .insert({
           lead_email: followUp.lead_email,
           lead_name: followUp.lead_name,
