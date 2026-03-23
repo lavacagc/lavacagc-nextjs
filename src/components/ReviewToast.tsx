@@ -19,12 +19,15 @@ export default function ReviewToast() {
   const [isDismissed, setIsDismissed] = useState(false);
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [bannerShowing, setBannerShowing] = useState(false);
-  const [coolingDown, setCoolingDown] = useState(false);
+  const [bannerShowing, setBannerShowing] = useState(() => isBannerVisible());
+  const [coolingDown, setCoolingDown] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const cooldownUntil = parseInt(localStorage.getItem(REVIEW_COOLDOWN_KEY) || '0');
+    return cooldownUntil > Date.now();
+  });
 
   // Listen for SmartBanner visibility + set cooldown when banner is dismissed
   useEffect(() => {
-    setBannerShowing(isBannerVisible());
     let wasBannerVisible = isBannerVisible();
     return subscribeBannerState((visible) => {
       setBannerShowing(visible);
@@ -38,14 +41,19 @@ export default function ReviewToast() {
     });
   }, []);
 
-  // Check cooldown on mount (in case page refreshed during cooldown)
+  // Clear cooldown after expiry (if page was loaded during active cooldown)
   useEffect(() => {
+    if (!coolingDown) return;
     const cooldownUntil = parseInt(localStorage.getItem(REVIEW_COOLDOWN_KEY) || '0');
-    if (cooldownUntil > Date.now()) {
-      setCoolingDown(true);
-      setTimeout(() => setCoolingDown(false), cooldownUntil - Date.now());
+    const remaining = cooldownUntil - Date.now();
+    if (remaining <= 0) {
+      // Use timeout with 0ms to avoid synchronous setState in effect
+      const timer = setTimeout(() => setCoolingDown(false), 0);
+      return () => clearTimeout(timer);
     }
-  }, []);
+    const timer = setTimeout(() => setCoolingDown(false), remaining);
+    return () => clearTimeout(timer);
+  }, [coolingDown]);
 
   // Fetch real 5-star Google reviews from Supabase
   useEffect(() => {

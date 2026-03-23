@@ -95,12 +95,6 @@ function ScoreBar({ label, score }: { label: string; score: number }) {
 }
 
 async function fetchPageSpeed(url: string, strategy: 'mobile' | 'desktop'): Promise<PageSpeedResult> {
-  const params = new URLSearchParams({
-    url,
-    strategy,
-    category: 'performance',
-  });
-
   // Fetch all categories in parallel
   const categories = ['performance', 'accessibility', 'seo', 'best-practices'];
   const apiUrl = `${PAGESPEED_API}?url=${encodeURIComponent(url)}&strategy=${strategy}&${categories.map(c => `category=${c}`).join('&')}`;

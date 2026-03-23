@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Star, ExternalLink, MessageSquare, Heart, Send, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -283,12 +284,12 @@ export default function LeaveReviewClient() {
                 </p>
               )}
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <a
+                <Link
                   href="/"
                   className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-white h-12 px-8 cursor-pointer"
                 >
                   Back to Home
-                </a>
+                </Link>
                 <a
                   href="/portfolio"
                   className="inline-flex items-center justify-center rounded-md text-sm font-medium border-2 border-primary text-primary hover:bg-primary/10 h-12 px-8 cursor-pointer"

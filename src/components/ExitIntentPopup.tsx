@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,11 +14,10 @@ import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
 
 const ExitIntentPopup = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [bannerShowing, setBannerShowing] = useState(false);
+  const [bannerShowing, setBannerShowing] = useState(() => isBannerVisible());
 
   // Listen for SmartBanner visibility
   useEffect(() => {
-    setBannerShowing(isBannerVisible());
     return subscribeBannerState(setBannerShowing);
   }, []);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,7 +30,7 @@ const ExitIntentPopup = () => {
   const pathname = usePathname();
 
   // Check if current page should show the popup
-  const shouldShowOnPage = () => {
+  const shouldShowOnPage = useCallback(() => {
     // Don't show on admin, auth, blog, or other excluded pages
     if (
       pathname.startsWith('/admin') || pathname.startsWith('/vaca-mgmt') ||
@@ -45,7 +44,7 @@ const ExitIntentPopup = () => {
     }
     // Show on homepage, service pages, and other main pages
     return true;
-  };
+  }, [pathname]);
 
   useEffect(() => {
     // Don't show if not on allowed page
@@ -92,7 +91,7 @@ const ExitIntentPopup = () => {
       window.removeEventListener('popstate', handlePopState);
       clearTimeout(timeoutId);
     };
-  }, [pathname, isOpen]);
+  }, [pathname, isOpen, bannerShowing, shouldShowOnPage]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;

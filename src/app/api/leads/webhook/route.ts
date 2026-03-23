@@ -49,7 +49,8 @@ async function sendInstantAck(email: string, subject: string, html: string): Pro
 // Generate email subjects and HTML for follow-up sequence
 function generateFollowUpEmails(name: string, projectType?: string) {
   const firstName = name.split(' ')[0] || name;
-  const projectMention = projectType ? ` about your ${projectType} project` : '';
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _projectMention = projectType ? ` about your ${projectType} project` : '';
 
   return {
     instant_ack: {
@@ -74,7 +75,8 @@ function generateFollowUpEmails(name: string, projectType?: string) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, email, phone, source, projectType, leadId, estimateLeadId } = body as {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { name, email, phone: _phone, source: _source, projectType, leadId, estimateLeadId } = body as {
       name: string;
       email: string;
       phone?: string;

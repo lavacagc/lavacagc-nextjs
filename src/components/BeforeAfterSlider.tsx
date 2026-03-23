@@ -20,7 +20,22 @@ const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
 }) => {
   const [sliderPosition, setSliderPosition] = useState(50)
   const [isDragging, setIsDragging] = useState(false)
+  const [containerWidth, setContainerWidth] = useState<number | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Track container width via ResizeObserver instead of reading ref during render
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width)
+      }
+    })
+    observer.observe(el)
+    setContainerWidth(el.offsetWidth)
+    return () => observer.disconnect()
+  }, [])
 
   const getPositionFromEvent = useCallback(
     (clientX: number) => {
@@ -119,7 +134,7 @@ const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
           fill
           className="object-cover pointer-events-none"
           sizes="(max-width: 768px) 100vw, 50vw"
-          style={{ maxWidth: 'none', width: containerRef.current ? `${containerRef.current.offsetWidth}px` : '100vw' }}
+          style={{ maxWidth: 'none', width: containerWidth ? `${containerWidth}px` : '100vw' }}
           draggable={false}
         />
       </div>

@@ -1,15 +1,15 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+// import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AdminCheckbox } from '@/components/admin/ui/AdminCheckbox';
+// import { AdminCheckbox } from '@/components/admin/ui/AdminCheckbox';
 import { 
-  Upload, Image as ImageIcon, Star, Trash2, RotateCw, 
+  Image as ImageIcon, Star, Trash2,
   Sparkles, ArrowLeftRight, ChevronDown, ChevronUp,
   Camera, Home
 } from 'lucide-react';
@@ -30,6 +30,7 @@ const ROOM_OPTIONS = [
   'Office', 'Closet', 'Mudroom', 'Whole House', 'Other'
 ];
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -332,10 +333,11 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const updateImage = (index: number, updates: Partial<typeof formData.images[0]>) => {
     const updatedImages = [...formData.images];
     const globalIndex = formData.images.indexOf(
-      formData.images.filter(img => true)[index]
+      formData.images.filter(() => true)[index]
     );
     if (globalIndex >= 0) {
       updatedImages[globalIndex] = { ...updatedImages[globalIndex], ...updates };

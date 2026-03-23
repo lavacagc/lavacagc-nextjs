@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 
 export interface VisitorData {
   id: string;
@@ -55,8 +55,42 @@ export function getVisitorData(): VisitorData | null {
   return getStoredVisitor();
 }
 
+function initializeVisitor(): VisitorData | null {
+  if (typeof window === 'undefined') return null;
+
+  const now = new Date().toISOString();
+  const existing = getStoredVisitor();
+
+  if (existing) {
+    const lastSeen = new Date(existing.last_seen).getTime();
+    const thirtyMin = 30 * 60 * 1000;
+    const isNewSession = Date.now() - lastSeen > thirtyMin;
+
+    const updated = {
+      ...existing,
+      last_seen: now,
+      visit_count: isNewSession ? existing.visit_count + 1 : existing.visit_count,
+    };
+    saveVisitor(updated);
+    return updated;
+  }
+
+  // New visitor — check for legacy ID migration
+  const legacyId = typeof window !== 'undefined' ? localStorage.getItem(LEGACY_KEY) : null;
+  const newVisitor: VisitorData = {
+    id: legacyId || generateId(),
+    first_seen: now,
+    last_seen: now,
+    visit_count: 1,
+    pages_visited: [],
+    referrer: typeof document !== 'undefined' ? (document.referrer || null) : null,
+  };
+  saveVisitor(newVisitor);
+  return newVisitor;
+}
+
 export function useVisitor() {
-  const [visitor, setVisitor] = useState<VisitorData | null>(null);
+  const [visitor, setVisitor] = useState<VisitorData | null>(() => initializeVisitor());
 
   const trackPage = useCallback((path: string) => {
     setVisitor(prev => {
@@ -76,41 +110,6 @@ export function useVisitor() {
       saveVisitor(updated);
       return updated;
     });
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const now = new Date().toISOString();
-    let existing = getStoredVisitor();
-
-    if (existing) {
-      // Returning visitor — increment visit count if last seen > 30 min ago
-      const lastSeen = new Date(existing.last_seen).getTime();
-      const thirtyMin = 30 * 60 * 1000;
-      const isNewSession = Date.now() - lastSeen > thirtyMin;
-
-      existing = {
-        ...existing,
-        last_seen: now,
-        visit_count: isNewSession ? existing.visit_count + 1 : existing.visit_count,
-      };
-      saveVisitor(existing);
-      setVisitor(existing);
-    } else {
-      // New visitor — check for legacy ID migration
-      const legacyId = localStorage.getItem(LEGACY_KEY);
-      const newVisitor: VisitorData = {
-        id: legacyId || generateId(),
-        first_seen: now,
-        last_seen: now,
-        visit_count: 1,
-        pages_visited: [],
-        referrer: document.referrer || null,
-      };
-      saveVisitor(newVisitor);
-      setVisitor(newVisitor);
-    }
   }, []);
 
   return {

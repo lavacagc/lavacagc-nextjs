@@ -405,6 +405,8 @@ function SmartBannerInner() {
     if (previewId) {
       const rule = findMatchingRule();
       if (rule) {
+        // Intentional synchronous setState for immediate preview display
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setActiveRule(rule);
         setVisible(true);
         setIsPreview(true);

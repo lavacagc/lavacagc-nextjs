@@ -1,6 +1,7 @@
 // Run with: cd lavacagc-nextjs && node -e "require('./scripts/seed-db.js')"
 // or: cd lavacagc-nextjs && node scripts/seed-db.js
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = "https://xrvbrnrbnyfdwkfdoepq.supabase.co";

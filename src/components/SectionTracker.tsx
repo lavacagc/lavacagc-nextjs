@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import { trackEvent } from '@/services/analyticsManager';
 import { hasEventBeenTracked, markEventAsTracked, throttle } from '@/utils/scrollTracking';
@@ -17,9 +17,9 @@ import { hasEventBeenTracked, markEventAsTracked, throttle } from '@/utils/scrol
 export default function SectionTracker() {
   const pathname = usePathname();
   const scrollThresholdsFired = useRef<Set<number>>(new Set());
-  const pageLoadTime = useRef<number>(Date.now());
+  const pageLoadTime = useRef<number>(0);
 
-  // Reset on route change
+  // Reset on route change (and initialize on mount)
   useEffect(() => {
     scrollThresholdsFired.current = new Set();
     pageLoadTime.current = Date.now();
@@ -65,7 +65,7 @@ export default function SectionTracker() {
   }, [pathname]);
 
   // Scroll depth tracking at 25/50/75/100%
-  const handleScroll = useCallback(
+  const handleScroll = useMemo(() =>
     throttle(() => {
       if (typeof window === 'undefined') return;
 
@@ -87,8 +87,10 @@ export default function SectionTracker() {
           if (!hasEventBeenTracked(eventKey)) {
             markEventAsTracked(eventKey);
 
+            // eslint-disable-next-line react-hooks/purity -- Date.now() is called inside throttled scroll handler, not during render
+            const now = Date.now();
             const timeOnPage = Math.round(
-              (Date.now() - pageLoadTime.current) / 1000
+              (now - pageLoadTime.current) / 1000
             );
 
             trackEvent('scroll_depth', {

@@ -131,10 +131,8 @@ class PerformanceMonitor {
     if (typeof window === 'undefined') return;
     if ('performance' in window && 'getEntriesByType' in performance) {
       const resources = performance.getEntriesByType('resource') as (PerformanceEntry & { transferSize: number; duration: number })[];
-      const jsResources = resources.filter(r => r.name.endsWith('.js'));
-      const cssResources = resources.filter(r => r.name.endsWith('.css'));
-
       // Bundle size data available via resources — no console output in production
+      void resources;
     }
   }
 }

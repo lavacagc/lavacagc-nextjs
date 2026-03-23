@@ -10,11 +10,10 @@ import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
 export default function StickyCTA() {
   const pathname = usePathname();
   const [visible, setVisible] = useState(false);
-  const [bannerShowing, setBannerShowing] = useState(false);
+  const [bannerShowing, setBannerShowing] = useState(() => isBannerVisible());
 
   // Listen for SmartBanner visibility
   useEffect(() => {
-    setBannerShowing(isBannerVisible());
     return subscribeBannerState(setBannerShowing);
   }, []);
 

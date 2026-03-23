@@ -86,7 +86,7 @@ const WhyChoose = dynamic(() => import('@/components/WhyChoose'), {
   )
 })
 
-const MobileContactBanner = dynamic(() => import('@/components/MobileContactBanner'))
+// const MobileContactBanner = dynamic(() => import('@/components/MobileContactBanner'))
 const TrackedSection = dynamic(() => import('@/components/TrackedSection'))
 
 export default function Home() {
