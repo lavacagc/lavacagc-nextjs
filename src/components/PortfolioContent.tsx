@@ -10,6 +10,7 @@ import { ImageLightbox } from '@/components/ImageLightbox';
 import { useScrollTracking } from '@/hooks/useScrollTracking';
 import { useHorizontalScrollTracking } from '@/hooks/useHorizontalScrollTracking';
 import { trackEvent } from '@/services/analyticsManager';
+import { ScrollHint } from '@/components/ScrollHint';
 
 interface Project {
   id: string;
@@ -147,7 +148,9 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
       {/* Projects Grid */}
       <section ref={portfolioSectionRef} className="py-8 md:py-16">
         <div className="container mx-auto px-4">
-          <div ref={horizontalScrollRef} className="overflow-x-auto pb-4">
+          <div className="relative">
+            <ScrollHint scrollRef={horizontalScrollRef} />
+          <div ref={horizontalScrollRef} className="overflow-x-auto pb-4 scroll-smooth">
             <div className="flex gap-8 min-w-max px-4">
               {filteredProjects.map((project) => (
                 <Card
@@ -238,6 +241,7 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
                 </Card>
               ))}
             </div>
+          </div>
           </div>
         </div>
       </section>

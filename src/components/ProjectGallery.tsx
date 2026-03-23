@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useScrollTracking } from "@/hooks/useScrollTracking";
 import { useHorizontalScrollTracking } from "@/hooks/useHorizontalScrollTracking";
 import { trackEvent } from "@/services/analyticsManager";
+import { ScrollHint } from "@/components/ScrollHint";
 
 // Lazy video component - only loads video when visible in viewport
 const LazyVideo = ({ src, title }: { src: string; title: string }) => {
@@ -245,7 +246,9 @@ const ProjectGallery = () => {
           </div>
         ) : (
           <>
-            <div ref={horizontalScrollRef} className="overflow-x-auto pb-4">
+            <div className="relative">
+              <ScrollHint scrollRef={horizontalScrollRef} />
+            <div ref={horizontalScrollRef} className="overflow-x-auto pb-4 scroll-smooth">
               <div className="flex gap-8 min-w-max px-4">
                 {filteredProjects.map((project) => (
                   <Card key={project.id} data-track="true" className="group overflow-hidden hover:shadow-elegant transition-all duration-300 hover:-translate-y-2 bg-card border-2 hover:border-primary/20 flex-shrink-0 w-80">
@@ -313,6 +316,7 @@ const ProjectGallery = () => {
                   </Card>
                 ))}
               </div>
+            </div>
             </div>
 
             <div className="text-center mt-12">
