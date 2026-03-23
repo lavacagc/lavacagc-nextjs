@@ -132,16 +132,7 @@ function TopBar({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void }
 
       {/* Mobile: bottom floating stacked card (Concept A) */}
       <div className={`md:hidden fixed bottom-20 left-3 right-3 z-[60] ${d.bgColor} ${d.textColor} rounded-2xl shadow-2xl animate-in slide-in-from-bottom duration-500`}>
-        {(d.dismissable !== false) && (
-          <button
-            onClick={onDismiss}
-            className="absolute top-2.5 right-3 w-7 h-7 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/25 transition-colors cursor-pointer"
-            aria-label="Dismiss banner"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
-        <div className="p-4 text-center">
+        <div className="p-4 pr-14 text-center">
           <p className="font-bold text-base leading-snug">
             {d.icon && <span className="mr-1">{d.icon}</span>}
             {d.message}
@@ -157,6 +148,15 @@ function TopBar({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void }
             </a>
           )}
         </div>
+        {(d.dismissable !== false) && (
+          <button
+            onClick={onDismiss}
+            className="absolute top-2 right-2 w-11 h-11 flex items-center justify-center rounded-full bg-white/20 active:bg-white/40 transition-colors cursor-pointer"
+            aria-label="Dismiss banner"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
     </>
   );
@@ -201,16 +201,7 @@ function SlideIn({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void 
 
       {/* Mobile: bottom floating stacked card (same as Concept A) */}
       <div className={`md:hidden fixed bottom-20 left-3 right-3 z-[60] ${d.bgColor} ${d.textColor} rounded-2xl shadow-2xl animate-in slide-in-from-bottom duration-500`}>
-        {(d.dismissable !== false) && (
-          <button
-            onClick={onDismiss}
-            className="absolute top-2.5 right-3 w-7 h-7 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/25 transition-colors cursor-pointer"
-            aria-label="Dismiss banner"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
-        <div className="p-4 text-center">
+        <div className="p-4 pr-14 text-center">
           {d.title && (
             <p className="font-bold text-base leading-snug">
               {d.icon && <span className="mr-1">{d.icon}</span>}
@@ -232,6 +223,15 @@ function SlideIn({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void 
             </a>
           )}
         </div>
+        {(d.dismissable !== false) && (
+          <button
+            onClick={onDismiss}
+            className="absolute top-2 right-2 w-11 h-11 flex items-center justify-center rounded-full bg-white/20 active:bg-white/40 transition-colors cursor-pointer"
+            aria-label="Dismiss banner"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
     </>
   );
