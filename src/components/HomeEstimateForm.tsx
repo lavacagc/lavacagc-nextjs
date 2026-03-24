@@ -64,6 +64,7 @@ const HomeEstimateForm = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [honeypot, setHoneypot] = useState("");
   const [formData, setFormData] = useState<QuickEstimateData>({
     firstName: "",
     lastName: "",
@@ -190,6 +191,13 @@ const HomeEstimateForm = () => {
   };
 
   const handleSubmit = async () => {
+    // Honeypot check — bots fill hidden fields, humans don't
+    if (honeypot) {
+      setIsSubmitted(true);
+      toast({ title: "Estimate Request Sent!", description: "We'll get back to you within 24 hours." });
+      return;
+    }
+    
     // Validate all fields
     const result = quickEstimateSchema.safeParse(formData);
     if (!result.success) {
@@ -354,6 +362,19 @@ const HomeEstimateForm = () => {
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {/* Honeypot — hidden from humans, bots auto-fill it */}
+        <div className="absolute opacity-0 top-0 left-0 h-0 w-0 -z-10 overflow-hidden" aria-hidden="true" tabIndex={-1}>
+          <label htmlFor="he-website">Website</label>
+          <input
+            id="he-website"
+            name="website"
+            type="text"
+            value={honeypot}
+            onChange={(e) => setHoneypot(e.target.value)}
+            tabIndex={-1}
+            autoComplete="off"
+          />
+        </div>
         {/* Step 1: Contact Info */}
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">

@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bathroom Configurator — Concept Mockups</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; background: #0f0f0f; color: #fff; }
+  
+  .section-label {
+    text-align: center; padding: 48px 24px 24px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.15em;
+    text-transform: uppercase; color: #EE9639; opacity: 0.8;
+  }
+  .section-title {
+    text-align: center; font-size: 28px; font-weight: 800;
+    margin-bottom: 8px; color: #fff;
+  }
+  .section-desc {
+    text-align: center; font-size: 14px; color: #888;
+    margin-bottom: 40px; max-width: 600px; margin-left: auto; margin-right: auto;
+  }
+  
+  /* ============ DESKTOP MOCKUP ============ */
+  .desktop-frame {
+    max-width: 1200px; margin: 0 auto 60px;
+    background: #1a1a1a; border-radius: 12px;
+    overflow: hidden; border: 1px solid #333;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  
+  /* Browser chrome */
+  .browser-bar {
+    background: #2a2a2a; padding: 10px 16px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid #333;
+  }
+  .browser-dots { display: flex; gap: 6px; }
+  .browser-dots span { width: 10px; height: 10px; border-radius: 50%; }
+  .browser-dots span:nth-child(1) { background: #ff5f57; }
+  .browser-dots span:nth-child(2) { background: #febc2e; }
+  .browser-dots span:nth-child(3) { background: #28c840; }
+  .browser-url {
+    flex: 1; background: #1a1a1a; border-radius: 6px;
+    padding: 6px 12px; font-size: 12px; color: #888;
+    margin-left: 12px;
+  }
+  
+  /* App header */
+  .app-header {
+    background: #fff; padding: 12px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .app-logo { display: flex; align-items: center; gap: 8px; }
+  .app-logo .bull { font-size: 28px; }
+  .app-logo .brand { font-size: 14px; font-weight: 700; color: #002855; line-height: 1.1; }
+  .app-logo .brand small { font-size: 10px; font-weight: 400; color: #666; display: block; }
+  .app-nav { display: flex; gap: 20px; font-size: 13px; color: #666; }
+  .app-nav a { color: #666; text-decoration: none; }
+  .app-nav a.active { color: #EE9639; font-weight: 600; }
+  
+  /* Step indicator */
+  .step-bar {
+    background: #f8f9fa; padding: 16px 24px;
+    display: flex; align-items: center; justify-content: center; gap: 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .step-item {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 500; color: #999;
+  }
+  .step-item.active { color: #002855; }
+  .step-item.done { color: #22c55e; }
+  .step-num {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+    background: #e5e7eb; color: #999;
+  }
+  .step-item.active .step-num { background: #002855; color: #fff; }
+  .step-item.done .step-num { background: #22c55e; color: #fff; }
+  .step-connector { width: 40px; height: 2px; background: #e5e7eb; margin: 0 12px; }
+  .step-connector.done { background: #22c55e; }
+  
+  /* Main split layout */
+  .configurator {
+    display: flex; min-height: 560px; background: #fff;
+  }
+  
+  /* Left: Visual renderer */
+  .renderer {
+    flex: 1; background: #f0ede8; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .renderer-watermark {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%) rotate(-30deg);
+    font-size: 48px; font-weight: 800; color: rgba(0,0,0,0.03);
+    white-space: nowrap; pointer-events: none;
+    letter-spacing: 0.1em;
+  }
+  
+  /* 2D Bathroom illustration */
+  .bathroom-scene {
+    width: 90%; max-width: 500px; aspect-ratio: 4/3;
+    position: relative;
+  }
+  
+  /* Wall */
+  .wall {
+    position: absolute; inset: 0; bottom: 25%;
+    border-radius: 4px 4px 0 0;
+    overflow: hidden;
+  }
+  .wall-tile {
+    width: 100%; height: 100%;
+    background: 
+      linear-gradient(135deg, #e8e0d6 25%, transparent 25%) -10px 0,
+      linear-gradient(225deg, #e8e0d6 25%, transparent 25%) -10px 0,
+      linear-gradient(315deg, #e8e0d6 25%, transparent 25%),
+      linear-gradient(45deg, #e8e0d6 25%, transparent 25%);
+    background-size: 20px 20px;
+    background-color: #ddd5ca;
+  }
+  .wall-tile.herringbone {
+    background: repeating-linear-gradient(
+      -45deg,
+      #c9bfb2 0px, #c9bfb2 8px,
+      #d4cabe 8px, #d4cabe 16px,
+      #c0b5a6 16px, #c0b5a6 24px,
+      #d4cabe 24px, #d4cabe 32px
+    );
+  }
+  .wall-tile.marble {
+    background: linear-gradient(135deg, #f5f0eb 0%, #e8e0d6 20%, #f2ede8 40%, #ddd5ca 60%, #f0ebe5 80%, #e5ddd4 100%);
+  }
+  .wall-accent {
+    position: absolute; left: 0; right: 0; top: 60%; bottom: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.15) 100%);
+  }
+  
+  /* Floor */
+  .floor {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 25%;
+    background: #c4b8a8;
+    border-top: 2px solid #b0a48e;
+  }
+  .floor-tile {
+    width: 100%; height: 100%;
+    background: 
+      linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px),
+      linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  
+  /* Shower */
+  .shower {
+    position: absolute; left: 5%; top: 0; bottom: 25%;
+    width: 40%; border: 2px solid rgba(0,0,0,0.1);
+    border-radius: 4px; background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(1px);
+  }
+  .shower-head {
+    position: absolute; top: 8%; left: 50%;
+    transform: translateX(-50%);
+    width: 40px; height: 6px; border-radius: 3px;
+    background: #888;
+  }
+  .shower-head::after {
+    content: ''; position: absolute; top: -20px; left: 50%;
+    transform: translateX(-50%);
+    width: 4px; height: 20px; background: #888;
+    border-radius: 2px;
+  }
+  .shower-glass {
+    position: absolute; right: 0; top: 0; bottom: 0;
+    width: 3px; background: rgba(180,210,230,0.5);
+  }
+  .shower-niche {
+    position: absolute; top: 35%; left: 20%;
+    width: 30px; height: 40px; border-radius: 4px;
+    background: rgba(0,0,0,0.08); border: 1px solid rgba(0,0,0,0.06);
+  }
+  
+  /* Vanity */
+  .vanity {
+    position: absolute; right: 8%; bottom: 25%;
+    width: 35%; height: 35%;
+  }
+  .vanity-cabinet {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 70%;
+    background: #3a3228; border-radius: 6px 6px 0 0;
+    border: 1px solid rgba(0,0,0,0.15);
+  }
+  .vanity-cabinet.white { background: #f0ede8; border-color: #ddd; }
+  .vanity-cabinet.walnut { background: #5c3d2e; }
+  .vanity-top {
+    position: absolute; bottom: 70%; left: -2%; right: -2%; height: 8%;
+    background: #f5f0eb; border-radius: 4px;
+    border: 1px solid #e5e0d8;
+  }
+  .vanity-sink {
+    position: absolute; top: 20%; left: 50%;
+    transform: translateX(-50%);
+    width: 35%; height: 4px; border-radius: 50%;
+    background: #ddd; border: 1px solid #ccc;
+  }
+  .vanity-faucet {
+    position: absolute; top: 10%; left: 50%;
+    transform: translateX(-50%);
+    width: 8px; height: 16px; border-radius: 4px 4px 0 0;
+    background: #888;
+  }
+  .vanity-faucet.matte-black { background: #222; }
+  .vanity-faucet.brushed-gold { background: #c5a55a; }
+  .vanity-faucet.chrome { background: #bbb; }
+  .vanity-handles {
+    display: flex; gap: 20%; justify-content: center;
+    position: absolute; top: 35%; left: 0; right: 0;
+  }
+  .vanity-handle {
+    width: 20px; height: 3px; border-radius: 2px;
+    background: #888;
+  }
+  
+  /* Mirror */
+  .mirror {
+    position: absolute; right: 12%; top: 8%;
+    width: 25%; aspect-ratio: 3/4;
+    background: linear-gradient(135deg, #e8eef5 0%, #d0dce8 50%, #e0e8f0 100%);
+    border-radius: 50%;
+    border: 2px solid #ccc;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  .mirror.rectangular { border-radius: 4px; }
+  .mirror.arched { border-radius: 50% 50% 4px 4px; }
+  
+  /* Toilet */
+  .toilet {
+    position: absolute; left: 52%; bottom: 25%;
+    width: 12%; height: 20%;
+  }
+  .toilet-bowl {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 50%;
+    background: #f5f5f5; border-radius: 0 0 40% 40%;
+    border: 1px solid #e0e0e0;
+  }
+  .toilet-tank {
+    position: absolute; bottom: 45%; left: 10%; right: 10%; height: 55%;
+    background: #f0f0f0; border-radius: 4px 4px 0 0;
+    border: 1px solid #e0e0e0;
+  }
+  
+  /* Selection label overlays */
+  .sel-label {
+    position: absolute; font-size: 9px; font-weight: 600;
+    background: rgba(0,40,85,0.85); color: #fff;
+    padding: 3px 8px; border-radius: 4px;
+    white-space: nowrap; pointer-events: none;
+  }
+  .sel-label::before {
+    content: ''; position: absolute;
+    width: 6px; height: 6px; background: rgba(0,40,85,0.85);
+    transform: rotate(45deg);
+  }
+  .sel-label.top::before { bottom: -3px; left: 12px; }
+  .sel-label.bottom::before { top: -3px; left: 12px; }
+  .sel-label.wall-label { top: 5%; left: 48%; }
+  .sel-label.floor-label { bottom: 8%; left: 48%; }
+  .sel-label.shower-label { top: 5%; left: 6%; }
+  .sel-label.vanity-label { bottom: 28%; right: 6%; }
+  .sel-label.fixture-label { top: 30%; right: 10%; }
+  
+  /* Right: Selection panel */
+  .panel {
+    width: 380px; background: #fff;
+    border-left: 1px solid #e5e7eb;
+    overflow-y: auto; padding: 24px;
+    color: #1a1a2e;
+  }
+  .panel-title {
+    font-size: 18px; font-weight: 700; color: #002855;
+    margin-bottom: 4px;
+  }
+  .panel-subtitle {
+    font-size: 12px; color: #888; margin-bottom: 20px;
+  }
+  
+  /* Category */
+  .category { margin-bottom: 24px; }
+  .cat-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .cat-label { font-size: 13px; font-weight: 700; color: #002855; }
+  .cat-tier {
+    font-size: 10px; font-weight: 600; padding: 2px 6px;
+    border-radius: 4px; background: #f0f0f0; color: #888;
+  }
+  .cat-tier.mid { background: #fef3cd; color: #856404; }
+  .cat-tier.high { background: #d4edda; color: #155724; }
+  
+  /* Option cards */
+  .options { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+  .option-card {
+    min-width: 90px; flex-shrink: 0;
+    border: 2px solid #e5e7eb; border-radius: 10px;
+    overflow: hidden; cursor: pointer; transition: all 0.2s;
+    background: #fff;
+  }
+  .option-card.selected { border-color: #EE9639; box-shadow: 0 0 0 1px #EE9639; }
+  .option-card:hover { border-color: #ccc; }
+  .option-img {
+    width: 100%; aspect-ratio: 1;
+    background: #f0ede8;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+  }
+  .option-img.marble { background: linear-gradient(135deg, #f5f0eb, #e0d8ce, #f2ede8); }
+  .option-img.subway { background: repeating-linear-gradient(90deg, #f5f0eb 0, #f5f0eb 30px, #e8e0d6 30px, #e8e0d6 31px); }
+  .option-img.herringbone { background: repeating-linear-gradient(-45deg, #d4cabe 0 4px, #c9bfb2 4px 8px); }
+  .option-img.hex { background: radial-gradient(circle at 50% 50%, #e0d8ce 40%, #f5f0eb 40%); background-size: 20px 20px; }
+  .option-img.dark-wood { background: linear-gradient(180deg, #3a3228, #4a4238); }
+  .option-img.white-shaker { background: #f0ede8; }
+  .option-img.walnut { background: linear-gradient(180deg, #5c3d2e, #6d4e3f); }
+  .option-img.matte-black { background: #222; }
+  .option-img.brushed-nickel { background: linear-gradient(135deg, #bbb, #ddd, #bbb); }
+  .option-img.brushed-gold { background: linear-gradient(135deg, #c5a55a, #dbb76a, #c5a55a); }
+  .option-img.chrome { background: linear-gradient(135deg, #ccc, #eee, #ccc); }
+  .option-name {
+    padding: 6px 8px; font-size: 10px; font-weight: 600;
+    color: #333; text-align: center; line-height: 1.2;
+  }
+  .option-tier {
+    font-size: 8px; color: #999; display: block; margin-top: 1px;
+  }
+  
+  /* Color swatches */
+  .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+  .swatch {
+    width: 32px; height: 32px; border-radius: 50%;
+    border: 2px solid #e5e7eb; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .swatch.selected { border-color: #EE9639; box-shadow: 0 0 0 2px #EE9639; }
+  .swatch:hover { transform: scale(1.1); }
+  
+  /* Summary button */
+  .summary-btn {
+    width: 100%; padding: 14px;
+    background: linear-gradient(135deg, #EE9639, #e0852a);
+    color: #fff; border: none; border-radius: 10px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin-top: 16px;
+  }
+  
+  /* ============ STEP 1: LAYOUT PICKER ============ */
+  .layout-picker { background: #fff; min-height: 560px; padding: 40px; text-align: center; }
+  .layout-title { font-size: 24px; font-weight: 800; color: #002855; margin-bottom: 8px; }
+  .layout-desc { font-size: 14px; color: #666; margin-bottom: 32px; }
+  
+  .layouts-grid { display: flex; gap: 20px; justify-content: center; padding: 0 20px; }
+  .layout-card {
+    width: 280px; border: 2px solid #e5e7eb; border-radius: 16px;
+    overflow: hidden; cursor: pointer; transition: all 0.2s;
+    background: #fff;
+  }
+  .layout-card:hover { border-color: #EE9639; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+  .layout-card.selected { border-color: #EE9639; box-shadow: 0 0 0 2px #EE9639, 0 8px 24px rgba(238,150,57,0.15); }
+  .layout-card-img {
+    width: 100%; height: 160px; background: #f0ede8;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  /* Simple bathroom illustrations in each card */
+  .layout-card-img .mini-bath {
+    width: 80%; height: 80%; position: relative;
+  }
+  .mini-wall { position: absolute; inset: 0; bottom: 30%; background: #ddd5ca; border-radius: 4px 4px 0 0; }
+  .mini-floor { position: absolute; left: 0; right: 0; bottom: 0; height: 30%; background: #c4b8a8; }
+  .mini-shower { position: absolute; left: 5%; top: 5%; width: 35%; bottom: 32%; background: rgba(180,210,230,0.3); border: 1px solid rgba(0,0,0,0.08); border-radius: 2px; }
+  .mini-tub { position: absolute; left: 5%; top: 5%; width: 40%; bottom: 32%; background: #f5f5f5; border: 1px solid #ddd; border-radius: 0 0 20px 20px; }
+  .mini-vanity { position: absolute; right: 8%; bottom: 30%; width: 28%; height: 28%; background: #3a3228; border-radius: 4px 4px 0 0; }
+  .mini-vanity.double { width: 45%; }
+  .mini-freestanding { position: absolute; left: 48%; bottom: 30%; width: 20%; height: 18%; background: #f5f5f5; border: 1px solid #ddd; border-radius: 50% 50% 0 0; }
+  .mini-mirror { position: absolute; right: 14%; top: 10%; width: 16%; height: 22%; background: #e0e8f0; border-radius: 50%; border: 1px solid #ccc; }
+  .mini-toilet { position: absolute; left: 50%; bottom: 30%; width: 10%; height: 16%; }
+  .mini-toilet-tank { position: absolute; inset: 0; bottom: 40%; background: #f0f0f0; border: 1px solid #e0e0e0; border-radius: 2px; }
+  .mini-toilet-bowl { position: absolute; left: 0; right: 0; bottom: 0; height: 45%; background: #f5f5f5; border: 1px solid #e0e0e0; border-radius: 0 0 40% 40%; }
+  
+  .layout-card-body { padding: 16px; text-align: left; }
+  .layout-card-name { font-size: 15px; font-weight: 700; color: #002855; margin-bottom: 4px; }
+  .layout-card-desc { font-size: 12px; color: #888; line-height: 1.4; margin-bottom: 8px; }
+  .layout-card-meta {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: #666;
+  }
+  .layout-card-meta .sqft {
+    background: #f0f0f0; padding: 2px 8px; border-radius: 4px;
+    font-weight: 600;
+  }
+  .layout-card-meta .items { color: #999; }
+  .layout-card-check {
+    position: absolute; top: 12px; right: 12px;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: #EE9639; color: #fff;
+    display: none; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700;
+  }
+  .layout-card.selected .layout-card-check { display: flex; }
+  
+  /* ============ STEP 2: STYLE PRESETS ============ */
+  .presets-grid { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; padding: 0 20px; }
+  .preset-card {
+    width: 220px; border: 2px solid #e5e7eb; border-radius: 16px;
+    overflow: hidden; cursor: pointer; transition: all 0.2s;
+  }
+  .preset-card:hover { border-color: #EE9639; transform: translateY(-2px); }
+  .preset-card.selected { border-color: #EE9639; box-shadow: 0 0 0 2px #EE9639; }
+  .preset-img {
+    width: 100%; height: 140px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .preset-img.modern { background: linear-gradient(135deg, #f5f5f5, #e8e8e8); }
+  .preset-img.classic { background: linear-gradient(135deg, #f5ede0, #e8dcc8); }
+  .preset-img.spa { background: linear-gradient(135deg, #e8f0e8, #d5e0d5); }
+  .preset-img.bold { background: linear-gradient(135deg, #2a2a2a, #3a3a3a); }
+  .preset-palette {
+    display: flex; gap: 4px; align-items: center;
+  }
+  .preset-dot {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.5);
+  }
+  .preset-body { padding: 14px; text-align: center; }
+  .preset-name { font-size: 14px; font-weight: 700; color: #002855; }
+  .preset-desc { font-size: 11px; color: #888; margin-top: 2px; }
+  
+  /* ============ MOBILE MOCKUP ============ */
+  .phone-frame {
+    width: 375px; height: 812px; margin: 0 auto 60px;
+    background: #fff; border-radius: 40px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4), inset 0 0 0 3px #333;
+    display: flex; flex-direction: column;
+  }
+  .phone-status {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 24px 4px; font-size: 12px; font-weight: 600; color: #000;
+    background: #fff;
+  }
+  .phone-notch {
+    width: 126px; height: 28px; background: #000;
+    border-radius: 0 0 20px 20px; margin: 0 auto;
+    position: relative; top: -8px;
+  }
+  .phone-content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  
+  /* Mobile header */
+  .mobile-header {
+    padding: 8px 16px; display: flex; align-items: center;
+    justify-content: space-between; border-bottom: 1px solid #e5e7eb;
+  }
+  .mobile-header .back { font-size: 18px; color: #002855; cursor: pointer; }
+  .mobile-header .title { font-size: 14px; font-weight: 700; color: #002855; }
+  .mobile-header .step { font-size: 11px; color: #EE9639; font-weight: 600; }
+  
+  /* Mobile step dots */
+  .mobile-steps {
+    display: flex; justify-content: center; gap: 6px; padding: 8px;
+    background: #f8f9fa; border-bottom: 1px solid #e5e7eb;
+  }
+  .mobile-step-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: #e5e7eb;
+  }
+  .mobile-step-dot.active { background: #EE9639; width: 24px; border-radius: 4px; }
+  .mobile-step-dot.done { background: #22c55e; }
+  
+  /* Mobile visual (sticky) */
+  .mobile-visual {
+    height: 240px; background: #f0ede8;
+    position: relative; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-bottom: 2px solid #EE9639;
+  }
+  .mobile-visual .bathroom-scene { width: 85%; max-width: 300px; }
+  
+  /* Mobile selections (scrollable) */
+  .mobile-selections {
+    flex: 1; overflow-y: auto; padding: 16px;
+    background: #fff; color: #1a1a2e;
+  }
+  .mobile-cat-title {
+    font-size: 14px; font-weight: 700; color: #002855;
+    margin-bottom: 10px;
+  }
+  .mobile-options {
+    display: flex; gap: 8px; overflow-x: auto;
+    padding-bottom: 8px; margin-bottom: 16px;
+  }
+  .mobile-option {
+    min-width: 80px; flex-shrink: 0;
+    border: 2px solid #e5e7eb; border-radius: 10px;
+    overflow: hidden; text-align: center;
+  }
+  .mobile-option.selected { border-color: #EE9639; }
+  .mobile-option-img {
+    width: 100%; height: 60px; background: #f0ede8;
+  }
+  .mobile-option-name {
+    padding: 4px 6px; font-size: 10px; font-weight: 600; color: #333;
+  }
+  
+  /* Mobile bottom bar */
+  .mobile-bottom {
+    padding: 12px 16px; border-top: 1px solid #e5e7eb;
+    display: flex; gap: 10px; background: #fff;
+    flex-shrink: 0;
+  }
+  .mobile-bottom .btn-back {
+    padding: 12px 20px; border: 1px solid #e5e7eb;
+    border-radius: 10px; font-size: 13px; font-weight: 600;
+    color: #666; background: #fff;
+  }
+  .mobile-bottom .btn-next {
+    flex: 1; padding: 12px; border: none;
+    background: linear-gradient(135deg, #EE9639, #e0852a);
+    color: #fff; border-radius: 10px;
+    font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .phone-home-bar {
+    width: 134px; height: 5px; background: #000;
+    border-radius: 99px; margin: 8px auto 6px;
+  }
+  
+  /* Phones side by side */
+  .phones-row { display: flex; gap: 40px; justify-content: center; align-items: flex-start; padding: 0 20px; }
+  .phone-wrapper { display: flex; flex-direction: column; align-items: center; }
+  .phone-label { color: #888; font-size: 12px; font-weight: 600; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<!-- ============ STEP 1: LAYOUT PICKER (Desktop) ============ -->
+<div class="section-label">Step 1 of 4</div>
+<div class="section-title">Choose Your Bathroom Layout</div>
+<div class="section-desc">This is the first thing customers see. They pick their bathroom type, which sets the base 2D scene.</div>
+
+<div class="desktop-frame">
+  <div class="browser-bar">
+    <div class="browser-dots"><span></span><span></span><span></span></div>
+    <div class="browser-url">lavacagc.com/design-your-bathroom</div>
+  </div>
+  <div class="app-header">
+    <div class="app-logo">
+      <span class="bull">🐂</span>
+      <span class="brand">La Vaca<small>General Contractors</small></span>
+    </div>
+    <div class="app-nav">
+      <a href="#">Services</a>
+      <a href="#">Portfolio</a>
+      <a class="active" href="#">Design Your Bathroom</a>
+      <a href="#">Contact</a>
+    </div>
+  </div>
+  <div class="step-bar">
+    <div class="step-item active"><div class="step-num">1</div> Layout</div>
+    <div class="step-connector"></div>
+    <div class="step-item"><div class="step-num">2</div> Style</div>
+    <div class="step-connector"></div>
+    <div class="step-item"><div class="step-num">3</div> Customize</div>
+    <div class="step-connector"></div>
+    <div class="step-item"><div class="step-num">4</div> Submit</div>
+  </div>
+  <div class="layout-picker">
+    <div class="layout-title">What type of bathroom are you envisioning?</div>
+    <div class="layout-desc">Choose the layout closest to what you'd like. We'll customize everything in the next steps.</div>
+    <div class="layouts-grid">
+      <!-- Small -->
+      <div class="layout-card">
+        <div class="layout-card-img">
+          <div class="mini-bath">
+            <div class="mini-wall"></div>
+            <div class="mini-floor"></div>
+            <div class="mini-tub"></div>
+            <div class="mini-vanity"></div>
+            <div class="mini-mirror"></div>
+            <div class="mini-toilet">
+              <div class="mini-toilet-tank"></div>
+              <div class="mini-toilet-bowl"></div>
+            </div>
+          </div>
+        </div>
+        <div class="layout-card-body">
+          <div class="layout-card-name">Compact Bathroom</div>
+          <div class="layout-card-desc">Single vanity with tub/shower combo. Perfect for hall baths and smaller spaces.</div>
+          <div class="layout-card-meta">
+            <span class="sqft">Min 35 sq ft</span>
+            <span class="items">Tub • Vanity • Toilet</span>
+          </div>
+        </div>
+      </div>
+      <!-- Medium -->
+      <div class="layout-card selected">
+        <div class="layout-card-img" style="position:relative;">
+          <div class="layout-card-check">✓</div>
+          <div class="mini-bath">
+            <div class="mini-wall"></div>
+            <div class="mini-floor"></div>
+            <div class="mini-shower"></div>
+            <div class="mini-vanity"></div>
+            <div class="mini-mirror"></div>
+            <div class="mini-toilet">
+              <div class="mini-toilet-tank"></div>
+              <div class="mini-toilet-bowl"></div>
+            </div>
+          </div>
+        </div>
+        <div class="layout-card-body">
+          <div class="layout-card-name">Standard Primary Bath</div>
+          <div class="layout-card-desc">Walk-in shower with single vanity. The most popular primary bathroom layout.</div>
+          <div class="layout-card-meta">
+            <span class="sqft">Min 48 sq ft</span>
+            <span class="items">Shower • Vanity • Toilet</span>
+          </div>
+        </div>
+      </div>
+      <!-- Large -->
+      <div class="layout-card">
+        <div class="layout-card-img">
+          <div class="mini-bath">
+            <div class="mini-wall"></div>
+            <div class="mini-floor"></div>
+            <div class="mini-shower" style="width:25%;"></div>
+            <div class="mini-freestanding"></div>
+            <div class="mini-vanity double"></div>
+            <div class="mini-mirror" style="width:25%;right:18%;border-radius:4px;"></div>
+          </div>
+        </div>
+        <div class="layout-card-body">
+          <div class="layout-card-name">Luxury Primary Suite</div>
+          <div class="layout-card-desc">Double vanity, walk-in shower, and freestanding tub. The full spa experience.</div>
+          <div class="layout-card-meta">
+            <span class="sqft">Min 75 sq ft</span>
+            <span class="items">Shower • Tub • Double Vanity</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ STEP 2: STYLE PRESETS (Desktop) ============ -->
+<div class="section-label">Step 2 of 4</div>
+<div class="section-title">Choose a Style Direction</div>
+<div class="section-desc">Pre-fills all selections. Most customers stop here — customization in Step 3 is optional.</div>
+
+<div class="desktop-frame">
+  <div class="browser-bar">
+    <div class="browser-dots"><span></span><span></span><span></span></div>
+    <div class="browser-url">lavacagc.com/design-your-bathroom</div>
+  </div>
+  <div class="app-header">
+    <div class="app-logo">
+      <span class="bull">🐂</span>
+      <span class="brand">La Vaca<small>General Contractors</small></span>
+    </div>
+    <div class="app-nav">
+      <a href="#">Services</a>
+      <a href="#">Portfolio</a>
+      <a class="active" href="#">Design Your Bathroom</a>
+      <a href="#">Contact</a>
+    </div>
+  </div>
+  <div class="step-bar">
+    <div class="step-item done"><div class="step-num">✓</div> Layout</div>
+    <div class="step-connector done"></div>
+    <div class="step-item active"><div class="step-num">2</div> Style</div>
+    <div class="step-connector"></div>
+    <div class="step-item"><div class="step-num">3</div> Customize</div>
+    <div class="step-connector"></div>
+    <div class="step-item"><div class="step-num">4</div> Submit</div>
+  </div>
+  <div class="layout-picker">
+    <div class="layout-title">Pick your style</div>
+    <div class="layout-desc">This pre-fills your bathroom with matching materials and finishes. You can tweak anything in the next step.</div>
+    <div class="presets-grid">
+      <div class="preset-card selected">
+        <div class="preset-img modern">
+          <div class="preset-palette">
+            <div class="preset-dot" style="background:#f5f5f5;"></div>
+            <div class="preset-dot" style="background:#333;"></div>
+            <div class="preset-dot" style="background:#bbb;"></div>
+            <div class="preset-dot" style="background:#e8e0d6;"></div>
+          </div>
+        </div>
+        <div class="preset-body">
+          <div class="preset-name">Modern Minimalist</div>
+          <div class="preset-desc">Clean lines, matte black fixtures, large format tile</div>
+        </div>
+      </div>
+      <div class="preset-card">
+        <div class="preset-img classic">
+          <div class="preset-palette">
+            <div class="preset-dot" style="background:#f5ede0;"></div>
+            <div class="preset-dot" style="background:#c5a55a;"></div>
+            <div class="preset-dot" style="background:#5c3d2e;"></div>
+            <div class="preset-dot" style="background:#e8dcc8;"></div>
+          </div>
+        </div>
+        <div class="preset-body">
+          <div class="preset-name">Classic Elegance</div>
+          <div class="preset-desc">Marble, warm wood, brushed gold hardware</div>
+        </div>
+      </div>
+      <div class="preset-card">
+        <div class="preset-img spa">
+          <div class="preset-palette">
+            <div class="preset-dot" style="background:#e8f0e8;"></div>
+            <div class="preset-dot" style="background:#8ba888;"></div>
+            <div class="preset-dot" style="background:#d4cabe;"></div>
+            <div class="preset-dot" style="background:#f0ede8;"></div>
+          </div>
+        </div>
+        <div class="preset-body">
+          <div class="preset-name">Spa Retreat</div>
+          <div class="preset-desc">Natural stone, earth tones, rainfall fixtures</div>
+        </div>
+      </div>
+      <div class="preset-card">
+        <div class="preset-img bold">
+          <div class="preset-palette">
+            <div class="preset-dot" style="background:#1a1a1a;border-color:rgba(255,255,255,0.2);"></div>
+            <div class="preset-dot" style="background:#c5a55a;border-color:rgba(255,255,255,0.2);"></div>
+            <div class="preset-dot" style="background:#4a4a4a;border-color:rgba(255,255,255,0.2);"></div>
+            <div class="preset-dot" style="background:#f5f0eb;border-color:rgba(255,255,255,0.2);"></div>
+          </div>
+        </div>
+        <div class="preset-body">
+          <div class="preset-name">Bold Contemporary</div>
+          <div class="preset-desc">Dark tones, gold accents, dramatic contrasts</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ STEP 3: CUSTOMIZE (Desktop) ============ -->
+<div class="section-label">Step 3 of 4</div>
+<div class="section-title">Customize Your Selections</div>
+<div class="section-desc">Split-screen: live 2D visual on left updates as they swap options on the right. This is the core experience.</div>
+
+<div class="desktop-frame">
+  <div class="browser-bar">
+    <div class="browser-dots"><span></span><span></span><span></span></div>
+    <div class="browser-url">lavacagc.com/design-your-bathroom</div>
+  </div>
+  <div class="app-header">
+    <div class="app-logo">
+      <span class="bull">🐂</span>
+      <span class="brand">La Vaca<small>General Contractors</small></span>
+    </div>
+    <div class="app-nav">
+      <a href="#">Services</a>
+      <a href="#">Portfolio</a>
+      <a class="active" href="#">Design Your Bathroom</a>
+      <a href="#">Contact</a>
+    </div>
+  </div>
+  <div class="step-bar">
+    <div class="step-item done"><div class="step-num">✓</div> Layout</div>
+    <div class="step-connector done"></div>
+    <div class="step-item done"><div class="step-num">✓</div> Style</div>
+    <div class="step-connector done"></div>
+    <div class="step-item active"><div class="step-num">3</div> Customize</div>
+    <div class="step-connector"></div>
+    <div class="step-item"><div class="step-num">4</div> Submit</div>
+  </div>
+  <div class="configurator">
+    <!-- Left: Visual Renderer -->
+    <div class="renderer">
+      <div class="renderer-watermark">LA VACA GC</div>
+      <div class="bathroom-scene">
+        <!-- Wall -->
+        <div class="wall">
+          <div class="wall-tile herringbone"></div>
+        </div>
+        <!-- Floor -->
+        <div class="floor">
+          <div class="floor-tile"></div>
+        </div>
+        <!-- Shower -->
+        <div class="shower">
+          <div class="shower-head"></div>
+          <div class="shower-glass"></div>
+          <div class="shower-niche"></div>
+        </div>
+        <!-- Vanity -->
+        <div class="vanity">
+          <div class="vanity-cabinet"></div>
+          <div class="vanity-top">
+            <div class="vanity-sink"></div>
+            <div class="vanity-faucet matte-black"></div>
+          </div>
+          <div class="vanity-handles">
+            <div class="vanity-handle" style="background:#222;"></div>
+            <div class="vanity-handle" style="background:#222;"></div>
+          </div>
+        </div>
+        <!-- Mirror -->
+        <div class="mirror arched"></div>
+        <!-- Toilet -->
+        <div class="toilet">
+          <div class="toilet-tank"></div>
+          <div class="toilet-bowl"></div>
+        </div>
+        <!-- Labels -->
+        <div class="sel-label top wall-label">Herringbone Tile</div>
+        <div class="sel-label top floor-label">Large Format Porcelain</div>
+        <div class="sel-label top shower-label">Walk-in Shower</div>
+        <div class="sel-label bottom vanity-label">Dark Wood Vanity</div>
+      </div>
+    </div>
+    
+    <!-- Right: Selection Panel -->
+    <div class="panel">
+      <div class="panel-title">Customize Your Bathroom</div>
+      <div class="panel-subtitle">Tap any option to update the preview. Changes are instant.</div>
+      
+      <!-- Wall Tile -->
+      <div class="category">
+        <div class="cat-header">
+          <span class="cat-label">Wall Tile</span>
+          <span class="cat-tier mid">$$</span>
+        </div>
+        <div class="options">
+          <div class="option-card">
+            <div class="option-img subway"></div>
+            <div class="option-name">Subway<span class="option-tier">$</span></div>
+          </div>
+          <div class="option-card">
+            <div class="option-img marble"></div>
+            <div class="option-name">Marble<span class="option-tier">$$$</span></div>
+          </div>
+          <div class="option-card selected">
+            <div class="option-img herringbone"></div>
+            <div class="option-name">Herringbone<span class="option-tier">$$</span></div>
+          </div>
+          <div class="option-card">
+            <div class="option-img hex"></div>
+            <div class="option-name">Hexagon<span class="option-tier">$$</span></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Vanity Style -->
+      <div class="category">
+        <div class="cat-header">
+          <span class="cat-label">Vanity Style</span>
+          <span class="cat-tier mid">$$</span>
+        </div>
+        <div class="options">
+          <div class="option-card selected">
+            <div class="option-img dark-wood"></div>
+            <div class="option-name">Dark Wood<span class="option-tier">$$</span></div>
+          </div>
+          <div class="option-card">
+            <div class="option-img white-shaker"></div>
+            <div class="option-name">White Shaker<span class="option-tier">$</span></div>
+          </div>
+          <div class="option-card">
+            <div class="option-img walnut"></div>
+            <div class="option-name">Walnut<span class="option-tier">$$$</span></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Fixture Finish -->
+      <div class="category">
+        <div class="cat-header">
+          <span class="cat-label">Fixture Finish</span>
+          <span class="cat-tier">$</span>
+        </div>
+        <div class="swatches">
+          <div class="swatch selected" style="background:#222;" title="Matte Black"></div>
+          <div class="swatch" style="background:linear-gradient(135deg,#bbb,#ddd);" title="Brushed Nickel"></div>
+          <div class="swatch" style="background:linear-gradient(135deg,#c5a55a,#dbb76a);" title="Brushed Gold"></div>
+          <div class="swatch" style="background:linear-gradient(135deg,#ccc,#eee);" title="Chrome"></div>
+        </div>
+      </div>
+      
+      <!-- Countertop -->
+      <div class="category">
+        <div class="cat-header">
+          <span class="cat-label">Countertop</span>
+          <span class="cat-tier mid">$$</span>
+        </div>
+        <div class="options">
+          <div class="option-card selected">
+            <div class="option-img" style="background:linear-gradient(135deg,#f5f0eb,#e8e0d6);"></div>
+            <div class="option-name">White Quartz<span class="option-tier">$$</span></div>
+          </div>
+          <div class="option-card">
+            <div class="option-img marble"></div>
+            <div class="option-name">Marble<span class="option-tier">$$$</span></div>
+          </div>
+          <div class="option-card">
+            <div class="option-img" style="background:linear-gradient(135deg,#4a4a4a,#3a3a3a);"></div>
+            <div class="option-name">Dark Granite<span class="option-tier">$$</span></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Mirror -->
+      <div class="category">
+        <div class="cat-header">
+          <span class="cat-label">Mirror</span>
+          <span class="cat-tier">$</span>
+        </div>
+        <div class="options">
+          <div class="option-card">
+            <div class="option-img" style="background:#e0e8f0;">
+              <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#cde,#e0e8f0);border:1px solid #ccc;"></div>
+            </div>
+            <div class="option-name">Round</div>
+          </div>
+          <div class="option-card selected">
+            <div class="option-img" style="background:#e0e8f0;">
+              <div style="width:34px;height:44px;border-radius:50% 50% 3px 3px;background:linear-gradient(135deg,#cde,#e0e8f0);border:1px solid #ccc;"></div>
+            </div>
+            <div class="option-name">Arched</div>
+          </div>
+          <div class="option-card">
+            <div class="option-img" style="background:#e0e8f0;">
+              <div style="width:34px;height:44px;border-radius:3px;background:linear-gradient(135deg,#cde,#e0e8f0);border:1px solid #ccc;"></div>
+            </div>
+            <div class="option-name">Rectangular</div>
+          </div>
+        </div>
+      </div>
+      
+      <button class="summary-btn">
+        Review My Bathroom →
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MOBILE MOCKUPS ============ -->
+<div class="section-label">Mobile Experience</div>
+<div class="section-title">Step 3 on Mobile</div>
+<div class="section-desc">Visual is sticky at top, selections scroll below. "Next" button advances categories while the preview updates live above.</div>
+
+<div class="phones-row">
+  <!-- Phone 1: Customizing tile -->
+  <div class="phone-wrapper">
+    <div class="phone-label">Selecting Wall Tile</div>
+    <div class="phone-frame">
+      <div class="phone-status">
+        <span>9:41</span>
+        <span>📶 🔋</span>
+      </div>
+      <div class="phone-content">
+        <div class="mobile-header">
+          <span class="back">←</span>
+          <span class="title">Design Your Bathroom</span>
+          <span class="step">3/4</span>
+        </div>
+        <div class="mobile-steps">
+          <div class="mobile-step-dot done"></div>
+          <div class="mobile-step-dot done"></div>
+          <div class="mobile-step-dot active"></div>
+          <div class="mobile-step-dot"></div>
+        </div>
+        
+        <!-- Sticky visual -->
+        <div class="mobile-visual">
+          <div class="bathroom-scene" style="width:85%;max-width:280px;">
+            <div class="wall"><div class="wall-tile herringbone"></div></div>
+            <div class="floor"><div class="floor-tile"></div></div>
+            <div class="shower">
+              <div class="shower-head"></div>
+              <div class="shower-glass"></div>
+            </div>
+            <div class="vanity">
+              <div class="vanity-cabinet"></div>
+              <div class="vanity-top"><div class="vanity-sink"></div><div class="vanity-faucet matte-black"></div></div>
+            </div>
+            <div class="mirror arched"></div>
+            <div class="toilet"><div class="toilet-tank"></div><div class="toilet-bowl"></div></div>
+          </div>
+        </div>
+        
+        <!-- Scrollable selections -->
+        <div class="mobile-selections">
+          <div class="mobile-cat-title">Wall Tile <span style="float:right;font-size:11px;color:#EE9639;font-weight:500;">1 of 5</span></div>
+          <div class="mobile-options">
+            <div class="mobile-option">
+              <div class="mobile-option-img subway"></div>
+              <div class="mobile-option-name">Subway<br><span style="font-size:8px;color:#999;">$</span></div>
+            </div>
+            <div class="mobile-option">
+              <div class="mobile-option-img marble"></div>
+              <div class="mobile-option-name">Marble<br><span style="font-size:8px;color:#999;">$$$</span></div>
+            </div>
+            <div class="mobile-option selected">
+              <div class="mobile-option-img herringbone"></div>
+              <div class="mobile-option-name">Herringbone<br><span style="font-size:8px;color:#999;">$$</span></div>
+            </div>
+            <div class="mobile-option">
+              <div class="mobile-option-img hex"></div>
+              <div class="mobile-option-name">Hexagon<br><span style="font-size:8px;color:#999;">$$</span></div>
+            </div>
+          </div>
+          
+          <div style="font-size:11px;color:#888;text-align:center;padding:8px 0;">
+            Tip: Swipe to see more options
+          </div>
+        </div>
+        
+        <div class="mobile-bottom">
+          <div class="btn-back">Back</div>
+          <div class="btn-next">Next: Vanity Style →</div>
+        </div>
+      </div>
+      <div class="phone-home-bar"></div>
+    </div>
+  </div>
+  
+  <!-- Phone 2: Selecting fixtures (color swatches) -->
+  <div class="phone-wrapper">
+    <div class="phone-label">Selecting Fixture Finish</div>
+    <div class="phone-frame">
+      <div class="phone-status">
+        <span>9:42</span>
+        <span>📶 🔋</span>
+      </div>
+      <div class="phone-content">
+        <div class="mobile-header">
+          <span class="back">←</span>
+          <span class="title">Design Your Bathroom</span>
+          <span class="step">3/4</span>
+        </div>
+        <div class="mobile-steps">
+          <div class="mobile-step-dot done"></div>
+          <div class="mobile-step-dot done"></div>
+          <div class="mobile-step-dot active"></div>
+          <div class="mobile-step-dot"></div>
+        </div>
+        
+        <div class="mobile-visual">
+          <div class="bathroom-scene" style="width:85%;max-width:280px;">
+            <div class="wall"><div class="wall-tile herringbone"></div></div>
+            <div class="floor"><div class="floor-tile"></div></div>
+            <div class="shower"><div class="shower-head" style="background:#c5a55a;"></div><div class="shower-head" style="background:#c5a55a;" ></div><div class="shower-glass"></div></div>
+            <div class="vanity">
+              <div class="vanity-cabinet"></div>
+              <div class="vanity-top"><div class="vanity-sink"></div><div class="vanity-faucet brushed-gold"></div></div>
+              <div class="vanity-handles">
+                <div class="vanity-handle" style="background:#c5a55a;"></div>
+                <div class="vanity-handle" style="background:#c5a55a;"></div>
+              </div>
+            </div>
+            <div class="mirror arched"></div>
+            <div class="toilet"><div class="toilet-tank"></div><div class="toilet-bowl"></div></div>
+          </div>
+        </div>
+        
+        <div class="mobile-selections">
+          <div class="mobile-cat-title">Fixture Finish <span style="float:right;font-size:11px;color:#EE9639;font-weight:500;">3 of 5</span></div>
+          
+          <div style="display:flex;gap:12px;justify-content:center;padding:16px 0;">
+            <div style="text-align:center;">
+              <div class="swatch" style="background:#222;width:48px;height:48px;margin:0 auto 6px;"></div>
+              <div style="font-size:10px;color:#666;">Matte Black</div>
+            </div>
+            <div style="text-align:center;">
+              <div class="swatch" style="background:linear-gradient(135deg,#bbb,#ddd);width:48px;height:48px;margin:0 auto 6px;"></div>
+              <div style="font-size:10px;color:#666;">Brushed Nickel</div>
+            </div>
+            <div style="text-align:center;">
+              <div class="swatch selected" style="background:linear-gradient(135deg,#c5a55a,#dbb76a);width:48px;height:48px;margin:0 auto 6px;"></div>
+              <div style="font-size:10px;color:#EE9639;font-weight:600;">Brushed Gold</div>
+            </div>
+            <div style="text-align:center;">
+              <div class="swatch" style="background:linear-gradient(135deg,#ccc,#eee);width:48px;height:48px;margin:0 auto 6px;"></div>
+              <div style="font-size:10px;color:#666;">Chrome</div>
+            </div>
+          </div>
+          
+          <div style="background:#f8f9fa;border-radius:10px;padding:12px;margin-top:8px;">
+            <div style="font-size:11px;font-weight:600;color:#002855;margin-bottom:4px;">Your selections so far:</div>
+            <div style="font-size:10px;color:#666;line-height:1.6;">
+              ✓ Herringbone wall tile<br>
+              ✓ Dark wood vanity<br>
+              ✓ Brushed gold fixtures<br>
+              ○ Countertop — next<br>
+              ○ Mirror — next
+            </div>
+          </div>
+        </div>
+        
+        <div class="mobile-bottom">
+          <div class="btn-back">Back</div>
+          <div class="btn-next">Next: Countertop →</div>
+        </div>
+      </div>
+      <div class="phone-home-bar"></div>
+    </div>
+  </div>
+</div>
+
+<div style="height: 80px;"></div>
+
+</body>
+</html>

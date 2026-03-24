@@ -63,6 +63,7 @@ const contactFormSchema = z.object({
 });
 
 const ContactForm = () => {
+  const [honeypot, setHoneypot] = useState("");
   const [formData, setFormData] = useState<ContactFormData>({
     firstName: "",
     lastName: "",
@@ -171,6 +172,14 @@ const ContactForm = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Honeypot check — bots fill hidden fields, humans don't
+    if (honeypot) {
+      setFormSubmitted(true);
+      toast({ title: "Request Sent!", description: "We'll get back to you within 24 hours." });
+      return;
+    }
+    
     setErrors({});
 
     // Validate with Zod schema
@@ -364,6 +373,19 @@ const ContactForm = () => {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Honeypot — hidden from humans, bots auto-fill it */}
+          <div className="absolute opacity-0 top-0 left-0 h-0 w-0 -z-10 overflow-hidden" aria-hidden="true" tabIndex={-1}>
+            <label htmlFor="contact-website">Website</label>
+            <input
+              id="contact-website"
+              name="website"
+              type="text"
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+              tabIndex={-1}
+              autoComplete="off"
+            />
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="firstName">First Name *</Label>

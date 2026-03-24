@@ -33,6 +33,7 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
     phone: '',
     zipCode: '',
     termsConsent: false,
+    website: '', // honeypot field — bots fill this, humans never see it
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
@@ -61,6 +62,14 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Honeypot check — bots fill hidden fields, humans don't
+    if (formData.website) {
+      // Fake success so bot thinks it worked
+      setIsSubmitted(true)
+      return
+    }
+    
     if (!validate()) return
 
     setIsSubmitting(true)
@@ -179,6 +188,19 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <input type="hidden" name="source" value={source} />
+        {/* Honeypot — hidden from humans, bots auto-fill it */}
+        <div className="absolute opacity-0 top-0 left-0 h-0 w-0 -z-10 overflow-hidden" aria-hidden="true" tabIndex={-1}>
+          <label htmlFor="lp-website">Website</label>
+          <input
+            id="lp-website"
+            name="website"
+            type="text"
+            value={formData.website}
+            onChange={handleChange}
+            tabIndex={-1}
+            autoComplete="off"
+          />
+        </div>
 
         <div className="space-y-1.5">
           <Label htmlFor="lp-name" className="text-sm">Full Name *</Label>
