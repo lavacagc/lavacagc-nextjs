@@ -235,10 +235,10 @@ export default function FAQPage() {
                   Schedule Free Consultation
                 </Link>
                 <Link
-                  href="/project-calculator"
+                  href="/free-estimate"
                   className="inline-flex items-center justify-center rounded-md text-sm font-medium border-2 border-primary text-primary hover:bg-primary/10 h-12 px-8"
                 >
-                  Get a Cost Estimate
+                  Request an Estimate
                 </Link>
               </div>
             </div>

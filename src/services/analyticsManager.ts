@@ -25,10 +25,29 @@ interface CustomEvent {
   description: string | null;
 }
 
+// Google Ads conversion label mapping
+// Update these after running setup_conversions.py
+const GOOGLE_ADS_CONVERSION_ID = 'AW-16788190390';
+const GOOGLE_ADS_CONVERSION_LABELS: Record<string, string> = {
+  phone_call_click: 'h8x7CJaZto8cELbpncU-',
+  contact_form_submit: '6-VLCJyZto8cELbpncU-',
+  estimate_request: 'MIz0COmVto8cELbpncU-',
+  chat_message: 'PsVSCJqXto8cELbpncU-',
+};
+
+const GOOGLE_ADS_CONVERSION_VALUES: Record<string, number> = {
+  phone_call_click: 50,
+  contact_form_submit: 75,
+  estimate_request: 100,
+  chat_message: 25,
+};
+
 class AnalyticsManager {
   private config: AnalyticsConfig | null = null;
   private customEvents: CustomEvent[] = [];
   private initialized = false;
+  private isBotDetected = false;
+  private pageLoadTime = 0;
 
   async loadConfiguration() {
     try {
@@ -86,7 +105,16 @@ class AnalyticsManager {
       }
 
       this.initialized = true;
+
+      // Run bot detection after analytics loads
+      this.isBotDetected = this.detectBotTraffic();
+
+      // Capture GCLID from URL params
+      this.captureGclid();
     };
+
+    // Record page load time for bot detection timing checks
+    this.pageLoadTime = Date.now();
 
     // Load after page is interactive
     if (document.readyState === 'complete') {
@@ -201,8 +229,199 @@ class AnalyticsManager {
         ${this.config?.ip_anonymization ? 'anonymize_ip: true,' : ''}
         ${configOptions.custom_map ? `custom_map: ${JSON.stringify(configOptions.custom_map)},` : ''}
       });
+      gtag('config', '${GOOGLE_ADS_CONVERSION_ID}');
     `;
     document.head.appendChild(script2);
+  }
+
+  /**
+   * Detect bot/fake traffic based on browser signals.
+   * Returns true if likely a bot.
+   */
+  detectBotTraffic(): boolean {
+    if (typeof window === 'undefined') return false;
+
+    const reasons: string[] = [];
+
+    // Check navigator.webdriver (set by Selenium, Puppeteer, Playwright)
+    if (navigator.webdriver) {
+      reasons.push('webdriver');
+    }
+
+    // Check user agent for known bot patterns
+    const ua = navigator.userAgent.toLowerCase();
+    const botPatterns = [
+      'headless', 'phantom', 'selenium', 'puppeteer', 'playwright',
+      'bot', 'crawl', 'spider', 'scrape', 'wget', 'curl',
+      'python-requests', 'httpie', 'node-fetch',
+    ];
+    if (botPatterns.some(pattern => ua.includes(pattern))) {
+      reasons.push('bot_ua');
+    }
+
+    // Check screen resolution (0x0 or very small = bot)
+    if (screen.width === 0 || screen.height === 0 || (screen.width < 100 && screen.height < 100)) {
+      reasons.push('zero_screen');
+    }
+
+    // Touch support mismatch: mobile UA but no touch support
+    const isMobileUA = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+    const hasTouchSupport = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (isMobileUA && !hasTouchSupport) {
+      reasons.push('touch_mismatch');
+    }
+
+    const isBot = reasons.length > 0;
+
+    if (isBot) {
+      // Tag the session in Clarity
+      if (typeof window.clarity === 'function') {
+        window.clarity('set', 'bot', 'true');
+        window.clarity('set', 'bot_reasons', reasons.join(','));
+      }
+
+      console.warn('[AnalyticsManager] Bot detected:', reasons.join(', '));
+    }
+
+    return isBot;
+  }
+
+  /**
+   * Check if a user interaction happened suspiciously fast (within 100ms of page load).
+   * Bots often click instantly.
+   */
+  isInteractionTooFast(): boolean {
+    if (this.pageLoadTime === 0) return false;
+    return (Date.now() - this.pageLoadTime) < 100;
+  }
+
+  /**
+   * Capture Google Click ID (gclid) from URL parameters.
+   * Stores in localStorage and passes to GA4 as custom dimension.
+   */
+  captureGclid(): void {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const gclid = urlParams.get('gclid');
+
+      if (gclid) {
+        // Store in localStorage for later form submissions
+        localStorage.setItem('lavaca_gclid', gclid);
+        localStorage.setItem('lavaca_gclid_timestamp', Date.now().toString());
+        localStorage.setItem('lavaca_gclid_landing_page', window.location.pathname);
+
+        // Pass to GA4 as custom dimension
+        if (typeof window.gtag !== 'undefined') {
+          window.gtag('set', { gclid });
+        }
+
+        // Tag in Clarity
+        if (typeof window.clarity === 'function') {
+          window.clarity('set', 'gclid', gclid);
+          window.clarity('set', 'ad_source', 'google_ads');
+        }
+      }
+    } catch (err) {
+      console.error('[AnalyticsManager] Error capturing gclid:', err);
+    }
+  }
+
+  /**
+   * Get the stored GCLID (if any, within 90-day window).
+   */
+  getStoredGclid(): string | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const gclid = localStorage.getItem('lavaca_gclid');
+      const timestamp = localStorage.getItem('lavaca_gclid_timestamp');
+      if (gclid && timestamp) {
+        const age = Date.now() - parseInt(timestamp, 10);
+        const ninetyDays = 90 * 24 * 60 * 60 * 1000;
+        if (age < ninetyDays) {
+          return gclid;
+        }
+        // Expired — clean up
+        localStorage.removeItem('lavaca_gclid');
+        localStorage.removeItem('lavaca_gclid_timestamp');
+        localStorage.removeItem('lavaca_gclid_landing_page');
+      }
+    } catch {
+      // localStorage not available
+    }
+    return null;
+  }
+
+  /**
+   * Fire a Google Ads conversion event.
+   * Skips if bot detected or interaction too fast.
+   */
+  trackGoogleAdsConversion(conversionName: string, value?: number): void {
+    // Don't fire conversions for bots
+    if (this.isBotDetected || this.isInteractionTooFast()) {
+      console.warn('[AnalyticsManager] Skipping conversion — bot or too-fast interaction');
+      return;
+    }
+
+    if (typeof window === 'undefined' || typeof window.gtag === 'undefined') return;
+
+    const label = GOOGLE_ADS_CONVERSION_LABELS[conversionName];
+    if (!label) {
+      console.warn(`[AnalyticsManager] Unknown conversion: ${conversionName}`);
+      return;
+    }
+
+    const conversionValue = value ?? GOOGLE_ADS_CONVERSION_VALUES[conversionName] ?? 0;
+
+    window.gtag('event', 'conversion', {
+      send_to: `${GOOGLE_ADS_CONVERSION_ID}/${label}`,
+      value: conversionValue,
+      currency: 'USD',
+    });
+  }
+
+  /**
+   * Send enhanced conversion user data (hashed email/phone) to Google.
+   * Called when a form is submitted with user contact info.
+   */
+  async sendEnhancedConversionData(email?: string, phone?: string): Promise<void> {
+    if (typeof window === 'undefined' || typeof window.gtag === 'undefined') return;
+    if (!email && !phone) return;
+
+    // Don't send for bots
+    if (this.isBotDetected) return;
+
+    const userData: Record<string, string> = {};
+
+    if (email) {
+      const normalizedEmail = email.trim().toLowerCase();
+      const emailHash = await this.sha256(normalizedEmail);
+      userData.sha256_email_address = emailHash;
+    }
+
+    if (phone) {
+      // Normalize phone: remove spaces, dashes, parens; ensure +1 prefix
+      let normalizedPhone = phone.replace(/[\s\-\(\)]/g, '');
+      if (!normalizedPhone.startsWith('+')) {
+        normalizedPhone = '+1' + normalizedPhone;
+      }
+      const phoneHash = await this.sha256(normalizedPhone);
+      userData.sha256_phone_number = phoneHash;
+    }
+
+    window.gtag('set', 'user_data', userData);
+  }
+
+  /**
+   * SHA-256 hash using Web Crypto API.
+   */
+  private async sha256(message: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(message);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
   trackEvent(eventName: string, parameters?: Record<string, unknown>) {
@@ -286,15 +505,20 @@ export const trackEvent = (eventName: string, parameters?: Record<string, unknow
   analyticsManager.trackEvent(eventName, parameters);
 };
 
-export const trackFormSubmission = (formName: string) => {
+export const trackFormSubmission = (formName: string, email?: string, phone?: string) => {
+  // Include gclid in event parameters for attribution
+  const gclid = analyticsManager.getStoredGclid();
+  const gclidParams = gclid ? { gclid } : {};
+
   // Use generate_lead as the primary event (GA4 recommended event for lead gen)
   analyticsManager.trackEvent('generate_lead', { 
     form_name: formName,
     currency: 'USD',
     value: 1,
+    ...gclidParams,
   });
   // Also fire form_submit for backwards compatibility
-  analyticsManager.trackEvent('form_submit', { form_name: formName });
+  analyticsManager.trackEvent('form_submit', { form_name: formName, ...gclidParams });
   // Direct gtag call as backup in case analyticsManager hasn't initialized
   if (typeof window !== 'undefined' && typeof window.gtag !== 'undefined') {
     const vid = getVisitorId();
@@ -303,6 +527,7 @@ export const trackFormSubmission = (formName: string) => {
       currency: 'USD',
       value: 1,
       ...(vid ? { visitor_id: vid } : {}),
+      ...gclidParams,
     });
   }
   // Meta Pixel — fire Lead event for audience building + conversion tracking
@@ -311,6 +536,14 @@ export const trackFormSubmission = (formName: string) => {
       content_name: formName,
       content_category: 'form_submission',
     });
+  }
+
+  // Google Ads conversion tracking
+  analyticsManager.trackGoogleAdsConversion('contact_form_submit');
+
+  // Enhanced conversions — send hashed user data
+  if (email || phone) {
+    analyticsManager.sendEnhancedConversionData(email, phone);
   }
 };
 
@@ -327,10 +560,13 @@ export const trackFormAbandon = (formName: string, lastField: string, fieldsComp
 };
 
 export const trackPhoneClick = () => {
-  analyticsManager.trackEvent('phone_click');
+  const gclid = analyticsManager.getStoredGclid();
+  const gclidParams = gclid ? { gclid } : {};
+
+  analyticsManager.trackEvent('phone_click', gclidParams);
   // Direct gtag backup
   if (typeof window !== 'undefined' && typeof window.gtag !== 'undefined') {
-    window.gtag('event', 'phone_click');
+    window.gtag('event', 'phone_click', gclidParams);
   }
   // Meta Pixel — Contact event for phone clicks
   if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
@@ -338,15 +574,22 @@ export const trackPhoneClick = () => {
       content_category: 'phone_click',
     });
   }
+
+  // Google Ads conversion tracking
+  analyticsManager.trackGoogleAdsConversion('phone_call_click');
 };
 
 export const trackEstimateRequest = (source: string = 'unknown') => {
-  analyticsManager.trackEvent('estimate_request', { source });
+  const gclid = analyticsManager.getStoredGclid();
+  const gclidParams = gclid ? { gclid } : {};
+
+  analyticsManager.trackEvent('estimate_request', { source, ...gclidParams });
   // Also fire calculator_complete for GTM/Meta Pixel trigger
   analyticsManager.trackEvent('calculator_complete', {
     content_name: 'Cost Calculator Completed',
     content_category: 'Estimate Tool',
     source,
+    ...gclidParams,
   });
 
   // Fire Facebook Pixel event for calculator completion
@@ -357,6 +600,9 @@ export const trackEstimateRequest = (source: string = 'unknown') => {
       source,
     });
   }
+
+  // Google Ads conversion tracking
+  analyticsManager.trackGoogleAdsConversion('estimate_request');
 };
 
 export const trackProjectView = (projectTitle: string, projectId: string) => {

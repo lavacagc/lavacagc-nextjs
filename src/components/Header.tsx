@@ -152,11 +152,11 @@ const Header = () => {
             <div className="flex items-center gap-4 lg:justify-end ml-auto lg:ml-0">
               {/* CTA Section - Visible on tablet and desktop */}
               <Button
-                onClick={() => navigateToPage('/project-calculator')}
+                onClick={() => navigateToPage('/free-estimate')}
                 variant="default"
                 className="hidden md:flex bg-gradient-to-r from-primary via-accent-sunset to-accent-tangerine bg-[length:400%_100%] animate-gradient hover:shadow-button"
               >
-                Cost Calculator
+                Request an Estimate
               </Button>
 
               {/* Mobile/Tablet Menu Button */}
@@ -207,11 +207,11 @@ const Header = () => {
               </button>
 
               <button 
-                onClick={() => navigateToPage('/project-calculator')} 
+                onClick={() => navigateToPage('/free-estimate')} 
                 className="block text-text-secondary hover:text-primary transition-colors font-medium"
-                aria-label="Go to project calculator page"
+                aria-label="Request a free estimate"
               >
-                Project Calculator
+                Request an Estimate
               </button>
 
               <button 

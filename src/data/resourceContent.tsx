@@ -469,8 +469,8 @@ export const resourceContent: Record<string, React.ReactNode> = {
         for a free estimate</Link> — we&apos;ll give you a detailed breakdown so you can plan with confidence.
       </p>
       <p className="text-text-secondary leading-relaxed">
-        You can also use our <Link href="/project-calculator" className="text-primary hover:underline">project cost calculator</Link> to
-        get a ballpark estimate for your renovation scope before we meet in person.
+        You can also <Link href="/free-estimate" className="text-primary hover:underline">request a free estimate</Link> to
+        get a ballpark figure for your renovation scope before we meet in person.
       </p>
     </>
   ),

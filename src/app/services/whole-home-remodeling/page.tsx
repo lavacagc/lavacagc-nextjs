@@ -442,7 +442,7 @@ export default function WholeHomeRemodelingPage() {
                 <Link href="/contact">Schedule Consultation</Link>
               </Button>
               <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10" asChild>
-                <Link href="/project-calculator">Get Cost Estimate</Link>
+                <Link href="/free-estimate">Request an Estimate</Link>
               </Button>
             </div>
           </div>

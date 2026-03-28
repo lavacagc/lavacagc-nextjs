@@ -383,10 +383,10 @@ export default async function CityLandingPage({ params }: CityPageProps) {
                   * Prices reflect typical {locationData.county} luxury project ranges. Get a personalized estimate for your specific project.
                 </p>
                 <Link
-                  href="/project-calculator"
+                  href="/free-estimate"
                   className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-white h-10 px-6"
                 >
-                  Get Your Free Estimate
+                  Request an Estimate
                 </Link>
               </div>
             </div>

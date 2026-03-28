@@ -46,9 +46,9 @@ const Hero = () => {
   }, []);
 
   const scrollToEstimate = () => {
-    // On mobile and tablet (below lg breakpoint = 1024px), go to calculator
+    // On mobile and tablet (below lg breakpoint = 1024px), go to estimate page
     if (window.innerWidth < 1024) {
-      router.push('/project-calculator');
+      router.push('/free-estimate');
       return;
     }
 

@@ -233,7 +233,7 @@ export default async function CityServicesPage({ params }: ServicesPageProps) {
               Get a free estimate for your home remodeling project today.
             </p>
             <Link
-              href="/project-calculator"
+              href="/free-estimate"
               className="inline-flex items-center justify-center px-8 py-4 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors"
             >
               Get Free Estimate

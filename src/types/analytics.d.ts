@@ -5,6 +5,7 @@ declare global {
     gtag?: (...args: unknown[]) => void;
     dataLayer?: Array<Record<string, unknown>>;
     fbq?: (...args: unknown[]) => void;
+    clarity?: (method: string, ...args: (string | undefined)[]) => void;
   }
 }
 

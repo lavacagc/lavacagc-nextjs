@@ -30,7 +30,7 @@ function getFunnelEvent(path: string): { event: string; params: Record<string, s
     return { event: 'funnel_project_view', params: { project_slug: path.split('/').pop() || '' } };
   }
   // Calculator/estimator entry
-  if (path === '/project-calculator' || path === '/free-estimate') {
+  if (path === '/free-estimate') {
     return { event: 'funnel_estimate_start', params: { entry_point: path } };
   }
   // Contact page

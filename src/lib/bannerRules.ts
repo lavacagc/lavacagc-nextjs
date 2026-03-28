@@ -83,7 +83,7 @@ export const bannerRules: BannerRule[] = [
       visitorType: 'returning',
       minVisits: 2,
       maxVisits: 3,
-      excludePaths: ['/vaca-mgmt', '/admin', '/auth', '/free-estimate', '/project-calculator'],
+      excludePaths: ['/vaca-mgmt', '/admin', '/auth', '/free-estimate'],
     },
     display: {
       type: 'top-bar',
@@ -130,9 +130,9 @@ export const bannerRules: BannerRule[] = [
     conditions: {
       visitorType: 'returning',
       minVisits: 2,
-      hasViewedPages: ['/project-calculator', '/free-estimate'],
+      hasViewedPages: ['/free-estimate'],
       hasNotViewedPages: ['/contact'],
-      excludePaths: ['/vaca-mgmt', '/admin', '/auth', '/project-calculator', '/free-estimate'],
+      excludePaths: ['/vaca-mgmt', '/admin', '/auth', '/free-estimate'],
     },
     display: {
       type: 'slide-in',
@@ -140,7 +140,7 @@ export const bannerRules: BannerRule[] = [
       title: 'Your estimate is waiting',
       message: 'You started an estimate last time. Pick up where you left off!',
       ctaText: 'Continue Estimate',
-      ctaLink: '/project-calculator',
+      ctaLink: '/free-estimate',
       bgColor: 'bg-blue-600',
       textColor: 'text-white',
       dismissable: true,

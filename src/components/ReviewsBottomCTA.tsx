@@ -36,18 +36,18 @@ export default function ReviewsBottomCTA() {
               <ArrowRight className="h-5 w-5" />
             </Link>
             <Link
-              href="/project-calculator"
+              href="/free-estimate"
               onClick={() => {
                 trackEvent('cta_click', {
                   location: 'reviews_bottom',
-                  destination: 'calculator',
-                  variant: 'Calculate Project Cost',
+                  destination: 'estimate',
+                  variant: 'Request an Estimate',
                 });
               }}
               className="inline-flex items-center justify-center gap-2 rounded-md text-base font-semibold bg-white/10 border border-white/30 text-white hover:bg-white hover:text-primary h-14 px-10 transition-all duration-300 cursor-pointer"
             >
               <Calculator className="h-5 w-5" />
-              Calculate Project Cost
+              Request an Estimate
             </Link>
           </div>
           <a

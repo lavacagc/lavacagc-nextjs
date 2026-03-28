@@ -205,7 +205,7 @@ export default function ResourcesPage() {
                   <Link href="/contact">Get a Free Estimate</Link>
                 </Button>
                 <Button asChild variant="outline" className="text-lg px-8 py-6">
-                  <Link href="/project-calculator">Try Our Cost Calculator</Link>
+                  <Link href="/free-estimate">Request an Estimate</Link>
                 </Button>
               </div>
             </div>

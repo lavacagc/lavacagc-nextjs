@@ -149,8 +149,8 @@ export default function ReviewsPageClient() {
                   <Link href="/contact" onClick={() => { trackEvent('cta_click', { location: 'reviews_mid_desktop', destination: 'contact' }); trackEstimateRequest('reviews_mid_desktop'); }} className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-primary to-accent-tangerine text-white font-semibold py-3 px-8 rounded-lg hover:shadow-lg transition-all text-lg">
                     Get Your Free Estimate
                   </Link>
-                  <Link href="/calculator" onClick={() => { trackEvent('cta_click', { location: 'reviews_mid_desktop', destination: 'calculator' }); }} className="inline-flex items-center justify-center gap-2 bg-white text-primary font-semibold py-3 px-8 rounded-lg border-2 border-primary hover:bg-primary/5 transition-all text-lg">
-                    Try Our Cost Calculator
+                  <Link href="/free-estimate" onClick={() => { trackEvent('cta_click', { location: 'reviews_mid_desktop', destination: 'estimate' }); }} className="inline-flex items-center justify-center gap-2 bg-white text-primary font-semibold py-3 px-8 rounded-lg border-2 border-primary hover:bg-primary/5 transition-all text-lg">
+                    Request an Estimate
                   </Link>
                 </div>
               </div>
@@ -258,17 +258,17 @@ export default function ReviewsPageClient() {
                 Get Your Free Estimate
               </Link>
               <Link
-                href="/project-calculator"
+                href="/free-estimate"
                 onClick={() => {
                   trackEvent('cta_click', {
                     location: 'reviews_mid_page',
-                    destination: 'calculator',
-                    variant: 'Calculate Your Project Cost',
+                    destination: 'estimate',
+                    variant: 'Request an Estimate',
                   });
                 }}
                 className="inline-flex items-center justify-center rounded-md text-sm font-medium border-2 border-primary text-primary hover:bg-primary/10 h-12 px-8 transition-all duration-300 cursor-pointer"
               >
-                Calculate Your Project Cost
+                Request an Estimate
               </Link>
             </div>
           </div>

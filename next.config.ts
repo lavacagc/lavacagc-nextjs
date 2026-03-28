@@ -272,8 +272,12 @@ const nextConfig: NextConfig = {
       // ============================================
       // ADDITIONAL ES (SPANISH) SPECIFIC REDIRECTS
       // ============================================
-      { source: '/es/free-consultation', destination: '/project-calculator', permanent: true },
-      { source: '/es/consultation', destination: '/project-calculator', permanent: true },
+      { source: '/es/free-consultation', destination: '/free-estimate', permanent: true },
+      { source: '/es/consultation', destination: '/free-estimate', permanent: true },
+
+      // Old calculator → estimate redirect
+      { source: '/project-calculator', destination: '/free-estimate', permanent: true },
+      { source: '/calculator', destination: '/free-estimate', permanent: true },
       { source: '/es/contact', destination: '/contact', permanent: true },
       { source: '/es/about', destination: '/about', permanent: true },
       { source: '/es/services', destination: '/services', permanent: true },

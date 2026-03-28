@@ -124,10 +124,10 @@ export default function Home() {
               <p className="hidden lg:block text-lg text-text-muted max-w-2xl mx-auto mt-4">
                 Or{" "}
                 <Link
-                  href="/project-calculator"
+                  href="/free-estimate"
                   className="text-primary hover:text-accent-sunset underline font-medium transition-colors"
                 >
-                  estimate your own project in 5 minutes using our cost calculator
+                  request a free estimate directly through our online form
                 </Link>
               </p>
             </div>

@@ -26,7 +26,7 @@ const costsBudgetingFAQs: FAQItem[] = [
         <li><strong>Mid-range remodels:</strong> $50,000 - $150,000</li>
         <li><strong>Luxury renovations:</strong> $150,000 - $500,000+</li>
       </ul>
-      <p>Factors include home size, material choices, labor complexity, and permit requirements. We recommend budgeting 10-20% extra for unexpected issues. <a href="/project-calculator">Use our project calculator</a> for a personalized estimate.</p>`
+      <p>Factors include home size, material choices, labor complexity, and permit requirements. We recommend budgeting 10-20% extra for unexpected issues. <a href="/free-estimate">Request a free estimate</a> for a personalized quote.</p>`
   },
   {
     id: "cost-2",
