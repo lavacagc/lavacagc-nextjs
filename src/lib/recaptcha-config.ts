@@ -16,4 +16,4 @@ reCAPTCHA v3 benefits:
 - More secure with backend verification
 */
 
-export const RECAPTCHA_SITE_KEY = "6LfEmNkrAAAAAKShO1lywaz84U-SBW7ADsJM9OFu";
+export const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "";

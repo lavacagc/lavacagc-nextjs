@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
+import { createHash } from 'crypto';
 import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
 
 export const dynamic = 'force-dynamic';
@@ -122,24 +123,75 @@ ${KNOWLEDGE_BASE}
 ## Lead Detection:
 When a visitor shares their name, email, phone number, or project details, acknowledge it warmly and let them know someone from the team will follow up. For example: "Thanks, [name]! I've noted your info and someone from our team will reach out soon."`;
 
-// Simple in-memory rate limiting
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+// Rate limiting constants
+const RATE_LIMIT_MAX = 20; // requests per window
+const RATE_LIMIT_WINDOW_MS = 3600000; // 1 hour in ms
 
-function checkRateLimit(visitorId: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(visitorId);
+function hashIp(ip: string): string {
+  return createHash('sha256').update(ip).digest('hex');
+}
 
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(visitorId, { count: 1, resetAt: now + 3600000 }); // 1 hour
-    return true;
+// Persistent rate limiting using Supabase (keyed on hashed IP)
+async function checkRateLimit(request: NextRequest): Promise<{ allowed: boolean; remaining: number; retryAfter?: number }> {
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || request.headers.get('x-real-ip')
+    || 'unknown';
+  const ipHash = hashIp(ip);
+
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
+  if (!secretKey) {
+    // Fail open if no secret key — log the issue but don't block users
+    console.error('SUPABASE_SECRET_KEY not configured for rate limiting');
+    return { allowed: true, remaining: RATE_LIMIT_MAX };
   }
 
-  if (entry.count >= 50) {
-    return false;
-  }
+  const adminClient = createClient(SUPABASE_URL, secretKey);
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - RATE_LIMIT_WINDOW_MS);
 
-  entry.count++;
-  return true;
+  try {
+    // Check existing rate limit entry
+    const { data: existing } = await adminClient
+      .from('rate_limits')
+      .select('*')
+      .eq('key', `chat:${ipHash}`)
+      .single();
+
+    if (!existing || new Date(existing.window_start) < windowStart) {
+      // No entry or expired window — create/reset
+      await adminClient
+        .from('rate_limits')
+        .upsert({
+          key: `chat:${ipHash}`,
+          count: 1,
+          window_start: now.toISOString(),
+          updated_at: now.toISOString(),
+        }, { onConflict: 'key' });
+
+      return { allowed: true, remaining: RATE_LIMIT_MAX - 1 };
+    }
+
+    if (existing.count >= RATE_LIMIT_MAX) {
+      const windowEnd = new Date(new Date(existing.window_start).getTime() + RATE_LIMIT_WINDOW_MS);
+      const retryAfter = Math.ceil((windowEnd.getTime() - now.getTime()) / 1000);
+      return { allowed: false, remaining: 0, retryAfter };
+    }
+
+    // Increment counter
+    await adminClient
+      .from('rate_limits')
+      .update({
+        count: existing.count + 1,
+        updated_at: now.toISOString(),
+      })
+      .eq('key', `chat:${ipHash}`);
+
+    return { allowed: true, remaining: RATE_LIMIT_MAX - existing.count - 1 };
+  } catch (err) {
+    console.error('Rate limit check failed:', err);
+    // Fail open on DB errors — don't block legitimate users
+    return { allowed: true, remaining: RATE_LIMIT_MAX };
+  }
 }
 
 // Detect contact info in messages
@@ -221,12 +273,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Message too long' }, { status: 400 });
     }
 
-    // Rate limiting
-    if (!checkRateLimit(visitorId)) {
+    // Rate limiting (IP-based, persistent)
+    const rateLimit = await checkRateLimit(request);
+    if (!rateLimit.allowed) {
       return NextResponse.json({
         reply: "You've sent a lot of messages! Feel free to call us at (201) 212-4917 or email info@lavacagc.com for immediate help.",
         conversationId: conversationId || null,
         leadCaptured: false,
+      }, {
+        status: 429,
+        headers: {
+          'Retry-After': String(rateLimit.retryAfter || 3600),
+        },
       });
     }
 

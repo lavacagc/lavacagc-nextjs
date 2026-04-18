@@ -17,7 +17,6 @@ import { trackFormFieldFocus, trackFormAbandon } from '@/services/analyticsManag
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
-import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
 import { getVisitorData } from '@/hooks/useVisitor';
 
 interface ContactFormData {
@@ -231,34 +230,34 @@ const ContactForm = () => {
         source: 'contact_form'
       };
 
-      // Apply lead scoring
-      const scoringInput = prepareLeadForScoring({
-        ...sanitizedData,
-        project_type: sanitizedData.inquiry_type,
-      });
-      const scoringResult = scoreLead(scoringInput);
-
-      // Add scoring + visitor tracking data
+      // Add visitor tracking data
       const visitorData = getVisitorData();
-      const leadDataWithScoring = {
+      const leadData = {
         ...sanitizedData,
-        score: scoringResult.score,
-        tier: scoringResult.tier,
-        scoring_reasons: scoringResult.reasons,
         visitor_id: visitorData?.id || null,
         visit_count: visitorData?.visit_count || 1,
         first_seen: visitorData?.first_seen || null,
         referrer: visitorData?.referrer || null,
       };
 
-      // Submit to database
-      const { error: dbError } = await supabase
-        .from('leads')
-        .insert(leadDataWithScoring);
+      // Submit via server-side API (handles reCAPTCHA verification, scoring, DB insert, and notifications)
+      const submitRes = await fetch('/api/leads/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...leadData,
+          recaptchaToken,
+          recaptchaAction: 'contact_form',
+          honeypot,
+        }),
+      });
 
-      if (dbError) throw dbError;
+      if (!submitRes.ok) {
+        const errorData = await submitRes.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to submit lead');
+      }
 
-      // Send email notification with sanitized data and reCAPTCHA token
+      // Send email notification via Edge Function (reCAPTCHA already verified server-side)
       const { error: emailError } = await supabase.functions.invoke('send-lead-notification', {
         body: {
           type: 'contact',
@@ -276,40 +275,6 @@ const ContactForm = () => {
 
       if (emailError) {
         console.error('Email notification failed:', emailError);
-        // Don't throw here - form submission was successful
-      }
-
-      // Send Telegram notification
-      try {
-        await Promise.allSettled([
-          fetch('/api/notify/telegram-lead', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: `${sanitizedData.first_name} ${sanitizedData.last_name}`,
-              email: sanitizedData.email,
-              phone: sanitizedData.phone,
-              projectType: sanitizedData.inquiry_type,
-              score: scoringResult.score,
-              tier: scoringResult.tier,
-              source: 'contact_form',
-            }),
-          }),
-          fetch('/api/notify/new-lead', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: `${sanitizedData.first_name} ${sanitizedData.last_name}`,
-              email: sanitizedData.email,
-              phone: sanitizedData.phone,
-              projectType: sanitizedData.inquiry_type,
-              source: 'contact_form',
-            }),
-          }),
-        ]);
-      } catch (notifyError) {
-        console.error('Notification failed:', notifyError);
-        // Don't throw - form submission was successful
       }
 
       // Log consent

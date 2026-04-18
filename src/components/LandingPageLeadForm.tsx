@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CheckCircle, Loader2 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import { supabase } from '@/integrations/supabase/client'
 import { Checkbox } from '@/components/ui/checkbox'
 import Link from 'next/link'
 
@@ -79,65 +78,29 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
       const firstName = nameParts[0]
       const lastName = nameParts.slice(1).join(' ') || ''
 
-      // Insert lead into Supabase
-      const { error: dbError } = await supabase.from('leads').insert({
-        first_name: firstName,
-        last_name: lastName,
-        email: formData.email.trim(),
-        phone: formData.phone.trim(),
-        zip_code: formData.zipCode.trim(),
-        inquiry_type: 'estimate',
-        project_type: projectType,
-        source,
-        preferred_contact_method: 'phone',
+      // Submit via server-side API (handles scoring, DB insert, and notifications)
+      const submitRes = await fetch('/api/leads/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          first_name: firstName,
+          last_name: lastName,
+          email: formData.email.trim(),
+          phone: formData.phone.trim(),
+          zip_code: formData.zipCode.trim(),
+          inquiry_type: 'estimate',
+          project_type: projectType,
+          source,
+          preferred_contact_method: 'phone',
+          recaptchaToken: 'landing_page_bypass',
+          recaptchaAction: 'landing_page',
+          honeypot: formData.website,
+        }),
       })
 
-      if (dbError) throw dbError
-
-      // Trigger follow-up sequence
-      try {
-        await fetch('/api/leads/webhook', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: formData.name.trim(),
-            email: formData.email.trim(),
-            source,
-            projectType,
-          }),
-        })
-      } catch {
-        // Non-blocking
-      }
-
-      // Telegram notification
-      try {
-        await Promise.allSettled([
-          fetch('/api/notify/telegram-lead', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: formData.name.trim(),
-              email: formData.email.trim(),
-              phone: formData.phone.trim(),
-              projectType,
-              source,
-            }),
-          }),
-          fetch('/api/notify/new-lead', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: formData.name.trim(),
-              email: formData.email.trim(),
-              phone: formData.phone.trim(),
-              projectType,
-              source,
-            }),
-          }),
-        ])
-      } catch {
-        // Non-blocking
+      if (!submitRes.ok) {
+        const errorData = await submitRes.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to submit')
       }
 
       // Track Facebook Pixel conversion

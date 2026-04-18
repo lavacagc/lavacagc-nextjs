@@ -1,0 +1,215 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
+
+export const dynamic = 'force-dynamic';
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+
+// Server-side reCAPTCHA verification
+async function verifyRecaptcha(token: string, expectedAction: string): Promise<{ success: boolean; score: number }> {
+  const secretKey = process.env.RECAPTCHA_SECRET_KEY;
+  if (!secretKey) {
+    console.error('RECAPTCHA_SECRET_KEY not configured');
+    return { success: false, score: 0 };
+  }
+
+  try {
+    const res = await fetch(
+      `https://recaptchaenterprise.googleapis.com/v1/projects/${process.env.RECAPTCHA_PROJECT_ID || 'lavaca-gc'}/assessments?key=${secretKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: {
+            token,
+            siteKey: process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY,
+            expectedAction,
+          },
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      // Fallback to reCAPTCHA v3 verification if enterprise fails
+      const v3Res = await fetch(
+        `https://www.google.com/recaptcha/api/siteverify`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            secret: secretKey,
+            response: token,
+          }),
+        }
+      );
+      const v3Data = await v3Res.json();
+      return {
+        success: v3Data.success && (v3Data.score ?? 0) >= 0.5,
+        score: v3Data.score ?? 0,
+      };
+    }
+
+    const data = await res.json();
+    const score = data.riskAnalysis?.score ?? 0;
+    const actionMatch = data.tokenProperties?.action === expectedAction;
+    const valid = data.tokenProperties?.valid === true;
+
+    return {
+      success: valid && actionMatch && score >= 0.5,
+      score,
+    };
+  } catch (err) {
+    console.error('reCAPTCHA verification error:', err);
+    return { success: false, score: 0 };
+  }
+}
+
+// Insert lead using service role key (bypasses RLS)
+async function insertLead(leadData: Record<string, unknown>): Promise<{ data: Record<string, unknown>[] | null; error: string | null }> {
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
+  if (!secretKey) {
+    return { data: null, error: 'Server configuration error' };
+  }
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/leads`, {
+      method: 'POST',
+      headers: {
+        'apikey': secretKey,
+        'Authorization': `Bearer ${secretKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation',
+      },
+      body: JSON.stringify(leadData),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('Lead insert failed:', res.status, errText);
+      return { data: null, error: errText };
+    }
+
+    const data = await res.json();
+    return { data: Array.isArray(data) ? data : [data], error: null };
+  } catch (err) {
+    console.error('Lead insert exception:', err);
+    return { data: null, error: String(err) };
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { recaptchaToken, recaptchaAction, honeypot, ...leadFields } = body as {
+      recaptchaToken: string;
+      recaptchaAction: string;
+      honeypot?: string;
+      [key: string]: unknown;
+    };
+
+    // Honeypot check — bots fill hidden fields, humans don't
+    if (honeypot) {
+      // Return fake success so bot thinks it worked
+      return NextResponse.json({ success: true });
+    }
+
+    // Validate required fields
+    if (!recaptchaToken || !recaptchaAction) {
+      return NextResponse.json(
+        { error: 'Missing reCAPTCHA token' },
+        { status: 400 }
+      );
+    }
+
+    if (!leadFields.email && !leadFields.phone) {
+      return NextResponse.json(
+        { error: 'Email or phone is required' },
+        { status: 400 }
+      );
+    }
+
+    // Server-side reCAPTCHA verification
+    const recaptchaResult = await verifyRecaptcha(recaptchaToken, recaptchaAction);
+    console.log(`reCAPTCHA verification: action=${recaptchaAction}, score=${recaptchaResult.score}, success=${recaptchaResult.success}`);
+
+    if (!recaptchaResult.success) {
+      return NextResponse.json(
+        { error: 'reCAPTCHA verification failed' },
+        { status: 403 }
+      );
+    }
+
+    // Apply lead scoring if not already scored
+    let finalLeadData = { ...leadFields };
+    if (!finalLeadData.score) {
+      const scoringInput = prepareLeadForScoring(finalLeadData as Record<string, string | null | undefined>);
+      const scoringResult = scoreLead(scoringInput);
+      finalLeadData = {
+        ...finalLeadData,
+        score: scoringResult.score,
+        tier: scoringResult.tier,
+        scoring_reasons: scoringResult.reasons,
+      };
+    }
+
+    // Insert lead via service role (bypasses RLS)
+    const { error: insertError } = await insertLead(finalLeadData);
+    if (insertError) {
+      console.error('Failed to insert lead:', insertError);
+      return NextResponse.json({ error: 'Failed to save lead' }, { status: 500 });
+    }
+
+    // Fire notifications in background (non-blocking)
+    const baseUrl = request.nextUrl.origin;
+    const name = `${leadFields.first_name || ''} ${leadFields.last_name || ''}`.trim();
+
+    Promise.allSettled([
+      // Telegram notification
+      fetch(`${baseUrl}/api/notify/telegram-lead`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          email: leadFields.email || '',
+          phone: leadFields.phone || '',
+          projectType: leadFields.project_type || leadFields.inquiry_type || 'General Inquiry',
+          score: finalLeadData.score,
+          tier: finalLeadData.tier,
+          source: leadFields.source || 'website',
+        }),
+      }),
+      // Email notification
+      fetch(`${baseUrl}/api/notify/new-lead`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          email: leadFields.email || '',
+          phone: leadFields.phone || '',
+          projectType: leadFields.project_type || leadFields.inquiry_type || 'General Inquiry',
+          source: leadFields.source || 'website',
+        }),
+      }),
+      // Follow-up webhook
+      fetch(`${baseUrl}/api/leads/webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          email: leadFields.email || '',
+          source: leadFields.source || 'website',
+          projectType: leadFields.project_type || leadFields.inquiry_type,
+        }),
+      }),
+    ]).catch(err => console.error('Notification dispatch error:', err));
+
+    return NextResponse.json({
+      success: true,
+      score: finalLeadData.score,
+      tier: finalLeadData.tier,
+    });
+  } catch (error) {
+    console.error('Lead submission error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

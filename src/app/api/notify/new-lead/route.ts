@@ -32,9 +32,11 @@ export async function POST(request: NextRequest) {
 
     const resend = new Resend(apiKey);
 
+    const notificationEmail = process.env.LEAD_NOTIFICATION_EMAIL || 'alex@vacamoo.com';
+
     const { data, error } = await resend.emails.send({
       from: 'La Vaca Leads <noreply@email.lavaca.link>',
-      to: ['alex@vacamoo.com'],
+      to: [notificationEmail],
       subject: `🔥 New Lead: ${name || 'Unknown'} — ${projectType || 'General Inquiry'}`,
       html: newLeadNotificationHtml({ name, email, phone, projectType, location, source }),
     });

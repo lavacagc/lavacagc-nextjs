@@ -4,11 +4,6 @@ const nextConfig: NextConfig = {
   // Enable React strict mode for better development experience
   reactStrictMode: true,
 
-  // TODO: Remove once all type errors are fixed — ~54 pre-existing issues from canary→stable migration
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-
   // Image optimization
   images: {
     formats: ['image/webp', 'image/avif'],
@@ -49,13 +44,24 @@ const nextConfig: NextConfig = {
             value: 'nosniff'
           },
           {
-            key: 'X-XSS-Protection',
-            value: '1; mode=block'
+            key: 'Referrer-Policy',
+            value: 'strict-origin-when-cross-origin'
           },
           {
-            key: 'Referrer-Policy',
-            value: 'origin-when-cross-origin'
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin-allow-popups'
           },
+          {
+            key: 'Cross-Origin-Resource-Policy',
+            value: 'same-origin'
+          },
+          // NOTE: Cross-Origin-Embedder-Policy intentionally omitted. COEP enables
+          // cross-origin isolation (needed for SharedArrayBuffer) at the cost of
+          // requiring every cross-origin resource to opt-in via CORP or be loaded
+          // credentialless. This site loads reCAPTCHA, GA, Clarity, Facebook Pixel,
+          // and Supabase storage cross-origin — none emit CORP, and credentialless
+          // risks breaking tracking. COOP + CORP above give the cross-origin attack
+          // surface reduction that matters for a marketing/lead-gen site.
           {
             key: 'Permissions-Policy',
             value: 'camera=(), microphone=(), geolocation=()'
@@ -64,9 +70,9 @@ const nextConfig: NextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://api.ipify.org https://www.google.com https://www.gstatic.com https://www.recaptcha.net https://recaptcha.google.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms",
+              "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://api.ipify.org https://www.google.com https://www.gstatic.com https://www.recaptcha.net https://recaptcha.google.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              "img-src 'self' data: blob: https: http:",
+              "img-src 'self' data: blob: https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://www.googletagmanager.com https://www.google.com https://www.gstatic.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://fonts.gstatic.com",
               "font-src 'self' https://fonts.gstatic.com https://r2cdn.perplexity.ai",
               "media-src 'self' https://xrvbrnrbnyfdwkfdoepq.supabase.co",
               "connect-src 'self' data: blob: https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://www.googletagmanager.com https://api.ipify.org https://www.google.com https://www.recaptcha.net https://recaptcha.google.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms",

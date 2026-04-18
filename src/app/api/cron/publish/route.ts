@@ -33,11 +33,13 @@ async function supabaseRest(method: 'GET' | 'PATCH', path: string, body?: Record
 
 // Cron-triggered endpoint to auto-publish scheduled blog posts
 export async function GET(request: NextRequest) {
-  // Verify request is from Vercel Cron
-  const authHeader = request.headers.get('authorization');
+  // CRON_SECRET is enforced by middleware — this is a defense-in-depth check
   const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret) {
+    return NextResponse.json({ error: 'Server misconfiguration: CRON_SECRET not set' }, { status: 500 });
+  }
+  const authHeader = request.headers.get('authorization');
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

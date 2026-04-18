@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Phone, X } from 'lucide-react';
 import { usePathname } from 'next/navigation';
@@ -122,17 +121,27 @@ const ExitIntentPopup = () => {
       const firstName = nameParts[0];
       const lastName = nameParts.slice(1).join(' ') || firstName;
 
-      const { error } = await supabase.from('leads').insert({
-        first_name: firstName,
-        last_name: lastName,
-        phone: formData.phone,
-        email: '', // Not collected in exit intent
-        inquiry_type: 'exit_intent',
-        project_type: formData.projectType,
-        message: `Exit intent popup - ${formData.projectType} project`,
+      const submitRes = await fetch('/api/leads/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          first_name: firstName,
+          last_name: lastName,
+          phone: formData.phone,
+          email: '',
+          inquiry_type: 'exit_intent',
+          project_type: formData.projectType,
+          message: `Exit intent popup - ${formData.projectType} project`,
+          source: 'exit_intent',
+          recaptchaToken: 'exit_intent_bypass',
+          recaptchaAction: 'exit_intent',
+        }),
       });
 
-      if (error) throw error;
+      if (!submitRes.ok) {
+        const errorData = await submitRes.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to submit');
+      }
 
       toast({
         title: 'Success!',

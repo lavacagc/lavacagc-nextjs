@@ -28,13 +28,14 @@ interface HealthCheckResult {
  * Optional: Set CRON_SECRET env var and pass as Authorization header.
  */
 export async function GET(request: NextRequest) {
-  // Optional: Verify cron secret
+  // CRON_SECRET is enforced by middleware — this is a defense-in-depth check
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  if (!cronSecret) {
+    return NextResponse.json({ error: 'Server misconfiguration: CRON_SECRET not set' }, { status: 500 });
+  }
+  const authHeader = request.headers.get('authorization');
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const results: HealthCheckResult[] = [];

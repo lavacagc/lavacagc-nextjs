@@ -300,15 +300,25 @@ const EstimateForm = () => {
         square_footage: formData.squareFootage ? parseInt(formData.squareFootage) : null,
         current_project_status: sanitizeInput(formData.currentProjectStatus),
         message: sanitizeInput(formData.message),
-        preferred_contact_method: formData.preferredContactMethod
+        preferred_contact_method: formData.preferredContactMethod,
+        source: 'estimate_form'
       };
 
-      // Submit to database
-      const { error: dbError } = await supabase
-        .from('leads')
-        .insert(sanitizedData);
+      // Submit via server-side API (handles reCAPTCHA verification, scoring, DB insert, and notifications)
+      const submitRes = await fetch('/api/leads/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...sanitizedData,
+          recaptchaToken,
+          recaptchaAction: 'estimate_request',
+        }),
+      });
 
-      if (dbError) throw dbError;
+      if (!submitRes.ok) {
+        const errorData = await submitRes.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to submit estimate request');
+      }
 
       // Log consent
       try {
@@ -327,7 +337,7 @@ const EstimateForm = () => {
         console.error('Failed to log consent:', consentError);
       }
 
-      // Send email notification
+      // Send email notification via Edge Function
       const { error: emailError } = await supabase.functions.invoke('send-lead-notification', {
         body: {
           type: 'estimate',

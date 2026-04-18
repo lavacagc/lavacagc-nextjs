@@ -230,10 +230,11 @@ const HomeEstimateForm = () => {
         return;
       }
 
-      // Submit to database with reCAPTCHA token
-      const { error: dbError } = await supabase
-        .from('leads')
-        .insert({
+      // Submit via server-side API (handles reCAPTCHA verification, scoring, DB insert, and notifications)
+      const submitRes = await fetch('/api/leads/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           first_name: formData.firstName,
           last_name: formData.lastName,
           email: formData.email,
@@ -243,10 +244,18 @@ const HomeEstimateForm = () => {
           project_type: formData.projectType,
           budget_range: formData.budgetRange,
           project_timeline: 'asap',
-          preferred_contact_method: 'phone'
-        });
+          preferred_contact_method: 'phone',
+          source: 'home_estimate_form',
+          recaptchaToken,
+          recaptchaAction: 'estimate_request',
+          honeypot,
+        }),
+      });
 
-      if (dbError) throw dbError;
+      if (!submitRes.ok) {
+        const errorData = await submitRes.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to submit estimate request');
+      }
 
       // Log consent
       try {

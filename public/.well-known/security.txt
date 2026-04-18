@@ -1,0 +1,6 @@
+Contact: mailto:security@lavacagc.com
+Contact: mailto:alex@vacamoo.com
+Expires: 2027-04-17T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://www.lavacagc.com/.well-known/security.txt
+Policy: https://www.lavacagc.com/privacy-policy
