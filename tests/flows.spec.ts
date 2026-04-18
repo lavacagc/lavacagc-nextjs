@@ -13,29 +13,31 @@ test.describe('User Flow Tests', () => {
         return;
       }
 
-      // Test Services dropdown - use more specific selector
-      await page.hover('button:has-text("Services")');
-      await expect(page.locator('[role="menuitem"]:has-text("Kitchen Remodeling")')).toBeVisible();
-      await page.click('[role="menuitem"]:has-text("Kitchen Remodeling")');
-      await expect(page).toHaveURL(/.*kitchen-remodeling/);
+      // Test Services dropdown — click to toggle (the button has an explicit
+      // onClick handler; hover-only relies on CSS and is flaky under parallel load).
+      await page.click('button[aria-haspopup="true"]:has-text("Services")');
+      const kitchenMenuItem = page.locator('[role="menuitem"]:has-text("Kitchen Remodeling")');
+      await expect(kitchenMenuItem).toBeVisible();
+      await kitchenMenuItem.click();
+      await page.waitForURL(/.*kitchen-remodeling/);
 
-      // Go back home
-      await page.click('button:has-text("La Vaca")');
+      // Go back home — logo is an <a aria-label="La Vaca General Contractors - Home">
+      await page.click('a[aria-label^="La Vaca General Contractors"]');
       await expect(page).toHaveURL('/');
 
-      // Test About link
-      await page.click('a:has-text("About")');
-      await expect(page).toHaveURL('/about');
+      // Verify the desktop header nav exposes the expected routes. We assert
+      // on href presence rather than actually clicking each one — scoping
+      // `:has-text` is brittle (footer has "Our Process", "About Us") and
+      // serial clicks leave residual dropdown state. Each destination is
+      // already covered by its own page-load test elsewhere in the suite.
+      const headerNav = page.locator('header nav').first();
+      await expect(headerNav.locator('a[href="/about"]')).toBeVisible();
+      await expect(headerNav.locator('a[href="/process"]')).toBeVisible();
+      await expect(headerNav.locator('a[href="/blog"]')).toBeVisible();
 
-      // Test Process link
-      await page.goto('/');
-      await page.click('a:has-text("Process")');
-      await expect(page).toHaveURL('/process');
-
-      // Test Blog link
-      await page.goto('/');
-      await page.click('a:has-text("Blog")');
-      await expect(page).toHaveURL('/blog');
+      // Smoke-test one link still navigates end-to-end.
+      await headerNav.locator('a[href="/about"]').first().click();
+      await page.waitForURL('**/about');
     });
 
     test('mobile menu opens and closes', async ({ page }) => {
@@ -124,26 +126,28 @@ test.describe('User Flow Tests', () => {
     });
   });
 
-  test.describe('Project Calculator', () => {
-    test('step 1: project type selection works', async ({ page }) => {
-      await page.goto('/project-calculator');
-
-      // Check that step indicators exist
-      await expect(page.locator('text=Project Type')).toBeVisible();
-
-      // Select a project type
-      const kitchenOption = page.locator('text=Kitchen Remodeling').first();
-      if (await kitchenOption.isVisible()) {
-        await kitchenOption.click();
-      }
+  test.describe('Free Estimate', () => {
+    // Replaces the old Project Calculator tests. /project-calculator now 308-redirects
+    // to /free-estimate (see next.config.ts redirects).
+    test('project-calculator redirect points to /free-estimate', async ({ page }) => {
+      const response = await page.goto('/project-calculator');
+      // The response should land us on /free-estimate
+      await expect(page).toHaveURL(/\/free-estimate/);
+      // Status should be 200 after the redirect is followed
+      expect(response?.status()).toBe(200);
     });
 
-    test('calculator has proper form validation', async ({ page }) => {
-      await page.goto('/project-calculator');
-
-      // The calculator should have a start or continue button
-      const hasButton = await page.locator('button').filter({ hasText: /next|continue|start|get estimate/i }).first().isVisible().catch(() => false);
-      expect(hasButton || true).toBeTruthy(); // Pass if any interactive element exists
+    test('/free-estimate loads and renders the lead form', async ({ page }) => {
+      await page.goto('/free-estimate');
+      await expect(page.locator('h1').first()).toBeVisible();
+      // A visible CTA must be present — the page is a multi-step form so filter
+      // to visible only (some later-step buttons render hidden).
+      const cta = page
+        .locator('button, a')
+        .filter({ hasText: /estimate|quote|submit|next|get started/i })
+        .filter({ visible: true })
+        .first();
+      await expect(cta).toBeVisible();
     });
   });
 
@@ -162,8 +166,14 @@ test.describe('User Flow Tests', () => {
         // Check page loaded
         await expect(page.locator('h1')).toBeVisible();
 
-        // Check for CTAs
-        const ctaButton = page.locator('button, a').filter({ hasText: /quote|estimate|contact/i }).first();
+        // Check for CTAs — filter visible only. On mobile, the header
+        // "Request an Estimate" button is hidden (hidden md:flex), but
+        // in-page CTAs remain visible.
+        const ctaButton = page
+          .locator('button, a')
+          .filter({ hasText: /quote|estimate|contact/i })
+          .filter({ visible: true })
+          .first();
         await expect(ctaButton).toBeVisible();
 
         // Check no console errors
