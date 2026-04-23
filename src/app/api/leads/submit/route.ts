@@ -238,48 +238,90 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to save lead' }, { status: 500 });
     }
 
-    // Fire notifications in background (non-blocking)
+    // Fire notifications. IMPORTANT: these must be awaited — on Vercel
+    // serverless the function execution is suspended once the response is
+    // returned, so "fire and forget" fetches silently never execute.
+    // We cap each with AbortController so a slow downstream can't hang the
+    // user-facing response beyond a few seconds.
     const name = leadContext.name || '';
+    const withTimeout = (ms: number) => {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), ms);
+      return { signal: controller.signal, clear: () => clearTimeout(t) };
+    };
 
-    Promise.allSettled([
+    const notifyTasks = [
       // Telegram notification
-      fetch(`${baseUrl}/api/notify/telegram-lead`, {
-        method: 'POST',
-        headers: internalHeaders(),
-        body: JSON.stringify({
-          name,
-          email: leadFields.email || '',
-          phone: leadFields.phone || '',
-          projectType: leadFields.project_type || leadFields.inquiry_type || 'General Inquiry',
-          score: finalLeadData.score,
-          tier: finalLeadData.tier,
-          source: leadFields.source || 'website',
-        }),
-      }),
+      (async () => {
+        const { signal, clear } = withTimeout(4000);
+        try {
+          const res = await fetch(`${baseUrl}/api/notify/telegram-lead`, {
+            method: 'POST',
+            headers: internalHeaders(),
+            body: JSON.stringify({
+              name,
+              email: leadFields.email || '',
+              phone: leadFields.phone || '',
+              projectType: leadFields.project_type || leadFields.inquiry_type || 'General Inquiry',
+              score: finalLeadData.score,
+              tier: finalLeadData.tier,
+              source: leadFields.source || 'website',
+            }),
+            signal,
+          });
+          if (!res.ok) console.error('telegram-lead notify failed:', res.status, await res.text().catch(() => ''));
+        } catch (err) {
+          console.error('telegram-lead notify threw:', err);
+        } finally {
+          clear();
+        }
+      })(),
       // Email notification
-      fetch(`${baseUrl}/api/notify/new-lead`, {
-        method: 'POST',
-        headers: internalHeaders(),
-        body: JSON.stringify({
-          name,
-          email: leadFields.email || '',
-          phone: leadFields.phone || '',
-          projectType: leadFields.project_type || leadFields.inquiry_type || 'General Inquiry',
-          source: leadFields.source || 'website',
-        }),
-      }),
+      (async () => {
+        const { signal, clear } = withTimeout(4000);
+        try {
+          const res = await fetch(`${baseUrl}/api/notify/new-lead`, {
+            method: 'POST',
+            headers: internalHeaders(),
+            body: JSON.stringify({
+              name,
+              email: leadFields.email || '',
+              phone: leadFields.phone || '',
+              projectType: leadFields.project_type || leadFields.inquiry_type || 'General Inquiry',
+              source: leadFields.source || 'website',
+            }),
+            signal,
+          });
+          if (!res.ok) console.error('new-lead notify failed:', res.status, await res.text().catch(() => ''));
+        } catch (err) {
+          console.error('new-lead notify threw:', err);
+        } finally {
+          clear();
+        }
+      })(),
       // Follow-up webhook (public route — no internal secret needed)
-      fetch(`${baseUrl}/api/leads/webhook`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          email: leadFields.email || '',
-          source: leadFields.source || 'website',
-          projectType: leadFields.project_type || leadFields.inquiry_type,
-        }),
-      }),
-    ]).catch(err => console.error('Notification dispatch error:', err));
+      (async () => {
+        const { signal, clear } = withTimeout(4000);
+        try {
+          await fetch(`${baseUrl}/api/leads/webhook`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name,
+              email: leadFields.email || '',
+              source: leadFields.source || 'website',
+              projectType: leadFields.project_type || leadFields.inquiry_type,
+            }),
+            signal,
+          });
+        } catch (err) {
+          console.error('leads/webhook notify threw:', err);
+        } finally {
+          clear();
+        }
+      })(),
+    ];
+    await Promise.allSettled(notifyTasks);
 
     return NextResponse.json({
       success: true,
