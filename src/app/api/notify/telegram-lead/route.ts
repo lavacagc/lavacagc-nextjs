@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cleanEnv } from '@/lib/envClean';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,8 +36,10 @@ export async function POST(request: NextRequest) {
       estimate?: number;
     };
 
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
+    // Defensive clean — env values pasted in dashboards can carry stray whitespace,
+    // real newlines, or literal backslash-n escape sequences.
+    const botToken = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
+    const chatId = cleanEnv(process.env.TELEGRAM_CHAT_ID);
 
     if (!botToken || !chatId) {
       console.warn('⚠️ TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not configured — skipping Telegram notification');

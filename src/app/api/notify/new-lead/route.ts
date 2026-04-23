@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { newLeadNotificationHtml } from '@/lib/emailTemplates';
+import { cleanEnv } from '@/lib/envClean';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,8 @@ export async function POST(request: NextRequest) {
       source?: string;
     };
 
-    const apiKey = process.env.RESEND_API_KEY;
+    // Defensive clean — dashboard paste sometimes captures trailing whitespace / \n literals.
+    const apiKey = cleanEnv(process.env.RESEND_API_KEY);
     if (!apiKey) {
       console.warn('⚠️ RESEND_API_KEY not configured — skipping lead notification email');
       return NextResponse.json({
@@ -32,7 +34,7 @@ export async function POST(request: NextRequest) {
 
     const resend = new Resend(apiKey);
 
-    const notificationEmail = process.env.LEAD_NOTIFICATION_EMAIL || 'alex@vacamoo.com';
+    const notificationEmail = cleanEnv(process.env.LEAD_NOTIFICATION_EMAIL) || 'alex@vacamoo.com';
 
     const { data, error } = await resend.emails.send({
       from: 'La Vaca Leads <noreply@email.lavaca.link>',

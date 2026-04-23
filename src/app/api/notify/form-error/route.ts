@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import { cleanEnv } from '@/lib/envClean';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,9 +49,9 @@ export async function POST(request: NextRequest) {
 
     const results: Record<string, string> = {};
 
-    // Telegram alert (if configured)
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
+    // Telegram alert (if configured). Clean to survive dashboard paste artifacts.
+    const botToken = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
+    const chatId = cleanEnv(process.env.TELEGRAM_CHAT_ID);
     if (botToken && chatId) {
       const lines = [
         `🚨 <b>FORM FAILURE</b>`,
@@ -84,12 +85,12 @@ export async function POST(request: NextRequest) {
       results.telegram = 'skipped:not_configured';
     }
 
-    // Email alert (if configured)
-    const apiKey = process.env.RESEND_API_KEY;
+    // Email alert (if configured). Clean to survive dashboard paste artifacts.
+    const apiKey = cleanEnv(process.env.RESEND_API_KEY);
     if (apiKey) {
       try {
         const resend = new Resend(apiKey);
-        const notificationEmail = process.env.LEAD_NOTIFICATION_EMAIL || 'alex@vacamoo.com';
+        const notificationEmail = cleanEnv(process.env.LEAD_NOTIFICATION_EMAIL) || 'alex@vacamoo.com';
 
         const html = `
           <div style="font-family:-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:24px;border:1px solid #eee;border-radius:8px">
