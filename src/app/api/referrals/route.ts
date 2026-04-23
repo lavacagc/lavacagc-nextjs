@@ -14,6 +14,9 @@ export async function POST(request: NextRequest) {
       friendPhone,
       projectType,
       message,
+      contactTimePreference,
+      contactTimeDetails,
+      contactTimezone,
     } = body;
 
     // Basic validation
@@ -44,6 +47,21 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServerSupabaseClient();
 
+    // Validate the time preference enum server-side. Anything outside the
+    // allowed set is silently dropped to null — the column CHECK constraint
+    // would reject a bad value anyway, but we'd rather not fail the insert
+    // over a malformed client payload.
+    const ALLOWED_TIMES = new Set(['anytime', 'morning', 'afternoon', 'evening', 'weekends', 'specific']);
+    const safeTimePref = typeof contactTimePreference === 'string' && ALLOWED_TIMES.has(contactTimePreference)
+      ? contactTimePreference
+      : null;
+    const safeTimeDetails = safeTimePref === 'specific' && typeof contactTimeDetails === 'string'
+      ? contactTimeDetails.slice(0, 200).trim() || null
+      : null;
+    const safeTimezone = typeof contactTimezone === 'string' && contactTimezone.length < 80
+      ? contactTimezone
+      : null;
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase.from as any)('referrals')
       .insert({
@@ -56,6 +74,9 @@ export async function POST(request: NextRequest) {
         project_type: projectType.trim(),
         message: message?.trim() || null,
         status: 'pending',
+        contact_time_preference: safeTimePref,
+        contact_time_details: safeTimeDetails,
+        contact_timezone: safeTimezone,
       });
 
     if (error) {

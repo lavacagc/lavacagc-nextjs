@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Send, CheckCircle, Loader2 } from 'lucide-react';
+import { ContactTimePicker, type ContactTimePreference } from '@/components/forms/ContactTimePicker';
 
 const PROJECT_TYPES = [
   'Kitchen Remodeling',
@@ -24,7 +25,19 @@ export default function ReferralForm() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    referrerName: string;
+    referrerEmail: string;
+    referrerPhone: string;
+    friendName: string;
+    friendEmail: string;
+    friendPhone: string;
+    projectType: string;
+    message: string;
+    contactTimePreference: ContactTimePreference;
+    contactTimeDetails: string;
+    contactTimezone: string;
+  }>({
     referrerName: '',
     referrerEmail: '',
     referrerPhone: '',
@@ -33,6 +46,9 @@ export default function ReferralForm() {
     friendPhone: '',
     projectType: '',
     message: '',
+    contactTimePreference: 'anytime',
+    contactTimeDetails: '',
+    contactTimezone: 'America/New_York',
   });
 
   const handleChange = (field: string, value: string) => {
@@ -98,6 +114,9 @@ export default function ReferralForm() {
                 friendPhone: '',
                 projectType: '',
                 message: '',
+                contactTimePreference: 'anytime',
+                contactTimeDetails: '',
+                contactTimezone: 'America/New_York',
               });
             }}
             variant="outline"
@@ -156,6 +175,16 @@ export default function ReferralForm() {
                   onChange={(e) => handleChange('referrerPhone', e.target.value)}
                   required
                   maxLength={20}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <ContactTimePicker
+                  value={formData.contactTimePreference}
+                  onChange={(v) => setFormData((prev) => ({ ...prev, contactTimePreference: v }))}
+                  details={formData.contactTimeDetails}
+                  onDetailsChange={(v) => setFormData((prev) => ({ ...prev, contactTimeDetails: v }))}
+                  onTimezoneChange={(tz) => setFormData((prev) => ({ ...prev, contactTimezone: tz }))}
+                  labelOverride="When's the best time to reach YOU about this referral?"
                 />
               </div>
             </div>

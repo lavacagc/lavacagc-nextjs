@@ -1,4 +1,9 @@
 import { cleanEnv } from '@/lib/envClean';
+import {
+  formatContactTime,
+  isTimezoneMismatch,
+  type ContactTimePreference,
+} from '@/lib/notify/formatContactTime';
 
 export interface TelegramLeadPayload {
   name?: string;
@@ -10,6 +15,9 @@ export interface TelegramLeadPayload {
   tier?: 'hot' | 'warm' | 'cold';
   source?: string;
   estimate?: number;
+  contactTimePreference?: ContactTimePreference;
+  contactTimeDetails?: string;
+  contactTimezone?: string;
 }
 
 export interface TelegramLeadResult {
@@ -28,7 +36,20 @@ export interface TelegramLeadResult {
  * (HTTP 403 "Just a moment…") and silently fail.
  */
 export async function sendTelegramLead(payload: TelegramLeadPayload): Promise<TelegramLeadResult> {
-  const { name, email, phone, projectType, location, score, tier, source, estimate } = payload;
+  const {
+    name,
+    email,
+    phone,
+    projectType,
+    location,
+    score,
+    tier,
+    source,
+    estimate,
+    contactTimePreference,
+    contactTimeDetails,
+    contactTimezone,
+  } = payload;
 
   // Defensive clean — env values pasted in dashboards can carry stray whitespace,
   // real newlines, or literal backslash-n escape sequences.
@@ -54,6 +75,18 @@ export async function sendTelegramLead(payload: TelegramLeadPayload): Promise<Te
     `👤 <b>Name:</b> ${name || 'Not provided'}`,
   ];
   if (phone) lines.push(`📱 <b>Phone:</b> <code>${phone}</code>`);
+  // Best-time line sits right under the phone number — it's the single most
+  // decision-relevant field for whether to call *now* vs later.
+  const timeLabel = formatContactTime(contactTimePreference);
+  if (timeLabel) {
+    const tzFlag = isTimezoneMismatch(contactTimezone)
+      ? ` <i>(⚠️ customer on ${contactTimezone})</i>`
+      : '';
+    lines.push(`⏰ <b>Best time:</b> ${timeLabel}${tzFlag}`);
+    if (contactTimePreference === 'specific' && contactTimeDetails) {
+      lines.push(`   <i>"${contactTimeDetails}"</i>`);
+    }
+  }
   if (email) lines.push(`📧 <b>Email:</b> ${email}`);
   if (projectType) lines.push(`🏠 <b>Project:</b> ${projectType}`);
   if (location) lines.push(`📍 <b>Location:</b> ${location}`);

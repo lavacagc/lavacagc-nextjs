@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast'
 import { Checkbox } from '@/components/ui/checkbox'
 import Link from 'next/link'
 import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config'
+import { ContactTimePicker, type ContactTimePreference } from '@/components/forms/ContactTimePicker'
 
 interface LandingPageLeadFormProps {
   source: string
@@ -27,13 +28,26 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
   buttonText = 'Get My Free Estimate',
   className = '',
 }) => {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string
+    email: string
+    phone: string
+    zipCode: string
+    termsConsent: boolean
+    website: string
+    contactTimePreference: ContactTimePreference
+    contactTimeDetails: string
+    contactTimezone: string
+  }>({
     name: '',
     email: '',
     phone: '',
     zipCode: '',
     termsConsent: false,
     website: '', // honeypot field — bots fill this, humans never see it
+    contactTimePreference: 'anytime',
+    contactTimeDetails: '',
+    contactTimezone: 'America/New_York',
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
@@ -157,6 +171,11 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
           project_type: projectType,
           source,
           preferred_contact_method: 'phone',
+          contact_time_preference: formData.contactTimePreference,
+          contact_time_details: formData.contactTimePreference === 'specific'
+            ? formData.contactTimeDetails.trim()
+            : null,
+          contact_timezone: formData.contactTimezone,
           recaptchaToken,
           recaptchaAction: 'landing_page',
           honeypot: formData.website,
@@ -285,6 +304,14 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
           {errors.zipCode && <p className="text-xs text-red-500">{errors.zipCode}</p>}
         </div>
 
+        <ContactTimePicker
+          value={formData.contactTimePreference}
+          onChange={(v) => setFormData((prev) => ({ ...prev, contactTimePreference: v }))}
+          details={formData.contactTimeDetails}
+          onDetailsChange={(v) => setFormData((prev) => ({ ...prev, contactTimeDetails: v }))}
+          onTimezoneChange={(tz) => setFormData((prev) => ({ ...prev, contactTimezone: tz }))}
+        />
+
         {/* TCPA Consent */}
         <div className="flex items-start space-x-2 p-3 border rounded-lg bg-background">
           <Checkbox
@@ -306,7 +333,7 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
               <Link href="/privacy-policy" target="_blank" className="text-primary hover:underline">
                 Privacy Policy
               </Link>
-              . I consent to receive calls, texts, and emails about my project.
+              . I consent to receive calls, texts, and emails about my project at the times I&apos;ve indicated.
             </label>
             {errors.termsConsent && <p className="text-xs text-red-500">{errors.termsConsent}</p>}
           </div>

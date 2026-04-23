@@ -15,6 +15,7 @@ import { trackEstimateRequest } from '@/components/Analytics';
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
+import { ContactTimePicker, type ContactTimePreference } from "@/components/forms/ContactTimePicker";
 
 interface QuickEstimateData {
   firstName: string;
@@ -25,6 +26,9 @@ interface QuickEstimateData {
   budgetRange: string;
   zipCode: string;
   termsConsent: boolean;
+  contactTimePreference: ContactTimePreference;
+  contactTimeDetails: string;
+  contactTimezone: string;
 }
 
 // Validation schema
@@ -73,7 +77,10 @@ const HomeEstimateForm = () => {
     projectType: "",
     budgetRange: "",
     zipCode: "",
-    termsConsent: false
+    termsConsent: false,
+    contactTimePreference: "anytime",
+    contactTimeDetails: "",
+    contactTimezone: "America/New_York",
   });
   const [errors, setErrors] = useState<Partial<Record<keyof QuickEstimateData, string>>>({});
   const { toast } = useToast();
@@ -246,6 +253,9 @@ const HomeEstimateForm = () => {
           project_timeline: 'asap',
           preferred_contact_method: 'phone',
           source: 'home_estimate_form',
+          contact_time_preference: formData.contactTimePreference,
+          contact_time_details: formData.contactTimePreference === 'specific' ? formData.contactTimeDetails : null,
+          contact_timezone: formData.contactTimezone,
           recaptchaToken,
           recaptchaAction: 'estimate_request',
           honeypot,
@@ -343,7 +353,10 @@ const HomeEstimateForm = () => {
                 projectType: "",
                 budgetRange: "",
                 zipCode: "",
-                termsConsent: false
+                termsConsent: false,
+                contactTimePreference: "anytime",
+                contactTimeDetails: "",
+                contactTimezone: "America/New_York",
               });
               setErrors({});
             }}
@@ -496,6 +509,14 @@ const HomeEstimateForm = () => {
               {errors.zipCode && <p className="text-xs text-red-500">{errors.zipCode}</p>}
             </div>
 
+            <ContactTimePicker
+              value={formData.contactTimePreference}
+              onChange={(v) => setFormData((prev) => ({ ...prev, contactTimePreference: v }))}
+              details={formData.contactTimeDetails}
+              onDetailsChange={(v) => setFormData((prev) => ({ ...prev, contactTimeDetails: v }))}
+              onTimezoneChange={(tz) => setFormData((prev) => ({ ...prev, contactTimezone: tz }))}
+            />
+
             {/* TCPA Consent Checkbox */}
             <div className="flex items-start space-x-2 p-3 border rounded-lg bg-background">
               <Checkbox
@@ -525,7 +546,7 @@ const HomeEstimateForm = () => {
                   <Link href="/privacy-policy" className="text-primary hover:underline" target="_blank">
                     Privacy Policy
                   </Link>
-                  . You consent to receive calls, texts, and emails about your project.
+                  . You consent to receive calls, texts, and emails about your project at the times you&apos;ve indicated.
                 </p>
                 {errors.termsConsent && <p className="text-xs text-red-500">{errors.termsConsent}</p>}
               </div>

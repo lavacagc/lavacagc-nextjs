@@ -1,6 +1,10 @@
 import { Resend } from 'resend';
 import { newLeadNotificationHtml } from '@/lib/emailTemplates';
 import { cleanEnv } from '@/lib/envClean';
+import {
+  formatContactTimeShort,
+  type ContactTimePreference,
+} from '@/lib/notify/formatContactTime';
 
 export interface NewLeadEmailPayload {
   name?: string;
@@ -9,6 +13,10 @@ export interface NewLeadEmailPayload {
   projectType?: string;
   location?: string;
   source?: string;
+  tier?: 'hot' | 'warm' | 'cold';
+  contactTimePreference?: ContactTimePreference;
+  contactTimeDetails?: string;
+  contactTimezone?: string;
 }
 
 export interface NewLeadEmailResult {
@@ -24,7 +32,18 @@ export interface NewLeadEmailResult {
  * Runs in-process — do NOT self-fetch. See note in telegramLead.ts.
  */
 export async function sendNewLeadEmail(payload: NewLeadEmailPayload): Promise<NewLeadEmailResult> {
-  const { name, email, phone, projectType, location, source } = payload;
+  const {
+    name,
+    email,
+    phone,
+    projectType,
+    location,
+    source,
+    tier,
+    contactTimePreference,
+    contactTimeDetails,
+    contactTimezone,
+  } = payload;
 
   const apiKey = cleanEnv(process.env.RESEND_API_KEY);
   if (!apiKey) {
@@ -34,13 +53,29 @@ export async function sendNewLeadEmail(payload: NewLeadEmailPayload): Promise<Ne
 
   const notificationEmail = cleanEnv(process.env.LEAD_NOTIFICATION_EMAIL) || 'alex@vacamoo.com';
 
+  // Append a short time hint to the subject for hot leads so the info lands
+  // in phone notification previews without opening. We skip it for warm/cold
+  // to keep subject lines tight when the urgency isn't there.
+  const shortTime = formatContactTimeShort(contactTimePreference);
+  const subjectTimeSuffix = tier === 'hot' && shortTime ? ` — call ${shortTime}` : '';
+
   try {
     const resend = new Resend(apiKey);
     const { data, error } = await resend.emails.send({
       from: 'La Vaca Leads <noreply@email.lavaca.link>',
       to: [notificationEmail],
-      subject: `🔥 New Lead: ${name || 'Unknown'} — ${projectType || 'General Inquiry'}`,
-      html: newLeadNotificationHtml({ name, email, phone, projectType, location, source }),
+      subject: `🔥 New Lead: ${name || 'Unknown'} — ${projectType || 'General Inquiry'}${subjectTimeSuffix}`,
+      html: newLeadNotificationHtml({
+        name,
+        email,
+        phone,
+        projectType,
+        location,
+        source,
+        contactTimePreference,
+        contactTimeDetails,
+        contactTimezone,
+      }),
     });
 
     if (error) {

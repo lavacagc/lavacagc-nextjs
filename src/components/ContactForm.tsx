@@ -18,6 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 import { getVisitorData } from '@/hooks/useVisitor';
+import { ContactTimePicker, type ContactTimePreference } from "@/components/forms/ContactTimePicker";
 
 interface ContactFormData {
   firstName: string;
@@ -27,6 +28,9 @@ interface ContactFormData {
   message: string;
   preferredContactMethod: string;
   termsConsent: boolean;
+  contactTimePreference: ContactTimePreference;
+  contactTimeDetails: string;
+  contactTimezone: string;
 }
 
 // Validation schema with security constraints
@@ -70,7 +74,10 @@ const ContactForm = () => {
     phone: "",
     message: "",
     preferredContactMethod: "phone",
-    termsConsent: false
+    termsConsent: false,
+    contactTimePreference: "anytime",
+    contactTimeDetails: "",
+    contactTimezone: "America/New_York",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof ContactFormData, string>>>({});
@@ -227,7 +234,12 @@ const ContactForm = () => {
         message: sanitizeInput(formData.message),
         inquiry_type: 'contact' as const,
         preferred_contact_method: formData.preferredContactMethod,
-        source: 'contact_form'
+        source: 'contact_form',
+        contact_time_preference: formData.contactTimePreference,
+        contact_time_details: formData.contactTimePreference === 'specific'
+          ? sanitizeInput(formData.contactTimeDetails)
+          : null,
+        contact_timezone: formData.contactTimezone,
       };
 
       // Add visitor tracking data
@@ -313,7 +325,10 @@ const ContactForm = () => {
         phone: "",
         message: "",
         preferredContactMethod: "phone",
-        termsConsent: false
+        termsConsent: false,
+        contactTimePreference: "anytime",
+        contactTimeDetails: "",
+        contactTimezone: "America/New_York",
       });
 
     } catch (error) {
@@ -470,6 +485,15 @@ const ContactForm = () => {
               </label>
             </div>
           </div>
+
+          <ContactTimePicker
+            value={formData.contactTimePreference}
+            onChange={(v) => setFormData((prev) => ({ ...prev, contactTimePreference: v }))}
+            details={formData.contactTimeDetails}
+            onDetailsChange={(v) => setFormData((prev) => ({ ...prev, contactTimeDetails: v }))}
+            onTimezoneChange={(tz) => setFormData((prev) => ({ ...prev, contactTimezone: tz }))}
+            preferredContactMethod={formData.preferredContactMethod}
+          />
 
           <div className="space-y-2">
             <Label htmlFor="message">Message *</Label>

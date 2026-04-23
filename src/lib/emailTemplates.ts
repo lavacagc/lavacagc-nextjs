@@ -289,6 +289,8 @@ export function lead7dHtml(name: string): string {
 // LEAD NOTIFICATION (Internal to Alex)
 // ==========================================
 
+import { formatContactTime } from '@/lib/notify/formatContactTime';
+
 export function newLeadNotificationHtml(data: {
   name?: string;
   email?: string;
@@ -296,11 +298,38 @@ export function newLeadNotificationHtml(data: {
   projectType?: string;
   location?: string;
   source?: string;
+  contactTimePreference?: string | null;
+  contactTimeDetails?: string | null;
+  contactTimezone?: string | null;
 }): string {
+  const timeLabel = formatContactTime(data.contactTimePreference as Parameters<typeof formatContactTime>[0]);
+  // Best-time block rendered as a bold highlight card, not buried in the
+  // details table — mirrors the Telegram design: this is the field that
+  // decides whether the owner calls now or later.
+  const bestTimeCard = timeLabel
+    ? `<div style="padding:0 48px 16px 48px">
+         <div style="background-color:#fef7f4;border-left:4px solid ${BRAND_COLOR};border-radius:0 8px 8px 0;padding:14px 18px">
+           <div style="color:#717171;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">⏰ Best time to reach them</div>
+           <div style="color:#222;font-size:17px;font-weight:600;padding-top:4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">${timeLabel}</div>
+           ${
+             data.contactTimeDetails
+               ? `<div style="color:#555;font-size:14px;padding-top:6px;font-style:italic;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">&ldquo;${data.contactTimeDetails}&rdquo;</div>`
+               : ''
+           }
+           ${
+             data.contactTimezone && data.contactTimezone !== 'America/New_York'
+               ? `<div style="color:#b45309;font-size:13px;padding-top:6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">⚠️ Customer timezone: ${data.contactTimezone}</div>`
+               : ''
+           }
+         </div>
+       </div>`
+    : '';
+
   return emailShell(
     `${logo()}
      ${heading('New Lead 🔥')}
      ${paragraph(`A new lead just came in from <strong>${data.source || 'the website'}</strong>.`)}
+     ${bestTimeCard}
      <div style="padding:0 48px">
        <table cellpadding="0" role="presentation" style="border-collapse:collapse;width:100%;border-spacing:0" width="100%">
          <tr>

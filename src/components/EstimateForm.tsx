@@ -16,6 +16,7 @@ import DOMPurify from "dompurify";
 import { trackEstimateRequest } from '@/components/Analytics';
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
+import { ContactTimePicker, type ContactTimePreference } from "@/components/forms/ContactTimePicker";
 
 interface EstimateFormData {
   firstName: string;
@@ -33,6 +34,9 @@ interface EstimateFormData {
   message: string;
   preferredContactMethod: string;
   termsConsent: boolean;
+  contactTimePreference: ContactTimePreference;
+  contactTimeDetails: string;
+  contactTimezone: string;
 }
 
 // Validation schema
@@ -98,7 +102,10 @@ const EstimateForm = () => {
     currentProjectStatus: "",
     message: "",
     preferredContactMethod: "phone",
-    termsConsent: false
+    termsConsent: false,
+    contactTimePreference: "anytime",
+    contactTimeDetails: "",
+    contactTimezone: "America/New_York",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof EstimateFormData, string>>>({});
@@ -301,7 +308,12 @@ const EstimateForm = () => {
         current_project_status: sanitizeInput(formData.currentProjectStatus),
         message: sanitizeInput(formData.message),
         preferred_contact_method: formData.preferredContactMethod,
-        source: 'estimate_form'
+        source: 'estimate_form',
+        contact_time_preference: formData.contactTimePreference,
+        contact_time_details: formData.contactTimePreference === 'specific'
+          ? sanitizeInput(formData.contactTimeDetails)
+          : null,
+        contact_timezone: formData.contactTimezone,
       };
 
       // Submit via server-side API (handles reCAPTCHA verification, scoring, DB insert, and notifications)
@@ -374,7 +386,10 @@ const EstimateForm = () => {
         currentProjectStatus: "",
         message: "",
         preferredContactMethod: "phone",
-        termsConsent: false
+        termsConsent: false,
+        contactTimePreference: "anytime",
+        contactTimeDetails: "",
+        contactTimezone: "America/New_York",
       });
       setErrors({});
       setCurrentStep(1);
@@ -624,6 +639,15 @@ const EstimateForm = () => {
                 {errors.preferredContactMethod && <p className="text-xs text-red-500">{errors.preferredContactMethod}</p>}
               </div>
 
+              <ContactTimePicker
+                value={formData.contactTimePreference}
+                onChange={(v) => setFormData((prev) => ({ ...prev, contactTimePreference: v }))}
+                details={formData.contactTimeDetails}
+                onDetailsChange={(v) => setFormData((prev) => ({ ...prev, contactTimeDetails: v }))}
+                onTimezoneChange={(tz) => setFormData((prev) => ({ ...prev, contactTimezone: tz }))}
+                preferredContactMethod={formData.preferredContactMethod}
+              />
+
               <div className="space-y-2">
                 <Label htmlFor="message">Additional Details (optional)</Label>
                 <Textarea
@@ -675,7 +699,7 @@ const EstimateForm = () => {
                     <Link href="/privacy-policy" className="text-primary hover:underline" target="_blank">
                       Privacy Policy
                     </Link>
-                    . You consent to receive calls, texts, and emails from us about your project. Standard message and data rates may apply. You can opt out at any time.
+                    . You consent to receive calls, texts, and emails from us about your project at the times you&apos;ve indicated. Standard message and data rates may apply. You can opt out at any time.
                   </p>
                   {errors.termsConsent && <p className="text-xs text-red-500">{errors.termsConsent}</p>}
                 </div>

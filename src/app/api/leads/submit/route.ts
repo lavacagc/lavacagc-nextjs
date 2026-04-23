@@ -232,6 +232,20 @@ export async function POST(request: NextRequest) {
     const email = (leadFields.email || '') as string;
     const phone = (leadFields.phone || '') as string;
 
+    // Pull the best-time fields off the payload once so both notify tasks
+    // and the DB row see the same values. Cast through the known-but-loosely-
+    // typed enum set; insertLead already received the raw column values.
+    const contactTimePreference = (finalLeadData.contact_time_preference || undefined) as
+      | 'anytime'
+      | 'morning'
+      | 'afternoon'
+      | 'evening'
+      | 'weekends'
+      | 'specific'
+      | undefined;
+    const contactTimeDetails = (finalLeadData.contact_time_details as string | undefined) || undefined;
+    const contactTimezone = (finalLeadData.contact_timezone as string | undefined) || undefined;
+
     const notifyTasks = [
       withTimeoutPromise(
         sendTelegramLead({
@@ -242,6 +256,9 @@ export async function POST(request: NextRequest) {
           score: finalLeadData.score as number | undefined,
           tier: finalLeadData.tier as 'hot' | 'warm' | 'cold' | undefined,
           source,
+          contactTimePreference,
+          contactTimeDetails,
+          contactTimezone,
         }),
         4000,
         'telegram-lead'
@@ -256,6 +273,10 @@ export async function POST(request: NextRequest) {
           phone,
           projectType,
           source,
+          tier: finalLeadData.tier as 'hot' | 'warm' | 'cold' | undefined,
+          contactTimePreference,
+          contactTimeDetails,
+          contactTimezone,
         }),
         4000,
         'new-lead'
