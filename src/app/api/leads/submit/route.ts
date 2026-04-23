@@ -278,14 +278,50 @@ export async function POST(request: NextRequest) {
       }),
     ];
     const notifyResults = await Promise.allSettled(notifyTasks);
+    const notifyLabels = ['telegram-lead', 'new-lead', 'follow-up'] as const;
+    // Collect any channel that outright failed (not counting the benign
+    // "skipped:not_configured" state, which is the normal response in envs
+    // where credentials aren't set). Anything else — failed/error/timeout —
+    // means a lead came in but a channel silently didn't deliver.
+    const notifyFailures: Array<{ label: string; detail: unknown }> = [];
     notifyResults.forEach((r, i) => {
-      const label = ['telegram-lead', 'new-lead', 'follow-up'][i];
+      const label = notifyLabels[i];
       if (r.status === 'fulfilled') {
-        console.log(`notify ${label}:`, JSON.stringify(r.value));
+        const val = r.value as { status?: string; reason?: string; error?: string; label?: string };
+        console.log(`notify ${label}:`, JSON.stringify(val));
+        const bad = val.status === 'failed' || val.status === 'error' || val.status === 'timeout';
+        const isSkipConfig = val.status === 'skipped' && val.reason === 'not_configured';
+        if (bad && !isSkipConfig) {
+          notifyFailures.push({ label, detail: val });
+        }
       } else {
         console.error(`notify ${label} rejected:`, r.reason);
+        notifyFailures.push({
+          label,
+          detail: r.reason instanceof Error ? { message: r.reason.message, stack: r.reason.stack } : String(r.reason),
+        });
       }
     });
+
+    // Escalate any notify failure to the form-error alert channel so the
+    // site owner finds out even if ONE channel is down (e.g. Telegram token
+    // revoked, Resend suspension, 4s timeout). The alert itself dual-writes
+    // to Telegram + email, so a single broken channel still lets the other
+    // one deliver the news.
+    if (notifyFailures.length > 0) {
+      await reportFailure({
+        stage: 'notify',
+        source: sourceForError,
+        message: `${notifyFailures.length}/${notifyLabels.length} lead notification channel(s) failed — lead was saved but the owner may not have been alerted`,
+        details: {
+          failures: notifyFailures,
+          hint:
+            'The lead is in Supabase. Channels listed above did not dispatch. ' +
+            'Check TELEGRAM_BOT_TOKEN / RESEND_API_KEY validity and Vercel runtime logs.',
+        },
+        lead: leadContext,
+      });
+    }
 
     return NextResponse.json({
       success: true,
