@@ -150,6 +150,17 @@ function verifyCronSecret(request: NextRequest): { ok: boolean; misconfigured: b
   return { ok: authHeader === `Bearer ${cronSecret}`, misconfigured: false };
 }
 
+// Shared-secret auth for internal server-to-server calls to /api/notify/*.
+// /api/leads/submit needs to fire lead + error notifications without a
+// user session; this header lets it bypass admin auth without exposing the
+// notify endpoints to the public internet.
+function verifyInternalSecret(request: NextRequest): boolean {
+  const expected = process.env.INTERNAL_WEBHOOK_SECRET;
+  if (!expected) return false;
+  const provided = request.headers.get('x-internal-secret');
+  return provided === expected;
+}
+
 export async function middleware(request: NextRequest) {
   const host = request.headers.get('host') || '';
   const ua = request.headers.get('user-agent') || '';
@@ -182,6 +193,11 @@ export async function middleware(request: NextRequest) {
 
   // --- Admin route auth (Supabase session) ---
   if (requiresAdminAuth(pathname)) {
+    // Server-to-server internal calls to /api/notify/* can authenticate
+    // with INTERNAL_WEBHOOK_SECRET instead of a user session.
+    if (pathname.startsWith('/api/notify/') && verifyInternalSecret(request)) {
+      return NextResponse.next();
+    }
     const authenticated = await verifySupabaseSession(request);
     if (!authenticated) {
       // For API routes, return JSON 401

@@ -5,6 +5,16 @@ export const dynamic = 'force-dynamic';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
+// Shared header for internal server-to-server calls so middleware lets them
+// past admin auth. If the secret isn't set the header is omitted and the
+// caller will be 401'd — diagnostics will flag this in /api/health/forms.
+function internalHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const secret = process.env.INTERNAL_WEBHOOK_SECRET;
+  if (secret) headers['x-internal-secret'] = secret;
+  return headers;
+}
+
 // Fire-and-forget alert to the form-error notify channel. Never throws.
 async function reportFailure(
   baseUrl: string,
@@ -19,7 +29,7 @@ async function reportFailure(
   try {
     await fetch(`${baseUrl}/api/notify/form-error`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalHeaders(),
       body: JSON.stringify(payload),
     });
   } catch (err) {
@@ -235,7 +245,7 @@ export async function POST(request: NextRequest) {
       // Telegram notification
       fetch(`${baseUrl}/api/notify/telegram-lead`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalHeaders(),
         body: JSON.stringify({
           name,
           email: leadFields.email || '',
@@ -249,7 +259,7 @@ export async function POST(request: NextRequest) {
       // Email notification
       fetch(`${baseUrl}/api/notify/new-lead`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalHeaders(),
         body: JSON.stringify({
           name,
           email: leadFields.email || '',
@@ -258,7 +268,7 @@ export async function POST(request: NextRequest) {
           source: leadFields.source || 'website',
         }),
       }),
-      // Follow-up webhook
+      // Follow-up webhook (public route — no internal secret needed)
       fetch(`${baseUrl}/api/leads/webhook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

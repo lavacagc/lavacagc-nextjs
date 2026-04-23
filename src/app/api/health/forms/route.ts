@@ -51,6 +51,11 @@ export async function GET(request: NextRequest) {
       role: 'GCP project id for reCAPTCHA Enterprise (optional, defaults to "lavaca-gc")',
       critical: false,
     },
+    INTERNAL_WEBHOOK_SECRET: {
+      present: Boolean(process.env.INTERNAL_WEBHOOK_SECRET),
+      role: 'Shared secret that lets /api/leads/submit call /api/notify/* past admin-auth middleware. Without it, lead notifications and error alerts are silently dropped.',
+      critical: true,
+    },
     RESEND_API_KEY: {
       present: Boolean(process.env.RESEND_API_KEY),
       role: 'Email delivery for lead + error notifications',

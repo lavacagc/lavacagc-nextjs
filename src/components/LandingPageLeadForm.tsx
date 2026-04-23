@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -8,6 +8,7 @@ import { CheckCircle, Loader2 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Checkbox } from '@/components/ui/checkbox'
 import Link from 'next/link'
+import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config'
 
 interface LandingPageLeadFormProps {
   source: string
@@ -38,6 +39,56 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const { toast } = useToast()
+
+  // Lazy-load reCAPTCHA on first form interaction (matches ContactForm/EstimateForm pattern)
+  useEffect(() => {
+    let recaptchaLoaded = false
+
+    const loadRecaptcha = () => {
+      if (recaptchaLoaded || document.getElementById('recaptcha-script')) return
+      recaptchaLoaded = true
+
+      const script = document.createElement('script')
+      script.id = 'recaptcha-script'
+      script.src = `https://www.google.com/recaptcha/enterprise.js?render=${RECAPTCHA_SITE_KEY}`
+      script.async = true
+      script.defer = true
+      document.head.appendChild(script)
+    }
+
+    const handleInteraction = () => {
+      loadRecaptcha()
+      document.removeEventListener('focus', handleInteraction, true)
+      document.removeEventListener('click', handleInteraction, true)
+    }
+
+    document.addEventListener('focus', handleInteraction, true)
+    document.addEventListener('click', handleInteraction, true)
+
+    return () => {
+      document.removeEventListener('focus', handleInteraction, true)
+      document.removeEventListener('click', handleInteraction, true)
+    }
+  }, [])
+
+  const executeRecaptcha = async (): Promise<string | null> => {
+    return new Promise((resolve) => {
+      if (typeof window !== 'undefined' && window.grecaptcha?.enterprise) {
+        window.grecaptcha.enterprise.ready(() => {
+          window.grecaptcha.enterprise
+            .execute(RECAPTCHA_SITE_KEY, { action: 'landing_page' })
+            .then((token: string) => resolve(token))
+            .catch((err: unknown) => {
+              console.error('reCAPTCHA execution failed:', err)
+              resolve(null)
+            })
+        })
+      } else {
+        console.error('reCAPTCHA not loaded')
+        resolve(null)
+      }
+    })
+  }
 
   const validate = () => {
     const newErrors: Record<string, string> = {}
@@ -73,6 +124,20 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
 
     setIsSubmitting(true)
     try {
+      // Execute reCAPTCHA v3 (Enterprise) — REQUIRED by /api/leads/submit
+      const recaptchaToken = await executeRecaptcha()
+      if (!recaptchaToken) {
+        toast({
+          title: 'Security Verification Failed',
+          description:
+            'Please refresh the page and try again, or call us directly at (201) 212-4917.',
+          variant: 'destructive',
+          duration: 10000,
+        })
+        setIsSubmitting(false)
+        return
+      }
+
       // Split name into first/last
       const nameParts = formData.name.trim().split(/\s+/)
       const firstName = nameParts[0]
@@ -92,7 +157,7 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
           project_type: projectType,
           source,
           preferred_contact_method: 'phone',
-          recaptchaToken: 'landing_page_bypass',
+          recaptchaToken,
           recaptchaAction: 'landing_page',
           honeypot: formData.website,
         }),
