@@ -5,6 +5,28 @@ export const dynamic = 'force-dynamic';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
+// Fire-and-forget alert to the form-error notify channel. Never throws.
+async function reportFailure(
+  baseUrl: string,
+  payload: {
+    stage: string;
+    source: string;
+    message: string;
+    details?: unknown;
+    lead?: { name?: string; email?: string; phone?: string };
+  }
+): Promise<void> {
+  try {
+    await fetch(`${baseUrl}/api/notify/form-error`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error('Failed to dispatch form-error alert:', err);
+  }
+}
+
 // Server-side reCAPTCHA verification
 async function verifyRecaptcha(token: string, expectedAction: string): Promise<{ success: boolean; score: number }> {
   const secretKey = process.env.RECAPTCHA_SECRET_KEY;
@@ -98,6 +120,9 @@ async function insertLead(leadData: Record<string, unknown>): Promise<{ data: Re
 }
 
 export async function POST(request: NextRequest) {
+  const baseUrl = request.nextUrl.origin;
+  let leadFieldsForError: Record<string, unknown> = {};
+  let sourceForError = 'unknown';
   try {
     const body = await request.json();
     const { recaptchaToken, recaptchaAction, honeypot, ...leadFields } = body as {
@@ -105,6 +130,13 @@ export async function POST(request: NextRequest) {
       recaptchaAction: string;
       honeypot?: string;
       [key: string]: unknown;
+    };
+    leadFieldsForError = leadFields;
+    sourceForError = String(leadFields.source || recaptchaAction || 'unknown');
+    const leadContext = {
+      name: `${leadFields.first_name || ''} ${leadFields.last_name || ''}`.trim() || undefined,
+      email: (leadFields.email as string) || undefined,
+      phone: (leadFields.phone as string) || undefined,
     };
 
     // Honeypot check — bots fill hidden fields, humans don't
@@ -115,6 +147,12 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!recaptchaToken || !recaptchaAction) {
+      await reportFailure(baseUrl, {
+        stage: 'validation',
+        source: sourceForError,
+        message: 'Missing reCAPTCHA token or action on submit',
+        lead: leadContext,
+      });
       return NextResponse.json(
         { error: 'Missing reCAPTCHA token' },
         { status: 400 }
@@ -122,6 +160,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (!leadFields.email && !leadFields.phone) {
+      await reportFailure(baseUrl, {
+        stage: 'validation',
+        source: sourceForError,
+        message: 'Submission missing both email and phone',
+        lead: leadContext,
+      });
       return NextResponse.json(
         { error: 'Email or phone is required' },
         { status: 400 }
@@ -133,6 +177,19 @@ export async function POST(request: NextRequest) {
     console.log(`reCAPTCHA verification: action=${recaptchaAction}, score=${recaptchaResult.score}, success=${recaptchaResult.success}`);
 
     if (!recaptchaResult.success) {
+      await reportFailure(baseUrl, {
+        stage: 'recaptcha',
+        source: sourceForError,
+        message: `reCAPTCHA verification failed (score=${recaptchaResult.score})`,
+        details: {
+          action: recaptchaAction,
+          score: recaptchaResult.score,
+          hint: !process.env.RECAPTCHA_SECRET_KEY
+            ? 'RECAPTCHA_SECRET_KEY is not set — every submission will fail until it is configured.'
+            : 'Score below 0.5 or token invalid. Check reCAPTCHA console + siteKey/action match.',
+        },
+        lead: leadContext,
+      });
       return NextResponse.json(
         { error: 'reCAPTCHA verification failed' },
         { status: 403 }
@@ -156,12 +213,23 @@ export async function POST(request: NextRequest) {
     const { error: insertError } = await insertLead(finalLeadData);
     if (insertError) {
       console.error('Failed to insert lead:', insertError);
+      await reportFailure(baseUrl, {
+        stage: 'insert',
+        source: sourceForError,
+        message: 'Supabase insert failed — lead was NOT saved',
+        details: {
+          dbError: insertError,
+          hint: !process.env.SUPABASE_SECRET_KEY
+            ? 'SUPABASE_SECRET_KEY is not set — the server cannot write to the leads table.'
+            : 'Check RLS, column mismatches, or Supabase project status.',
+        },
+        lead: leadContext,
+      });
       return NextResponse.json({ error: 'Failed to save lead' }, { status: 500 });
     }
 
     // Fire notifications in background (non-blocking)
-    const baseUrl = request.nextUrl.origin;
-    const name = `${leadFields.first_name || ''} ${leadFields.last_name || ''}`.trim();
+    const name = leadContext.name || '';
 
     Promise.allSettled([
       // Telegram notification
@@ -210,6 +278,17 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Lead submission error:', error);
+    await reportFailure(baseUrl, {
+      stage: 'exception',
+      source: sourceForError,
+      message: 'Unhandled exception in /api/leads/submit',
+      details: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
+      lead: {
+        name: `${leadFieldsForError.first_name || ''} ${leadFieldsForError.last_name || ''}`.trim() || undefined,
+        email: (leadFieldsForError.email as string) || undefined,
+        phone: (leadFieldsForError.phone as string) || undefined,
+      },
+    });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
