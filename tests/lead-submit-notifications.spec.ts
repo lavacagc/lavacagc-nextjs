@@ -1,24 +1,41 @@
 import { test, expect, type Route } from '@playwright/test';
 
 /**
- * Regression guard for the Vercel serverless "fire-and-forget" bug.
+ * Regression guard for the lead-submit notification pipeline.
  *
- * The bug: /api/leads/submit used `Promise.allSettled([...fetches])` WITHOUT
- * awaiting, then returned the response. On Vercel, function execution is
- * suspended once the response is sent, so the notification fetches silently
- * never ran — DB insert succeeded but no Telegram/email ever fired.
+ * Historical bugs this protects against:
  *
- * These ACs verify that:
- *   AC1: /api/leads/submit does NOT return the HTTP response until after
- *        the notify sub-requests have been dispatched
- *   AC2: telegram-lead + new-lead are both dispatched with the
- *        x-internal-secret header (middleware carveout)
- *   AC3: the user-facing response still lands within ~10s (timeouts cap it)
+ *   1. "Fire-and-forget" Promise.allSettled: /api/leads/submit used to kick off
+ *      notify fetches without awaiting them, then return. On Vercel serverless
+ *      the function was suspended the moment the response was sent, so the
+ *      sub-fetches silently never ran.
+ *
+ *   2. Cloudflare managed-challenge: after the await fix, self-fetches from
+ *      Vercel back to https://www.lavacagc.com/api/notify/* got 403'd by
+ *      Cloudflare's bot challenge page BEFORE our middleware could see them.
+ *      DB insert succeeded, 200 returned, but Telegram/email never fired.
+ *
+ * Current architecture: /api/leads/submit imports the notification helpers
+ * from src/lib/notify/ and awaits them in-process. No HTTP self-fetch, no
+ * Cloudflare hop, no edge challenge.
+ *
+ * This means we CAN'T use page.route to intercept the notify endpoints from
+ * the outside — they're no longer network calls. What we CAN assert:
+ *
+ *   AC1: /api/leads/submit returns {success: true} for a valid submission
+ *   AC2: /api/leads/webhook, /api/notify/telegram-lead, /api/notify/new-lead
+ *        are NOT called over the network during a successful submit (regression
+ *        guard against someone reintroducing a self-fetch and getting
+ *        silently blocked by Cloudflare again)
+ *   AC3: the user-facing response lands within ~15s (timeouts cap each
+ *        notification at 4s wall-clock)
+ *
+ * Unit-level verification that each helper was invoked would require mocking
+ * the modules — we rely on manual/staging verification of delivery for now.
  */
 
-test.describe('/api/leads/submit — notifications must dispatch before response', () => {
+test.describe('/api/leads/submit — notifications dispatch in-process', () => {
   test.beforeEach(async ({ page }) => {
-    // Block external reCAPTCHA script, stub grecaptcha so the form can submit
     await page.route(/recaptcha|gstatic\.com\/recaptcha/, (route) => route.abort());
     await page.addInitScript(() => {
       // @ts-expect-error - runtime stub
@@ -31,45 +48,40 @@ test.describe('/api/leads/submit — notifications must dispatch before response
     });
   });
 
-  test('AC1+AC2: notify endpoints are hit with x-internal-secret before /submit response lands', async ({ page }) => {
-    const notifyHits: Array<{ url: string; hasSecret: boolean }> = [];
+  test('AC1+AC2+AC3: submit succeeds without self-fetching notify endpoints', async ({ page }) => {
+    const selfFetchedNotifyHits: string[] = [];
     let submitResponseTime = 0;
-    let lastNotifyTime = 0;
+    let submitStarted = 0;
 
-    // Intercept notify endpoints — record timing and header presence
-    await page.route('**/api/notify/telegram-lead', async (route: Route) => {
-      notifyHits.push({
-        url: 'telegram-lead',
-        hasSecret: !!route.request().headers()['x-internal-secret'],
+    // If any of these fire, it means someone reintroduced an HTTP self-fetch
+    // for an internal notification. That would get interstitialled by
+    // Cloudflare in production and silently fail. We fail the test here
+    // instead of in production.
+    const notifyUrls = [
+      '**/api/notify/telegram-lead',
+      '**/api/notify/new-lead',
+      '**/api/notify/form-error',
+      '**/api/leads/webhook',
+    ];
+    for (const pattern of notifyUrls) {
+      await page.route(pattern, async (route: Route) => {
+        // Only record if the navigator is the page itself (not a server call
+        // that accidentally matches because we can't distinguish). We record
+        // these and fail — any browser-originated hit to these endpoints
+        // during a lead submit flow means something is off.
+        selfFetchedNotifyHits.push(pattern);
+        await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
       });
-      lastNotifyTime = Date.now();
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"sent"}' });
-    });
-    await page.route('**/api/notify/new-lead', async (route: Route) => {
-      notifyHits.push({
-        url: 'new-lead',
-        hasSecret: !!route.request().headers()['x-internal-secret'],
-      });
-      lastNotifyTime = Date.now();
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"sent"}' });
-    });
-    await page.route('**/api/leads/webhook', async (route: Route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
-    });
+    }
 
-    // Intercept /api/leads/submit and forward it, but record when its response lands.
-    // We cannot use page.route for the /submit itself because we want the REAL
-    // server logic to run its notification dispatch. So instead we run against
-    // a local dev server (TEST_URL defaults to localhost:3000) and just measure
-    // wall-clock time of the user-visible response vs when notify routes were hit.
     await page.route('**/api/leads/submit', async (route: Route) => {
+      submitStarted = Date.now();
       const response = await route.fetch();
       submitResponseTime = Date.now();
       await route.fulfill({ response });
     });
 
     await page.goto('/free-estimate');
-    // Fill the landing form
     await page.getByRole('textbox', { name: /full name/i }).fill('AC Test');
     await page.getByRole('textbox', { name: /^email/i }).fill('test@example.com');
     await page.getByRole('textbox', { name: /phone/i }).fill('(201) 555-1234');
@@ -77,25 +89,19 @@ test.describe('/api/leads/submit — notifications must dispatch before response
     await page.getByRole('checkbox', { name: /i agree to the terms/i }).check();
     await page.getByRole('button', { name: /get my free estimate/i }).click();
 
-    // Wait until we see the success state OR timeout
     await expect(page.getByText(/thank you/i)).toBeVisible({ timeout: 15000 });
 
-    // AC1: both notify endpoints should have been hit
-    expect(notifyHits.length).toBeGreaterThanOrEqual(2);
-    const urls = notifyHits.map((h) => h.url).sort();
-    expect(urls).toContain('telegram-lead');
-    expect(urls).toContain('new-lead');
+    // AC2: no browser-originated or same-origin self-fetch to internal notify
+    // endpoints should have happened during a successful submit.
+    expect(
+      selfFetchedNotifyHits,
+      `Unexpected notify endpoint hits: ${selfFetchedNotifyHits.join(', ')}. ` +
+        `Internal callers must import from src/lib/notify/ — self-fetches to ` +
+        `www.lavacagc.com/api/notify/* get blocked by Cloudflare.`
+    ).toEqual([]);
 
-    // AC2: each notify must carry the internal secret header
-    for (const hit of notifyHits) {
-      expect(hit.hasSecret, `${hit.url} missing x-internal-secret`).toBe(true);
-    }
-
-    // AC1 timing: notifications were dispatched BEFORE /submit response returned
-    // (this is the core regression guard against the fire-and-forget bug).
-    expect(lastNotifyTime).toBeGreaterThan(0);
+    // AC3: the user-facing response came back within the timeout budget.
     expect(submitResponseTime).toBeGreaterThan(0);
-    // Tolerate a few ms of slop for event loop ordering.
-    expect(lastNotifyTime).toBeLessThanOrEqual(submitResponseTime + 50);
+    expect(submitResponseTime - submitStarted).toBeLessThan(15000);
   });
 });

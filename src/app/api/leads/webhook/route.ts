@@ -1,204 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { Resend } from 'resend';
-import {
-  leadInstantAckHtml,
-  lead24hHtml,
-  lead48hHtml,
-  lead7dHtml,
-} from '@/lib/emailTemplates';
+import { createLeadFollowUpSequence, LeadFollowUpPayload } from '@/lib/notify/leadFollowUp';
 
 export const dynamic = 'force-dynamic';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 /**
- * Send the instant acknowledgment email immediately via Resend.
+ * POST /api/leads/webhook
+ * External entrypoint for the follow-up sequence creator. Internal callers
+ * should import `createLeadFollowUpSequence` from '@/lib/notify/leadFollowUp'
+ * directly — Cloudflare will interstitial server-to-server self-fetches to
+ * www.lavacagc.com.
  */
-async function sendInstantAck(email: string, subject: string, html: string): Promise<boolean> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.warn('⚠️ RESEND_API_KEY not configured — skipping instant ack email');
-    return false;
-  }
-
-  try {
-    const resend = new Resend(apiKey);
-    const { error } = await resend.emails.send({
-      from: 'La Vaca General Contractors <info@email.lavaca.link>',
-      to: [email],
-      subject,
-      html,
-    });
-
-    if (error) {
-      console.error('Failed to send instant ack:', error);
-      return false;
-    }
-
-    return true;
-  } catch (err) {
-    console.error('Error sending instant ack:', err);
-    return false;
-  }
-}
-
-// Generate email subjects and HTML for follow-up sequence
-function generateFollowUpEmails(name: string, projectType?: string) {
-  const firstName = name.split(' ')[0] || name;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _projectMention = projectType ? ` about your ${projectType} project` : '';
-
-  return {
-    instant_ack: {
-      subject: `Thanks for reaching out, ${firstName}! — La Vaca General Contractors`,
-      html: leadInstantAckHtml(name, projectType),
-    },
-    '24h': {
-      subject: `Following up on your home renovation inquiry — La Vaca GC`,
-      html: lead24hHtml(name, projectType),
-    },
-    '48h': {
-      subject: `Your home renovation dreams — let's make them happen, ${firstName}`,
-      html: lead48hHtml(name, projectType),
-    },
-    '7d': {
-      subject: `Still thinking about your renovation? We're here when you're ready`,
-      html: lead7dHtml(name),
-    },
-  };
-}
-
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { name, email, phone: _phone, source: _source, projectType, leadId, estimateLeadId } = body as {
-      name: string;
-      email: string;
-      phone?: string;
-      source?: string;
-      projectType?: string;
-      leadId?: string;
-      estimateLeadId?: string;
-    };
-
-    if (!name || !email) {
-      return NextResponse.json({ error: 'Name and email required' }, { status: 400 });
+    const body = (await request.json()) as LeadFollowUpPayload;
+    const result = await createLeadFollowUpSequence(body);
+    if (result.status === 'invalid') {
+      return NextResponse.json({ error: result.error }, { status: 400 });
     }
-
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      console.error(`Invalid email skipped: ${email}`);
-      return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
+    if (result.status === 'error') {
+      return NextResponse.json({ error: result.error || 'Internal error' }, { status: 500 });
     }
-
-    // Check for existing follow-up sequence for this email (prevent duplicates)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: existingFollowUps } = await (supabase.from as any)('follow_up_queue')
-      .select('id, status')
-      .eq('lead_email', email)
-      .in('status', ['pending', 'sent'])
-      .limit(1);
-
-    if (existingFollowUps && existingFollowUps.length > 0) {
-      return NextResponse.json({
-        status: 'skipped',
-        reason: 'duplicate_email',
-        message: 'Follow-up sequence already exists for this email',
-      });
-    }
-
-    // Generate email templates
-    const emails = generateFollowUpEmails(name, projectType);
-    const now = new Date();
-
-    // Create follow-up sequence
-    const followUps: Array<{
-      lead_id: string | null;
-      estimate_lead_id: string | null;
-      lead_email: string;
-      lead_name: string;
-      follow_up_type: string;
-      scheduled_at: string;
-      status: string;
-      email_subject: string;
-      email_body: string;
-    }> = [
-      {
-        lead_id: leadId || null,
-        estimate_lead_id: estimateLeadId || null,
-        lead_email: email,
-        lead_name: name,
-        follow_up_type: 'instant_ack' as const,
-        scheduled_at: now.toISOString(),
-        status: 'pending' as const,
-        email_subject: emails.instant_ack.subject,
-        email_body: emails.instant_ack.html,
-      },
-      {
-        lead_id: leadId || null,
-        estimate_lead_id: estimateLeadId || null,
-        lead_email: email,
-        lead_name: name,
-        follow_up_type: '24h' as const,
-        scheduled_at: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-        status: 'pending' as const,
-        email_subject: emails['24h'].subject,
-        email_body: emails['24h'].html,
-      },
-      {
-        lead_id: leadId || null,
-        estimate_lead_id: estimateLeadId || null,
-        lead_email: email,
-        lead_name: name,
-        follow_up_type: '48h' as const,
-        scheduled_at: new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString(),
-        status: 'pending' as const,
-        email_subject: emails['48h'].subject,
-        email_body: emails['48h'].html,
-      },
-      {
-        lead_id: leadId || null,
-        estimate_lead_id: estimateLeadId || null,
-        lead_email: email,
-        lead_name: name,
-        follow_up_type: '7d' as const,
-        scheduled_at: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        status: 'pending' as const,
-        email_subject: emails['7d'].subject,
-        email_body: emails['7d'].html,
-      },
-    ];
-
-    // Send the instant ack email immediately
-    const instantSent = await sendInstantAck(email, emails.instant_ack.subject, emails.instant_ack.html);
-
-
-    // Mark instant_ack as sent if successful
-    if (instantSent) {
-      followUps[0].status = 'sent' as const;
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase.from as any)('follow_up_queue')
-      .insert(followUps)
-      .select('id, follow_up_type, scheduled_at');
-
-    if (error) {
-      console.error('Error creating follow-up sequence:', error);
-      return NextResponse.json({ error: 'Failed to create follow-up sequence' }, { status: 500 });
-    }
-
-    return NextResponse.json({
-      status: 'created',
-      followUps: data,
-      message: `Follow-up sequence created with ${data?.length || 0} emails`,
-    });
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Webhook error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

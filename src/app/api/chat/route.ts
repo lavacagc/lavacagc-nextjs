@@ -3,6 +3,8 @@ import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'crypto';
 import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
+import { sendTelegramLead } from '@/lib/notify/telegramLead';
+import { createLeadFollowUpSequence } from '@/lib/notify/leadFollowUp';
 
 export const dynamic = 'force-dynamic';
 
@@ -459,21 +461,18 @@ export async function POST(request: NextRequest) {
             console.error('Failed to insert lead:', insertError);
           }
 
-          // Trigger follow-up sequence via webhook
+          // Trigger follow-up sequence in-process. Previously self-fetched
+          // /api/leads/webhook but Cloudflare interstitials server-to-server
+          // requests hitting www.lavacagc.com.
           try {
-            const baseUrl = request.nextUrl.origin;
-            await fetch(`${baseUrl}/api/leads/webhook`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name: `${firstName} ${lastName}`,
-                email: currentMsgLeadInfo.email || 'chatbot@lavacagc.com',
-                source: 'chatbot',
-                projectType: currentMsgLeadInfo.projectType,
-              }),
+            await createLeadFollowUpSequence({
+              name: `${firstName} ${lastName}`,
+              email: currentMsgLeadInfo.email || 'chatbot@lavacagc.com',
+              source: 'chatbot',
+              projectType: currentMsgLeadInfo.projectType,
             });
           } catch (webhookErr) {
-            console.error('Failed to trigger follow-up webhook:', webhookErr);
+            console.error('Failed to trigger follow-up sequence:', webhookErr);
           }
 
           // Send notification via Supabase Edge Function (same as ContactForm)
@@ -500,22 +499,17 @@ export async function POST(request: NextRequest) {
             console.error('Failed to send lead notification:', notifyErr);
           }
 
-          // Send Telegram notification
+          // Send Telegram notification in-process (see webhook note above).
           try {
-            const baseUrl = request.nextUrl.origin;
-            await fetch(`${baseUrl}/api/notify/telegram-lead`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name: `${firstName} ${lastName}`,
-                email: currentMsgLeadInfo.email || '',
-                phone: currentMsgLeadInfo.phone || '',
-                projectType: currentMsgLeadInfo.projectType || 'General Inquiry',
-                location: currentMsgLeadInfo.location || '',
-                score: scoringResult.score,
-                tier: scoringResult.tier,
-                source: 'chatbot',
-              }),
+            await sendTelegramLead({
+              name: `${firstName} ${lastName}`,
+              email: currentMsgLeadInfo.email || '',
+              phone: currentMsgLeadInfo.phone || '',
+              projectType: currentMsgLeadInfo.projectType || 'General Inquiry',
+              location: currentMsgLeadInfo.location || '',
+              score: scoringResult.score,
+              tier: scoringResult.tier,
+              source: 'chatbot',
             });
           } catch (telegramErr) {
             console.error('Failed to send Telegram notification:', telegramErr);

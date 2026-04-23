@@ -1,43 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
+import { sendTelegramLead } from '@/lib/notify/telegramLead';
+import { sendNewLeadEmail } from '@/lib/notify/newLeadEmail';
+import { sendFormFailureAlert, FormErrorAlertPayload } from '@/lib/notify/formErrorAlert';
+import { createLeadFollowUpSequence } from '@/lib/notify/leadFollowUp';
 
 export const dynamic = 'force-dynamic';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
-// Shared header for internal server-to-server calls so middleware lets them
-// past admin auth. If the secret isn't set the header is omitted and the
-// caller will be 401'd — diagnostics will flag this in /api/health/forms.
-function internalHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const secret = process.env.INTERNAL_WEBHOOK_SECRET;
-  if (secret) headers['x-internal-secret'] = secret;
-  return headers;
-}
-
-// Fire-and-forget alert to the form-error notify channel. Never throws.
-async function reportFailure(
-  baseUrl: string,
-  payload: {
-    stage: string;
-    source: string;
-    message: string;
-    details?: unknown;
-    lead?: { name?: string; email?: string; phone?: string };
-  }
-): Promise<void> {
+// In-process alert dispatch. Previously this self-fetched /api/notify/form-error,
+// which Cloudflare intercepted with a managed-challenge page before the request
+// could reach our middleware. Now it calls the helper directly.
+async function reportFailure(payload: FormErrorAlertPayload): Promise<void> {
   try {
-    await fetch(`${baseUrl}/api/notify/form-error`, {
-      method: 'POST',
-      headers: internalHeaders(),
-      body: JSON.stringify(payload),
-    });
+    await sendFormFailureAlert(payload);
   } catch (err) {
     console.error('Failed to dispatch form-error alert:', err);
   }
 }
 
-// Server-side reCAPTCHA verification
 async function verifyRecaptcha(token: string, expectedAction: string): Promise<{ success: boolean; score: number }> {
   const secretKey = process.env.RECAPTCHA_SECRET_KEY;
   if (!secretKey) {
@@ -62,7 +44,6 @@ async function verifyRecaptcha(token: string, expectedAction: string): Promise<{
     );
 
     if (!res.ok) {
-      // Fallback to reCAPTCHA v3 verification if enterprise fails
       const v3Res = await fetch(
         `https://www.google.com/recaptcha/api/siteverify`,
         {
@@ -96,7 +77,6 @@ async function verifyRecaptcha(token: string, expectedAction: string): Promise<{
   }
 }
 
-// Insert lead using service role key (bypasses RLS)
 async function insertLead(leadData: Record<string, unknown>): Promise<{ data: Record<string, unknown>[] | null; error: string | null }> {
   const secretKey = process.env.SUPABASE_SECRET_KEY;
   if (!secretKey) {
@@ -129,8 +109,19 @@ async function insertLead(leadData: Record<string, unknown>): Promise<{ data: Re
   }
 }
 
+// Run a task with a hard timeout. Used to cap each notification so one slow
+// downstream (Telegram API, Resend, Supabase) can't stall the user-facing
+// response indefinitely.
+function withTimeoutPromise<T>(promise: Promise<T>, ms: number, label: string): Promise<T | { status: 'timeout'; label: string }> {
+  return Promise.race([
+    promise,
+    new Promise<{ status: 'timeout'; label: string }>((resolve) =>
+      setTimeout(() => resolve({ status: 'timeout', label }), ms)
+    ),
+  ]);
+}
+
 export async function POST(request: NextRequest) {
-  const baseUrl = request.nextUrl.origin;
   let leadFieldsForError: Record<string, unknown> = {};
   let sourceForError = 'unknown';
   try {
@@ -149,15 +140,12 @@ export async function POST(request: NextRequest) {
       phone: (leadFields.phone as string) || undefined,
     };
 
-    // Honeypot check — bots fill hidden fields, humans don't
     if (honeypot) {
-      // Return fake success so bot thinks it worked
       return NextResponse.json({ success: true });
     }
 
-    // Validate required fields
     if (!recaptchaToken || !recaptchaAction) {
-      await reportFailure(baseUrl, {
+      await reportFailure({
         stage: 'validation',
         source: sourceForError,
         message: 'Missing reCAPTCHA token or action on submit',
@@ -170,7 +158,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!leadFields.email && !leadFields.phone) {
-      await reportFailure(baseUrl, {
+      await reportFailure({
         stage: 'validation',
         source: sourceForError,
         message: 'Submission missing both email and phone',
@@ -182,12 +170,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Server-side reCAPTCHA verification
     const recaptchaResult = await verifyRecaptcha(recaptchaToken, recaptchaAction);
     console.log(`reCAPTCHA verification: action=${recaptchaAction}, score=${recaptchaResult.score}, success=${recaptchaResult.success}`);
 
     if (!recaptchaResult.success) {
-      await reportFailure(baseUrl, {
+      await reportFailure({
         stage: 'recaptcha',
         source: sourceForError,
         message: `reCAPTCHA verification failed (score=${recaptchaResult.score})`,
@@ -206,7 +193,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Apply lead scoring if not already scored
     let finalLeadData = { ...leadFields };
     if (!finalLeadData.score) {
       const scoringInput = prepareLeadForScoring(finalLeadData as Record<string, string | null | undefined>);
@@ -219,11 +205,10 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    // Insert lead via service role (bypasses RLS)
     const { error: insertError } = await insertLead(finalLeadData);
     if (insertError) {
       console.error('Failed to insert lead:', insertError);
-      await reportFailure(baseUrl, {
+      await reportFailure({
         stage: 'insert',
         source: sourceForError,
         message: 'Supabase insert failed — lead was NOT saved',
@@ -238,90 +223,69 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to save lead' }, { status: 500 });
     }
 
-    // Fire notifications. IMPORTANT: these must be awaited — on Vercel
-    // serverless the function execution is suspended once the response is
-    // returned, so "fire and forget" fetches silently never execute.
-    // We cap each with AbortController so a slow downstream can't hang the
-    // user-facing response beyond a few seconds.
+    // Fire notifications in-process. No self-fetch: Cloudflare would otherwise
+    // interstitial server-to-server requests hitting www.lavacagc.com. Each
+    // task is capped at 4s so one slow downstream can't stall the response.
     const name = leadContext.name || '';
-    const withTimeout = (ms: number) => {
-      const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), ms);
-      return { signal: controller.signal, clear: () => clearTimeout(t) };
-    };
+    const projectType = (leadFields.project_type || leadFields.inquiry_type || 'General Inquiry') as string;
+    const source = (leadFields.source || 'website') as string;
+    const email = (leadFields.email || '') as string;
+    const phone = (leadFields.phone || '') as string;
 
     const notifyTasks = [
-      // Telegram notification
-      (async () => {
-        const { signal, clear } = withTimeout(4000);
-        try {
-          const res = await fetch(`${baseUrl}/api/notify/telegram-lead`, {
-            method: 'POST',
-            headers: internalHeaders(),
-            body: JSON.stringify({
-              name,
-              email: leadFields.email || '',
-              phone: leadFields.phone || '',
-              projectType: leadFields.project_type || leadFields.inquiry_type || 'General Inquiry',
-              score: finalLeadData.score,
-              tier: finalLeadData.tier,
-              source: leadFields.source || 'website',
-            }),
-            signal,
-          });
-          if (!res.ok) console.error('telegram-lead notify failed:', res.status, await res.text().catch(() => ''));
-        } catch (err) {
-          console.error('telegram-lead notify threw:', err);
-        } finally {
-          clear();
-        }
-      })(),
-      // Email notification
-      (async () => {
-        const { signal, clear } = withTimeout(4000);
-        try {
-          const res = await fetch(`${baseUrl}/api/notify/new-lead`, {
-            method: 'POST',
-            headers: internalHeaders(),
-            body: JSON.stringify({
-              name,
-              email: leadFields.email || '',
-              phone: leadFields.phone || '',
-              projectType: leadFields.project_type || leadFields.inquiry_type || 'General Inquiry',
-              source: leadFields.source || 'website',
-            }),
-            signal,
-          });
-          if (!res.ok) console.error('new-lead notify failed:', res.status, await res.text().catch(() => ''));
-        } catch (err) {
-          console.error('new-lead notify threw:', err);
-        } finally {
-          clear();
-        }
-      })(),
-      // Follow-up webhook (public route — no internal secret needed)
-      (async () => {
-        const { signal, clear } = withTimeout(4000);
-        try {
-          await fetch(`${baseUrl}/api/leads/webhook`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name,
-              email: leadFields.email || '',
-              source: leadFields.source || 'website',
-              projectType: leadFields.project_type || leadFields.inquiry_type,
-            }),
-            signal,
-          });
-        } catch (err) {
-          console.error('leads/webhook notify threw:', err);
-        } finally {
-          clear();
-        }
-      })(),
+      withTimeoutPromise(
+        sendTelegramLead({
+          name,
+          email,
+          phone,
+          projectType,
+          score: finalLeadData.score as number | undefined,
+          tier: finalLeadData.tier as 'hot' | 'warm' | 'cold' | undefined,
+          source,
+        }),
+        4000,
+        'telegram-lead'
+      ).catch((err) => {
+        console.error('telegram-lead notify threw:', err);
+        return { status: 'error' as const, label: 'telegram-lead' };
+      }),
+      withTimeoutPromise(
+        sendNewLeadEmail({
+          name,
+          email,
+          phone,
+          projectType,
+          source,
+        }),
+        4000,
+        'new-lead'
+      ).catch((err) => {
+        console.error('new-lead notify threw:', err);
+        return { status: 'error' as const, label: 'new-lead' };
+      }),
+      withTimeoutPromise(
+        createLeadFollowUpSequence({
+          name,
+          email,
+          source,
+          projectType,
+        }),
+        4000,
+        'follow-up'
+      ).catch((err) => {
+        console.error('follow-up sequence threw:', err);
+        return { status: 'error' as const, label: 'follow-up' };
+      }),
     ];
-    await Promise.allSettled(notifyTasks);
+    const notifyResults = await Promise.allSettled(notifyTasks);
+    notifyResults.forEach((r, i) => {
+      const label = ['telegram-lead', 'new-lead', 'follow-up'][i];
+      if (r.status === 'fulfilled') {
+        console.log(`notify ${label}:`, JSON.stringify(r.value));
+      } else {
+        console.error(`notify ${label} rejected:`, r.reason);
+      }
+    });
 
     return NextResponse.json({
       success: true,
@@ -330,7 +294,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Lead submission error:', error);
-    await reportFailure(baseUrl, {
+    await reportFailure({
       stage: 'exception',
       source: sourceForError,
       message: 'Unhandled exception in /api/leads/submit',
