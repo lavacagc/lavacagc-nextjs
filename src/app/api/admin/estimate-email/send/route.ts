@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { sendEstimateEmail } from '@/lib/notify/sendEstimateEmail';
-import { supabaseRest } from '@/lib/seo/supabase-rest';
+import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { estimateEmailSchema } from '../_schema';
 
 /**

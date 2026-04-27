@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseRest } from '@/lib/seo/supabase-rest';
+import { supabaseRest } from '@/lib/notify/supabase-rest';
 
 /**
  * GET /api/admin/estimate-email/log?status=&limit=
