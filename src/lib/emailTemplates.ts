@@ -393,16 +393,6 @@ export interface EstimateEmailPayload {
 }
 
 /**
- * Detect Schluter relevance from project type. We mention the lifetime
- * warranty asterisk inline (rather than only in the footer) when the
- * project is a bathroom — that's where it actually applies. Other project
- * types still see the asterisk in the footer for legal clarity.
- */
-function isBathroomProject(projectType: string): boolean {
-  return /bath|shower|powder/i.test(projectType);
-}
-
-/**
  * Escape user-provided strings before HTML interpolation. The personal
  * note + names come from an authenticated admin form so the trust level
  * is high, but we never want a typo with `<` or `&` to break rendering
@@ -442,11 +432,6 @@ export function estimateEmailHtml(payload: EstimateEmailPayload): string {
   // #F0FDF4) — Gmail Android dark-mode inversion is gentler with
   // them than near-white tints.
   // ─────────────────────────────────────────────────────────────────
-  const RED_BG = '#FEF2F2';
-  const RED_BORDER = '#DC2626';
-  const RED_HEAD = '#991B1B';
-  const RED_TEXT = '#7F1D1D';
-
   const GREEN_BG = '#F0FDF4';
   const GREEN_BORDER = '#16A34A';
   const GREEN_HEAD = '#166534';

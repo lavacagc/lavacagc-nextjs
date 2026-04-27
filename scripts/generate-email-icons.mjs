@@ -66,12 +66,10 @@ function numberSvg(num, color) {
 async function writePng(name, svg) {
   const buf = await sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toBuffer();
   writeFileSync(join(OUT_DIR, `${name}.png`), buf);
-  // eslint-disable-next-line no-console
   console.log(`  ${name}.png  (${buf.length} bytes)`);
 }
 
 async function main() {
-  // eslint-disable-next-line no-console
   console.log(`Writing icons to ${OUT_DIR}`);
   for (const [name, paths] of Object.entries(STROKE)) {
     await writePng(name, strokedSvg(paths, COLOR[name]));

@@ -12,5 +12,4 @@ const html = estimateEmailHtml({
 });
 
 writeFileSync('/tmp/estimate-preview.html', html);
-// eslint-disable-next-line no-console
 console.log(`Wrote /tmp/estimate-preview.html (${html.length} bytes)`);
