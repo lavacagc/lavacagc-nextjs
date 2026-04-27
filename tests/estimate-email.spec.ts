@@ -97,8 +97,8 @@ test.describe('estimateEmailHtml — content requirements', () => {
   test('includes QBO acceptance instructions', () => {
     const html = estimateEmailHtml(basePayload);
     expect(html).toContain('data-testid="qbo-steps"');
-    // 3 numbered step rows rendered as a table of iconBullet rows
-    // (step-1.png, step-2.png, step-3.png). End at the closing </table>
+    // 4 numbered step rows rendered as a table of iconBullet rows
+    // (step-1.png ... step-4.png). End at the closing </table>
     // that wraps the steps.
     const start = html.indexOf('data-testid="qbo-steps"');
     const end = html.indexOf('</table>', start);
@@ -106,7 +106,9 @@ test.describe('estimateEmailHtml — content requirements', () => {
     expect(block).toContain('step-1');
     expect(block).toContain('step-2');
     expect(block).toContain('step-3');
-    // Mentions accept + QuickBooks
+    expect(block).toContain('step-4');
+    // Mentions the View estimate prompt + Accept + QuickBooks
+    expect(block).toMatch(/View estimate/);
     expect(block).toMatch(/[Aa]ccept/);
     expect(block).toMatch(/QuickBooks/);
   });

@@ -568,8 +568,9 @@ export function estimateEmailHtml(payload: EstimateEmailPayload): string {
               </p>
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                 ${iconBullet(iconImg('step-1'), `Open the link above — it takes you to your QuickBooks estimate.`, ORANGE_TEXT)}
-                ${iconBullet(iconImg('step-2'), `Review every line item, then click the green <strong>Accept</strong> button.`, ORANGE_TEXT)}
-                ${iconBullet(iconImg('step-3'), `Add notes or questions in the comments box if you have any.`, ORANGE_TEXT)}
+                ${iconBullet(iconImg('step-2'), `Click <strong>View estimate</strong> on the right side to see everything that's covered.`, ORANGE_TEXT)}
+                ${iconBullet(iconImg('step-3'), `Review every line item, then click the green <strong>Accept</strong> button.`, ORANGE_TEXT)}
+                ${iconBullet(iconImg('step-4'), `Add notes or questions in the comments box if you have any.`, ORANGE_TEXT)}
               </table>
             </div>
           </td>
@@ -661,8 +662,9 @@ export function estimateEmailText(payload: EstimateEmailPayload): string {
     '',
     'How to accept:',
     '  1. Open the link above — it takes you to your QuickBooks estimate.',
-    '  2. Review every line item, then click the green "Accept" button.',
-    '  3. Add notes or questions in the comments box if you have any.',
+    '  2. Click "View estimate" on the right side to see everything that\'s covered.',
+    '  3. Review every line item, then click the green "Accept" button.',
+    '  4. Add notes or questions in the comments box if you have any.',
     '',
     '* Lifetime warranty applies to Schluter-system bathroom installations using Schluter waterproofing membranes, drains, and substrate components throughout. Other installs are covered by the 5-year structural and 1-year workmanship warranties.',
     '',

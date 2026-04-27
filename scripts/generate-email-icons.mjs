@@ -76,7 +76,7 @@ async function main() {
   for (const [name, paths] of Object.entries(STROKE)) {
     await writePng(name, strokedSvg(paths, COLOR[name]));
   }
-  for (const n of [1, 2, 3]) {
+  for (const n of [1, 2, 3, 4]) {
     await writePng(`step-${n}`, numberSvg(n, ORANGE));
   }
 }
