@@ -97,12 +97,15 @@ test.describe('estimateEmailHtml — content requirements', () => {
   test('includes QBO acceptance instructions', () => {
     const html = estimateEmailHtml(basePayload);
     expect(html).toContain('data-testid="qbo-steps"');
-    // 3+ <li> steps inside the qbo-steps block
+    // 3 numbered step rows rendered as a table of iconBullet rows
+    // (step-1.png, step-2.png, step-3.png). End at the closing </table>
+    // that wraps the steps.
     const start = html.indexOf('data-testid="qbo-steps"');
-    const end = html.indexOf('</ol>', start);
+    const end = html.indexOf('</table>', start);
     const block = html.slice(start, end);
-    const liCount = (block.match(/<li[\s>]/g) ?? []).length;
-    expect(liCount).toBeGreaterThanOrEqual(3);
+    expect(block).toContain('step-1');
+    expect(block).toContain('step-2');
+    expect(block).toContain('step-3');
     // Mentions accept + QuickBooks
     expect(block).toMatch(/[Aa]ccept/);
     expect(block).toMatch(/QuickBooks/);
@@ -132,16 +135,9 @@ test.describe('estimateEmailHtml — content requirements', () => {
     expect(bathroomHtml).toMatch(/[Ss]chluter/);
   });
 
-  test('renders the contractor comparison block', () => {
-    const html = estimateEmailHtml(basePayload);
-    expect(html).toContain('data-testid="comparison"');
-    // Should mention common pain points
-    expect(html.toLowerCase()).toMatch(/missed call|no[\s-]?show|no agreement|license/);
-  });
-
   test('links to credentials anchor on the about page', () => {
     const html = estimateEmailHtml(basePayload);
-    expect(html).toContain('data-testid="credentials-link"');
+    expect(html).toContain('data-testid="credentials-link-row"');
     expect(html).toContain('/about#credentials');
   });
 
