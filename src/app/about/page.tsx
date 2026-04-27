@@ -203,7 +203,7 @@ export default function About() {
         </section>
 
         {/* Licensing & Insurance */}
-        <section className="py-8 md:py-16 bg-background-soft">
+        <section id="credentials" className="py-8 md:py-16 bg-background-soft scroll-mt-24">
           <div className="container mx-auto px-4">
             <div className="max-w-4xl mx-auto">
               <h2 className="text-3xl font-bold text-text-primary text-center mb-12">
