@@ -73,7 +73,11 @@ const nextConfig: NextConfig = {
               "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://api.ipify.org https://www.google.com https://www.gstatic.com https://www.recaptcha.net https://recaptcha.google.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               // *.googleusercontent.com — reviewer avatar photos from Google Reviews (Testimonials component)
-              "img-src 'self' data: blob: https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://www.googletagmanager.com https://www.google.com https://www.gstatic.com https://*.googleusercontent.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://fonts.gstatic.com",
+              // https://www.lavacagc.com — explicit host needed for the
+              // /vaca-mgmt/send-estimate preview iframe: it uses sandbox="" + srcDoc,
+              // which gives the iframe an opaque origin, so 'self' no longer
+              // matches same-host URLs like /logo.png and /email/icons/*.png.
+              "img-src 'self' data: blob: https://www.lavacagc.com https://lavacagc.com https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://www.googletagmanager.com https://www.google.com https://www.gstatic.com https://*.googleusercontent.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://fonts.gstatic.com",
               "font-src 'self' https://fonts.gstatic.com https://r2cdn.perplexity.ai",
               "media-src 'self' https://xrvbrnrbnyfdwkfdoepq.supabase.co",
               "connect-src 'self' data: blob: https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://www.googletagmanager.com https://api.ipify.org https://www.google.com https://www.recaptcha.net https://recaptcha.google.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms",
