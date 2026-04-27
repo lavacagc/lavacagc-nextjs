@@ -418,161 +418,172 @@ export function estimateEmailHtml(payload: EstimateEmailPayload): string {
   const safeEstimateUrl = escapeHtml(estimateUrl);
   const safePortalUrl = portalUrl ? escapeHtml(portalUrl) : '';
   const cadenceLabel = updateCadence === 'daily' ? 'Daily' : 'Weekly';
-  const showSchluterInline = isBathroomProject(projectType);
 
-  // ── Section: personal greeting + optional handwritten-feel note
+  // ─────────────────────────────────────────────────────────────────
+  // Color tokens — chosen for email-client safety. bgcolor attribute
+  // mirrors style background-color so Outlook desktop (Word engine)
+  // still paints the section. Keep tints relatively dark (#FEF2F2,
+  // #F0FDF4) — Gmail Android dark-mode inversion is gentler with
+  // them than near-white tints.
+  // ─────────────────────────────────────────────────────────────────
+  const RED_BG = '#FEF2F2';
+  const RED_BORDER = '#DC2626';
+  const RED_HEAD = '#991B1B';
+  const RED_TEXT = '#7F1D1D';
+
+  const GREEN_BG = '#F0FDF4';
+  const GREEN_BORDER = '#16A34A';
+  const GREEN_HEAD = '#166534';
+  const GREEN_TEXT = '#14532D';
+
+  const ORANGE_BG = '#FFF7ED';
+  const ORANGE_HEAD = '#9A3412';
+  const ORANGE_TEXT = '#7C2D12';
+
+  const FF = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`;
+
+  // ── 1. Greeting (white, brief)
   const greeting = `
     <div data-testid="greeting" style="padding:0 48px;text-align:left">
-      <p style="color:#222;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;font-size:16px;line-height:26px;padding:8px 0">
+      <p style="color:#222;font-family:${FF};margin:0;font-size:16px;line-height:26px;padding:8px 0">
         Hi ${safeFirst},
       </p>
-      <p style="color:#222;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;font-size:16px;line-height:26px;padding:8px 0">
-        Thank you for letting us into your home and for the time you spent walking us through your project. We don't take that lightly — every estimate we put together starts with what we saw, heard, and learned from you.
+      <p style="color:#222;font-family:${FF};margin:0;font-size:16px;line-height:26px;padding:8px 0">
+        Thank you for letting us into your home. Before you open the estimate, here's what you should expect from us — and what hiring the wrong contractor usually looks like.
       </p>
     </div>`;
 
   const noteBlock = safeNote
     ? `<div data-testid="personal-note" style="padding:8px 48px">
-         <div style="background-color:#fafafa;border-left:3px solid ${BRAND_COLOR};border-radius:0 8px 8px 0;padding:14px 18px;font-style:italic;color:#333;font-size:15px;line-height:24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+         <div style="background-color:#fafafa;border-left:3px solid ${BRAND_COLOR};border-radius:0 8px 8px 0;padding:14px 18px;font-style:italic;color:#333;font-size:15px;line-height:24px;font-family:${FF}">
            ${safeNote.replace(/\n/g, '<br>')}
          </div>
        </div>`
     : '';
 
-  // ── Section: estimate CTA + read-carefully callout
-  const estimateCta = `
-    <div data-testid="estimate-cta" style="padding:8px 48px 0 48px">
-      <div style="background-color:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:24px;text-align:center">
-        <p style="color:#222;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;font-weight:700;font-size:18px;line-height:26px;padding-bottom:8px">
-          Your ${safeProject} estimate is ready
-        </p>
-        <p style="color:#444;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;font-size:15px;line-height:22px;padding-bottom:16px">
-          <strong>Please read your estimate carefully.</strong> Every item, material, and scope detail is listed. Take your time — this is exactly what you'll be agreeing to.
-        </p>
-        <div style="display:inline-block;background-color:${BRAND_COLOR};border-radius:8px">
-          <a data-testid="estimate-link" href="${safeEstimateUrl}" style="color:#fff;display:inline-block;text-decoration:none;font-size:16px;line-height:22px;font-weight:600;padding:14px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
-            View Your Estimate →
-          </a>
-        </div>
-      </div>
+  // ── 2. RED block — what you DON'T get from other contractors
+  const dontGet = `
+    <div data-testid="comparison" style="padding:8px 48px 0 48px">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="${RED_BG}" style="background-color:${RED_BG};border-left:4px solid ${RED_BORDER};border-radius:8px">
+        <tr>
+          <td style="padding:24px 24px">
+            <h3 style="color:${RED_HEAD};font-family:${FF};margin:0 0 14px 0;font-size:18px;line-height:24px;font-weight:700">
+              What hiring the wrong contractor looks like
+            </h3>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+              <tr><td style="padding:6px 0;color:${RED_TEXT};font-family:${FF};font-size:15px;line-height:22px">
+                <strong>Missed calls &amp; no-shows</strong> — chasing them becomes your second job.
+              </td></tr>
+              <tr><td style="padding:6px 0;color:${RED_TEXT};font-family:${FF};font-size:15px;line-height:22px">
+                <strong>No written agreement</strong> — scope creep, surprise change orders.
+              </td></tr>
+              <tr><td style="padding:6px 0;color:${RED_TEXT};font-family:${FF};font-size:15px;line-height:22px">
+                <strong>No license, no bond, no insurance</strong> — your homeowner's policy carries the risk.
+              </td></tr>
+              <tr><td style="padding:6px 0;color:${RED_TEXT};font-family:${FF};font-size:15px;line-height:22px">
+                <strong>Zero warranty</strong> — a leak in month 13 is your problem, not theirs.
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+      </table>
     </div>`;
 
-  // ── Section: how to accept on QBO
-  const qboInstructions = `
-    <div data-testid="qbo-steps" style="padding:24px 48px 0 48px;text-align:left">
-      <h3 style="color:#222;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;font-size:18px;line-height:26px;font-weight:700;padding-bottom:12px">
-        How to accept your estimate
-      </h3>
-      <ol style="color:#222;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;padding-left:22px;font-size:15px;line-height:24px">
-        <li style="padding:4px 0">Click <strong>"View Your Estimate"</strong> above — it opens in QuickBooks Online.</li>
-        <li style="padding:4px 0">Review every line item carefully — materials, scope, and pricing.</li>
-        <li style="padding:4px 0">Click the green <strong>"Accept"</strong> button at the top of the QuickBooks page.</li>
-        <li style="padding:4px 0">Add any notes or questions in the comments box if you have them.</li>
-        <li style="padding:4px 0">Once you accept, we'll convert it into a signed agreement and invoice, and lock your project on our calendar.</li>
-      </ol>
-    </div>`;
-
-  // ── Section: what you get with La Vaca (warranty + portal + transparency)
+  // ── 3. GREEN block — what you DO get with La Vaca
   const portalRow = safePortalUrl
-    ? `<tr><td style="padding:8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:22px;color:#222"><span style="color:${BRAND_COLOR};font-weight:700">✓</span> &nbsp;<strong>Your personalized project portal</strong> — updated regularly so you always know where things stand. <a data-testid="portal-link" href="${safePortalUrl}" style="color:${BRAND_COLOR};text-decoration:underline;font-weight:500">Open your portal →</a></td></tr>`
-    : `<tr><td style="padding:8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:22px;color:#222"><span style="color:${BRAND_COLOR};font-weight:700">✓</span> &nbsp;<strong>Your personalized project portal</strong> — updated regularly so you always know where things stand.</td></tr>`;
+    ? `<tr><td style="padding:6px 0;color:${GREEN_TEXT};font-family:${FF};font-size:15px;line-height:22px">
+         <strong>Your personal project portal</strong> — schedule, photos, invoices in one place. <a data-testid="portal-link" href="${safePortalUrl}" style="color:${GREEN_BORDER};text-decoration:underline;font-weight:600">Open portal →</a>
+       </td></tr>`
+    : `<tr><td style="padding:6px 0;color:${GREEN_TEXT};font-family:${FF};font-size:15px;line-height:22px">
+         <strong>Your personal project portal</strong> — schedule, photos, invoices in one place.
+       </td></tr>`;
 
-  const warrantyAsterisk = showSchluterInline
-    ? '<sup style="font-size:11px;color:#717171">*</sup>'
-    : '<sup style="font-size:11px;color:#717171">*</sup>';
-
-  const whatYouGet = `
-    <div data-testid="what-you-get" style="padding:24px 48px 0 48px;text-align:left">
-      <h3 style="color:#222;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;font-size:18px;line-height:26px;font-weight:700;padding-bottom:12px">
-        What you get when you work with La Vaca
-      </h3>
-      <table cellpadding="0" role="presentation" style="border-collapse:collapse;width:100%" width="100%">
-        <tr><td style="padding:8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:22px;color:#222"><span style="color:${BRAND_COLOR};font-weight:700">✓</span> &nbsp;<strong>Full transparency from day one</strong> — no surprises, no hidden charges, no scope creep without a conversation.</td></tr>
-        ${portalRow}
-        <tr><td style="padding:8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:22px;color:#222"><span style="color:${BRAND_COLOR};font-weight:700">✓</span> &nbsp;<strong>${cadenceLabel} progress updates</strong> with photos, milestones, and what's next — direct from your project manager.</td></tr>
-        <tr><td data-testid="warranty-lifetime" style="padding:8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:22px;color:#222"><span style="color:${BRAND_COLOR};font-weight:700">✓</span> &nbsp;<strong>Lifetime warranty${warrantyAsterisk}</strong> — we stand behind our work for life.</td></tr>
-        <tr><td style="padding:8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:22px;color:#222"><span style="color:${BRAND_COLOR};font-weight:700">✓</span> &nbsp;<strong>5-year structural warranty</strong> on framing, structural alterations, and load-bearing work.</td></tr>
-        <tr><td style="padding:8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:22px;color:#222"><span style="color:${BRAND_COLOR};font-weight:700">✓</span> &nbsp;<strong>1-year workmanship warranty</strong> on all finish work — paint, tile, trim, cabinetry installation.</td></tr>
-        <tr><td style="padding:8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:22px;color:#222"><span style="color:${BRAND_COLOR};font-weight:700">✓</span> &nbsp;<strong>Licensed, bonded, and insured</strong> — NJ ${LICENSE}. <a data-testid="credentials-link" href="${CREDENTIALS_URL}" style="color:${BRAND_COLOR};text-decoration:underline;font-weight:500">Verify our credentials →</a></td></tr>
+  const doGet = `
+    <div data-testid="what-you-get" style="padding:0 48px 0 48px">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="${GREEN_BG}" style="background-color:${GREEN_BG};border-left:4px solid ${GREEN_BORDER};border-radius:8px">
+        <tr>
+          <td style="padding:24px 24px">
+            <h3 style="color:${GREEN_HEAD};font-family:${FF};margin:0 0 14px 0;font-size:18px;line-height:24px;font-weight:700">
+              What you get with La Vaca
+            </h3>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+              <tr><td data-testid="warranty-lifetime" style="padding:6px 0;color:${GREEN_TEXT};font-family:${FF};font-size:15px;line-height:22px">
+                <strong>Lifetime warranty<sup style="font-size:11px">*</sup></strong> on Schluter-system bathroom installs.
+              </td></tr>
+              <tr><td style="padding:6px 0;color:${GREEN_TEXT};font-family:${FF};font-size:15px;line-height:22px">
+                <strong>5-year structural</strong> + <strong>1-year workmanship</strong> warranty — written, not implied.
+              </td></tr>
+              ${portalRow}
+              <tr><td style="padding:6px 0;color:${GREEN_TEXT};font-family:${FF};font-size:15px;line-height:22px">
+                <strong>${cadenceLabel} progress updates</strong> with photos &amp; milestones.
+              </td></tr>
+              <tr><td style="padding:6px 0;color:${GREEN_TEXT};font-family:${FF};font-size:15px;line-height:22px">
+                <strong>Licensed, bonded &amp; insured</strong> — NJ ${LICENSE}. <a data-testid="credentials-link" href="${CREDENTIALS_URL}" style="color:${GREEN_BORDER};text-decoration:underline;font-weight:600">Verify →</a>
+              </td></tr>
+            </table>
+          </td>
+        </tr>
       </table>
     </div>`;
 
-  // ── Section: what you get from other contractors (the comparison)
-  const comparison = `
-    <div data-testid="comparison" style="padding:24px 48px 0 48px;text-align:left">
-      <h3 style="color:#222;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;font-size:18px;line-height:26px;font-weight:700;padding-bottom:4px">
-        What you might get from other contractors
-      </h3>
-      <p style="color:#717171;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;font-size:14px;line-height:20px;padding-bottom:12px">
-        We're not bad-mouthing anyone — we're being honest about why our process exists.
+  // ── 4. ORANGE/BRAND block — Estimate CTA + 3-step accept (combined)
+  const cta = `
+    <div data-testid="estimate-cta" style="padding:0 48px 0 48px">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="${ORANGE_BG}" style="background-color:${ORANGE_BG};border-left:4px solid ${BRAND_COLOR};border-radius:8px">
+        <tr>
+          <td style="padding:28px 24px">
+            <h3 style="color:${ORANGE_HEAD};font-family:${FF};margin:0 0 8px 0;font-size:20px;line-height:26px;font-weight:700">
+              Your ${safeProject} estimate
+            </h3>
+            <p style="color:${ORANGE_TEXT};font-family:${FF};margin:0 0 18px 0;font-size:15px;line-height:22px">
+              Read every line — this is exactly what you'll be agreeing to.
+            </p>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td bgcolor="${BRAND_COLOR}" style="background-color:${BRAND_COLOR};border-radius:8px">
+                  <a data-testid="estimate-link" href="${safeEstimateUrl}" style="display:inline-block;color:#ffffff;text-decoration:none;font-family:${FF};font-size:16px;line-height:22px;font-weight:600;padding:14px 32px">
+                    Open Your Estimate →
+                  </a>
+                </td>
+              </tr>
+            </table>
+            <div data-testid="qbo-steps" style="margin-top:22px">
+              <p style="color:${ORANGE_HEAD};font-family:${FF};margin:0 0 6px 0;font-size:14px;line-height:20px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em">
+                How to accept
+              </p>
+              <ol style="color:${ORANGE_TEXT};font-family:${FF};margin:0;padding-left:22px;font-size:14px;line-height:22px">
+                <li style="padding:2px 0">Open the link above — it takes you to your QuickBooks estimate.</li>
+                <li style="padding:2px 0">Review every line item, then click the green <strong>Accept</strong> button.</li>
+                <li style="padding:2px 0">Add notes or questions in the comments box if you have any.</li>
+              </ol>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>`;
+
+  // ── 5. Closing signoff (handwritten-feel, white)
+  const signoff = `
+    <div style="padding:24px 48px 0 48px;text-align:left">
+      <p style="color:#222;font-family:${FF};margin:0;font-size:16px;line-height:26px">
+        Looking forward to building this with you, ${safeFirst}.<br><br>
+        — Alex<br>
+        <span style="color:#717171;font-size:14px">La Vaca General Contractors</span>
       </p>
-      <table cellpadding="0" role="presentation" style="border-collapse:collapse;width:100%" width="100%">
-        <tr>
-          <td style="padding:10px 12px 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#717171;border-bottom:1px solid #f0f0f0;vertical-align:top;width:50%">
-            <span style="color:#dc2626;font-weight:700">✗</span> Stops returning calls and texts after the deposit clears
-          </td>
-          <td style="padding:10px 0 10px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#222;border-bottom:1px solid #f0f0f0;vertical-align:top;width:50%">
-            <span style="color:${BRAND_COLOR};font-weight:700">✓</span> Same-day responses from a real human
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:10px 12px 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#717171;border-bottom:1px solid #f0f0f0;vertical-align:top">
-            <span style="color:#dc2626;font-weight:700">✗</span> "I'll be there Tuesday" turns into next week
-          </td>
-          <td style="padding:10px 0 10px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#222;border-bottom:1px solid #f0f0f0;vertical-align:top">
-            <span style="color:${BRAND_COLOR};font-weight:700">✓</span> Crews show up when we say they will
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:10px 12px 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#717171;border-bottom:1px solid #f0f0f0;vertical-align:top">
-            <span style="color:#dc2626;font-weight:700">✗</span> Verbal estimates and a handshake
-          </td>
-          <td style="padding:10px 0 10px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#222;border-bottom:1px solid #f0f0f0;vertical-align:top">
-            <span style="color:${BRAND_COLOR};font-weight:700">✓</span> A signed scope and a fixed price
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:10px 12px 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#717171;border-bottom:1px solid #f0f0f0;vertical-align:top">
-            <span style="color:#dc2626;font-weight:700">✗</span> No license, no bond, no insurance — your problem if something goes wrong
-          </td>
-          <td style="padding:10px 0 10px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#222;border-bottom:1px solid #f0f0f0;vertical-align:top">
-            <span style="color:${BRAND_COLOR};font-weight:700">✓</span> NJ ${LICENSE}, fully bonded, fully insured (<a href="${CREDENTIALS_URL}" style="color:${BRAND_COLOR};text-decoration:underline">verify</a>)
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:10px 12px 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#717171;vertical-align:top">
-            <span style="color:#dc2626;font-weight:700">✗</span> Disappears when something needs warranty work
-          </td>
-          <td style="padding:10px 0 10px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#222;vertical-align:top">
-            <span style="color:${BRAND_COLOR};font-weight:700">✓</span> Lifetime warranty backed by a local business that's still here
-          </td>
-        </tr>
-      </table>
     </div>`;
 
-  // ── Section: scope-of-work + Schluter disclaimer (legal language)
+  // ── 6. Disclaimer (grey, small, legal)
   const disclaimer = `
     <div data-testid="disclaimer" style="padding:24px 48px 0 48px">
       ${divider()}
-      <p style="color:#717171;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;font-size:12px;line-height:18px;padding-top:16px">
-        <strong>*</strong> Lifetime warranty applies exclusively to Schluter-system bathroom installations completed using Schluter waterproofing membranes, drains, and substrate components throughout. Other installations are covered by the 5-year structural warranty and the 1-year workmanship warranty.
+      <p style="color:#717171;font-family:${FF};margin:0;font-size:12px;line-height:18px;padding-top:16px">
+        <strong>*</strong> Lifetime warranty applies to Schluter-system bathroom installations using Schluter waterproofing membranes, drains, and substrate components throughout. Other installs are covered by the 5-year structural and 1-year workmanship warranties.
       </p>
-      <p style="color:#717171;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;font-size:12px;line-height:18px;padding-top:12px">
-        <strong>About this estimate:</strong> The price reflects the cost of materials, labor, operating costs, permits, and every scope item explicitly listed on the linked estimate. <strong>If a scope item is not on the estimate, it is not included in the price.</strong> By accepting the QuickBooks estimate, you are agreeing to the scope, materials, and price as listed.
+      <p style="color:#717171;font-family:${FF};margin:0;font-size:12px;line-height:18px;padding-top:12px">
+        <strong>About this estimate:</strong> Price reflects materials, labor, operating costs, permits, and every scope item listed. <strong>If a scope item is not on the estimate, it is not included in the price.</strong> Accepting in QuickBooks means agreeing to the scope, materials, and price as listed.
       </p>
-      <p style="color:#717171;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;font-size:12px;line-height:18px;padding-top:12px">
+      <p style="color:#717171;font-family:${FF};margin:0;font-size:12px;line-height:18px;padding-top:12px">
         La Vaca General Contractors, LLC · ${BUSINESS_ADDRESS} · NJ ${LICENSE}
-      </p>
-    </div>`;
-
-  // Closing handwritten-feel signoff (above the standard footer block)
-  const signoff = `
-    <div style="padding:24px 48px 0 48px;text-align:left">
-      <p style="color:#222;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;font-size:16px;line-height:26px">
-        Looking forward to working with you, ${safeFirst}.<br>
-        <br>
-        — Alex<br>
-        <span style="color:#717171;font-size:14px">La Vaca General Contractors</span>
       </p>
     </div>`;
 
@@ -581,12 +592,12 @@ export function estimateEmailHtml(payload: EstimateEmailPayload): string {
      ${heading(`Your ${safeProject}<br>Estimate`)}
      ${greeting}
      ${noteBlock}
-     ${estimateCta}
-     ${qboInstructions}
-     ${spacer(8)}
-     ${whatYouGet}
      ${spacer(16)}
-     ${comparison}
+     ${dontGet}
+     ${spacer(16)}
+     ${doGet}
+     ${spacer(16)}
+     ${cta}
      ${signoff}
      ${disclaimer}
      ${spacer(16)}`,
@@ -605,35 +616,35 @@ export function estimateEmailText(payload: EstimateEmailPayload): string {
   return [
     `Hi ${firstName},`,
     '',
-    "Thank you for letting us into your home and for the time you spent walking us through your project. Every estimate we put together starts with what we saw, heard, and learned from you.",
+    "Thank you for letting us into your home. Before you open the estimate, here's what to expect from us — and what hiring the wrong contractor usually looks like.",
     '',
     payload.personalNote ? `${payload.personalNote}\n` : '',
-    `YOUR ${payload.projectType.toUpperCase()} ESTIMATE IS READY`,
-    `View it here: ${payload.estimateUrl}`,
+    'WHAT HIRING THE WRONG CONTRACTOR LOOKS LIKE',
+    '  - Missed calls & no-shows',
+    '  - No written agreement, scope creep, surprise change orders',
+    "  - No license, no bond, no insurance — your homeowner's policy carries the risk",
+    '  - Zero warranty when something fails',
     '',
-    'Please read your estimate carefully. Every item, material, and scope detail is listed.',
+    'WHAT YOU GET WITH LA VACA',
+    '  - Lifetime warranty* on Schluter-system bathroom installs',
+    '  - 5-year structural + 1-year workmanship warranty (written, not implied)',
+    payload.portalUrl ? `  - Your personal project portal: ${payload.portalUrl}` : '  - Your personal project portal — schedule, photos, invoices in one place',
+    `  - ${cadence} progress updates with photos & milestones`,
+    `  - Licensed, bonded & insured — NJ ${LICENSE} (verify: ${CREDENTIALS_URL})`,
     '',
-    'HOW TO ACCEPT:',
-    '  1. Click the link above (opens in QuickBooks Online).',
-    '  2. Review every line item.',
-    '  3. Click the green "Accept" button at the top.',
-    '  4. Add notes or questions in the comments box.',
-    "  5. Once accepted, we'll send the signed agreement and invoice.",
+    `YOUR ${payload.projectType.toUpperCase()} ESTIMATE`,
+    `Open it: ${payload.estimateUrl}`,
     '',
-    'WHAT YOU GET WITH LA VACA:',
-    '  - Full transparency from day one',
-    payload.portalUrl ? `  - Your personalized project portal: ${payload.portalUrl}` : '  - Your personalized project portal',
-    `  - ${cadence} progress updates with photos and milestones`,
-    '  - Lifetime warranty* (Schluter bathrooms — see disclaimer)',
-    '  - 5-year structural warranty',
-    '  - 1-year workmanship warranty',
-    `  - NJ ${LICENSE}, fully bonded and insured (verify: ${CREDENTIALS_URL})`,
+    'How to accept:',
+    '  1. Open the link above — it takes you to your QuickBooks estimate.',
+    '  2. Review every line item, then click the green "Accept" button.',
+    '  3. Add notes or questions in the comments box if you have any.',
     '',
-    '* Lifetime warranty applies exclusively to Schluter-system bathroom installations completed using Schluter waterproofing membranes, drains, and substrate components throughout. Other installations are covered by the 5-year structural and 1-year workmanship warranties.',
+    '* Lifetime warranty applies to Schluter-system bathroom installations using Schluter waterproofing membranes, drains, and substrate components throughout. Other installs are covered by the 5-year structural and 1-year workmanship warranties.',
     '',
-    'ABOUT THIS ESTIMATE: The price reflects materials, labor, operating costs, permits, and every scope item explicitly listed on the linked estimate. If a scope item is not on the estimate, it is not included in the price. By accepting the QuickBooks estimate, you are agreeing to the scope, materials, and price as listed.',
+    'ABOUT THIS ESTIMATE: Price reflects materials, labor, operating costs, permits, and every scope item listed. If a scope item is not on the estimate, it is not included in the price. Accepting in QuickBooks means agreeing to the scope, materials, and price as listed.',
     '',
-    `Looking forward to working with you, ${firstName}.`,
+    `Looking forward to building this with you, ${firstName}.`,
     '',
     '— Alex',
     'La Vaca General Contractors, LLC',
