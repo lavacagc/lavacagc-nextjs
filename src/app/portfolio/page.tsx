@@ -11,7 +11,7 @@ export const revalidate = 60;
 // Server-side Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!.trim()
+  (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim()
 );
 
 export const metadata: Metadata = {
