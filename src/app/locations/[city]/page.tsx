@@ -11,6 +11,7 @@ import Breadcrumb from "@/components/Breadcrumb";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 import { CityHeroButtons, CityServiceCard, CityCTAButtons } from "@/components/CityLandingClient";
 import PageViewTracker from "@/components/PageViewTracker";
+import { BUSINESS_INFO } from "@/components/StructuredData";
 import { getLocationBySlug, getLocationMetaTitle, getLocationMetaDescription, getAllLocations } from "@/data/locationData";
 import { getServerSupabaseClient } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
@@ -93,6 +94,26 @@ const DEFAULT_CONTENT = {
   ]
 };
 
+const CITY_LAST_UPDATED: Record<string, string> = {
+  millburn: "2026-05-14",
+};
+
+const CITY_SEARCH_FOCUS: Record<string, {
+  heading: string;
+  intro: string;
+  bullets: string[];
+}> = {
+  millburn: {
+    heading: "Bathroom, Basement, and Kitchen Remodeling in Millburn",
+    intro: "Millburn homeowners often compare general contractors for bathroom remodeling, basement finishing, and kitchen renovation before choosing who to invite into their home. La Vaca supports those projects with clear scopes, permit coordination, daily communication, and craftsmanship that fits established Essex County homes.",
+    bullets: [
+      "Bathroom renovation planning for older Millburn homes, including layout changes, ventilation, tile work, fixtures, and inspection-ready plumbing/electrical coordination.",
+      "Basement finishing guidance for family rooms, offices, guest suites, storage, moisture control, egress planning, and code-conscious living space upgrades.",
+      "Kitchen remodeling support for cabinet layouts, countertops, lighting, appliance coordination, finish schedules, and construction sequencing that keeps the project organized."
+    ]
+  }
+};
+
 interface CityPageProps {
   params: Promise<{
     city: string;
@@ -147,6 +168,8 @@ export default async function CityLandingPage({ params }: CityPageProps) {
   // Fetch neighborhood/expertise content from Supabase, fall back to defaults
   const dbContent = await getCityContentFromDB(city);
   const cityContent = dbContent || DEFAULT_CONTENT;
+  const searchFocus = CITY_SEARCH_FOCUS[city];
+  const lastUpdated = CITY_LAST_UPDATED[city];
 
   const services = [
     {
@@ -186,6 +209,33 @@ export default async function CityLandingPage({ params }: CityPageProps) {
       <CanonicalUrl customUrl={`https://www.lavacagc.com/locations/${city}`} />
       <PageViewTracker eventName="location_page_view" eventData={{ content_name: locationData.name, content_category: 'Location Page', content_type: 'location', city: locationData.name, county: locationData.county, state: 'NJ' }} />
 
+      {lastUpdated && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebPage",
+              "@id": `https://www.lavacagc.com/locations/${city}#webpage`,
+              "url": `https://www.lavacagc.com/locations/${city}`,
+              "name": getLocationMetaTitle(city),
+              "description": getLocationMetaDescription(city),
+              "dateModified": lastUpdated,
+              "isPartOf": {
+                "@type": "WebSite",
+                "@id": `${BUSINESS_INFO.url}/#website`,
+                "url": BUSINESS_INFO.url,
+                "name": BUSINESS_INFO.name
+              },
+              "about": {
+                "@type": "City",
+                "name": `${locationData.name}, NJ`
+              }
+            })
+          }}
+        />
+      )}
+
       {/* LocalBusiness JSON-LD Schema */}
       <script
         type="application/ld+json"
@@ -193,11 +243,11 @@ export default async function CityLandingPage({ params }: CityPageProps) {
           __html: JSON.stringify({
             "@context": "https://schema.org",
             "@type": "HomeAndConstructionBusiness",
-            "name": "La Vaca General Contractors",
+            "name": BUSINESS_INFO.name,
             "description": getLocationMetaDescription(city),
             "url": `https://www.lavacagc.com/locations/${city}`,
-            "telephone": "(201) 212-4917",
-            "email": "alex@vacamoo.com",
+            "telephone": BUSINESS_INFO.telephone,
+            "email": BUSINESS_INFO.email,
             "areaServed": {
               "@type": "City",
               "name": `${locationData.name}, NJ`
@@ -207,21 +257,28 @@ export default async function CityLandingPage({ params }: CityPageProps) {
               "addressLocality": locationData.name,
               "addressRegion": "NJ",
               "postalCode": locationData.zipCodes[0],
-              "addressCountry": "US"
+              "addressCountry": BUSINESS_INFO.address.addressCountry
+            },
+            "hasCredential": {
+              "@type": "EducationalOccupationalCredential",
+              "credentialCategory": "NJ Home Improvement Contractor License",
+              "name": BUSINESS_INFO.license
+            },
+            "geo": {
+              "@type": "GeoCoordinates",
+              "latitude": BUSINESS_INFO.geo.latitude,
+              "longitude": BUSINESS_INFO.geo.longitude
             },
             "aggregateRating": {
               "@type": "AggregateRating",
-              "ratingValue": "5.0",
-              "reviewCount": "12",
-              "bestRating": "5",
-              "worstRating": "1"
+              "ratingValue": BUSINESS_INFO.aggregateRating.ratingValue,
+              "reviewCount": BUSINESS_INFO.aggregateRating.reviewCount,
+              "bestRating": BUSINESS_INFO.aggregateRating.bestRating,
+              "worstRating": BUSINESS_INFO.aggregateRating.worstRating
             },
-            "priceRange": "$$",
-            "image": "https://www.lavacagc.com/og-image.jpg",
-            "sameAs": [
-              "https://www.facebook.com/lavacagc",
-              "https://www.instagram.com/lavacagc"
-            ],
+            "priceRange": BUSINESS_INFO.priceRange,
+            "image": BUSINESS_INFO.logo,
+            "sameAs": BUSINESS_INFO.socialProfiles,
             "hasOfferCatalog": {
               "@type": "OfferCatalog",
               "name": "Home Remodeling Services",
@@ -307,6 +364,37 @@ export default async function CityLandingPage({ params }: CityPageProps) {
             </div>
           </div>
         </section>
+
+
+        {searchFocus && (
+          <section data-section="search-focus" className="py-16 bg-muted/40">
+            <div className="container mx-auto px-4">
+              <div className="max-w-5xl mx-auto">
+                <div className="text-center mb-10">
+                  <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
+                    {searchFocus.heading}
+                  </h2>
+                  <p className="text-lg text-text-secondary leading-relaxed max-w-3xl mx-auto">
+                    {searchFocus.intro} We are {BUSINESS_INFO.license} and se habla español for homeowners who prefer to discuss project details in Spanish.
+                  </p>
+                </div>
+                <div className="grid md:grid-cols-3 gap-6">
+                  {searchFocus.bullets.map((bullet, index) => (
+                    <Card key={index} className="p-6 bg-background border-border">
+                      <CheckCircle2 className="h-6 w-6 text-primary mb-4" />
+                      <p className="text-text-secondary leading-relaxed">{bullet}</p>
+                    </Card>
+                  ))}
+                </div>
+                <div className="mt-8 text-center text-text-secondary">
+                  <p>
+                    Review recent work in our <Link href="/portfolio" className="text-primary hover:underline">portfolio</Link>, read homeowner <Link href="/reviews" className="text-primary hover:underline">reviews</Link>, or compare nearby <Link href="/locations/millburn/services" className="text-primary hover:underline">Millburn services</Link> before requesting an estimate.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Neighborhood Expertise Section */}
         <section data-section="neighborhoods" className="py-20 bg-background">
