@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { CalendarCheck, ShieldCheck, FileText, MapPin } from "lucide-react";
 import HeaderComponent from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -57,19 +58,31 @@ export default function RequestEstimatePage() {
             {/* Left sidecard */}
             <aside
               aria-label="How the intake works"
-              className="relative flex flex-col overflow-hidden rounded-3xl bg-secondary p-8 text-white shadow-[0_20px_40px_-12px_rgba(0,40,85,0.18)] md:p-9"
+              className="relative flex flex-col overflow-hidden rounded-3xl bg-secondary text-white shadow-[0_20px_40px_-12px_rgba(0,40,85,0.18)]"
             >
-              <div
-                aria-hidden
-                className="pointer-events-none absolute -bottom-24 -right-24 h-64 w-64 rounded-full"
-                style={{
-                  background:
-                    "radial-gradient(circle, rgba(238,150,57,0.20), transparent 65%)",
-                }}
-              />
-              <h2 className="relative text-2xl font-extrabold leading-[1.15] tracking-tight text-balance">
-                Limited weekly service spots.
-              </h2>
+              <div className="relative aspect-[16/9] w-full overflow-hidden">
+                <Image
+                  src="/images/intake-sidecard.png"
+                  alt="Project planning at a sunlit desk — notebook, fountain pen, and rolled architectural plans."
+                  fill
+                  priority
+                  sizes="(max-width: 1024px) 100vw, 38vw"
+                  className="object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-secondary" />
+              </div>
+              <div className="relative flex flex-1 flex-col p-8 md:p-9">
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute -bottom-24 -right-24 h-64 w-64 rounded-full"
+                  style={{
+                    background:
+                      "radial-gradient(circle, rgba(238,150,57,0.20), transparent 65%)",
+                  }}
+                />
+                <h2 className="relative text-2xl font-extrabold leading-[1.15] tracking-tight text-balance">
+                  Limited weekly service spots.
+                </h2>
               <p className="relative mt-3 text-[15px] leading-relaxed text-white/80">
                 We cap service visits so the schedule stays reliable and every
                 request gets reviewed before anyone shows up.
@@ -104,6 +117,7 @@ export default function RequestEstimatePage() {
                   <MapPin className="h-3.5 w-3.5 text-primary-light" />
                   Northern New Jersey only
                 </span>
+              </div>
               </div>
             </aside>
 

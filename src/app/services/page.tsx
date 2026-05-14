@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import {
   Route,
@@ -75,6 +76,24 @@ export default function ServicesHubPage() {
       <ServicesTrustBar />
 
       <main id="top" className="flex-grow pb-24 lg:pb-0">
+        {/* HERO IMAGE BAND */}
+        <section
+          aria-hidden="true"
+          className="relative w-full overflow-hidden"
+        >
+          <div className="relative aspect-[16/9] w-full sm:aspect-[16/7] lg:aspect-[1832/859]">
+            <Image
+              src="/images/hub-hero.png"
+              alt=""
+              fill
+              priority
+              sizes="100vw"
+              className="object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-background/95" />
+          </div>
+        </section>
+
         {/* HERO */}
         <section className="relative overflow-hidden bg-gradient-to-b from-background-soft via-background to-background-subtle py-16 md:py-24">
           <div

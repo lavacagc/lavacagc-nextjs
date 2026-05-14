@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import {
   Building2,
@@ -18,7 +19,35 @@ import Footer from "@/components/Footer";
 import ServicesTrustBar from "@/components/services/ServicesTrustBar";
 import ServicesBottomTabs from "@/components/services/ServicesBottomTabs";
 import ServiceTile from "@/components/services/ServiceTile";
+import ServiceImageGrid from "@/components/services/ServiceImageGrid";
 import { COMMERCIAL_SERVICES } from "@/components/services/serviceData";
+
+const COMMERCIAL_IMAGE_CARDS = [
+  {
+    src: "/images/commercial-card-make-ready.png",
+    alt: "Empty retail unit freshly painted and ready for the next tenant.",
+    label: "Tenant make-ready",
+    description: "Turnover work, finishes, and a clean walkthrough before move-in.",
+  },
+  {
+    src: "/images/commercial-card-storefront.png",
+    alt: "Contractor refreshing the trim above a Northern NJ storefront entry.",
+    label: "Storefront refresh",
+    description: "Front-of-house finish work that lifts a property without a full reno.",
+  },
+  {
+    src: "/images/commercial-card-dispatch.png",
+    alt: "Contractor documenting a small commercial property after a storm.",
+    label: "Storm / emergency dispatch",
+    description: "Priority response with first-hour stabilization and an insurance-ready report.",
+  },
+  {
+    src: "/images/commercial-card-walkthrough.png",
+    alt: "Contractor photographing a wall corner during a commercial property walkthrough.",
+    label: "Documentation & walkthroughs",
+    description: "Defensible photo + written records for landlord-tenant and lender contexts.",
+  },
+];
 
 export const revalidate = 60;
 
@@ -116,30 +145,16 @@ export default function CommercialServicesPage() {
                 </div>
               </div>
 
-              <aside
-                aria-label="Commercial property care"
-                className="rounded-3xl border border-border bg-card p-7 shadow-elegant md:p-9"
-              >
-                <h3 className="mb-6 text-xs font-extrabold uppercase tracking-widest text-text-primary">
-                  Commercial property care
-                </h3>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {[
-                    { title: "Turnovers", body: "Make-ready work and documentation before a new tenant arrives." },
-                    { title: "Storefronts", body: "Refresh visible spaces without turning it into a major renovation." },
-                    { title: "Inspections", body: "Pre-checks and notes before town or tenant walkthroughs." },
-                    { title: "Dispatch", body: "Urgent coordination when a property needs fast attention." },
-                  ].map((card) => (
-                    <div
-                      key={card.title}
-                      className="rounded-xl border border-border bg-background-soft px-5 py-5 transition-all hover:-translate-y-[2px] hover:border-primary/30 hover:bg-card"
-                    >
-                      <p className="text-[15px] font-extrabold tracking-tight text-text-primary">{card.title}</p>
-                      <p className="mt-2 text-xs leading-relaxed text-text-muted">{card.body}</p>
-                    </div>
-                  ))}
-                </div>
-              </aside>
+              <div className="relative aspect-[4/3] overflow-hidden rounded-3xl border border-border bg-background-soft shadow-elegant">
+                <Image
+                  src="/images/commercial-services-hero.png"
+                  alt="Property manager and a La Vaca contractor meeting at the entrance of a Northern NJ storefront."
+                  fill
+                  priority
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  className="object-cover"
+                />
+              </div>
             </div>
           </div>
         </section>
@@ -237,6 +252,14 @@ export default function CommercialServicesPage() {
             </div>
           </div>
         </section>
+
+        {/* IMAGE CARD GRID — visual entry into the service catalog */}
+        <ServiceImageGrid
+          eyebrow="Common requests"
+          title="The work landlords and managers ask us about."
+          intro="Four representative engagements that fit a typical commercial week — see the full catalog below for everything in scope."
+          items={COMMERCIAL_IMAGE_CARDS}
+        />
 
         {/* SERVICE GRID */}
         <section className="bg-background-soft py-16 md:py-24" id="services">

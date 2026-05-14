@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import {
   Home,
@@ -19,7 +20,35 @@ import Footer from "@/components/Footer";
 import ServicesTrustBar from "@/components/services/ServicesTrustBar";
 import ServicesBottomTabs from "@/components/services/ServicesBottomTabs";
 import ServiceTile from "@/components/services/ServiceTile";
+import ServiceImageGrid from "@/components/services/ServiceImageGrid";
 import { HOME_SERVICES } from "@/components/services/serviceData";
+
+const HOME_IMAGE_CARDS = [
+  {
+    src: "/images/home-card-punch-list.png",
+    alt: "Contractor reviewing a punch list on a clipboard at a homeowner's dining table.",
+    label: "Punch-list days",
+    description: "Bundled small repairs handled in one organized visit.",
+  },
+  {
+    src: "/images/home-card-pre-listing.png",
+    alt: "Living room of a Northern NJ home being prepped for sale, fresh paint and tidy floors.",
+    label: "Pre-listing prep",
+    description: "Get your home photo-ready and inspection-ready in days.",
+  },
+  {
+    src: "/images/home-card-seasonal.png",
+    alt: "Contractor clearing leaves from a residential gutter in autumn.",
+    label: "Seasonal maintenance",
+    description: "Storm prep, gutter clears, and seasonal property care.",
+  },
+  {
+    src: "/images/home-card-property-care.png",
+    alt: "Homeowner sweeping a colonial front porch on a spring morning.",
+    label: "Property care",
+    description: "Recurring detail work that keeps the property moving.",
+  },
+];
 
 export const revalidate = 60;
 
@@ -149,30 +178,16 @@ export default function HomeServicesPage() {
                 </div>
               </div>
 
-              <aside
-                aria-label="How home services work"
-                className="rounded-3xl border border-border bg-card p-7 shadow-elegant md:p-9"
-              >
-                <h3 className="mb-6 text-xs font-extrabold uppercase tracking-widest text-text-primary">
-                  How home services work
-                </h3>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {[
-                    { title: "Scope first", body: "We review the need, photos, access, and constraints before giving direction." },
-                    { title: "Clear scope", body: "You know what is included, excluded, and likely to need a trade or permit." },
-                    { title: "One contact", body: "Small repairs, punch lists, and coordination stay under one organized process." },
-                    { title: "Limited spots", body: "We cap weekly service visits to protect schedule quality and response time." },
-                  ].map((card) => (
-                    <div
-                      key={card.title}
-                      className="rounded-xl border border-border bg-background-soft px-5 py-5 transition-all hover:-translate-y-[2px] hover:border-primary/30 hover:bg-card"
-                    >
-                      <p className="text-[15px] font-extrabold tracking-tight text-text-primary">{card.title}</p>
-                      <p className="mt-2 text-xs leading-relaxed text-text-muted">{card.body}</p>
-                    </div>
-                  ))}
-                </div>
-              </aside>
+              <div className="relative aspect-[4/3] overflow-hidden rounded-3xl border border-border bg-background-soft shadow-elegant">
+                <Image
+                  src="/images/home-services-hero.png"
+                  alt="Homeowner and a La Vaca contractor reviewing a punch list inside a Northern NJ home."
+                  fill
+                  priority
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  className="object-cover"
+                />
+              </div>
             </div>
           </div>
         </section>
@@ -269,6 +284,14 @@ export default function HomeServicesPage() {
             </div>
           </div>
         </section>
+
+        {/* IMAGE CARD GRID — visual entry into the service catalog */}
+        <ServiceImageGrid
+          eyebrow="Common requests"
+          title="The work most homeowners ask us about."
+          intro="Four representative visits that fit a typical week — see the full catalog below for everything in scope."
+          items={HOME_IMAGE_CARDS}
+        />
 
         {/* SERVICE GRID */}
         <section className="bg-background-soft py-16 md:py-24" id="services">
