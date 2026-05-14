@@ -17,11 +17,19 @@ export default function StickyCTA() {
     return subscribeBannerState(setBannerShowing);
   }, []);
 
-  // Hide on contact page
-  const isContactPage = pathname === '/contact';
+  // Hide on contact + services-flow pages (their own bottom-tab nav takes the
+  // bottom slot, and intake form must not have anything covering fields).
+  const SUPPRESSED_PATHS = [
+    '/contact',
+    '/services',
+    '/home-services',
+    '/commercial-services',
+    '/request-estimate',
+  ];
+  const isSuppressed = SUPPRESSED_PATHS.includes(pathname);
 
   useEffect(() => {
-    if (isContactPage) return;
+    if (isSuppressed) return;
 
     const handleScroll = () => {
       setVisible(window.scrollY > 300);
@@ -32,9 +40,9 @@ export default function StickyCTA() {
     handleScroll();
 
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [isContactPage]);
+  }, [isSuppressed]);
 
-  if (isContactPage || !visible || bannerShowing) return null;
+  if (isSuppressed || !visible || bannerShowing) return null;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white/95 backdrop-blur-sm border-t border-border shadow-lg safe-area-bottom">

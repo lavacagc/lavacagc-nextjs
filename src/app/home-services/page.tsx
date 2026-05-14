@@ -151,12 +151,12 @@ export default function HomeServicesPage() {
 
               <aside
                 aria-label="How home services work"
-                className="rounded-3xl border border-border bg-card p-6 shadow-elegant md:p-8"
+                className="rounded-3xl border border-border bg-card p-7 shadow-elegant md:p-9"
               >
-                <h3 className="mb-5 text-xs font-extrabold uppercase tracking-widest text-text-primary">
+                <h3 className="mb-6 text-xs font-extrabold uppercase tracking-widest text-text-primary">
                   How home services work
                 </h3>
-                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   {[
                     { title: "Scope first", body: "We review the need, photos, access, and constraints before giving direction." },
                     { title: "Clear scope", body: "You know what is included, excluded, and likely to need a trade or permit." },
@@ -165,10 +165,10 @@ export default function HomeServicesPage() {
                   ].map((card) => (
                     <div
                       key={card.title}
-                      className="rounded-xl border border-border bg-background-soft p-4.5 transition-all hover:-translate-y-[2px] hover:border-primary/30 hover:bg-card"
+                      className="rounded-xl border border-border bg-background-soft px-5 py-5 transition-all hover:-translate-y-[2px] hover:border-primary/30 hover:bg-card"
                     >
                       <p className="text-[15px] font-extrabold tracking-tight text-text-primary">{card.title}</p>
-                      <p className="mt-1.5 text-xs leading-relaxed text-text-muted">{card.body}</p>
+                      <p className="mt-2 text-xs leading-relaxed text-text-muted">{card.body}</p>
                     </div>
                   ))}
                 </div>
