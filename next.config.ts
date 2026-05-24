@@ -318,7 +318,7 @@ const nextConfig: NextConfig = {
 
       // Orphan project URLs (project removed from DB, /projects/[slug] now 404s)
       { source: '/projects/modern-kitchen-transformation', destination: '/portfolio', permanent: true },
-      { source: '/projects/modern-ofsformation-a-bright-functional-workspace-in-new-jersey-rochelle-park', destination: '/portfolio', permanent: true },
+      { source: '/projects/modern-office-transformation-a-bright-functional-workspace-in-new-jersey-rochelle-park', destination: '/portfolio', permanent: true },
 
       // whole-home-remodeling lives only at /services/whole-home-remodeling.
       // It's not in the city-level SERVICES map in
