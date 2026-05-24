@@ -145,22 +145,14 @@ export default async function ServiceDetailPage({ params }: PageProps) {
     '@type': 'Service',
     name: service.title,
     description: service.description,
+    // Reference the canonical organization defined in the root layout's
+    // StructuredData (type="organization"). Prior version inlined a separate
+    // LocalBusiness with a conflicting aggregateRating (ratingCount: 30 vs
+    // the layout's reviewCount: 12), which created both a duplicate business
+    // entity and contradictory rating data on the page.
     provider: {
-      '@type': 'LocalBusiness',
-      name: 'La Vaca General Contractors',
-      url: 'https://www.lavacagc.com',
-      telephone: '(201) 212-4917',
-      address: {
-        '@type': 'PostalAddress',
-        addressRegion: 'NJ',
-        addressCountry: 'US',
-      },
-      aggregateRating: {
-        '@type': 'AggregateRating',
-        ratingValue: '5',
-        bestRating: '5',
-        ratingCount: '30',
-      },
+      '@type': 'GeneralContractor',
+      '@id': 'https://www.lavacagc.com/#organization',
     },
     areaServed: {
       '@type': 'State',

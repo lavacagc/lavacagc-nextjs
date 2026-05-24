@@ -70,7 +70,14 @@ const nextConfig: NextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://api.ipify.org https://www.google.com https://www.gstatic.com https://www.recaptcha.net https://recaptcha.google.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms",
+              // 'unsafe-eval' — required by Facebook Pixel (connect.facebook.net/fbevents.js)
+              // and by any GTM Custom HTML/Custom JS tags, both of which call new Function()
+              // internally. Without it, ~85% of Clarity-logged JS errors are CSP eval blocks
+              // that also break fbq() pixel firing and contribute to dead-click rate + INP
+              // regressions. 'unsafe-inline' is already permitted above, so the marginal XSS
+              // surface added by 'unsafe-eval' is small relative to the analytics breakage
+              // it prevents. Revisit if/when Meta ships a CSP-strict pixel build.
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://api.ipify.org https://www.google.com https://www.gstatic.com https://www.recaptcha.net https://recaptcha.google.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               // *.googleusercontent.com — reviewer avatar photos from Google Reviews (Testimonials component)
               // https://www.lavacagc.com — explicit host needed for the
@@ -298,6 +305,28 @@ const nextConfig: NextConfig = {
 
       // Common service slug mistakes (from ads/external links)
       { source: '/services/basement-remodeling', destination: '/services/basement-finishing', permanent: true },
+
+      // ============================================
+      // GSC 404 SWEEP (2026-05-23) — items not already covered above
+      // ============================================
+      // Service slug typo (external inbound, not present in our source)
+      { source: '/services/kitchen-remodeing', destination: '/services/kitchen-remodeling', permanent: true },
+
+      // Bare index URLs we don't have pages for
+      { source: '/projects', destination: '/portfolio', permanent: true },
+      { source: '/search', destination: '/services', permanent: true },
+
+      // Orphan project URLs (project removed from DB, /projects/[slug] now 404s)
+      { source: '/projects/modern-kitchen-transformation', destination: '/portfolio', permanent: true },
+      { source: '/projects/modern-office-transformation-a-bright-functional-workspace-in-new-jersey-rochelle-park', destination: '/portfolio', permanent: true },
+
+      // whole-home-remodeling lives only at /services/whole-home-remodeling.
+      // It's not in the city-level SERVICES map in
+      // src/app/locations/[city]/services/[service]/page.tsx, so any
+      // /locations/{city}/services/whole-home-remodeling URL 404s. Funnel all
+      // 18 cities to the top-level service page rather than maintaining a
+      // duplicate set of programmatic pages with no unique content.
+      { source: '/locations/:city/services/whole-home-remodeling', destination: '/services/whole-home-remodeling', permanent: true },
     ]
   },
 

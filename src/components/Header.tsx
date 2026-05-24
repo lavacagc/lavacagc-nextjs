@@ -117,6 +117,17 @@ const Header = () => {
                   role="menu"
                 >
                   <div className="p-2">
+                    <Link href="/services" className="block px-4 py-2 font-semibold text-text-primary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
+                      Services Hub
+                    </Link>
+                    <Link href="/home-services" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
+                      Home Services
+                    </Link>
+                    <Link href="/commercial-services" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
+                      Commercial Services
+                    </Link>
+                    <div className="my-1 border-t border-border" />
+                    <p className="px-4 pt-1 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-text-muted">Remodeling</p>
                     <Link href="/services/kitchen-remodeling" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
                       Kitchen Remodeling
                     </Link>
@@ -150,11 +161,11 @@ const Header = () => {
 
             {/* Right side - CTA and Menu */}
             <div className="flex items-center gap-4 lg:justify-end ml-auto lg:ml-0">
-              {/* CTA Section - Visible on tablet and desktop */}
+              {/* CTA Section - Visible on desktop only (logo + hamburger on mobile/tablet) */}
               <Button
-                onClick={() => navigateToPage('/free-estimate')}
+                onClick={() => navigateToPage('/request-estimate')}
                 variant="default"
-                className="hidden md:flex bg-gradient-to-r from-primary via-accent-sunset to-accent-tangerine bg-[length:400%_100%] animate-gradient hover:shadow-button"
+                className="hidden lg:flex bg-gradient-to-r from-primary via-accent-sunset to-accent-tangerine bg-[length:400%_100%] animate-gradient hover:shadow-button"
               >
                 Request an Estimate
               </Button>
@@ -180,6 +191,16 @@ const Header = () => {
               <div>
                 <p className="font-semibold text-text-primary mb-2">Services</p>
                 <div className="pl-4 space-y-2">
+                  <Link href="/services" className="block font-semibold text-text-primary hover:text-primary transition-colors">
+                    Services Hub
+                  </Link>
+                  <Link href="/home-services" className="block text-text-secondary hover:text-primary transition-colors">
+                    Home Services
+                  </Link>
+                  <Link href="/commercial-services" className="block text-text-secondary hover:text-primary transition-colors">
+                    Commercial Services
+                  </Link>
+                  <p className="pt-2 text-[11px] font-bold uppercase tracking-wider text-text-muted">Remodeling</p>
                   <Link href="/services/kitchen-remodeling" className="block text-text-secondary hover:text-primary transition-colors">
                     Kitchen Remodeling
                   </Link>
@@ -206,10 +227,10 @@ const Header = () => {
                 Projects
               </button>
 
-              <button 
-                onClick={() => navigateToPage('/free-estimate')} 
+              <button
+                onClick={() => navigateToPage('/request-estimate')}
                 className="block text-text-secondary hover:text-primary transition-colors font-medium"
-                aria-label="Request a free estimate"
+                aria-label="Request an estimate"
               >
                 Request an Estimate
               </button>

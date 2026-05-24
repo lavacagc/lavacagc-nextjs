@@ -209,6 +209,10 @@ export default async function CityLandingPage({ params }: CityPageProps) {
       <CanonicalUrl customUrl={`https://www.lavacagc.com/locations/${city}`} />
       <PageViewTracker eventName="location_page_view" eventData={{ content_name: locationData.name, content_category: 'Location Page', content_type: 'location', city: locationData.name, county: locationData.county, state: 'NJ' }} />
 
+      {/* WebPage JSON-LD with dateModified — fresh signal for cities whose
+          SEO copy was recently refreshed (CITY_LAST_UPDATED). Distinct schema
+          type from the org/localbusiness entities, so no duplicate-rating
+          concern. */}
       {lastUpdated && (
         <script
           type="application/ld+json"
@@ -236,62 +240,17 @@ export default async function CityLandingPage({ params }: CityPageProps) {
         />
       )}
 
-      {/* LocalBusiness JSON-LD Schema */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "HomeAndConstructionBusiness",
-            "name": BUSINESS_INFO.name,
-            "description": getLocationMetaDescription(city),
-            "url": `https://www.lavacagc.com/locations/${city}`,
-            "telephone": BUSINESS_INFO.telephone,
-            "email": BUSINESS_INFO.email,
-            "areaServed": {
-              "@type": "City",
-              "name": `${locationData.name}, NJ`
-            },
-            "address": {
-              "@type": "PostalAddress",
-              "addressLocality": locationData.name,
-              "addressRegion": "NJ",
-              "postalCode": locationData.zipCodes[0],
-              "addressCountry": BUSINESS_INFO.address.addressCountry
-            },
-            "hasCredential": {
-              "@type": "EducationalOccupationalCredential",
-              "credentialCategory": "NJ Home Improvement Contractor License",
-              "name": BUSINESS_INFO.license
-            },
-            "geo": {
-              "@type": "GeoCoordinates",
-              "latitude": BUSINESS_INFO.geo.latitude,
-              "longitude": BUSINESS_INFO.geo.longitude
-            },
-            "aggregateRating": {
-              "@type": "AggregateRating",
-              "ratingValue": BUSINESS_INFO.aggregateRating.ratingValue,
-              "reviewCount": BUSINESS_INFO.aggregateRating.reviewCount,
-              "bestRating": BUSINESS_INFO.aggregateRating.bestRating,
-              "worstRating": BUSINESS_INFO.aggregateRating.worstRating
-            },
-            "priceRange": BUSINESS_INFO.priceRange,
-            "image": BUSINESS_INFO.logo,
-            "sameAs": BUSINESS_INFO.socialProfiles,
-            "hasOfferCatalog": {
-              "@type": "OfferCatalog",
-              "name": "Home Remodeling Services",
-              "itemListElement": [
-                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Kitchen Remodeling" } },
-                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Bathroom Renovation" } },
-                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Basement Finishing" } },
-                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Home Additions" } }
-              ]
-            }
-          })
-        }}
-      />
+      {/* Inline LocalBusiness/HomeAndConstructionBusiness JSON-LD intentionally
+          NOT emitted here:
+          - LocalSEOSchema above already emits a properly-linked Service schema
+            with provider referencing the canonical #organization @id.
+          - The root layout (StructuredData type="organization") emits the
+            GeneralContractor with the canonical aggregateRating.
+          - A prior inline HomeAndConstructionBusiness was reintroduced on main
+            (commit 6a0ca5f, Millburn refresh) using BUSINESS_INFO constants —
+            cleaner data but still a duplicate business entity per Google's
+            rich-results parser, and it duplicated the rating. P4 in the
+            2026-05 SEO audit. Resolved during merge from origin/main. */}
 
       {/* FAQ JSON-LD Schema */}
       <script

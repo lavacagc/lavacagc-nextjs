@@ -207,50 +207,22 @@ export default async function ProjectDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  // JSON-LD Schema - Use LocalBusiness as main type (supports Review in Google rich results)
-  // Google only supports Review on: LocalBusiness, Product, Book, Course, Event, etc.
-  // NOT on Service type
-  const jsonLd = {
+  // JSON-LD: emit a PARTIAL node referencing the canonical organization
+  // (#organization is defined in the root layout via StructuredData type="organization").
+  // Using the same @id lets Google merge this node into the existing entity,
+  // so the project's testimonial and image gallery hang off the canonical
+  // GeneralContractor — no second business entity, no duplicate AggregateRating.
+  //
+  // Prior version emitted a separate LocalBusiness @id=#business, which Google's
+  // rich-results parser flagged as a duplicate business + duplicate (implied)
+  // aggregateRating on the page (root cause of P4 in the 2026-05 SEO audit).
+  const jsonLd: Record<string, unknown> = {
     '@context': 'https://schema.org',
-    '@type': 'LocalBusiness',
-    '@id': 'https://www.lavacagc.com/#business',
-    name: 'La Vaca General Contractors',
-    description: `${project.title} - ${project.challenge || project.solution || `${project.service_types[0] || 'Renovation'} project in ${project.location}`}`,
-    url: 'https://www.lavacagc.com',
-    telephone: '(201) 212-4917',
-    address: {
-      '@type': 'PostalAddress',
-      addressLocality: project.location,
-      addressRegion: 'NJ',
-      addressCountry: 'US',
-    },
-    areaServed: {
-      '@type': 'City',
-      name: project.location,
-    },
+    '@type': 'GeneralContractor',
+    '@id': 'https://www.lavacagc.com/#organization',
     image: project.project_images.length > 0 ? project.project_images.map((img) => img.image_url) : undefined,
-    // Include review only if testimonial exists - now valid because parent is LocalBusiness
-    ...(project.testimonial_text && {
-      review: {
-        '@type': 'Review',
-        itemReviewed: {
-          '@type': 'LocalBusiness',
-          name: 'La Vaca General Contractors',
-        },
-        reviewRating: {
-          '@type': 'Rating',
-          ratingValue: project.testimonial_rating || 5,
-          bestRating: 5,
-          worstRating: 1,
-        },
-        author: {
-          '@type': 'Person',
-          name: project.client_first_name || 'Verified Client',
-        },
-        reviewBody: project.testimonial_text,
-      },
-    }),
-    // Add makesOffer to describe the service provided
+    // makesOffer describes the project as an offered service; safe to add as
+    // a property of the org entity without conflicting with the layout schema.
     makesOffer: {
       '@type': 'Offer',
       itemOffered: {
@@ -262,6 +234,25 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       },
     },
   };
+
+  // Attach the project testimonial as a Review on the org entity, but only
+  // when we actually have one — avoids floating itemReviewed entities.
+  if (project.testimonial_text) {
+    jsonLd.review = {
+      '@type': 'Review',
+      reviewRating: {
+        '@type': 'Rating',
+        ratingValue: project.testimonial_rating || 5,
+        bestRating: 5,
+        worstRating: 1,
+      },
+      author: {
+        '@type': 'Person',
+        name: project.client_first_name || 'Verified Client',
+      },
+      reviewBody: project.testimonial_text,
+    };
+  }
 
   // Remove undefined values to ensure clean JSON-LD
   const cleanJsonLd = JSON.parse(JSON.stringify(jsonLd));

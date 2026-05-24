@@ -2,11 +2,23 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Star, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
 
 const REVIEW_COOLDOWN_KEY = 'lavaca_review_toast_cooldown';
+
+// High-intent routes where the review toast distracts from conversion.
+// Also suppressed on mobile entirely regardless of route.
+const HIGH_INTENT_PATHS = [
+  '/services',
+  '/home-services',
+  '/commercial-services',
+  '/request-estimate',
+  '/free-estimate',
+  '/contact',
+];
 
 interface Review {
   reviewer_name: string;
@@ -15,16 +27,33 @@ interface Review {
 }
 
 export default function ReviewToast() {
+  const pathname = usePathname();
   const [isVisible, setIsVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [bannerShowing, setBannerShowing] = useState(() => isBannerVisible());
+  const [isMobile, setIsMobile] = useState(false);
   const [coolingDown, setCoolingDown] = useState(() => {
     if (typeof window === 'undefined') return false;
     const cooldownUntil = parseInt(localStorage.getItem(REVIEW_COOLDOWN_KEY) || '0');
     return cooldownUntil > Date.now();
   });
+
+  // Track viewport: hide toast entirely on mobile.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mql = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobile(mql.matches);
+    update();
+    mql.addEventListener('change', update);
+    return () => mql.removeEventListener('change', update);
+  }, []);
+
+  const isHighIntentRoute = HIGH_INTENT_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`)
+  );
+  const suppressed = isMobile || isHighIntentRoute;
 
   // Listen for SmartBanner visibility + set cooldown when banner is dismissed
   useEffect(() => {
@@ -95,7 +124,7 @@ export default function ReviewToast() {
   }, [isDismissed]);
 
   useEffect(() => {
-    if (reviews.length === 0 || isDismissed) return;
+    if (suppressed || reviews.length === 0 || isDismissed) return;
 
     // Show first toast after 10 seconds
     const initialDelay = setTimeout(() => {
@@ -112,7 +141,7 @@ export default function ReviewToast() {
       clearTimeout(initialDelay);
       clearInterval(rotationInterval);
     };
-  }, [reviews, showNext, isDismissed]);
+  }, [reviews, showNext, isDismissed, suppressed]);
 
   const handleDismiss = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -121,7 +150,7 @@ export default function ReviewToast() {
     setIsDismissed(true);
   };
 
-  if (reviews.length === 0 || isDismissed || bannerShowing || coolingDown) return null;
+  if (suppressed || reviews.length === 0 || isDismissed || bannerShowing || coolingDown) return null;
 
   const review = reviews[currentReviewIndex];
   const excerpt =
