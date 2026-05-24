@@ -305,6 +305,28 @@ const nextConfig: NextConfig = {
 
       // Common service slug mistakes (from ads/external links)
       { source: '/services/basement-remodeling', destination: '/services/basement-finishing', permanent: true },
+
+      // ============================================
+      // GSC 404 SWEEP (2026-05-23) — items not already covered above
+      // ============================================
+      // Service slug typo (external inbound, not present in our source)
+      { source: '/services/kitchen-remodeing', destination: '/services/kitchen-remodeling', permanent: true },
+
+      // Bare index URLs we don't have pages for
+      { source: '/projects', destination: '/portfolio', permanent: true },
+      { source: '/search', destination: '/services', permanent: true },
+
+      // Orphan project URLs (project removed from DB, /projects/[slug] now 404s)
+      { source: '/projects/modern-kitchen-transformation', destination: '/portfolio', permanent: true },
+      { source: '/projects/modern-ofsformation-a-bright-functional-workspace-in-new-jersey-rochelle-park', destination: '/portfolio', permanent: true },
+
+      // whole-home-remodeling lives only at /services/whole-home-remodeling.
+      // It's not in the city-level SERVICES map in
+      // src/app/locations/[city]/services/[service]/page.tsx, so any
+      // /locations/{city}/services/whole-home-remodeling URL 404s. Funnel all
+      // 18 cities to the top-level service page rather than maintaining a
+      // duplicate set of programmatic pages with no unique content.
+      { source: '/locations/:city/services/whole-home-remodeling', destination: '/services/whole-home-remodeling', permanent: true },
     ]
   },
 
