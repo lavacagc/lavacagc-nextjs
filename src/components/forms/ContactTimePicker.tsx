@@ -61,6 +61,13 @@ export function ContactTimePicker({
 }: ContactTimePickerProps) {
   // Capture the browser timezone once per mount. We don't prompt for it —
   // Intl reports the OS-level zone, which is what we actually want.
+  //
+  // Deps intentionally empty: every consumer passes an inline arrow for
+  // onTimezoneChange, which is a new reference every parent render. Including
+  // it in deps re-fires the effect → calls setState in the parent → re-render
+  // → new ref → infinite loop (React #185, "Maximum update depth exceeded").
+  // This was the bug behind ~9.5% of Clarity-logged JS errors on /free-estimate
+  // and any other page mounting a lead form.
   useEffect(() => {
     if (!onTimezoneChange) return;
     try {
@@ -69,7 +76,8 @@ export function ContactTimePicker({
     } catch {
       // Old browsers with no Intl support — fall back to the server default.
     }
-  }, [onTimezoneChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Hide entirely for text-based contact; texts are async so the bucket
   // doesn't map onto them cleanly, and every hidden field is a conversion win.
