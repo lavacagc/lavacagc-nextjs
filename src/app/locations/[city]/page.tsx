@@ -11,6 +11,7 @@ import Breadcrumb from "@/components/Breadcrumb";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 import { CityHeroButtons, CityServiceCard, CityCTAButtons } from "@/components/CityLandingClient";
 import PageViewTracker from "@/components/PageViewTracker";
+import { BUSINESS_INFO } from "@/components/StructuredData";
 import { getLocationBySlug, getLocationMetaTitle, getLocationMetaDescription, getAllLocations } from "@/data/locationData";
 import { getServerSupabaseClient } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
@@ -93,6 +94,26 @@ const DEFAULT_CONTENT = {
   ]
 };
 
+const CITY_LAST_UPDATED: Record<string, string> = {
+  millburn: "2026-05-14",
+};
+
+const CITY_SEARCH_FOCUS: Record<string, {
+  heading: string;
+  intro: string;
+  bullets: string[];
+}> = {
+  millburn: {
+    heading: "Bathroom, Basement, and Kitchen Remodeling in Millburn",
+    intro: "Millburn homeowners often compare general contractors for bathroom remodeling, basement finishing, and kitchen renovation before choosing who to invite into their home. La Vaca supports those projects with clear scopes, permit coordination, daily communication, and craftsmanship that fits established Essex County homes.",
+    bullets: [
+      "Bathroom renovation planning for older Millburn homes, including layout changes, ventilation, tile work, fixtures, and inspection-ready plumbing/electrical coordination.",
+      "Basement finishing guidance for family rooms, offices, guest suites, storage, moisture control, egress planning, and code-conscious living space upgrades.",
+      "Kitchen remodeling support for cabinet layouts, countertops, lighting, appliance coordination, finish schedules, and construction sequencing that keeps the project organized."
+    ]
+  }
+};
+
 interface CityPageProps {
   params: Promise<{
     city: string;
@@ -147,6 +168,8 @@ export default async function CityLandingPage({ params }: CityPageProps) {
   // Fetch neighborhood/expertise content from Supabase, fall back to defaults
   const dbContent = await getCityContentFromDB(city);
   const cityContent = dbContent || DEFAULT_CONTENT;
+  const searchFocus = CITY_SEARCH_FOCUS[city];
+  const lastUpdated = CITY_LAST_UPDATED[city];
 
   const services = [
     {
@@ -186,14 +209,48 @@ export default async function CityLandingPage({ params }: CityPageProps) {
       <CanonicalUrl customUrl={`https://www.lavacagc.com/locations/${city}`} />
       <PageViewTracker eventName="location_page_view" eventData={{ content_name: locationData.name, content_category: 'Location Page', content_type: 'location', city: locationData.name, county: locationData.county, state: 'NJ' }} />
 
-      {/* Inline LocalBusiness/HomeAndConstructionBusiness JSON-LD removed:
+      {/* WebPage JSON-LD with dateModified — fresh signal for cities whose
+          SEO copy was recently refreshed (CITY_LAST_UPDATED). Distinct schema
+          type from the org/localbusiness entities, so no duplicate-rating
+          concern. */}
+      {lastUpdated && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebPage",
+              "@id": `https://www.lavacagc.com/locations/${city}#webpage`,
+              "url": `https://www.lavacagc.com/locations/${city}`,
+              "name": getLocationMetaTitle(city),
+              "description": getLocationMetaDescription(city),
+              "dateModified": lastUpdated,
+              "isPartOf": {
+                "@type": "WebSite",
+                "@id": `${BUSINESS_INFO.url}/#website`,
+                "url": BUSINESS_INFO.url,
+                "name": BUSINESS_INFO.name
+              },
+              "about": {
+                "@type": "City",
+                "name": `${locationData.name}, NJ`
+              }
+            })
+          }}
+        />
+      )}
+
+      {/* Inline LocalBusiness/HomeAndConstructionBusiness JSON-LD intentionally
+          NOT emitted here:
           - LocalSEOSchema above already emits a properly-linked Service schema
             with provider referencing the canonical #organization @id.
           - The root layout (StructuredData type="organization") emits the
             GeneralContractor with the canonical aggregateRating.
-          - The prior inline schema duplicated the rating (5.0 / 12 reviews
-            matched the layout, so no contradiction, but still a duplicate
-            business entity per Google's rich-results parser). P4 follow-up. */}
+          - A prior inline HomeAndConstructionBusiness was reintroduced on main
+            (commit 6a0ca5f, Millburn refresh) using BUSINESS_INFO constants —
+            cleaner data but still a duplicate business entity per Google's
+            rich-results parser, and it duplicated the rating. P4 in the
+            2026-05 SEO audit. Resolved during merge from origin/main. */}
 
       {/* FAQ JSON-LD Schema */}
       <script
@@ -266,6 +323,37 @@ export default async function CityLandingPage({ params }: CityPageProps) {
             </div>
           </div>
         </section>
+
+
+        {searchFocus && (
+          <section data-section="search-focus" className="py-16 bg-muted/40">
+            <div className="container mx-auto px-4">
+              <div className="max-w-5xl mx-auto">
+                <div className="text-center mb-10">
+                  <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
+                    {searchFocus.heading}
+                  </h2>
+                  <p className="text-lg text-text-secondary leading-relaxed max-w-3xl mx-auto">
+                    {searchFocus.intro} We are {BUSINESS_INFO.license} and se habla español for homeowners who prefer to discuss project details in Spanish.
+                  </p>
+                </div>
+                <div className="grid md:grid-cols-3 gap-6">
+                  {searchFocus.bullets.map((bullet, index) => (
+                    <Card key={index} className="p-6 bg-background border-border">
+                      <CheckCircle2 className="h-6 w-6 text-primary mb-4" />
+                      <p className="text-text-secondary leading-relaxed">{bullet}</p>
+                    </Card>
+                  ))}
+                </div>
+                <div className="mt-8 text-center text-text-secondary">
+                  <p>
+                    Review recent work in our <Link href="/portfolio" className="text-primary hover:underline">portfolio</Link>, read homeowner <Link href="/reviews" className="text-primary hover:underline">reviews</Link>, or compare nearby <Link href="/locations/millburn/services" className="text-primary hover:underline">Millburn services</Link> before requesting an estimate.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Neighborhood Expertise Section */}
         <section data-section="neighborhoods" className="py-20 bg-background">
