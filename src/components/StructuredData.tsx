@@ -221,12 +221,12 @@ export function generateLocationSchema(location: LocationData, service?: string)
         },
       })),
     ],
-    aggregateRating: {
-      '@type': 'AggregateRating',
-      ratingValue: BUSINESS_INFO.aggregateRating.ratingValue,
-      reviewCount: BUSINESS_INFO.aggregateRating.reviewCount,
-      bestRating: BUSINESS_INFO.aggregateRating.bestRating,
-    },
+    // aggregateRating intentionally NOT emitted here — the location entity
+    // (@id ends in #localbusiness) is distinct from the org entity (@id
+    // #organization, defined in generateLocalBusinessSchema above), but
+    // emitting the same rating on both creates a duplicate AggregateRating
+    // per page that Google's rich-results parser flags. The org-level rating
+    // is the canonical source for the brand.
     priceRange: BUSINESS_INFO.priceRange,
     hasCredential: {
       '@type': 'EducationalOccupationalCredential',

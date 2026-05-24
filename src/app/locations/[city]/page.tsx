@@ -186,55 +186,14 @@ export default async function CityLandingPage({ params }: CityPageProps) {
       <CanonicalUrl customUrl={`https://www.lavacagc.com/locations/${city}`} />
       <PageViewTracker eventName="location_page_view" eventData={{ content_name: locationData.name, content_category: 'Location Page', content_type: 'location', city: locationData.name, county: locationData.county, state: 'NJ' }} />
 
-      {/* LocalBusiness JSON-LD Schema */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "HomeAndConstructionBusiness",
-            "name": "La Vaca General Contractors",
-            "description": getLocationMetaDescription(city),
-            "url": `https://www.lavacagc.com/locations/${city}`,
-            "telephone": "(201) 212-4917",
-            "email": "alex@vacamoo.com",
-            "areaServed": {
-              "@type": "City",
-              "name": `${locationData.name}, NJ`
-            },
-            "address": {
-              "@type": "PostalAddress",
-              "addressLocality": locationData.name,
-              "addressRegion": "NJ",
-              "postalCode": locationData.zipCodes[0],
-              "addressCountry": "US"
-            },
-            "aggregateRating": {
-              "@type": "AggregateRating",
-              "ratingValue": "5.0",
-              "reviewCount": "12",
-              "bestRating": "5",
-              "worstRating": "1"
-            },
-            "priceRange": "$$",
-            "image": "https://www.lavacagc.com/og-image.jpg",
-            "sameAs": [
-              "https://www.facebook.com/lavacagc",
-              "https://www.instagram.com/lavacagc"
-            ],
-            "hasOfferCatalog": {
-              "@type": "OfferCatalog",
-              "name": "Home Remodeling Services",
-              "itemListElement": [
-                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Kitchen Remodeling" } },
-                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Bathroom Renovation" } },
-                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Basement Finishing" } },
-                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Home Additions" } }
-              ]
-            }
-          })
-        }}
-      />
+      {/* Inline LocalBusiness/HomeAndConstructionBusiness JSON-LD removed:
+          - LocalSEOSchema above already emits a properly-linked Service schema
+            with provider referencing the canonical #organization @id.
+          - The root layout (StructuredData type="organization") emits the
+            GeneralContractor with the canonical aggregateRating.
+          - The prior inline schema duplicated the rating (5.0 / 12 reviews
+            matched the layout, so no contradiction, but still a duplicate
+            business entity per Google's rich-results parser). P4 follow-up. */}
 
       {/* FAQ JSON-LD Schema */}
       <script

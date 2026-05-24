@@ -214,22 +214,13 @@ export default function InteriorFinishingPage() {
     name: 'Drywall & Interior Finishing Contractor',
     description:
       'Expert drywall contractor and interior finishing services in Bergen, Essex, and Morris counties NJ. Level 5 finishing, LVP flooring, trim, and painting.',
+    // Reference the canonical organization defined in the root layout's
+    // StructuredData component. Avoids emitting a duplicate business entity
+    // with its own aggregateRating (same P4 fix pattern as /services/[slug]
+    // and /projects/[slug]).
     provider: {
-      '@type': 'LocalBusiness',
-      name: 'La Vaca General Contractors',
-      url: 'https://www.lavacagc.com',
-      telephone: '(201) 212-4917',
-      address: {
-        '@type': 'PostalAddress',
-        addressRegion: 'NJ',
-        addressCountry: 'US',
-      },
-      priceRange: '$$',
-      aggregateRating: {
-        '@type': 'AggregateRating',
-        ratingValue: '5',
-        reviewCount: '12',
-      },
+      '@type': 'GeneralContractor',
+      '@id': 'https://www.lavacagc.com/#organization',
     },
     areaServed: [
       { '@type': 'AdministrativeArea', name: 'Bergen County, NJ' },
