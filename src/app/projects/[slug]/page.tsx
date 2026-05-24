@@ -210,12 +210,22 @@ export default async function ProjectDetailPage({ params }: PageProps) {
   // JSON-LD: emit a PARTIAL node referencing the canonical organization
   // (#organization is defined in the root layout via StructuredData type="organization").
   // Using the same @id lets Google merge this node into the existing entity,
-  // so the project's testimonial and image gallery hang off the canonical
-  // GeneralContractor — no second business entity, no duplicate AggregateRating.
+  // so the project's image gallery hangs off the canonical GeneralContractor.
   //
-  // Prior version emitted a separate LocalBusiness @id=#business, which Google's
-  // rich-results parser flagged as a duplicate business + duplicate (implied)
-  // aggregateRating on the page (root cause of P4 in the 2026-05 SEO audit).
+  // History of P4 in the 2026-05 SEO audit:
+  //   v1: page emitted its own LocalBusiness @id=#business → 2 business
+  //       entities on the page → "duplicate aggregateRating" flagged by GSC.
+  //   v2 (516e9d7): switched to a partial node with @id=#organization plus a
+  //       Review attached to it. Local jsonld-parse showed 1 entity / 1 rating
+  //       and assumed Google would merge partial nodes — it doesn't reliably.
+  //       After deploy, GSC re-validation still found the issue: Google reads
+  //       `org.review.reviewRating` as an additional rating source on the same
+  //       entity that already has `aggregateRating`, triggering "Review has
+  //       multiple aggregate ratings".
+  //   v3 (this commit): drop the Review from structured data entirely. The
+  //       testimonial still renders in the visible page UI; only the rich-
+  //       snippet entry is removed. Image gallery + makesOffer stay because
+  //       neither competes with the org-level aggregateRating.
   const jsonLd: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'GeneralContractor',
@@ -234,25 +244,6 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       },
     },
   };
-
-  // Attach the project testimonial as a Review on the org entity, but only
-  // when we actually have one — avoids floating itemReviewed entities.
-  if (project.testimonial_text) {
-    jsonLd.review = {
-      '@type': 'Review',
-      reviewRating: {
-        '@type': 'Rating',
-        ratingValue: project.testimonial_rating || 5,
-        bestRating: 5,
-        worstRating: 1,
-      },
-      author: {
-        '@type': 'Person',
-        name: project.client_first_name || 'Verified Client',
-      },
-      reviewBody: project.testimonial_text,
-    };
-  }
 
   // Remove undefined values to ensure clean JSON-LD
   const cleanJsonLd = JSON.parse(JSON.stringify(jsonLd));
