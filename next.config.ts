@@ -77,17 +77,28 @@ const nextConfig: NextConfig = {
               // regressions. 'unsafe-inline' is already permitted above, so the marginal XSS
               // surface added by 'unsafe-eval' is small relative to the analytics breakage
               // it prevents. Revisit if/when Meta ships a CSP-strict pixel build.
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://api.ipify.org https://www.google.com https://www.gstatic.com https://www.recaptcha.net https://recaptcha.google.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms",
+              // Additional script-src hosts:
+              // - static.cloudflareinsights.com — CF Web Analytics beacon (Cloudflare auto-injects)
+              // - googleads.g.doubleclick.net — Google Ads viewthroughconversion script (AW-16788190390)
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://api.ipify.org https://www.google.com https://www.gstatic.com https://www.recaptcha.net https://recaptcha.google.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://static.cloudflareinsights.com https://googleads.g.doubleclick.net",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               // *.googleusercontent.com — reviewer avatar photos from Google Reviews (Testimonials component)
               // https://www.lavacagc.com — explicit host needed for the
               // /vaca-mgmt/send-estimate preview iframe: it uses sandbox="" + srcDoc,
               // which gives the iframe an opaque origin, so 'self' no longer
               // matches same-host URLs like /logo.png and /email/icons/*.png.
-              "img-src 'self' data: blob: https://www.lavacagc.com https://lavacagc.com https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://www.googletagmanager.com https://www.google.com https://www.gstatic.com https://*.googleusercontent.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://fonts.gstatic.com",
+              // Additional img-src hosts:
+              // - c.bing.com — Clarity ↔ Bing identity sync pixel
+              // - googleads.g.doubleclick.net — Google Ads conversion-tracking 1x1 img
+              "img-src 'self' data: blob: https://www.lavacagc.com https://lavacagc.com https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://www.googletagmanager.com https://www.google.com https://www.gstatic.com https://*.googleusercontent.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://fonts.gstatic.com https://c.bing.com https://googleads.g.doubleclick.net",
               "font-src 'self' https://fonts.gstatic.com https://r2cdn.perplexity.ai",
               "media-src 'self' https://xrvbrnrbnyfdwkfdoepq.supabase.co",
-              "connect-src 'self' data: blob: https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://www.googletagmanager.com https://api.ipify.org https://www.google.com https://www.recaptcha.net https://recaptcha.google.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms",
+              // Additional connect-src hosts:
+              // - *.a.run.app and *.on.aws — Meta Pixel's CAPI Lite event-ingestion endpoints
+              //   live on dynamically-routed Cloud Run / AWS App Runner instances (the exact
+              //   subdomain rotates per pixel + per session, so wildcards are unavoidable here).
+              //   Required for full Conversions API attribution to flow back to Meta Ads.
+              "connect-src 'self' data: blob: https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://www.googletagmanager.com https://api.ipify.org https://www.google.com https://www.recaptcha.net https://recaptcha.google.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://*.a.run.app https://*.on.aws",
               "worker-src 'self' blob:",
               "frame-src 'self' https://www.googletagmanager.com https://www.google.com https://www.recaptcha.net https://recaptcha.google.com",
               "frame-ancestors 'self'",
