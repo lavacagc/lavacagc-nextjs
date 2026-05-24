@@ -170,7 +170,9 @@ export default function About() {
 
               <div className="grid md:grid-cols-3 gap-8">
                 {values.map((value, index) => (
-                  <Card key={index} className="text-center hover:shadow-elegant transition-all duration-300">
+                  // No hover effect: these cards are pure content, not links
+                  // — see TeamMember.tsx for the same dead-click fix.
+                  <Card key={index} className="text-center">
                     <CardContent className="p-8">
                       <div className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
                         <value.icon className="h-8 w-8 text-primary" />

@@ -23,8 +23,12 @@ const TeamMember = ({
   imageUrl,
   priority = false
 }: TeamMemberProps) => {
+  // No hover/transition on the outer card: the only clickable targets inside
+  // are the email/phone links. A card-level hover effect was signalling
+  // whole-card interactivity that doesn't exist — root cause of the dead
+  // clicks on /about flagged in the 2026-05 SEO audit.
   return (
-    <Card className="overflow-hidden hover:shadow-elegant transition-all duration-300">
+    <Card className="overflow-hidden">
       <CardContent className="p-6">
         <div className="flex flex-col md:flex-row gap-6">
           {/* Profile Image */}
