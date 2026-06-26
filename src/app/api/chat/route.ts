@@ -5,6 +5,7 @@ import { createHash } from 'crypto';
 import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
 import { sendTelegramLead } from '@/lib/notify/telegramLead';
 import { createLeadFollowUpSequence } from '@/lib/notify/leadFollowUp';
+import { checkRateLimit as ipRateLimit, getClientIp } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -133,67 +134,14 @@ function hashIp(ip: string): string {
   return createHash('sha256').update(ip).digest('hex');
 }
 
-// Persistent rate limiting using Supabase (keyed on hashed IP)
-async function checkRateLimit(request: NextRequest): Promise<{ allowed: boolean; remaining: number; retryAfter?: number }> {
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    || request.headers.get('x-real-ip')
-    || 'unknown';
-  const ipHash = hashIp(ip);
-
-  const secretKey = process.env.SUPABASE_SECRET_KEY;
-  if (!secretKey) {
-    // Fail open if no secret key — log the issue but don't block users
-    console.error('SUPABASE_SECRET_KEY not configured for rate limiting');
-    return { allowed: true, remaining: RATE_LIMIT_MAX };
-  }
-
-  const adminClient = createClient(SUPABASE_URL, secretKey);
-  const now = new Date();
-  const windowStart = new Date(now.getTime() - RATE_LIMIT_WINDOW_MS);
-
-  try {
-    // Check existing rate limit entry
-    const { data: existing } = await adminClient
-      .from('rate_limits')
-      .select('*')
-      .eq('key', `chat:${ipHash}`)
-      .single();
-
-    if (!existing || new Date(existing.window_start) < windowStart) {
-      // No entry or expired window — create/reset
-      await adminClient
-        .from('rate_limits')
-        .upsert({
-          key: `chat:${ipHash}`,
-          count: 1,
-          window_start: now.toISOString(),
-          updated_at: now.toISOString(),
-        }, { onConflict: 'key' });
-
-      return { allowed: true, remaining: RATE_LIMIT_MAX - 1 };
-    }
-
-    if (existing.count >= RATE_LIMIT_MAX) {
-      const windowEnd = new Date(new Date(existing.window_start).getTime() + RATE_LIMIT_WINDOW_MS);
-      const retryAfter = Math.ceil((windowEnd.getTime() - now.getTime()) / 1000);
-      return { allowed: false, remaining: 0, retryAfter };
-    }
-
-    // Increment counter
-    await adminClient
-      .from('rate_limits')
-      .update({
-        count: existing.count + 1,
-        updated_at: now.toISOString(),
-      })
-      .eq('key', `chat:${ipHash}`);
-
-    return { allowed: true, remaining: RATE_LIMIT_MAX - existing.count - 1 };
-  } catch (err) {
-    console.error('Rate limit check failed:', err);
-    // Fail open on DB errors — don't block legitimate users
-    return { allowed: true, remaining: RATE_LIMIT_MAX };
-  }
+// Persistent rate limiting via the shared limiter (keyed on hashed IP). The
+// previous implementation queried a `key`/`window_start` schema that does not
+// exist on the live rate_limits table (columns: ip_address/count/last_reset),
+// so it errored and silently failed open — i.e. chat had no working rate limit.
+// Delegating to the shared helper fixes that against the real schema.
+async function checkRateLimit(request: NextRequest): Promise<{ allowed: boolean; retryAfter?: number }> {
+  const ip = getClientIp(request);
+  return ipRateLimit(`chat:${hashIp(ip)}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
 }
 
 // Detect contact info in messages

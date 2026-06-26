@@ -5,6 +5,7 @@ import { sendTelegramLead } from '@/lib/notify/telegramLead';
 import { sendNewLeadEmail } from '@/lib/notify/newLeadEmail';
 import { sendFormFailureAlert, FormErrorAlertPayload } from '@/lib/notify/formErrorAlert';
 import { createLeadFollowUpSequence } from '@/lib/notify/leadFollowUp';
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,46 +73,11 @@ const LeadSubmitSchema = z
 
 // Per-IP rate limit on the lead-submit endpoint. Protects the expensive
 // downstream (reCAPTCHA Enterprise, Supabase, Resend, Telegram) from scripted
-// abuse on top of the reCAPTCHA gate. Backed by a Supabase RPC — no new infra
-// or secret. FAILS OPEN: if the limiter backend errors or isn't provisioned
-// yet, allow the request rather than block a real customer. Rate limiting here
-// is availability-protective, not an authorization gate, so open is the safe
-// failure mode.
+// abuse on top of the reCAPTCHA gate. Uses the shared limiter backed by the
+// existing public.rate_limits table — no new infra, secret, or migration. Fails
+// open (see src/lib/rateLimit.ts).
 const RATE_LIMIT_MAX = 5; // submissions per window, per IP
 const RATE_LIMIT_WINDOW_SECONDS = 60;
-
-function getClientIp(request: NextRequest): string {
-  const xff = request.headers.get('x-forwarded-for');
-  if (xff) return xff.split(',')[0].trim();
-  return request.headers.get('x-real-ip') || 'unknown';
-}
-
-async function isRateLimited(key: string): Promise<boolean> {
-  const secretKey = process.env.SUPABASE_SECRET_KEY;
-  if (!secretKey) return false; // fail open
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/check_rate_limit`, {
-      method: 'POST',
-      headers: {
-        'apikey': secretKey,
-        'Authorization': `Bearer ${secretKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        p_key: key,
-        p_limit: RATE_LIMIT_MAX,
-        p_window_seconds: RATE_LIMIT_WINDOW_SECONDS,
-      }),
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!res.ok) return false; // fail open (e.g. RPC not provisioned yet)
-    const allowed = await res.json(); // boolean: true = allowed
-    return allowed === false;
-  } catch (err) {
-    console.error('rate-limit check failed (allowing request):', err);
-    return false; // fail open
-  }
-}
 
 // reCAPTCHA outcome reason:
 //  - 'ok'        : token valid, action matched, score >= threshold → accept
@@ -311,10 +277,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Throttle per IP before doing any expensive downstream work.
-    if (await isRateLimited(`lead-submit:${getClientIp(request)}`)) {
+    const rl = await checkRateLimit(
+      `lead-submit:${getClientIp(request)}`,
+      RATE_LIMIT_MAX,
+      RATE_LIMIT_WINDOW_SECONDS * 1000
+    );
+    if (!rl.allowed) {
       return NextResponse.json(
         { error: 'Too many requests' },
-        { status: 429, headers: { 'Retry-After': String(RATE_LIMIT_WINDOW_SECONDS) } }
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfter ?? RATE_LIMIT_WINDOW_SECONDS) } }
       );
     }
 
