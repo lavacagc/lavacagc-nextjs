@@ -33,7 +33,9 @@ async function getServices(): Promise<Service[]> {
     .order('sort_order');
 
   if (error) {
-    console.error('Error fetching services:', error);
+    // Non-fatal: the section renders empty if services can't be loaded. Warn,
+    // not error, so a data-source outage doesn't read as a critical page error.
+    console.warn('Services: could not load services (non-fatal):', error);
     return [];
   }
 
