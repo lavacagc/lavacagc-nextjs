@@ -45,6 +45,7 @@ const LeadSubmitSchema = z
   .object({
     recaptchaToken: optStr(5000),
     recaptchaAction: optStr(100),
+    recaptchaV2Token: optStr(5000),
     honeypot: optStr(500),
     first_name: optStr(200),
     last_name: optStr(200),
@@ -112,11 +113,25 @@ async function isRateLimited(key: string): Promise<boolean> {
   }
 }
 
-async function verifyRecaptcha(token: string, expectedAction: string): Promise<{ success: boolean; score: number }> {
+// reCAPTCHA outcome reason:
+//  - 'ok'        : token valid, action matched, score >= threshold → accept
+//  - 'low_score' : token VALID but score below threshold → may be a real user
+//                  having a bad day; offer a v2 checkbox challenge instead of a
+//                  hard block (only if v2 is configured).
+//  - 'invalid'   : token invalid / action mismatch → almost certainly a bot;
+//                  hard fail, no challenge.
+//  - 'error'     : verification couldn't run (no secret, upstream error) →
+//                  fail closed, no challenge.
+type RecaptchaReason = 'ok' | 'low_score' | 'invalid' | 'error';
+
+async function verifyRecaptcha(
+  token: string,
+  expectedAction: string
+): Promise<{ success: boolean; score: number; reason: RecaptchaReason }> {
   const secretKey = process.env.RECAPTCHA_SECRET_KEY;
   if (!secretKey) {
     console.error('RECAPTCHA_SECRET_KEY not configured');
-    return { success: false, score: 0 };
+    return { success: false, score: 0, reason: 'error' };
   }
 
   const minScore = getMinRecaptchaScore();
@@ -152,10 +167,10 @@ async function verifyRecaptcha(token: string, expectedAction: string): Promise<{
         }
       );
       const v3Data = await v3Res.json();
-      return {
-        success: v3Data.success && (v3Data.score ?? 0) >= minScore,
-        score: v3Data.score ?? 0,
-      };
+      const score = v3Data.score ?? 0;
+      if (!v3Data.success) return { success: false, score, reason: 'invalid' };
+      if (score >= minScore) return { success: true, score, reason: 'ok' };
+      return { success: false, score, reason: 'low_score' };
     }
 
     const data = await res.json();
@@ -163,13 +178,47 @@ async function verifyRecaptcha(token: string, expectedAction: string): Promise<{
     const actionMatch = data.tokenProperties?.action === expectedAction;
     const valid = data.tokenProperties?.valid === true;
 
-    return {
-      success: valid && actionMatch && score >= minScore,
-      score,
-    };
+    if (!valid || !actionMatch) return { success: false, score, reason: 'invalid' };
+    if (score >= minScore) return { success: true, score, reason: 'ok' };
+    return { success: false, score, reason: 'low_score' };
   } catch (err) {
     console.error('reCAPTCHA verification error:', err);
-    return { success: false, score: 0 };
+    return { success: false, score: 0, reason: 'error' };
+  }
+}
+
+// Whether the v2 checkbox fallback is available. Requires a v2 (checkbox)
+// Enterprise site key plus the GCP API key used for assessments. When unset,
+// the endpoint behaves exactly as before (low scores hard-fail) — so this
+// feature can ship before the key is created.
+function isRecaptchaV2Configured(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_RECAPTCHA_V2_SITE_KEY && process.env.RECAPTCHA_SECRET_KEY);
+}
+
+// Verify a v2 "I'm not a robot" checkbox token via the Enterprise assessments
+// API (reuses the existing GCP API key). Checkbox keys are score-less — a valid
+// token means a human cleared the challenge. Fails CLOSED: any error or missing
+// config returns false, so a misconfiguration never lets a bot through.
+async function verifyRecaptchaV2(token: string): Promise<boolean> {
+  const secretKey = process.env.RECAPTCHA_SECRET_KEY;
+  const v2SiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_V2_SITE_KEY;
+  if (!secretKey || !v2SiteKey) return false;
+  try {
+    const res = await fetch(
+      `https://recaptchaenterprise.googleapis.com/v1/projects/${process.env.RECAPTCHA_PROJECT_ID || 'lavaca-gc'}/assessments?key=${secretKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: { token, siteKey: v2SiteKey } }),
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.tokenProperties?.valid === true;
+  } catch (err) {
+    console.error('reCAPTCHA v2 verification error:', err);
+    return false;
   }
 }
 
@@ -242,9 +291,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
 
-    const { recaptchaToken, recaptchaAction, honeypot, ...leadFields } = parsed.data as {
+    const { recaptchaToken, recaptchaAction, recaptchaV2Token, honeypot, ...leadFields } = parsed.data as {
       recaptchaToken?: string;
       recaptchaAction?: string;
+      recaptchaV2Token?: string;
       honeypot?: string;
       [key: string]: unknown;
     };
@@ -268,7 +318,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!recaptchaToken || !recaptchaAction) {
+    // A v2-challenge re-submit carries recaptchaV2Token instead of a fresh v3
+    // token/action, so only require the v3 envelope when no v2 token is present.
+    if (!recaptchaV2Token && (!recaptchaToken || !recaptchaAction)) {
       await reportFailure({
         stage: 'validation',
         source: sourceForError,
@@ -294,27 +346,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const recaptchaResult = await verifyRecaptcha(recaptchaToken, recaptchaAction);
-    console.log(`reCAPTCHA verification: action=${recaptchaAction}, score=${recaptchaResult.score}, success=${recaptchaResult.success}`);
+    // reCAPTCHA gate. Two paths:
+    //  (a) v2-challenge re-submit: the user already cleared a checkbox — verify
+    //      that token and, if valid, accept (the human check stands in for the
+    //      low v3 score).
+    //  (b) normal v3 submit: on a LOW score (valid token, just under the bar)
+    //      and when v2 is configured, ask the client to show the checkbox
+    //      instead of hard-blocking a possible real customer. Invalid tokens or
+    //      a missing v2 key still hard-fail.
+    if (recaptchaV2Token) {
+      const v2Ok = await verifyRecaptchaV2(recaptchaV2Token);
+      console.log(`reCAPTCHA v2 checkbox verification: success=${v2Ok}`);
+      if (!v2Ok) {
+        await reportFailure({
+          stage: 'recaptcha',
+          source: sourceForError,
+          message: 'reCAPTCHA v2 checkbox verification failed',
+          details: { hint: 'v2 token invalid/expired, or v2 key misconfigured.' },
+          lead: leadContext,
+        });
+        return NextResponse.json(
+          { error: 'reCAPTCHA verification failed' },
+          { status: 403 }
+        );
+      }
+    } else {
+      const recaptchaResult = await verifyRecaptcha(recaptchaToken!, recaptchaAction!);
+      console.log(`reCAPTCHA verification: action=${recaptchaAction}, score=${recaptchaResult.score}, success=${recaptchaResult.success}, reason=${recaptchaResult.reason}`);
 
-    if (!recaptchaResult.success) {
-      await reportFailure({
-        stage: 'recaptcha',
-        source: sourceForError,
-        message: `reCAPTCHA verification failed (score=${recaptchaResult.score})`,
-        details: {
-          action: recaptchaAction,
-          score: recaptchaResult.score,
-          hint: !process.env.RECAPTCHA_SECRET_KEY
-            ? 'RECAPTCHA_SECRET_KEY is not set — every submission will fail until it is configured.'
-            : 'Score below 0.5 or token invalid. Check reCAPTCHA console + siteKey/action match.',
-        },
-        lead: leadContext,
-      });
-      return NextResponse.json(
-        { error: 'reCAPTCHA verification failed' },
-        { status: 403 }
-      );
+      if (!recaptchaResult.success) {
+        // Low score + v2 available → offer the checkbox. Do NOT save or notify;
+        // the client will re-submit with a v2 token.
+        if (recaptchaResult.reason === 'low_score' && isRecaptchaV2Configured()) {
+          return NextResponse.json({ challenge: 'recaptcha_v2' }, { status: 200 });
+        }
+        await reportFailure({
+          stage: 'recaptcha',
+          source: sourceForError,
+          message: `reCAPTCHA verification failed (score=${recaptchaResult.score}, reason=${recaptchaResult.reason})`,
+          details: {
+            action: recaptchaAction,
+            score: recaptchaResult.score,
+            reason: recaptchaResult.reason,
+            hint: !process.env.RECAPTCHA_SECRET_KEY
+              ? 'RECAPTCHA_SECRET_KEY is not set — every submission will fail until it is configured.'
+              : 'Score below threshold or token invalid. Check reCAPTCHA console + siteKey/action match.',
+          },
+          lead: leadContext,
+        });
+        return NextResponse.json(
+          { error: 'reCAPTCHA verification failed' },
+          { status: 403 }
+        );
+      }
     }
 
     let finalLeadData = { ...leadFields };

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { CheckCircle, Info, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { RECAPTCHA_SITE_KEY } from "@/lib/recaptcha-config";
+import { useRecaptchaChallenge } from "@/components/recaptcha/RecaptchaChallengeProvider";
+import { submitLead } from "@/lib/submitLead";
 import {
   COMMERCIAL_INTEREST_OPTIONS,
   HOME_INTEREST_OPTIONS,
@@ -68,6 +70,7 @@ interface FormState {
 
 export default function RequestEstimateForm() {
   const { toast } = useToast();
+  const { requestChallenge } = useRecaptchaChallenge();
   const [state, setState] = useState<FormState>({
     name: "",
     phone: "",
@@ -215,36 +218,44 @@ export default function RequestEstimateForm() {
         .filter(Boolean)
         .join("\n");
 
-      const res = await fetch("/api/leads/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          first_name: firstName,
-          last_name: lastName,
-          email: state.email.trim(),
-          phone: state.phone.trim(),
-          city: state.town.trim(),
-          // The leads table enforces CHECK constraints on these columns.
-          // Send the enum values the table accepts (mirroring the other lead
-          // forms); the human-readable property type, services, and timing
-          // are preserved verbatim in `message` above so nothing is lost.
-          project_type: "other",
-          inquiry_type: "estimate",
-          source: "services_intake_form",
-          preferred_contact_method: "phone",
-          project_timeline: TIMING_TO_TIMELINE[state.timing] ?? "planning",
-          contact_time_preference: callWindow?.value ?? "anytime",
-          contact_timezone: "America/New_York",
-          message,
-          recaptchaToken,
-          recaptchaAction: "services_intake",
-          honeypot: state.website,
-        }),
-      });
+      const payload = {
+        first_name: firstName,
+        last_name: lastName,
+        email: state.email.trim(),
+        phone: state.phone.trim(),
+        city: state.town.trim(),
+        // The leads table enforces CHECK constraints on these columns.
+        // Send the enum values the table accepts (mirroring the other lead
+        // forms); the human-readable property type, services, and timing
+        // are preserved verbatim in `message` above so nothing is lost.
+        project_type: "other",
+        inquiry_type: "estimate",
+        source: "services_intake_form",
+        preferred_contact_method: "phone",
+        project_timeline: TIMING_TO_TIMELINE[state.timing] ?? "planning",
+        contact_time_preference: callWindow?.value ?? "anytime",
+        contact_timezone: "America/New_York",
+        message,
+        recaptchaToken,
+        recaptchaAction: "services_intake",
+        honeypot: state.website,
+      };
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to submit");
+      // submitLead transparently handles the reCAPTCHA v2 checkbox fallback if
+      // the v3 score comes back too low.
+      const result = await submitLead(payload, requestChallenge);
+      if (!result.ok) {
+        if (result.cancelled) {
+          toast({
+            title: "Verification needed",
+            description:
+              "Please complete the checkbox to send your request, or call us at (201) 212-4917.",
+            variant: "destructive",
+          });
+          setSubmitting(false);
+          return;
+        }
+        throw new Error(result.error);
       }
 
       if (typeof window !== "undefined" && typeof window.fbq === "function") {

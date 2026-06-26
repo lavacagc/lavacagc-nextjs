@@ -27,13 +27,20 @@ test.describe('RequestEstimateForm — leads enum conformance', () => {
     // Block the real reCAPTCHA script so our stub survives.
     await page.route(/recaptcha|gstatic\.com\/recaptcha/, (route) => route.abort());
 
-    // Stub window.grecaptcha so executeRecaptcha() resolves a token offline.
+    // Stub window.grecaptcha so v3 execute() and the v2 checkbox render()
+    // resolve offline. render() immediately fires its callback with a fake v2
+    // token, simulating a user clearing the checkbox.
     await page.addInitScript(() => {
       // @ts-expect-error - runtime stub
       window.grecaptcha = {
         enterprise: {
           ready: (cb: () => void) => cb(),
           execute: async () => 'test-recaptcha-token',
+          render: (_container: HTMLElement, params: { callback?: (t: string) => void }) => {
+            setTimeout(() => params.callback && params.callback('test-v2-token'), 0);
+            return 1;
+          },
+          reset: () => {},
         },
       };
     });
@@ -84,6 +91,40 @@ test.describe('RequestEstimateForm — leads enum conformance', () => {
     expect(body!.recaptchaToken).toBeTruthy();
     // Detail is preserved in the free-text message, not lost.
     expect(String(body!.message)).toContain('This month');
+  });
+
+  test('AC5: low v3 score -> v2 checkbox challenge -> re-submit carries v2 token', async ({ page }) => {
+    await page.goto('/request-estimate');
+
+    const bodies: Array<Record<string, unknown>> = [];
+    await page.route('**/api/leads/submit', async (route: Route) => {
+      bodies.push(route.request().postDataJSON());
+      if (bodies.length === 1) {
+        // Server signals: v3 score too low, show the checkbox.
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ challenge: 'recaptcha_v2' }),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true }),
+        });
+      }
+    });
+
+    await fillValid(page);
+    await page.getByRole('button', { name: /request availability/i }).click();
+
+    await expect(page.getByText('Request received.')).toBeVisible({ timeout: 15000 });
+    expect(bodies.length).toBe(2);
+    expect(bodies[0].recaptchaV2Token).toBeUndefined();
+    expect(bodies[1].recaptchaV2Token).toBe('test-v2-token');
+    // The original lead data is preserved on the re-submit.
+    expect(bodies[1].first_name).toBe('Test');
+    expect(bodies[1].project_timeline).toBe('1-3months');
   });
 
   test('AC4: honeypot filled -> no submit call, success shown', async ({ page }) => {

@@ -16,6 +16,7 @@ import StickyCTA from '@/components/StickyCTA'
 import SectionTracker from '@/components/SectionTracker'
 import VisitorTracker from '@/components/VisitorTracker'
 import SmartBanner from '@/components/SmartBanner'
+import { RecaptchaChallengeProvider } from '@/components/recaptcha/RecaptchaChallengeProvider'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -140,18 +141,20 @@ export default function RootLayout({
         </a>
         <Providers>
           <TooltipProvider>
-            <Analytics />
-            {children}
-            <Toaster />
-            <Sonner />
-            <CookieConsent />
-            <ChatWidget />
-            <ReviewToast />
-            <ClientLeadGenWidgets />
-            <StickyCTA />
-            <SectionTracker />
-            <VisitorTracker />
-            <SmartBanner />
+            <RecaptchaChallengeProvider>
+              <Analytics />
+              {children}
+              <Toaster />
+              <Sonner />
+              <CookieConsent />
+              <ChatWidget />
+              <ReviewToast />
+              <ClientLeadGenWidgets />
+              <StickyCTA />
+              <SectionTracker />
+              <VisitorTracker />
+              <SmartBanner />
+            </RecaptchaChallengeProvider>
           </TooltipProvider>
         </Providers>
       </body>

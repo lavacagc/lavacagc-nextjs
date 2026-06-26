@@ -7,6 +7,17 @@ declare global {
       enterprise?: {
         ready: (callback: () => void) => void;
         execute: (siteKey: string, options: { action: string }) => Promise<string>;
+        // v2 checkbox (explicit render) — used by the low-score fallback.
+        render?: (
+          container: HTMLElement,
+          params: {
+            sitekey: string;
+            callback?: (token: string) => void;
+            "expired-callback"?: () => void;
+            "error-callback"?: () => void;
+          }
+        ) => number;
+        reset?: (widgetId?: number) => void;
       };
     };
   }

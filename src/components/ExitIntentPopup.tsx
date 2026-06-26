@@ -10,6 +10,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Phone, X } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
+import { useRecaptchaChallenge } from '@/components/recaptcha/RecaptchaChallengeProvider';
+import { submitLead } from '@/lib/submitLead';
 
 const ExitIntentPopup = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -26,6 +28,7 @@ const ExitIntentPopup = () => {
     projectType: '',
   });
   const { toast } = useToast();
+  const { requestChallenge } = useRecaptchaChallenge();
   const pathname = usePathname();
 
   // Check if current page should show the popup
@@ -121,26 +124,25 @@ const ExitIntentPopup = () => {
       const firstName = nameParts[0];
       const lastName = nameParts.slice(1).join(' ') || firstName;
 
-      const submitRes = await fetch('/api/leads/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          first_name: firstName,
-          last_name: lastName,
-          phone: formData.phone,
-          email: '',
-          inquiry_type: 'exit_intent',
-          project_type: formData.projectType,
-          message: `Exit intent popup - ${formData.projectType} project`,
-          source: 'exit_intent',
-          recaptchaToken: 'exit_intent_bypass',
-          recaptchaAction: 'exit_intent',
-        }),
-      });
+      const submitResult = await submitLead({
+        first_name: firstName,
+        last_name: lastName,
+        phone: formData.phone,
+        email: '',
+        inquiry_type: 'exit_intent',
+        project_type: formData.projectType,
+        message: `Exit intent popup - ${formData.projectType} project`,
+        source: 'exit_intent',
+        recaptchaToken: 'exit_intent_bypass',
+        recaptchaAction: 'exit_intent',
+      }, requestChallenge);
 
-      if (!submitRes.ok) {
-        const errorData = await submitRes.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to submit');
+      if (!submitResult.ok) {
+        if (submitResult.cancelled) {
+          toast({ title: 'Verification needed', description: "Please complete the checkbox to send your request, or call us at (201) 212-4917.", variant: 'destructive' });
+          return;
+        }
+        throw new Error(submitResult.error || 'Failed to submit');
       }
 
       toast({
