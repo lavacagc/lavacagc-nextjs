@@ -107,6 +107,9 @@ export async function sendTelegramLead(payload: TelegramLeadPayload): Promise<Te
         parse_mode: 'HTML',
         disable_web_page_preview: true,
       }),
+      // Explicit outbound timeout so a slow/hung Telegram API can't keep the
+      // socket open past the caller's race cap and leak a pending request.
+      signal: AbortSignal.timeout(6000),
     });
 
     const result = await response.json();

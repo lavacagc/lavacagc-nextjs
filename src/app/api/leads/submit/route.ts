@@ -20,12 +20,23 @@ async function reportFailure(payload: FormErrorAlertPayload): Promise<void> {
   }
 }
 
+// Minimum reCAPTCHA score (0.0–1.0) required to accept a submission.
+// Configurable via RECAPTCHA_MIN_SCORE so the threshold can be tuned without a
+// redeploy. Fail-closed: any unset/out-of-range/malformed value falls back to
+// 0.5 rather than silently accepting everything.
+function getMinRecaptchaScore(): number {
+  const n = Number(process.env.RECAPTCHA_MIN_SCORE);
+  return Number.isFinite(n) && n >= 0 && n <= 1 ? n : 0.5;
+}
+
 async function verifyRecaptcha(token: string, expectedAction: string): Promise<{ success: boolean; score: number }> {
   const secretKey = process.env.RECAPTCHA_SECRET_KEY;
   if (!secretKey) {
     console.error('RECAPTCHA_SECRET_KEY not configured');
     return { success: false, score: 0 };
   }
+
+  const minScore = getMinRecaptchaScore();
 
   try {
     const res = await fetch(
@@ -40,6 +51,7 @@ async function verifyRecaptcha(token: string, expectedAction: string): Promise<{
             expectedAction,
           },
         }),
+        signal: AbortSignal.timeout(8000),
       }
     );
 
@@ -53,11 +65,12 @@ async function verifyRecaptcha(token: string, expectedAction: string): Promise<{
             secret: secretKey,
             response: token,
           }),
+          signal: AbortSignal.timeout(8000),
         }
       );
       const v3Data = await v3Res.json();
       return {
-        success: v3Data.success && (v3Data.score ?? 0) >= 0.5,
+        success: v3Data.success && (v3Data.score ?? 0) >= minScore,
         score: v3Data.score ?? 0,
       };
     }
@@ -68,7 +81,7 @@ async function verifyRecaptcha(token: string, expectedAction: string): Promise<{
     const valid = data.tokenProperties?.valid === true;
 
     return {
-      success: valid && actionMatch && score >= 0.5,
+      success: valid && actionMatch && score >= minScore,
       score,
     };
   } catch (err) {
@@ -93,6 +106,8 @@ async function insertLead(leadData: Record<string, unknown>): Promise<{ data: Re
         'Prefer': 'return=representation',
       },
       body: JSON.stringify(leadData),
+      // Explicit timeout: a hung Supabase request must not stall the response.
+      signal: AbortSignal.timeout(8000),
     });
 
     if (!res.ok) {
@@ -260,7 +275,7 @@ export async function POST(request: NextRequest) {
           contactTimeDetails,
           contactTimezone,
         }),
-        4000,
+        6000,
         'telegram-lead'
       ).catch((err) => {
         console.error('telegram-lead notify threw:', err);
