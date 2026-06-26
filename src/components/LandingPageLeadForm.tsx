@@ -10,6 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import Link from 'next/link'
 import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config'
 import { ContactTimePicker, type ContactTimePreference } from '@/components/forms/ContactTimePicker'
+import { useRecaptchaChallenge } from '@/components/recaptcha/RecaptchaChallengeProvider'
+import { submitLead } from '@/lib/submitLead'
 
 interface LandingPageLeadFormProps {
   source: string
@@ -53,6 +55,7 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const { toast } = useToast()
+  const { requestChallenge } = useRecaptchaChallenge()
 
   // Lazy-load reCAPTCHA on first form interaction (matches ContactForm/EstimateForm pattern)
   useEffect(() => {
@@ -158,33 +161,32 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
       const lastName = nameParts.slice(1).join(' ') || ''
 
       // Submit via server-side API (handles scoring, DB insert, and notifications)
-      const submitRes = await fetch('/api/leads/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          first_name: firstName,
-          last_name: lastName,
-          email: formData.email.trim(),
-          phone: formData.phone.trim(),
-          zip_code: formData.zipCode.trim(),
-          inquiry_type: 'estimate',
-          project_type: projectType,
-          source,
-          preferred_contact_method: 'phone',
-          contact_time_preference: formData.contactTimePreference,
-          contact_time_details: formData.contactTimePreference === 'specific'
-            ? formData.contactTimeDetails.trim()
-            : null,
-          contact_timezone: formData.contactTimezone,
-          recaptchaToken,
-          recaptchaAction: 'landing_page',
-          honeypot: formData.website,
-        }),
-      })
+      const submitResult = await submitLead({
+        first_name: firstName,
+        last_name: lastName,
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        zip_code: formData.zipCode.trim(),
+        inquiry_type: 'estimate',
+        project_type: projectType,
+        source,
+        preferred_contact_method: 'phone',
+        contact_time_preference: formData.contactTimePreference,
+        contact_time_details: formData.contactTimePreference === 'specific'
+          ? formData.contactTimeDetails.trim()
+          : null,
+        contact_timezone: formData.contactTimezone,
+        recaptchaToken,
+        recaptchaAction: 'landing_page',
+        honeypot: formData.website,
+      }, requestChallenge)
 
-      if (!submitRes.ok) {
-        const errorData = await submitRes.json().catch(() => ({}))
-        throw new Error(errorData.error || 'Failed to submit')
+      if (!submitResult.ok) {
+        if (submitResult.cancelled) {
+          toast({ title: 'Verification needed', description: "Please complete the checkbox to send your request, or call us at (201) 212-4917.", variant: 'destructive' })
+          return
+        }
+        throw new Error(submitResult.error || 'Failed to submit')
       }
 
       // Track Facebook Pixel conversion

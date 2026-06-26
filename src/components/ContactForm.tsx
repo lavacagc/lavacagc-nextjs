@@ -19,6 +19,8 @@ import Link from "next/link";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 import { getVisitorData } from '@/hooks/useVisitor';
 import { ContactTimePicker, type ContactTimePreference } from "@/components/forms/ContactTimePicker";
+import { useRecaptchaChallenge } from "@/components/recaptcha/RecaptchaChallengeProvider";
+import { submitLead } from "@/lib/submitLead";
 
 interface ContactFormData {
   firstName: string;
@@ -86,6 +88,7 @@ const ContactForm = () => {
   const [lastFocusedField, setLastFocusedField] = useState('');
   const [focusedFields] = useState(new Set<string>());
   const { toast } = useToast();
+  const { requestChallenge } = useRecaptchaChallenge();
 
   // Track form abandonment on unmount
   useEffect(() => {
@@ -253,20 +256,19 @@ const ContactForm = () => {
       };
 
       // Submit via server-side API (handles reCAPTCHA verification, scoring, DB insert, and notifications)
-      const submitRes = await fetch('/api/leads/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...leadData,
-          recaptchaToken,
-          recaptchaAction: 'contact_form',
-          honeypot,
-        }),
-      });
+      const submitResult = await submitLead({
+        ...leadData,
+        recaptchaToken,
+        recaptchaAction: 'contact_form',
+        honeypot,
+      }, requestChallenge);
 
-      if (!submitRes.ok) {
-        const errorData = await submitRes.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to submit lead');
+      if (!submitResult.ok) {
+        if (submitResult.cancelled) {
+          toast({ title: 'Verification needed', description: "Please complete the checkbox to send your request, or call us at (201) 212-4917.", variant: 'destructive' });
+          return;
+        }
+        throw new Error(submitResult.error || 'Failed to submit');
       }
 
       // Send email notification via Edge Function (reCAPTCHA already verified server-side)

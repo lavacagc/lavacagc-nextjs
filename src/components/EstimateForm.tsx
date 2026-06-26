@@ -17,6 +17,8 @@ import { trackEstimateRequest } from '@/components/Analytics';
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import { ContactTimePicker, type ContactTimePreference } from "@/components/forms/ContactTimePicker";
+import { useRecaptchaChallenge } from "@/components/recaptcha/RecaptchaChallengeProvider";
+import { submitLead } from "@/lib/submitLead";
 
 interface EstimateFormData {
   firstName: string;
@@ -110,6 +112,7 @@ const EstimateForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof EstimateFormData, string>>>({});
   const { toast } = useToast();
+  const { requestChallenge } = useRecaptchaChallenge();
 
   // Load reCAPTCHA only when user interacts with form
   useEffect(() => {
@@ -317,19 +320,18 @@ const EstimateForm = () => {
       };
 
       // Submit via server-side API (handles reCAPTCHA verification, scoring, DB insert, and notifications)
-      const submitRes = await fetch('/api/leads/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...sanitizedData,
-          recaptchaToken,
-          recaptchaAction: 'estimate_request',
-        }),
-      });
+      const submitResult = await submitLead({
+        ...sanitizedData,
+        recaptchaToken,
+        recaptchaAction: 'estimate_request',
+      }, requestChallenge);
 
-      if (!submitRes.ok) {
-        const errorData = await submitRes.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to submit estimate request');
+      if (!submitResult.ok) {
+        if (submitResult.cancelled) {
+          toast({ title: 'Verification needed', description: "Please complete the checkbox to send your request, or call us at (201) 212-4917.", variant: 'destructive' });
+          return;
+        }
+        throw new Error(submitResult.error || 'Failed to submit');
       }
 
       // Log consent

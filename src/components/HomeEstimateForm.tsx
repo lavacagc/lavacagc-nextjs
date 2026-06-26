@@ -16,6 +16,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 import { ContactTimePicker, type ContactTimePreference } from "@/components/forms/ContactTimePicker";
+import { useRecaptchaChallenge } from "@/components/recaptcha/RecaptchaChallengeProvider";
+import { submitLead } from "@/lib/submitLead";
 
 interface QuickEstimateData {
   firstName: string;
@@ -84,6 +86,7 @@ const HomeEstimateForm = () => {
   });
   const [errors, setErrors] = useState<Partial<Record<keyof QuickEstimateData, string>>>({});
   const { toast } = useToast();
+  const { requestChallenge } = useRecaptchaChallenge();
 
   // Load reCAPTCHA only when user interacts with form
   useEffect(() => {
@@ -238,33 +241,32 @@ const HomeEstimateForm = () => {
       }
 
       // Submit via server-side API (handles reCAPTCHA verification, scoring, DB insert, and notifications)
-      const submitRes = await fetch('/api/leads/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          first_name: formData.firstName,
-          last_name: formData.lastName,
-          email: formData.email,
-          phone: formData.phone,
-          zip_code: formData.zipCode,
-          inquiry_type: 'estimate',
-          project_type: formData.projectType,
-          budget_range: formData.budgetRange,
-          project_timeline: 'asap',
-          preferred_contact_method: 'phone',
-          source: 'home_estimate_form',
-          contact_time_preference: formData.contactTimePreference,
-          contact_time_details: formData.contactTimePreference === 'specific' ? formData.contactTimeDetails : null,
-          contact_timezone: formData.contactTimezone,
-          recaptchaToken,
-          recaptchaAction: 'estimate_request',
-          honeypot,
-        }),
-      });
+      const submitResult = await submitLead({
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        zip_code: formData.zipCode,
+        inquiry_type: 'estimate',
+        project_type: formData.projectType,
+        budget_range: formData.budgetRange,
+        project_timeline: 'asap',
+        preferred_contact_method: 'phone',
+        source: 'home_estimate_form',
+        contact_time_preference: formData.contactTimePreference,
+        contact_time_details: formData.contactTimePreference === 'specific' ? formData.contactTimeDetails : null,
+        contact_timezone: formData.contactTimezone,
+        recaptchaToken,
+        recaptchaAction: 'estimate_request',
+        honeypot,
+      }, requestChallenge);
 
-      if (!submitRes.ok) {
-        const errorData = await submitRes.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to submit estimate request');
+      if (!submitResult.ok) {
+        if (submitResult.cancelled) {
+          toast({ title: 'Verification needed', description: "Please complete the checkbox to send your request, or call us at (201) 212-4917.", variant: 'destructive' });
+          return;
+        }
+        throw new Error(submitResult.error || 'Failed to submit');
       }
 
       // Log consent
