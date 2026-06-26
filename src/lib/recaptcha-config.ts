@@ -17,3 +17,8 @@ reCAPTCHA v3 benefits:
 */
 
 export const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "";
+
+// reCAPTCHA Enterprise "checkbox" (v2) site key, used only for the fallback
+// challenge shown when a v3 score is too low. Empty string disables the
+// fallback (server degrades to hard-fail on low scores).
+export const RECAPTCHA_V2_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_V2_SITE_KEY || "";
