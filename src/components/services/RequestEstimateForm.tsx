@@ -25,6 +25,19 @@ const TIMING_OPTIONS: Timing[] = [
   "Flexible / planning ahead",
 ];
 
+// Maps the prototype's human-readable timing to the `project_timeline`
+// enum the leads table accepts. Sending the raw sentence (e.g. "Soonest
+// available opening") trips a Postgres CHECK constraint (23514) and the
+// row is rejected — the lead is lost. The full sentence is still kept
+// verbatim in the `message` body for the owner to read.
+const TIMING_TO_TIMELINE: Record<Timing, string> = {
+  "Soonest available opening": "asap",
+  "Within 2 weeks": "asap",
+  "This month": "1-3months",
+  "Next 1–2 months": "1-3months",
+  "Flexible / planning ahead": "planning",
+};
+
 // Maps the prototype's call-window options to the existing
 // `contact_time_preference` enum values used by the leads pipeline.
 const CALL_WINDOWS: Array<{
@@ -211,11 +224,15 @@ export default function RequestEstimateForm() {
           email: state.email.trim(),
           phone: state.phone.trim(),
           city: state.town.trim(),
-          project_type: projectType,
-          inquiry_type: "services_intake",
+          // The leads table enforces CHECK constraints on these columns.
+          // Send the enum values the table accepts (mirroring the other lead
+          // forms); the human-readable property type, services, and timing
+          // are preserved verbatim in `message` above so nothing is lost.
+          project_type: "other",
+          inquiry_type: "estimate",
           source: "services_intake_form",
           preferred_contact_method: "phone",
-          project_timeline: state.timing,
+          project_timeline: TIMING_TO_TIMELINE[state.timing] ?? "planning",
           contact_time_preference: callWindow?.value ?? "anytime",
           contact_timezone: "America/New_York",
           message,
