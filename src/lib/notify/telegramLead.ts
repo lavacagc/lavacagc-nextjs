@@ -20,6 +20,14 @@ export interface TelegramLeadPayload {
   contactTimezone?: string;
 }
 
+// Telegram parse_mode:'HTML' requires &, <, > in text to be escaped. A stray
+// character in user-supplied data otherwise breaks parsing (the API rejects the
+// whole message with 400, so the lead alert silently fails) or injects markup.
+// Escape every user-controlled value before interpolating it.
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 export interface TelegramLeadResult {
   status: 'sent' | 'skipped' | 'failed' | 'error';
   reason?: string;
@@ -72,27 +80,27 @@ export async function sendTelegramLead(payload: TelegramLeadPayload): Promise<Te
   const lines = [
     `${tierEmoji} <b>New ${tier?.toUpperCase() || 'LEAD'} Lead!</b>`,
     '',
-    `👤 <b>Name:</b> ${name || 'Not provided'}`,
+    `👤 <b>Name:</b> ${name ? esc(name) : 'Not provided'}`,
   ];
-  if (phone) lines.push(`📱 <b>Phone:</b> <code>${phone}</code>`);
+  if (phone) lines.push(`📱 <b>Phone:</b> <code>${esc(phone)}</code>`);
   // Best-time line sits right under the phone number — it's the single most
   // decision-relevant field for whether to call *now* vs later.
   const timeLabel = formatContactTime(contactTimePreference);
   if (timeLabel) {
     const tzFlag = isTimezoneMismatch(contactTimezone)
-      ? ` <i>(⚠️ customer on ${contactTimezone})</i>`
+      ? ` <i>(⚠️ customer on ${esc(contactTimezone || '')})</i>`
       : '';
     lines.push(`⏰ <b>Best time:</b> ${timeLabel}${tzFlag}`);
     if (contactTimePreference === 'specific' && contactTimeDetails) {
-      lines.push(`   <i>"${contactTimeDetails}"</i>`);
+      lines.push(`   <i>"${esc(contactTimeDetails)}"</i>`);
     }
   }
-  if (email) lines.push(`📧 <b>Email:</b> ${email}`);
-  if (projectType) lines.push(`🏠 <b>Project:</b> ${projectType}`);
-  if (location) lines.push(`📍 <b>Location:</b> ${location}`);
+  if (email) lines.push(`📧 <b>Email:</b> ${esc(email)}`);
+  if (projectType) lines.push(`🏠 <b>Project:</b> ${esc(projectType)}`);
+  if (location) lines.push(`📍 <b>Location:</b> ${esc(location)}`);
   if (estimate) lines.push(`💰 <b>Estimate:</b> $${Math.round(estimate).toLocaleString()}`);
   if (score !== undefined) lines.push(`⭐ <b>Score:</b> ${score}/100`);
-  if (source) lines.push(`📊 <b>Source:</b> ${source}`);
+  if (source) lines.push(`📊 <b>Source:</b> ${esc(source)}`);
 
   const message = lines.join('\n');
   const telegramApiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
@@ -107,6 +115,9 @@ export async function sendTelegramLead(payload: TelegramLeadPayload): Promise<Te
         parse_mode: 'HTML',
         disable_web_page_preview: true,
       }),
+      // Explicit outbound timeout so a slow/hung Telegram API can't keep the
+      // socket open past the caller's race cap and leak a pending request.
+      signal: AbortSignal.timeout(6000),
     });
 
     const result = await response.json();

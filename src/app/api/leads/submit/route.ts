@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
 import { sendTelegramLead } from '@/lib/notify/telegramLead';
 import { sendNewLeadEmail } from '@/lib/notify/newLeadEmail';
@@ -20,12 +21,105 @@ async function reportFailure(payload: FormErrorAlertPayload): Promise<void> {
   }
 }
 
+// Minimum reCAPTCHA score (0.0–1.0) required to accept a submission.
+// Configurable via RECAPTCHA_MIN_SCORE so the threshold can be tuned without a
+// redeploy. Fail-closed: any unset/out-of-range/malformed value falls back to
+// 0.5 rather than silently accepting everything.
+function getMinRecaptchaScore(): number {
+  const n = Number(process.env.RECAPTCHA_MIN_SCORE);
+  return Number.isFinite(n) && n >= 0 && n <= 1 ? n : 0.5;
+}
+
+// Hard cap on request body size. A lead form payload is a few hundred bytes;
+// 16 KB is generous headroom while bounding an abusive oversized payload.
+const MAX_BODY_BYTES = 16 * 1024;
+
+// Permissive-but-bounded input schema. This endpoint is shared by 5 different
+// lead forms, so unknown-but-valid fields pass through (PostgREST is the column
+// gate, and the body-size cap above bounds total payload). Known fields get
+// length caps so no single field can be abused. The reCAPTCHA envelope stays
+// optional here so the existing explicit presence checks below still produce
+// their specific error + owner alert.
+const optStr = (max: number) => z.string().max(max).optional();
+const LeadSubmitSchema = z
+  .object({
+    recaptchaToken: optStr(5000),
+    recaptchaAction: optStr(100),
+    honeypot: optStr(500),
+    first_name: optStr(200),
+    last_name: optStr(200),
+    email: optStr(320),
+    phone: optStr(60),
+    address: optStr(300),
+    city: optStr(200),
+    state: optStr(100),
+    zip_code: optStr(20),
+    message: optStr(5000),
+    inquiry_type: optStr(100),
+    project_type: optStr(200),
+    project_timeline: optStr(100),
+    budget_range: optStr(100),
+    current_project_status: optStr(200),
+    preferred_contact_method: optStr(50),
+    source: optStr(200),
+    contact_time_preference: optStr(50),
+    contact_time_details: optStr(300),
+    contact_timezone: optStr(100),
+    referrer: optStr(2000),
+  })
+  .passthrough();
+
+// Per-IP rate limit on the lead-submit endpoint. Protects the expensive
+// downstream (reCAPTCHA Enterprise, Supabase, Resend, Telegram) from scripted
+// abuse on top of the reCAPTCHA gate. Backed by a Supabase RPC — no new infra
+// or secret. FAILS OPEN: if the limiter backend errors or isn't provisioned
+// yet, allow the request rather than block a real customer. Rate limiting here
+// is availability-protective, not an authorization gate, so open is the safe
+// failure mode.
+const RATE_LIMIT_MAX = 5; // submissions per window, per IP
+const RATE_LIMIT_WINDOW_SECONDS = 60;
+
+function getClientIp(request: NextRequest): string {
+  const xff = request.headers.get('x-forwarded-for');
+  if (xff) return xff.split(',')[0].trim();
+  return request.headers.get('x-real-ip') || 'unknown';
+}
+
+async function isRateLimited(key: string): Promise<boolean> {
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
+  if (!secretKey) return false; // fail open
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/check_rate_limit`, {
+      method: 'POST',
+      headers: {
+        'apikey': secretKey,
+        'Authorization': `Bearer ${secretKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        p_key: key,
+        p_limit: RATE_LIMIT_MAX,
+        p_window_seconds: RATE_LIMIT_WINDOW_SECONDS,
+      }),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return false; // fail open (e.g. RPC not provisioned yet)
+    const allowed = await res.json(); // boolean: true = allowed
+    return allowed === false;
+  } catch (err) {
+    console.error('rate-limit check failed (allowing request):', err);
+    return false; // fail open
+  }
+}
+
 async function verifyRecaptcha(token: string, expectedAction: string): Promise<{ success: boolean; score: number }> {
   const secretKey = process.env.RECAPTCHA_SECRET_KEY;
   if (!secretKey) {
     console.error('RECAPTCHA_SECRET_KEY not configured');
     return { success: false, score: 0 };
   }
+
+  const minScore = getMinRecaptchaScore();
 
   try {
     const res = await fetch(
@@ -40,6 +134,7 @@ async function verifyRecaptcha(token: string, expectedAction: string): Promise<{
             expectedAction,
           },
         }),
+        signal: AbortSignal.timeout(8000),
       }
     );
 
@@ -53,11 +148,12 @@ async function verifyRecaptcha(token: string, expectedAction: string): Promise<{
             secret: secretKey,
             response: token,
           }),
+          signal: AbortSignal.timeout(8000),
         }
       );
       const v3Data = await v3Res.json();
       return {
-        success: v3Data.success && (v3Data.score ?? 0) >= 0.5,
+        success: v3Data.success && (v3Data.score ?? 0) >= minScore,
         score: v3Data.score ?? 0,
       };
     }
@@ -68,7 +164,7 @@ async function verifyRecaptcha(token: string, expectedAction: string): Promise<{
     const valid = data.tokenProperties?.valid === true;
 
     return {
-      success: valid && actionMatch && score >= 0.5,
+      success: valid && actionMatch && score >= minScore,
       score,
     };
   } catch (err) {
@@ -93,6 +189,8 @@ async function insertLead(leadData: Record<string, unknown>): Promise<{ data: Re
         'Prefer': 'return=representation',
       },
       body: JSON.stringify(leadData),
+      // Explicit timeout: a hung Supabase request must not stall the response.
+      signal: AbortSignal.timeout(8000),
     });
 
     if (!res.ok) {
@@ -125,10 +223,28 @@ export async function POST(request: NextRequest) {
   let leadFieldsForError: Record<string, unknown> = {};
   let sourceForError = 'unknown';
   try {
-    const body = await request.json();
-    const { recaptchaToken, recaptchaAction, honeypot, ...leadFields } = body as {
-      recaptchaToken: string;
-      recaptchaAction: string;
+    // Bound the request body before parsing, then validate its shape. The
+    // endpoint is public, so treat the payload as fully untrusted.
+    const rawBody = await request.text();
+    if (Buffer.byteLength(rawBody, 'utf8') > MAX_BODY_BYTES) {
+      return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
+    }
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+    }
+    const parsed = LeadSubmitSchema.safeParse(parsedJson);
+    if (!parsed.success) {
+      // Don't leak schema internals to the client; log a trimmed view for debugging.
+      console.warn('Lead submit validation failed:', parsed.error.issues.slice(0, 3));
+      return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+    }
+
+    const { recaptchaToken, recaptchaAction, honeypot, ...leadFields } = parsed.data as {
+      recaptchaToken?: string;
+      recaptchaAction?: string;
       honeypot?: string;
       [key: string]: unknown;
     };
@@ -142,6 +258,14 @@ export async function POST(request: NextRequest) {
 
     if (honeypot) {
       return NextResponse.json({ success: true });
+    }
+
+    // Throttle per IP before doing any expensive downstream work.
+    if (await isRateLimited(`lead-submit:${getClientIp(request)}`)) {
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        { status: 429, headers: { 'Retry-After': String(RATE_LIMIT_WINDOW_SECONDS) } }
+      );
     }
 
     if (!recaptchaToken || !recaptchaAction) {
@@ -260,7 +384,7 @@ export async function POST(request: NextRequest) {
           contactTimeDetails,
           contactTimezone,
         }),
-        4000,
+        6000,
         'telegram-lead'
       ).catch((err) => {
         console.error('telegram-lead notify threw:', err);
