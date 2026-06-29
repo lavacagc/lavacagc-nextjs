@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import OpenAI, { toFile } from 'openai';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { buildRemodelPrompt } from '@/lib/listings/renderingPrompt';
 
@@ -7,8 +8,9 @@ import { buildRemodelPrompt } from '@/lib/listings/renderingPrompt';
  *
  * Picks up `listing_renderings` rows the import enqueued as 'pending' (and
  * 'failed' rows with attempts < 3), sends the before photo + a remodel prompt
- * to Gemini Nano Banana Pro (image-in -> image-out, same camera angle), stores
- * the generated "after" in the `listings` bucket, and marks the row 'ready'.
+ * to OpenAI's gpt-image-1 image-edit (image-in -> image-out, same camera
+ * angle), stores the generated "after" in the `listings` bucket, and marks the
+ * row 'ready'.
  *
  * Auth: Bearer CRON_SECRET, enforced by middleware on /api/cron/*. Scheduled
  * in vercel.json. Kept off the request path so imports stay fast.
@@ -19,9 +21,13 @@ export const maxDuration = 300;
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || '';
-const GEMINI_API_KEY = process.env.GOOGLE_GEMINI_API_KEY || '';
-const MODEL = 'gemini-3-pro-image-preview'; // Nano Banana Pro
+// Reuses the same OPENAI_API_KEY the chatbot already uses (no new env var).
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const MODEL = 'gpt-image-1'; // OpenAI image-edit model
+const IMAGE_QUALITY = 'medium'; // 'low' | 'medium' | 'high' — balances cost vs. fidelity
 const BUCKET = 'listings';
+
+const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 
 const BATCH = 6;
 const MAX_ATTEMPTS = 3;
@@ -57,30 +63,27 @@ async function fetchAsBase64(url: string): Promise<{ data: string; mimeType: str
   return { data: buf.toString('base64'), mimeType };
 }
 
-/** Call Gemini image-edit; returns {base64, mimeType} of the generated after. */
+/** Call OpenAI gpt-image-1 image-edit; returns {base64, mimeType} of the after. */
 async function generateAfter(before: { data: string; mimeType: string }, prompt: string) {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ inlineData: { mimeType: before.mimeType, data: before.data } }, { text: prompt }] }],
-        generationConfig: { responseModalities: ['IMAGE'] },
-      }),
-      signal: AbortSignal.timeout(120000),
-    },
-  );
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`gemini ${res.status}: ${text.substring(0, 200)}`);
+  if (!openai) throw new Error('OPENAI_API_KEY not configured');
+  const ext = EXT_BY_TYPE[before.mimeType] || 'png';
+  const image = await toFile(Buffer.from(before.data, 'base64'), `before.${ext}`, { type: before.mimeType });
+  let result;
+  try {
+    result = await openai.images.edit(
+      { model: MODEL, image, prompt, size: 'auto', quality: IMAGE_QUALITY, n: 1 },
+      { timeout: 120000, maxRetries: 1 },
+    );
+  } catch (err) {
+    // Surface a compact, logged message like the rest of the pipeline expects.
+    const status = (err as { status?: number })?.status;
+    const msg = err instanceof Error ? err.message : 'image edit failed';
+    throw new Error(`openai ${status ?? ''}: ${msg}`.trim().substring(0, 200));
   }
-  const json = await res.json();
-  const part = json?.candidates?.[0]?.content?.parts?.find(
-    (p: { inlineData?: { data: string; mimeType: string } }) => p.inlineData,
-  );
-  if (!part?.inlineData?.data) throw new Error('no image in gemini response');
-  return { base64: part.inlineData.data as string, mimeType: (part.inlineData.mimeType as string) || 'image/png' };
+  // gpt-image-1 always returns base64 PNG (no url option).
+  const b64 = result.data?.[0]?.b64_json;
+  if (!b64) throw new Error('no image in openai response');
+  return { base64: b64, mimeType: 'image/png' };
 }
 
 async function uploadAfter(slug: string, section: string, base64: string, mimeType: string): Promise<string> {
@@ -109,7 +112,7 @@ async function patchRow(id: string, patch: Record<string, unknown>) {
 }
 
 export async function GET() {
-  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY || !GEMINI_API_KEY) {
+  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY || !OPENAI_API_KEY) {
     return NextResponse.json({ error: 'Server not configured' }, { status: 500 });
   }
 

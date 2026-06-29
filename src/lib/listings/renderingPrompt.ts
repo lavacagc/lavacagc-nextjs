@@ -1,5 +1,5 @@
 /**
- * Prompt builder for the before→after remodel renderings (Gemini image edit).
+ * Prompt builder for the before→after remodel renderings (OpenAI image edit).
  * The goal is an "after" that keeps the EXACT camera angle/composition of the
  * uploaded "before" photo and only changes finishes/fixtures.
  */
