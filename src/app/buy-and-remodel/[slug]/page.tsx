@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -9,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { BedDouble, Bath, Ruler, Calendar, Home as HomeIcon, Phone, Mail, ArrowRight } from 'lucide-react';
 import { scopeToEstimateService } from '@/lib/listings/columns';
+import { IS_DEV, SAMPLE_LISTINGS, SAMPLE_PARTNER } from '@/lib/listings/sampleData';
 
 export const revalidate = 60;
 
@@ -69,21 +71,28 @@ async function getListing(slug: string): Promise<ListingDetail | null> {
     .eq('slug', slug)
     .in('status', ['available', 'pending', 'sold'])
     .maybeSingle();
-  if (error || !data) return null;
+  if (error || !data) {
+    // DEV-only: serve a sample home locally before the migration is applied.
+    if (IS_DEV) return (SAMPLE_LISTINGS.find((s) => s.slug === slug) as unknown as ListingDetail) ?? null;
+    return null;
+  }
   return data as unknown as ListingDetail;
 }
 
 async function getPartnerAgent(): Promise<PartnerAgent | null> {
   const { data } = await supabase.from('partner_realtor').select('name,brokerage,phone,email,photo_url,bio').eq('id', 1).maybeSingle();
+  if (!data && IS_DEV) return SAMPLE_PARTNER as PartnerAgent;
   return (data as PartnerAgent) ?? null;
 }
 
 export async function generateStaticParams() {
   try {
     const { data } = await supabase.from('listings').select('slug').in('status', ['available', 'pending', 'sold']);
-    return (data ?? []).map((l: { slug: string }) => ({ slug: l.slug }));
+    const params = (data ?? []).map((l: { slug: string }) => ({ slug: l.slug }));
+    if (params.length === 0 && IS_DEV) return SAMPLE_LISTINGS.map((s) => ({ slug: s.slug }));
+    return params;
   } catch {
-    return [];
+    return IS_DEV ? SAMPLE_LISTINGS.map((s) => ({ slug: s.slug })) : [];
   }
 }
 
@@ -153,7 +162,10 @@ export default async function ListingDetailPage({ params }: PageProps) {
           {/* Header */}
           <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-text-primary">{l.address_line1}</h1>
+              <p className="text-sm font-semibold uppercase tracking-[0.08em] text-primary mb-2">
+                {[l.property_type ? l.property_type.replace(/-/g, ' ') : 'Home', `${l.city}, ${l.state}`].join(' · ')}
+              </p>
+              <h1 className="text-3xl md:text-4xl font-bold text-text-primary capitalize">{l.address_line1}</h1>
               <p className="text-lg text-text-secondary">
                 {[l.city, l.county ? `${l.county} County` : null, l.state, l.zip].filter(Boolean).join(', ')}
               </p>
@@ -200,33 +212,14 @@ export default async function ListingDetailPage({ params }: PageProps) {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Left: details */}
             <div className="lg:col-span-2 space-y-8">
-              {/* Specs */}
-              <div className="flex flex-wrap gap-6 text-text-secondary">
-                {l.beds != null && (
-                  <span className="flex items-center gap-2">
-                    <BedDouble className="w-5 h-5 text-primary" /> {l.beds} beds
-                  </span>
-                )}
-                {l.baths != null && (
-                  <span className="flex items-center gap-2">
-                    <Bath className="w-5 h-5 text-primary" /> {l.baths} baths
-                  </span>
-                )}
-                {l.sqft != null && (
-                  <span className="flex items-center gap-2">
-                    <Ruler className="w-5 h-5 text-primary" /> {l.sqft.toLocaleString()} sqft
-                  </span>
-                )}
-                {l.year_built != null && (
-                  <span className="flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-primary" /> Built {l.year_built}
-                  </span>
-                )}
-                {l.property_type && (
-                  <span className="flex items-center gap-2 capitalize">
-                    <HomeIcon className="w-5 h-5 text-primary" /> {l.property_type.replace(/-/g, ' ')}
-                  </span>
-                )}
+              {/* Stat bar */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <Stat icon={<BedDouble className="w-4 h-4 text-primary" />} label="Beds" value={l.beds != null ? String(l.beds) : null} />
+                <Stat icon={<Bath className="w-4 h-4 text-primary" />} label="Baths" value={l.baths != null ? String(l.baths) : null} />
+                <Stat icon={<Ruler className="w-4 h-4 text-primary" />} label="Sq Ft" value={l.sqft != null ? l.sqft.toLocaleString() : null} />
+                <Stat icon={<Calendar className="w-4 h-4 text-primary" />} label="Year Built" value={l.year_built != null ? String(l.year_built) : null} />
+                <Stat icon={<HomeIcon className="w-4 h-4 text-primary" />} label="Type" value={l.property_type ? l.property_type.replace(/-/g, ' ') : null} />
+                <Stat icon={<Ruler className="w-4 h-4 text-primary" />} label="Lot" value={l.lot_size} />
               </div>
 
               {l.short_description && (
@@ -257,7 +250,7 @@ export default async function ListingDetailPage({ params }: PageProps) {
             </div>
 
             {/* Right: value + agent + CTA */}
-            <div className="space-y-6">
+            <div className="space-y-6 lg:sticky lg:top-24 self-start">
               {/* Value breakdown */}
               <div className="rounded-lg border bg-card shadow-card p-6">
                 <h2 className="text-lg font-bold text-text-primary mb-4">The buy + remodel math</h2>
@@ -323,10 +316,11 @@ export default async function ListingDetailPage({ params }: PageProps) {
               )}
 
               {/* Estimate CTA */}
-              <div className="rounded-lg border-2 border-primary bg-primary/5 p-6 text-center">
+              <div className="rounded-2xl border-2 border-primary bg-primary/5 p-6 text-center">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary mb-1">Next step</p>
                 <h2 className="text-lg font-bold text-text-primary mb-2">Remodel it with La Vaca</h2>
-                <p className="text-sm text-text-secondary mb-4">Get a full estimate tailored to this home.</p>
-                <Button asChild className="w-full">
+                <p className="text-sm text-text-secondary mb-4">Get a full estimate tailored to this home — scope, budget, and timeline.</p>
+                <Button asChild className="w-full bg-gradient-to-r from-primary to-accent-tangerine text-primary-foreground hover:shadow-button">
                   <Link href={estimateHref}>Get my remodel estimate</Link>
                 </Button>
               </div>
@@ -336,6 +330,19 @@ export default async function ListingDetailPage({ params }: PageProps) {
       </main>
 
       <Footer />
+    </div>
+  );
+}
+
+function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: string | null }) {
+  if (!value) return null;
+  return (
+    <div className="rounded-xl border bg-card shadow-card p-4">
+      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">
+        {icon}
+        {label}
+      </div>
+      <div className="text-lg font-bold text-text-primary capitalize">{value}</div>
     </div>
   );
 }

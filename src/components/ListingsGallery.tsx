@@ -172,7 +172,7 @@ function ListingCard({ listing: l }: { listing: PublicListing }) {
   const detailHref = `/buy-and-remodel/${l.slug}`;
 
   return (
-    <Card className="group overflow-hidden hover:shadow-elegant transition-all duration-300 hover:-translate-y-1 flex flex-col">
+    <Card className="group overflow-hidden rounded-2xl shadow-card hover:shadow-elegant transition-all duration-300 hover:-translate-y-1 flex flex-col">
       <Link href={detailHref} className="block relative aspect-[4/3] overflow-hidden bg-muted">
         {photo ? (
           <Image
@@ -200,16 +200,20 @@ function ListingCard({ listing: l }: { listing: PublicListing }) {
       </Link>
 
       <CardContent className="p-5 flex flex-col flex-1">
-        <div className="flex items-center gap-1 text-text-muted text-sm mb-1">
-          <MapPin className="w-4 h-4" />
-          {l.city}
-          {l.county ? `, ${l.county} County` : ''}
+        <div className="text-xs font-semibold uppercase tracking-wider text-primary mb-1">
+          {l.property_type ? titleCase(l.property_type) : 'Home'}
+          {l.recommended_scope ? ` · best for ${titleCase(l.recommended_scope)}` : ''}
         </div>
         <Link href={detailHref}>
           <h3 className="font-bold text-text-primary text-lg leading-snug hover:text-primary transition-colors">
             {l.address_line1}
           </h3>
         </Link>
+        <div className="flex items-center gap-1 text-text-muted text-sm mt-1">
+          <MapPin className="w-4 h-4" />
+          {l.city}
+          {l.county ? `, ${l.county} County` : ''}
+        </div>
 
         {/* Specs */}
         <div className="flex flex-wrap gap-4 text-sm text-text-secondary mt-3">

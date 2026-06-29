@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import ListingsGallery, { type PublicListing } from '@/components/ListingsGallery';
+import { IS_DEV, SAMPLE_LISTINGS } from '@/lib/listings/sampleData';
 
 // ISR — refresh listings every 60s.
 export const revalidate = 60;
@@ -61,7 +62,9 @@ async function getListings(): Promise<PublicListing[]> {
 }
 
 export default async function BuyAndRemodelPage() {
-  const listings = await getListings();
+  const fetched = await getListings();
+  // DEV-only: show sample homes locally before the migration is applied.
+  const listings = fetched.length ? fetched : IS_DEV ? (SAMPLE_LISTINGS as unknown as PublicListing[]) : [];
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -107,6 +110,9 @@ export default async function BuyAndRemodelPage() {
         <section className="py-8 md:py-16 bg-gradient-subtle">
           <div className="container mx-auto px-4">
             <div className="max-w-4xl mx-auto text-center">
+              <p className="text-sm font-semibold uppercase tracking-[0.08em] text-primary mb-3">
+                Curated · Northern New Jersey
+              </p>
               <h1 className="text-4xl md:text-5xl font-bold text-text-primary mb-6">
                 Northern NJ Homes to{' '}
                 <span className="text-transparent bg-gradient-to-r from-primary to-accent-sunset bg-clip-text">
@@ -121,7 +127,7 @@ export default async function BuyAndRemodelPage() {
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link
                   href="/free-estimate"
-                  className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-12 px-8"
+                  className="inline-flex items-center justify-center rounded-md text-sm font-semibold bg-gradient-to-r from-primary to-accent-tangerine text-primary-foreground hover:shadow-button transition-all duration-300 h-12 px-8"
                 >
                   Get a Remodel Estimate
                 </Link>
