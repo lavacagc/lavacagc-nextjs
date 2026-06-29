@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { BedDouble, Bath, Ruler, MapPin } from 'lucide-react';
+import { BedDouble, Bath, Ruler, MapPin, Lock } from 'lucide-react';
 import { scopeToEstimateService } from '@/lib/listings/columns';
 
 export interface PublicListing {
@@ -86,6 +86,21 @@ export default function ListingsGallery({ listings }: { listings: PublicListing[
   return (
     <section className="py-8 md:py-12">
       <div className="container mx-auto px-4">
+        {/* Teaser → unlock banner */}
+        <div
+          data-testid="unlock-banner"
+          className="mb-6 flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4"
+        >
+          <Lock className="h-5 w-5 flex-shrink-0 text-primary" />
+          <p className="text-sm text-text-secondary">
+            You&apos;re browsing the gallery. <strong className="text-text-primary">Verify your email</strong> to unlock
+            each home&apos;s full details, remodel budget, and AI before/after visualizations.
+          </p>
+          <Button asChild className="sm:ml-auto whitespace-nowrap">
+            <Link href="/buy-and-remodel/unlock">Unlock full listings</Link>
+          </Button>
+        </div>
+
         {/* Filters */}
         <div className="flex flex-wrap items-end gap-3 mb-8">
           <FilterSelect label="City" value={city} onChange={setCity} options={cities.map((c) => ({ value: c, label: c }))} />
@@ -197,6 +212,9 @@ function ListingCard({ listing: l }: { listing: PublicListing }) {
             {money(l.list_price)}
           </Badge>
         )}
+        <span className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-full bg-black/65 px-2.5 py-1 text-xs font-medium text-white">
+          <Lock className="h-3 w-3" /> Verify to view
+        </span>
       </Link>
 
       <CardContent className="p-5 flex flex-col flex-1">

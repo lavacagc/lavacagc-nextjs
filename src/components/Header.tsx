@@ -153,6 +153,7 @@ const Header = () => {
               >
                 Projects
               </button>
+              <Link href="/buy-and-remodel" className="text-text-secondary hover:text-primary transition-colors font-medium">Buy + Remodel</Link>
               <Link href="/about" className="text-text-secondary hover:text-primary transition-colors font-medium">About</Link>
               <Link href="/process" className="text-text-secondary hover:text-primary transition-colors font-medium">Process</Link>
               <Link href="/resources" className="text-text-secondary hover:text-primary transition-colors font-medium">Resources</Link>
@@ -235,8 +236,16 @@ const Header = () => {
                 Request an Estimate
               </button>
 
-              <button 
-                onClick={() => navigateToPage('/about')} 
+              <button
+                onClick={() => navigateToPage('/buy-and-remodel')}
+                className="block text-text-secondary hover:text-primary transition-colors font-medium"
+                aria-label="Go to buy and remodel homes page"
+              >
+                Buy + Remodel
+              </button>
+
+              <button
+                onClick={() => navigateToPage('/about')}
                 className="block text-text-secondary hover:text-primary transition-colors font-medium"
                 aria-label="Go to about us page"
               >

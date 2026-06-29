@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { ACCESS_COOKIE_NAME, verifyAccess } from '@/lib/listings/accessCookie';
 
 // Known bad bot user-agent patterns (scrapers, vulnerability scanners, spam crawlers)
 const BAD_BOT_PATTERNS = [
@@ -95,6 +96,7 @@ const PUBLIC_ROUTES = [
   '/api/referrals',
   '/api/chat',
   '/api/documents/',
+  '/api/buy-and-remodel/', // Newsletter signup / email-verify / unsubscribe (self-guarded)
 ];
 
 function isPublicRoute(pathname: string): boolean {
@@ -113,6 +115,45 @@ function requiresAdminAuth(pathname: string): boolean {
 
 function requiresCronAuth(pathname: string): boolean {
   return CRON_AUTH_ROUTES.some(route => pathname.startsWith(route));
+}
+
+// "Buy + Remodel" email gate: the gallery (/buy-and-remodel) is a public teaser,
+// but each home's DETAIL page (/buy-and-remodel/<slug>) requires a verified-email
+// access cookie. The unlock/signup page is itself under the prefix and must never
+// be gated (else an infinite redirect loop). The slug `unlock` is reserved.
+function requiresEmailGate(pathname: string): boolean {
+  if (!pathname.startsWith('/buy-and-remodel/')) return false;
+  if (pathname.startsWith('/buy-and-remodel/unlock')) return false;
+  return true;
+}
+
+// Authoritative, per-navigation check that the subscriber behind a valid access
+// cookie is still 'active'. This is what makes unsubscribe revoke access
+// immediately — a signed cookie alone would stay valid until expiry. One indexed
+// PostgREST lookup via the service key. Fails CLOSED (any error → not allowed),
+// so a backend hiccup never leaks gated content.
+async function subscriberIsActive(subscriberId: string): Promise<boolean> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
+  if (!supabaseUrl || !secretKey) return false;
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/newsletter_subscribers?id=eq.${encodeURIComponent(subscriberId)}&status=eq.active&select=id`,
+      {
+        headers: {
+          apikey: secretKey,
+          Authorization: `Bearer ${secretKey}`,
+          Accept: 'application/json',
+        },
+        signal: AbortSignal.timeout(4000),
+      },
+    );
+    if (!res.ok) return false;
+    const rows = (await res.json()) as unknown[];
+    return Array.isArray(rows) && rows.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 async function verifySupabaseSession(request: NextRequest): Promise<boolean> {
@@ -209,6 +250,24 @@ export async function middleware(request: NextRequest) {
         status: 401,
         headers: { 'Content-Type': 'text/plain' },
       });
+    }
+  }
+
+  // --- "Buy + Remodel" email gate (verified-email access cookie) ---
+  if (requiresEmailGate(pathname)) {
+    const cookie = request.cookies.get(ACCESS_COOKIE_NAME)?.value;
+    const verified = await verifyAccess(cookie);
+    const allowed = verified ? await subscriberIsActive(verified.subscriberId) : false;
+    if (!allowed) {
+      // Logged-in admins can preview gated listings without subscribing. Only
+      // checked on the redirect path so the common visitor never pays for it.
+      const isAdmin = await verifySupabaseSession(request);
+      if (!isAdmin) {
+        const url = request.nextUrl.clone();
+        url.pathname = '/buy-and-remodel/unlock';
+        url.search = `?next=${encodeURIComponent(pathname)}`;
+        return NextResponse.redirect(url);
+      }
     }
   }
 

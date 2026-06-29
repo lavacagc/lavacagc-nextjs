@@ -202,6 +202,66 @@ export type Database = {
         }
         Relationships: []
       }
+      newsletter_subscribers: {
+        Row: {
+          id: string
+          email: string
+          first_name: string
+          last_name: string
+          phone: string | null
+          zip_codes: string[]
+          status: string
+          verify_token: string | null
+          verify_token_expires_at: string | null
+          unsubscribe_token: string
+          verified_at: string | null
+          unsubscribed_at: string | null
+          source: string | null
+          consent_ip: string | null
+          consent_user_agent: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          email: string
+          first_name: string
+          last_name: string
+          phone?: string | null
+          zip_codes?: string[]
+          status?: string
+          verify_token?: string | null
+          verify_token_expires_at?: string | null
+          unsubscribe_token: string
+          verified_at?: string | null
+          unsubscribed_at?: string | null
+          source?: string | null
+          consent_ip?: string | null
+          consent_user_agent?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          email?: string
+          first_name?: string
+          last_name?: string
+          phone?: string | null
+          zip_codes?: string[]
+          status?: string
+          verify_token?: string | null
+          verify_token_expires_at?: string | null
+          unsubscribe_token?: string
+          verified_at?: string | null
+          unsubscribed_at?: string | null
+          source?: string | null
+          consent_ip?: string | null
+          consent_user_agent?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       ai_content_history: {
         Row: {
           blog_post_id: string | null

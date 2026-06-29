@@ -40,9 +40,14 @@ test.describe('Buy + Remodel — public page (no backend required)', () => {
     await expect(cta).toHaveAttribute('href', /\/free-estimate/);
   });
 
-  test('unknown listing slug returns 404', async ({ page }) => {
-    const res = await page.goto('/buy-and-remodel/this-home-does-not-exist-xyz', { waitUntil: 'domcontentloaded' });
-    expect(res?.status()).toBe(404);
+  // Detail pages are gated behind a verified email: an unauthenticated visitor
+  // (no access cookie, no admin session) is redirected to the unlock page BEFORE
+  // the page can resolve — so even an unknown slug lands on /unlock, not a 404.
+  // (The 404-on-unknown-slug behavior is verified for authenticated users in the
+  // live-backend gate spec.)
+  test('detail page redirects an unauthenticated visitor to the unlock page', async ({ page }) => {
+    await page.goto('/buy-and-remodel/this-home-does-not-exist-xyz', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/buy-and-remodel\/unlock(\?|$)/);
   });
 
   test('admin import route rejects unauthenticated callers', async ({ request }) => {
