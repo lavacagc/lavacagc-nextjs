@@ -26,6 +26,7 @@ import {
   ChevronRight,
   Send,
   History,
+  Home,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -61,6 +62,7 @@ const NAVIGATION: NavItem[] = [
       { id: 'services', icon: Wrench, label: 'Services' },
       { id: 'service-areas', icon: MapPin, label: 'Service Areas' },
       { id: 'projects', icon: FolderKanban, label: 'Projects' },
+      { id: 'listings', icon: Home, label: 'Home Listings' },
       { id: 'banners', icon: Megaphone, label: 'Smart Banners' },
     ],
   },

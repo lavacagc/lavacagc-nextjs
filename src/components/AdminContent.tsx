@@ -38,6 +38,7 @@ import { PricingManager } from '@/components/admin/PricingManager';
 import { BannerManager } from '@/components/admin/BannerManager';
 import { NonNegotiablesManager } from '@/components/admin/NonNegotiablesManager';
 import { ComplianceDocumentsManager } from '@/components/admin/ComplianceDocumentsManager';
+import { ListingsManager } from '@/components/admin/ListingsManager';
 import { ReportsPage } from '@/components/admin/ReportsPage';
 import { LogOut, Menu } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
@@ -230,6 +231,10 @@ export default function AdminContent() {
               }}
               editProject={editingProject}
             />
+          </TabsContent>
+
+          <TabsContent value="listings">
+            <ListingsManager />
           </TabsContent>
 
           <TabsContent value="banners">

@@ -14,6 +14,138 @@ export type Database = {
   }
   public: {
     Tables: {
+      listings: {
+        Row: {
+          id: string
+          slug: string
+          external_id: string | null
+          mls_number: string | null
+          address_line1: string
+          address_line2: string | null
+          city: string
+          county: string | null
+          state: string
+          zip: string | null
+          list_price: number | null
+          beds: number | null
+          baths: number | null
+          sqft: number | null
+          lot_size: string | null
+          year_built: number | null
+          property_type: string | null
+          short_description: string | null
+          est_remodel_budget_low: number | null
+          est_remodel_budget_high: number | null
+          est_arv: number | null
+          recommended_scope: string | null
+          highlights: string[] | null
+          photo_urls: string[] | null
+          listing_url: string | null
+          featured: boolean | null
+          sort_order: number | null
+          status: string
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          slug: string
+          external_id?: string | null
+          mls_number?: string | null
+          address_line1: string
+          address_line2?: string | null
+          city: string
+          county?: string | null
+          state?: string
+          zip?: string | null
+          list_price?: number | null
+          beds?: number | null
+          baths?: number | null
+          sqft?: number | null
+          lot_size?: string | null
+          year_built?: number | null
+          property_type?: string | null
+          short_description?: string | null
+          est_remodel_budget_low?: number | null
+          est_remodel_budget_high?: number | null
+          est_arv?: number | null
+          recommended_scope?: string | null
+          highlights?: string[] | null
+          photo_urls?: string[] | null
+          listing_url?: string | null
+          featured?: boolean | null
+          sort_order?: number | null
+          status?: string
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          slug?: string
+          external_id?: string | null
+          mls_number?: string | null
+          address_line1?: string
+          address_line2?: string | null
+          city?: string
+          county?: string | null
+          state?: string
+          zip?: string | null
+          list_price?: number | null
+          beds?: number | null
+          baths?: number | null
+          sqft?: number | null
+          lot_size?: string | null
+          year_built?: number | null
+          property_type?: string | null
+          short_description?: string | null
+          est_remodel_budget_low?: number | null
+          est_remodel_budget_high?: number | null
+          est_arv?: number | null
+          recommended_scope?: string | null
+          highlights?: string[] | null
+          photo_urls?: string[] | null
+          listing_url?: string | null
+          featured?: boolean | null
+          sort_order?: number | null
+          status?: string
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      partner_realtor: {
+        Row: {
+          id: number
+          name: string | null
+          brokerage: string | null
+          phone: string | null
+          email: string | null
+          photo_url: string | null
+          bio: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          name?: string | null
+          brokerage?: string | null
+          phone?: string | null
+          email?: string | null
+          photo_url?: string | null
+          bio?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: number
+          name?: string | null
+          brokerage?: string | null
+          phone?: string | null
+          email?: string | null
+          photo_url?: string | null
+          bio?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       ai_content_history: {
         Row: {
           blog_post_id: string | null

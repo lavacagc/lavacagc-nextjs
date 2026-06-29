@@ -7,6 +7,7 @@ const PAGES_TO_CHECK = [
   '/process',
   '/blog',
   '/portfolio',
+  '/buy-and-remodel',
   '/contact',
   '/project-calculator',
   '/services',
