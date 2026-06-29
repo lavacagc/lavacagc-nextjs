@@ -135,6 +135,14 @@ export async function POST(request: NextRequest) {
     const ip = getClientIp(request);
     const userAgent = request.headers.get('user-agent');
 
+    // Per-EMAIL throttle (independent of the per-IP limit above): stops a
+    // distributed attacker from bombing a victim's inbox with verification
+    // emails. Respond with the same generic success so nothing is revealed.
+    const emailRl = await checkRateLimit(`br-subscribe-email:${normEmail}`, 3, 10 * 60 * 1000);
+    if (!emailRl.allowed) {
+      return NextResponse.json({ ok: true });
+    }
+
     const existing = await findByEmail(normEmail);
 
     if (existing && existing.status === 'active') {

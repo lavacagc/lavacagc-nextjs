@@ -3,7 +3,7 @@ import {
   findByVerifyToken,
   updateSubscriber,
 } from '@/lib/listings/subscribers';
-import { signAccess, ACCESS_COOKIE_NAME, ACCESS_MAX_AGE_SECONDS } from '@/lib/listings/accessCookie';
+import { signAccess, ACCESS_COOKIE_NAME, ACCESS_MAX_AGE_SECONDS, accessCookieOptions } from '@/lib/listings/accessCookie';
 import { sendListingsWelcomeEmail } from '@/lib/notify/sendListingsEmails';
 
 export const dynamic = 'force-dynamic';
@@ -62,13 +62,7 @@ export async function GET(request: NextRequest) {
     }
 
     const response = NextResponse.redirect(new URL(next, origin));
-    response.cookies.set(ACCESS_COOKIE_NAME, await signAccess(sub.id), {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: ACCESS_MAX_AGE_SECONDS,
-    });
+    response.cookies.set(ACCESS_COOKIE_NAME, await signAccess(sub.id), accessCookieOptions(ACCESS_MAX_AGE_SECONDS));
     return response;
   } catch (error) {
     console.error('Buy+Remodel verify error:', error);

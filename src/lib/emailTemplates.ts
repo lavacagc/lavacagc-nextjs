@@ -696,7 +696,9 @@ export interface ListingsVerificationPayload {
 }
 
 export function listingsVerificationHtml(payload: ListingsVerificationPayload): string {
-  const first = (payload.firstName || '').split(' ')[0] || 'there';
+  // Escape the name — it comes from the public signup form and is rendered into
+  // the email HTML that the (possibly different) recipient opens.
+  const first = escapeHtml((payload.firstName || '').split(' ')[0] || 'there');
   return emailShell(
     `${logo()}
      ${heading('Confirm your email<br>to unlock the homes')}
@@ -736,7 +738,7 @@ export interface ListingsWelcomePayload {
 }
 
 export function listingsWelcomeHtml(payload: ListingsWelcomePayload): string {
-  const first = (payload.firstName || '').split(' ')[0] || 'there';
+  const first = escapeHtml((payload.firstName || '').split(' ')[0] || 'there');
   return emailShell(
     `${logo()}
      ${heading("You're in!<br>Browse the homes")}

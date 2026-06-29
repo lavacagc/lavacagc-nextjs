@@ -23,6 +23,13 @@ test.describe('Buy + Remodel email gate (no backend required)', () => {
     await expect(page).toHaveURL(/\/buy-and-remodel\/unlock\?next=/);
   });
 
+  // Regression: a listing slug that merely STARTS WITH "unlock" must still be
+  // gated — the unlock-page exemption is an exact match, not a prefix.
+  test('a detail slug beginning with "unlock" is still gated', async ({ page }) => {
+    await page.goto('/buy-and-remodel/unlocked-colonial-montclair', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/buy-and-remodel\/unlock\?next=/);
+  });
+
   test('unlock page renders the signup form', async ({ page }) => {
     await page.goto('/buy-and-remodel/unlock', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { level: 1 })).toContainText(/full details/i);

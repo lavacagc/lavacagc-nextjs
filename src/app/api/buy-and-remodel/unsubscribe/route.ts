@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findByUnsubscribeToken, updateSubscriber } from '@/lib/listings/subscribers';
-import { ACCESS_COOKIE_NAME } from '@/lib/listings/accessCookie';
+import { ACCESS_COOKIE_NAME, accessCookieOptions } from '@/lib/listings/accessCookie';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,13 +40,7 @@ function html(origin: string, title: string, body: string, clearCookie: boolean)
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
   });
   if (clearCookie) {
-    res.cookies.set(ACCESS_COOKIE_NAME, '', {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 0,
-    });
+    res.cookies.set(ACCESS_COOKIE_NAME, '', accessCookieOptions(0));
   }
   return res;
 }

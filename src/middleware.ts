@@ -121,9 +121,14 @@ function requiresCronAuth(pathname: string): boolean {
 // but each home's DETAIL page (/buy-and-remodel/<slug>) requires a verified-email
 // access cookie. The unlock/signup page is itself under the prefix and must never
 // be gated (else an infinite redirect loop). The slug `unlock` is reserved.
+//
+// Security: match the unlock page EXACTLY (with optional trailing slash), not by
+// prefix — a `startsWith('/buy-and-remodel/unlock')` would also exempt any listing
+// slug beginning with "unlock" (e.g. /buy-and-remodel/unlocked-colonial), serving
+// it ungated.
 function requiresEmailGate(pathname: string): boolean {
   if (!pathname.startsWith('/buy-and-remodel/')) return false;
-  if (pathname.startsWith('/buy-and-remodel/unlock')) return false;
+  if (pathname === '/buy-and-remodel/unlock' || pathname === '/buy-and-remodel/unlock/') return false;
   return true;
 }
 

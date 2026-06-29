@@ -22,6 +22,21 @@ export const ACCESS_COOKIE_NAME = 'br_access';
  *  middleware's live status check; this is just the hard ceiling. */
 export const ACCESS_MAX_AGE_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
+/**
+ * Shared cookie attributes for setting/clearing the access cookie. `secure` is
+ * on in production but off in development so the cookie works over http://localhost
+ * (Safari rejects Secure cookies there). httpOnly + sameSite=lax always.
+ */
+export function accessCookieOptions(maxAgeSeconds: number) {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/',
+    maxAge: maxAgeSeconds,
+  };
+}
+
 function getSecret(): string {
   const secret = cleanEnv(process.env.LISTINGS_ACCESS_SECRET);
   if (!secret) {
