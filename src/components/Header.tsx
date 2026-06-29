@@ -8,12 +8,19 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
+import { useAuth } from "@/hooks/useAuth";
+import { useBuyRemodelPublished } from "@/lib/listings/publishedClient";
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [servicesMenuOpen, setServicesMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const { session } = useAuth();
+  const buyRemodelPublished = useBuyRemodelPublished();
+  // Show the Buy + Remodel nav once it's published; admins (logged in) always
+  // see it so they can reach the page to preview before publishing.
+  const showBuyRemodel = buyRemodelPublished || !!session;
 
   const scrollToSection = (sectionId: string) => {
     // Close mobile menu if open
@@ -153,7 +160,9 @@ const Header = () => {
               >
                 Projects
               </button>
-              <Link href="/buy-and-remodel" className="text-text-secondary hover:text-primary transition-colors font-medium">Buy + Remodel</Link>
+              {showBuyRemodel && (
+                <Link href="/buy-and-remodel" className="text-text-secondary hover:text-primary transition-colors font-medium">Buy + Remodel</Link>
+              )}
               <Link href="/about" className="text-text-secondary hover:text-primary transition-colors font-medium">About</Link>
               <Link href="/process" className="text-text-secondary hover:text-primary transition-colors font-medium">Process</Link>
               <Link href="/resources" className="text-text-secondary hover:text-primary transition-colors font-medium">Resources</Link>
@@ -236,13 +245,15 @@ const Header = () => {
                 Request an Estimate
               </button>
 
-              <button
-                onClick={() => navigateToPage('/buy-and-remodel')}
-                className="block text-text-secondary hover:text-primary transition-colors font-medium"
-                aria-label="Go to buy and remodel homes page"
-              >
-                Buy + Remodel
-              </button>
+              {showBuyRemodel && (
+                <button
+                  onClick={() => navigateToPage('/buy-and-remodel')}
+                  className="block text-text-secondary hover:text-primary transition-colors font-medium"
+                  aria-label="Go to buy and remodel homes page"
+                >
+                  Buy + Remodel
+                </button>
+              )}
 
               <button
                 onClick={() => navigateToPage('/about')}

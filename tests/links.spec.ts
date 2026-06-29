@@ -7,7 +7,8 @@ const PAGES_TO_CHECK = [
   '/process',
   '/blog',
   '/portfolio',
-  '/buy-and-remodel',
+  // '/buy-and-remodel' is intentionally omitted: it's an admin-gated feature
+  // (404 until published). Its access is covered by tests/listings-gate.spec.ts.
   '/contact',
   '/project-calculator',
   '/services',

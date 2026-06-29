@@ -73,6 +73,10 @@ export function ListingsManager() {
   const [agent, setAgent] = useState<Partial<PartnerRealtor>>({});
   const [savingAgent, setSavingAgent] = useState(false);
 
+  // Publish flag (controls public visibility of the whole Buy + Remodel feature)
+  const [published, setPublished] = useState<boolean | null>(null);
+  const [savingPublished, setSavingPublished] = useState(false);
+
   const loadListings = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -94,10 +98,21 @@ export function ListingsManager() {
     if (data) setAgent(data);
   }, []);
 
+  const loadPublished = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('site_settings')
+      .select('buy_and_remodel_published')
+      .eq('id', 1)
+      .maybeSingle();
+    // If the table/row isn't there yet (migration not run), treat as unpublished.
+    setPublished(error ? false : !!data?.buy_and_remodel_published);
+  }, []);
+
   useEffect(() => {
     loadListings();
     loadAgent();
-  }, [loadListings, loadAgent]);
+    loadPublished();
+  }, [loadListings, loadAgent, loadPublished]);
 
   // ----- Import wizard -----
   const downloadTemplate = () => {
@@ -271,6 +286,30 @@ export function ListingsManager() {
     }
   };
 
+  const togglePublished = async (next: boolean) => {
+    setSavingPublished(true);
+    const { error } = await supabase
+      .from('site_settings')
+      .update({ buy_and_remodel_published: next, updated_at: new Date().toISOString() })
+      .eq('id', 1);
+    setSavingPublished(false);
+    if (error) {
+      toast({
+        title: 'Could not update publish status',
+        description: `${error.message}. Has the site_settings migration been run?`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    setPublished(next);
+    toast({
+      title: next ? 'Buy + Remodel is now live' : 'Buy + Remodel hidden from the public',
+      description: next
+        ? 'The page is public and the nav link is visible to everyone.'
+        : 'Visitors get a 404 and the nav link is hidden. You can still preview it while logged in.',
+    });
+  };
+
   const statusBadgeVariant = (s: PreviewRow['status']) =>
     s === 'error' ? 'destructive' : s === 'update' ? 'secondary' : 'default';
 
@@ -282,6 +321,35 @@ export function ListingsManager() {
           Curated &ldquo;buy + remodel&rdquo; homes shown on <code>/buy-and-remodel</code>. Upload a spreadsheet to add or update homes in bulk.
         </p>
       </div>
+
+      {/* Publish gate — controls whether the public can see the feature at all */}
+      <Card>
+        <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-text-primary">Publish to the public</span>
+              {published === null ? null : published ? (
+                <Badge>Live</Badge>
+              ) : (
+                <Badge variant="secondary">Hidden</Badge>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-text-muted">
+              While off, only you (logged in) can preview <code>/buy-and-remodel</code> — visitors get a 404 and the
+              nav link is hidden. Populate and preview the homes, then turn this on to go live.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {savingPublished && <Loader2 className="h-4 w-4 animate-spin text-text-muted" />}
+            <Switch
+              checked={!!published}
+              disabled={published === null || savingPublished}
+              onCheckedChange={togglePublished}
+              aria-label="Publish Buy + Remodel to the public"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="import">
         <TabsList>

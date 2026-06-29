@@ -161,6 +161,35 @@ async function subscriberIsActive(subscriberId: string): Promise<boolean> {
   }
 }
 
+// Whether the Buy + Remodel feature is published to the public. Cached briefly
+// in-instance so we don't hit the DB on every gated navigation. Read with the
+// public anon key (the flag is public-read via RLS). Fails CLOSED (unpublished).
+let publishedCache: { value: boolean; expiresAt: number } | null = null;
+async function isBuyRemodelPublished(): Promise<boolean> {
+  const now = Date.now();
+  if (publishedCache && publishedCache.expiresAt > now) return publishedCache.value;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !anonKey) return false;
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/site_settings?id=eq.1&select=buy_and_remodel_published`,
+      {
+        headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}`, Accept: 'application/json' },
+        signal: AbortSignal.timeout(4000),
+      },
+    );
+    if (!res.ok) return false;
+    const rows = (await res.json()) as Array<{ buy_and_remodel_published?: boolean }>;
+    const value = Array.isArray(rows) && rows.length > 0 && !!rows[0].buy_and_remodel_published;
+    publishedCache = { value, expiresAt: now + 30_000 };
+    return value;
+  } catch {
+    return false;
+  }
+}
+
 async function verifySupabaseSession(request: NextRequest): Promise<boolean> {
   try {
     const supabase = createServerClient(
@@ -259,7 +288,10 @@ export async function middleware(request: NextRequest) {
   }
 
   // --- "Buy + Remodel" email gate (verified-email access cookie) ---
-  if (requiresEmailGate(pathname)) {
+  // Only enforce the email gate once the feature is PUBLISHED. While unpublished,
+  // fall through so the page server-component can 404 the public (or render an
+  // admin preview) instead of redirecting them to the unlock page.
+  if (requiresEmailGate(pathname) && (await isBuyRemodelPublished())) {
     const cookie = request.cookies.get(ACCESS_COOKIE_NAME)?.value;
     const verified = await verifyAccess(cookie);
     const allowed = verified ? await subscriberIsActive(verified.subscriberId) : false;

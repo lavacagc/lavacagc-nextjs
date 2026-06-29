@@ -1,13 +1,16 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import ListingsGallery, { type PublicListing } from '@/components/ListingsGallery';
+import PreviewBanner from '@/components/listings/PreviewBanner';
+import { resolveBuyRemodelAccess } from '@/lib/listings/published';
 import { IS_DEV, SAMPLE_LISTINGS } from '@/lib/listings/sampleData';
 
-// ISR — refresh listings every 60s.
-export const revalidate = 60;
+// Dynamic: access depends on the live publish flag + the viewer's admin session.
+export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
@@ -62,6 +65,9 @@ async function getListings(): Promise<PublicListing[]> {
 }
 
 export default async function BuyAndRemodelPage() {
+  const { canView, isPreview } = await resolveBuyRemodelAccess();
+  if (!canView) notFound();
+
   const fetched = await getListings();
   // DEV-only: show sample homes locally before the migration is applied.
   const listings = fetched.length ? fetched : IS_DEV ? (SAMPLE_LISTINGS as unknown as PublicListing[]) : [];
@@ -102,6 +108,7 @@ export default async function BuyAndRemodelPage() {
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
+      {isPreview && <PreviewBanner />}
 
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 

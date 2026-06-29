@@ -4,55 +4,43 @@ import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBa
 /**
  * "Buy + Remodel" curated home listings.
  *
- * No-backend specs run in CI (placeholder Supabase): the public page must
- * render its hero + a graceful empty state, emit valid JSON-LD, link the
- * estimate CTA, 404 on unknown slugs, and the admin import route must reject
- * unauthenticated callers (middleware). Live-backend specs (real Supabase +
- * admin creds) exercise the full spreadsheet import flow and are gated.
+ * The whole feature is admin-gated: hidden (404) from the public until an admin
+ * flips the publish switch. No-backend specs (placeholder Supabase, no admin
+ * session) therefore verify it is hidden by default and that the admin import
+ * route rejects unauthenticated callers. The public gallery's rendered content
+ * (hero, JSON-LD, CTA) requires the feature published, so those are live-backend
+ * specs, alongside the full spreadsheet import flow.
  */
 
 test.describe('Buy + Remodel — public page (no backend required)', () => {
-  test('gallery page loads with hero and renders gracefully with zero rows', async ({ page }) => {
+  test('gallery is hidden (404) from the public while unpublished', async ({ page }) => {
     const res = await page.goto('/buy-and-remodel', { waitUntil: 'domcontentloaded' });
-    expect(res?.status(), 'page should return < 400').toBeLessThan(400);
-
-    await expect(page.getByRole('heading', { level: 1, name: /Buy \+ Remodel/i })).toBeVisible();
-
-    // Either the grid (with data) or the empty state (no data) must render.
-    const grid = page.getByTestId('listings-grid');
-    const empty = page.getByTestId('listings-empty');
-    await expect(grid.or(empty)).toBeVisible();
-  });
-
-  test('emits valid CollectionPage/ItemList JSON-LD', async ({ page }) => {
-    await page.goto('/buy-and-remodel', { waitUntil: 'domcontentloaded' });
-    const blocks = await page.locator('script[type="application/ld+json"]').allTextContents();
-    const parsed = blocks.map((b) => JSON.parse(b));
-    const collection = parsed.find((j) => j['@type'] === 'CollectionPage');
-    expect(collection, 'CollectionPage JSON-LD should be present').toBeTruthy();
-    expect(collection.mainEntity['@type']).toBe('ItemList');
-    expect(typeof collection.mainEntity.numberOfItems).toBe('number');
-  });
-
-  test('page-level estimate CTA links to /free-estimate', async ({ page }) => {
-    await page.goto('/buy-and-remodel', { waitUntil: 'domcontentloaded' });
-    const cta = page.getByRole('link', { name: /Get a Remodel Estimate/i });
-    await expect(cta).toHaveAttribute('href', /\/free-estimate/);
-  });
-
-  // Detail pages are gated behind a verified email: an unauthenticated visitor
-  // (no access cookie, no admin session) is redirected to the unlock page BEFORE
-  // the page can resolve — so even an unknown slug lands on /unlock, not a 404.
-  // (The 404-on-unknown-slug behavior is verified for authenticated users in the
-  // live-backend gate spec.)
-  test('detail page redirects an unauthenticated visitor to the unlock page', async ({ page }) => {
-    await page.goto('/buy-and-remodel/this-home-does-not-exist-xyz', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveURL(/\/buy-and-remodel\/unlock(\?|$)/);
+    expect(res?.status(), 'unpublished feature should 404 for the public').toBe(404);
   });
 
   test('admin import route rejects unauthenticated callers', async ({ request }) => {
     const res = await request.post('/api/admin/listings/import', { data: { rows: [] } });
     expect(res.status(), 'middleware should 401 an unauthenticated import').toBe(401);
+  });
+});
+
+test.describe('Buy + Remodel — published gallery content (live backend)', () => {
+  // Requires the feature PUBLISHED in the target env. If it 404s, skip.
+  test('published gallery renders hero, JSON-LD, and the estimate CTA', async ({ page, request }) => {
+    test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
+    const probe = await request.get('/buy-and-remodel', { maxRedirects: 0 });
+    test.skip(probe.status() === 404, 'Feature not published in this env — flip the admin switch to run.');
+
+    await page.goto('/buy-and-remodel', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { level: 1, name: /Buy \+ Remodel/i })).toBeVisible();
+
+    const blocks = await page.locator('script[type="application/ld+json"]').allTextContents();
+    const collection = blocks.map((b) => JSON.parse(b)).find((j) => j['@type'] === 'CollectionPage');
+    expect(collection, 'CollectionPage JSON-LD should be present').toBeTruthy();
+    expect(collection.mainEntity['@type']).toBe('ItemList');
+
+    const cta = page.getByRole('link', { name: /Get a Remodel Estimate/i });
+    await expect(cta).toHaveAttribute('href', /\/free-estimate/);
   });
 });
 

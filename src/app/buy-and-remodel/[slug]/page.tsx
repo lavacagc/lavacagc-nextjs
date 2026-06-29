@@ -11,9 +11,13 @@ import { Button } from '@/components/ui/button';
 import { BedDouble, Bath, Ruler, Calendar, Home as HomeIcon, Phone, Mail, ArrowRight } from 'lucide-react';
 import { scopeToEstimateService, sectionLabel } from '@/lib/listings/columns';
 import { IS_DEV, SAMPLE_LISTINGS, SAMPLE_PARTNER, SAMPLE_RENDERINGS } from '@/lib/listings/sampleData';
+import { resolveBuyRemodelAccess } from '@/lib/listings/published';
+import PreviewBanner from '@/components/listings/PreviewBanner';
 import BeforeAfterSlider from '@/components/BeforeAfterSlider';
 
-export const revalidate = 60;
+// Dynamic: access depends on the live publish flag + the viewer's admin session
+// (and the per-listing email gate runs in middleware).
+export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
@@ -108,17 +112,6 @@ async function getPartnerAgent(): Promise<PartnerAgent | null> {
   return (data as PartnerAgent) ?? null;
 }
 
-export async function generateStaticParams() {
-  try {
-    const { data } = await supabase.from('listings').select('slug').in('status', ['available', 'pending', 'sold']);
-    const params = (data ?? []).map((l: { slug: string }) => ({ slug: l.slug }));
-    if (params.length === 0 && IS_DEV) return SAMPLE_LISTINGS.map((s) => ({ slug: s.slug }));
-    return params;
-  } catch {
-    return IS_DEV ? SAMPLE_LISTINGS.map((s) => ({ slug: s.slug })) : [];
-  }
-}
-
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const l = await getListing(slug);
@@ -137,6 +130,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function ListingDetailPage({ params }: PageProps) {
   const { slug } = await params;
+  const { canView, isPreview } = await resolveBuyRemodelAccess();
+  if (!canView) notFound();
   const l = await getListing(slug);
   if (!l) notFound();
   const [agent, renderings] = await Promise.all([getPartnerAgent(), getRenderings(l.id, l.slug)]);
@@ -170,6 +165,7 @@ export default async function ListingDetailPage({ params }: PageProps) {
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
+      {isPreview && <PreviewBanner />}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
       <main className="flex-1">

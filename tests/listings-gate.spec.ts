@@ -2,42 +2,37 @@ import { test, expect } from '@playwright/test';
 import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
 
 /**
- * "Buy + Remodel" email gate (double opt-in + newsletter).
+ * "Buy + Remodel" — admin publish gate + email gate.
  *
- * The gallery (/buy-and-remodel) is a public teaser; each home's DETAIL page is
- * gated behind a verified-email access cookie. No-backend specs verify the gate
- * redirect, the unlock page, and the input-hardening of the subscribe/verify/
- * unsubscribe routes. The full subscribe -> verify -> cookie -> unsubscribe loop
- * is a gated live-backend spec.
+ * The whole feature is hidden (404) from the public until an admin flips the
+ * publish flag in the admin panel; until then only a logged-in admin (or local
+ * dev) can preview it. Once published, each home's DETAIL page is additionally
+ * gated behind a verified-email access cookie.
+ *
+ * In CI there is no backend and no admin session, so the publish flag reads
+ * false → the public pages 404. No-backend specs verify that hidden-by-default
+ * behavior plus the backend-independent hardening of the subscribe/verify/
+ * unsubscribe API. The published rendering + full email-gate flow are gated
+ * live-backend specs.
  */
 
-test.describe('Buy + Remodel email gate (no backend required)', () => {
-  test('gallery is public and shows the unlock banner', async ({ page }) => {
+test.describe('Buy + Remodel — hidden until published (no backend required)', () => {
+  test('gallery returns 404 to the public while unpublished', async ({ page }) => {
     const res = await page.goto('/buy-and-remodel', { waitUntil: 'domcontentloaded' });
-    expect(res?.status(), 'gallery should be publicly reachable').toBeLessThan(400);
-    await expect(page.getByTestId('unlock-banner')).toBeVisible();
+    expect(res?.status()).toBe(404);
   });
 
-  test('detail page redirects an unauthenticated visitor to /unlock with a next param', async ({ page }) => {
-    await page.goto('/buy-and-remodel/12-maple-avenue-ridgewood-07450', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveURL(/\/buy-and-remodel\/unlock\?next=/);
+  test('a home detail page returns 404 to the public while unpublished', async ({ page }) => {
+    const res = await page.goto('/buy-and-remodel/12-maple-avenue-ridgewood-07450', { waitUntil: 'domcontentloaded' });
+    expect(res?.status()).toBe(404);
   });
 
-  // Regression: a listing slug that merely STARTS WITH "unlock" must still be
-  // gated — the unlock-page exemption is an exact match, not a prefix.
-  test('a detail slug beginning with "unlock" is still gated', async ({ page }) => {
-    await page.goto('/buy-and-remodel/unlocked-colonial-montclair', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveURL(/\/buy-and-remodel\/unlock\?next=/);
+  test('the unlock/signup page returns 404 to the public while unpublished', async ({ page }) => {
+    const res = await page.goto('/buy-and-remodel/unlock', { waitUntil: 'domcontentloaded' });
+    expect(res?.status()).toBe(404);
   });
 
-  test('unlock page renders the signup form', async ({ page }) => {
-    await page.goto('/buy-and-remodel/unlock', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { level: 1 })).toContainText(/full details/i);
-    await expect(page.locator('#name')).toBeVisible();
-    await expect(page.locator('#email')).toBeVisible();
-    await expect(page.locator('#phone')).toBeVisible();
-    await expect(page.locator('#zips')).toBeVisible();
-  });
+  // --- subscribe/verify/unsubscribe API hardening (independent of the gate) ---
 
   test('subscribe rejects a malformed body (400)', async ({ request }) => {
     const res = await request.post('/api/buy-and-remodel/subscribe', { data: {} });
@@ -67,9 +62,11 @@ test.describe('Buy + Remodel email gate (no backend required)', () => {
     expect(body.ok).toBe(true);
   });
 
-  test('verify with an invalid token redirects back to the unlock page', async ({ page }) => {
-    await page.goto('/api/buy-and-remodel/verify?token=not-a-real-token', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveURL(/\/buy-and-remodel\/unlock\?error=/);
+  test('verify with an invalid token fails safe (redirects to the unlock URL, no cookie)', async ({ request }) => {
+    const res = await request.get('/api/buy-and-remodel/verify?token=not-a-real-token', { maxRedirects: 0 });
+    expect([302, 307, 308]).toContain(res.status());
+    expect(res.headers()['location']).toContain('/buy-and-remodel/unlock?error=');
+    expect(res.headers()['set-cookie'] ?? '').not.toContain('br_access=');
   });
 
   test('unsubscribe with no token returns a confirmation page (200 html)', async ({ request }) => {
@@ -79,8 +76,27 @@ test.describe('Buy + Remodel email gate (no backend required)', () => {
   });
 });
 
+test.describe('Buy + Remodel — published email gate (live backend)', () => {
+  // These require the feature to be PUBLISHED in the target env (admin flipped
+  // the switch). If the gallery 404s, the feature is unpublished here → skip.
+  test('published: an unauthenticated visitor to a detail page is redirected to /unlock', async ({ page, request }) => {
+    test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
+    const gallery = await request.get('/buy-and-remodel', { maxRedirects: 0 });
+    test.skip(gallery.status() === 404, 'Feature not published in this env — flip the admin switch to run.');
+
+    // A real (or unknown) slug both redirect to unlock when published + no cookie.
+    await page.goto('/buy-and-remodel/some-listing-slug', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/buy-and-remodel\/unlock\?next=/);
+
+    // Regression: a slug that merely STARTS WITH "unlock" must still be gated
+    // (the unlock-page exemption is an exact match, not a prefix), not served.
+    await page.goto('/buy-and-remodel/unlocked-colonial-montclair', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/buy-and-remodel\/unlock\?next=/);
+  });
+});
+
 test.describe('Buy + Remodel email gate — full flow (live backend)', () => {
-  test('subscribe -> verify sets access cookie -> detail page loads -> unsubscribe revokes', async ({ page, request, context }) => {
+  test('subscribe -> verify sets access cookie -> unsubscribe revokes', async ({ page, request, context }) => {
     test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SECRET_KEY;
@@ -89,12 +105,10 @@ test.describe('Buy + Remodel email gate — full flow (live backend)', () => {
     // Unique email so re-runs don't collide.
     const email = `gate-test+${Date.now()}@example.com`;
 
-    // 1. Subscribe (reCAPTCHA disabled paths require real keys; this asserts the
-    //    request is accepted end-to-end in the live env).
+    // 1. Subscribe (needs real reCAPTCHA keys to return 200).
     const sub = await request.post('/api/buy-and-remodel/subscribe', {
       data: { first_name: 'Gate', last_name: 'Test', email, phone: '2015550123', zips: '07450' },
     });
-    // In a fully-configured env this is 200; if reCAPTCHA hard-fails it's 403.
     expect([200, 403]).toContain(sub.status());
     test.skip(sub.status() !== 200, 'reCAPTCHA blocked the live subscribe; configure keys to run the full loop.');
 
@@ -112,7 +126,7 @@ test.describe('Buy + Remodel email gate — full flow (live backend)', () => {
     const cookies = await context.cookies();
     expect(cookies.find((c) => c.name === 'br_access'), 'br_access cookie set after verify').toBeTruthy();
 
-    // 4. Unsubscribe → revokes; a fresh context (no cookie) is redirected again.
+    // 4. Unsubscribe → revokes access + clears the cookie.
     await page.goto(`/api/buy-and-remodel/unsubscribe?token=${row.unsubscribe_token}`, { waitUntil: 'domcontentloaded' });
     await expect(page.getByText(/unsubscribed/i)).toBeVisible();
   });

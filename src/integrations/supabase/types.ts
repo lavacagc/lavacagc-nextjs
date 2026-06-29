@@ -202,6 +202,24 @@ export type Database = {
         }
         Relationships: []
       }
+      site_settings: {
+        Row: {
+          id: number
+          buy_and_remodel_published: boolean
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          buy_and_remodel_published?: boolean
+          updated_at?: string | null
+        }
+        Update: {
+          id?: number
+          buy_and_remodel_published?: boolean
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       newsletter_subscribers: {
         Row: {
           id: string

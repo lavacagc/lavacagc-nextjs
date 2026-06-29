@@ -4,6 +4,7 @@ import logo from "@/assets/logo.png";
 import Link from "next/link";
 import Image from "next/image";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
+import FooterBuyRemodelLink from "@/components/listings/FooterBuyRemodelLink";
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -44,7 +45,7 @@ const Footer = () => {
             <ul className="space-y-3 text-sm text-secondary-foreground">
               <li><Link href="/about" className="hover:text-primary transition-colors">About Us</Link></li>
               <li><Link href="/process" className="hover:text-primary transition-colors">Our Process</Link></li>
-              <li><Link href="/buy-and-remodel" className="hover:text-primary transition-colors">Buy + Remodel</Link></li>
+              <FooterBuyRemodelLink />
               <li><Link href="/portfolio" className="hover:text-primary transition-colors">Portfolio</Link></li>
               <li><Link href="/reviews" className="hover:text-primary transition-colors">Reviews</Link></li>
               <li><Link href="/faq" className="hover:text-primary transition-colors">FAQ</Link></li>

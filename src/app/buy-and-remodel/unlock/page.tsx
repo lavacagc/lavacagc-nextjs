@@ -1,9 +1,15 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { Sparkles, Images, Calculator } from 'lucide-react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import ListingsUnlockForm from '@/components/listings/ListingsUnlockForm';
+import PreviewBanner from '@/components/listings/PreviewBanner';
+import { resolveBuyRemodelAccess } from '@/lib/listings/published';
+
+// Dynamic: hidden from the public until the feature is published (admins preview).
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Unlock Northern NJ Buy + Remodel Homes | La Vaca General Contractors',
@@ -25,6 +31,9 @@ export default async function UnlockPage({
 }: {
   searchParams: Promise<{ next?: string; error?: string }>;
 }) {
+  const { canView, isPreview } = await resolveBuyRemodelAccess();
+  if (!canView) notFound();
+
   const params = await searchParams;
   const next = sanitizeNext(params.next);
   const expired = params.error === 'expired';
@@ -33,6 +42,7 @@ export default async function UnlockPage({
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
+      {isPreview && <PreviewBanner />}
 
       <main className="flex-1 bg-gradient-subtle">
         <section className="py-10 md:py-16">
