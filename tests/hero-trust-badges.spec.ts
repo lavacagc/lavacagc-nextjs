@@ -80,6 +80,10 @@ test.describe('Hero trust badges (mobile)', () => {
   });
 
   test('"Licensed, Bonded, & Insured" badge navigates to /about', async ({ page }) => {
+    // Soft-navigation to /about fetches the route's RSC payload; under CI's
+    // no-backend runtime that render fails and the client nav never completes,
+    // so the URL never changes. Needs a live backend (passes locally).
+    test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
     const licensedBadge = page.getByRole('link', { name: 'Learn about our licensing, bonding, and insurance' });
     await Promise.all([
       page.waitForURL('**/about', { timeout: 15000 }),
@@ -89,6 +93,8 @@ test.describe('Hero trust badges (mobile)', () => {
   });
 
   test('"Family-Owned" badge navigates to /about (after going back)', async ({ page }) => {
+    // Same /about RSC dependency as the Licensed nav test — needs a live backend.
+    test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
     // First click Licensed to navigate away.
     const licensedBadge = page.getByRole('link', { name: 'Learn about our licensing, bonding, and insurance' });
     await Promise.all([
