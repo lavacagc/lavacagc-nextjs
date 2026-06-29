@@ -663,3 +663,108 @@ export function estimateEmailText(payload: EstimateEmailPayload): string {
     `NJ ${LICENSE} · ${PHONE} · ${EMAIL}`,
   ].filter(Boolean).join('\n');
 }
+
+// ==========================================
+// BUY + REMODEL — NEWSLETTER / EMAIL-GATE
+// ==========================================
+
+/**
+ * CAN-SPAM compliant footer block for newsletter (bulk) mail. Unlike the global
+ * footer(), this carries a working unsubscribe link AND the physical mailing
+ * address — both legally required for commercial newsletter email. It is added
+ * as a content block (above the standard footer) by the builders below.
+ */
+function newsletterFooter(unsubscribeUrl: string): string {
+  const FF = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`;
+  return `
+    ${divider()}
+    <div style="text-align:center;padding:20px 48px 0 48px">
+      <p style="color:#717171;font-size:12px;font-family:${FF};margin:0;line-height:18px">
+        You're receiving this because you signed up for La Vaca's Buy&nbsp;+&nbsp;Remodel home listings.
+      </p>
+      <p style="color:#717171;font-size:12px;font-family:${FF};margin:0;line-height:18px;padding-top:8px">
+        <a href="${unsubscribeUrl}" style="color:#717171;text-decoration:underline">Unsubscribe</a>
+        &nbsp;·&nbsp; La Vaca General Contractors, LLC ·&nbsp;${BUSINESS_ADDRESS}
+      </p>
+    </div>`;
+}
+
+export interface ListingsVerificationPayload {
+  firstName: string;
+  verifyUrl: string;
+  unsubscribeUrl: string;
+}
+
+export function listingsVerificationHtml(payload: ListingsVerificationPayload): string {
+  // Escape the name — it comes from the public signup form and is rendered into
+  // the email HTML that the (possibly different) recipient opens.
+  const first = escapeHtml((payload.firstName || '').split(' ')[0] || 'there');
+  return emailShell(
+    `${logo()}
+     ${heading('Confirm your email<br>to unlock the homes')}
+     ${paragraph(`Hi ${first}, you're one click away from browsing our hand-picked Northern New Jersey homes with full remodel estimates and AI before/after visualizations.`)}
+     ${paragraph('Confirm your email to unlock the listings (and join our newsletter):')}
+     ${button('Confirm &amp; Unlock Listings', payload.verifyUrl, true)}
+     ${paragraph(`<span style="color:#717171;font-size:14px">This link expires in 48 hours. If you didn't request this, you can safely ignore this email.</span>`)}
+     ${spacer(8)}
+     ${newsletterFooter(payload.unsubscribeUrl)}
+     ${spacer(8)}`,
+    `Confirm your email to unlock La Vaca's Buy + Remodel homes`,
+  );
+}
+
+export function listingsVerificationText(payload: ListingsVerificationPayload): string {
+  const first = (payload.firstName || '').split(' ')[0] || 'there';
+  return [
+    `Hi ${first},`,
+    '',
+    "You're one click away from browsing our hand-picked Northern New Jersey homes with full remodel estimates and AI before/after visualizations.",
+    '',
+    'Confirm your email to unlock the listings (and join our newsletter):',
+    payload.verifyUrl,
+    '',
+    "This link expires in 48 hours. If you didn't request this, you can safely ignore this email.",
+    '',
+    `Unsubscribe: ${payload.unsubscribeUrl}`,
+    'La Vaca General Contractors, LLC',
+    BUSINESS_ADDRESS,
+  ].join('\n');
+}
+
+export interface ListingsWelcomePayload {
+  firstName: string;
+  browseUrl: string;
+  unsubscribeUrl: string;
+}
+
+export function listingsWelcomeHtml(payload: ListingsWelcomePayload): string {
+  const first = escapeHtml((payload.firstName || '').split(' ')[0] || 'there');
+  return emailShell(
+    `${logo()}
+     ${heading("You're in!<br>Browse the homes")}
+     ${paragraph(`Hi ${first}, your email is verified — you now have full access to our Buy&nbsp;+&nbsp;Remodel listings. Each home includes a remodel scope, a budget range, and AI before/after visualizations.`)}
+     ${button('Browse the Homes', payload.browseUrl, true)}
+     ${paragraph(`<span style="color:#717171;font-size:14px">See one you love? Request a free remodel estimate right from the listing and we'll take it from there.</span>`)}
+     ${spacer(8)}
+     ${newsletterFooter(payload.unsubscribeUrl)}
+     ${spacer(8)}`,
+    `You're in — browse La Vaca's Buy + Remodel homes`,
+  );
+}
+
+export function listingsWelcomeText(payload: ListingsWelcomePayload): string {
+  const first = (payload.firstName || '').split(' ')[0] || 'there';
+  return [
+    `Hi ${first},`,
+    '',
+    'Your email is verified — you now have full access to our Buy + Remodel listings. Each home includes a remodel scope, a budget range, and AI before/after visualizations.',
+    '',
+    `Browse the homes: ${payload.browseUrl}`,
+    '',
+    "See one you love? Request a free remodel estimate right from the listing and we'll take it from there.",
+    '',
+    `Unsubscribe: ${payload.unsubscribeUrl}`,
+    'La Vaca General Contractors, LLC',
+    BUSINESS_ADDRESS,
+  ].join('\n');
+}

@@ -59,6 +59,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.8,
     },
     {
+      url: `${baseUrl}/buy-and-remodel`,
+      lastModified: currentDate,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
       url: `${baseUrl}/process`,
       lastModified: currentDate,
       changeFrequency: 'monthly',
@@ -221,6 +227,29 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   } catch (error) {
     console.error('Error fetching projects for sitemap:', error)
+  }
+
+  // Fetch dynamic buy-and-remodel listing pages from Supabase
+  try {
+    const supabase = getStaticSupabaseClient()
+    const { data: listings } = await supabase
+      .from('listings')
+      .select('slug, updated_at, status')
+      .in('status', ['available', 'pending', 'sold'])
+      .order('updated_at', { ascending: false })
+
+    if (listings && listings.length > 0) {
+      listings.forEach(listing => {
+        routes.push({
+          url: `${baseUrl}/buy-and-remodel/${listing.slug}`,
+          lastModified: listing.updated_at ? new Date(listing.updated_at) : currentDate,
+          changeFrequency: 'weekly',
+          priority: 0.6,
+        })
+      })
+    }
+  } catch (error) {
+    console.error('Error fetching listings for sitemap:', error)
   }
 
   return routes

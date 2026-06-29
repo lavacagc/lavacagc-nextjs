@@ -14,6 +14,275 @@ export type Database = {
   }
   public: {
     Tables: {
+      listing_renderings: {
+        Row: {
+          id: string
+          listing_id: string
+          section: string
+          source_before_url: string | null
+          before_url: string | null
+          after_url: string | null
+          style: string | null
+          status: string
+          attempts: number
+          error: string | null
+          sort_order: number
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          listing_id: string
+          section: string
+          source_before_url?: string | null
+          before_url?: string | null
+          after_url?: string | null
+          style?: string | null
+          status?: string
+          attempts?: number
+          error?: string | null
+          sort_order?: number
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          listing_id?: string
+          section?: string
+          source_before_url?: string | null
+          before_url?: string | null
+          after_url?: string | null
+          style?: string | null
+          status?: string
+          attempts?: number
+          error?: string | null
+          sort_order?: number
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "listing_renderings_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listings"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      listings: {
+        Row: {
+          id: string
+          slug: string
+          external_id: string | null
+          mls_number: string | null
+          address_line1: string
+          address_line2: string | null
+          city: string
+          county: string | null
+          state: string
+          zip: string | null
+          list_price: number | null
+          beds: number | null
+          baths: number | null
+          sqft: number | null
+          lot_size: string | null
+          year_built: number | null
+          property_type: string | null
+          short_description: string | null
+          est_remodel_budget_low: number | null
+          est_remodel_budget_high: number | null
+          est_arv: number | null
+          area_comp_avg: number | null
+          recommended_scope: string | null
+          highlights: string[] | null
+          photo_urls: string[] | null
+          listing_url: string | null
+          featured: boolean | null
+          sort_order: number | null
+          status: string
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          slug: string
+          external_id?: string | null
+          mls_number?: string | null
+          address_line1: string
+          address_line2?: string | null
+          city: string
+          county?: string | null
+          state?: string
+          zip?: string | null
+          list_price?: number | null
+          beds?: number | null
+          baths?: number | null
+          sqft?: number | null
+          lot_size?: string | null
+          year_built?: number | null
+          property_type?: string | null
+          short_description?: string | null
+          est_remodel_budget_low?: number | null
+          est_remodel_budget_high?: number | null
+          est_arv?: number | null
+          area_comp_avg?: number | null
+          recommended_scope?: string | null
+          highlights?: string[] | null
+          photo_urls?: string[] | null
+          listing_url?: string | null
+          featured?: boolean | null
+          sort_order?: number | null
+          status?: string
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          slug?: string
+          external_id?: string | null
+          mls_number?: string | null
+          address_line1?: string
+          address_line2?: string | null
+          city?: string
+          county?: string | null
+          state?: string
+          zip?: string | null
+          list_price?: number | null
+          beds?: number | null
+          baths?: number | null
+          sqft?: number | null
+          lot_size?: string | null
+          year_built?: number | null
+          property_type?: string | null
+          short_description?: string | null
+          est_remodel_budget_low?: number | null
+          est_remodel_budget_high?: number | null
+          est_arv?: number | null
+          area_comp_avg?: number | null
+          recommended_scope?: string | null
+          highlights?: string[] | null
+          photo_urls?: string[] | null
+          listing_url?: string | null
+          featured?: boolean | null
+          sort_order?: number | null
+          status?: string
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      partner_realtor: {
+        Row: {
+          id: number
+          name: string | null
+          brokerage: string | null
+          phone: string | null
+          email: string | null
+          photo_url: string | null
+          bio: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          name?: string | null
+          brokerage?: string | null
+          phone?: string | null
+          email?: string | null
+          photo_url?: string | null
+          bio?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: number
+          name?: string | null
+          brokerage?: string | null
+          phone?: string | null
+          email?: string | null
+          photo_url?: string | null
+          bio?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      site_settings: {
+        Row: {
+          id: number
+          buy_and_remodel_published: boolean
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          buy_and_remodel_published?: boolean
+          updated_at?: string | null
+        }
+        Update: {
+          id?: number
+          buy_and_remodel_published?: boolean
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      newsletter_subscribers: {
+        Row: {
+          id: string
+          email: string
+          first_name: string
+          last_name: string
+          phone: string | null
+          zip_codes: string[]
+          status: string
+          verify_token: string | null
+          verify_token_expires_at: string | null
+          unsubscribe_token: string
+          verified_at: string | null
+          unsubscribed_at: string | null
+          source: string | null
+          consent_ip: string | null
+          consent_user_agent: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          email: string
+          first_name: string
+          last_name: string
+          phone?: string | null
+          zip_codes?: string[]
+          status?: string
+          verify_token?: string | null
+          verify_token_expires_at?: string | null
+          unsubscribe_token: string
+          verified_at?: string | null
+          unsubscribed_at?: string | null
+          source?: string | null
+          consent_ip?: string | null
+          consent_user_agent?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          email?: string
+          first_name?: string
+          last_name?: string
+          phone?: string | null
+          zip_codes?: string[]
+          status?: string
+          verify_token?: string | null
+          verify_token_expires_at?: string | null
+          unsubscribe_token?: string
+          verified_at?: string | null
+          unsubscribed_at?: string | null
+          source?: string | null
+          consent_ip?: string | null
+          consent_user_agent?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       ai_content_history: {
         Row: {
           blog_post_id: string | null
