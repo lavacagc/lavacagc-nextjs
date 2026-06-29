@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/send-follow-ups",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/generate-renderings",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

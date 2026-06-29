@@ -2,10 +2,15 @@ import { NextResponse } from 'next/server';
 import {
   NormalizedListingSchema,
   deriveSlug,
+  RENDERING_SECTIONS,
   type NormalizedListing,
+  type BeforePhoto,
+  type RenderingSection,
 } from '@/lib/listings/columns';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+
+const ALLOWED_SECTIONS = new Set<string>(RENDERING_SECTIONS.map((r) => r.section));
 
 /**
  * Bulk import for "Buy + Remodel" listings.
@@ -47,8 +52,8 @@ const EXT_BY_TYPE: Record<string, string> = {
   'image/avif': 'avif',
 };
 
-/** Fetch one external image and upload it to the listings bucket; returns the public URL. */
-async function rehostPhoto(slug: string, index: number, url: string): Promise<string> {
+/** Fetch one external image and upload it to the listings bucket at <objectPathNoExt>.<ext>; returns the public URL. */
+async function rehostImage(url: string, objectPathNoExt: string): Promise<string> {
   const res = await fetch(url, { signal: AbortSignal.timeout(PHOTO_FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`source returned ${res.status}`);
 
@@ -59,7 +64,7 @@ async function rehostPhoto(slug: string, index: number, url: string): Promise<st
   if (buf.byteLength > MAX_PHOTO_BYTES) throw new Error('image too large');
 
   const ext = EXT_BY_TYPE[contentType] || 'jpg';
-  const objectPath = `${slug}/${index}.${ext}`;
+  const objectPath = `${objectPathNoExt}.${ext}`;
   const upload = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${objectPath}`, {
     method: 'POST',
     headers: {
@@ -77,6 +82,8 @@ async function rehostPhoto(slug: string, index: number, url: string): Promise<st
   }
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${objectPath}`;
 }
+
+const rehostPhoto = (slug: string, index: number, url: string) => rehostImage(url, `${slug}/${index}`);
 
 /** Run async tasks with bounded concurrency, preserving order. */
 async function mapWithConcurrency<T, R>(
@@ -139,18 +146,34 @@ export async function POST(request: Request) {
   const errors: ImportError[] = [];
   const warnings: ImportError[] = [];
 
-  // 1) Validate + derive slug for each row.
-  const valid: { slug: string; data: NormalizedListing }[] = [];
+  // 1) Validate + derive slug for each row. Each item is { listing, before_photos };
+  //    older callers may send the bare listing object — tolerate both.
+  const valid: { slug: string; data: NormalizedListing; beforePhotos: BeforePhoto[] }[] = [];
   rows.forEach((rowInput, idx) => {
     const rowNum = idx + 1;
-    const result = NormalizedListingSchema.safeParse(rowInput);
+    const item = (rowInput && typeof rowInput === 'object' && 'listing' in (rowInput as object)
+      ? (rowInput as { listing: unknown; before_photos?: unknown })
+      : { listing: rowInput, before_photos: [] });
+    const result = NormalizedListingSchema.safeParse(item.listing);
     if (!result.success) {
       errors.push({ row: rowNum, reason: result.error.issues[0]?.message ?? 'Invalid row' });
       return;
     }
     const data = result.data as NormalizedListing;
     const slug = deriveSlug(data);
-    valid.push({ slug, data });
+    const beforePhotos: BeforePhoto[] = Array.isArray(item.before_photos)
+      ? (item.before_photos as unknown[])
+          .filter(
+            (b): b is BeforePhoto =>
+              !!b &&
+              typeof b === 'object' &&
+              ALLOWED_SECTIONS.has((b as BeforePhoto).section) &&
+              typeof (b as BeforePhoto).url === 'string' &&
+              /^https?:\/\//i.test((b as BeforePhoto).url),
+          )
+          .map((b) => ({ section: b.section, url: b.url, style: b.style ?? null }))
+      : [];
+    valid.push({ slug, data, beforePhotos });
   });
 
   if (valid.length === 0) {
@@ -239,5 +262,77 @@ export async function POST(request: Request) {
   const updated = dbRows.filter((r) => existingSlugs.has(r.slug)).length;
   const inserted = dbRows.length - updated;
 
-  return NextResponse.json({ inserted, updated, errors, warnings });
+  // 5) Enqueue before/after renderings (best-effort; never fails the import).
+  //    Re-host each before photo, then upsert a pending listing_renderings row.
+  //    Skip rows already 'ready' whose source before-URL is unchanged (no re-bill).
+  let queuedRenderings = 0;
+  const rowsWithBefores = valid.filter((v) => v.beforePhotos.length > 0);
+  if (rowsWithBefores.length > 0) {
+    try {
+      // Map slug -> listing id for the rows we just upserted.
+      const slugs = rowsWithBefores.map((v) => v.slug);
+      const inClause = `(${slugs.map((sl) => `"${sl.replace(/"/g, '')}"`).join(',')})`;
+      const idRows = await supabaseRest<{ id: string; slug: string }[]>(
+        'GET',
+        `listings?select=id,slug&slug=in.${encodeURIComponent(inClause)}`,
+      );
+      const idBySlug = new Map((idRows || []).map((r) => [r.slug, r.id]));
+
+      // Existing renderings for these listings, to dedupe by source_before_url.
+      const ids = [...idBySlug.values()];
+      const existingByKey = new Map<string, { source_before_url: string | null; status: string }>();
+      if (ids.length > 0) {
+        const idIn = `(${ids.map((id) => `"${id}"`).join(',')})`;
+        const existing = await supabaseRest<
+          { listing_id: string; section: string; source_before_url: string | null; status: string }[]
+        >('GET', `listing_renderings?select=listing_id,section,source_before_url,status&listing_id=in.${encodeURIComponent(idIn)}`);
+        for (const r of existing || []) existingByKey.set(`${r.listing_id}:${r.section}`, r);
+      }
+
+      const renderingRows: Record<string, unknown>[] = [];
+      for (const v of rowsWithBefores) {
+        const listingId = idBySlug.get(v.slug);
+        if (!listingId) continue;
+        for (const bp of v.beforePhotos) {
+          const prior = existingByKey.get(`${listingId}:${bp.section}`);
+          // Unchanged + already done → leave it alone.
+          if (prior && prior.status === 'ready' && prior.source_before_url === bp.url) continue;
+          let beforeUrl: string;
+          try {
+            beforeUrl = await rehostImage(bp.url, `renderings/${v.slug}/${bp.section}-before`);
+          } catch (err) {
+            warnings.push({
+              row: 0,
+              reason: `${bp.section} before photo for ${v.slug} could not be imported (${err instanceof Error ? err.message : 'error'})`,
+            });
+            continue;
+          }
+          renderingRows.push({
+            listing_id: listingId,
+            section: bp.section as RenderingSection,
+            source_before_url: bp.url,
+            before_url: beforeUrl,
+            after_url: null,
+            style: bp.style,
+            status: 'pending',
+            attempts: 0,
+            error: null,
+            updated_at: nowIso,
+          });
+        }
+      }
+
+      if (renderingRows.length > 0) {
+        await supabaseRest('POST', 'listing_renderings', renderingRows, {
+          onConflict: 'listing_id,section',
+          prefer: 'resolution=merge-duplicates,return=minimal',
+        });
+        queuedRenderings = renderingRows.length;
+      }
+    } catch (err) {
+      console.error('listings import: rendering enqueue failed (non-fatal)', err);
+    }
+  }
+
+  return NextResponse.json({ inserted, updated, errors, warnings, queuedRenderings });
 }

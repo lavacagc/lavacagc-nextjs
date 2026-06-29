@@ -140,6 +140,24 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
   },
 ];
 
+export interface SampleRendering {
+  section: string;
+  before_url: string;
+  after_url: string;
+  sort_order: number;
+}
+
+/** DEV-only before/after renderings keyed by listing slug. */
+export const SAMPLE_RENDERINGS: Record<string, SampleRendering[]> = {
+  '12-maple-avenue-ridgewood-07450': [
+    { section: 'kitchen', before_url: ph('Kitchen — before', '%23334155'), after_url: ph('Kitchen — after', '%23146356'), sort_order: 0 },
+    { section: 'bathroom', before_url: ph('Bath — before', '%23334155'), after_url: ph('Bath — after', '%23EE9639'), sort_order: 1 },
+  ],
+  '88-park-street-montclair-07042': [
+    { section: 'kitchen', before_url: ph('Kitchen — before', '%23334155'), after_url: ph('Kitchen — after', '%23002855'), sort_order: 0 },
+  ],
+};
+
 export const SAMPLE_PARTNER = {
   name: 'Jane Doe',
   brokerage: 'Northern NJ Realty Group',

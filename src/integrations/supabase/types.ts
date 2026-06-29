@@ -14,6 +14,62 @@ export type Database = {
   }
   public: {
     Tables: {
+      listing_renderings: {
+        Row: {
+          id: string
+          listing_id: string
+          section: string
+          source_before_url: string | null
+          before_url: string | null
+          after_url: string | null
+          style: string | null
+          status: string
+          attempts: number
+          error: string | null
+          sort_order: number
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          listing_id: string
+          section: string
+          source_before_url?: string | null
+          before_url?: string | null
+          after_url?: string | null
+          style?: string | null
+          status?: string
+          attempts?: number
+          error?: string | null
+          sort_order?: number
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          listing_id?: string
+          section?: string
+          source_before_url?: string | null
+          before_url?: string | null
+          after_url?: string | null
+          style?: string | null
+          status?: string
+          attempts?: number
+          error?: string | null
+          sort_order?: number
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "listing_renderings_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listings"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       listings: {
         Row: {
           id: string

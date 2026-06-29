@@ -26,7 +26,9 @@ import {
   normalizeRow,
   validateRow,
   deriveSlug,
+  extractBeforePhotos,
   type NormalizedListing,
+  type BeforePhoto,
 } from '@/lib/listings/columns';
 
 type Listing = Database['public']['Tables']['listings']['Row'];
@@ -35,6 +37,7 @@ type PartnerRealtor = Database['public']['Tables']['partner_realtor']['Row'];
 interface PreviewRow {
   rowNum: number;
   data: NormalizedListing;
+  beforePhotos: BeforePhoto[];
   slug: string;
   error: string | null;
   status: 'new' | 'update' | 'error';
@@ -45,6 +48,7 @@ interface ImportResult {
   updated: number;
   errors: { row: number; reason: string }[];
   warnings: { row: number; reason: string }[];
+  queuedRenderings?: number;
 }
 
 const money = (n: number | null | undefined) =>
@@ -117,10 +121,11 @@ export function ListingsManager() {
         const existingSlugs = new Set(listings.map((l) => l.slug));
         const rows: PreviewRow[] = records.map((rec, i) => {
           const data = normalizeRow(rec);
+          const beforePhotos = extractBeforePhotos(rec);
           const slug = deriveSlug(data);
           const error = validateRow(data);
           const status: PreviewRow['status'] = error ? 'error' : existingSlugs.has(slug) ? 'update' : 'new';
-          return { rowNum: i + 1, data, slug, error, status };
+          return { rowNum: i + 1, data, beforePhotos, slug, error, status };
         });
         setParsedRows(rows);
         if (rows.length === 0) {
@@ -159,7 +164,9 @@ export function ListingsManager() {
   const errorCount = parsedRows.length - validCount;
 
   const commitImport = async () => {
-    const rows = parsedRows.filter((r) => r.status !== 'error').map((r) => r.data);
+    const rows = parsedRows
+      .filter((r) => r.status !== 'error')
+      .map((r) => ({ listing: r.data, before_photos: r.beforePhotos }));
     if (rows.length === 0) {
       toast({ title: 'Nothing to import', description: 'All rows have errors.', variant: 'destructive' });
       return;
@@ -179,7 +186,9 @@ export function ListingsManager() {
       setResult(json as ImportResult);
       toast({
         title: 'Import complete',
-        description: `${json.inserted} added, ${json.updated} updated, ${json.errors?.length ?? 0} skipped.`,
+        description:
+          `${json.inserted} added, ${json.updated} updated, ${json.errors?.length ?? 0} skipped.` +
+          (json.queuedRenderings ? ` ${json.queuedRenderings} before/after render(s) queued.` : ''),
       });
       setParsedRows([]);
       setFileName('');
@@ -397,6 +406,12 @@ export function ListingsManager() {
                   <strong>{result.inserted}</strong> added, <strong>{result.updated}</strong> updated,{' '}
                   <strong>{result.errors.length}</strong> skipped.
                 </p>
+                {!!result.queuedRenderings && (
+                  <p className="text-sm text-text-secondary">
+                    {result.queuedRenderings} before/after render(s) queued — they appear on the listing within a few
+                    minutes as the AI generates each &ldquo;after.&rdquo;
+                  </p>
+                )}
                 {result.errors.length > 0 && (
                   <div className="text-sm text-destructive">
                     {result.errors.map((er, i) => (

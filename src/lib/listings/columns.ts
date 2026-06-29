@@ -44,6 +44,63 @@ export function scopeToEstimateService(scope?: string | null): string {
 }
 
 // ---------------------------------------------------------------------------
+// Before/after renderings — rooms the AVA importer can auto-generate an
+// "after remodel" image for, from a "before" photo column in the sheet.
+// ---------------------------------------------------------------------------
+export const RENDERING_SECTIONS = [
+  { section: 'kitchen', label: 'Kitchen' },
+  { section: 'bathroom', label: 'Bathroom' },
+  { section: 'living-room', label: 'Living Room' },
+  { section: 'exterior', label: 'Exterior' },
+  { section: 'basement', label: 'Basement' },
+] as const;
+
+export type RenderingSection = (typeof RENDERING_SECTIONS)[number]['section'];
+
+/** Spreadsheet header ↔ section for the optional "before photo" columns. */
+export const BEFORE_PHOTO_COLUMNS = RENDERING_SECTIONS.map((r) => ({
+  header: `${r.label} Before Photo`,
+  section: r.section,
+}));
+
+export const REMODEL_STYLE_HEADER = 'Remodel Style';
+
+export const sectionLabel = (section: string): string =>
+  RENDERING_SECTIONS.find((r) => r.section === section)?.label ?? section.replace(/-/g, ' ');
+
+export interface BeforePhoto {
+  section: RenderingSection;
+  url: string;
+  style: string | null;
+}
+
+/**
+ * Pull the filled "<Room> Before Photo" columns (+ optional Remodel Style)
+ * out of a raw sheet record. Returns only rooms with a valid https URL.
+ * Kept separate from NormalizedListing — these aren't `listings` columns.
+ */
+export function extractBeforePhotos(record: Record<string, unknown>): BeforePhoto[] {
+  const lookup = new Map<string, unknown>();
+  for (const [k, v] of Object.entries(record)) lookup.set(k.trim().toLowerCase().replace(/\s+/g, ' '), v);
+
+  const style = (() => {
+    const raw = lookup.get(REMODEL_STYLE_HEADER.toLowerCase());
+    const v = raw == null ? '' : String(raw).trim();
+    return v || null;
+  })();
+
+  const out: BeforePhoto[] = [];
+  for (const col of BEFORE_PHOTO_COLUMNS) {
+    const raw = lookup.get(col.header.toLowerCase());
+    const url = raw == null ? '' : String(raw).trim();
+    if (url && /^https?:\/\//i.test(url)) {
+      out.push({ section: col.section, url, style });
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Normalized row shape (what the client POSTs and the server validates)
 // ---------------------------------------------------------------------------
 export interface NormalizedListing {
@@ -132,11 +189,30 @@ export const LISTING_COLUMNS: ListingColumn[] = [
   { header: 'Status', field: 'status', kind: 'enum:status', example: 'available', hint: `One of: ${LISTING_STATUSES.join(', ')}. Defaults to available on import.` },
 ];
 
-export const TEMPLATE_HEADERS = LISTING_COLUMNS.map((c) => c.header);
-export const TEMPLATE_EXAMPLE_ROW = LISTING_COLUMNS.map((c) => c.example);
+// Optional before/after columns appended after the listing columns: one
+// "before photo" per room, plus a single remodel style applied to all rooms.
+const BEFORE_PHOTO_HINT =
+  'Optional. Paste a photo of this room as-is; we auto-generate a remodeled "after" at the same angle and show a before/after slider.';
+
+export const TEMPLATE_HEADERS = [
+  ...LISTING_COLUMNS.map((c) => c.header),
+  ...BEFORE_PHOTO_COLUMNS.map((c) => c.header),
+  REMODEL_STYLE_HEADER,
+];
+export const TEMPLATE_EXAMPLE_ROW = [
+  ...LISTING_COLUMNS.map((c) => c.example),
+  'https://photos.example.com/kitchen-before.jpg',
+  '',
+  '',
+  '',
+  '',
+  'modern transitional',
+];
 export const INSTRUCTIONS_ROWS: string[][] = [
   ['Column', 'Required?', 'Notes'],
   ...LISTING_COLUMNS.map((c) => [c.header, c.required ? 'REQUIRED' : 'optional', c.hint]),
+  ...BEFORE_PHOTO_COLUMNS.map((c) => [c.header, 'optional', BEFORE_PHOTO_HINT]),
+  [REMODEL_STYLE_HEADER, 'optional', 'Optional style for the AI "after" renders (e.g. modern, farmhouse, transitional). Applies to all rooms for this home.'],
 ];
 
 // ---------------------------------------------------------------------------

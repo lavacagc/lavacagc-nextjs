@@ -9,8 +9,9 @@ import Footer from '@/components/Footer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { BedDouble, Bath, Ruler, Calendar, Home as HomeIcon, Phone, Mail, ArrowRight } from 'lucide-react';
-import { scopeToEstimateService } from '@/lib/listings/columns';
-import { IS_DEV, SAMPLE_LISTINGS, SAMPLE_PARTNER } from '@/lib/listings/sampleData';
+import { scopeToEstimateService, sectionLabel } from '@/lib/listings/columns';
+import { IS_DEV, SAMPLE_LISTINGS, SAMPLE_PARTNER, SAMPLE_RENDERINGS } from '@/lib/listings/sampleData';
+import BeforeAfterSlider from '@/components/BeforeAfterSlider';
 
 export const revalidate = 60;
 
@@ -79,6 +80,28 @@ async function getListing(slug: string): Promise<ListingDetail | null> {
   return data as unknown as ListingDetail;
 }
 
+interface Rendering {
+  section: string;
+  before_url: string;
+  after_url: string;
+}
+
+async function getRenderings(listingId: string, slug: string): Promise<Rendering[]> {
+  const { data, error } = await supabase
+    .from('listing_renderings')
+    .select('section,before_url,after_url,sort_order')
+    .eq('listing_id', listingId)
+    .eq('status', 'ready')
+    .order('sort_order', { ascending: true });
+  if (error || !data || data.length === 0) {
+    if (IS_DEV) return (SAMPLE_RENDERINGS[slug] ?? []) as Rendering[];
+    return [];
+  }
+  return data
+    .filter((r) => !!r.before_url && !!r.after_url)
+    .map((r) => ({ section: r.section, before_url: r.before_url as string, after_url: r.after_url as string }));
+}
+
 async function getPartnerAgent(): Promise<PartnerAgent | null> {
   const { data } = await supabase.from('partner_realtor').select('name,brokerage,phone,email,photo_url,bio').eq('id', 1).maybeSingle();
   if (!data && IS_DEV) return SAMPLE_PARTNER as PartnerAgent;
@@ -114,8 +137,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function ListingDetailPage({ params }: PageProps) {
   const { slug } = await params;
-  const [l, agent] = await Promise.all([getListing(slug), getPartnerAgent()]);
+  const l = await getListing(slug);
   if (!l) notFound();
+  const [agent, renderings] = await Promise.all([getPartnerAgent(), getRenderings(l.id, l.slug)]);
 
   const photos = l.photo_urls ?? [];
   const estimateHref = `/free-estimate?service=${scopeToEstimateService(l.recommended_scope)}&utm_content=listing-${l.slug}`;
@@ -207,6 +231,28 @@ export default async function ListingDetailPage({ params }: PageProps) {
             <div className="aspect-[16/6] rounded-lg bg-muted flex items-center justify-center text-text-muted mb-8">
               No photos available
             </div>
+          )}
+
+          {/* Before / after AI renderings */}
+          {renderings.length > 0 && (
+            <section className="mb-10">
+              <p className="text-sm font-semibold uppercase tracking-[0.08em] text-primary mb-1">See the potential</p>
+              <h2 className="text-2xl font-bold text-text-primary mb-1">Before &amp; after — what this home could become</h2>
+              <p className="text-sm text-text-muted mb-5">
+                Drag each slider to compare today&apos;s space with an AI-generated remodel at the same angle.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {renderings.map((r) => (
+                  <div key={r.section}>
+                    <h3 className="font-semibold text-text-primary mb-2">{sectionLabel(r.section)}</h3>
+                    <BeforeAfterSlider beforeImage={r.before_url} afterImage={r.after_url} />
+                    <p className="mt-2 text-xs text-text-muted">
+                      <span className="font-medium">AI-generated visualization</span> — illustrative only, not the actual finished space.
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

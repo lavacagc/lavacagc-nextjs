@@ -20,22 +20,7 @@ const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
 }) => {
   const [sliderPosition, setSliderPosition] = useState(50)
   const [isDragging, setIsDragging] = useState(false)
-  const [containerWidth, setContainerWidth] = useState<number | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-
-  // Track container width via ResizeObserver instead of reading ref during render
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setContainerWidth(entry.contentRect.width)
-      }
-    })
-    observer.observe(el)
-    setContainerWidth(el.offsetWidth)
-    return () => observer.disconnect()
-  }, [])
 
   const getPositionFromEvent = useCallback(
     (clientX: number) => {
@@ -123,18 +108,19 @@ const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
         draggable={false}
       />
 
-      {/* Before image (clipped) */}
+      {/* Before image (clipped to the left of the divider via clip-path so the
+          image keeps full size — never squishes — and avoids fill+width which
+          Next disallows) */}
       <div
-        className="absolute inset-0 overflow-hidden"
-        style={{ width: `${sliderPosition}%` }}
+        className="absolute inset-0 pointer-events-none"
+        style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
       >
         <Image
           src={beforeImage}
           alt={beforeLabel}
           fill
-          className="object-cover pointer-events-none"
+          className="object-cover"
           sizes="(max-width: 768px) 100vw, 50vw"
-          style={{ maxWidth: 'none', width: containerWidth ? `${containerWidth}px` : '100vw' }}
           draggable={false}
         />
       </div>
