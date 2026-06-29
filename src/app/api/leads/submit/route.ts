@@ -41,7 +41,12 @@ const MAX_BODY_BYTES = 16 * 1024;
 // length caps so no single field can be abused. The reCAPTCHA envelope stays
 // optional here so the existing explicit presence checks below still produce
 // their specific error + owner alert.
-const optStr = (max: number) => z.string().max(max).optional();
+// Accept null as well as undefined: the lead forms send `null` for unselected
+// optional fields (e.g. contact_time_details when the time preference isn't
+// "specific"). `.optional()` alone rejects null and would 400 the whole
+// submission ("Invalid request") before any processing. `.nullish()` treats a
+// null and an omitted field the same — both mean "not provided".
+const optStr = (max: number) => z.string().max(max).nullish();
 const LeadSubmitSchema = z
   .object({
     recaptchaToken: optStr(5000),
