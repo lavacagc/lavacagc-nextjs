@@ -47,7 +47,27 @@ const PRICE_BUCKETS: { label: string; max: number }[] = [
 
 const titleCase = (s: string) => s.replace(/(^|[-\s])\w/g, (m) => m.toUpperCase()).replace(/-/g, ' ');
 
-export default function ListingsGallery({ listings }: { listings: PublicListing[] }) {
+// Decoy addresses shown (blurred) on cloaked cards. The REAL address is never
+// rendered for a locked viewer — so anyone who tries to select/copy "around"
+// the blur to scrape addresses just walks away with one of these gags.
+const GAG_ADDRESSES = [
+  '123 Nice Try Road',
+  '1 Gotcha Lane',
+  '404 Address Not Found Blvd',
+  '8 Sneaky Peek Court',
+  '200 Paywall Place',
+  '12 Verify-Me Drive',
+  '7 Almost Had It Avenue',
+  '50 Copy-Paste Cul-de-Sac',
+];
+
+export default function ListingsGallery({
+  listings,
+  unlocked = false,
+}: {
+  listings: PublicListing[];
+  unlocked?: boolean;
+}) {
   const [city, setCity] = useState<string>(ALL);
   const [propertyType, setPropertyType] = useState<string>(ALL);
   const [scope, setScope] = useState<string>(ALL);
@@ -86,20 +106,22 @@ export default function ListingsGallery({ listings }: { listings: PublicListing[
   return (
     <section className="py-8 md:py-12">
       <div className="container mx-auto px-4">
-        {/* Teaser → unlock banner */}
-        <div
-          data-testid="unlock-banner"
-          className="mb-6 flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4"
-        >
-          <Lock className="h-5 w-5 flex-shrink-0 text-primary" />
-          <p className="text-sm text-text-secondary">
-            You&apos;re browsing the gallery. <strong className="text-text-primary">Verify your email</strong> to unlock
-            each home&apos;s full details, remodel budget, and AI before/after visualizations.
-          </p>
-          <Button asChild className="sm:ml-auto whitespace-nowrap">
-            <Link href="/buy-and-remodel/unlock">Unlock full listings</Link>
-          </Button>
-        </div>
+        {/* Teaser → unlock banner (hidden once the viewer is unlocked) */}
+        {!unlocked && (
+          <div
+            data-testid="unlock-banner"
+            className="mb-6 flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4"
+          >
+            <Lock className="h-5 w-5 flex-shrink-0 text-primary" />
+            <p className="text-sm text-text-secondary">
+              You&apos;re previewing the gallery. <strong className="text-text-primary">Verify your email</strong> to
+              reveal each home&apos;s address, full details, remodel budget, and AI before/after visualizations.
+            </p>
+            <Button asChild className="sm:ml-auto whitespace-nowrap">
+              <Link href="/buy-and-remodel/unlock">Unlock full listings</Link>
+            </Button>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="flex flex-wrap items-end gap-3 mb-8">
@@ -140,9 +162,13 @@ export default function ListingsGallery({ listings }: { listings: PublicListing[
           </div>
         ) : (
           <div data-testid="listings-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filtered.map((l) => (
-              <ListingCard key={l.id} listing={l} />
-            ))}
+            {filtered.map((l, i) =>
+              unlocked ? (
+                <ListingCard key={l.id} listing={l} />
+              ) : (
+                <CloakedCard key={l.id} listing={l} index={i} />
+              ),
+            )}
           </div>
         )}
       </div>
@@ -178,6 +204,73 @@ function FilterSelect({
         </SelectContent>
       </Select>
     </div>
+  );
+}
+
+/**
+ * Cloaked teaser card for locked (unverified) viewers: photo + ARV only, NOT
+ * clickable, with the address blurred. Crucially, the real address is never
+ * placed in the DOM — the blurred text is a decoy gag address, so scraping
+ * "under" the blur yields nothing but the joke.
+ */
+function CloakedCard({ listing: l, index }: { listing: PublicListing; index: number }) {
+  const photo = l.photo_urls?.[0];
+  const gag = GAG_ADDRESSES[index % GAG_ADDRESSES.length];
+
+  return (
+    <Card className="group overflow-hidden rounded-2xl shadow-card flex flex-col">
+      <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+        {photo ? (
+          <Image
+            src={photo}
+            alt="Home available to buy and remodel in Northern New Jersey"
+            fill
+            unoptimized
+            loading="lazy"
+            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className="object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-text-muted">No photo</div>
+        )}
+        {l.est_arv != null && (
+          <Badge className="absolute bottom-3 left-3 bg-primary text-primary-foreground text-sm px-3 py-1">
+            After remodel ~{money(l.est_arv)}
+          </Badge>
+        )}
+        <span className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-full bg-black/65 px-2.5 py-1 text-xs font-medium text-white">
+          <Lock className="h-3 w-3" /> Verify to view
+        </span>
+      </div>
+
+      <CardContent className="p-5 flex flex-col flex-1">
+        <div className="text-xs font-semibold uppercase tracking-wider text-primary mb-1">Address hidden</div>
+        {/* Visually blurred, but still selectable: anyone copying it gets the gag. */}
+        <p
+          className="text-lg font-bold text-text-primary leading-snug blur-[6px]"
+          title="Verify your email to reveal this home's address"
+        >
+          {gag}
+        </p>
+        <div className="flex items-center gap-1 text-text-muted text-sm mt-1">
+          <MapPin className="w-4 h-4" />
+          <span className="blur-[5px]">Northern New Jersey</span>
+        </div>
+
+        {l.est_arv != null && (
+          <p className="text-sm text-text-muted mt-4">
+            Projected value after remodel:{' '}
+            <span className="font-semibold text-text-primary">{money(l.est_arv)}</span>
+          </p>
+        )}
+
+        <div className="mt-auto pt-5">
+          <Button asChild className="w-full">
+            <Link href="/buy-and-remodel/unlock">Verify email to view this home</Link>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

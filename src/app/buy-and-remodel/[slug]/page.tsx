@@ -46,6 +46,7 @@ interface ListingDetail {
   est_remodel_budget_low: number | null;
   est_remodel_budget_high: number | null;
   est_arv: number | null;
+  area_comp_avg: number | null;
   recommended_scope: string | null;
   highlights: string[] | null;
   photo_urls: string[] | null;
@@ -143,6 +144,9 @@ export default async function ListingDetailPage({ params }: PageProps) {
   const totalLow = l.list_price != null && l.est_remodel_budget_low != null ? l.list_price + l.est_remodel_budget_low : null;
   const totalHigh = l.list_price != null && l.est_remodel_budget_high != null ? l.list_price + l.est_remodel_budget_high : null;
   const upside = l.est_arv != null && totalHigh != null ? l.est_arv - totalHigh : null;
+  // Market check: how comparable, already-remodeled homes nearby are pricing,
+  // vs. the all-in cost to own this one renovated — i.e. equity after the remodel.
+  const compEquity = l.area_comp_avg != null && totalHigh != null ? l.area_comp_avg - totalHigh : null;
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -317,10 +321,31 @@ export default async function ListingDetailPage({ params }: PageProps) {
                       <Row label="Potential upside" value={`+${money(upside)}`} accent />
                     </div>
                   )}
+                  {l.area_comp_avg != null && (
+                    <div className="border-t pt-3">
+                      <Row label="Comparable remodeled homes nearby" value={money(l.area_comp_avg)} />
+                      {compEquity != null && (
+                        <Row
+                          label="Equity vs. comparable homes"
+                          value={`${compEquity >= 0 ? '+' : '−'}${money(Math.abs(compEquity))}`}
+                          accent={compEquity > 0}
+                        />
+                      )}
+                    </div>
+                  )}
                 </dl>
+                {l.area_comp_avg != null && compEquity != null && compEquity > 0 && (
+                  <p className="text-xs text-text-secondary mt-4 rounded-md bg-accent-teal/10 border border-accent-teal/30 p-3">
+                    Comparable, already-remodeled homes in this area are selling around{' '}
+                    <span className="font-semibold text-text-primary">{money(l.area_comp_avg)}</span>. With an all-in cost
+                    near <span className="font-semibold text-text-primary">{money(totalHigh)}</span>, that&apos;s roughly{' '}
+                    <span className="font-semibold text-accent-teal">{money(compEquity)}</span> of built-in equity once the
+                    remodel is done — a sign the home is worth renovating in this market.
+                  </p>
+                )}
                 <p className="text-xs text-text-muted mt-4">
-                  Estimates are illustrative, not an appraisal or guarantee of value. Final remodel cost depends on
-                  scope and selections.
+                  Estimates are illustrative, not an appraisal or guarantee of value. Comparable-home figures are based on
+                  recent nearby sales and will vary. Final remodel cost depends on scope and selections.
                 </p>
               </div>
 

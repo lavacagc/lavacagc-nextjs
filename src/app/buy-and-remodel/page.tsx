@@ -1,12 +1,14 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import ListingsGallery, { type PublicListing } from '@/components/ListingsGallery';
 import PreviewBanner from '@/components/listings/PreviewBanner';
-import { resolveBuyRemodelAccess } from '@/lib/listings/published';
+import { resolveBuyRemodelAccess, hasAdminSession } from '@/lib/listings/published';
+import { ACCESS_COOKIE_NAME, verifyAccess } from '@/lib/listings/accessCookie';
 import { IS_DEV, SAMPLE_LISTINGS } from '@/lib/listings/sampleData';
 
 // Dynamic: access depends on the live publish flag + the viewer's admin session.
@@ -68,6 +70,13 @@ export default async function BuyAndRemodelPage() {
   const { canView, isPreview } = await resolveBuyRemodelAccess();
   if (!canView) notFound();
 
+  // "Unlocked" = the viewer has earned full details: a verified-email access
+  // cookie, an admin session, or the unpublished admin/dev preview. Everyone
+  // else sees the cloaked teaser (photo + blurred gag address + ARV only).
+  const cookieStore = await cookies();
+  const access = await verifyAccess(cookieStore.get(ACCESS_COOKIE_NAME)?.value);
+  const unlocked = isPreview || !!access || (await hasAdminSession());
+
   const fetched = await getListings();
   // DEV-only: show sample homes locally before the migration is applied.
   const listings = fetched.length ? fetched : IS_DEV ? (SAMPLE_LISTINGS as unknown as PublicListing[]) : [];
@@ -85,15 +94,24 @@ export default async function BuyAndRemodelPage() {
       itemListElement: listings.slice(0, 25).map((l, index) => ({
         '@type': 'ListItem',
         position: index + 1,
-        item: {
-          '@type': 'RealEstateListing',
-          name: `${l.address_line1}, ${l.city}, ${l.state}`,
-          url: `${PAGE_URL}/${l.slug}`,
-          image: l.photo_urls?.[0],
-          ...(l.list_price != null
-            ? { offers: { '@type': 'Offer', price: l.list_price, priceCurrency: 'USD' } }
-            : {}),
-        },
+        // Cloaked viewers never get the address or detail URL in the page
+        // source (the detail pages are email-gated anyway) — only verified /
+        // admin viewers see the full structured data.
+        item: unlocked
+          ? {
+              '@type': 'RealEstateListing',
+              name: `${l.address_line1}, ${l.city}, ${l.state}`,
+              url: `${PAGE_URL}/${l.slug}`,
+              image: l.photo_urls?.[0],
+              ...(l.list_price != null
+                ? { offers: { '@type': 'Offer', price: l.list_price, priceCurrency: 'USD' } }
+                : {}),
+            }
+          : {
+              '@type': 'RealEstateListing',
+              name: 'Buy + Remodel opportunity in Northern New Jersey',
+              image: l.photo_urls?.[0],
+            },
       })),
     },
     provider: {
@@ -150,7 +168,7 @@ export default async function BuyAndRemodelPage() {
         </section>
 
         <div id="listings" className="scroll-mt-20" />
-        <ListingsGallery listings={listings} />
+        <ListingsGallery listings={listings} unlocked={unlocked} />
 
         {/* CTA */}
         <section className="py-8 md:py-16 bg-primary">

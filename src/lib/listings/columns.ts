@@ -123,6 +123,7 @@ export interface NormalizedListing {
   est_remodel_budget_low: number | null;
   est_remodel_budget_high: number | null;
   est_arv: number | null;
+  area_comp_avg: number | null;
   recommended_scope: string | null;
   highlights: string[];
   photo_urls: string[];
@@ -180,6 +181,7 @@ export const LISTING_COLUMNS: ListingColumn[] = [
   { header: 'Est Remodel Budget Low', field: 'est_remodel_budget_low', kind: 'money', required: true, example: '$120,000', hint: 'Required. Low end of Lavaca remodel estimate.' },
   { header: 'Est Remodel Budget High', field: 'est_remodel_budget_high', kind: 'money', required: true, example: '$180,000', hint: 'Required. Must be >= low.' },
   { header: 'After-Remodel Value (ARV)', field: 'est_arv', kind: 'money', example: '$850,000', hint: 'Optional projected value after remodel.' },
+  { header: 'Area Comp Average (Remodeled)', field: 'area_comp_avg', kind: 'money', example: '$875,000', hint: 'Optional. Average recent SOLD price of comparable, already-remodeled homes nearby — used to show built-in equity vs. the all-in cost.' },
   { header: 'Recommended Scope', field: 'recommended_scope', kind: 'enum:scope', example: 'whole-home', hint: `One of: ${RECOMMENDED_SCOPES.join(', ')}. Unknown -> general.` },
   { header: 'Highlights', field: 'highlights', kind: 'array', example: 'Great bones | Large lot | Top school district', hint: 'Optional. Separate items with a pipe |.' },
   { header: 'Photo URLs', field: 'photo_urls', kind: 'urlArray', required: true, example: 'https://photos.example.com/1.jpg | https://photos.example.com/2.jpg', hint: 'Required (at least 1). Separate links with a pipe |. Must start with https://' },
@@ -240,6 +242,7 @@ const SAMPLE_HOMES: Record<string, string>[] = [
     'Est Remodel Budget Low': '$120,000',
     'Est Remodel Budget High': '$180,000',
     'After-Remodel Value (ARV)': '$850,000',
+    'Area Comp Average (Remodeled)': '$875,000',
     'Recommended Scope': 'whole-home',
     Highlights: 'Great bones | Large level lot | Top-rated school district | Walk to train',
     'Photo URLs': 'https://photos.example.com/12-maple/1.jpg | https://photos.example.com/12-maple/2.jpg',
@@ -270,6 +273,7 @@ const SAMPLE_HOMES: Record<string, string>[] = [
     'Est Remodel Budget Low': '$85,000',
     'Est Remodel Budget High': '$130,000',
     'After-Remodel Value (ARV)': '$950,000',
+    'Area Comp Average (Remodeled)': '$985,000',
     'Recommended Scope': 'kitchen',
     Highlights: 'Original woodwork | Walk to downtown | Deep lot',
     'Photo URLs': 'https://photos.example.com/88-park/1.jpg',
@@ -297,6 +301,7 @@ const SAMPLE_HOMES: Record<string, string>[] = [
     'Est Remodel Budget Low': '$95,000',
     'Est Remodel Budget High': '$140,000',
     'After-Remodel Value (ARV)': '$880,000',
+    'Area Comp Average (Remodeled)': '$905,000',
     'Recommended Scope': 'basement',
     Highlights: 'Cul-de-sac | Unfinished basement | Two-car garage',
     'Photo URLs': 'https://photos.example.com/5-oak/1.jpg | https://photos.example.com/5-oak/2.jpg',
@@ -474,6 +479,7 @@ export const NormalizedListingSchema = z
     est_remodel_budget_low: z.number().int().nonnegative('Est Remodel Budget Low is required').nullable().refine((v) => v !== null, 'Est Remodel Budget Low is required'),
     est_remodel_budget_high: z.number().int().nonnegative('Est Remodel Budget High is required').nullable().refine((v) => v !== null, 'Est Remodel Budget High is required'),
     est_arv: z.number().int().nonnegative().nullable(),
+    area_comp_avg: z.number().int().nonnegative().nullable(),
     recommended_scope: z.enum(RECOMMENDED_SCOPES).nullable(),
     highlights: z.array(z.string().max(200)).max(20),
     photo_urls: z.array(httpsUrl).min(1, 'At least one Photo URL is required').max(30),

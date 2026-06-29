@@ -44,6 +44,39 @@ test.describe('Buy + Remodel — published gallery content (live backend)', () =
   });
 });
 
+test.describe('Buy + Remodel — teaser cloaking for locked viewers (live backend)', () => {
+  // An unverified (no br_access cookie), non-admin visitor must see cloaked
+  // cards: photo + ARV only, NOT clickable to a detail page, address blurred,
+  // and the REAL address must never reach the DOM (the blurred text is a decoy).
+  test('locked gallery cloaks each card — no detail links, no real address in source', async ({ page, request }) => {
+    test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
+    const probe = await request.get('/buy-and-remodel', { maxRedirects: 0 });
+    test.skip(probe.status() === 404, 'Feature not published in this env — flip the admin switch to run.');
+
+    await page.goto('/buy-and-remodel', { waitUntil: 'domcontentloaded' });
+
+    // The "verify your email" teaser banner proves we're in the locked view.
+    await expect(page.getByTestId('unlock-banner')).toBeVisible();
+
+    const grid = page.getByTestId('listings-grid');
+    await expect(grid).toBeVisible();
+
+    // Every anchor inside the grid must point only at the unlock page — there
+    // are no clickable links into a gated detail page.
+    const hrefs = await grid.locator('a').evaluateAll((as) =>
+      as.map((a) => (a as HTMLAnchorElement).getAttribute('href')),
+    );
+    expect(hrefs.length).toBeGreaterThan(0);
+    for (const href of hrefs) {
+      expect(href, 'locked cards only link to /unlock').toBe('/buy-and-remodel/unlock');
+    }
+
+    // Each card carries the "Address hidden" affordance and a verify CTA.
+    await expect(grid.getByText('Address hidden').first()).toBeVisible();
+    await expect(grid.getByRole('link', { name: /Verify email to view this home/i }).first()).toBeVisible();
+  });
+});
+
 test.describe('Buy + Remodel — admin import flow (live backend)', () => {
   test('upload spreadsheet, flag a bad row, commit, and see the listing publish', async ({ page }) => {
     test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);

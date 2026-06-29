@@ -40,6 +40,7 @@ export interface SampleListing {
   est_remodel_budget_low: number | null;
   est_remodel_budget_high: number | null;
   est_arv: number | null;
+  area_comp_avg: number | null;
   recommended_scope: string | null;
   highlights: string[] | null;
   photo_urls: string[] | null;
@@ -72,9 +73,10 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
     est_remodel_budget_low: 120000,
     est_remodel_budget_high: 180000,
     est_arv: 850000,
+    area_comp_avg: 875000,
     recommended_scope: 'whole-home',
     highlights: ['Great bones', 'Large level lot', 'Top-rated school district', 'Walk to train'],
-    photo_urls: [ph('12 Maple Ave', '%23002855'), ph('Kitchen', '%23146356'), ph('Backyard', '%23EE9639')],
+    photo_urls: [ph('Exterior', '%23002855'), ph('Kitchen', '%23146356'), ph('Backyard', '%23EE9639')],
     listing_url: 'https://example.com/listing/12-maple',
     status: 'available',
     featured: true,
@@ -102,9 +104,10 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
     est_remodel_budget_low: 85000,
     est_remodel_budget_high: 130000,
     est_arv: 950000,
+    area_comp_avg: 985000,
     recommended_scope: 'kitchen',
     highlights: ['Original woodwork', 'Walk to downtown', 'Deep lot'],
-    photo_urls: [ph('88 Park St', '%23146356'), ph('Living room', '%23002855')],
+    photo_urls: [ph('Exterior', '%23146356'), ph('Living room', '%23002855')],
     listing_url: null,
     status: 'available',
     featured: false,
@@ -131,9 +134,10 @@ export const SAMPLE_LISTINGS: SampleListing[] = [
     est_remodel_budget_low: 95000,
     est_remodel_budget_high: 140000,
     est_arv: 880000,
+    area_comp_avg: 905000,
     recommended_scope: 'basement',
     highlights: ['Cul-de-sac', 'Unfinished basement', 'Two-car garage'],
-    photo_urls: [ph('5 Oak Court', '%23EE9639')],
+    photo_urls: [ph('Exterior', '%23EE9639')],
     listing_url: null,
     status: 'pending',
     featured: false,

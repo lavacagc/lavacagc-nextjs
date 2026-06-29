@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS listings (
   est_remodel_budget_low INTEGER,
   est_remodel_budget_high INTEGER,
   est_arv INTEGER,                      -- after-remodel value
+  area_comp_avg INTEGER,                 -- avg sale price of comparable remodeled homes nearby (equity check)
   recommended_scope TEXT CHECK (recommended_scope IN (
     'kitchen','bathroom','basement','addition','whole-home','general'
   )),

@@ -93,6 +93,7 @@ export type Database = {
           est_remodel_budget_low: number | null
           est_remodel_budget_high: number | null
           est_arv: number | null
+          area_comp_avg: number | null
           recommended_scope: string | null
           highlights: string[] | null
           photo_urls: string[] | null
@@ -125,6 +126,7 @@ export type Database = {
           est_remodel_budget_low?: number | null
           est_remodel_budget_high?: number | null
           est_arv?: number | null
+          area_comp_avg?: number | null
           recommended_scope?: string | null
           highlights?: string[] | null
           photo_urls?: string[] | null
@@ -157,6 +159,7 @@ export type Database = {
           est_remodel_budget_low?: number | null
           est_remodel_budget_high?: number | null
           est_arv?: number | null
+          area_comp_avg?: number | null
           recommended_scope?: string | null
           highlights?: string[] | null
           photo_urls?: string[] | null

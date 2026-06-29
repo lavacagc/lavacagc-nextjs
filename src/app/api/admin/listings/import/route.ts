@@ -236,6 +236,7 @@ export async function POST(request: Request) {
         est_remodel_budget_low: data.est_remodel_budget_low,
         est_remodel_budget_high: data.est_remodel_budget_high,
         est_arv: data.est_arv,
+        area_comp_avg: data.area_comp_avg,
         recommended_scope: data.recommended_scope,
         highlights: data.highlights,
         photo_urls,
