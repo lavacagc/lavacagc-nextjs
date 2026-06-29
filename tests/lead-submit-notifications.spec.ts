@@ -1,4 +1,5 @@
 import { test, expect, type Route } from '@playwright/test';
+import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
 
 /**
  * Regression guard for the lead-submit notification pipeline.
@@ -49,6 +50,11 @@ test.describe('/api/leads/submit — notifications dispatch in-process', () => {
   });
 
   test('AC1+AC2+AC3: submit succeeds without self-fetching notify endpoints', async ({ page }) => {
+    // This drives the REAL /api/leads/submit (route.fetch, not a mock): the
+    // server must verify reCAPTCHA, insert into Supabase, and dispatch
+    // notifications. That needs server secret keys + a live DB (and would emit
+    // real Telegram/email), so it can't run in the default CI job.
+    test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
     const selfFetchedNotifyHits: string[] = [];
     let submitResponseTime = 0;
     let submitStarted = 0;

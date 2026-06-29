@@ -29,12 +29,20 @@ jobs:
       - name: Build Next.js
         run: npm run build
         env:
-          # Public reCAPTCHA site key is only referenced client-side — a placeholder
-          # unblocks the build; tests stub window.grecaptcha so no real verify runs.
+          # Public reCAPTCHA site keys are only referenced client-side — placeholders
+          # unblock the build; tests stub window.grecaptcha so no real verify runs.
+          # The v2 (checkbox) key MUST be non-empty or RecaptchaChallengeProvider's
+          # requestChallenge() short-circuits to null, which fails the v2-challenge
+          # E2E (request-estimate AC5) even though that test mocks the network.
           NEXT_PUBLIC_RECAPTCHA_SITE_KEY: "test-placeholder-site-key"
+          NEXT_PUBLIC_RECAPTCHA_V2_SITE_KEY: "test-placeholder-v2-site-key"
           # Public Supabase URL is baked into the client bundle. A placeholder is
-          # fine for the build; tests never hit Supabase (they stub/intercept).
+          # fine for the build; mocked tests never hit Supabase (they stub/intercept),
+          # and live-backend tests skip unless E2E_LIVE_BACKEND is set. The browser
+          # client reads NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (falling back to
+          # ANON_KEY), so set both names to the placeholder.
           NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "placeholder-anon-key"
           NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
 
       # Run Playwright against `next start`. playwright.config.ts's webServer
