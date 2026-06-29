@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
 
 const PAGES_TO_CHECK = [
   '/',
@@ -33,6 +34,8 @@ const PAGES_TO_CHECK = [
 
 test.describe('Link Validation', () => {
   test('all internal pages load without 404 errors', async ({ page }) => {
+    // Location/service pages are DB-driven; without a live Supabase they 404.
+    test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
     const results: { url: string; status: number; error?: string }[] = [];
 
     for (const path of PAGES_TO_CHECK) {
@@ -56,6 +59,9 @@ test.describe('Link Validation', () => {
   });
 
   test('check all links on homepage for broken links', async ({ page }) => {
+    // The homepage links out to DB-driven location/project pages; without a
+    // live Supabase those targets 404 and this reports false-positive breakage.
+    test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
     await page.goto('/', { waitUntil: 'networkidle' });
 
     const links = await page.$$eval('a[href]', (anchors) =>
