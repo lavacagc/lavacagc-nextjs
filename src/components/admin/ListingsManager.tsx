@@ -20,6 +20,7 @@ import { Download, Upload, FileSpreadsheet, Trash2, Edit, Save, CheckCircle2, Al
 import {
   TEMPLATE_HEADERS,
   TEMPLATE_EXAMPLE_ROW,
+  TEMPLATE_SAMPLE_ROWS,
   INSTRUCTIONS_ROWS,
   LISTING_STATUSES,
   RECOMMENDED_SCOPES,
@@ -122,6 +123,15 @@ export function ListingsManager() {
     const instr = XLSX.utils.aoa_to_sheet(INSTRUCTIONS_ROWS);
     XLSX.utils.book_append_sheet(wb, instr, 'Instructions');
     XLSX.writeFile(wb, 'lavaca-listings-template.xlsx');
+  };
+
+  // Sample CSV: the exact import columns plus a few fully-filled example homes,
+  // for handing to another system to populate. Directly re-importable as-is.
+  const downloadSampleCsv = () => {
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...TEMPLATE_SAMPLE_ROWS]);
+    XLSX.utils.book_append_sheet(wb, ws, 'Listings');
+    XLSX.writeFile(wb, 'lavaca-listings-sample.csv', { bookType: 'csv' });
   };
 
   const parseFile = (file: File) => {
@@ -366,13 +376,18 @@ export function ListingsManager() {
               <CardDescription>
                 Download the spreadsheet, fill one row per home, then upload it below. Multi-value cells (photos,
                 highlights) use a pipe <code>|</code> between items. Paste the realtor&rsquo;s photo links in the Photo URLs
-                column — we host them automatically.
+                column — we host them automatically. The <strong>sample .csv</strong> has the exact columns plus a few
+                filled-in example homes — hand it to another system to populate, then upload the result here.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-wrap gap-3">
               <Button onClick={downloadTemplate} variant="outline">
                 <Download className="w-4 h-4 mr-2" />
                 Download .xlsx template
+              </Button>
+              <Button onClick={downloadSampleCsv} variant="outline">
+                <FileSpreadsheet className="w-4 h-4 mr-2" />
+                Download sample .csv
               </Button>
             </CardContent>
           </Card>

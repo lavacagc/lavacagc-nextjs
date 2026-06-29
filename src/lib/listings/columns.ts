@@ -216,6 +216,104 @@ export const INSTRUCTIONS_ROWS: string[][] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Sample data export — a few fully-filled, realistic homes in the exact column
+// order, for handing to another system that will populate each home. Keyed by
+// header (and mapped through TEMPLATE_HEADERS) so column order can never drift.
+// ---------------------------------------------------------------------------
+const SAMPLE_HOMES: Record<string, string>[] = [
+  {
+    'External ID': 'NNJ-001',
+    'MLS #': '3891234',
+    Address: '12 Maple Avenue',
+    City: 'Ridgewood',
+    County: 'Bergen',
+    State: 'NJ',
+    Zip: '07450',
+    'List Price': '$525,000',
+    Beds: '4',
+    Baths: '2.5',
+    'Sq Ft': '2400',
+    'Lot Size': '0.34 acres',
+    'Year Built': '1968',
+    'Property Type': 'single-family',
+    Description: 'Solid mid-century colonial on a quiet, tree-lined street. Great bones, dated kitchen and baths ready for a full transformation.',
+    'Est Remodel Budget Low': '$120,000',
+    'Est Remodel Budget High': '$180,000',
+    'After-Remodel Value (ARV)': '$850,000',
+    'Recommended Scope': 'whole-home',
+    Highlights: 'Great bones | Large level lot | Top-rated school district | Walk to train',
+    'Photo URLs': 'https://photos.example.com/12-maple/1.jpg | https://photos.example.com/12-maple/2.jpg',
+    'Listing URL': 'https://realtor.example.com/listing/12-maple',
+    Featured: 'yes',
+    'Sort Order': '0',
+    Status: 'available',
+    'Kitchen Before Photo': 'https://photos.example.com/12-maple/kitchen.jpg',
+    'Bathroom Before Photo': 'https://photos.example.com/12-maple/bath.jpg',
+    'Exterior Before Photo': 'https://photos.example.com/12-maple/exterior.jpg',
+    'Remodel Style': 'modern transitional',
+  },
+  {
+    'External ID': 'NNJ-002',
+    Address: '88 Park Street',
+    City: 'Montclair',
+    County: 'Essex',
+    State: 'NJ',
+    Zip: '07042',
+    'List Price': '$689,000',
+    Beds: '3',
+    Baths: '2',
+    'Sq Ft': '1850',
+    'Lot Size': '0.18 acres',
+    'Year Built': '1925',
+    'Property Type': 'single-family',
+    Description: 'Charming 1920s home with original details intact. Kitchen and primary bath need a refresh to modernize.',
+    'Est Remodel Budget Low': '$85,000',
+    'Est Remodel Budget High': '$130,000',
+    'After-Remodel Value (ARV)': '$950,000',
+    'Recommended Scope': 'kitchen',
+    Highlights: 'Original woodwork | Walk to downtown | Deep lot',
+    'Photo URLs': 'https://photos.example.com/88-park/1.jpg',
+    Featured: 'no',
+    'Sort Order': '1',
+    Status: 'available',
+    'Kitchen Before Photo': 'https://photos.example.com/88-park/kitchen.jpg',
+    'Remodel Style': 'farmhouse',
+  },
+  {
+    'External ID': 'NNJ-003',
+    Address: '5 Oak Court',
+    City: 'Livingston',
+    County: 'Essex',
+    State: 'NJ',
+    Zip: '07039',
+    'List Price': '$615,000',
+    Beds: '4',
+    Baths: '3',
+    'Sq Ft': '2650',
+    'Lot Size': '0.41 acres',
+    'Year Built': '1979',
+    'Property Type': 'single-family',
+    Description: 'Spacious split-level on a cul-de-sac. Unfinished basement offers big upside for added living space.',
+    'Est Remodel Budget Low': '$95,000',
+    'Est Remodel Budget High': '$140,000',
+    'After-Remodel Value (ARV)': '$880,000',
+    'Recommended Scope': 'basement',
+    Highlights: 'Cul-de-sac | Unfinished basement | Two-car garage',
+    'Photo URLs': 'https://photos.example.com/5-oak/1.jpg | https://photos.example.com/5-oak/2.jpg',
+    Featured: 'no',
+    'Sort Order': '2',
+    Status: 'available',
+    'Basement Before Photo': 'https://photos.example.com/5-oak/basement.jpg',
+    'Remodel Style': 'transitional',
+  },
+];
+
+/** Sample rows in exact TEMPLATE_HEADERS order (blank for unspecified columns). */
+export const TEMPLATE_SAMPLE_ROWS: string[][] = SAMPLE_HOMES.map((home) =>
+  TEMPLATE_HEADERS.map((header) => home[header] ?? ''),
+);
+
+// ---------------------------------------------------------------------------
 // Normalizers
 // ---------------------------------------------------------------------------
 function s(raw: unknown): string {
