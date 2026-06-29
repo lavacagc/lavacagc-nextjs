@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Star, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
+import { useAuth } from '@/hooks/useAuth';
 
 const REVIEW_COOLDOWN_KEY = 'lavaca_review_toast_cooldown';
 
@@ -28,6 +29,7 @@ interface Review {
 
 export default function ReviewToast() {
   const pathname = usePathname();
+  const { session } = useAuth();
   const [isVisible, setIsVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
@@ -53,7 +55,12 @@ export default function ReviewToast() {
   const isHighIntentRoute = HIGH_INTENT_PATHS.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`)
   );
-  const suppressed = isMobile || isHighIntentRoute;
+  // Suppress during admin work: instantly on the admin/auth routes (no async
+  // wait), and anywhere a Supabase session is active (the owner browsing the
+  // live site while logged in). In this app any authenticated session === admin.
+  const isAdminSession =
+    pathname.startsWith('/vaca-mgmt') || pathname.startsWith('/auth') || !!session;
+  const suppressed = isMobile || isHighIntentRoute || isAdminSession;
 
   // Listen for SmartBanner visibility + set cooldown when banner is dismissed
   useEffect(() => {
