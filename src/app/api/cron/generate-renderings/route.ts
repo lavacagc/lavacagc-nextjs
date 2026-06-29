@@ -115,11 +115,16 @@ export async function GET() {
 
   let pending: RenderingRow[] = [];
   try {
+    // NOTE: kept as a single template literal with a flat filter on purpose.
+    // The previous nested `or=(status.eq.pending,and(status.eq.failed,attempts.lt.N))`
+    // form, split across `+`-concatenated segments, hit a Turbopack minifier bug
+    // that dropped the trailing `))` in the production bundle — sending PostgREST a
+    // malformed logic tree (PGRST100) so the cron 500'd and no renderings generated.
+    // `status=in.(pending,failed)&attempts=lt.N` is equivalent: pending rows always
+    // have attempts=0 (< N), failed rows are retried until attempts reaches N.
     pending = await supabaseRest<RenderingRow[]>(
       'GET',
-      `listing_renderings?select=id,section,before_url,style,attempts,listings(slug)` +
-        `&or=(status.eq.pending,and(status.eq.failed,attempts.lt.${MAX_ATTEMPTS}))` +
-        `&before_url=not.is.null&order=created_at.asc&limit=${BATCH}`,
+      `listing_renderings?select=id,section,before_url,style,attempts,listings(slug)&status=in.(pending,failed)&attempts=lt.${MAX_ATTEMPTS}&before_url=not.is.null&order=created_at.asc&limit=${BATCH}`,
     );
   } catch (err) {
     console.error('generate-renderings: query failed', err);
