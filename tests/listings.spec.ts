@@ -74,6 +74,10 @@ test.describe('Buy + Remodel — teaser cloaking for locked viewers (live backen
     // Each card carries the "Address hidden" affordance and a verify CTA.
     await expect(grid.getByText('Address hidden').first()).toBeVisible();
     await expect(grid.getByRole('link', { name: /Verify email to view this home/i }).first()).toBeVisible();
+
+    // The City filter is hidden for locked viewers — its dropdown would leak
+    // which towns have homes. (Other filters stay.)
+    await expect(page.getByText('City', { exact: true })).toHaveCount(0);
   });
 });
 

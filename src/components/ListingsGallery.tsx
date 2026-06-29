@@ -125,7 +125,11 @@ export default function ListingsGallery({
 
         {/* Filters */}
         <div className="flex flex-wrap items-end gap-3 mb-8">
-          <FilterSelect label="City" value={city} onChange={setCity} options={cities.map((c) => ({ value: c, label: c }))} />
+          {/* City filter is hidden for locked viewers — its dropdown would leak
+              which towns have homes, undercutting the cloaked-address teaser. */}
+          {unlocked && (
+            <FilterSelect label="City" value={city} onChange={setCity} options={cities.map((c) => ({ value: c, label: c }))} />
+          )}
           <FilterSelect
             label="Type"
             value={propertyType}
