@@ -1,6 +1,7 @@
 'use client'
 
 import React from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Star, Shield, Award, Users, ChevronDown } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
@@ -181,22 +182,40 @@ const Hero = () => {
               )}
             </button>
 
-            <div className="flex flex-col items-center justify-center p-4 rounded-lg bg-card border shadow-card hover:shadow-lg transition-shadow min-h-[120px]">
+            <button
+              type="button"
+              onClick={() => {
+                document.getElementById('testimonials')?.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'start'
+                });
+              }}
+              className="flex flex-col items-center justify-center p-4 rounded-lg bg-card border shadow-card hover:shadow-lg transition-shadow cursor-pointer min-h-[120px] w-full text-center focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label="View customer testimonials"
+            >
               <Users className="h-8 w-8 text-primary mb-2" />
               <p className="font-bold text-text-primary">Trusted by</p>
               <p className="text-sm text-text-muted">Home Owners</p>
-            </div>
+            </button>
 
-            <div className="flex flex-col items-center justify-center p-4 rounded-lg bg-card border shadow-card hover:shadow-lg transition-shadow min-h-[120px]">
+            <Link
+              href="/about"
+              className="flex flex-col items-center justify-center p-4 rounded-lg bg-card border shadow-card hover:shadow-lg transition-shadow cursor-pointer min-h-[120px] w-full text-center focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label="Learn about our licensing, bonding, and insurance"
+            >
               <Shield className="h-8 w-8 text-accent-teal mb-2" />
               <p className="font-bold text-text-primary text-center">Licensed, Bonded, & Insured</p>
-            </div>
+            </Link>
 
-            <div className="flex flex-col items-center justify-center p-4 rounded-lg bg-card border shadow-card hover:shadow-lg transition-shadow min-h-[120px]">
+            <Link
+              href="/about"
+              className="flex flex-col items-center justify-center p-4 rounded-lg bg-card border shadow-card hover:shadow-lg transition-shadow cursor-pointer min-h-[120px] w-full text-center focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label="Learn about our family-owned business"
+            >
               <Award className="h-8 w-8 text-secondary mb-2" />
               <p className="font-bold text-text-primary">Family-Owned</p>
               <p className="text-sm text-text-muted">& Operated</p>
-            </div>
+            </Link>
           </div>
 
           {/* Scroll anchor — encourages users to scroll past the fold */}
