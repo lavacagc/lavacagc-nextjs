@@ -28,6 +28,11 @@ test('seasonal newsletter renders full list + book links + unsubscribe', () => {
   expect(n.html).not.toContain('/home-care/book?task=test_smoke_co'); // DIY → no book link
   expect(n.html).toContain('unsubscribe?token=abc');
   expect(n.text).toContain('Clean gutters');
+  // Branding present.
+  expect(n.html).toContain('13VH13373800'); // license
+  expect(n.html).toContain('(201) 212-4917'); // phone
+  expect(n.html).toContain('logo.png'); // logo
+  expect(n.html).toContain('/home-care/checklist'); // titles link to the saved checklist
 });
 
 test('nudge newsletter is the short version', () => {
@@ -37,8 +42,8 @@ test('nudge newsletter is the short version', () => {
   });
   expect(n.subject).toContain('July');
   expect(n.html).toContain('Hi there,');
-  // only 3 task cards in a nudge
-  expect((n.html.match(/border-radius:12px/g) || []).length).toBe(3);
+  // only 3 checklist rows in a nudge (count the checkbox squares)
+  expect((n.html.match(/border:2px solid #c7d0dc/g) || []).length).toBe(3);
 });
 
 test('newsletter cron route is wired', () => {
