@@ -17,7 +17,7 @@ export interface HomeCareEmailResult {
 }
 
 function shell(title: string, body: string): string {
-  return `<!DOCTYPE html><html><body style="margin:0;background:#f6f4ef;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f6f4ef;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">
   <div style="max-width:560px;margin:0 auto;padding:24px">
     <div style="background:#002855;color:#fff;border-radius:14px 14px 0 0;padding:22px 26px">
       <div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#FFCB8E;font-weight:700">La Vaca Home Care</div>
