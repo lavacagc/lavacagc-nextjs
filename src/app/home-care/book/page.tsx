@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-import HomeCareBookingForm, { type BookingPrefill } from '@/components/homecare/HomeCareBookingForm';
+import HomeCareBookingForm, { type BookingPrefill, type BookingService } from '@/components/homecare/HomeCareBookingForm';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById } from '@/lib/homecare/homeowners';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
@@ -13,20 +13,25 @@ export const dynamic = 'force-dynamic';
 interface CatalogRow {
   key: string;
   title: string;
-  blurb: string;
 }
 
-export default async function BookPage({ searchParams }: { searchParams: Promise<{ task?: string }> }) {
+export default async function BookPage({ searchParams }: { searchParams: Promise<{ task?: string; tasks?: string }> }) {
   const sp = await searchParams;
-  const taskKey = (sp?.task ?? '').slice(0, 80);
+  const rawKeys = (sp?.tasks || sp?.task || '')
+    .split(',')
+    .map((k) => k.trim().slice(0, 80))
+    .filter(Boolean)
+    .slice(0, 20);
 
-  // Look up the requested task (falls back to a generic maintenance request).
-  let task: CatalogRow | null = null;
-  if (taskKey) {
-    const rows = await supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title,blurb&key=eq.${encodeURIComponent(taskKey)}&limit=1`);
-    task = rows?.[0] ?? null;
+  // Look up the requested tasks (preserve the order the homeowner selected them).
+  let services: BookingService[] = [];
+  if (rawKeys.length) {
+    const rows = await supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title&key=in.(${rawKeys.map(encodeURIComponent).join(',')})`);
+    const byKey = new Map((rows ?? []).map((r) => [r.key, r.title]));
+    services = rawKeys.filter((k) => byKey.has(k)).map((k) => ({ key: k, title: byKey.get(k)! }));
   }
-  const taskTitle = task?.title ?? 'Seasonal home maintenance';
+  if (services.length === 0) services = [{ key: 'general', title: 'Seasonal home maintenance' }];
+  const isMulti = services.length > 1;
 
   // Prefill contact info if the visitor is a verified homeowner.
   const cookieStore = await cookies();
@@ -39,6 +44,8 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
     }
   }
 
+  const heading = isMulti ? 'Request an estimate' : `Book us for ${services[0].title.toLowerCase()}`;
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -49,13 +56,17 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
               <ArrowLeft className="h-4 w-4" /> Back to my checklist
             </Link>
             <p className="text-sm font-semibold uppercase tracking-[0.08em] text-primary mb-2">La Vaca Home Care · Booking</p>
-            <h1 className="text-3xl md:text-4xl font-bold text-text-primary mb-2">Book us for {taskTitle.toLowerCase()}</h1>
-            {task?.blurb && <p className="text-lg text-text-secondary">{task.blurb}</p>}
+            <h1 className="text-3xl md:text-4xl font-bold text-text-primary mb-2">{heading}</h1>
+            <p className="text-lg text-text-secondary">
+              {isMulti
+                ? `Tell us how to reach you and we'll put together one estimate for the ${services.length} services you picked.`
+                : "Tell us how to reach you and we'll handle the rest — no obligation."}
+            </p>
           </div>
         </section>
         <section className="py-8">
           <div className="container mx-auto px-4 max-w-2xl">
-            <HomeCareBookingForm taskKey={taskKey || 'general'} taskTitle={taskTitle} prefill={prefill} />
+            <HomeCareBookingForm services={services} prefill={prefill} />
           </div>
         </section>
       </main>
