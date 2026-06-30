@@ -23,7 +23,7 @@ const VERIFY_TOKEN_TTL_HOURS = 48;
 const optStr = (max: number) => z.string().max(max).nullish();
 const Schema = z
   .object({
-    first_name: optStr(200),
+    first_name: z.string().min(1).max(200),
     email: z.string().email().max(320),
     phone: optStr(60),
     zip: z.string().max(20).nullish(),

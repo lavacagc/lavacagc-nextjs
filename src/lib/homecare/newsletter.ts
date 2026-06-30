@@ -14,6 +14,7 @@ export interface NewsletterTask {
   bookable: boolean;
   diy_or_pro: 'diy' | 'pro' | 'either';
   priority: number;
+  applies_to: string[];
 }
 
 export interface NewsletterArgs {

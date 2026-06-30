@@ -6,6 +6,8 @@ import Footer from '@/components/Footer';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById, updateHomeowner } from '@/lib/homecare/homeowners';
 import { currentSeason, SEASON_LABEL } from '@/lib/homecare/season';
+import { filterTasksForProfile, type HomeSystems } from '@/lib/homecare/profile';
+import HomeCareProfileForm from '@/components/homecare/HomeCareProfileForm';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { Wrench, CheckCircle2 } from 'lucide-react';
 
@@ -16,6 +18,7 @@ interface CatalogRow {
   title: string;
   blurb: string;
   seasons: string[];
+  applies_to: string[];
   diy_or_pro: 'diy' | 'pro' | 'either';
   bookable: boolean;
   est_cost_low: number | null;
@@ -43,10 +46,13 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   updateHomeowner(homeowner.id, { last_seen_at: new Date().toISOString() }).catch(() => {});
 
   const season = currentSeason();
-  const tasks = (await supabaseRest<CatalogRow[]>(
-    'GET',
-    `maintenance_catalog?active=eq.true&seasons=cs.%7B${season}%7D&order=priority.desc`,
-  )) ?? [];
+  const [allTasks, profileRows] = await Promise.all([
+    supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?active=eq.true&seasons=cs.%7B${season}%7D&order=priority.desc`),
+    supabaseRest<{ systems: HomeSystems }[]>('GET', `home_profiles?select=systems&homeowner_id=eq.${homeowner.id}&limit=1`),
+  ]);
+  const systems = profileRows?.[0]?.systems ?? null;
+  const hasProfile = !!systems && Object.keys(systems).length > 0;
+  const tasks = filterTasksForProfile(allTasks ?? [], systems);
 
   const greeting = homeowner.first_name ? `Welcome back, ${homeowner.first_name}` : 'Your home checklist';
 
@@ -69,6 +75,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
 
         <section className="py-8">
           <div className="container mx-auto px-4 max-w-3xl space-y-4">
+            <HomeCareProfileForm initial={systems ?? {}} hasProfile={hasProfile} />
             {tasks.length === 0 ? (
               <p className="text-text-secondary">No tasks for this season yet — check back soon.</p>
             ) : (
