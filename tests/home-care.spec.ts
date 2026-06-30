@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { currentSeason, nextSeason } from '../src/lib/homecare/season';
 import { signHomeAccess, verifyHomeAccess } from '../src/lib/homecare/accessCookie';
@@ -52,7 +52,7 @@ test('opt-in flow files are wired', () => {
 });
 
 test('booking form posts a valid lead (constraint-safe values)', () => {
-  const src = require('fs').readFileSync(join(process.cwd(), 'src/components/homecare/HomeCareBookingForm.tsx'), 'utf8');
+  const src = readFileSync(join(process.cwd(), 'src/components/homecare/HomeCareBookingForm.tsx'), 'utf8');
   expect(src).toContain('/api/leads/submit');
   expect(src).toContain("inquiry_type: 'estimate'"); // valid CHECK value
   expect(src).toContain("project_type: 'other'"); // valid CHECK value
@@ -60,9 +60,8 @@ test('booking form posts a valid lead (constraint-safe values)', () => {
 });
 
 test('Home Care is linked in nav + footer', () => {
-  const fs = require('fs');
-  const header = fs.readFileSync(join(process.cwd(), 'src/components/Header.tsx'), 'utf8');
-  const footer = fs.readFileSync(join(process.cwd(), 'src/components/Footer.tsx'), 'utf8');
+  const header = readFileSync(join(process.cwd(), 'src/components/Header.tsx'), 'utf8');
+  const footer = readFileSync(join(process.cwd(), 'src/components/Footer.tsx'), 'utf8');
   expect(header).toContain('/home-care');
   expect(footer).toContain('/home-care');
 });
