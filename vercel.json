@@ -31,6 +31,10 @@
     {
       "path": "/api/cron/seo-suggest",
       "schedule": "0 7 * * 1"
+    },
+    {
+      "path": "/api/cron/seo-rollback",
+      "schedule": "30 7 * * 1"
     }
   ]
 }
