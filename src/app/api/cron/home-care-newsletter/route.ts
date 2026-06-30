@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
   try {
     const tasks = (await supabaseRest<NewsletterTask[]>(
       'GET',
-      `maintenance_catalog?select=key,title,blurb,bookable,diy_or_pro,priority,applies_to&active=eq.true&seasons=cs.%7B${season}%7D&order=priority.desc`,
+      `maintenance_catalog?select=key,title,blurb,bookable,diy_or_pro,priority,applies_to&active=eq.true&starter=eq.false&seasons=cs.%7B${season}%7D&order=priority.desc`,
     )) ?? [];
 
     const homeowners = (await supabaseRest<HomeownerRow[]>(

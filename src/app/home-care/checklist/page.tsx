@@ -15,7 +15,6 @@ import { CheckCircle2, Phone, ShieldCheck } from 'lucide-react';
 export const dynamic = 'force-dynamic';
 
 interface CatalogRow extends ChecklistTask {
-  seasons: string[];
   applies_to: string[];
   priority: number;
 }
@@ -33,15 +32,16 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
 
   const season = currentSeason();
   const [allTasks, profileRows, doneRows] = await Promise.all([
-    supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title,blurb,applies_to,diy_or_pro,bookable,est_cost_low,est_cost_high,priority&active=eq.true&seasons=cs.%7B${season}%7D&order=priority.desc`),
-    supabaseRest<{ systems: HomeSystems }[]>('GET', `home_profiles?select=systems&homeowner_id=eq.${homeowner.id}&limit=1`),
-    supabaseRest<{ task_key: string }[]>('GET', `homeowner_maintenance?select=task_key&homeowner_id=eq.${homeowner.id}&season=eq.${season}&status=eq.done`),
+    supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title,blurb,applies_to,seasons,frequency,starter,diy_or_pro,bookable,est_cost_low,est_cost_high,priority&active=eq.true&order=priority.desc`),
+    supabaseRest<{ systems: HomeSystems; homeowner_type: 'first_time' | 'experienced' | null }[]>('GET', `home_profiles?select=systems,homeowner_type&homeowner_id=eq.${homeowner.id}&limit=1`),
+    supabaseRest<{ task_key: string; season: string }[]>('GET', `homeowner_maintenance?select=task_key,season&homeowner_id=eq.${homeowner.id}&status=eq.done`),
   ]);
 
   const systems = profileRows?.[0]?.systems ?? null;
-  const hasProfile = !!systems && Object.keys(systems).length > 0;
+  const homeownerType = profileRows?.[0]?.homeowner_type ?? null;
+  const hasProfile = (!!systems && Object.keys(systems).length > 0) || homeownerType !== null;
   const tasks = filterTasksForProfile(allTasks ?? [], systems);
-  const doneKeys = (doneRows ?? []).map((d) => d.task_key);
+  const doneItems = doneRows ?? [];
   const greeting = homeowner.first_name ? `Welcome back, ${homeowner.first_name}` : 'Your home checklist';
 
   return (
@@ -74,18 +74,18 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
             )}
             <h1 className="text-3xl md:text-4xl font-bold text-text-primary mb-1">{greeting}</h1>
             <p className="text-lg text-text-secondary">
-              Your <strong>{SEASON_LABEL[season]}</strong> checklist — check things off (it&apos;s saved), book any task, or select a few to request one estimate.
+              Your year-round home plan — it&apos;s <strong>{SEASON_LABEL[season]}</strong> now. Check things off (it&apos;s saved), browse any season, book a task, or pick a few for one estimate.
             </p>
           </div>
         </section>
 
         <section className="py-6">
           <div className="container mx-auto px-4 max-w-3xl space-y-4">
-            <HomeCareProfileForm initial={systems ?? {}} hasProfile={hasProfile} />
-            {tasks.length === 0 ? (
-              <p className="text-text-secondary">No tasks for this season yet — check back soon.</p>
+            <HomeCareProfileForm initial={systems ?? {}} hasProfile={hasProfile} initialType={homeownerType} />
+            {(tasks?.length ?? 0) === 0 ? (
+              <p className="text-text-secondary">Your checklist is being prepared — check back soon.</p>
             ) : (
-              <HomeCareChecklistClient tasks={tasks} doneKeys={doneKeys} />
+              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} homeownerType={homeownerType} currentSeason={season} />
             )}
           </div>
         </section>

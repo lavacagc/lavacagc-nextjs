@@ -15,17 +15,18 @@ export async function POST(request: NextRequest) {
   if (!access) return NextResponse.json({ ok: false, error: 'Not signed in' }, { status: 401 });
 
   try {
-    const body = await request.json().catch(() => ({}));
-    const systems = sanitizeSystems((body as { systems?: unknown }).systems);
+    const body = (await request.json().catch(() => ({}))) as { systems?: unknown; homeowner_type?: unknown };
+    const systems = sanitizeSystems(body.systems);
+    const homeowner_type = body.homeowner_type === 'first_time' || body.homeowner_type === 'experienced' ? body.homeowner_type : null;
 
     await supabaseRest(
       'POST',
       'home_profiles?on_conflict=homeowner_id',
-      { homeowner_id: access.homeownerId, systems, updated_at: new Date().toISOString() },
+      { homeowner_id: access.homeownerId, systems, homeowner_type, updated_at: new Date().toISOString() },
       { prefer: 'resolution=merge-duplicates,return=minimal' },
     );
 
-    return NextResponse.json({ ok: true, systems });
+    return NextResponse.json({ ok: true, systems, homeowner_type });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('home-care profile save failed:', message);
