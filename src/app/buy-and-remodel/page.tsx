@@ -34,12 +34,13 @@ export const metadata: Metadata = {
       'Curated homes to buy and renovate in Northern NJ, each with an estimated remodel budget and after-remodel value.',
     type: 'website',
     url: PAGE_URL,
-    images: [{ url: 'https://www.lavacagc.com/og-portfolio.jpg', width: 1200, height: 630, alt: 'Homes to Buy and Remodel in Northern NJ' }],
+    images: [{ url: 'https://www.lavacagc.com/og-buy-and-remodel.png', width: 1200, height: 630, alt: 'Buy + Remodel — curated Northern NJ homes priced to make your own' }],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Northern NJ Homes to Buy + Remodel | La Vaca GC',
     description: 'Curated homes to buy and renovate in Northern NJ.',
+    images: ['https://www.lavacagc.com/og-buy-and-remodel.png'],
   },
   alternates: { canonical: PAGE_URL },
 };
