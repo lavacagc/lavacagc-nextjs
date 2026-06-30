@@ -49,3 +49,36 @@ export async function supabaseRest<T = unknown>(
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
 }
+
+/**
+ * GET every row for a query, paging past PostgREST's default 1000-row cap via
+ * Range headers. Use this for the seo_metrics scans (a 28-day window is several
+ * thousand rows) — a plain GET silently truncates to 1000 and skews the report
+ * and scoring.
+ */
+export async function supabaseRestPaged<T = unknown>(path: string, pageSize = 1000): Promise<T[]> {
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
+  if (!secretKey) throw new Error('SUPABASE_SECRET_KEY not configured');
+  if (!SUPABASE_URL) throw new Error('NEXT_PUBLIC_SUPABASE_URL not configured');
+
+  const out: T[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const to = from + pageSize - 1;
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      headers: {
+        apikey: secretKey,
+        Authorization: `Bearer ${secretKey}`,
+        'Range-Unit': 'items',
+        Range: `${from}-${to}`,
+      },
+    });
+    if (!res.ok && res.status !== 206) {
+      const text = await res.text();
+      throw new Error(`Supabase GET ${path} failed: ${res.status} ${text}`);
+    }
+    const batch = (JSON.parse((await res.text()) || '[]')) as T[];
+    out.push(...batch);
+    if (batch.length < pageSize) break; // last page
+  }
+  return out;
+}

@@ -12,7 +12,7 @@
  * Auth: Bearer CRON_SECRET (also enforced by middleware on /api/cron/*).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseRest } from '@/lib/seo/supabase-rest';
+import { supabaseRest, supabaseRestPaged } from '@/lib/seo/supabase-rest';
 import { reportWindow, type SeoMetricRow } from '@/lib/seo/report';
 import { proposeContentActions, type PostRef, type ExistingAction } from '@/lib/seo/scoring';
 
@@ -40,8 +40,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const [rows, posts, existing] = await Promise.all([
-      supabaseRest<SeoMetricRow[]>(
-        'GET',
+      supabaseRestPaged<SeoMetricRow>(
         `seo_metrics?select=source,url,query,date,impressions,clicks,position,ctr,users,engaged_sessions,conversions&date=gte.${startDate}&date=lte.${endDate}`,
       ),
       supabaseRest<PostRow[]>('GET', 'blog_posts?select=id,slug&published=eq.true'),
