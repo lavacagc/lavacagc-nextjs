@@ -73,6 +73,7 @@ const NAVIGATION: NavItem[] = [
     label: 'Marketing',
     children: [
       { id: 'seo', icon: Globe, label: 'SEO/Sitemap' },
+      { id: 'seo-suggestions', icon: TrendingUp, label: 'SEO Suggestions' },
       { id: 'analytics', icon: Activity, label: 'Analytics' },
       { id: 'gmb', icon: Activity, label: 'Google Reviews' },
     ],
