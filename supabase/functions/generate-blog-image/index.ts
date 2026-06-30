@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { openaiImage } from "../_shared/openai.ts";
 
 // Allowed origins for CORS
 const ALLOWED_ORIGINS = [
@@ -28,8 +29,11 @@ const getCorsHeaders = (origin: string | null) => {
 // Style enhancement for professional remodeling images
 const STYLE_SUFFIX = ", professional photography, luxury home renovation, high-end finishes, bright natural lighting, architectural photography style, photorealistic, 8k quality, interior design magazine";
 
-// Nano Banana Pro (Gemini 3 Pro Image) - highest quality, up to 4K resolution
-const MODEL = "gemini-3-pro-image-preview";
+// OpenAI's latest image model (pinned for stable production output/cost; swap to
+// "chatgpt-image-latest" if you ever want the rolling always-newest alias).
+const MODEL = "gpt-image-2";
+const SIZE = "1536x1024"; // landscape ~16:9 hero
+const QUALITY = "high"; // "low" | "medium" | "high" | "auto"
 
 const handler = async (req: Request): Promise<Response> => {
   const origin = req.headers.get('origin');
@@ -41,9 +45,9 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not configured");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY is not configured");
     }
 
     // Parse request body
@@ -58,51 +62,17 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Enhance prompt with professional styling
     const enhancedPrompt = `${prompt.trim()}${STYLE_SUFFIX}`;
-    console.log("Generating image with Nano Banana Pro:", enhancedPrompt.substring(0, 100) + "...");
+    console.log(`Generating image with ${MODEL}:`, enhancedPrompt.substring(0, 100) + "...");
 
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: enhancedPrompt }]
-          }],
-          generationConfig: {
-            responseModalities: ["IMAGE"],
-            imageConfig: {
-              aspectRatio: "16:9"
-            }
-          }
-        })
-      }
-    );
+    const { b64, mimeType } = await openaiImage({
+      model: MODEL,
+      prompt: enhancedPrompt,
+      size: SIZE,
+      quality: QUALITY,
+    });
+    const imageUrl = `data:${mimeType};base64,${b64}`;
 
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
-      console.error("Nano Banana Pro error:", errorText);
-      throw new Error(`Image generation failed: ${geminiResponse.status} - ${errorText.substring(0, 200)}`);
-    }
-
-    // Parse response
-    const data = await geminiResponse.json();
-    console.log("Response structure:", JSON.stringify(data).substring(0, 300));
-
-    // Find image part in response
-    const imagePart = data.candidates?.[0]?.content?.parts?.find(
-      (part: { inlineData?: { data: string; mimeType: string } }) => part.inlineData
-    );
-
-    if (!imagePart?.inlineData?.data) {
-      console.error("Unexpected response structure:", JSON.stringify(data).substring(0, 500));
-      throw new Error("No image data in response");
-    }
-
-    const mimeType = imagePart.inlineData.mimeType || "image/png";
-    const imageUrl = `data:${mimeType};base64,${imagePart.inlineData.data}`;
-
-    console.log("Image generated successfully with Nano Banana Pro");
+    console.log(`Image generated successfully with ${MODEL}`);
 
     return new Response(
       JSON.stringify({ imageUrl, model: MODEL }),

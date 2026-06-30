@@ -7,6 +7,13 @@ import {
   buildLinksContext,
   SPECIAL_FORMATTING
 } from "../_shared/internalLinks.ts";
+import { openaiChat } from "../_shared/openai.ts";
+
+// Articles are written by GPT-5.5 (highest-quality long-form). The tiny image-
+// PROMPT helper uses gpt-4o — it only writes a short descriptive string, so the
+// faster/cheaper model keeps the request well under the edge-function timeout.
+const ARTICLE_MODEL = "gpt-5.5";
+const IMAGE_PROMPT_MODEL = "gpt-4o";
 
 const handler = async (req: Request): Promise<Response> => {
   const origin = req.headers.get('origin');
@@ -18,12 +25,12 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
 
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not configured");
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY is not configured");
     }
 
     // Parse request body
@@ -65,6 +72,13 @@ SEO Requirements:
 - Include location-relevant terms (Northern NJ, Essex County, Bergen County, Morris County)
 - Create content that answers common homeowner questions
 
+Natural-Voice Guardrails (write like a real person, not AI marketing copy):
+- Favor flowing prose. Use bullet lists only where they genuinely help (specs, steps, checklists) — not as the default for every section.
+- Vary sentence length and rhythm. Open with a concrete, specific hook, never "Imagine..." or "Picture this".
+- Avoid clichés and filler: "dream kitchen", "look no further", "break the bank", "you've come to the right place", "nestled", "elevate your space", "in today's world".
+- Be specific to Northern NJ — real towns, home styles, and permit realities — instead of generic statements.
+- Sound like an experienced local contractor talking to a neighbor: confident, plainspoken, and genuinely helpful.
+
 ${linksContext}
 
 ${SPECIAL_FORMATTING}
@@ -80,46 +94,16 @@ Now write a comprehensive blog post about: "${topic}"
 Category: ${category || 'Home Improvement Tips'}
 ${information ? `\nAdditional context to incorporate: ${information}` : ''}`;
 
-    console.log("Generating blog post about:", topic);
+    console.log("Generating blog post about:", topic, "with", ARTICLE_MODEL);
 
-    // Call Gemini API - use gemini-2.5-flash for fast, high-quality text generation
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: systemPrompt }]
-          }],
-          generationConfig: {
-            temperature: 0.7,
-            topP: 0.9,
-            maxOutputTokens: 4096,
-          },
-          safetySettings: [
-            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-          ]
-        })
-      }
-    );
-
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
-      console.error("Gemini API error:", errorText);
-      throw new Error(`Gemini API error: ${geminiResponse.status}`);
-    }
-
-    const data = await geminiResponse.json();
-    const generatedContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!generatedContent) {
-      console.error("No content in response:", JSON.stringify(data).substring(0, 500));
-      throw new Error("No content generated");
-    }
+    // Write the article with GPT-5.5. No temperature/maxTokens override — GPT-5.x
+    // only accepts default temperature, and letting it write to natural length
+    // avoids mid-article truncation.
+    const generatedContent = await openaiChat({
+      model: ARTICLE_MODEL,
+      system: systemPrompt,
+      user: `Write the full blog post now about: "${topic}".`,
+    });
 
     console.log("Blog post generated successfully, length:", generatedContent.length);
 
@@ -154,28 +138,13 @@ Return ONLY the image prompt, nothing else. Make it 300-450 characters, rich wit
 
     let suggestedImagePrompt = "";
     try {
-      const imagePromptResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{ text: imagePromptRequest }]
-            }],
-            generationConfig: {
-              temperature: 0.9,
-              maxOutputTokens: 512,
-            }
-          })
-        }
-      );
-
-      if (imagePromptResponse.ok) {
-        const imagePromptData = await imagePromptResponse.json();
-        suggestedImagePrompt = imagePromptData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-        console.log("Generated image prompt:", suggestedImagePrompt);
-      }
+      suggestedImagePrompt = (await openaiChat({
+        model: IMAGE_PROMPT_MODEL,
+        user: imagePromptRequest,
+        temperature: 0.9,
+        maxTokens: 512,
+      })).trim();
+      console.log("Generated image prompt:", suggestedImagePrompt);
     } catch (imagePromptError) {
       console.error("Error generating image prompt (non-fatal):", imagePromptError);
       // Continue without the image prompt - it's not critical
