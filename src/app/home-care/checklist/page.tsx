@@ -89,7 +89,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
                       </div>
                       {t.bookable && (
                         <Link
-                          href={`/free-estimate?source=home-care&task=${encodeURIComponent(t.key)}`}
+                          href={`/home-care/book?task=${encodeURIComponent(t.key)}`}
                           className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-primary to-accent-tangerine px-4 py-2 text-sm font-bold text-primary-foreground hover:shadow-button transition-all"
                         >
                           <Wrench className="h-4 w-4" /> Book La Vaca

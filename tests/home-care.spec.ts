@@ -44,7 +44,25 @@ test('opt-in flow files are wired', () => {
     'src/lib/homecare/accessCookie.ts',
     'src/lib/notify/sendHomeCareEmails.ts',
     'supabase/migrations/20260725000000_home_care_phase1.sql',
+    'src/app/home-care/book/page.tsx',
+    'src/components/homecare/HomeCareBookingForm.tsx',
   ]) {
     expect(existsSync(join(root, p)), p).toBe(true);
   }
+});
+
+test('booking form posts a valid lead (constraint-safe values)', () => {
+  const src = require('fs').readFileSync(join(process.cwd(), 'src/components/homecare/HomeCareBookingForm.tsx'), 'utf8');
+  expect(src).toContain('/api/leads/submit');
+  expect(src).toContain("inquiry_type: 'estimate'"); // valid CHECK value
+  expect(src).toContain("project_type: 'other'"); // valid CHECK value
+  expect(src).toContain("source: 'home_care_booking'");
+});
+
+test('Home Care is linked in nav + footer', () => {
+  const fs = require('fs');
+  const header = fs.readFileSync(join(process.cwd(), 'src/components/Header.tsx'), 'utf8');
+  const footer = fs.readFileSync(join(process.cwd(), 'src/components/Footer.tsx'), 'utf8');
+  expect(header).toContain('/home-care');
+  expect(footer).toContain('/home-care');
 });

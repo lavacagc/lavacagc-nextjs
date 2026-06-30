@@ -163,6 +163,7 @@ const Header = () => {
               {showBuyRemodel && (
                 <Link href="/buy-and-remodel" className="text-text-secondary hover:text-primary transition-colors font-medium">Buy + Remodel</Link>
               )}
+              <Link href="/home-care" className="text-text-secondary hover:text-primary transition-colors font-medium">Home Care</Link>
               <Link href="/about" className="text-text-secondary hover:text-primary transition-colors font-medium">About</Link>
               <Link href="/process" className="text-text-secondary hover:text-primary transition-colors font-medium">Process</Link>
               <Link href="/resources" className="text-text-secondary hover:text-primary transition-colors font-medium">Resources</Link>
@@ -254,6 +255,14 @@ const Header = () => {
                   Buy + Remodel
                 </button>
               )}
+
+              <button
+                onClick={() => navigateToPage('/home-care')}
+                className="block text-text-secondary hover:text-primary transition-colors font-medium"
+                aria-label="Go to home care page"
+              >
+                Home Care
+              </button>
 
               <button
                 onClick={() => navigateToPage('/about')}
