@@ -25,6 +25,7 @@ interface ContentActionRow {
   expected_lift_clicks: number | null;
   status: string;
   draft_markdown: string | null;
+  published_post_id: string | null;
   created_at: string;
   reviewed_at: string | null;
 }
@@ -39,7 +40,7 @@ export async function GET() {
   try {
     const actions = await supabaseRest<ContentActionRow[]>(
       'GET',
-      'content_actions?select=id,action_type,target_post_id,consolidate_into_id,target_query,rationale,expected_lift_clicks,status,draft_markdown,created_at,reviewed_at&order=created_at.desc&limit=200',
+      'content_actions?select=id,action_type,target_post_id,consolidate_into_id,target_query,rationale,expected_lift_clicks,status,draft_markdown,published_post_id,created_at,reviewed_at&order=created_at.desc&limit=200',
     );
     const list = actions ?? [];
 
@@ -48,6 +49,7 @@ export async function GET() {
     for (const a of list) {
       if (a.target_post_id) ids.add(a.target_post_id);
       if (a.consolidate_into_id) ids.add(a.consolidate_into_id);
+      if (a.published_post_id) ids.add(a.published_post_id);
     }
     let postsById: Record<string, PostLite> = {};
     if (ids.size > 0) {
@@ -62,6 +64,7 @@ export async function GET() {
       ...a,
       target_post: a.target_post_id ? postsById[a.target_post_id] ?? null : null,
       consolidate_into: a.consolidate_into_id ? postsById[a.consolidate_into_id] ?? null : null,
+      published_post: a.published_post_id ? postsById[a.published_post_id] ?? null : null,
     }));
 
     const counts = list.reduce<Record<string, number>>((acc, a) => {
