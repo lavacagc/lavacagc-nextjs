@@ -16,7 +16,7 @@
  * Auth: Bearer CRON_SECRET (also enforced by middleware on /api/cron/*).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseRest } from '@/lib/seo/supabase-rest';
+import { supabaseRestPaged } from '@/lib/seo/supabase-rest';
 import { buildSeoReport, reportWindow, type SeoMetricRow } from '@/lib/seo/report';
 import { sendSeoReportEmail } from '@/lib/notify/sendSeoReportEmail';
 
@@ -38,8 +38,7 @@ export async function GET(request: NextRequest) {
   const sendEmail = new URL(request.url).searchParams.get('email') === '1';
 
   try {
-    const rows = await supabaseRest<SeoMetricRow[]>(
-      'GET',
+    const rows = await supabaseRestPaged<SeoMetricRow>(
       `seo_metrics?select=source,url,query,date,impressions,clicks,position,ctr,users,engaged_sessions,conversions&date=gte.${startDate}&date=lte.${endDate}`,
     );
 
