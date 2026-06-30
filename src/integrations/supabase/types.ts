@@ -240,6 +240,8 @@ export type Database = {
           source: string | null
           consent_ip: string | null
           consent_user_agent: string | null
+          last_seen_at: string | null
+          visitor_id: string | null
           created_at: string | null
           updated_at: string | null
         }
@@ -259,6 +261,8 @@ export type Database = {
           source?: string | null
           consent_ip?: string | null
           consent_user_agent?: string | null
+          last_seen_at?: string | null
+          visitor_id?: string | null
           created_at?: string | null
           updated_at?: string | null
         }
@@ -278,10 +282,56 @@ export type Database = {
           source?: string | null
           consent_ip?: string | null
           consent_user_agent?: string | null
+          last_seen_at?: string | null
+          visitor_id?: string | null
           created_at?: string | null
           updated_at?: string | null
         }
         Relationships: []
+      }
+      subscriber_activity: {
+        Row: {
+          id: string
+          subscriber_id: string
+          path: string
+          listing_slug: string | null
+          referrer: string | null
+          visitor_id: string | null
+          ip_address: string | null
+          user_agent: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          subscriber_id: string
+          path: string
+          listing_slug?: string | null
+          referrer?: string | null
+          visitor_id?: string | null
+          ip_address?: string | null
+          user_agent?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          subscriber_id?: string
+          path?: string
+          listing_slug?: string | null
+          referrer?: string | null
+          visitor_id?: string | null
+          ip_address?: string | null
+          user_agent?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriber_activity_subscriber_id_fkey"
+            columns: ["subscriber_id"]
+            isOneToOne: false
+            referencedRelation: "newsletter_subscribers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ai_content_history: {
         Row: {

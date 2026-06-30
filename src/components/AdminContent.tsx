@@ -32,6 +32,7 @@ const SendEstimatePage = dynamic(() => import('@/app/vaca-mgmt/send-estimate/pag
 const EstimateLogPage = dynamic(() => import('@/app/vaca-mgmt/send-estimate/log/page'), { ssr: false });
 const PageSpeedMonitor = dynamic(() => import('@/components/admin/PageSpeedMonitor'), { ssr: false });
 const ConversionDashboard = dynamic(() => import('@/components/admin/ConversionDashboard'), { ssr: false });
+const SubscribersDashboard = dynamic(() => import('@/components/admin/SubscribersDashboard'), { ssr: false });
 const UptimeMonitor = dynamic(() => import('@/components/admin/UptimeMonitor'), { ssr: false });
 const CMSPageEditor = dynamic(() => import('@/components/admin/CMSPageEditor').then(m => ({ default: m.CMSPageEditor })), { ssr: false });
 import { PricingManager } from '@/components/admin/PricingManager';
@@ -255,6 +256,10 @@ export default function AdminContent() {
 
           <TabsContent value="leads">
             <LeadsManager />
+          </TabsContent>
+
+          <TabsContent value="subscribers">
+            <SubscribersDashboard />
           </TabsContent>
 
           <TabsContent value="follow-ups">

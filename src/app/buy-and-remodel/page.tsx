@@ -7,6 +7,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import ListingsGallery, { type PublicListing } from '@/components/ListingsGallery';
 import PreviewBanner from '@/components/listings/PreviewBanner';
+import SubscriberGreeting from '@/components/listings/SubscriberGreeting';
 import { resolveBuyRemodelAccess, hasAdminSession } from '@/lib/listings/published';
 import { ACCESS_COOKIE_NAME, verifyAccess } from '@/lib/listings/accessCookie';
 import { IS_DEV, SAMPLE_LISTINGS } from '@/lib/listings/sampleData';
@@ -168,6 +169,9 @@ export default async function BuyAndRemodelPage() {
         </section>
 
         <div id="listings" className="scroll-mt-20" />
+        <div className="container mx-auto px-4">
+          <SubscriberGreeting />
+        </div>
         <ListingsGallery listings={listings} unlocked={unlocked} />
 
         {/* CTA */}

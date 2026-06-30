@@ -18,6 +18,16 @@ import { cleanEnv } from '@/lib/envClean';
 
 export const ACCESS_COOKIE_NAME = 'br_access';
 
+/**
+ * Readable companion cookie (NOT httpOnly) set alongside `br_access` on verify.
+ * Its value is the subscriber's first name, used purely client-side to (a) decide
+ * whether to fire the subscriber tracking beacon and (b) greet returning
+ * subscribers ("Welcome back, <name>"). The authoritative identity always comes
+ * from the signed httpOnly `br_access` cookie — `br_known` is a convenience hint
+ * and is never trusted server-side. Cleared together with `br_access` on unsubscribe.
+ */
+export const KNOWN_COOKIE_NAME = 'br_known';
+
 /** Cookie/token lifetime. Revocation on unsubscribe is enforced sooner by the
  *  middleware's live status check; this is just the hard ceiling. */
 export const ACCESS_MAX_AGE_SECONDS = 30 * 24 * 60 * 60; // 30 days
@@ -35,6 +45,25 @@ export function accessCookieOptions(maxAgeSeconds: number) {
     path: '/',
     maxAge: maxAgeSeconds,
   };
+}
+
+/**
+ * Cookie attributes for the readable `br_known` hint cookie — same as the access
+ * cookie but NOT httpOnly so the client can read it. Carries only the first name.
+ */
+export function knownCookieOptions(maxAgeSeconds: number) {
+  return {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/',
+    maxAge: maxAgeSeconds,
+  };
+}
+
+/** Sanitize a first name for the readable cookie (strip control/odd chars, cap length). */
+export function sanitizeKnownName(name: string | null | undefined): string {
+  return (name ?? '').replace(/[^\p{L}\p{M}'\- ]/gu, '').trim().slice(0, 40);
 }
 
 function getSecret(): string {
