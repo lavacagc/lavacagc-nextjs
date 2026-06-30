@@ -1,0 +1,46 @@
+{
+  "rows": [
+    {
+      "page": "/services/kitchen-remodeling",
+      "date": "2026-04-15",
+      "users": 184,
+      "engaged_sessions": 121,
+      "conversions": 6
+    },
+    {
+      "page": "/services/bathroom-remodeling",
+      "date": "2026-04-15",
+      "users": 142,
+      "engaged_sessions": 88,
+      "conversions": 4
+    },
+    {
+      "page": "/blog/transitional-kitchen-design-bergen-county",
+      "date": "2026-04-15",
+      "users": 73,
+      "engaged_sessions": 51,
+      "conversions": 2
+    },
+    {
+      "page": "/blog/luxury-bathroom-trends-2026",
+      "date": "2026-04-15",
+      "users": 38,
+      "engaged_sessions": 22,
+      "conversions": 0
+    },
+    {
+      "page": "/services/home-additions",
+      "date": "2026-04-15",
+      "users": 96,
+      "engaged_sessions": 64,
+      "conversions": 3
+    },
+    {
+      "page": "/free-estimate",
+      "date": "2026-04-15",
+      "users": 211,
+      "engaged_sessions": 178,
+      "conversions": 12
+    }
+  ]
+}

@@ -19,6 +19,14 @@
     {
       "path": "/api/cron/generate-renderings",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/seo-ingest?days=3",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/seo-report?email=1",
+      "schedule": "30 6 * * 1"
     }
   ]
 }
