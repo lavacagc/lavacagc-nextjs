@@ -13,16 +13,12 @@ export interface BookingPrefill {
   phone: string;
   zip: string;
 }
+export interface BookingService {
+  key: string;
+  title: string;
+}
 
-export default function HomeCareBookingForm({
-  taskKey,
-  taskTitle,
-  prefill,
-}: {
-  taskKey: string;
-  taskTitle: string;
-  prefill: BookingPrefill;
-}) {
+export default function HomeCareBookingForm({ services, prefill }: { services: BookingService[]; prefill: BookingPrefill }) {
   const { toast } = useToast();
   const [name, setName] = useState(prefill.first_name);
   const [email, setEmail] = useState(prefill.email);
@@ -33,6 +29,10 @@ export default function HomeCareBookingForm({
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const isMulti = services.length > 1;
+  const summary = services.map((s) => s.title).join(', ');
+  const keys = services.map((s) => s.key).join(',');
 
   useEffect(() => {
     const load = () => {
@@ -100,8 +100,8 @@ export default function HomeCareBookingForm({
           zip_code: zip.trim() || null,
           inquiry_type: 'estimate',
           project_type: 'other',
-          source: 'home_care_booking',
-          message: `Home Care booking — ${taskTitle} (task: ${taskKey})${notes.trim() ? `\n\nNotes: ${notes.trim()}` : ''}`,
+          source: isMulti ? 'home_care_estimate_request' : 'home_care_booking',
+          message: `Home Care ${isMulti ? 'estimate request' : 'booking'} — ${summary} (tasks: ${keys})${notes.trim() ? `\n\nNotes: ${notes.trim()}` : ''}`,
           recaptchaToken,
           recaptchaAction: RECAPTCHA_ACTION,
           honeypot: website,
@@ -122,9 +122,9 @@ export default function HomeCareBookingForm({
     return (
       <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-10 text-center shadow-card">
         <CheckCircle className="mb-4 h-14 w-14 text-secondary" />
-        <h2 className="text-2xl font-extrabold tracking-tight text-text-primary">Request sent!</h2>
+        <h2 className="text-2xl font-extrabold tracking-tight text-text-primary">{isMulti ? 'Estimate request sent!' : 'Request sent!'}</h2>
         <p className="mt-3 max-w-prose text-base leading-relaxed text-text-muted">
-          We&apos;ve got your request for <strong>{taskTitle}</strong>. La Vaca will reach out shortly to schedule. Need it sooner? Call <a href="tel:2012124917" className="font-semibold text-primary">(201) 212-4917</a>.
+          We&apos;ve got your request for <strong>{isMulti ? `${services.length} services` : summary}</strong>. La Vaca will put together {isMulti ? 'an estimate' : 'details'} and reach out shortly. Need it sooner? Call <a href="tel:2012124917" className="font-semibold text-primary">(201) 212-4917</a>.
         </p>
       </div>
     );
@@ -134,12 +134,20 @@ export default function HomeCareBookingForm({
     <form onSubmit={handleSubmit} noValidate className="rounded-2xl border border-border bg-card p-7 shadow-card md:p-8">
       <input type="text" name="website" value={website} onChange={(e) => setWebsite(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 opacity-0" />
 
-      <div className="mb-5 flex items-center gap-2 rounded-xl bg-primary/8 px-4 py-3">
-        <Wrench className="h-5 w-5 text-primary shrink-0" />
-        <div>
-          <div className="text-[11px] font-extrabold uppercase tracking-widest text-primary">Booking</div>
-          <div className="font-bold text-text-primary">{taskTitle}</div>
+      <div className="mb-5 rounded-xl bg-primary/8 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Wrench className="h-5 w-5 text-primary shrink-0" />
+          <div className="text-[11px] font-extrabold uppercase tracking-widest text-primary">{isMulti ? `Estimate request · ${services.length} services` : 'Booking'}</div>
         </div>
+        {isMulti ? (
+          <ul className="mt-2 grid gap-1">
+            {services.map((s) => (
+              <li key={s.key} className="text-sm font-semibold text-text-primary flex items-center gap-1.5"><CheckCircle className="h-3.5 w-3.5 text-secondary" /> {s.title}</li>
+            ))}
+          </ul>
+        ) : (
+          <div className="mt-1 font-bold text-text-primary">{summary}</div>
+        )}
       </div>
 
       {err && <p className="mb-4 text-sm font-semibold text-destructive">{err}</p>}
@@ -157,7 +165,7 @@ export default function HomeCareBookingForm({
       </div>
 
       <button type="submit" disabled={submitting} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary via-accent-sunset to-accent-tangerine bg-[length:400%_100%] animate-gradient px-6 py-4 text-base font-bold text-white shadow-button transition-all hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60">
-        {submitting ? (<><Loader2 className="h-4 w-4 animate-spin" /> Sending…</>) : (<><CalendarCheck className="h-4 w-4" /> Request this service</>)}
+        {submitting ? (<><Loader2 className="h-4 w-4 animate-spin" /> Sending…</>) : (<><CalendarCheck className="h-4 w-4" /> {isMulti ? 'Request my estimate' : 'Request this service'}</>)}
       </button>
       <p className="mt-4 text-xs leading-relaxed text-text-muted">No obligation — we&apos;ll reach out to confirm scheduling and pricing.</p>
 

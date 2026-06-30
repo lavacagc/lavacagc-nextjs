@@ -56,7 +56,8 @@ test('booking form posts a valid lead (constraint-safe values)', () => {
   expect(src).toContain('/api/leads/submit');
   expect(src).toContain("inquiry_type: 'estimate'"); // valid CHECK value
   expect(src).toContain("project_type: 'other'"); // valid CHECK value
-  expect(src).toContain("source: 'home_care_booking'");
+  expect(src).toContain("'home_care_booking'"); // single-task booking source
+  expect(src).toContain("'home_care_estimate_request'"); // multi-service estimate source
 });
 
 test('Home Care is linked in nav + footer', () => {
