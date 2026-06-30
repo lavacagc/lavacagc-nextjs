@@ -15,7 +15,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { Loader2, RefreshCw, Check, X, Sparkles, AlertTriangle } from 'lucide-react';
+import { Loader2, RefreshCw, Check, X, Sparkles, AlertTriangle, Send } from 'lucide-react';
 
 interface PostLite {
   title: string;
@@ -32,6 +32,7 @@ interface ActionItem {
   created_at: string;
   target_post: PostLite | null;
   consolidate_into: PostLite | null;
+  published_post: PostLite | null;
 }
 
 const TYPE_LABEL: Record<string, string> = { refresh: 'Refresh', new: 'New post', consolidate: 'Consolidate' };
@@ -124,6 +125,29 @@ export default function SeoSuggestionsDashboard() {
     }
   };
 
+  const stage = async (id: string) => {
+    setBusyId(id);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/content-actions/stage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        const extra = Array.isArray(data.issues) && data.issues.length ? ` (${data.issues.join('; ')})` : '';
+        throw new Error((data.error || `HTTP ${res.status}`) + extra);
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Stage failed');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const pending = actions.filter((a) => a.status === 'pending');
   const rest = actions.filter((a) => a.status !== 'pending');
 
@@ -178,6 +202,7 @@ export default function SeoSuggestionsDashboard() {
                   onApprove={() => decide(a.id, 'approve')}
                   onReject={() => decide(a.id, 'reject')}
                   onDraft={() => draft(a.id)}
+                  onStage={() => stage(a.id)}
                 />
               ))}
             </Section>
@@ -194,6 +219,7 @@ export default function SeoSuggestionsDashboard() {
                   onApprove={() => decide(a.id, 'approve')}
                   onReject={() => decide(a.id, 'reject')}
                   onDraft={() => draft(a.id)}
+                  onStage={() => stage(a.id)}
                 />
               ))}
             </Section>
@@ -221,6 +247,7 @@ function ActionRow({
   onApprove,
   onReject,
   onDraft,
+  onStage,
 }: {
   a: ActionItem;
   busy: boolean;
@@ -229,8 +256,10 @@ function ActionRow({
   onApprove: () => void;
   onReject: () => void;
   onDraft: () => void;
+  onStage: () => void;
 }) {
   const reason = (a.rationale?.reason as string) ?? '';
+  const canStage = a.status === 'drafted' && a.action_type === 'new' && !!a.draft_markdown;
   return (
     <Card className="p-4">
       <div className="flex items-start gap-3">
@@ -245,6 +274,11 @@ function ActionRow({
               <button className="underline" onClick={onToggle}>
                 {expanded ? 'Hide draft' : 'View draft'}
               </button>
+            )}
+            {a.status === 'completed' && a.published_post && (
+              <a className="underline text-violet-700" href={`/blog/preview/${a.published_post.slug}`} target="_blank" rel="noreferrer">
+                Staged as draft → preview
+              </a>
             )}
           </div>
         </div>
@@ -263,6 +297,12 @@ function ActionRow({
             <Button size="sm" variant="secondary" onClick={onDraft} disabled={busy}>
               {busy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
               {a.draft_markdown ? 'Re-draft' : 'Draft with AI'}
+            </Button>
+          )}
+          {canStage && (
+            <Button size="sm" onClick={onStage} disabled={busy} title="Create an unpublished blog draft + email you">
+              {busy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
+              Send to blog
             </Button>
           )}
         </div>
