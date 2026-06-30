@@ -123,7 +123,10 @@ export function buildSeoReport(rows: SeoMetricRow[], now: Date): SeoReport {
     const clicks = sumBy(list, (x) => x.clicks);
     const avgPos = avg(list.map((x) => Number(x.position)).filter(Boolean));
     const ctr = impressions > 0 ? clicks / impressions : null;
-    if (impressions >= 100 && avgPos !== null && avgPos >= 5 && avgPos <= 15 && (ctr === null || ctr < 0.04)) {
+    // Floors tuned for a low-volume site: page-1/2 (pos 5–20) with even a
+    // handful of impressions and soft CTR. Counts are capped downstream, so low
+    // floors won't flood a higher-volume site.
+    if (impressions >= 15 && avgPos !== null && avgPos >= 5 && avgPos <= 20 && (ctr === null || ctr < 0.05)) {
       refreshCandidates.push({ url, query, impressions, clicks, avg_position: avgPos, ctr });
     }
   }
@@ -155,7 +158,7 @@ export function buildSeoReport(rows: SeoMetricRow[], now: Date): SeoReport {
     byQuery.set(r.query, cur);
   }
   const newArticleCandidates: NewArticleCandidate[] = [...byQuery.entries()]
-    .filter(([, v]) => v.impressions >= 200 && v.clicks / Math.max(v.impressions, 1) < 0.02)
+    .filter(([, v]) => v.impressions >= 25 && v.clicks / Math.max(v.impressions, 1) < 0.03)
     .map(([query, v]) => ({
       query,
       impressions: v.impressions,
@@ -176,7 +179,7 @@ export function buildSeoReport(rows: SeoMetricRow[], now: Date): SeoReport {
   }
   const trend: TrendItem[] = [...trendByUrl.entries()]
     .map(([url, v]) => ({ url, recent_clicks: v.recent, prior_clicks: v.prior, delta: v.recent - v.prior }))
-    .filter((x) => Math.abs(x.delta) >= 5)
+    .filter((x) => Math.abs(x.delta) >= 2)
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
     .slice(0, 25);
 
