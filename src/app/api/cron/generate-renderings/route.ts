@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import OpenAI, { toFile } from 'openai';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { buildRemodelPrompt } from '@/lib/listings/renderingPrompt';
+import { cleanEnv } from '@/lib/envClean';
 
 /**
  * Background generator for listing before/after renderings.
@@ -22,7 +23,9 @@ export const maxDuration = 300;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || '';
 // Reuses the same OPENAI_API_KEY the chatbot already uses (no new env var).
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+// cleanEnv() strips trailing whitespace / newlines / literal "\n" that a
+// dashboard paste can append — those produce an opaque 401 "Incorrect API key".
+const OPENAI_API_KEY = cleanEnv(process.env.OPENAI_API_KEY) || '';
 const MODEL = 'gpt-image-1'; // OpenAI image-edit model
 const IMAGE_QUALITY = 'medium'; // 'low' | 'medium' | 'high' — balances cost vs. fidelity
 const BUCKET = 'listings';
