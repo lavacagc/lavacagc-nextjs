@@ -1,6 +1,6 @@
 'use client';
 
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState } from 'react';
 
 /** Read the readable `br_known` hint cookie (first name) on the client. */
 function readKnownName(): string | null {
@@ -15,19 +15,23 @@ function readKnownName(): string | null {
   }
 }
 
-// Cookies don't change mid-render, so there's nothing to subscribe to.
-const noopSubscribe = () => () => {};
-
 /**
  * "Welcome back, <name>" banner for returning Buy + Remodel subscribers. Reads
  * the non-httpOnly `br_known` cookie set on verification; renders nothing for
  * anonymous visitors. Purely cosmetic — access is enforced server-side.
  *
- * Uses useSyncExternalStore so the cookie is read on the client (server snapshot
- * is null) without a setState-in-effect or a hydration mismatch.
+ * The cookie is client-only, so we render null on the server/first paint and read
+ * it after mount. (We intentionally setState once on mount to pick up the
+ * client-only cookie value — useSyncExternalStore did not reliably surface it in
+ * the production build.)
  */
 export default function SubscriberGreeting() {
-  const name = useSyncExternalStore(noopSubscribe, readKnownName, () => null);
+  const [name, setName] = useState<string | null>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of a client-only cookie after mount
+    setName(readKnownName());
+  }, []);
 
   if (!name) return null;
 
