@@ -10,11 +10,10 @@ import ListingPhotos from '@/components/listings/ListingPhotos';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { BedDouble, Bath, Ruler, Calendar, Home as HomeIcon, Phone, Mail, ArrowRight } from 'lucide-react';
-import { scopeToEstimateService, sectionLabel } from '@/lib/listings/columns';
+import { scopeToEstimateService } from '@/lib/listings/columns';
 import { IS_DEV, SAMPLE_LISTINGS, SAMPLE_PARTNER, SAMPLE_RENDERINGS } from '@/lib/listings/sampleData';
 import { resolveBuyRemodelAccess } from '@/lib/listings/published';
 import PreviewBanner from '@/components/listings/PreviewBanner';
-import BeforeAfterSlider from '@/components/BeforeAfterSlider';
 
 // Dynamic: access depends on the live publish flag + the viewer's admin session
 // (and the per-listing email gate runs in middleware).
@@ -205,35 +204,14 @@ export default async function ListingDetailPage({ params }: PageProps) {
             )}
           </div>
 
-          {/* Photos — click any to open the lightbox carousel */}
-          {photos.length > 0 ? (
-            <ListingPhotos photos={photos} alt={`${l.address_line1}, ${l.city}`} />
+          {/* Photos + before/after — one gallery; click any tile to open the
+              lightbox. Before/after tiles open the draggable slider in-place. */}
+          {photos.length > 0 || renderings.length > 0 ? (
+            <ListingPhotos photos={photos} renderings={renderings} alt={`${l.address_line1}, ${l.city}`} />
           ) : (
             <div className="aspect-[16/6] rounded-lg bg-muted flex items-center justify-center text-text-muted mb-8">
               No photos available
             </div>
-          )}
-
-          {/* Before / after AI renderings */}
-          {renderings.length > 0 && (
-            <section className="mb-10">
-              <p className="text-sm font-semibold uppercase tracking-[0.08em] text-primary mb-1">See the potential</p>
-              <h2 className="text-2xl font-bold text-text-primary mb-1">Before &amp; after — what this home could become</h2>
-              <p className="text-sm text-text-muted mb-5">
-                Drag each slider to compare today&apos;s space with an AI-generated remodel at the same angle.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {renderings.map((r) => (
-                  <div key={r.section}>
-                    <h3 className="font-semibold text-text-primary mb-2">{sectionLabel(r.section)}</h3>
-                    <BeforeAfterSlider beforeImage={r.before_url} afterImage={r.after_url} />
-                    <p className="mt-2 text-xs text-text-muted">
-                      <span className="font-medium">AI-generated visualization</span> — illustrative only, not the actual finished space.
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </section>
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

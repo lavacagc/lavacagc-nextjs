@@ -8,10 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 // import { AdminCheckbox } from '@/components/admin/ui/AdminCheckbox';
-import { 
+import {
   Image as ImageIcon, Star, Trash2,
   Sparkles, ArrowLeftRight, ChevronDown, ChevronUp,
-  Camera, Home
+  Camera, Home, Link2
 } from 'lucide-react';
 import NextImage from 'next/image';
 import { toast } from '@/hooks/use-toast';
@@ -78,6 +78,10 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
   const [isCategorizing, setIsCategorizing] = useState(false);
   const [showDuring, setShowDuring] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
+  // Before/After pairing form state (global indices into formData.images, as strings for Select)
+  const [pairBefore, setPairBefore] = useState('');
+  const [pairAfter, setPairAfter] = useState('');
+  const [pairLabel, setPairLabel] = useState('');
   const beforeInputRef = useRef<HTMLInputElement>(null);
   const afterInputRef = useRef<HTMLInputElement>(null);
   const duringInputRef = useRef<HTMLInputElement>(null);
@@ -352,9 +356,46 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
   };
 
   const removeImageByGlobalIndex = (globalIndex: number) => {
-    const updatedImages = formData.images.filter((_, i) => i !== globalIndex);
+    const removed = formData.images[globalIndex];
+    let updatedImages = formData.images.filter((_, i) => i !== globalIndex);
+    // If the removed image was half of a pair, clear its partner so no orphan
+    // half-pair reaches the gallery.
+    if (removed?.pair_key) {
+      updatedImages = updatedImages.map(img =>
+        img.pair_key === removed.pair_key ? { ...img, pair_key: undefined, caption: undefined } : img
+      );
+    }
     updatedImages.forEach((img, i) => img.sort_order = i);
     updateFormData({ images: updatedImages });
+  };
+
+  // --- Before/After pairing -------------------------------------------------
+  const newPairKey = () =>
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `pair_${Date.now()}_${formData.images.length}`;
+
+  const linkPair = () => {
+    const bIdx = Number(pairBefore);
+    const aIdx = Number(pairAfter);
+    if (!Number.isInteger(bIdx) || !Number.isInteger(aIdx) || bIdx < 0 || aIdx < 0) return;
+    const key = newPairKey();
+    const label = pairLabel.trim() || undefined;
+    const updated = formData.images.map((img, i) =>
+      i === bIdx || i === aIdx ? { ...img, pair_key: key, caption: label } : img
+    );
+    updateFormData({ images: updated });
+    setPairBefore('');
+    setPairAfter('');
+    setPairLabel('');
+    toast({ title: 'Pair linked', description: 'This before/after will show as a slider on the project page.' });
+  };
+
+  const unlinkPair = (key: string) => {
+    const updated = formData.images.map(img =>
+      img.pair_key === key ? { ...img, pair_key: undefined, caption: undefined } : img
+    );
+    updateFormData({ images: updated });
   };
 
   const setFeaturedImage = (globalIndex: number) => {
@@ -486,6 +527,11 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
                         <Star className="w-2.5 h-2.5 fill-current" />
                       </Badge>
                     )}
+                    {image.pair_key && (
+                      <Badge className="bg-primary text-primary-foreground text-[10px] px-1 py-0" title="Linked as a before/after pair">
+                        <Link2 className="w-2.5 h-2.5" />
+                      </Badge>
+                    )}
                     {image.room && (
                       <Badge variant="secondary" className="text-[10px] px-1 py-0">
                         {image.room}
@@ -515,6 +561,29 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
       </div>
     );
   };
+
+  // Complete before/after pairs currently linked (one before + one after sharing a pair_key).
+  type PairSlot = { img: typeof formData.images[0]; idx: number };
+  const pairMap = new Map<string, { key: string; before?: PairSlot; after?: PairSlot }>();
+  formData.images.forEach((img, idx) => {
+    if (!img.pair_key) return;
+    const entry = pairMap.get(img.pair_key) || { key: img.pair_key };
+    if (img.category === 'before') entry.before = { img, idx };
+    if (img.category === 'after') entry.after = { img, idx };
+    pairMap.set(img.pair_key, entry);
+  });
+  const linkedPairs = Array.from(pairMap.values()).filter(
+    (p): p is { key: string; before: PairSlot; after: PairSlot } => !!p.before && !!p.after
+  );
+
+  // Images available to pair: photos (not video) not already in a pair.
+  const availableBefore = formData.images
+    .map((img, idx) => ({ img, idx }))
+    .filter(({ img }) => img.category === 'before' && img.media_type !== 'video' && !img.pair_key);
+  const availableAfter = formData.images
+    .map((img, idx) => ({ img, idx }))
+    .filter(({ img }) => img.category === 'after' && img.media_type !== 'video' && !img.pair_key);
+  const canShowPairing = linkedPairs.length > 0 || (availableBefore.length > 0 && availableAfter.length > 0);
 
   return (
     <div className="space-y-6">
@@ -718,6 +787,104 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
             <p className="text-xs text-muted-foreground text-center mt-2">
               AI compares before & after photos to auto-generate title, description, materials, features, and SEO content
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Before / After Pairs — explicit pairing for the project-page slider */}
+      {canShowPairing && (
+        <Card className="border-primary/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <ArrowLeftRight className="w-5 h-5 text-primary" />
+              Before / After Pairs
+              {linkedPairs.length > 0 && (
+                <Badge variant="secondary" className="text-xs">{linkedPairs.length}</Badge>
+              )}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Link a specific before photo to a specific after photo. On the project page each pair
+              becomes a draggable before/after slider; unpaired photos stay as standalone images.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Existing pairs */}
+            {linkedPairs.map((pair) => (
+              <div key={pair.key} className="flex items-center gap-3 rounded-lg border p-2">
+                <div className="relative w-20 h-16 flex-shrink-0 bg-muted rounded overflow-hidden">
+                  <NextImage src={pair.before.img.url || ''} alt="" fill className="object-cover" />
+                  <Badge className="absolute bottom-0.5 left-0.5 bg-red-500 text-[8px] px-1 py-0">B</Badge>
+                </div>
+                <ArrowLeftRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <div className="relative w-20 h-16 flex-shrink-0 bg-muted rounded overflow-hidden">
+                  <NextImage src={pair.after.img.url || ''} alt="" fill className="object-cover" />
+                  <Badge className="absolute bottom-0.5 left-0.5 bg-green-500 text-[8px] px-1 py-0">A</Badge>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {pair.before.img.caption || pair.after.img.caption || 'Before / After'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Slider on project page</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => unlinkPair(pair.key)}
+                  className="text-red-500 hover:text-red-700 flex-shrink-0"
+                >
+                  Unlink
+                </Button>
+              </div>
+            ))}
+
+            {/* Create a new pair */}
+            {availableBefore.length > 0 && availableAfter.length > 0 ? (
+              <div className="space-y-2 rounded-lg border border-dashed p-3">
+                <p className="text-xs font-medium">Create a pair</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Select value={pairBefore} onValueChange={setPairBefore}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Choose a BEFORE photo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableBefore.map(({ img, idx }) => (
+                        <SelectItem key={idx} value={String(idx)} className="text-xs">
+                          {img.room || img.alt_text || `Before photo ${idx + 1}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={pairAfter} onValueChange={setPairAfter}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Choose an AFTER photo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableAfter.map(({ img, idx }) => (
+                        <SelectItem key={idx} value={String(idx)} className="text-xs">
+                          {img.room || img.alt_text || `After photo ${idx + 1}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Input
+                  value={pairLabel}
+                  onChange={(e) => setPairLabel(e.target.value)}
+                  placeholder="Optional label (e.g. Kitchen)"
+                  className="h-8 text-xs"
+                />
+                <Button size="sm" disabled={!pairBefore || !pairAfter} onClick={linkPair}>
+                  <ArrowLeftRight className="w-3.5 h-3.5 mr-1.5" />
+                  Link as pair
+                </Button>
+              </div>
+            ) : (
+              linkedPairs.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Upload more before/after photos to create additional pairs.
+                </p>
+              )
+            )}
           </CardContent>
         </Card>
       )}

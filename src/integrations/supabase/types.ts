@@ -1423,6 +1423,7 @@ export type Database = {
           image_url: string
           is_featured: boolean
           media_type: string | null
+          pair_key: string | null
           project_id: string
           sort_order: number
           updated_at: string
@@ -1439,6 +1440,7 @@ export type Database = {
           image_url: string
           is_featured?: boolean
           media_type?: string | null
+          pair_key?: string | null
           project_id: string
           sort_order?: number
           updated_at?: string
@@ -1455,6 +1457,7 @@ export type Database = {
           image_url?: string
           is_featured?: boolean
           media_type?: string | null
+          pair_key?: string | null
           project_id?: string
           sort_order?: number
           updated_at?: string
