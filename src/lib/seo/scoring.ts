@@ -115,7 +115,7 @@ export function proposeContentActions(
   }
   const ownedQueries = new Set<string>();
   for (const [q, m] of byQuery) {
-    if ([...m.values()].some((imp) => imp >= 50)) ownedQueries.add(q);
+    if ([...m.values()].some((imp) => imp >= 15)) ownedQueries.add(q);
   }
 
   // ─── refresh ────────────────────────────────────────────────────────────────
@@ -126,8 +126,10 @@ export function proposeContentActions(
     const pos = c.avg_position ?? 12;
     const currentCtr = c.ctr ?? 0;
     const target = ctrBaseline(pos);
+    // Estimated monthly click upside if CTR reaches the position baseline.
+    // At low volume this can round to 0 — keep the candidate anyway (it's still
+    // a valid "almost ranking" target); the value is just for sorting.
     const lift = Math.max(0, Math.round(c.impressions * (target - currentCtr)));
-    if (lift <= 0) continue;
     refresh.push({
       action_type: 'refresh',
       target_post_id: post.id,
@@ -180,7 +182,7 @@ export function proposeContentActions(
   const postById = new Map(posts.map((p) => [p.id, p]));
   const consolidate: ProposedAction[] = [];
   for (const [query, m] of byQuery) {
-    const owners = [...m.entries()].filter(([, imp]) => imp >= 50).sort((a, b) => b[1] - a[1]);
+    const owners = [...m.entries()].filter(([, imp]) => imp >= 15).sort((a, b) => b[1] - a[1]);
     if (owners.length < 2) continue;
     const [winnerId, winnerImp] = owners[0];
     const [loserId, loserImp] = owners[1];
