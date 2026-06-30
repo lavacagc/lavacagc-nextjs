@@ -7,6 +7,10 @@ import {
   buildLinksContext,
   SPECIAL_FORMATTING
 } from "../_shared/internalLinks.ts";
+import { openaiChat } from "../_shared/openai.ts";
+
+// Content enhancement runs on GPT-5.5 (article-grade quality).
+const ENHANCE_MODEL = "gpt-5.5";
 
 type EnhancementLevel = 'light' | 'moderate' | 'heavy';
 
@@ -121,12 +125,12 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
 
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not configured");
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY is not configured");
     }
 
     // Parse request body
@@ -179,46 +183,15 @@ ${content}
 
 IMPORTANT: Return ONLY the enhanced markdown content. Start with # for the title. Do not include any explanatory text before or after the content.`;
 
-    console.log(`Enhancing blog post "${title}" with ${level} enhancement`);
+    console.log(`Enhancing blog post "${title}" with ${level} enhancement via ${ENHANCE_MODEL}`);
 
-    // Call Gemini API - use gemini-2.5-flash for fast, high-quality text generation
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: systemPrompt }]
-          }],
-          generationConfig: {
-            temperature: level === 'heavy' ? 0.8 : level === 'moderate' ? 0.7 : 0.5,
-            topP: 0.9,
-            maxOutputTokens: 8192,
-          },
-          safetySettings: [
-            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-          ]
-        })
-      }
-    );
-
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
-      console.error("Gemini API error:", errorText);
-      throw new Error(`Gemini API error: ${geminiResponse.status}`);
-    }
-
-    const data = await geminiResponse.json();
-    const enhancedContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!enhancedContent) {
-      console.error("No content in response:", JSON.stringify(data).substring(0, 500));
-      throw new Error("No enhanced content generated");
-    }
+    // Enhance with GPT-5.5. The enhancement "level" already shapes the prompt
+    // instructions; GPT-5.x only accepts default temperature so we don't vary it.
+    const enhancedContent = await openaiChat({
+      model: ENHANCE_MODEL,
+      system: systemPrompt,
+      user: "Return the enhanced markdown now, starting with the # title and nothing else.",
+    });
 
     console.log(`Blog post enhanced successfully with ${level} level, length: ${enhancedContent.length}`);
 
