@@ -27,6 +27,7 @@ import {
   Send,
   History,
   Home,
+  Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -82,6 +83,7 @@ const NAVIGATION: NavItem[] = [
     label: 'Customers',
     children: [
       { id: 'leads', icon: Inbox, label: 'Leads' },
+      { id: 'subscribers', icon: Users, label: 'Subscribers' },
       { id: 'follow-ups', icon: Mail, label: 'Follow-Ups' },
       { id: 'send-estimate', icon: Send, label: 'Send Estimate' },
       { id: 'estimate-log', icon: History, label: 'Email Log' },

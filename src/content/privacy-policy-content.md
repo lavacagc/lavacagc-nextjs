@@ -1,7 +1,7 @@
 # Privacy Policy
 
-**Last Updated: November 12, 2025**
-**Version: 2.0**
+**Last Updated: June 30, 2026**
+**Version: 2.1**
 
 ---
 
@@ -69,14 +69,30 @@ When you visit our Website, we automatically collect certain information about y
 - **Usage Information**: Pages visited, time spent on pages, links clicked, referring/exit pages
 - **Location Information**: General geographic location based on IP address (not precise geolocation)
 - **Cookies and Similar Technologies**: Information collected through cookies, web beacons, and similar tracking technologies
+- **Persistent Visitor Identifier**: We assign your browser a random identifier (stored on your device) and use it to recognize returning visits and to connect your activity across the analytics and advertising tools described in Sections 5 and 6 (for example Google Analytics, Microsoft Clarity, and the Meta Pixel).
+- **Session Recordings and Heatmaps**: Through Microsoft Clarity we record sessions (a play-back of mouse movement, clicks, scrolling, and pages viewed) and generate heatmaps to understand how visitors use the site. Clarity automatically masks typed text in form fields. See Section 5.2.
+- **Advertising Click Identifiers**: When you arrive from a Google ad we capture the Google Click Identifier ("gclid") and related campaign data to measure advertising performance.
+- **Security and Anti-Abuse Data**: We log IP addresses and request metadata to rate-limit forms, detect bots (including via Google reCAPTCHA — see Section 5.2), and protect the Website.
 
 ### 3.3 Information from Third Parties
 
 We may receive information about you from third-party services, including:
-- Analytics providers (e.g., Google Analytics)
-- Advertising networks (e.g., Google Ads, Facebook Pixel)
+- Analytics providers (e.g., Google Analytics, Microsoft Clarity)
+- Advertising networks (e.g., Google Ads, Meta/Facebook Pixel)
 - Payment processors
 - Social media platforms
+
+### 3.4 Subscriber Accounts and Activity Tracking
+
+If you sign up for our **"Buy + Remodel"** listings by submitting the unlock form and verifying your email address, you become an identified subscriber. When you verify, we place a cookie on your browser that **recognizes you when you return** and unlocks the full listing details.
+
+While you are signed in as a subscriber, **we record the pages you view across our Website and associate that activity with your name and email address**, together with the date/time, the page address, the referring page, your IP address, and browser information. We use this to understand which homes and topics interest you, to recognize returning subscribers, and to improve our services and communications. Where you previously browsed the Website anonymously on the same device, we may **link that prior activity (and the associated analytics/session data) to your subscriber identity** using the persistent visitor identifier described in Section 3.2.
+
+This identified tracking applies only to verified subscribers. You can stop it at any time by using the **unsubscribe link** in any of our emails, which removes you from the list, **clears your access cookie, and ends this identified activity tracking** (you would need to subscribe again to regain access). You may also exercise the rights in Section 8 (including access and deletion) with respect to this information.
+
+### 3.5 AI Chat Assistant
+
+Our Website offers an AI-powered chat assistant. **Messages you send to the chat are stored by us and transmitted to our AI provider, OpenAI, to generate responses.** We also retain the conversation, associated with your visitor identifier, and if you provide contact details (such as your name, email, or phone) in the chat, **we may use them to create a lead and follow up with you.** Please **do not enter sensitive personal information** (such as financial account or government ID numbers) into the chat.
 
 ---
 
@@ -153,10 +169,11 @@ We share information with third-party service providers who perform services on 
 These service providers include:
 
 - **Payment Processors**: For processing credit card and online payments such as **QuickBooks Payments**
-- **Hosting Providers**: For website hosting and data storage
-- **Email Service Providers**: For sending emails and newsletters
-- **Customer Relationship Management (CRM) Systems**: For managing customer data
-- **Cloud Storage Services**: For data backup and storage
+- **Hosting, Database, and Storage**: **Supabase** (database, file storage, and authentication) and our website hosting provider store the personal information described in this Policy
+- **Email Delivery**: **Resend** sends our transactional and newsletter emails (recipient name and email address, and message content)
+- **Internal Team Notifications**: **Telegram** is used to alert our staff of new leads (which includes the lead's name, contact details, and inquiry)
+- **AI Assistant Provider**: **OpenAI** processes chat messages to power our AI chat assistant (see Section 3.5)
+- **Bot Detection**: **Google reCAPTCHA Enterprise** evaluates form submissions to prevent spam and abuse; Google receives your IP address, interaction signals, and a site token (see Google's privacy policy at https://policies.google.com/privacy)
 
 We conduct due diligence on our service providers' privacy and security practices before engaging them and periodically review their compliance.
 
@@ -172,13 +189,16 @@ We share information with analytics and advertising partners for the purposes of
 
 - **Google Analytics:** Analyzes website traffic, user behavior, demographics, and interests. See Google's privacy policy at https://policies.google.com/privacy and opt out at https://tools.google.com/dlpage/gaoptout
 
-- **Google Ads:** Displays targeted advertisements based on your interactions with our Website. See Google's privacy policy at https://policies.google.com/privacy and manage ads settings at https://adssettings.google.com/
+- **Google Ads (including Enhanced Conversions):** Displays targeted advertisements based on your interactions with our Website and measures conversions. For conversion measurement we may send Google a **cryptographically hashed (SHA-256) version of your email address and/or phone number** that you provided to us ("Enhanced Conversions"); Google uses the hash to match conversions and does not receive these details in plain text from us. See Google's privacy policy at https://policies.google.com/privacy and manage ads settings at https://adssettings.google.com/
 
-- **Facebook Pixel (Meta):** Enables targeted advertising on Facebook and Instagram and measures ad effectiveness. See Meta's privacy policy at https://www.facebook.com/privacy/policy/ and manage ad preferences at https://www.facebook.com/ads/preferences/
+- **Microsoft Clarity:** Provides session recordings and heatmaps so we can see how visitors navigate the Website (see Section 3.2). See Microsoft's privacy statement at https://privacy.microsoft.com/privacystatement
+
+- **Meta Pixel (Facebook/Instagram):** Enables targeted advertising on Facebook and Instagram and measures ad effectiveness, including matching visitors across sessions using a visitor identifier. See Meta's privacy policy at https://www.facebook.com/privacy/policy/ and manage ad preferences at https://www.facebook.com/ads/preferences/
 
 **Information Shared with These Partners:**
-- Device identifiers and IP addresses
-- Browsing behavior on our Website (pages viewed, links clicked, time spent)
+- Device identifiers, our persistent visitor identifier, and IP addresses
+- Browsing behavior on our Website (pages viewed, links clicked, time spent), and, for Microsoft Clarity, session recordings and heatmap interactions
+- Hashed email address and/or phone number for Google Ads Enhanced Conversions (as described above)
 - General geographic location (based on IP address - not precise geolocation)
 - Inferences about your interests based on your interactions
 
@@ -306,9 +326,12 @@ We are required to recognize and honor GPC signals under:
 
 | Cookie Name | Purpose | Duration |
 |-------------|---------|----------|
-| cookie_consent | Remembers your cookie consent preferences | 12 months |
+| cookie_consent / lavaca_cookie_consent | Remembers your cookie consent preferences | 12 months |
 | session_id | Maintains your session while browsing our Website | Session (deleted when browser closes) |
 | security_token | Prevents cross-site request forgery (CSRF) attacks | Session |
+| br_access | Grants verified Buy + Remodel subscribers access to listing details (signed, identifies your subscription) | 30 days |
+| br_known | Recognizes a returning subscriber to display a greeting and your unlocked content | 30 days |
+| lavaca_visitor / lavaca_visitor_id | Persistent visitor identifier stored on your device to recognize return visits and link activity across our analytics tools (stored in your browser's local storage) | Until cleared |
 
 **Analytics Cookies** (can be disabled via cookie settings):
 
@@ -317,6 +340,8 @@ We are required to recognize and honor GPC signals under:
 | _ga | Google Analytics | Distinguishes users for analytics | 2 years |
 | _gid | Google Analytics | Distinguishes users for analytics | 24 hours |
 | _gat | Google Analytics | Throttles request rate | 1 minute |
+| _clck | Microsoft Clarity | Persists a Clarity user ID for session recording/heatmaps | 1 year |
+| _clsk | Microsoft Clarity | Links Clarity page views into a single session recording | 1 day |
 
 **Marketing/Advertising Cookies** (can be disabled via cookie settings or opt-out links):
 
@@ -350,6 +375,8 @@ We retain your personal information only for as long as necessary to fulfill the
 | **Project Details and Service Records** | Duration of business relationship + 10 years | Construction defect statutes of limitations (NJ: 10 years for some construction claims); warranty obligations; liability defense |
 | **Communication Content** (emails, messages, inquiries) | Duration of business relationship + 7 years | Contract enforcement; dispute resolution; quality assurance; customer service |
 | **Website Usage Data and Analytics** (IP address, browsing behavior, device information) | 26 months | Website improvement; analytics (aligned with Google Analytics default); user experience optimization |
+| **Subscriber Activity Logs** (pages viewed while signed in as a Buy + Remodel subscriber, linked to your identity) | Duration of your subscription + up to 24 months, or until you unsubscribe or request deletion | Understanding subscriber interest; improving listings and communications |
+| **AI Chat Transcripts** (messages exchanged with our chat assistant) | Up to 24 months, or until you request deletion | Customer service; lead follow-up; quality and safety. Our AI provider (OpenAI) retains data per its own policies |
 | **Marketing Communications Records** | Until you opt out + 30 days to process opt-out, then deleted | Direct marketing; compliance with opt-out requests |
 | **Cookies and Tracking Technologies** | Varies by cookie type: Essential (session); Analytics (26 months); Marketing (13 months) | See Section 6 for cookie-specific retention |
 

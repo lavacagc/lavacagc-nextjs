@@ -18,6 +18,37 @@ declare global {
  * 3. Fires funnel milestone events for key pages.
  */
 
+/** True when the readable `br_known` hint cookie is set (i.e. a verified subscriber). */
+function isKnownSubscriber(): boolean {
+  if (typeof document === 'undefined') return false;
+  return document.cookie.split('; ').some((c) => c.startsWith('br_known='));
+}
+
+/**
+ * Record a page view for a known Buy + Remodel subscriber. The server reads the
+ * signed httpOnly `br_access` cookie (sent automatically) to identify them; this
+ * only fires when the readable `br_known` hint is present so we never beacon for
+ * anonymous visitors. Best-effort — failures are ignored.
+ */
+function trackSubscriberView(path: string, visitorId: string | null): void {
+  try {
+    if (!isKnownSubscriber() || typeof navigator === 'undefined') return;
+    const payload = JSON.stringify({
+      path,
+      referrer: typeof document !== 'undefined' ? document.referrer || null : null,
+      visitor_id: visitorId,
+    });
+    const url = '/api/buy-and-remodel/track';
+    if (typeof navigator.sendBeacon === 'function') {
+      navigator.sendBeacon(url, new Blob([payload], { type: 'application/json' }));
+    } else {
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
+    }
+  } catch {
+    // never let tracking affect browsing
+  }
+}
+
 // Map pathname patterns to funnel milestone events
 function getFunnelEvent(path: string): { event: string; params: Record<string, string> } | null {
   // Service pages
@@ -102,6 +133,9 @@ export default function VisitorTracker() {
     if (!pathname) return;
     trackPage(pathname);
 
+    // Record the view for a known (verified) Buy + Remodel subscriber.
+    trackSubscriberView(pathname, visitorId);
+
     // Fire funnel milestone event if applicable
     const funnel = getFunnelEvent(pathname);
     if (funnel && typeof window !== 'undefined') {
@@ -140,7 +174,7 @@ export default function VisitorTracker() {
         }
       }
     }
-  }, [pathname, trackPage, isReturning, visitCount]);
+  }, [pathname, trackPage, isReturning, visitCount, visitorId]);
 
   return null;
 }

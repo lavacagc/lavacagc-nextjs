@@ -3,7 +3,15 @@ import {
   findByVerifyToken,
   updateSubscriber,
 } from '@/lib/listings/subscribers';
-import { signAccess, ACCESS_COOKIE_NAME, ACCESS_MAX_AGE_SECONDS, accessCookieOptions } from '@/lib/listings/accessCookie';
+import {
+  signAccess,
+  ACCESS_COOKIE_NAME,
+  ACCESS_MAX_AGE_SECONDS,
+  accessCookieOptions,
+  KNOWN_COOKIE_NAME,
+  knownCookieOptions,
+  sanitizeKnownName,
+} from '@/lib/listings/accessCookie';
 import { sendListingsWelcomeEmail } from '@/lib/notify/sendListingsEmails';
 
 export const dynamic = 'force-dynamic';
@@ -63,6 +71,9 @@ export async function GET(request: NextRequest) {
 
     const response = NextResponse.redirect(new URL(next, origin));
     response.cookies.set(ACCESS_COOKIE_NAME, await signAccess(sub.id), accessCookieOptions(ACCESS_MAX_AGE_SECONDS));
+    // Readable hint cookie: lets the client greet returning subscribers and gate
+    // the tracking beacon. Identity is still taken from the signed br_access cookie.
+    response.cookies.set(KNOWN_COOKIE_NAME, sanitizeKnownName(sub.first_name), knownCookieOptions(ACCESS_MAX_AGE_SECONDS));
     return response;
   } catch (error) {
     console.error('Buy+Remodel verify error:', error);
