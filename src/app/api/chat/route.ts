@@ -6,6 +6,7 @@ import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
 import { sendTelegramLead } from '@/lib/notify/telegramLead';
 import { createLeadFollowUpSequence } from '@/lib/notify/leadFollowUp';
 import { checkRateLimit as ipRateLimit, getClientIp } from '@/lib/rateLimit';
+import { cleanEnv } from '@/lib/envClean';
 
 export const dynamic = 'force-dynamic';
 
@@ -276,8 +277,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Call OpenAI
-    const apiKey = process.env.OPENAI_API_KEY;
+    // Call OpenAI. cleanEnv() strips trailing whitespace / newlines / literal
+    // "\n" a dashboard paste can append (otherwise OpenAI 401s "Incorrect API key").
+    const apiKey = cleanEnv(process.env.OPENAI_API_KEY);
     if (!apiKey) {
       console.error('OPENAI_API_KEY not configured');
       return NextResponse.json({
