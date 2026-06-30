@@ -31,6 +31,8 @@ test.describe('Privacy policy disclosures', () => {
     }
 
     // Version bumped.
-    expect(body).toContain('version: 2.1');
+    expect(body).toContain('version: 2.2');
+    // Home Care disclosure present.
+    expect(body).toContain('home care');
   });
 });

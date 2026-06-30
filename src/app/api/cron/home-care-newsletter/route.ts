@@ -14,6 +14,7 @@ import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { updateHomeowner } from '@/lib/homecare/homeowners';
 import { currentSeason } from '@/lib/homecare/season';
 import { buildNewsletter, type NewsletterTask } from '@/lib/homecare/newsletter';
+import { filterTasksForProfile, type HomeSystems } from '@/lib/homecare/profile';
 import { sendHomeCareNewsletterEmail } from '@/lib/notify/sendHomeCareEmails';
 
 export const dynamic = 'force-dynamic';
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
   try {
     const tasks = (await supabaseRest<NewsletterTask[]>(
       'GET',
-      `maintenance_catalog?select=key,title,blurb,bookable,diy_or_pro,priority&active=eq.true&seasons=cs.%7B${season}%7D&order=priority.desc`,
+      `maintenance_catalog?select=key,title,blurb,bookable,diy_or_pro,priority,applies_to&active=eq.true&seasons=cs.%7B${season}%7D&order=priority.desc`,
     )) ?? [];
 
     const homeowners = (await supabaseRest<HomeownerRow[]>(
@@ -63,16 +64,24 @@ export async function GET(request: NextRequest) {
       'homeowners?select=id,first_name,email,unsubscribe_token,last_newsletter_at&status=eq.active',
     )) ?? [];
 
+    // Per-homeowner personalization: filter the season tasks to each home's systems.
+    const profiles = (await supabaseRest<{ homeowner_id: string; systems: HomeSystems }[]>(
+      'GET',
+      'home_profiles?select=homeowner_id,systems',
+    )) ?? [];
+    const systemsByOwner = new Map(profiles.map((p) => [p.homeowner_id, p.systems]));
+
     const eligible = homeowners.filter((h) => !sameMonth(h.last_newsletter_at, now)).slice(0, MAX_PER_RUN);
 
     let sent = 0;
     const failures: string[] = [];
     if (!dryRun) {
       for (const h of eligible) {
+        const personalTasks = filterTasksForProfile(tasks, systemsByOwner.get(h.id) ?? null);
         const { subject, html, text } = buildNewsletter({
           firstName: h.first_name,
           season,
-          tasks,
+          tasks: personalTasks,
           isSeasonal,
           baseUrl: origin,
           unsubscribeUrl: `${origin}/api/home-care/unsubscribe?token=${encodeURIComponent(h.unsubscribe_token)}`,

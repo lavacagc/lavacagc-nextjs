@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Last Updated: June 30, 2026**
-**Version: 2.1**
+**Version: 2.2**
 
 ---
 
@@ -93,6 +93,14 @@ This identified tracking applies only to verified subscribers. You can stop it a
 ### 3.5 AI Chat Assistant
 
 Our Website offers an AI-powered chat assistant. **Messages you send to the chat are stored by us and transmitted to our AI provider, OpenAI, to generate responses.** We also retain the conversation, associated with your visitor identifier, and if you provide contact details (such as your name, email, or phone) in the chat, **we may use them to create a lead and follow up with you.** Please **do not enter sensitive personal information** (such as financial account or government ID numbers) into the chat.
+
+### 3.6 La Vaca Home Care
+
+If you join our free **"La Vaca Home Care"** program, you give us your **name, email address, and home ZIP code**, and optionally your **home type and details about your home's systems** (for example, whether you have central air conditioning, a sump pump, a deck, a fireplace, an irrigation system, or an asphalt driveway). You provide this so we can build you a **personalized seasonal home-maintenance checklist** and send you seasonal maintenance reminders by email.
+
+When you verify your email, we place a cookie on your browser (`hc_access`, described in Section 6.6) that **recognizes you when you return** so you can view your checklist **without creating a password or logging in**. We store the date/time you last visited your checklist. If you request that we perform a maintenance task ("Book La Vaca"), we use the contact information you provide to **create a lead and follow up with you** as described elsewhere in this Policy.
+
+This is an optional program separate from our "Buy + Remodel" listings. You can leave at any time using the **unsubscribe link** in any Home Care email, which removes you from the program, stops the seasonal emails, and clears your Home Care access cookie. You may also exercise the rights in Section 8 (including access and deletion) with respect to this information.
 
 ---
 
@@ -331,6 +339,8 @@ We are required to recognize and honor GPC signals under:
 | security_token | Prevents cross-site request forgery (CSRF) attacks | Session |
 | br_access | Grants verified Buy + Remodel subscribers access to listing details (signed, identifies your subscription) | 30 days |
 | br_known | Recognizes a returning subscriber to display a greeting and your unlocked content | 30 days |
+| hc_access | Recognizes a verified La Vaca Home Care member (signed, identifies your account) so we can show your personalized maintenance checklist without a password | 30 days |
+| hc_known | Recognizes a returning Home Care member to display a greeting (stores your first name) | 30 days |
 | lavaca_visitor / lavaca_visitor_id | Persistent visitor identifier stored on your device to recognize return visits and link activity across our analytics tools (stored in your browser's local storage) | Until cleared |
 
 **Analytics Cookies** (can be disabled via cookie settings):

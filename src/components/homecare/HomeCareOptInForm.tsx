@@ -72,6 +72,7 @@ export default function HomeCareOptInForm() {
 
   const validate = (): boolean => {
     const e: Partial<Record<keyof FormState, string>> = {};
+    if (!state.first_name.trim()) e.first_name = 'Name is required';
     if (!state.email.trim()) e.email = 'Email is required';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.email)) e.email = 'Enter a valid email';
     if (!state.zip.trim()) e.zip = 'ZIP is required';
@@ -99,7 +100,7 @@ export default function HomeCareOptInForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          first_name: state.first_name.trim() || null,
+          first_name: state.first_name.trim(),
           email: state.email.trim(),
           zip: state.zip.trim(),
           home_type: state.home_type || null,
@@ -144,7 +145,7 @@ export default function HomeCareOptInForm() {
       </div>
 
       <div className="grid gap-4">
-        <Field id="first_name" label="First name (optional)">
+        <Field id="first_name" label="First name" error={errors.first_name}>
           <input id="first_name" type="text" value={state.first_name} onChange={(e) => update('first_name', e.target.value)} placeholder="Your name" autoComplete="given-name" className="lv-input" />
         </Field>
         <Field id="email" label="Email" error={errors.email}>
