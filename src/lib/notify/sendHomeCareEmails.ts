@@ -8,6 +8,9 @@ import { cleanEnv } from '@/lib/envClean';
 
 const FROM_ADDRESS = 'Alex from La Vaca GC <alex@email.lavaca.link>';
 const DEFAULT_REPLY_TO = 'info@lavacagc.com';
+const LOGO = 'https://www.lavacagc.com/logo.png';
+const PHONE = '(201) 212-4917';
+const HIC = 'NJ HIC# 13VH13373800';
 
 export interface HomeCareEmailResult {
   status: 'sent' | 'skipped' | 'failed' | 'error';
@@ -17,13 +20,26 @@ export interface HomeCareEmailResult {
 }
 
 function shell(title: string, body: string): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f6f4ef;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#eef0ea;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">
   <div style="max-width:560px;margin:0 auto;padding:24px">
-    <div style="background:#002855;color:#fff;border-radius:14px 14px 0 0;padding:22px 26px">
-      <div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#FFCB8E;font-weight:700">La Vaca Home Care</div>
-      <div style="font-size:21px;font-weight:800;margin-top:6px">${title}</div>
+    <table width="100%" style="background:#002855;border-radius:14px 14px 0 0;border-collapse:collapse"><tr>
+      <td style="padding:20px 24px" valign="middle">
+        <table style="border-collapse:collapse"><tr>
+          <td valign="middle"><img src="${LOGO}" width="44" height="44" alt="La Vaca" style="display:block;border-radius:10px;background:#fff"></td>
+          <td valign="middle" style="padding-left:12px">
+            <div style="color:#fff;font-size:17px;font-weight:800;line-height:1.1">La Vaca Home Care</div>
+            <div style="color:#FFCB8E;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-top:2px">${title}</div>
+          </td>
+        </tr></table>
+      </td>
+    </tr></table>
+    <div style="background:#fff;padding:24px 26px;border-radius:0 0 14px 14px">
+      ${body}
+      <table width="100%" style="border-top:1px solid #e6e9ef;margin-top:22px;border-collapse:collapse"><tr><td style="padding-top:16px">
+        <div style="font-size:13px;font-weight:800;color:#002855">La Vaca General Contractors</div>
+        <div style="font-size:12px;color:#5b6b82;margin-top:3px"><a href="tel:2012124917" style="color:#EE9639;font-weight:700;text-decoration:none">${PHONE}</a> &nbsp;·&nbsp; ${HIC}</div>
+      </td></tr></table>
     </div>
-    <div style="background:#fff;padding:24px 26px;border-radius:0 0 14px 14px">${body}</div>
   </div>
 </body></html>`;
 }
