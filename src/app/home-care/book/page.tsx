@@ -24,11 +24,17 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
     .slice(0, 20);
 
   // Look up the requested tasks (preserve the order the homeowner selected them).
+  // Degrade gracefully: if the catalog lookup fails, fall back to a generic
+  // service below rather than 500ing the booking page.
   let services: BookingService[] = [];
   if (rawKeys.length) {
-    const rows = await supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title&key=in.(${rawKeys.map(encodeURIComponent).join(',')})`);
-    const byKey = new Map((rows ?? []).map((r) => [r.key, r.title]));
-    services = rawKeys.filter((k) => byKey.has(k)).map((k) => ({ key: k, title: byKey.get(k)! }));
+    try {
+      const rows = await supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title&key=in.(${rawKeys.map(encodeURIComponent).join(',')})`);
+      const byKey = new Map((rows ?? []).map((r) => [r.key, r.title]));
+      services = rawKeys.filter((k) => byKey.has(k)).map((k) => ({ key: k, title: byKey.get(k)! }));
+    } catch {
+      services = [];
+    }
   }
   if (services.length === 0) services = [{ key: 'general', title: 'Seasonal home maintenance' }];
   const isMulti = services.length > 1;
