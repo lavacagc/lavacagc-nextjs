@@ -27,6 +27,10 @@
     {
       "path": "/api/cron/seo-report?email=1",
       "schedule": "30 6 * * 1"
+    },
+    {
+      "path": "/api/cron/seo-suggest",
+      "schedule": "0 7 * * 1"
     }
   ]
 }
