@@ -39,6 +39,8 @@ interface ProjectData {
     alt_text: string;
     is_featured: boolean;
     media_type?: 'image' | 'video';
+    pair_key?: string | null;
+    caption?: string | null;
   }>;
 }
 
@@ -120,6 +122,8 @@ async function getProject(slug: string): Promise<ProjectData | null> {
         alt_text: img.alt_text as string,
         is_featured: img.is_featured as boolean,
         media_type: (img.media_type as 'image' | 'video') || 'image',
+        pair_key: (img.pair_key as string | null) ?? null,
+        caption: (img.caption as string | null) ?? null,
       })),
     };
 

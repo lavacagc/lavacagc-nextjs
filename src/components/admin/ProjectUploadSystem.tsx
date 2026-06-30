@@ -63,6 +63,10 @@ export interface ProjectFormData {
     is_featured: boolean;
     sort_order: number;
     room?: string;
+    /** Shared id linking a before image to an after image as one comparison pair. */
+    pair_key?: string;
+    /** Optional pair label (e.g. "Kitchen"); persisted to project_images.caption. */
+    caption?: string;
   }>;
   
   // Details
@@ -134,21 +138,23 @@ export function ProjectUploadSystem({ mode, onModeChange, editProject }: Project
 
   const populateFormFromProject = async (project: Project) => {
     // Fetch project images
-    let projectImages: Array<{ url?: string; media_type?: 'image' | 'video'; category: 'before' | 'during' | 'after'; alt_text: string; is_featured: boolean; sort_order: number }> = [];
+    let projectImages: ProjectFormData['images'] = [];
     try {
       const { data: images } = await supabase
         .from('project_images')
         .select('*')
         .eq('project_id', project.id)
         .order('sort_order');
-      
+
       projectImages = (images || []).map(img => ({
         url: img.image_url,
         media_type: (img.media_type || 'image') as 'image' | 'video',
         category: (img.image_category || 'after') as 'before' | 'during' | 'after',
         alt_text: img.alt_text || '',
         is_featured: img.is_featured,
-        sort_order: img.sort_order
+        sort_order: img.sort_order,
+        pair_key: img.pair_key || undefined,
+        caption: img.caption || undefined,
       }));
     } catch (error) {
       console.error('Error loading project images:', error);
@@ -483,7 +489,9 @@ export function ProjectUploadSystem({ mode, onModeChange, editProject }: Project
                 image_category: image.category,
                 alt_text: image.alt_text,
                 is_featured: image.is_featured,
-                sort_order: image.sort_order || index
+                sort_order: image.sort_order || index,
+                pair_key: image.pair_key ?? null,
+                caption: image.caption ?? null
               });
           }
           
@@ -523,7 +531,9 @@ export function ProjectUploadSystem({ mode, onModeChange, editProject }: Project
                 image_category: image.category,
                 alt_text: image.alt_text,
                 is_featured: image.is_featured,
-                sort_order: image.sort_order || index
+                sort_order: image.sort_order || index,
+                pair_key: image.pair_key ?? null,
+                caption: image.caption ?? null
               });
           }
           return null;
