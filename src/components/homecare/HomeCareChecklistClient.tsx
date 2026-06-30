@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Check, Wrench, ClipboardList, Sparkles } from 'lucide-react';
+import { hasGuideItem } from '@/lib/homecare/guides';
 
 export interface ChecklistTask {
   key: string;
@@ -109,6 +110,11 @@ export default function HomeCareChecklistClient({
               {cost && <span className="text-[11px] text-slate-400">· Pro est. {cost}</span>}
             </div>
             <p className="text-sm text-text-secondary mt-0.5 leading-relaxed">{t.blurb}</p>
+            {hasGuideItem(season, t.key) && (
+              <a href={`/home-care/guides/${season}#${t.key}`} className="mt-1 inline-block text-xs font-semibold text-primary hover:underline">
+                Learn more →
+              </a>
+            )}
             {t.bookable && (
               <div className="mt-2.5 flex flex-wrap items-center gap-2">
                 <button
