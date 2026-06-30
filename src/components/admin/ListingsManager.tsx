@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
+import HeadshotCropper from '@/components/admin/HeadshotCropper';
 import { Download, Upload, FileSpreadsheet, Trash2, Edit, Save, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import {
   TEMPLATE_HEADERS,
@@ -614,7 +615,14 @@ export function ListingsManager() {
                 </div>
               </div>
               <div>
-                <Label htmlFor="agent-photo">Photo URL</Label>
+                <Label>Headshot</Label>
+                <HeadshotCropper
+                  value={agent.photo_url}
+                  onUploaded={(url) => setAgent({ ...agent, photo_url: url })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="agent-photo">Photo URL (or paste one directly)</Label>
                 <Input id="agent-photo" value={agent.photo_url ?? ''} onChange={(e) => setAgent({ ...agent, photo_url: e.target.value })} />
               </div>
               <div>

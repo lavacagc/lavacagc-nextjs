@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import ListingPhotos from '@/components/listings/ListingPhotos';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { BedDouble, Bath, Ruler, Calendar, Home as HomeIcon, Phone, Mail, ArrowRight } from 'lucide-react';
@@ -204,29 +205,9 @@ export default async function ListingDetailPage({ params }: PageProps) {
             )}
           </div>
 
-          {/* Photos */}
+          {/* Photos — click any to open the lightbox carousel */}
           {photos.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-8">
-              <div className="md:col-span-2 relative aspect-[4/3] rounded-lg overflow-hidden bg-muted">
-                <Image src={photos[0]} alt={`${l.address_line1}, ${l.city}`} fill unoptimized className="object-cover" sizes="(max-width: 768px) 100vw, 66vw" />
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
-                {photos.slice(1, 3).map((p, i) => (
-                  <div key={i} className="relative aspect-[4/3] rounded-lg overflow-hidden bg-muted">
-                    <Image src={p} alt={`${l.address_line1} photo ${i + 2}`} fill unoptimized className="object-cover" sizes="33vw" />
-                  </div>
-                ))}
-              </div>
-              {photos.length > 3 && (
-                <div className="md:col-span-3 grid grid-cols-3 md:grid-cols-6 gap-3">
-                  {photos.slice(3).map((p, i) => (
-                    <div key={i} className="relative aspect-[4/3] rounded-lg overflow-hidden bg-muted">
-                      <Image src={p} alt={`${l.address_line1} photo ${i + 4}`} fill unoptimized className="object-cover" sizes="16vw" />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <ListingPhotos photos={photos} alt={`${l.address_line1}, ${l.city}`} />
           ) : (
             <div className="aspect-[16/6] rounded-lg bg-muted flex items-center justify-center text-text-muted mb-8">
               No photos available
