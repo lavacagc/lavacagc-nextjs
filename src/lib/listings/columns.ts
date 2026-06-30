@@ -382,6 +382,31 @@ export function slugify(base: string): string {
     .slice(0, 80) || 'listing';
 }
 
+/**
+ * Canonical key for duplicate-address detection. Combines the full street
+ * identity (line1 + unit + city + state + zip), lowercased, with punctuation and
+ * repeated whitespace collapsed, so "12 Maple Ave., Ridgewood NJ" and
+ * "12 maple ave  ridgewood  nj" map to the same key. Unit (line2) is included so
+ * distinct condo/apartment units at the same building are NOT treated as dupes.
+ * Returns '' when there's no street line (can't meaningfully dedupe).
+ */
+export function addressKey(row: {
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+}): string {
+  if (!s(row.address_line1)) return '';
+  return [row.address_line1, row.address_line2, row.city, row.state, row.zip]
+    .map((v) => s(v).toLowerCase())
+    .filter(Boolean)
+    .join(' ')
+    .replace(/[.,#]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** Build the deterministic slug base (external_id > mls_number > address+city+zip). */
 export function deriveSlug(row: Pick<NormalizedListing, 'external_id' | 'mls_number' | 'address_line1' | 'city' | 'zip'>): string {
   const base =

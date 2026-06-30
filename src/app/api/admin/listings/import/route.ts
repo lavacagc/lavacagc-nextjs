@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   NormalizedListingSchema,
   deriveSlug,
+  addressKey,
   RENDERING_SECTIONS,
   type NormalizedListing,
   type BeforePhoto,
@@ -148,7 +149,7 @@ export async function POST(request: Request) {
 
   // 1) Validate + derive slug for each row. Each item is { listing, before_photos };
   //    older callers may send the bare listing object — tolerate both.
-  const valid: { slug: string; data: NormalizedListing; beforePhotos: BeforePhoto[] }[] = [];
+  const valid: { rowNum: number; slug: string; data: NormalizedListing; beforePhotos: BeforePhoto[] }[] = [];
   rows.forEach((rowInput, idx) => {
     const rowNum = idx + 1;
     const item = (rowInput && typeof rowInput === 'object' && 'listing' in (rowInput as object)
@@ -173,33 +174,71 @@ export async function POST(request: Request) {
           )
           .map((b) => ({ section: b.section, url: b.url, style: b.style ?? null }))
       : [];
-    valid.push({ slug, data, beforePhotos });
+    valid.push({ rowNum, slug, data, beforePhotos });
   });
 
   if (valid.length === 0) {
     return NextResponse.json({ inserted: 0, updated: 0, errors, warnings });
   }
 
-  // 2) Determine insert vs update by checking which slugs already exist.
-  let existingSlugs = new Set<string>();
+  // 2) Load existing listings (slug + address) to (a) classify insert vs update
+  //    and (b) reject any row whose address already exists under a different slug.
+  const existingSlugs = new Set<string>();
+  const existingByAddr = new Map<string, string>(); // addressKey -> existing slug
   try {
-    const slugList = valid.map((v) => v.slug);
-    const inClause = `(${slugList.map((sl) => `"${sl.replace(/"/g, '')}"`).join(',')})`;
-    const existing = await supabaseRest<{ slug: string }[]>(
+    type ExistingRow = {
+      slug: string;
+      address_line1: string | null;
+      address_line2: string | null;
+      city: string | null;
+      state: string | null;
+      zip: string | null;
+    };
+    const existing = await supabaseRest<ExistingRow[]>(
       'GET',
-      `listings?select=slug&slug=in.${encodeURIComponent(inClause)}`,
+      `listings?select=slug,address_line1,address_line2,city,state,zip`,
     );
-    existingSlugs = new Set((existing || []).map((r) => r.slug));
+    for (const r of existing || []) {
+      existingSlugs.add(r.slug);
+      const k = addressKey(r);
+      if (k) existingByAddr.set(k, r.slug);
+    }
   } catch (err) {
-    console.error('listings import: existing-slug lookup failed', err);
+    console.error('listings import: existing-listings lookup failed', err);
     // Non-fatal: upsert still works; counts may classify all as inserts.
+  }
+
+  // 2b) DUPLICATE-ADDRESS GUARD. Reject rows whose normalized address already
+  //     exists under a different slug, or that repeat an address earlier in the
+  //     same upload. Re-importing the SAME listing (matching slug) stays a valid
+  //     update. This is the authoritative check — the slug upsert alone can't
+  //     catch dupes, because the slug is derived from external_id/mls when present.
+  const seenInBatch = new Map<string, number>(); // addressKey -> first rowNum
+  const deduped = valid.filter((v) => {
+    const k = addressKey(v.data);
+    if (!k) return true; // no street line — nothing to dedupe on
+    const existingSlug = existingByAddr.get(k);
+    if (existingSlug && existingSlug !== v.slug) {
+      errors.push({ row: v.rowNum, reason: 'Duplicate address — a different listing with this address already exists' });
+      return false;
+    }
+    const firstRow = seenInBatch.get(k);
+    if (firstRow != null) {
+      errors.push({ row: v.rowNum, reason: `Duplicate address — same as row ${firstRow} in this file` });
+      return false;
+    }
+    seenInBatch.set(k, v.rowNum);
+    return true;
+  });
+
+  if (deduped.length === 0) {
+    return NextResponse.json({ inserted: 0, updated: 0, errors, warnings });
   }
 
   // 3) Re-host photos (best-effort) and build db rows.
   const nowIso = new Date().toISOString();
   const dbRows = await Promise.all(
-    valid.map(async ({ slug, data }, i) => {
-      const rowNum = i + 1;
+    deduped.map(async ({ slug, data, rowNum }) => {
       const rehosted = await mapWithConcurrency(data.photo_urls, PHOTO_CONCURRENCY, async (url, idx) => {
         try {
           return await rehostPhoto(slug, idx, url);
@@ -267,7 +306,7 @@ export async function POST(request: Request) {
   //    Re-host each before photo, then upsert a pending listing_renderings row.
   //    Skip rows already 'ready' whose source before-URL is unchanged (no re-bill).
   let queuedRenderings = 0;
-  const rowsWithBefores = valid.filter((v) => v.beforePhotos.length > 0);
+  const rowsWithBefores = deduped.filter((v) => v.beforePhotos.length > 0);
   if (rowsWithBefores.length > 0) {
     try {
       // Map slug -> listing id for the rows we just upserted.

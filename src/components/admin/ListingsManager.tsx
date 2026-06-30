@@ -28,6 +28,7 @@ import {
   normalizeRow,
   validateRow,
   deriveSlug,
+  addressKey,
   extractBeforePhotos,
   type NormalizedListing,
   type BeforePhoto,
@@ -145,11 +146,35 @@ export function ListingsManager() {
         const ws = wb.Sheets[wb.SheetNames[0]];
         const records = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
         const existingSlugs = new Set(listings.map((l) => l.slug));
+        // Map every existing listing's normalized address -> its slug, plus track
+        // addresses seen earlier in this same file, to flag duplicate addresses.
+        const existingByAddr = new Map<string, string>();
+        for (const l of listings) {
+          const k = addressKey(l);
+          if (k) existingByAddr.set(k, l.slug);
+        }
+        const seenInBatch = new Map<string, number>();
         const rows: PreviewRow[] = records.map((rec, i) => {
           const data = normalizeRow(rec);
           const beforePhotos = extractBeforePhotos(rec);
           const slug = deriveSlug(data);
-          const error = validateRow(data);
+          let error = validateRow(data);
+          // Duplicate-address guard (mirrors the server). A matching slug is an
+          // update, not a dup; a different slug at the same address is rejected.
+          if (!error) {
+            const k = addressKey(data);
+            if (k) {
+              const existingSlug = existingByAddr.get(k);
+              const firstRow = seenInBatch.get(k);
+              if (existingSlug && existingSlug !== slug) {
+                error = 'Duplicate address — a different listing with this address already exists';
+              } else if (firstRow != null) {
+                error = `Duplicate address — same as row ${firstRow} in this file`;
+              } else {
+                seenInBatch.set(k, i + 1);
+              }
+            }
+          }
           const status: PreviewRow['status'] = error ? 'error' : existingSlugs.has(slug) ? 'update' : 'new';
           return { rowNum: i + 1, data, beforePhotos, slug, error, status };
         });
