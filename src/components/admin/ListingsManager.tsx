@@ -29,10 +29,12 @@ import {
   validateRow,
   deriveSlug,
   addressKey,
+  validateHeaders,
   extractBeforePhotos,
   type NormalizedListing,
   type BeforePhoto,
 } from '@/lib/listings/columns';
+import type { ImageCheckResult } from '@/lib/listings/imageCheck';
 
 type Listing = Database['public']['Tables']['listings']['Row'];
 type PartnerRealtor = Database['public']['Tables']['partner_realtor']['Row'];
@@ -68,6 +70,10 @@ export function ListingsManager() {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // File-level verification
+  const [fileIssues, setFileIssues] = useState<string[]>([]);
+  const [verifying, setVerifying] = useState(false);
+  const [imageResults, setImageResults] = useState<Map<string, ImageCheckResult>>(new Map());
 
   // Edit dialog state
   const [editing, setEditing] = useState<Listing | null>(null);
@@ -138,12 +144,38 @@ export function ListingsManager() {
 
   const parseFile = (file: File) => {
     setResult(null);
+    setFileIssues([]);
+    setImageResults(new Map());
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const buf = new Uint8Array(e.target?.result as ArrayBuffer);
         const wb = XLSX.read(buf, { type: 'array' });
+        if (wb.SheetNames.length === 0) {
+          setParsedRows([]);
+          setFileIssues(['This file has no sheets — is it a valid .xlsx or .csv?']);
+          return;
+        }
         const ws = wb.Sheets[wb.SheetNames[0]];
+
+        // File-level check: confirm the required columns exist before validating rows.
+        const headerRow = (XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, blankrows: false })[0] || []).map(
+          (h) => String(h ?? ''),
+        );
+        const report = validateHeaders(headerRow);
+        const issues: string[] = [];
+        if (!report.looksLikeListings) {
+          issues.push(
+            'This doesn’t look like a listings sheet — none of the expected columns were found. Download the template and use its headers.',
+          );
+        } else if (report.missingRequired.length > 0) {
+          issues.push(`Missing required column${report.missingRequired.length > 1 ? 's' : ''}: ${report.missingRequired.join(', ')}.`);
+        }
+        if (report.unknown.length > 0) {
+          issues.push(`Unrecognized column${report.unknown.length > 1 ? 's' : ''} (ignored — check for typos): ${report.unknown.join(', ')}.`);
+        }
+        setFileIssues(issues);
+
         const records = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
         const existingSlugs = new Set(listings.map((l) => l.slug));
         // Map every existing listing's normalized address -> its slug, plus track
@@ -181,6 +213,9 @@ export function ListingsManager() {
         setParsedRows(rows);
         if (rows.length === 0) {
           toast({ title: 'No rows found', description: 'The first sheet had no data rows.', variant: 'destructive' });
+        } else {
+          // Verify every image link in the background and annotate the preview.
+          void verifyImages(rows);
         }
       } catch (err) {
         toast({
@@ -191,6 +226,49 @@ export function ListingsManager() {
       }
     };
     reader.readAsArrayBuffer(file);
+  };
+
+  // Collect every image link in the sheet and verify each one server-side
+  // (reachable + actually an image + not oversized), then annotate the preview.
+  const verifyImages = async (rows: PreviewRow[]) => {
+    const urls = new Set<string>();
+    for (const r of rows) {
+      r.data.photo_urls.forEach((u) => u && urls.add(u.trim()));
+      r.beforePhotos.forEach((bp) => bp.url && urls.add(bp.url.trim()));
+    }
+    if (urls.size === 0) return;
+    setVerifying(true);
+    try {
+      const res = await fetch('/api/admin/listings/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls: [...urls] }),
+      });
+      if (!res.ok) {
+        toast({ title: 'Image check unavailable', description: `HTTP ${res.status}`, variant: 'destructive' });
+        return;
+      }
+      const json = (await res.json()) as { results: ImageCheckResult[] };
+      setImageResults(new Map((json.results ?? []).map((r) => [r.url, r])));
+    } catch {
+      toast({ title: 'Image check failed', description: 'Could not reach the verifier.', variant: 'destructive' });
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  // Image problems for one row, derived from the latest verification results.
+  const rowImageIssues = (r: PreviewRow): string[] => {
+    const out: string[] = [];
+    r.data.photo_urls.forEach((u, i) => {
+      const res = imageResults.get(u.trim());
+      if (res && !res.ok) out.push(`Photo ${i + 1}: ${res.reason}`);
+    });
+    r.beforePhotos.forEach((bp) => {
+      const res = imageResults.get(bp.url.trim());
+      if (res && !res.ok) out.push(`${bp.section} before-photo: ${res.reason}`);
+    });
+    return out;
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -213,6 +291,7 @@ export function ListingsManager() {
 
   const validCount = parsedRows.filter((r) => r.status !== 'error').length;
   const errorCount = parsedRows.length - validCount;
+  const imageProblemCount = parsedRows.reduce((n, r) => n + rowImageIssues(r).length, 0);
 
   const commitImport = async () => {
     const rows = parsedRows
@@ -450,12 +529,43 @@ export function ListingsManager() {
             </CardContent>
           </Card>
 
+          {fileIssues.length > 0 && (
+            <Card className="border-destructive/40">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-destructive">
+                  <AlertTriangle className="w-5 h-5" /> File problems
+                </CardTitle>
+                <CardDescription>Fix these in your spreadsheet, then re-upload.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="list-disc pl-5 space-y-1 text-sm text-destructive">
+                  {fileIssues.map((msg, i) => (
+                    <li key={i}>{msg}</li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
           {parsedRows.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle>3. Preview &amp; commit</CardTitle>
                 <CardDescription>
-                  {validCount} ready, {errorCount} with errors. Rows with errors are skipped; everything else is saved.
+                  {validCount} ready, {errorCount} with errors. Rows with errors are skipped; everything else is saved.{' '}
+                  {verifying ? (
+                    <span className="inline-flex items-center gap-1 text-text-muted">
+                      <Loader2 className="w-3 h-3 animate-spin" /> checking images…
+                    </span>
+                  ) : imageResults.size > 0 ? (
+                    imageProblemCount > 0 ? (
+                      <span className="text-accent-sunset font-medium">
+                        {imageProblemCount} image link{imageProblemCount > 1 ? 's' : ''} invalid (see rows below).
+                      </span>
+                    ) : (
+                      <span className="text-accent-teal font-medium">All image links valid.</span>
+                    )
+                  ) : null}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -474,24 +584,38 @@ export function ListingsManager() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {parsedRows.map((r) => (
-                        <TableRow key={r.rowNum}>
-                          <TableCell>{r.rowNum}</TableCell>
-                          <TableCell>
-                            <Badge variant={statusBadgeVariant(r.status)}>
-                              {r.status === 'error' ? 'Error' : r.status === 'update' ? 'Update' : 'New'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap">{r.data.address_line1 || '—'}</TableCell>
-                          <TableCell>{r.data.city || '—'}</TableCell>
-                          <TableCell>{money(r.data.list_price)}</TableCell>
-                          <TableCell className="whitespace-nowrap">
-                            {money(r.data.est_remodel_budget_low)}–{money(r.data.est_remodel_budget_high)}
-                          </TableCell>
-                          <TableCell>{r.data.photo_urls.length}</TableCell>
-                          <TableCell className="text-destructive text-sm">{r.error ?? ''}</TableCell>
-                        </TableRow>
-                      ))}
+                      {parsedRows.map((r) => {
+                        const imgIssues = rowImageIssues(r);
+                        const badImgs = imgIssues.length;
+                        return (
+                          <TableRow key={r.rowNum}>
+                            <TableCell>{r.rowNum}</TableCell>
+                            <TableCell>
+                              <Badge variant={statusBadgeVariant(r.status)}>
+                                {r.status === 'error' ? 'Error' : r.status === 'update' ? 'Update' : 'New'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap">{r.data.address_line1 || '—'}</TableCell>
+                            <TableCell>{r.data.city || '—'}</TableCell>
+                            <TableCell>{money(r.data.list_price)}</TableCell>
+                            <TableCell className="whitespace-nowrap">
+                              {money(r.data.est_remodel_budget_low)}–{money(r.data.est_remodel_budget_high)}
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap">
+                              {r.data.photo_urls.length}
+                              {badImgs > 0 && <span className="text-accent-sunset"> · {badImgs}✗</span>}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {r.error && <div className="text-destructive">{r.error}</div>}
+                              {imgIssues.map((msg, i) => (
+                                <div key={i} className="text-accent-sunset flex items-start gap-1">
+                                  <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" /> {msg}
+                                </div>
+                              ))}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>

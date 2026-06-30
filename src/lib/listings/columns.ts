@@ -201,6 +201,39 @@ export const TEMPLATE_HEADERS = [
   ...BEFORE_PHOTO_COLUMNS.map((c) => c.header),
   REMODEL_STYLE_HEADER,
 ];
+
+const NORM_HEADER = (h: string) => h.trim().toLowerCase().replace(/\s+/g, ' ');
+
+export interface HeaderReport {
+  /** Required columns the file is missing entirely (by header). */
+  missingRequired: string[];
+  /** Header cells we don't recognize (likely typos / stray columns). */
+  unknown: string[];
+  /** How many recognized columns were found. */
+  recognized: number;
+  /** True when the sheet looks like a listings sheet at all (>=1 known column). */
+  looksLikeListings: boolean;
+}
+
+/**
+ * File-level header check, run the moment a sheet is parsed. Confirms the
+ * required columns exist before we bother validating rows, and surfaces stray /
+ * misspelled headers. Header matching is case- and spacing-insensitive.
+ */
+export function validateHeaders(present: string[]): HeaderReport {
+  const presentSet = new Set(present.map(NORM_HEADER).filter(Boolean));
+  const known = new Set<string>([
+    ...LISTING_COLUMNS.map((c) => NORM_HEADER(c.header)),
+    ...BEFORE_PHOTO_COLUMNS.map((c) => NORM_HEADER(c.header)),
+    NORM_HEADER(REMODEL_STYLE_HEADER),
+  ]);
+  const missingRequired = LISTING_COLUMNS.filter((c) => c.required && !presentSet.has(NORM_HEADER(c.header))).map(
+    (c) => c.header,
+  );
+  const unknown = present.filter((h) => h.trim() && !known.has(NORM_HEADER(h)));
+  const recognized = [...presentSet].filter((h) => known.has(h)).length;
+  return { missingRequired, unknown, recognized, looksLikeListings: recognized > 0 };
+}
 export const TEMPLATE_EXAMPLE_ROW = [
   ...LISTING_COLUMNS.map((c) => c.example),
   'https://photos.example.com/kitchen-before.jpg',
