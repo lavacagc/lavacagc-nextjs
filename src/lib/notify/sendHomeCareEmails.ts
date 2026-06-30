@@ -67,6 +67,16 @@ export function sendHomeCareVerificationEmail(args: {
   return send(args.to, "Confirm your email — your La Vaca Home Care plan", shell("Let's set up your home plan", body), text);
 }
 
+/** Send a pre-rendered seasonal/monthly newsletter (content built by lib/homecare/newsletter). */
+export function sendHomeCareNewsletterEmail(args: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}): Promise<HomeCareEmailResult> {
+  return send(args.to, args.subject, args.html, args.text);
+}
+
 export function sendHomeCareWelcomeEmail(args: {
   to: string;
   firstName?: string | null;
