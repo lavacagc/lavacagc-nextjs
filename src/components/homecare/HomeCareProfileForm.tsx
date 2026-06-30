@@ -4,8 +4,17 @@ import { useState } from 'react';
 import { Loader2, Check, Home } from 'lucide-react';
 import { ASKABLE_SYSTEMS, type HomeSystems } from '@/lib/homecare/profile';
 
-export default function HomeCareProfileForm({ initial, hasProfile }: { initial: HomeSystems; hasProfile: boolean }) {
+export default function HomeCareProfileForm({
+  initial,
+  hasProfile,
+  initialType,
+}: {
+  initial: HomeSystems;
+  hasProfile: boolean;
+  initialType?: 'first_time' | 'experienced' | null;
+}) {
   const [systems, setSystems] = useState<HomeSystems>(initial);
+  const [type, setType] = useState<'first_time' | 'experienced' | null>(initialType ?? null);
   const [open, setOpen] = useState(!hasProfile);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -23,7 +32,7 @@ export default function HomeCareProfileForm({ initial, hasProfile }: { initial: 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ systems: payload }),
+        body: JSON.stringify({ systems: payload, homeowner_type: type }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       // Re-render the server checklist with the new filter.
@@ -46,6 +55,23 @@ export default function HomeCareProfileForm({ initial, hasProfile }: { initial: 
 
       {open && (
         <div className="mt-4">
+          <p className="text-sm font-semibold text-text-primary mb-2">Are you new to home maintenance?</p>
+          <div className="flex flex-wrap gap-2 mb-4">
+            <button
+              type="button"
+              onClick={() => setType('first_time')}
+              className={`rounded-lg border px-3.5 py-2 text-sm font-bold transition-colors ${type === 'first_time' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-text-secondary hover:border-primary/50'}`}
+            >
+              🏡 First home / new to this
+            </button>
+            <button
+              type="button"
+              onClick={() => setType('experienced')}
+              className={`rounded-lg border px-3.5 py-2 text-sm font-bold transition-colors ${type === 'experienced' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-text-secondary hover:border-primary/50'}`}
+            >
+              ✅ Experienced — just the routine
+            </button>
+          </div>
           <p className="text-sm text-text-secondary mb-3">Check what your home has — we&apos;ll tailor the checklist (and your seasonal emails) to it.</p>
           <div className="grid sm:grid-cols-2 gap-2">
             {ASKABLE_SYSTEMS.map((s) => {

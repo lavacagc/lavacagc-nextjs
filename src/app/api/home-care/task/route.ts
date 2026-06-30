@@ -15,10 +15,12 @@ export async function POST(request: NextRequest) {
   if (!access) return NextResponse.json({ ok: false, error: 'Not signed in' }, { status: 401 });
 
   try {
-    const body = (await request.json().catch(() => ({}))) as { task_key?: string; done?: boolean };
+    const body = (await request.json().catch(() => ({}))) as { task_key?: string; done?: boolean; season?: string };
     const taskKey = (body.task_key ?? '').slice(0, 80);
     if (!taskKey) return NextResponse.json({ ok: false, error: 'task_key required' }, { status: 400 });
     const done = body.done === true;
+    const validSeasons = ['spring', 'summer', 'fall', 'winter', 'starter'];
+    const season = validSeasons.includes(body.season ?? '') ? (body.season as string) : currentSeason();
     const now = new Date().toISOString();
 
     await supabaseRest(
@@ -27,7 +29,7 @@ export async function POST(request: NextRequest) {
       {
         homeowner_id: access.homeownerId,
         task_key: taskKey,
-        season: currentSeason(),
+        season,
         status: done ? 'done' : 'todo',
         completed_at: done ? now : null,
         updated_at: now,
