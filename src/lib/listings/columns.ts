@@ -201,6 +201,39 @@ export const TEMPLATE_HEADERS = [
   ...BEFORE_PHOTO_COLUMNS.map((c) => c.header),
   REMODEL_STYLE_HEADER,
 ];
+
+const NORM_HEADER = (h: string) => h.trim().toLowerCase().replace(/\s+/g, ' ');
+
+export interface HeaderReport {
+  /** Required columns the file is missing entirely (by header). */
+  missingRequired: string[];
+  /** Header cells we don't recognize (likely typos / stray columns). */
+  unknown: string[];
+  /** How many recognized columns were found. */
+  recognized: number;
+  /** True when the sheet looks like a listings sheet at all (>=1 known column). */
+  looksLikeListings: boolean;
+}
+
+/**
+ * File-level header check, run the moment a sheet is parsed. Confirms the
+ * required columns exist before we bother validating rows, and surfaces stray /
+ * misspelled headers. Header matching is case- and spacing-insensitive.
+ */
+export function validateHeaders(present: string[]): HeaderReport {
+  const presentSet = new Set(present.map(NORM_HEADER).filter(Boolean));
+  const known = new Set<string>([
+    ...LISTING_COLUMNS.map((c) => NORM_HEADER(c.header)),
+    ...BEFORE_PHOTO_COLUMNS.map((c) => NORM_HEADER(c.header)),
+    NORM_HEADER(REMODEL_STYLE_HEADER),
+  ]);
+  const missingRequired = LISTING_COLUMNS.filter((c) => c.required && !presentSet.has(NORM_HEADER(c.header))).map(
+    (c) => c.header,
+  );
+  const unknown = present.filter((h) => h.trim() && !known.has(NORM_HEADER(h)));
+  const recognized = [...presentSet].filter((h) => known.has(h)).length;
+  return { missingRequired, unknown, recognized, looksLikeListings: recognized > 0 };
+}
 export const TEMPLATE_EXAMPLE_ROW = [
   ...LISTING_COLUMNS.map((c) => c.example),
   'https://photos.example.com/kitchen-before.jpg',
@@ -380,6 +413,31 @@ export function slugify(base: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80) || 'listing';
+}
+
+/**
+ * Canonical key for duplicate-address detection. Combines the full street
+ * identity (line1 + unit + city + state + zip), lowercased, with punctuation and
+ * repeated whitespace collapsed, so "12 Maple Ave., Ridgewood NJ" and
+ * "12 maple ave  ridgewood  nj" map to the same key. Unit (line2) is included so
+ * distinct condo/apartment units at the same building are NOT treated as dupes.
+ * Returns '' when there's no street line (can't meaningfully dedupe).
+ */
+export function addressKey(row: {
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+}): string {
+  if (!s(row.address_line1)) return '';
+  return [row.address_line1, row.address_line2, row.city, row.state, row.zip]
+    .map((v) => s(v).toLowerCase())
+    .filter(Boolean)
+    .join(' ')
+    .replace(/[.,#]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Build the deterministic slug base (external_id > mls_number > address+city+zip). */
