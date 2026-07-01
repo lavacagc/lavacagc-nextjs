@@ -26,7 +26,10 @@ export default function StickyCTA() {
     '/commercial-services',
     '/request-estimate',
   ];
-  const isSuppressed = SUPPRESSED_PATHS.includes(pathname);
+  // Also hide across the whole Home Care section: it's a free, no-fee program,
+  // so a "Free Estimate / Call Now" marketing bar is off-message, and the
+  // checklist portal has its own floating "Estimate (n)" action.
+  const isSuppressed = SUPPRESSED_PATHS.includes(pathname) || pathname.startsWith('/home-care');
 
   useEffect(() => {
     if (isSuppressed) return;

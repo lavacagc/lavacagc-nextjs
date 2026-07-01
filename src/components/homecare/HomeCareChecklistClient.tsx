@@ -91,7 +91,7 @@ export default function HomeCareChecklistClient({
     const cost = costLabel(t.est_cost_low, t.est_cost_high);
     const freq = FREQ_LABEL[t.frequency];
     return (
-      <div key={`${t.key}-${season}`} className={`rounded-xl border bg-card p-4 shadow-card transition-colors ${isDone ? 'border-border opacity-70' : isSel ? 'border-primary bg-primary/5' : 'border-border'}`}>
+      <div key={`${t.key}-${season}`} className={`rounded-xl border bg-card p-4 shadow-card transition-colors ${isSel ? 'border-primary bg-primary/5' : 'border-border'} ${isDone ? 'opacity-70' : ''}`}>
         <div className="flex items-start gap-3">
           <button
             type="button"
@@ -198,7 +198,7 @@ export default function HomeCareChecklistClient({
         <a
           href={requestUrl}
           aria-label={`Request an estimate for ${selected.size} selected service${selected.size > 1 ? 's' : ''}`}
-          className="fixed left-4 bottom-24 md:bottom-6 z-[60] inline-flex items-center gap-2.5 rounded-full bg-gradient-to-r from-primary via-accent-sunset to-accent-tangerine py-3 pl-5 pr-3 text-sm font-bold text-white shadow-button hover:-translate-y-px transition-all"
+          className="fixed left-4 bottom-6 z-[60] inline-flex items-center gap-2.5 rounded-full bg-gradient-to-r from-primary via-accent-sunset to-accent-tangerine py-3 pl-5 pr-3 text-sm font-bold text-white shadow-button hover:-translate-y-px transition-all"
         >
           <ClipboardList className="h-4 w-4" /> Estimate
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-extrabold text-primary">{selected.size}</span>
