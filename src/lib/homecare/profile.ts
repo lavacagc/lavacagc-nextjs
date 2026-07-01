@@ -1,51 +1,269 @@
 /**
- * La Vaca Home Care — progressive profiling.
+ * La Vaca Home Care — homeowner stage + progressive profiling.
  *
- * Homeowners toggle which systems their home has; that sharpens the checklist
- * from "everyone's list" to "their list". Pure filter so it's testable and
- * reusable by both the checklist page and the newsletter cron.
+ * Two dimensions personalize a homeowner's plan:
+ *  1. STAGE — where they are with this home (just bought, established, new build,
+ *     selling). Drives which one-time "essentials" set they see and the intro copy.
+ *  2. SYSTEMS — which things their home actually has (deck, lawn, central HVAC,
+ *     pool, …), with a few smart follow-ups. Sharpens the seasonal checklist from
+ *     "everyone's list" to "their list".
+ *
+ * Pure + testable so the checklist page, the setup wizard, and the newsletter cron
+ * all personalize identically.
  */
 
-/** The systems we ask about (they vary home to home). Keys match catalog applies_to. */
-export const ASKABLE_SYSTEMS = [
-  { key: 'hvac', label: 'Central A/C or forced-air heating' },
-  { key: 'sump_pump', label: 'Sump pump' },
-  { key: 'deck', label: 'Deck or wood patio' },
-  { key: 'fireplace', label: 'Fireplace / chimney' },
-  { key: 'lawn', label: 'Sprinkler / irrigation system' },
-  { key: 'driveway', label: 'Asphalt driveway' },
-] as const;
+/* ── Stage ─────────────────────────────────────────────────────────────────── */
 
-export type SystemKey = (typeof ASKABLE_SYSTEMS)[number]['key'];
+export type Stage = 'just_bought' | 'established' | 'new_construction' | 'selling';
+
+export interface StageDef {
+  key: Stage;
+  emoji: string;
+  label: string;
+  tagline: string;
+  /** One-liner shown on the "your program" step. */
+  intro: string;
+}
+
+export const STAGES: StageDef[] = [
+  {
+    key: 'just_bought',
+    emoji: '🏡',
+    label: 'Just bought this home',
+    tagline: 'New to this house',
+    intro:
+      "Congrats on the new place! We'll start you with a one-time “New Homeowner Essentials” set — shut-offs, re-keying, a baseline tune-up — then layer in the seasonal upkeep so nothing slips.",
+  },
+  {
+    key: 'established',
+    emoji: '🔧',
+    label: 'Established owner',
+    tagline: 'Keep up the routine',
+    intro:
+      "You know your home — we'll keep you on top of the seasonal routine so the small stuff never turns into the expensive stuff.",
+  },
+  {
+    key: 'new_construction',
+    emoji: '🆕',
+    label: 'Newly built',
+    tagline: 'New construction',
+    intro:
+      "A new build needs a lighter touch early on — settling checks, warranty-era reminders, and the seasonal basics so you protect the investment from day one.",
+  },
+  {
+    key: 'selling',
+    emoji: '💰',
+    label: 'Getting ready to sell',
+    tagline: 'Pre-listing prep',
+    intro:
+      "Let's get it show-ready. We'll prioritize curb appeal, quick-win repairs, and the things inspectors flag — alongside the seasonal must-dos.",
+  },
+];
+
+export function getStage(key: string | null | undefined): StageDef | null {
+  return STAGES.find((s) => s.key === key) ?? null;
+}
+
+/** Legacy homeowner_type ('first_time'|'experienced') → stage, for older rows. */
+export function stageFromLegacyType(t: string | null | undefined): Stage | null {
+  if (t === 'first_time') return 'just_bought';
+  if (t === 'experienced') return 'established';
+  return null;
+}
+
+/** The stages that get the one-time "essentials" (starter) tasks. */
+export function stageShowsStarter(stage: Stage | null): boolean {
+  return stage === 'just_bought' || stage === 'new_construction';
+}
+
+/* ── Systems (with smart follow-ups) ───────────────────────────────────────── */
+
+export interface FollowUp {
+  key: string; // stored under systems[key] as a string value
+  label: string;
+  options: { value: string; label: string }[];
+}
+
+export interface SystemQuestion {
+  key: string; // boolean; matches catalog applies_to
+  label: string; // "Do you have …"
+  hint?: string;
+  followups?: FollowUp[]; // asked only when the system is toggled on
+}
+
+export const SYSTEM_QUESTIONS: SystemQuestion[] = [
+  {
+    key: 'hvac',
+    label: 'Central heating or cooling',
+    hint: 'Forced-air furnace, central A/C, or a heat pump',
+    followups: [
+      {
+        key: 'hvac_type',
+        label: 'What type?',
+        options: [
+          { value: 'gas_furnace', label: 'Gas furnace' },
+          { value: 'heat_pump', label: 'Heat pump' },
+          { value: 'boiler', label: 'Boiler / radiators' },
+          { value: 'electric', label: 'Electric' },
+          { value: 'not_sure', label: 'Not sure' },
+        ],
+      },
+      {
+        key: 'hvac_age',
+        label: 'Roughly how old?',
+        options: [
+          { value: 'lt5', label: 'Under 5 yrs' },
+          { value: '5_10', label: '5–10 yrs' },
+          { value: '10_15', label: '10–15 yrs' },
+          { value: 'gt15', label: '15+ yrs' },
+          { value: 'not_sure', label: 'Not sure' },
+        ],
+      },
+    ],
+  },
+  {
+    key: 'lawn',
+    label: 'A lawn / grass',
+    followups: [
+      {
+        key: 'sprinklers',
+        label: 'In-ground sprinklers?',
+        options: [
+          { value: 'yes', label: 'Yes' },
+          { value: 'no', label: 'No' },
+        ],
+      },
+    ],
+  },
+  {
+    key: 'deck',
+    label: 'A deck or wood porch',
+    followups: [
+      {
+        key: 'deck_material',
+        label: 'Wood or composite?',
+        options: [
+          { value: 'wood', label: 'Wood' },
+          { value: 'composite', label: 'Composite' },
+        ],
+      },
+    ],
+  },
+  {
+    key: 'sump_pump',
+    label: 'A basement sump pump',
+    followups: [
+      {
+        key: 'sump_backup',
+        label: 'Battery backup?',
+        options: [
+          { value: 'yes', label: 'Yes' },
+          { value: 'no', label: 'No' },
+          { value: 'not_sure', label: 'Not sure' },
+        ],
+      },
+    ],
+  },
+  {
+    key: 'fireplace',
+    label: 'A fireplace or chimney',
+    followups: [
+      {
+        key: 'fireplace_type',
+        label: 'What kind?',
+        options: [
+          { value: 'wood', label: 'Wood-burning' },
+          { value: 'gas', label: 'Gas' },
+        ],
+      },
+    ],
+  },
+  { key: 'driveway', label: 'An asphalt driveway' },
+  { key: 'pool', label: 'A pool or hot tub' },
+  { key: 'septic', label: 'A septic system (not public sewer)' },
+  { key: 'garage', label: 'A garage with an automatic door' },
+];
+
+/** Boolean system keys (the toggles). */
+export const SYSTEM_KEYS = SYSTEM_QUESTIONS.map((q) => q.key);
+
+/** "A few more details" — standalone personalization questions (not tied to a system). */
+export const PROFILE_EXTRAS: FollowUp[] = [
+  {
+    key: 'year_band',
+    label: 'About when was it built?',
+    options: [
+      { value: 'pre1960', label: 'Before 1960' },
+      { value: '1960_1990', label: '1960–1990' },
+      { value: '1990_2010', label: '1990–2010' },
+      { value: 'post2010', label: '2010 or newer' },
+      { value: 'not_sure', label: 'Not sure' },
+    ],
+  },
+  {
+    key: 'priority',
+    label: 'What matters most to you?',
+    options: [
+      { value: 'save_money', label: 'Save money long-term' },
+      { value: 'avoid_emergencies', label: 'Avoid emergencies' },
+      { value: 'curb_appeal', label: 'Keep it looking great' },
+      { value: 'just_remind', label: 'Just remind me what to do' },
+    ],
+  },
+];
+
+/** Allowed follow-up value keys → their permitted values (for sanitizing). */
+const FOLLOWUP_VALUES: Record<string, Set<string>> = (() => {
+  const out: Record<string, Set<string>> = {};
+  for (const q of SYSTEM_QUESTIONS) {
+    for (const f of q.followups ?? []) out[f.key] = new Set(f.options.map((o) => o.value));
+  }
+  for (const f of PROFILE_EXTRAS) out[f.key] = new Set(f.options.map((o) => o.value));
+  return out;
+})();
+
+export type SystemKey = string;
+/** Stored profile systems: booleans for system keys + string follow-up answers. */
+export type HomeSystems = Record<string, boolean | string>;
 
 // Systems virtually every home has — their tasks always show, never gated.
 const UNIVERSAL = new Set(['all', 'roof', 'water_heater', 'windows', 'exterior', 'plumbing', 'gutters']);
-const ASKABLE_KEYS = new Set<string>(ASKABLE_SYSTEMS.map((s) => s.key));
+const SYSTEM_KEY_SET = new Set(SYSTEM_KEYS);
 
-export type HomeSystems = Partial<Record<SystemKey, boolean>>;
-
-/** Keep only the boolean askable-system keys from arbitrary input. */
+/** Keep only known boolean system keys + valid follow-up values from arbitrary input. */
 export function sanitizeSystems(input: unknown): HomeSystems {
   const out: HomeSystems = {};
   if (input && typeof input === 'object') {
-    for (const { key } of ASKABLE_SYSTEMS) {
-      const v = (input as Record<string, unknown>)[key];
-      if (typeof v === 'boolean') out[key] = v;
+    const obj = input as Record<string, unknown>;
+    for (const key of SYSTEM_KEYS) {
+      if (typeof obj[key] === 'boolean') out[key] = obj[key] as boolean;
+    }
+    for (const [fk, allowed] of Object.entries(FOLLOWUP_VALUES)) {
+      const v = obj[fk];
+      if (typeof v === 'string' && allowed.has(v)) out[fk] = v;
     }
   }
   return out;
 }
 
 /**
- * Filter catalog tasks to a homeowner's systems. With no profile yet (null/empty),
- * returns everything (so they see the full list + a prompt to personalize).
+ * Filter catalog tasks to a homeowner's systems + stage. With no systems yet
+ * (null/empty) returns everything (full list + a prompt to personalize).
  */
-export function filterTasksForProfile<T extends { applies_to: string[] }>(
+export function filterTasksForProfile<T extends { applies_to: string[]; stages?: string[] }>(
   tasks: T[],
   systems: HomeSystems | null | undefined,
+  stage?: Stage | null,
 ): T[] {
-  if (!systems || Object.keys(systems).length === 0) return tasks;
-  return tasks.filter((t) =>
-    t.applies_to.some((a) => UNIVERSAL.has(a) || (ASKABLE_KEYS.has(a) && systems[a as SystemKey] === true)),
-  );
+  return tasks.filter((t) => {
+    // Stage gate: a task with a specific stages[] only shows for those stages (or 'all').
+    if (stage && Array.isArray(t.stages) && t.stages.length > 0) {
+      if (!t.stages.includes('all') && !t.stages.includes(stage)) return false;
+    }
+    // Systems gate: unset profile shows everything.
+    if (!systems || Object.keys(systems).length === 0) return true;
+    return t.applies_to.some(
+      (a) => UNIVERSAL.has(a) || (SYSTEM_KEY_SET.has(a) && systems[a] === true),
+    );
+  });
 }

@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import Image from 'next/image';
 import Header from '@/components/Header';
@@ -6,11 +7,18 @@ import Footer from '@/components/Footer';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById, updateHomeowner } from '@/lib/homecare/homeowners';
 import { currentSeason, SEASON_LABEL } from '@/lib/homecare/season';
-import { filterTasksForProfile, type HomeSystems } from '@/lib/homecare/profile';
-import HomeCareProfileForm from '@/components/homecare/HomeCareProfileForm';
+import {
+  filterTasksForProfile,
+  getStage,
+  stageFromLegacyType,
+  stageShowsStarter,
+  SYSTEM_QUESTIONS,
+  type HomeSystems,
+  type Stage,
+} from '@/lib/homecare/profile';
 import HomeCareChecklistClient, { type ChecklistTask } from '@/components/homecare/HomeCareChecklistClient';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
-import { CheckCircle2, Phone, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Phone, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,16 +40,18 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
 
   const season = currentSeason();
   const [allTasks, profileRows, doneRows] = await Promise.all([
-    supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title,blurb,applies_to,seasons,frequency,starter,diy_or_pro,bookable,est_cost_low,est_cost_high,priority&active=eq.true&order=priority.desc`),
-    supabaseRest<{ systems: HomeSystems; homeowner_type: 'first_time' | 'experienced' | null }[]>('GET', `home_profiles?select=systems,homeowner_type&homeowner_id=eq.${homeowner.id}&limit=1`),
+    supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title,blurb,applies_to,stages,seasons,frequency,starter,diy_or_pro,bookable,est_cost_low,est_cost_high,priority&active=eq.true&order=priority.desc`),
+    supabaseRest<{ systems: HomeSystems; stage: Stage | null; homeowner_type: string | null }[]>('GET', `home_profiles?select=systems,stage,homeowner_type&homeowner_id=eq.${homeowner.id}&limit=1`),
     supabaseRest<{ task_key: string; season: string }[]>('GET', `homeowner_maintenance?select=task_key,season&homeowner_id=eq.${homeowner.id}&status=eq.done`),
   ]);
 
   const systems = profileRows?.[0]?.systems ?? null;
-  const homeownerType = profileRows?.[0]?.homeowner_type ?? null;
-  const hasProfile = (!!systems && Object.keys(systems).length > 0) || homeownerType !== null;
-  const tasks = filterTasksForProfile(allTasks ?? [], systems);
+  const stage: Stage | null = profileRows?.[0]?.stage ?? stageFromLegacyType(profileRows?.[0]?.homeowner_type);
+  const stageDef = getStage(stage);
+  const hasProfile = (!!systems && Object.keys(systems).length > 0) || stage !== null;
+  const tasks = filterTasksForProfile(allTasks ?? [], systems, stage);
   const doneItems = doneRows ?? [];
+  const ownedSystems = SYSTEM_QUESTIONS.filter((q) => systems?.[q.key] === true);
   const greeting = homeowner.first_name ? `Welcome back, ${homeowner.first_name}` : 'Your home checklist';
 
   return (
@@ -81,11 +91,33 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
 
         <section className="py-6">
           <div className="container mx-auto px-4 max-w-3xl space-y-4">
-            <HomeCareProfileForm initial={systems ?? {}} hasProfile={hasProfile} initialType={homeownerType} />
+            {/* Your program summary + edit re-entry */}
+            {hasProfile ? (
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-card">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-primary mb-1"><SlidersHorizontal className="h-3.5 w-3.5" /> Your program</div>
+                    {stageDef && <p className="font-bold text-text-primary">{stageDef.emoji} {stageDef.label}</p>}
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {ownedSystems.length > 0 ? ownedSystems.map((q) => (
+                        <span key={q.key} className="rounded-full bg-primary/10 text-primary text-xs font-semibold px-2.5 py-1">{q.label}</span>
+                      )) : <span className="text-xs text-text-muted">Seasonal basics — add your home details for a sharper list.</span>}
+                    </div>
+                  </div>
+                  <Link href="/home-care/setup?edit=1" className="shrink-0 rounded-lg border border-border px-3.5 py-2 text-sm font-bold text-primary hover:border-primary/50 transition-colors">Edit my program</Link>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-5 text-center">
+                <p className="font-bold text-text-primary mb-1">Personalize your plan</p>
+                <p className="text-sm text-text-secondary mb-3">Answer a few quick questions and we&apos;ll tailor this checklist to your home.</p>
+                <Link href="/home-care/setup" className="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-primary to-accent-tangerine px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-button hover:-translate-y-px transition-all">Set up my program →</Link>
+              </div>
+            )}
             {(tasks?.length ?? 0) === 0 ? (
               <p className="text-text-secondary">Your checklist is being prepared — check back soon.</p>
             ) : (
-              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} homeownerType={homeownerType} currentSeason={season} />
+              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} showStarter={stageShowsStarter(stage)} currentSeason={season} />
             )}
           </div>
         </section>

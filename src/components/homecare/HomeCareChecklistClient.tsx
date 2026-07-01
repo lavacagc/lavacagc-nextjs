@@ -15,6 +15,7 @@ export interface ChecklistTask {
   seasons: string[];
   frequency: string;
   starter: boolean;
+  stages?: string[];
 }
 
 const SEASONS = ['spring', 'summer', 'fall', 'winter'] as const;
@@ -32,12 +33,12 @@ const id = (key: string, season: string) => `${key}|${season}`;
 export default function HomeCareChecklistClient({
   tasks,
   doneItems,
-  homeownerType,
+  showStarter = true,
   currentSeason,
 }: {
   tasks: ChecklistTask[];
   doneItems: { task_key: string; season: string }[];
-  homeownerType: 'first_time' | 'experienced' | null;
+  showStarter?: boolean;
   currentSeason: string;
 }) {
   const [done, setDone] = useState<Set<string>>(new Set(doneItems.map((d) => id(d.task_key, d.season))));
@@ -47,7 +48,7 @@ export default function HomeCareChecklistClient({
 
   const starterTasks = tasks.filter((t) => t.starter);
   const seasonTasks = tasks.filter((t) => !t.starter && t.seasons.includes(activeSeason));
-  const showStarter = homeownerType !== 'experienced' && starterTasks.length > 0;
+  const showStarterSection = showStarter && starterTasks.length > 0;
 
   const toggleDone = async (key: string, season: string) => {
     const k = id(key, season);
@@ -138,7 +139,7 @@ export default function HomeCareChecklistClient({
 
   return (
     <div className="space-y-4 pb-24">
-      {showStarter && (
+      {showStarterSection && (
         <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-4">
           <div className="flex items-center gap-2 mb-1">
             <Sparkles className="h-5 w-5 text-primary" />
