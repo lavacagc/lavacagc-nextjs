@@ -40,7 +40,8 @@ const ExitIntentPopup = () => {
       pathname.startsWith('/blog') ||
       pathname.startsWith('/do-not-sell') ||
       pathname.startsWith('/privacy-policy') ||
-      pathname.startsWith('/terms-and-conditions')
+      pathname.startsWith('/terms-and-conditions') ||
+      pathname.startsWith('/home-care')
     ) {
       return false;
     }

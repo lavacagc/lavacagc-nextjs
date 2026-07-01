@@ -454,6 +454,8 @@ function SmartBannerInner() {
     trackEvent('smart_banner_dismissed', { banner_id: activeRule.id });
   }, [activeRule]);
 
+  // Keep the Home Care portal chrome-free (matches StickyCTA / ChatWidget / ExitIntentPopup).
+  if (pathname.startsWith('/home-care')) return null;
   if (!visible || !activeRule) return null;
 
   const bannerElement = (() => {
