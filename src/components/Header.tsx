@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Phone, Menu, X } from "lucide-react";
 import logo from "@/assets/logo.png";
@@ -10,6 +10,19 @@ import Image from "next/image";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 import { useAuth } from "@/hooks/useAuth";
 import { useBuyRemodelPublished } from "@/lib/listings/publishedClient";
+
+/** Read the readable `hc_known` hint cookie (first name) on the client. */
+function readHcKnown(): string | null {
+  if (typeof document === 'undefined') return null;
+  const entry = document.cookie.split('; ').find((c) => c.startsWith('hc_known='));
+  if (!entry) return null;
+  try {
+    const name = decodeURIComponent(entry.slice('hc_known='.length)).trim();
+    return name || null;
+  } catch {
+    return null;
+  }
+}
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -21,6 +34,14 @@ const Header = () => {
   // Show the Buy + Remodel nav once it's published; admins (logged in) always
   // see it so they can reach the page to preview before publishing.
   const showBuyRemodel = buyRemodelPublished || !!session;
+
+  // Returning Home Care members get a direct link to their portal. The hc_known
+  // cookie is non-httpOnly (name hint only); real access is enforced server-side.
+  const [hcKnown, setHcKnown] = useState<string | null>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of a client-only cookie after mount
+    setHcKnown(readHcKnown());
+  }, []);
 
   const scrollToSection = (sectionId: string) => {
     // Close mobile menu if open
@@ -164,6 +185,9 @@ const Header = () => {
                 <Link href="/buy-and-remodel" className="text-text-secondary hover:text-primary transition-colors font-medium">Buy + Remodel</Link>
               )}
               <Link href="/home-care" className="text-text-secondary hover:text-primary transition-colors font-medium">Home Care</Link>
+              {hcKnown && (
+                <Link href="/home-care/checklist" className="text-primary hover:text-primary/80 transition-colors font-semibold">My Home Care</Link>
+              )}
               <Link href="/about" className="text-text-secondary hover:text-primary transition-colors font-medium">About</Link>
               <Link href="/process" className="text-text-secondary hover:text-primary transition-colors font-medium">Process</Link>
               <Link href="/resources" className="text-text-secondary hover:text-primary transition-colors font-medium">Resources</Link>
@@ -263,6 +287,16 @@ const Header = () => {
               >
                 Home Care
               </button>
+
+              {hcKnown && (
+                <button
+                  onClick={() => navigateToPage('/home-care/checklist')}
+                  className="block text-primary hover:text-primary/80 transition-colors font-semibold"
+                  aria-label="Open my Home Care checklist"
+                >
+                  My Home Care
+                </button>
+              )}
 
               <button
                 onClick={() => navigateToPage('/about')}
