@@ -159,8 +159,10 @@ export default function ChatWidget() {
     }
   };
 
-  // Hide chat widget on /free-estimate page
-  if (pathname === '/free-estimate') {
+  // Hide chat widget on /free-estimate and across the Home Care portal — the
+  // checklist has its own floating "Estimate" action, and a sales chat bubble
+  // is off-message for a free, no-fee program.
+  if (pathname === '/free-estimate' || pathname.startsWith('/home-care')) {
     return null;
   }
 
