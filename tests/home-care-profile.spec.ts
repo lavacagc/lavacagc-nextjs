@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { filterTasksForProfile, sanitizeSystems } from '../src/lib/homecare/profile';
+import { filterTasksForProfile, sanitizeSystems, stageShowsStarter, stageFromLegacyType } from '../src/lib/homecare/profile';
 
 const TASKS = [
   { key: 'gutters', applies_to: ['all'] },
@@ -22,4 +22,33 @@ test('profile filters out systems the home does not have', () => {
 test('sanitizeSystems keeps only known boolean keys', () => {
   const s = sanitizeSystems({ hvac: true, deck: false, bogus: true, sump_pump: 'yes' });
   expect(s).toEqual({ hvac: true, deck: false });
+});
+
+test('sanitizeSystems keeps valid follow-up values, drops invalid ones', () => {
+  const s = sanitizeSystems({ hvac: true, hvac_type: 'gas_furnace', hvac_age: 'nope', priority: 'avoid_emergencies' });
+  expect(s).toEqual({ hvac: true, hvac_type: 'gas_furnace', priority: 'avoid_emergencies' });
+});
+
+test('stage-tagged tasks only show for their stage (or when no stage)', () => {
+  const TASKS = [
+    { key: 'seasonal', applies_to: ['all'] }, // no stages → everyone
+    { key: 'presale', applies_to: ['all'], stages: ['selling'] },
+  ];
+  expect(filterTasksForProfile(TASKS, null).map((t) => t.key).sort()).toEqual(['presale', 'seasonal']); // no stage → all
+  expect(filterTasksForProfile(TASKS, null, 'just_bought').map((t) => t.key)).toEqual(['seasonal']); // presale hidden
+  expect(filterTasksForProfile(TASKS, null, 'selling').map((t) => t.key).sort()).toEqual(['presale', 'seasonal']);
+});
+
+test('starter essentials show for just-bought and new construction only', () => {
+  expect(stageShowsStarter('just_bought')).toBe(true);
+  expect(stageShowsStarter('new_construction')).toBe(true);
+  expect(stageShowsStarter('established')).toBe(false);
+  expect(stageShowsStarter('selling')).toBe(false);
+  expect(stageShowsStarter(null)).toBe(false);
+});
+
+test('legacy homeowner_type maps to a stage', () => {
+  expect(stageFromLegacyType('first_time')).toBe('just_bought');
+  expect(stageFromLegacyType('experienced')).toBe('established');
+  expect(stageFromLegacyType(null)).toBeNull();
 });

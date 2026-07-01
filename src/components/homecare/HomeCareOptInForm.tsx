@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle, Loader2, MailCheck, Home } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config';
 
 const RECAPTCHA_ACTION = 'home_care_signup';
@@ -155,12 +156,16 @@ export default function HomeCareOptInForm() {
           <input id="zip" type="text" value={state.zip} onChange={(e) => update('zip', e.target.value)} placeholder="07450" autoComplete="postal-code" className="lv-input" />
         </Field>
         <Field id="home_type" label="Home type (optional)">
-          <select id="home_type" value={state.home_type} onChange={(e) => update('home_type', e.target.value)} className="lv-input">
-            <option value="">Select…</option>
-            {HOME_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>{t.label}</option>
-            ))}
-          </select>
+          <Select value={state.home_type} onValueChange={(v) => update('home_type', v)}>
+            <SelectTrigger id="home_type" className="h-12 w-full rounded-xl border-border bg-card px-4 text-base data-[placeholder]:text-text-muted">
+              <SelectValue placeholder="Select…" />
+            </SelectTrigger>
+            <SelectContent>
+              {HOME_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
       </div>
 

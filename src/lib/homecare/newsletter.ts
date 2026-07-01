@@ -6,6 +6,7 @@
  *  - nudge (other months): the top few timely tasks, lighter touch.
  */
 import { SEASON_LABEL, type Season } from './season';
+import { hasGuideItem } from './guides';
 
 export interface NewsletterTask {
   key: string;
@@ -71,6 +72,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
         <a href="${checklistUrl}" style="font-size:16px;font-weight:700;color:#002855;text-decoration:none">${esc(t.title)}</a>
         <span style="display:inline-block;margin-left:6px;font-size:11px;font-weight:800;color:${badgeColor};vertical-align:middle">${badge}</span>
         <div style="font-size:13px;color:#5b6b82;margin-top:3px;line-height:1.45">${esc(t.blurb)}</div>
+        ${hasGuideItem(season, t.key) ? `<div style="margin-top:5px"><a href="${baseUrl}/home-care/guides/${season}#${encodeURIComponent(t.key)}" style="font-size:12px;font-weight:700;color:#EE9639;text-decoration:none">Learn more →</a></div>` : ''}
       </td>
       <td width="120" valign="top" align="right" style="padding:14px 0">${book}</td>
     </tr>

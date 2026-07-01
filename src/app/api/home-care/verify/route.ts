@@ -47,7 +47,9 @@ export async function GET(request: NextRequest) {
       }).catch((err) => console.error('home-care welcome email failed:', err));
     }
 
-    const response = NextResponse.redirect(new URL('/home-care/checklist?welcome=1', origin));
+    // First-time verifiers run the setup wizard; returning ones go to their checklist.
+    const landing = wasPending ? '/home-care/setup' : '/home-care/checklist?welcome=1';
+    const response = NextResponse.redirect(new URL(landing, origin));
     response.cookies.set(HC_ACCESS_COOKIE, await signHomeAccess(ho.id), hcAccessCookieOptions(HC_ACCESS_MAX_AGE_SECONDS));
     response.cookies.set(HC_KNOWN_COOKIE, sanitizeKnownName(ho.first_name), hcKnownCookieOptions(HC_ACCESS_MAX_AGE_SECONDS));
     return response;
