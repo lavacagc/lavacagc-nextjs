@@ -6,7 +6,7 @@
  * the hc_access cookie and lands them on their checklist). We ALWAYS respond with
  * a generic success so this endpoint can't be used to enumerate who is a member.
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { verifyRecaptcha } from '@/lib/recaptchaVerify';
@@ -80,22 +80,35 @@ export async function POST(request: NextRequest) {
 
     // Per-email throttle (stops inbox bombing); generic success either way.
     const emailRl = await checkRateLimit(`hc-login-email:${normEmail}`, 3, 10 * 60 * 1000);
-    if (!emailRl.allowed) return NextResponse.json({ ok: true });
 
-    // Only send a link to an already-verified (active) member. Silent otherwise —
-    // never reveal whether an email is in the program.
-    const existing = await findHomeownerByEmail(normEmail);
-    if (existing && existing.status === 'active') {
-      const verifyToken = newToken();
-      await updateHomeowner(existing.id, {
-        verify_token: verifyToken,
-        verify_token_expires_at: hoursFromNow(VERIFY_TOKEN_TTL_HOURS),
-      });
-      await sendHomeCareVerificationEmail({
-        to: normEmail,
-        firstName: existing.first_name,
-        verifyUrl: buildVerifyUrl(origin, verifyToken),
-        unsubscribeUrl: buildUnsubscribeUrl(origin, existing.unsubscribe_token),
+    // Do the member lookup + link send AFTER the response is flushed. Whether an
+    // email belongs to an active member changes how much work happens (a DB
+    // write + an email send), so doing it inline would leak membership through
+    // response latency despite the generic body. `after()` runs post-response on
+    // Vercel's runtime (unlike a naked fire-and-forget, which gets killed), so
+    // the email still sends reliably while every caller sees the same fast 200.
+    if (emailRl.allowed) {
+      after(async () => {
+        try {
+          // Only send a link to an already-verified (active) member. Silent
+          // otherwise — never reveal whether an email is in the program.
+          const existing = await findHomeownerByEmail(normEmail);
+          if (existing && existing.status === 'active') {
+            const verifyToken = newToken();
+            await updateHomeowner(existing.id, {
+              verify_token: verifyToken,
+              verify_token_expires_at: hoursFromNow(VERIFY_TOKEN_TTL_HOURS),
+            });
+            await sendHomeCareVerificationEmail({
+              to: normEmail,
+              firstName: existing.first_name,
+              verifyUrl: buildVerifyUrl(origin, verifyToken),
+              unsubscribeUrl: buildUnsubscribeUrl(origin, existing.unsubscribe_token),
+            });
+          }
+        } catch (err) {
+          console.error('Home Care login (deferred send) error:', err);
+        }
       });
     }
 
