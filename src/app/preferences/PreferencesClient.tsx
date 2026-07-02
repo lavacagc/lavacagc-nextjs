@@ -29,6 +29,7 @@ export default function PreferencesClient() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [invalid, setInvalid] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(
     parseConfirm(params.get('confirm')),
   );
@@ -43,17 +44,22 @@ export default function PreferencesClient() {
       return;
     }
     setLoading(true);
+    setLoadError(false);
     try {
       const res = await fetch(`/api/preferences?token=${encodeURIComponent(token)}`);
-      if (!res.ok) {
+      if (res.status === 404) {
         setInvalid(true);
+        return;
+      }
+      if (!res.ok) {
+        setLoadError(true);
         return;
       }
       const data = await res.json();
       setEmail(data.email);
       setStreams(data.streams);
     } catch {
-      setInvalid(true);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -151,6 +157,16 @@ export default function PreferencesClient() {
                 The link may have expired or been mistyped. You can manage your emails from the
                 footer of any email we&apos;ve sent you.
               </p>
+            </div>
+          ) : loadError ? (
+            <div className="py-6 text-center" data-testid="load-error-state">
+              <h1 className="text-xl font-bold mb-2">Something went wrong</h1>
+              <p className="text-muted-foreground mb-4">
+                We couldn&apos;t load your preferences right now. Please try again shortly.
+              </p>
+              <Button variant="outline" size="sm" onClick={load} data-testid="load-retry">
+                Try again
+              </Button>
             </div>
           ) : (
             <>
