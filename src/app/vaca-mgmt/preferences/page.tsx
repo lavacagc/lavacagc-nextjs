@@ -32,6 +32,7 @@ interface PrefEvent {
 export default function AdminPreferencesPage() {
   const { toast } = useToast();
   const [email, setEmail] = useState('');
+  const [activeEmail, setActiveEmail] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [exists, setExists] = useState(false);
   const [streams, setStreams] = useState<StreamState>({
@@ -114,15 +115,14 @@ export default function AdminPreferencesPage() {
     }
   }, [audienceId]);
 
-  const lookup = useCallback(
-    async (e?: React.FormEvent) => {
-      e?.preventDefault();
-      if (!email.trim()) return;
+  const loadContact = useCallback(
+    async (target: string) => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/admin/preferences?email=${encodeURIComponent(email.trim())}`);
+        const res = await fetch(`/api/admin/preferences?email=${encodeURIComponent(target)}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Lookup failed');
+        setActiveEmail(target);
         setExists(data.exists);
         if (data.preferences) setStreams(data.preferences);
         else setStreams({ home_care: true, buy_remodel: true, announcements: true });
@@ -138,11 +138,22 @@ export default function AdminPreferencesPage() {
         setLoading(false);
       }
     },
-    [email, toast],
+    [toast],
+  );
+
+  const lookup = useCallback(
+    (e?: React.FormEvent) => {
+      e?.preventDefault();
+      const target = email.trim();
+      if (!target) return;
+      loadContact(target);
+    },
+    [email, loadContact],
   );
 
   const toggle = useCallback(
     async (key: StreamKey) => {
+      if (!activeEmail) return;
       const next = { ...streams, [key]: !streams[key] };
       setStreams(next);
       setSaving(true);
@@ -150,14 +161,14 @@ export default function AdminPreferencesPage() {
         const res = await fetch('/api/admin/preferences', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email.trim(), changes: { [key]: next[key] } }),
+          body: JSON.stringify({ email: activeEmail, changes: { [key]: next[key] } }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Save failed');
         setStreams(data.preferences);
         setExists(true);
         // Refresh the audit trail after a change.
-        lookup();
+        loadContact(activeEmail);
       } catch (err) {
         toast({
           title: 'Save failed',
@@ -169,7 +180,7 @@ export default function AdminPreferencesPage() {
         setSaving(false);
       }
     },
-    [streams, email, toast, lookup],
+    [streams, activeEmail, toast, loadContact],
   );
 
   return (
@@ -201,7 +212,7 @@ export default function AdminPreferencesPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">
-                {email}
+                {activeEmail}
                 {!exists && (
                   <Badge variant="outline" className="ml-2 font-normal">
                     no preferences set yet (defaults shown)

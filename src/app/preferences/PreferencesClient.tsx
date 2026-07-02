@@ -70,14 +70,14 @@ export default function PreferencesClient() {
   }, [load]);
 
   const save = useCallback(
-    async (next: StreamState, prev: StreamState, message: string) => {
+    async (changes: Partial<StreamState>, prev: StreamState, message: string) => {
       setSaving(true);
       setSavedMsg(null);
       try {
         const res = await fetch('/api/preferences', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, changes: next }),
+          body: JSON.stringify({ token, changes }),
         });
         if (!res.ok) throw new Error('save failed');
         const data = await res.json();
@@ -100,7 +100,7 @@ export default function PreferencesClient() {
     if (!streams) return;
     const next = { ...streams, [key]: !streams[key] };
     setStreams(next);
-    save(next, streams, 'Saved.');
+    save({ [key]: next[key] }, streams, 'Saved.');
   };
 
   const unsubscribeAll = () => {
