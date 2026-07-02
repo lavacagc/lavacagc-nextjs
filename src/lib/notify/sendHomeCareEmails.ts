@@ -1,9 +1,9 @@
-import { Resend } from 'resend';
-import { cleanEnv } from '@/lib/envClean';
+import { sendTrackedEmail, type EmailCategory } from '@/lib/notify/sendEmail';
 
 /**
  * Customer-facing emails for La Vaca Home Care (double opt-in + welcome). Warm
  * identity per the from-address convention. Runs in-process (do NOT self-fetch).
+ * All sends funnel through sendTrackedEmail so they land in email_log.
  */
 
 const FROM_ADDRESS = 'Alex from La Vaca GC <alex@email.lavaca.link>';
@@ -48,24 +48,24 @@ function button(href: string, label: string): string {
   return `<a href="${href}" style="display:inline-block;background:linear-gradient(135deg,#EE9639,#FF6F31);color:#1a1003;font-weight:800;text-decoration:none;padding:13px 26px;border-radius:10px">${label}</a>`;
 }
 
-async function send(to: string, subject: string, html: string, text: string): Promise<HomeCareEmailResult> {
-  const apiKey = cleanEnv(process.env.RESEND_API_KEY);
-  if (!apiKey) {
-    console.warn('⚠️ RESEND_API_KEY not configured — skipping home-care email');
-    return { status: 'skipped', reason: 'no_api_key' };
-  }
-  try {
-    const resend = new Resend(apiKey);
-    const { data, error } = await resend.emails.send({ from: FROM_ADDRESS, to: [to], replyTo: DEFAULT_REPLY_TO, subject, html, text });
-    if (error) {
-      console.error('Failed to send home-care email:', error);
-      return { status: 'failed', error: error.message };
-    }
-    return { status: 'sent', emailId: data?.id };
-  } catch (err) {
-    console.error('Home-care email error:', err);
-    return { status: 'error', error: err instanceof Error ? err.message : String(err) };
-  }
+function send(
+  to: string,
+  subject: string,
+  html: string,
+  text: string,
+  category: EmailCategory,
+  homeownerId?: string | null,
+): Promise<HomeCareEmailResult> {
+  return sendTrackedEmail({
+    from: FROM_ADDRESS,
+    to,
+    replyTo: DEFAULT_REPLY_TO,
+    subject,
+    html,
+    text,
+    category,
+    homeownerId: homeownerId ?? null,
+  });
 }
 
 export function sendHomeCareVerificationEmail(args: {
@@ -73,6 +73,7 @@ export function sendHomeCareVerificationEmail(args: {
   firstName?: string | null;
   verifyUrl: string;
   unsubscribeUrl: string;
+  homeownerId?: string | null;
 }): Promise<HomeCareEmailResult> {
   const hi = args.firstName ? `Hi ${args.firstName},` : 'Hi there,';
   const body = `<p style="font-size:15px;color:#0c1730;margin:0 0 16px">${hi}</p>
@@ -80,7 +81,7 @@ export function sendHomeCareVerificationEmail(args: {
     <p style="margin:0 0 22px">${button(args.verifyUrl, 'Confirm & get my plan')}</p>
     <p style="font-size:12px;color:#9aa3b0;margin:0">This link expires in 48 hours. If you didn't request this, ignore it — or <a href="${args.unsubscribeUrl}" style="color:#9aa3b0">unsubscribe</a>.</p>`;
   const text = `${hi}\n\nConfirm your email to set up your free seasonal home-maintenance plan from La Vaca:\n${args.verifyUrl}\n\nThis link expires in 48 hours. Unsubscribe: ${args.unsubscribeUrl}`;
-  return send(args.to, "Confirm your email — your La Vaca Home Care plan", shell("Let's set up your home plan", body), text);
+  return send(args.to, "Confirm your email — your La Vaca Home Care plan", shell("Let's set up your home plan", body), text, 'verification', args.homeownerId);
 }
 
 /** Send a pre-rendered seasonal/monthly newsletter (content built by lib/homecare/newsletter). */
@@ -89,8 +90,9 @@ export function sendHomeCareNewsletterEmail(args: {
   subject: string;
   html: string;
   text: string;
+  homeownerId?: string | null;
 }): Promise<HomeCareEmailResult> {
-  return send(args.to, args.subject, args.html, args.text);
+  return send(args.to, args.subject, args.html, args.text, 'home_care_newsletter', args.homeownerId);
 }
 
 export function sendHomeCareWelcomeEmail(args: {
@@ -98,6 +100,7 @@ export function sendHomeCareWelcomeEmail(args: {
   firstName?: string | null;
   checklistUrl: string;
   unsubscribeUrl: string;
+  homeownerId?: string | null;
 }): Promise<HomeCareEmailResult> {
   const hi = args.firstName ? `Welcome, ${args.firstName}!` : 'Welcome!';
   const body = `<p style="font-size:15px;color:#0c1730;margin:0 0 16px">${hi}</p>
@@ -105,5 +108,5 @@ export function sendHomeCareWelcomeEmail(args: {
     <p style="margin:0 0 22px">${button(args.checklistUrl, 'See my checklist')}</p>
     <p style="font-size:13px;color:#9aa3b0;margin:0">We'll send a short seasonal reminder a few times a year. <a href="${args.unsubscribeUrl}" style="color:#9aa3b0">Unsubscribe</a> anytime.</p>`;
   const text = `${hi}\n\nYour La Vaca Home Care checklist is ready: ${args.checklistUrl}\n\nUnsubscribe: ${args.unsubscribeUrl}`;
-  return send(args.to, "You're in — your La Vaca Home Care checklist is ready", shell("Your plan is ready", body), text);
+  return send(args.to, "You're in — your La Vaca Home Care checklist is ready", shell("Your plan is ready", body), text, 'welcome', args.homeownerId);
 }

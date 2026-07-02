@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { Resend } from 'resend';
+import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,7 +54,6 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = createClient(SUPABASE_URL, secretKey);
-    const resend = new Resend(resendApiKey);
 
     // Query pending follow-ups that are due
     const { data: pendingItems, error: queryError } = await supabase
@@ -99,20 +98,24 @@ export async function GET(request: NextRequest) {
 
         // Detect if body is HTML or plain text
         const isHtml = item.email_body?.trim().startsWith('<!DOCTYPE') || item.email_body?.trim().startsWith('<html');
-        const { error: sendError } = await resend.emails.send({
+        const sendResult = await sendTrackedEmail({
           from: 'La Vaca General Contractors <info@email.lavaca.link>',
-          to: [item.lead_email],
+          to: item.lead_email,
           subject: item.email_subject,
           ...(isHtml ? { html: item.email_body } : { text: item.email_body }),
+          category: 'lead_followup',
+          toName: item.lead_name ?? null,
+          leadId: item.lead_id ?? null,
+          campaign: { follow_up_type: item.follow_up_type },
         });
 
-        if (sendError) {
-          console.error(`Failed to send follow-up ${item.id}:`, sendError);
+        if (sendResult.status !== 'sent') {
+          console.error(`Failed to send follow-up ${item.id}:`, sendResult.error);
           await supabase
             .from('follow_up_queue')
             .update({
               status: 'failed',
-              error_message: sendError.message || 'Send failed',
+              error_message: sendResult.error || 'Send failed',
               sent_at: new Date().toISOString(),
             })
             .eq('id', item.id);

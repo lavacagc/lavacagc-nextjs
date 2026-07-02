@@ -1,5 +1,5 @@
-import { Resend } from 'resend';
 import { cleanEnv } from '@/lib/envClean';
+import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 
 /**
  * Phase 3: 14-day autogen-post performance digest. Internal/system mail.
@@ -28,8 +28,6 @@ const FROM_ADDRESS = 'La Vaca SEO <noreply@email.lavaca.link>';
 const SITE = 'https://www.lavacagc.com';
 
 export async function sendRollbackDigestEmail(items: RollbackDigestItem[]): Promise<RollbackDigestResult> {
-  const apiKey = cleanEnv(process.env.RESEND_API_KEY);
-  if (!apiKey) return { status: 'skipped', reason: 'no_api_key' };
   if (items.length === 0) return { status: 'skipped', reason: 'nothing_to_report' };
 
   const to = cleanEnv(process.env.SEO_REPORT_EMAIL) || cleanEnv(process.env.LEAD_NOTIFICATION_EMAIL) || 'alex@vacamoo.com';
@@ -69,17 +67,11 @@ export async function sendRollbackDigestEmail(items: RollbackDigestItem[]): Prom
   </div>
 </body></html>`;
 
-  try {
-    const resend = new Resend(apiKey);
-    const { data, error } = await resend.emails.send({
-      from: FROM_ADDRESS,
-      to: [to],
-      subject: `📊 SEO 14-day review: ${items.length} autogen post(s)${reverted ? ` · ${reverted} reverted` : ''}`,
-      html,
-    });
-    if (error) return { status: 'failed', error: error.message };
-    return { status: 'sent', emailId: data?.id };
-  } catch (err) {
-    return { status: 'error', error: err instanceof Error ? err.message : String(err) };
-  }
+  return sendTrackedEmail({
+    from: FROM_ADDRESS,
+    to,
+    subject: `📊 SEO 14-day review: ${items.length} autogen post(s)${reverted ? ` · ${reverted} reverted` : ''}`,
+    html,
+    category: 'rollback_digest',
+  });
 }

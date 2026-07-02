@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
         firstName: ho.first_name,
         checklistUrl: `${origin}/home-care/checklist`,
         unsubscribeUrl: `${origin}/api/home-care/unsubscribe?token=${encodeURIComponent(ho.unsubscribe_token)}`,
+        homeownerId: ho.id,
       }).catch((err) => console.error('home-care welcome email failed:', err));
     }
 

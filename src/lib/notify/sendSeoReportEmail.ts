@@ -1,5 +1,5 @@
-import { Resend } from 'resend';
 import { cleanEnv } from '@/lib/envClean';
+import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { renderSeoReportEmail } from '@/lib/seo/reportEmail';
 import type { SeoReport } from '@/lib/seo/report';
 
@@ -23,26 +23,16 @@ export interface SeoReportEmailResult {
 const FROM_ADDRESS = 'La Vaca SEO <noreply@email.lavaca.link>';
 
 export async function sendSeoReportEmail(report: SeoReport): Promise<SeoReportEmailResult> {
-  const apiKey = cleanEnv(process.env.RESEND_API_KEY);
-  if (!apiKey) {
-    console.warn('⚠️ RESEND_API_KEY not configured — skipping SEO report email');
-    return { status: 'skipped', reason: 'no_api_key' };
-  }
-
   // Reuse the same owner recipient as lead notifications, overridable.
   const to = cleanEnv(process.env.SEO_REPORT_EMAIL) || cleanEnv(process.env.LEAD_NOTIFICATION_EMAIL) || 'alex@vacamoo.com';
   const { subject, html, text } = renderSeoReportEmail(report);
 
-  try {
-    const resend = new Resend(apiKey);
-    const { data, error } = await resend.emails.send({ from: FROM_ADDRESS, to: [to], subject, html, text });
-    if (error) {
-      console.error('Failed to send SEO report email:', error);
-      return { status: 'failed', error: error.message };
-    }
-    return { status: 'sent', emailId: data?.id };
-  } catch (err) {
-    console.error('SEO report email error:', err);
-    return { status: 'error', error: err instanceof Error ? err.message : String(err) };
-  }
+  return sendTrackedEmail({
+    from: FROM_ADDRESS,
+    to,
+    subject,
+    html,
+    text,
+    category: 'seo_report',
+  });
 }

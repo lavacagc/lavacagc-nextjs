@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
           unsubscribeUrl: `${origin}/api/home-care/unsubscribe?token=${encodeURIComponent(h.unsubscribe_token)}`,
           monthLabel,
         });
-        const res = await sendHomeCareNewsletterEmail({ to: h.email, subject, html, text });
+        const res = await sendHomeCareNewsletterEmail({ to: h.email, subject, html, text, homeownerId: h.id });
         if (res.status === 'sent') {
           sent += 1;
           await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});

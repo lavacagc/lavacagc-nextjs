@@ -1,6 +1,6 @@
-import { Resend } from 'resend';
 import { newLeadNotificationHtml } from '@/lib/emailTemplates';
 import { cleanEnv } from '@/lib/envClean';
+import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import {
   formatContactTimeShort,
   type ContactTimePreference,
@@ -17,6 +17,8 @@ export interface NewLeadEmailPayload {
   contactTimePreference?: ContactTimePreference;
   contactTimeDetails?: string;
   contactTimezone?: string;
+  /** Lead row id, for linking the audit row back to the lead. */
+  leadId?: string | null;
 }
 
 export interface NewLeadEmailResult {
@@ -43,13 +45,8 @@ export async function sendNewLeadEmail(payload: NewLeadEmailPayload): Promise<Ne
     contactTimePreference,
     contactTimeDetails,
     contactTimezone,
+    leadId,
   } = payload;
-
-  const apiKey = cleanEnv(process.env.RESEND_API_KEY);
-  if (!apiKey) {
-    console.warn('⚠️ RESEND_API_KEY not configured — skipping lead notification email');
-    return { status: 'skipped', reason: 'no_api_key' };
-  }
 
   const notificationEmail = cleanEnv(process.env.LEAD_NOTIFICATION_EMAIL) || 'alex@vacamoo.com';
 
@@ -59,33 +56,22 @@ export async function sendNewLeadEmail(payload: NewLeadEmailPayload): Promise<Ne
   const shortTime = formatContactTimeShort(contactTimePreference);
   const subjectTimeSuffix = tier === 'hot' && shortTime ? ` — call ${shortTime}` : '';
 
-  try {
-    const resend = new Resend(apiKey);
-    const { data, error } = await resend.emails.send({
-      from: 'La Vaca Leads <noreply@email.lavaca.link>',
-      to: [notificationEmail],
-      subject: `🔥 New Lead: ${name || 'Unknown'} — ${projectType || 'General Inquiry'}${subjectTimeSuffix}`,
-      html: newLeadNotificationHtml({
-        name,
-        email,
-        phone,
-        projectType,
-        location,
-        source,
-        contactTimePreference,
-        contactTimeDetails,
-        contactTimezone,
-      }),
-    });
-
-    if (error) {
-      console.error('Failed to send lead notification email:', error);
-      return { status: 'failed', error: error.message };
-    }
-
-    return { status: 'sent', emailId: data?.id };
-  } catch (err) {
-    console.error('New-lead email error:', err);
-    return { status: 'error', error: err instanceof Error ? err.message : String(err) };
-  }
+  return sendTrackedEmail({
+    from: 'La Vaca Leads <noreply@email.lavaca.link>',
+    to: notificationEmail,
+    subject: `🔥 New Lead: ${name || 'Unknown'} — ${projectType || 'General Inquiry'}${subjectTimeSuffix}`,
+    html: newLeadNotificationHtml({
+      name,
+      email,
+      phone,
+      projectType,
+      location,
+      source,
+      contactTimePreference,
+      contactTimeDetails,
+      contactTimezone,
+    }),
+    category: 'lead_notification',
+    leadId: leadId ?? null,
+  });
 }

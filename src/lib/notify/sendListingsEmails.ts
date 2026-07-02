@@ -1,11 +1,10 @@
-import { Resend } from 'resend';
 import {
   listingsVerificationHtml,
   listingsVerificationText,
   listingsWelcomeHtml,
   listingsWelcomeText,
 } from '@/lib/emailTemplates';
-import { cleanEnv } from '@/lib/envClean';
+import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 
 /**
  * Customer-facing emails for the "Buy + Remodel" email gate (double opt-in +
@@ -37,41 +36,31 @@ interface WelcomeArgs {
   firstName: string;
   browseUrl: string;
   unsubscribeUrl: string;
+  subscriberId?: string | null;
 }
 
-async function send(
+function send(
   to: string,
   subject: string,
   html: string,
   text: string,
+  subscriberId?: string | null,
 ): Promise<ListingsEmailResult> {
-  const apiKey = cleanEnv(process.env.RESEND_API_KEY);
-  if (!apiKey) {
-    console.warn('⚠️ RESEND_API_KEY not configured — skipping listings email');
-    return { status: 'skipped', reason: 'no_api_key' };
-  }
-  try {
-    const resend = new Resend(apiKey);
-    const { data, error } = await resend.emails.send({
-      from: FROM_ADDRESS,
-      to: [to],
-      replyTo: DEFAULT_REPLY_TO,
-      subject,
-      html,
-      text,
-    });
-    if (error) {
-      console.error('Failed to send listings email:', error);
-      return { status: 'failed', error: error.message };
-    }
-    return { status: 'sent', emailId: data?.id };
-  } catch (err) {
-    console.error('Listings email error:', err);
-    return { status: 'error', error: err instanceof Error ? err.message : String(err) };
-  }
+  return sendTrackedEmail({
+    from: FROM_ADDRESS,
+    to,
+    replyTo: DEFAULT_REPLY_TO,
+    subject,
+    html,
+    text,
+    category: 'buy_remodel',
+    subscriberId: subscriberId ?? null,
+  });
 }
 
-export function sendListingsVerificationEmail(args: VerificationArgs): Promise<ListingsEmailResult> {
+export function sendListingsVerificationEmail(
+  args: VerificationArgs & { subscriberId?: string | null },
+): Promise<ListingsEmailResult> {
   const payload = {
     firstName: args.firstName,
     verifyUrl: args.verifyUrl,
@@ -82,6 +71,7 @@ export function sendListingsVerificationEmail(args: VerificationArgs): Promise<L
     'Confirm your email to unlock La Vaca’s Buy + Remodel homes',
     listingsVerificationHtml(payload),
     listingsVerificationText(payload),
+    args.subscriberId,
   );
 }
 
@@ -96,5 +86,6 @@ export function sendListingsWelcomeEmail(args: WelcomeArgs): Promise<ListingsEma
     'You’re in — browse La Vaca’s Buy + Remodel homes',
     listingsWelcomeHtml(payload),
     listingsWelcomeText(payload),
+    args.subscriberId,
   );
 }
