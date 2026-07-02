@@ -1,8 +1,12 @@
 import { Metadata } from 'next';
+import Link from 'next/link';
+import { cookies } from 'next/headers';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import HomeCareOptInForm from '@/components/homecare/HomeCareOptInForm';
 import { CalendarCheck, ListChecks, Wrench } from 'lucide-react';
+import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
+import { findHomeownerById } from '@/lib/homecare/homeowners';
 
 export const metadata: Metadata = {
   title: 'Free Seasonal Home Maintenance Plan | La Vaca Home Care',
@@ -17,6 +21,10 @@ export const metadata: Metadata = {
   },
 };
 
+// Reading the access cookie makes this route dynamic (matches the sibling
+// /home-care/setup and avoids caching the returning-member block).
+export const dynamic = 'force-dynamic';
+
 const STEPS = [
   { icon: ListChecks, title: 'Tell us about your home', body: 'Just your email + ZIP (and your home type, if you like). 20 seconds, no account.' },
   { icon: CalendarCheck, title: 'Get your seasonal checklist', body: 'See exactly what your house needs this season — with a quick why for each task.' },
@@ -25,10 +33,33 @@ const STEPS = [
 
 export default async function HomeCarePage({ searchParams }: { searchParams: Promise<{ error?: string; unsub?: string }> }) {
   const sp = await searchParams;
+
+  // Returning member? Read the signed access cookie and greet them with a direct
+  // link into their portal. Real gating still happens on /home-care/checklist.
+  const cookieStore = await cookies();
+  const access = await verifyHomeAccess(cookieStore.get(HC_ACCESS_COOKIE)?.value);
+  const homeowner = access ? await findHomeownerById(access.homeownerId) : null;
+  const returning = homeowner && homeowner.status === 'active' ? homeowner : null;
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
       <main className="flex-1">
+        {returning && (
+          <section className="border-b border-primary/10 bg-primary/5">
+            <div className="container mx-auto px-4 py-5">
+              <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-text-primary">
+                  <span className="font-bold">Welcome back{returning.first_name ? `, ${returning.first_name}` : ''}.</span>{' '}
+                  <span className="text-text-secondary">Your seasonal home checklist is ready.</span>
+                </p>
+                <Link href="/home-care/checklist" className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-accent-sunset px-5 py-3 text-sm font-bold text-white shadow-button transition-all hover:-translate-y-px">
+                  Open my checklist →
+                </Link>
+              </div>
+            </div>
+          </section>
+        )}
         {sp?.unsub === 'ok' && (
           <div className="bg-secondary/10 text-center text-sm py-3 px-4 text-text-secondary">You&apos;ve been unsubscribed from La Vaca Home Care. You can re-join anytime below.</div>
         )}

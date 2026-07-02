@@ -26,11 +26,28 @@ export interface RateLimitResult {
   retryAfter?: number;
 }
 
-/** Extract the client IP from forwarding headers (leftmost x-forwarded-for). */
+/**
+ * Extract the client IP for rate-limit bucketing.
+ *
+ * The leftmost `x-forwarded-for` entry is CLIENT-supplied and trivially spoofed
+ * (send `X-Forwarded-For: <random>` per request to rotate buckets), so it must
+ * NOT be trusted as the primary source. We prefer headers written by the edge
+ * that fronts this deployment and that a client cannot override:
+ *   1. `cf-connecting-ip`  — set by Cloudflare (prod fronts through it); CF
+ *      overwrites any client-supplied value, so it's authoritative.
+ *   2. `x-real-ip`         — set by Vercel to the connecting IP.
+ * Only if neither trusted header is present (e.g. local dev) do we fall back to
+ * the leftmost `x-forwarded-for`, then `unknown`. In production the spoofable
+ * fallback is never reached because (1) is always set.
+ */
 export function getClientIp(request: Request): string {
+  const cf = request.headers.get('cf-connecting-ip');
+  if (cf) return cf.trim();
+  const real = request.headers.get('x-real-ip');
+  if (real) return real.trim();
   const xff = request.headers.get('x-forwarded-for');
   if (xff) return xff.split(',')[0].trim();
-  return request.headers.get('x-real-ip') || 'unknown';
+  return 'unknown';
 }
 
 export async function checkRateLimit(

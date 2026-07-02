@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS public.blog_posts     (id uuid PRIMARY KEY DEFAULT ge
 CREATE TABLE IF NOT EXISTS public.leads          (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
 CREATE TABLE IF NOT EXISTS public.estimate_leads (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
 CREATE TABLE IF NOT EXISTS public.service_areas  (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
+CREATE TABLE IF NOT EXISTS public.project_images (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
 
 -- Columns later migrations reference but never ADD themselves.
 --   blog_posts.published -> partial-index predicate in 20251222155716.

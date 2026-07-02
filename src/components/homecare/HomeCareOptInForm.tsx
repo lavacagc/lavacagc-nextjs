@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config';
 
 const RECAPTCHA_ACTION = 'home_care_signup';
+const RECAPTCHA_LOGIN_ACTION = 'home_care_login';
 
 const HOME_TYPES = [
   { value: 'single_family', label: 'Single-family' },
@@ -29,6 +30,13 @@ export default function HomeCareOptInForm() {
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
+  const [mode, setMode] = useState<'signup' | 'login'>('signup');
+  const isLogin = mode === 'login';
+
+  const switchMode = (m: 'signup' | 'login') => {
+    setMode(m);
+    setErrors({});
+  };
 
   // Lazy-load reCAPTCHA Enterprise on first interaction.
   useEffect(() => {
@@ -54,12 +62,12 @@ export default function HomeCareOptInForm() {
     };
   }, []);
 
-  const executeRecaptcha = (): Promise<string | null> =>
+  const executeRecaptcha = (action: string): Promise<string | null> =>
     new Promise((resolve) => {
       const g = (window as unknown as { grecaptcha?: { enterprise?: { ready: (cb: () => void) => void; execute: (k: string, o: { action: string }) => Promise<string> } } }).grecaptcha;
       if (g?.enterprise) {
         g.enterprise.ready(() => {
-          g.enterprise!.execute(RECAPTCHA_SITE_KEY, { action: RECAPTCHA_ACTION }).then(resolve).catch(() => resolve(null));
+          g.enterprise!.execute(RECAPTCHA_SITE_KEY, { action }).then(resolve).catch(() => resolve(null));
         });
       } else {
         resolve(null);
@@ -73,11 +81,11 @@ export default function HomeCareOptInForm() {
 
   const validate = (): boolean => {
     const e: Partial<Record<keyof FormState, string>> = {};
-    if (!state.first_name.trim()) e.first_name = 'Name is required';
+    if (!isLogin && !state.first_name.trim()) e.first_name = 'Name is required';
     if (!state.email.trim()) e.email = 'Email is required';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.email)) e.email = 'Enter a valid email';
-    if (!state.zip.trim()) e.zip = 'ZIP is required';
-    else if (!/\d{5}/.test(state.zip)) e.zip = 'Enter a 5-digit ZIP';
+    if (!isLogin && !state.zip.trim()) e.zip = 'ZIP is required';
+    else if (!isLogin && !/\d{5}/.test(state.zip)) e.zip = 'Enter a 5-digit ZIP';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -91,23 +99,27 @@ export default function HomeCareOptInForm() {
     if (!validate()) return;
     setSubmitting(true);
     try {
-      const recaptchaToken = await executeRecaptcha();
+      const recaptchaToken = await executeRecaptcha(isLogin ? RECAPTCHA_LOGIN_ACTION : RECAPTCHA_ACTION);
       if (!recaptchaToken) {
         toast({ title: 'Security check failed', description: 'Please refresh and try again, or call (201) 212-4917.', variant: 'destructive' });
         setSubmitting(false);
         return;
       }
-      const res = await fetch('/api/home-care/subscribe', {
+      const res = await fetch(isLogin ? '/api/home-care/login' : '/api/home-care/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          first_name: state.first_name.trim(),
-          email: state.email.trim(),
-          zip: state.zip.trim(),
-          home_type: state.home_type || null,
-          recaptchaToken,
-          honeypot: state.website,
-        }),
+        body: JSON.stringify(
+          isLogin
+            ? { email: state.email.trim(), recaptchaToken, honeypot: state.website }
+            : {
+                first_name: state.first_name.trim(),
+                email: state.email.trim(),
+                zip: state.zip.trim(),
+                home_type: state.home_type || null,
+                recaptchaToken,
+                honeypot: state.website,
+              },
+        ),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -128,7 +140,11 @@ export default function HomeCareOptInForm() {
         <MailCheck className="mb-4 h-14 w-14 text-primary" />
         <h2 className="text-2xl font-extrabold tracking-tight text-text-primary">Check your email</h2>
         <p className="mt-3 max-w-prose text-base leading-relaxed text-text-muted">
-          We sent a confirmation link to <strong>{state.email.trim()}</strong>. Click it to set up your seasonal home plan. The link expires in 48 hours.
+          {isLogin ? (
+            <>If <strong>{state.email.trim()}</strong> is a La Vaca Home Care member, we just sent a sign-in link. Click it to open your checklist — it expires in 48 hours.</>
+          ) : (
+            <>We sent a confirmation link to <strong>{state.email.trim()}</strong>. Click it to set up your seasonal home plan. The link expires in 48 hours.</>
+          )}
         </p>
         <button type="button" onClick={() => setSent(false)} className="mt-4 text-sm font-semibold text-primary underline underline-offset-2">
           Use a different email
@@ -141,40 +157,53 @@ export default function HomeCareOptInForm() {
     <form onSubmit={handleSubmit} noValidate className="rounded-2xl border border-border bg-card p-7 shadow-card md:p-8">
       <input type="text" name="website" value={state.website} onChange={(e) => update('website', e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 opacity-0" />
 
+      <div className="mb-5 flex rounded-xl bg-muted p-1 text-sm font-bold">
+        <button type="button" onClick={() => switchMode('signup')} aria-pressed={!isLogin} className={`flex-1 rounded-lg py-2 transition-colors ${!isLogin ? 'bg-card text-primary shadow-sm' : 'text-text-secondary hover:text-primary'}`}>New here</button>
+        <button type="button" onClick={() => switchMode('login')} aria-pressed={isLogin} className={`flex-1 rounded-lg py-2 transition-colors ${isLogin ? 'bg-card text-primary shadow-sm' : 'text-text-secondary hover:text-primary'}`}>I&apos;m a member</button>
+      </div>
+
       <div className="mb-5 flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-widest text-primary">
-        <Home className="h-3.5 w-3.5" /> Free seasonal home plan
+        <Home className="h-3.5 w-3.5" /> {isLogin ? 'Log in to your home plan' : 'Free seasonal home plan'}
       </div>
 
       <div className="grid gap-4">
-        <Field id="first_name" label="First name" error={errors.first_name}>
-          <input id="first_name" type="text" value={state.first_name} onChange={(e) => update('first_name', e.target.value)} placeholder="Your name" autoComplete="given-name" className="lv-input" />
-        </Field>
+        {!isLogin && (
+          <Field id="first_name" label="First name" error={errors.first_name}>
+            <input id="first_name" type="text" value={state.first_name} onChange={(e) => update('first_name', e.target.value)} placeholder="Your name" autoComplete="given-name" className="lv-input" />
+          </Field>
+        )}
         <Field id="email" label="Email" error={errors.email}>
           <input id="email" type="email" value={state.email} onChange={(e) => update('email', e.target.value)} placeholder="you@example.com" autoComplete="email" className="lv-input" />
         </Field>
-        <Field id="zip" label="Home ZIP code" error={errors.zip}>
-          <input id="zip" type="text" value={state.zip} onChange={(e) => update('zip', e.target.value)} placeholder="07450" autoComplete="postal-code" className="lv-input" />
-        </Field>
-        <Field id="home_type" label="Home type (optional)">
-          <Select value={state.home_type} onValueChange={(v) => update('home_type', v)}>
-            <SelectTrigger id="home_type" className="h-12 w-full rounded-xl border-border bg-card px-4 text-base data-[placeholder]:text-text-muted">
-              <SelectValue placeholder="Select…" />
-            </SelectTrigger>
-            <SelectContent>
-              {HOME_TYPES.map((t) => (
-                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
+        {!isLogin && (
+          <>
+            <Field id="zip" label="Home ZIP code" error={errors.zip}>
+              <input id="zip" type="text" value={state.zip} onChange={(e) => update('zip', e.target.value)} placeholder="07450" autoComplete="postal-code" className="lv-input" />
+            </Field>
+            <Field id="home_type" label="Home type (optional)">
+              <Select value={state.home_type} onValueChange={(v) => update('home_type', v)}>
+                <SelectTrigger id="home_type" className="h-12 w-full rounded-xl border-border bg-card px-4 text-base data-[placeholder]:text-text-muted">
+                  <SelectValue placeholder="Select…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {HOME_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </>
+        )}
       </div>
 
       <button type="submit" disabled={submitting} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary via-accent-sunset to-accent-tangerine bg-[length:400%_100%] animate-gradient px-6 py-4 text-base font-bold text-white shadow-button transition-all hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60">
-        {submitting ? (<><Loader2 className="h-4 w-4 animate-spin" /> Sending…</>) : (<><CheckCircle className="h-4 w-4" /> Get my free home plan</>)}
+        {submitting ? (<><Loader2 className="h-4 w-4 animate-spin" /> Sending…</>) : isLogin ? (<><MailCheck className="h-4 w-4" /> Email me a sign-in link</>) : (<><CheckCircle className="h-4 w-4" /> Get my free home plan</>)}
       </button>
 
       <p className="mt-4 text-xs leading-relaxed text-text-muted">
-        We&apos;ll email a seasonal maintenance checklist a few times a year. No account, no spam — unsubscribe anytime.
+        {isLogin
+          ? 'Enter the email you signed up with and we’ll send a one-tap sign-in link — no password to remember.'
+          : 'We’ll email a seasonal maintenance checklist a few times a year. No account, no spam — unsubscribe anytime.'}
       </p>
 
       <style jsx>{`

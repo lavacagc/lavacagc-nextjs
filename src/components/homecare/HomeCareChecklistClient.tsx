@@ -22,6 +22,30 @@ const SEASONS = ['spring', 'summer', 'fall', 'winter'] as const;
 const SEASON_LABEL: Record<string, string> = { spring: 'Spring', summer: 'Summer', fall: 'Fall', winter: 'Winter' };
 const FREQ_LABEL: Record<string, string> = { quarterly: 'Every few months', annual: 'Once a year' };
 
+// Seasonal "project spotlight" — tees up the right big remodel for the moment.
+const SEASON_SPOTLIGHTS: Record<string, { eyebrow: string; title: string; body: string }> = {
+  winter: {
+    eyebrow: 'Winter · design season',
+    title: 'The best spring projects start now',
+    body: 'Winter is when we design kitchens, baths, and additions — so we can break ground the moment the weather turns.',
+  },
+  spring: {
+    eyebrow: 'Spring · outdoor season',
+    title: 'Prime time for decks, patios & windows',
+    body: 'Spring is the moment for decks, patios, siding, and windows — and our build calendar fills fast.',
+  },
+  summer: {
+    eyebrow: 'Summer · space season',
+    title: 'Add the room you’ve been wanting',
+    body: 'Long summer days are made for additions, finished basements, and bonus rooms — comfortable indoor work while the weather’s great outside.',
+  },
+  fall: {
+    eyebrow: 'Fall · host-ready season',
+    title: 'Refresh the spaces you gather in',
+    body: 'Fall is the time for kitchens, flooring, mudrooms, and finished basements — done and dusted before the holidays.',
+  },
+};
+
 function costLabel(lo: number | null, hi: number | null): string | null {
   if (lo == null && hi == null) return null;
   if (lo === 0 && hi != null) return `up to $${hi}`;
@@ -187,6 +211,19 @@ export default function HomeCareChecklistClient({
       )}
 
       <div className="space-y-3">
+        {SEASON_SPOTLIGHTS[activeSeason] && (
+          <div className="rounded-2xl border border-accent-sunset/30 bg-gradient-to-br from-primary/5 to-accent-sunset/10 p-4">
+            <p className="mb-1 text-[11px] font-extrabold uppercase tracking-[0.12em] text-accent-sunset">{SEASON_SPOTLIGHTS[activeSeason].eyebrow}</p>
+            <h3 className="text-base font-extrabold text-text-primary">{SEASON_SPOTLIGHTS[activeSeason].title}</h3>
+            <p className="mt-1 text-sm leading-relaxed text-text-secondary">{SEASON_SPOTLIGHTS[activeSeason].body}</p>
+            <a
+              href={`/free-estimate?utm_source=home_care&utm_medium=portal&utm_campaign=seasonal_project&season=${activeSeason}`}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-primary to-accent-sunset px-4 py-2.5 text-sm font-bold text-white shadow-button transition-all hover:-translate-y-px"
+            >
+              Book a free design consult →
+            </a>
+          </div>
+        )}
         {seasonTasks.length === 0 ? (
           <p className="text-text-secondary">Nothing for {SEASON_LABEL[activeSeason]} with your current home details.</p>
         ) : (
