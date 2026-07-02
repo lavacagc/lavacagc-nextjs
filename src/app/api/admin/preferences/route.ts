@@ -15,6 +15,9 @@ import {
  *
  *   GET  /api/admin/preferences            → recent preference-change activity
  *   GET  /api/admin/preferences?email=…    → that contact's streams + audit trail
+ *   GET  /api/admin/preferences?all=1      → bulk list (optional stream=…&state=on|off
+ *                                            filter, limit≤5000 with a truncated flag;
+ *                                            format=csv paginates to a full export)
  *   POST /api/admin/preferences            → { email, changes } toggle as admin
  *
  * Admin auth is enforced by middleware on /api/admin/*.
