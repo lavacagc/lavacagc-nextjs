@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Phone, Menu, X } from "lucide-react";
+import { Phone, Menu, X, Home } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
@@ -24,9 +24,48 @@ function readHcKnown(): string | null {
   }
 }
 
+const ITEM_CLASS =
+  "block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors";
+
+/** A hover/click/keyboard-accessible desktop nav dropdown. Manages its own open state. */
+function NavDropdown({ label, children }: { label: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative group" onMouseLeave={() => setOpen(false)}>
+      <button
+        onClick={() => setOpen(!open)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen(!open);
+          }
+          if (e.key === 'Escape' && open) {
+            setOpen(false);
+          }
+        }}
+        aria-expanded={open}
+        aria-haspopup="true"
+        className="text-text-secondary hover:text-primary transition-colors font-medium flex items-center"
+      >
+        {label}
+        <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      <div
+        className={`absolute top-full left-0 mt-2 w-64 bg-card border rounded-lg shadow-lg transition-all duration-200 z-50 ${
+          open ? 'opacity-100 visible' : 'opacity-0 invisible group-hover:opacity-100 group-hover:visible'
+        }`}
+        role="menu"
+      >
+        <div className="p-2">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [servicesMenuOpen, setServicesMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const { session } = useAuth();
@@ -35,13 +74,20 @@ const Header = () => {
   // see it so they can reach the page to preview before publishing.
   const showBuyRemodel = buyRemodelPublished || !!session;
 
-  // Returning Home Care members get a direct link to their portal. The hc_known
-  // cookie is non-httpOnly (name hint only); real access is enforced server-side.
+  // Returning Home Care members get a direct "My Home Care" portal link instead
+  // of the public "Home Care" opt-in link — the two are mutually exclusive. The
+  // hc_known cookie is non-httpOnly (name hint only); real access is enforced
+  // server-side.
   const [hcKnown, setHcKnown] = useState<string | null>(null);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of a client-only cookie after mount
     setHcKnown(readHcKnown());
   }, []);
+
+  // The Programs menu holds the homeowner programs. Home Care only appears for
+  // non-members (members use the My Home Care chip); Buy + Remodel only when
+  // published/admin. Hide the whole menu if it would be empty.
+  const showPrograms = showBuyRemodel || !hcKnown;
 
   const scrollToSection = (sectionId: string) => {
     // Close mobile menu if open
@@ -95,7 +141,7 @@ const Header = () => {
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-20 min-[480px]:h-24 md:h-28 lg:grid lg:grid-cols-[auto_1fr_auto]">
             {/* Logo */}
-            <Link 
+            <Link
               href="/"
               className="flex items-center space-x-1.5 sm:space-x-2 md:space-x-3 hover:opacity-80 transition-opacity"
               aria-label="La Vaca General Contractors - Home"
@@ -114,88 +160,86 @@ const Header = () => {
 
             {/* Desktop Navigation - Centered */}
             <nav className="hidden lg:flex items-center justify-center space-x-8">
-              <div
-                className="relative group"
-                onMouseLeave={() => setServicesMenuOpen(false)}
-              >
-                <button
-                  onClick={() => setServicesMenuOpen(!servicesMenuOpen)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setServicesMenuOpen(!servicesMenuOpen);
-                    }
-                    if (e.key === 'Escape' && servicesMenuOpen) {
-                      setServicesMenuOpen(false);
-                    }
-                  }}
-                  aria-expanded={servicesMenuOpen}
-                  aria-haspopup="true"
-                  className="text-text-secondary hover:text-primary transition-colors font-medium flex items-center"
-                >
-                  Services
-                  <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                <div
-                  className={`absolute top-full left-0 mt-2 w-64 bg-card border rounded-lg shadow-lg transition-all duration-200 z-50 ${
-                    servicesMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible group-hover:opacity-100 group-hover:visible'
-                  }`}
-                  role="menu"
-                >
-                  <div className="p-2">
-                    <Link href="/services" className="block px-4 py-2 font-semibold text-text-primary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
-                      Services Hub
-                    </Link>
-                    <Link href="/home-services" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
-                      Home Services
-                    </Link>
-                    <Link href="/commercial-services" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
-                      Commercial Services
-                    </Link>
-                    <div className="my-1 border-t border-border" />
-                    <p className="px-4 pt-1 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-text-muted">Remodeling</p>
-                    <Link href="/services/kitchen-remodeling" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
-                      Kitchen Remodeling
-                    </Link>
-                    <Link href="/services/bathroom-renovation" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
-                      Bathroom Renovation
-                    </Link>
-                    <Link href="/services/basement-finishing" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
-                      Basement Finishing
-                    </Link>
-                    <Link href="/services/home-additions" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
-                      Home Additions
-                    </Link>
-                    <Link href="/services/interior-finishing" className="block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
-                      Interior Finishing
-                    </Link>
-                  </div>
-                </div>
-              </div>
-              <button 
-                onClick={() => scrollToSection('projects')} 
+              <NavDropdown label="Services">
+                <Link href="/services" className="block px-4 py-2 font-semibold text-text-primary hover:text-primary hover:bg-muted rounded-md transition-colors" role="menuitem">
+                  Services Hub
+                </Link>
+                <Link href="/home-services" className={ITEM_CLASS} role="menuitem">
+                  Home Services
+                </Link>
+                <Link href="/commercial-services" className={ITEM_CLASS} role="menuitem">
+                  Commercial Services
+                </Link>
+                <div className="my-1 border-t border-border" />
+                <p className="px-4 pt-1 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-text-muted">Remodeling</p>
+                <Link href="/services/kitchen-remodeling" className={ITEM_CLASS} role="menuitem">
+                  Kitchen Remodeling
+                </Link>
+                <Link href="/services/bathroom-renovation" className={ITEM_CLASS} role="menuitem">
+                  Bathroom Renovation
+                </Link>
+                <Link href="/services/basement-finishing" className={ITEM_CLASS} role="menuitem">
+                  Basement Finishing
+                </Link>
+                <Link href="/services/home-additions" className={ITEM_CLASS} role="menuitem">
+                  Home Additions
+                </Link>
+                <Link href="/services/interior-finishing" className={ITEM_CLASS} role="menuitem">
+                  Interior Finishing
+                </Link>
+              </NavDropdown>
+
+              <button
+                onClick={() => scrollToSection('projects')}
                 className="text-text-secondary hover:text-primary transition-colors font-medium"
                 aria-label="View our project gallery"
               >
                 Projects
               </button>
-              {showBuyRemodel && (
-                <Link href="/buy-and-remodel" className="text-text-secondary hover:text-primary transition-colors font-medium">Buy + Remodel</Link>
+
+              {showPrograms && (
+                <NavDropdown label="Programs">
+                  {showBuyRemodel && (
+                    <Link href="/buy-and-remodel" className={ITEM_CLASS} role="menuitem">
+                      Buy + Remodel
+                    </Link>
+                  )}
+                  {!hcKnown && (
+                    <Link href="/home-care" className={ITEM_CLASS} role="menuitem">
+                      Home Care
+                    </Link>
+                  )}
+                </NavDropdown>
               )}
-              <Link href="/home-care" className="text-text-secondary hover:text-primary transition-colors font-medium">Home Care</Link>
-              {hcKnown && (
-                <Link href="/home-care/checklist" className="text-primary hover:text-primary/80 transition-colors font-semibold">My Home Care</Link>
-              )}
-              <Link href="/about" className="text-text-secondary hover:text-primary transition-colors font-medium">About</Link>
-              <Link href="/process" className="text-text-secondary hover:text-primary transition-colors font-medium">Process</Link>
-              <Link href="/resources" className="text-text-secondary hover:text-primary transition-colors font-medium">Resources</Link>
-              <Link href="/blog" className="text-text-secondary hover:text-primary transition-colors font-medium">Blog</Link>
+
+              <NavDropdown label="Company">
+                <Link href="/about" className={ITEM_CLASS} role="menuitem">
+                  About
+                </Link>
+                <Link href="/process" className={ITEM_CLASS} role="menuitem">
+                  Process
+                </Link>
+                <Link href="/resources" className={ITEM_CLASS} role="menuitem">
+                  Resources
+                </Link>
+                <Link href="/blog" className={ITEM_CLASS} role="menuitem">
+                  Blog
+                </Link>
+              </NavDropdown>
             </nav>
 
             {/* Right side - CTA and Menu */}
-            <div className="flex items-center gap-4 lg:justify-end ml-auto lg:ml-0">
+            <div className="flex items-center gap-3 lg:justify-end ml-auto lg:ml-0">
+              {/* Returning member portal access — an account chip, not a marketing link. */}
+              {hcKnown && (
+                <Link
+                  href="/home-care/checklist"
+                  className="hidden lg:inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3.5 py-2 text-sm font-semibold text-primary hover:bg-primary/10 transition-colors"
+                >
+                  <Home className="h-4 w-4" /> My Home Care
+                </Link>
+              )}
+
               {/* CTA Section - Visible on desktop only (logo + hamburger on mobile/tablet) */}
               <Button
                 onClick={() => navigateToPage('/request-estimate')}
@@ -223,6 +267,17 @@ const Header = () => {
         {mobileMenuOpen && (
           <div id="mobile-menu" className="lg:hidden bg-background border-t border-border" role="navigation" aria-label="Mobile navigation">
             <div className="container mx-auto px-4 py-4 space-y-4">
+              {/* Returning member portal access, surfaced first. */}
+              {hcKnown && (
+                <button
+                  onClick={() => navigateToPage('/home-care/checklist')}
+                  className="flex w-full items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-primary font-semibold hover:bg-primary/10 transition-colors"
+                  aria-label="Open my Home Care checklist"
+                >
+                  <Home className="h-4 w-4" /> My Home Care
+                </button>
+              )}
+
               <div>
                 <p className="font-semibold text-text-primary mb-2">Services</p>
                 <div className="pl-4 space-y-2">
@@ -254,13 +309,73 @@ const Header = () => {
                 </div>
               </div>
 
-              <button 
-                onClick={() => scrollToSection('projects')} 
+              <button
+                onClick={() => scrollToSection('projects')}
                 className="block text-text-secondary hover:text-primary transition-colors font-medium"
                 aria-label="View our project gallery"
               >
                 Projects
               </button>
+
+              {showPrograms && (
+                <div>
+                  <p className="font-semibold text-text-primary mb-2">Programs</p>
+                  <div className="pl-4 space-y-2">
+                    {showBuyRemodel && (
+                      <button
+                        onClick={() => navigateToPage('/buy-and-remodel')}
+                        className="block text-text-secondary hover:text-primary transition-colors"
+                        aria-label="Go to buy and remodel homes page"
+                      >
+                        Buy + Remodel
+                      </button>
+                    )}
+                    {!hcKnown && (
+                      <button
+                        onClick={() => navigateToPage('/home-care')}
+                        className="block text-text-secondary hover:text-primary transition-colors"
+                        aria-label="Go to home care page"
+                      >
+                        Home Care
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <p className="font-semibold text-text-primary mb-2">Company</p>
+                <div className="pl-4 space-y-2">
+                  <button
+                    onClick={() => navigateToPage('/about')}
+                    className="block text-text-secondary hover:text-primary transition-colors"
+                    aria-label="Go to about us page"
+                  >
+                    About
+                  </button>
+                  <button
+                    onClick={() => navigateToPage('/process')}
+                    className="block text-text-secondary hover:text-primary transition-colors"
+                    aria-label="Go to our process page"
+                  >
+                    Process
+                  </button>
+                  <button
+                    onClick={() => navigateToPage('/resources')}
+                    className="block text-text-secondary hover:text-primary transition-colors"
+                    aria-label="Go to homeowner resources page"
+                  >
+                    Resources
+                  </button>
+                  <button
+                    onClick={() => navigateToPage('/blog')}
+                    className="block text-text-secondary hover:text-primary transition-colors"
+                    aria-label="Go to blog page"
+                  >
+                    Blog
+                  </button>
+                </div>
+              </div>
 
               <button
                 onClick={() => navigateToPage('/request-estimate')}
@@ -268,66 +383,6 @@ const Header = () => {
                 aria-label="Request an estimate"
               >
                 Request an Estimate
-              </button>
-
-              {showBuyRemodel && (
-                <button
-                  onClick={() => navigateToPage('/buy-and-remodel')}
-                  className="block text-text-secondary hover:text-primary transition-colors font-medium"
-                  aria-label="Go to buy and remodel homes page"
-                >
-                  Buy + Remodel
-                </button>
-              )}
-
-              <button
-                onClick={() => navigateToPage('/home-care')}
-                className="block text-text-secondary hover:text-primary transition-colors font-medium"
-                aria-label="Go to home care page"
-              >
-                Home Care
-              </button>
-
-              {hcKnown && (
-                <button
-                  onClick={() => navigateToPage('/home-care/checklist')}
-                  className="block text-primary hover:text-primary/80 transition-colors font-semibold"
-                  aria-label="Open my Home Care checklist"
-                >
-                  My Home Care
-                </button>
-              )}
-
-              <button
-                onClick={() => navigateToPage('/about')}
-                className="block text-text-secondary hover:text-primary transition-colors font-medium"
-                aria-label="Go to about us page"
-              >
-                About Us
-              </button>
-
-              <button 
-                onClick={() => navigateToPage('/process')} 
-                className="block text-text-secondary hover:text-primary transition-colors font-medium"
-                aria-label="Go to our process page"
-              >
-                Our Process
-              </button>
-
-              <button 
-                onClick={() => navigateToPage('/resources')} 
-                className="block text-text-secondary hover:text-primary transition-colors font-medium"
-                aria-label="Go to homeowner resources page"
-              >
-                Resources
-              </button>
-
-              <button 
-                onClick={() => navigateToPage('/blog')} 
-                className="block text-text-secondary hover:text-primary transition-colors font-medium"
-                aria-label="Go to blog page"
-              >
-                Blog
               </button>
 
               <div className="pt-4 border-t border-border space-y-3">
