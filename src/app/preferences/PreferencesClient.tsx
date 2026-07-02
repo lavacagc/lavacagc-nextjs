@@ -33,8 +33,8 @@ export default function PreferencesClient() {
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(
     parseConfirm(params.get('confirm')),
   );
-  const [savedMsg, setSavedMsg] = useState<string | null>(
-    justDone ? 'Your preferences have been updated.' : null,
+  const [savedMsg, setSavedMsg] = useState<{ text: string; kind: 'success' | 'error' } | null>(
+    justDone ? { text: 'Your preferences have been updated.', kind: 'success' } : null,
   );
 
   const load = useCallback(async () => {
@@ -82,10 +82,13 @@ export default function PreferencesClient() {
         if (!res.ok) throw new Error('save failed');
         const data = await res.json();
         setStreams(data.streams);
-        setSavedMsg(message);
+        setSavedMsg({ text: message, kind: 'success' });
       } catch {
         setStreams(prev);
-        setSavedMsg('Something went wrong saving your preferences. Please try again.');
+        setSavedMsg({
+          text: 'Something went wrong saving your preferences. Please try again.',
+          kind: 'error',
+        });
       } finally {
         setSaving(false);
       }
@@ -213,10 +216,14 @@ export default function PreferencesClient() {
 
               {savedMsg && (
                 <div
-                  className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800 text-sm px-3 py-2"
+                  className={`mb-4 rounded-md border text-sm px-3 py-2 ${
+                    savedMsg.kind === 'error'
+                      ? 'border-red-200 bg-red-50 text-red-800'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  }`}
                   data-testid="saved-msg"
                 >
-                  {savedMsg}
+                  {savedMsg.text}
                 </div>
               )}
 

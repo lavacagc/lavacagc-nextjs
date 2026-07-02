@@ -4,7 +4,7 @@ import {
   listingsWelcomeHtml,
   listingsWelcomeText,
 } from '@/lib/emailTemplates';
-import { sendTrackedEmail } from '@/lib/notify/sendEmail';
+import { sendTrackedEmail, type EmailCategory } from '@/lib/notify/sendEmail';
 
 /**
  * Customer-facing emails for the "Buy + Remodel" email gate (double opt-in +
@@ -44,6 +44,7 @@ function send(
   subject: string,
   html: string,
   text: string,
+  category: EmailCategory,
   subscriberId?: string | null,
 ): Promise<ListingsEmailResult> {
   return sendTrackedEmail({
@@ -53,7 +54,7 @@ function send(
     subject,
     html,
     text,
-    category: 'buy_remodel',
+    category,
     subscriberId: subscriberId ?? null,
   });
 }
@@ -71,6 +72,7 @@ export function sendListingsVerificationEmail(
     'Confirm your email to unlock La Vaca’s Buy + Remodel homes',
     listingsVerificationHtml(payload),
     listingsVerificationText(payload),
+    'verification',
     args.subscriberId,
   );
 }
@@ -86,6 +88,7 @@ export function sendListingsWelcomeEmail(args: WelcomeArgs): Promise<ListingsEma
     'You’re in — browse La Vaca’s Buy + Remodel homes',
     listingsWelcomeHtml(payload),
     listingsWelcomeText(payload),
+    'welcome',
     args.subscriberId,
   );
 }

@@ -132,7 +132,17 @@ export async function POST(request: NextRequest) {
     );
     const row = rows?.[0];
     if (!row) {
-      // We didn't originate this message (or logging was skipped). Ack anyway.
+      // No email_log row yet. A fresh event may have raced sendTrackedEmail's
+      // post-send insert, so return 404 to make Svix retry with backoff. Events
+      // past the cutoff (deliberately unlogged sends, e.g. log:false) are acked
+      // so they stop retrying.
+      const UNMATCHED_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
+      const createdAtMs = event.created_at ? Date.parse(event.created_at) : NaN;
+      const withinRetryWindow =
+        Number.isFinite(createdAtMs) && Date.now() - createdAtMs < UNMATCHED_RETRY_WINDOW_MS;
+      if (withinRetryWindow) {
+        return NextResponse.json({ error: 'No matching email_log row yet' }, { status: 404 });
+      }
       return NextResponse.json({ ok: true, unmatched: true });
     }
 
