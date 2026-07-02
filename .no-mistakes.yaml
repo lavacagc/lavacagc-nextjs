@@ -1,0 +1,21 @@
+# no-mistakes gate config for the Lavaca site.
+# Pins the exact commands the gate runs so validation is deterministic instead
+# of auto-detected. See https://kunchenguid.github.io/no-mistakes/reference/repo-config/
+#
+# SECURITY / ACTIVATION NOTE: the daemon reads `commands` + `agent` from the
+# DEFAULT branch (origin/main), not the pushed branch, unless allow_repo_commands
+# is true. This is a single-org repo where we trust our own branches, so we opt
+# in — but the switch itself is also read only from origin/main, so these
+# commands become authoritative once this file is merged to main. Until then the
+# gate auto-detects. (We develop on local branches and PR to main at launch.)
+allow_repo_commands: true
+
+commands:
+  # ESLint. Fast, env-independent.
+  lint: "npm run lint"
+  # Deterministic, secret-free gate: `next build` runs the TS type-check, ESLint,
+  # and compiles every route. We DON'T run the Playwright suite here — the gate's
+  # disposable worktree has no Supabase/Resend/reCAPTCHA secrets, so many specs
+  # fail environmentally (see the acceptance-criteria note). Browser-level
+  # Playwright verification stays a manual pre-gate step against a real dev server.
+  test: "npx tsc --noEmit && npm run build"
