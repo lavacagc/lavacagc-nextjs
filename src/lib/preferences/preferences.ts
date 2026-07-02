@@ -1,6 +1,5 @@
 import { randomBytes } from 'node:crypto';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
-import type { EmailCategory } from '@/lib/notify/sendEmail';
 
 /**
  * Email preference center helpers (Phase 3).
@@ -48,17 +47,6 @@ export interface EmailPreferences {
   created_at?: string;
   updated_at?: string;
 }
-
-/**
- * Which marketing stream (if any) a given email category belongs to. Categories
- * not listed are transactional/internal and are never suppressed. Kept in sync
- * with EmailCategory in src/lib/notify/sendEmail.ts.
- */
-export const CATEGORY_STREAM: Partial<Record<EmailCategory, StreamKey>> = {
-  home_care_newsletter: 'home_care',
-  buy_remodel: 'buy_remodel',
-  broadcast: 'announcements',
-};
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();

@@ -75,6 +75,7 @@ export async function GET(request: NextRequest) {
     const eligible = homeowners.filter((h) => !sameMonth(h.last_newsletter_at, now)).slice(0, MAX_PER_RUN);
 
     let sent = 0;
+    let suppressed = 0;
     const failures: string[] = [];
     if (!dryRun) {
       for (const h of eligible) {
@@ -96,6 +97,12 @@ export async function GET(request: NextRequest) {
         if (res.status === 'sent') {
           sent += 1;
           await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
+        } else if (res.status === 'skipped' && res.reason === 'unsubscribed') {
+          // Preference opt-out that the legacy homeowners.status sync missed —
+          // an intentional suppression, not a failure. Advance last_newsletter_at
+          // so the row isn't re-attempted (and re-logged) every run this month.
+          suppressed += 1;
+          await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
         } else {
           failures.push(`${h.email}:${res.status}`);
         }
@@ -111,6 +118,7 @@ export async function GET(request: NextRequest) {
       active_homeowners: homeowners.length,
       eligible: eligible.length,
       sent,
+      suppressed,
       failures: failures.length,
       dryRun,
     });

@@ -43,7 +43,10 @@ interface PrefRow extends EmailPreferences {
 }
 
 function csvEscape(v: unknown): string {
-  const s = v === null || v === undefined ? '' : String(v);
+  let s = v === null || v === undefined ? '' : String(v);
+  // Neutralize spreadsheet formula injection: a cell starting with = + - @ or a
+  // tab/CR executes as a formula when the export is opened in Excel/Sheets.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

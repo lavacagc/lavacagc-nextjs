@@ -134,10 +134,14 @@ export async function POST(request: NextRequest) {
 
     const patch: Record<string, unknown> = { last_event_at: eventTime };
 
-    // Advance status only forward; always apply negative terminal states.
+    // Advance status only forward; negative terminal states always apply and
+    // are sticky — a later positive event (e.g. an open from the spam folder)
+    // must not hide a recorded bounce/complaint.
     const curRank = PROGRESS_RANK[row.status] ?? -1;
     const newRank = PROGRESS_RANK[newStatus] ?? -1;
-    if (NEGATIVE_STATUSES.has(newStatus) || newRank >= curRank) {
+    if (NEGATIVE_STATUSES.has(newStatus)) {
+      patch.status = newStatus;
+    } else if (!NEGATIVE_STATUSES.has(row.status) && newRank >= curRank) {
       patch.status = newStatus;
     }
 

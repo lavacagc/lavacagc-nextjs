@@ -61,11 +61,15 @@ export async function GET(request: NextRequest) {
   let path = `email_log?select=${SELECT}&order=created_at.desc&limit=${limit}`;
   if (category && ALLOWED_CATEGORY.has(category)) path += `&category=eq.${category}`;
   if (status && ALLOWED_STATUS.has(status)) path += `&status=eq.${status}`;
-  if (q && q.trim()) {
-    // Match on recipient email or name. PostgREST ilike uses * as wildcard;
-    // encode the term so commas/parens in the OR filter can't break out.
-    const term = encodeURIComponent(`*${q.trim()}*`);
-    path += `&or=(to_email.ilike.${term},to_name.ilike.${term},subject.ilike.${term})`;
+  // Match on recipient email, name, or subject. The or= value is percent-decoded
+  // by PostgREST before its filter grammar is parsed, so URL-encoding alone can't
+  // protect reserved characters — wrap the pattern in PostgREST double quotes
+  // (commas/parens are literal inside them) and strip the characters that would
+  // escape the quoting or act as like-wildcards.
+  const term = q ? q.trim().replace(/[*%"\\]/g, '').trim() : '';
+  if (term) {
+    const quoted = encodeURIComponent(`"*${term}*"`);
+    path += `&or=(to_email.ilike.${quoted},to_name.ilike.${quoted},subject.ilike.${quoted})`;
   }
 
   try {
