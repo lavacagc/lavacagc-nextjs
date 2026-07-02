@@ -389,7 +389,8 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    const { error: insertError } = await insertLead(finalLeadData);
+    const { data: insertedRows, error: insertError } = await insertLead(finalLeadData);
+    const leadId = (insertedRows?.[0]?.id as string | undefined) ?? null;
     if (insertError) {
       console.error('Failed to insert lead:', insertError);
       await reportFailure({
@@ -461,6 +462,7 @@ export async function POST(request: NextRequest) {
           contactTimePreference,
           contactTimeDetails,
           contactTimezone,
+          leadId,
         }),
         4000,
         'new-lead'
@@ -474,6 +476,7 @@ export async function POST(request: NextRequest) {
           email,
           source,
           projectType,
+          leadId: leadId ?? undefined,
         }),
         4000,
         'follow-up'

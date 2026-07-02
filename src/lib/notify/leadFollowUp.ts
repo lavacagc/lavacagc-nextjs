@@ -1,12 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
-import { Resend } from 'resend';
 import {
   leadInstantAckHtml,
   lead24hHtml,
   lead48hHtml,
   lead7dHtml,
 } from '@/lib/emailTemplates';
-import { cleanEnv } from '@/lib/envClean';
+import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 
 export interface LeadFollowUpPayload {
   name: string;
@@ -30,31 +29,23 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-async function sendInstantAck(email: string, subject: string, html: string): Promise<boolean> {
-  const apiKey = cleanEnv(process.env.RESEND_API_KEY);
-  if (!apiKey) {
-    console.warn('⚠️ RESEND_API_KEY not configured — skipping instant ack email');
-    return false;
-  }
-
-  try {
-    const resend = new Resend(apiKey);
-    const { error } = await resend.emails.send({
-      from: 'La Vaca General Contractors <info@email.lavaca.link>',
-      to: [email],
-      subject,
-      html,
-    });
-
-    if (error) {
-      console.error('Failed to send instant ack:', error);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.error('Error sending instant ack:', err);
-    return false;
-  }
+async function sendInstantAck(
+  email: string,
+  subject: string,
+  html: string,
+  opts: { name?: string; leadId?: string | null } = {},
+): Promise<boolean> {
+  const result = await sendTrackedEmail({
+    from: 'La Vaca General Contractors <info@email.lavaca.link>',
+    to: email,
+    subject,
+    html,
+    category: 'lead_followup',
+    toName: opts.name ?? null,
+    leadId: opts.leadId ?? null,
+    campaign: { follow_up_type: 'instant_ack' },
+  });
+  return result.status === 'sent';
 }
 
 function generateFollowUpEmails(name: string, projectType?: string) {
@@ -177,7 +168,10 @@ export async function createLeadFollowUpSequence(
       },
     ];
 
-    const instantSent = await sendInstantAck(email, emails.instant_ack.subject, emails.instant_ack.html);
+    const instantSent = await sendInstantAck(email, emails.instant_ack.subject, emails.instant_ack.html, {
+      name,
+      leadId: leadId || null,
+    });
     if (instantSent) followUps[0].status = 'sent';
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

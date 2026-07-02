@@ -1,5 +1,5 @@
-import { Resend } from 'resend';
 import { cleanEnv } from '@/lib/envClean';
+import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 
 export interface FormErrorAlertPayload {
   stage?: string;
@@ -88,7 +88,6 @@ export async function sendFormFailureAlert(payload: FormErrorAlertPayload): Prom
     const apiKey = cleanEnv(process.env.RESEND_API_KEY);
     if (apiKey) {
       try {
-        const resend = new Resend(apiKey);
         const notificationEmail = cleanEnv(process.env.LEAD_NOTIFICATION_EMAIL) || 'alex@vacamoo.com';
 
         const html = `
@@ -105,13 +104,17 @@ export async function sendFormFailureAlert(payload: FormErrorAlertPayload): Prom
           </div>
         `;
 
-        const { data, error } = await resend.emails.send({
+        const sendResult = await sendTrackedEmail({
           from: 'La Vaca Alerts <noreply@email.lavaca.link>',
-          to: [notificationEmail],
+          to: notificationEmail,
           subject: `🚨 Form failure: ${source} (${stage})`,
           html,
+          category: 'form_error',
         });
-        results.email = error ? `failed:${error.message}` : `sent:${data?.id}`;
+        results.email =
+          sendResult.status === 'sent'
+            ? `sent:${sendResult.emailId}`
+            : `failed:${sendResult.error ?? sendResult.status}`;
       } catch (err) {
         results.email = `exception:${err instanceof Error ? err.message : String(err)}`;
       }

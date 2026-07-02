@@ -1,10 +1,9 @@
-import { Resend } from 'resend';
 import {
   estimateEmailHtml,
   estimateEmailText,
   type EstimateEmailPayload,
 } from '@/lib/emailTemplates';
-import { cleanEnv } from '@/lib/envClean';
+import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 
 /**
  * Customer-facing estimate-presentation email.
@@ -32,6 +31,10 @@ export interface EstimateEmailSendPayload extends EstimateEmailPayload {
    * of recipientEmail/ccEmails. Used by the admin "test send" button.
    */
   isTest?: boolean;
+  /** Lead row id, for linking the email_log audit row back to the lead. */
+  leadId?: string | null;
+  /** Admin email that triggered this send, for the audit trail. */
+  sentBy?: string | null;
 }
 
 export interface EstimateEmailSendResult {
@@ -54,12 +57,6 @@ function firstName(full: string): string {
 export async function sendEstimateEmail(
   payload: EstimateEmailSendPayload,
 ): Promise<EstimateEmailSendResult> {
-  const apiKey = cleanEnv(process.env.RESEND_API_KEY);
-  if (!apiKey) {
-    console.warn('⚠️ RESEND_API_KEY not configured — skipping estimate email');
-    return { status: 'skipped', reason: 'no_api_key' };
-  }
-
   const {
     recipientName,
     recipientEmail,
@@ -71,6 +68,8 @@ export async function sendEstimateEmail(
     updateCadence,
     personalNote,
     isTest,
+    leadId,
+    sentBy,
   } = payload;
 
   // Test mode: always redirect to Alex regardless of who the form said.
@@ -93,29 +92,18 @@ export async function sendEstimateEmail(
     personalNote,
   };
 
-  try {
-    const resend = new Resend(apiKey);
-    const { data, error } = await resend.emails.send({
-      from: FROM_ADDRESS,
-      to: finalTo,
-      cc: finalCc,
-      replyTo: replyTo || DEFAULT_REPLY_TO,
-      subject,
-      html: estimateEmailHtml(templatePayload),
-      text: estimateEmailText(templatePayload),
-    });
-
-    if (error) {
-      console.error('Failed to send estimate email:', error);
-      return { status: 'failed', error: error.message };
-    }
-
-    return { status: 'sent', emailId: data?.id };
-  } catch (err) {
-    console.error('Estimate email error:', err);
-    return {
-      status: 'error',
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
+  return sendTrackedEmail({
+    from: FROM_ADDRESS,
+    to: finalTo,
+    cc: finalCc,
+    replyTo: replyTo || DEFAULT_REPLY_TO,
+    subject,
+    html: estimateEmailHtml(templatePayload),
+    text: estimateEmailText(templatePayload),
+    category: 'estimate',
+    toName: recipientName,
+    leadId: leadId ?? null,
+    sentBy: sentBy ?? null,
+    campaign: isTest ? { test: true } : null,
+  });
 }

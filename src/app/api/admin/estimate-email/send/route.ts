@@ -118,6 +118,8 @@ export async function POST(request: NextRequest) {
     updateCadence,
     personalNote,
     isTest,
+    leadId: leadId ?? null,
+    sentBy,
   });
 
   // 5. Write audit row regardless of success — failed sends are still

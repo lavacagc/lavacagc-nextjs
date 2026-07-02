@@ -16,6 +16,7 @@ import { currentSeason } from '@/lib/homecare/season';
 import { buildNewsletter, type NewsletterTask } from '@/lib/homecare/newsletter';
 import { filterTasksForProfile, type HomeSystems } from '@/lib/homecare/profile';
 import { sendHomeCareNewsletterEmail } from '@/lib/notify/sendHomeCareEmails';
+import { preferencesUrlFor } from '@/lib/preferences/preferences';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -74,10 +75,14 @@ export async function GET(request: NextRequest) {
     const eligible = homeowners.filter((h) => !sameMonth(h.last_newsletter_at, now)).slice(0, MAX_PER_RUN);
 
     let sent = 0;
+    let suppressed = 0;
     const failures: string[] = [];
     if (!dryRun) {
       for (const h of eligible) {
         const personalTasks = filterTasksForProfile(tasks, systemsByOwner.get(h.id) ?? null);
+        // Per-recipient preference-center link (best-effort — fall back to the
+        // legacy unsubscribe link alone if the lookup fails).
+        const preferencesUrl = await preferencesUrlFor(origin, h.email).catch(() => undefined);
         const { subject, html, text } = buildNewsletter({
           firstName: h.first_name,
           season,
@@ -85,11 +90,18 @@ export async function GET(request: NextRequest) {
           isSeasonal,
           baseUrl: origin,
           unsubscribeUrl: `${origin}/api/home-care/unsubscribe?token=${encodeURIComponent(h.unsubscribe_token)}`,
+          preferencesUrl,
           monthLabel,
         });
-        const res = await sendHomeCareNewsletterEmail({ to: h.email, subject, html, text });
+        const res = await sendHomeCareNewsletterEmail({ to: h.email, subject, html, text, homeownerId: h.id });
         if (res.status === 'sent') {
           sent += 1;
+          await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
+        } else if (res.status === 'skipped' && res.reason === 'unsubscribed') {
+          // Preference opt-out that the legacy homeowners.status sync missed —
+          // an intentional suppression, not a failure. Advance last_newsletter_at
+          // so the row isn't re-attempted (and re-logged) every run this month.
+          suppressed += 1;
           await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
         } else {
           failures.push(`${h.email}:${res.status}`);
@@ -106,6 +118,7 @@ export async function GET(request: NextRequest) {
       active_homeowners: homeowners.length,
       eligible: eligible.length,
       sent,
+      suppressed,
       failures: failures.length,
       dryRun,
     });

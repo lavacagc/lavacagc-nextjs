@@ -25,6 +25,8 @@ export interface NewsletterArgs {
   isSeasonal: boolean;
   baseUrl: string;
   unsubscribeUrl: string;
+  /** Self-serve preference-center link (per-recipient token). Preferred footer CTA. */
+  preferencesUrl?: string;
   monthLabel?: string; // e.g. "July" (for nudge subject)
 }
 
@@ -45,7 +47,7 @@ const PHONE = '(201) 212-4917';
 const HIC = 'NJ HIC# 13VH13373800';
 
 export function buildNewsletter(args: NewsletterArgs): { subject: string; html: string; text: string } {
-  const { firstName, season, isSeasonal, baseUrl, unsubscribeUrl } = args;
+  const { firstName, season, isSeasonal, baseUrl, unsubscribeUrl, preferencesUrl } = args;
   const seasonLabel = SEASON_LABEL[season];
   const list = selectTasks(args.tasks, isSeasonal);
   const hi = firstName ? `Hi ${esc(firstName)},` : 'Hi there,';
@@ -120,7 +122,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
             <a href="tel:2012124917" style="color:#EE9639;font-weight:700;text-decoration:none">${PHONE}</a>
             &nbsp;·&nbsp; ${HIC}
           </div>
-          <div style="font-size:11px;color:#9aa3b0;margin-top:12px">You're receiving this because you joined La Vaca Home Care. <a href="${unsubscribeUrl}" style="color:#9aa3b0">Unsubscribe</a>.</div>
+          <div style="font-size:11px;color:#9aa3b0;margin-top:12px">You're receiving this because you joined La Vaca Home Care. ${preferencesUrl ? `<a href="${preferencesUrl}" style="color:#9aa3b0;text-decoration:underline">Manage email preferences</a> · ` : ''}<a href="${unsubscribeUrl}" style="color:#9aa3b0">Unsubscribe</a>.</div>
         </td>
       </tr></table>
     </div>
@@ -132,7 +134,9 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
     text += `[ ] ${t.title} — ${t.blurb}\n`;
     if (t.bookable) text += `    Book La Vaca: ${baseUrl}/home-care/book?task=${t.key}\n`;
   }
-  text += `\nOpen & save your full checklist: ${checklistUrl}\n\nLa Vaca General Contractors · ${PHONE} · ${HIC}\nUnsubscribe: ${unsubscribeUrl}`;
+  text += `\nOpen & save your full checklist: ${checklistUrl}\n\nLa Vaca General Contractors · ${PHONE} · ${HIC}\n`;
+  if (preferencesUrl) text += `Manage email preferences: ${preferencesUrl}\n`;
+  text += `Unsubscribe: ${unsubscribeUrl}`;
 
   return { subject, html, text };
 }

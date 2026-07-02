@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { Resend } from 'resend';
+import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import {
   feedbackDay0Html,
   feedbackDay3Html,
@@ -36,26 +36,16 @@ export async function POST(request: NextRequest) {
     const day0Html = feedbackDay0Html(customerName);
 
     // Send Day 0 email immediately
-    let day0Sent = false;
-    const resendApiKey = process.env.RESEND_API_KEY;
-    if (resendApiKey) {
-      try {
-        const resend = new Resend(resendApiKey);
-        const { error: sendError } = await resend.emails.send({
-          from: 'La Vaca General Contractors <info@email.lavaca.link>',
-          to: [email],
-          subject: day0Subject,
-          html: day0Html,
-        });
-        if (sendError) {
-          console.error('Failed to send Day 0 feedback email:', sendError);
-        } else {
-          day0Sent = true;
-        }
-      } catch (err) {
-        console.error('Error sending Day 0 email:', err);
-      }
-    }
+    const day0Result = await sendTrackedEmail({
+      from: 'La Vaca General Contractors <info@email.lavaca.link>',
+      to: email,
+      subject: day0Subject,
+      html: day0Html,
+      category: 'feedback_request',
+      toName: customerName,
+      campaign: { follow_up_type: 'feedback_day0' },
+    });
+    const day0Sent = day0Result.status === 'sent';
 
     const feedbackEmails = [
       {

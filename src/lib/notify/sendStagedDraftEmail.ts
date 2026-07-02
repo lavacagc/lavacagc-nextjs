@@ -1,5 +1,5 @@
-import { Resend } from 'resend';
 import { cleanEnv } from '@/lib/envClean';
+import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 
 /**
  * Phase 3: notify the owner that an AI draft has been staged as a blog DRAFT and
@@ -23,12 +23,6 @@ export async function sendStagedDraftEmail(post: {
   actionType?: string;
   query?: string | null;
 }): Promise<StagedDraftEmailResult> {
-  const apiKey = cleanEnv(process.env.RESEND_API_KEY);
-  if (!apiKey) {
-    console.warn('⚠️ RESEND_API_KEY not configured — skipping staged-draft email');
-    return { status: 'skipped', reason: 'no_api_key' };
-  }
-
   const to = cleanEnv(process.env.SEO_REPORT_EMAIL) || cleanEnv(process.env.LEAD_NOTIFICATION_EMAIL) || 'alex@vacamoo.com';
   const previewUrl = `${SITE}/blog/preview/${post.slug}`;
   const reason = post.actionType === 'new' ? 'a new post targeting' : 'a refresh for';
@@ -51,21 +45,11 @@ export async function sendStagedDraftEmail(post: {
   </div>
 </body></html>`;
 
-  try {
-    const resend = new Resend(apiKey);
-    const { data, error } = await resend.emails.send({
-      from: FROM_ADDRESS,
-      to: [to],
-      subject: `📝 AI draft ready to publish: ${post.title}`,
-      html,
-    });
-    if (error) {
-      console.error('Failed to send staged-draft email:', error);
-      return { status: 'failed', error: error.message };
-    }
-    return { status: 'sent', emailId: data?.id };
-  } catch (err) {
-    console.error('Staged-draft email error:', err);
-    return { status: 'error', error: err instanceof Error ? err.message : String(err) };
-  }
+  return sendTrackedEmail({
+    from: FROM_ADDRESS,
+    to,
+    subject: `📝 AI draft ready to publish: ${post.title}`,
+    html,
+    category: 'staged_draft',
+  });
 }

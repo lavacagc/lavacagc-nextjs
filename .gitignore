@@ -48,3 +48,7 @@ public/videos/*.mp4
 
 # Supabase temp files
 supabase/.temp/
+
+# Lavish artifact working dir (local review surfaces)
+.lavish/
+.playwright-mcp/

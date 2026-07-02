@@ -10,6 +10,7 @@ import {
   sanitizeKnownName,
 } from '@/lib/homecare/accessCookie';
 import { sendHomeCareWelcomeEmail } from '@/lib/notify/sendHomeCareEmails';
+import { preferencesUrlFor } from '@/lib/preferences/preferences';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,11 +40,14 @@ export async function GET(request: NextRequest) {
     });
 
     if (wasPending) {
+      const preferencesUrl = await preferencesUrlFor(origin, ho.email).catch(() => undefined);
       await sendHomeCareWelcomeEmail({
         to: ho.email,
         firstName: ho.first_name,
         checklistUrl: `${origin}/home-care/checklist`,
         unsubscribeUrl: `${origin}/api/home-care/unsubscribe?token=${encodeURIComponent(ho.unsubscribe_token)}`,
+        preferencesUrl,
+        homeownerId: ho.id,
       }).catch((err) => console.error('home-care welcome email failed:', err));
     }
 
