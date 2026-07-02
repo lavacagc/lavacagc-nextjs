@@ -256,12 +256,14 @@ html {
   align-items: center;
   cursor: pointer;
   gap: 12px;
+  flex-shrink: 0; /* keep the fixed-size track from compressing in flex rows */
 }
 
 /* The pill-shaped track */
 .slider {
   position: relative;
   width: 50px;
+  min-width: 50px; /* a shrunk track leaves the checked knob overflowing its right edge */
   height: 26px;
   background-color: #ccc;
   border-radius: 34px; /* This makes it pill-shaped */

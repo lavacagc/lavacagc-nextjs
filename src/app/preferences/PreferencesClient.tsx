@@ -8,7 +8,7 @@ import { STREAMS, type StreamKey } from '@/lib/preferences/streams';
 
 type StreamState = Record<StreamKey, boolean>;
 
-const LOGO = 'https://www.lavacagc.com/logo.png';
+const LOGO = '/logo.png';
 
 type ConfirmTarget = StreamKey | 'all';
 

@@ -51,3 +51,4 @@ supabase/.temp/
 
 # Lavish artifact working dir (local review surfaces)
 .lavish/
+.playwright-mcp/
