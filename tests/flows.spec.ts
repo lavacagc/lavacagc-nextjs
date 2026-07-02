@@ -25,12 +25,12 @@ test.describe('User Flow Tests', () => {
       await page.click('a[aria-label^="La Vaca General Contractors"]');
       await expect(page).toHaveURL('/');
 
-      // Verify the desktop header nav exposes the expected routes. We assert
-      // on href presence rather than actually clicking each one — scoping
-      // `:has-text` is brittle (footer has "Our Process", "About Us") and
-      // serial clicks leave residual dropdown state. Each destination is
-      // already covered by its own page-load test elsewhere in the suite.
+      // About / Process / Blog now live under the "Company" dropdown. Open it,
+      // then verify the routes are exposed. We assert on href presence rather
+      // than clicking each one — each destination has its own page-load test
+      // elsewhere in the suite.
       const headerNav = page.locator('header nav').first();
+      await page.click('button[aria-haspopup="true"]:has-text("Company")');
       await expect(headerNav.locator('a[href="/about"]')).toBeVisible();
       await expect(headerNav.locator('a[href="/process"]')).toBeVisible();
       await expect(headerNav.locator('a[href="/blog"]')).toBeVisible();
