@@ -31,6 +31,7 @@ const FeedbackPage = dynamic(() => import('@/app/vaca-mgmt/feedback/page'), { ss
 const SendEstimatePage = dynamic(() => import('@/app/vaca-mgmt/send-estimate/page'), { ssr: false });
 const EstimateLogPage = dynamic(() => import('@/app/vaca-mgmt/send-estimate/log/page'), { ssr: false });
 const EmailsLogPage = dynamic(() => import('@/app/vaca-mgmt/emails/page'), { ssr: false });
+const PreferencesAdminPage = dynamic(() => import('@/app/vaca-mgmt/preferences/page'), { ssr: false });
 const PageSpeedMonitor = dynamic(() => import('@/components/admin/PageSpeedMonitor'), { ssr: false });
 const ConversionDashboard = dynamic(() => import('@/components/admin/ConversionDashboard'), { ssr: false });
 const SubscribersDashboard = dynamic(() => import('@/components/admin/SubscribersDashboard'), { ssr: false });
@@ -278,6 +279,10 @@ export default function AdminContent() {
 
           <TabsContent value="emails">
             <EmailsLogPage />
+          </TabsContent>
+
+          <TabsContent value="preferences">
+            <PreferencesAdminPage />
           </TabsContent>
 
           <TabsContent value="feedback">

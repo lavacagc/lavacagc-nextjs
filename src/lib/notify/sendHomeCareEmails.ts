@@ -1,4 +1,5 @@
 import { sendTrackedEmail, type EmailCategory } from '@/lib/notify/sendEmail';
+import type { StreamKey } from '@/lib/preferences/preferences';
 
 /**
  * Customer-facing emails for La Vaca Home Care (double opt-in + welcome). Warm
@@ -55,6 +56,7 @@ function send(
   text: string,
   category: EmailCategory,
   homeownerId?: string | null,
+  preferenceStream?: StreamKey,
 ): Promise<HomeCareEmailResult> {
   return sendTrackedEmail({
     from: FROM_ADDRESS,
@@ -65,6 +67,7 @@ function send(
     text,
     category,
     homeownerId: homeownerId ?? null,
+    ...(preferenceStream ? { preferenceStream } : {}),
   });
 }
 
@@ -92,7 +95,7 @@ export function sendHomeCareNewsletterEmail(args: {
   text: string;
   homeownerId?: string | null;
 }): Promise<HomeCareEmailResult> {
-  return send(args.to, args.subject, args.html, args.text, 'home_care_newsletter', args.homeownerId);
+  return send(args.to, args.subject, args.html, args.text, 'home_care_newsletter', args.homeownerId, 'home_care');
 }
 
 export function sendHomeCareWelcomeEmail(args: {

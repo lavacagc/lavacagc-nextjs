@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findByUnsubscribeToken, updateSubscriber } from '@/lib/listings/subscribers';
+import { setStreamByEmail } from '@/lib/preferences/preferences';
 import {
   ACCESS_COOKIE_NAME,
   accessCookieOptions,
@@ -72,6 +73,10 @@ export async function GET(request: NextRequest) {
         verify_token: null,
         verify_token_expires_at: null,
       });
+      // Keep the unified preference model in sync (best-effort).
+      await setStreamByEmail(sub.email, 'buy_remodel', false, 'self', 'buy-remodel-unsubscribe-link').catch(
+        (e) => console.error('preference sync on buy-remodel unsubscribe failed:', e),
+      );
     }
 
     return html(

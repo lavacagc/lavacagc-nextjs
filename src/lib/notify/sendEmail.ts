@@ -1,6 +1,9 @@
 import { Resend } from 'resend';
 import { cleanEnv } from '@/lib/envClean';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { getOrCreateByEmail, type StreamKey } from '@/lib/preferences/preferences';
+
+const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lavacagc.com';
 
 /**
  * The single chokepoint every outbound email funnels through.
@@ -60,6 +63,14 @@ export interface TrackedEmailInput {
    * send itself in its own table). Defaults to true: log everything.
    */
   log?: boolean;
+
+  /**
+   * When set, this send is governed by a marketing preference stream: the
+   * recipient's opt-out is honored (suppressed → skipped, not sent) and a
+   * per-recipient List-Unsubscribe header + one-click URL are attached. Omit for
+   * transactional/internal mail, which always sends and carries no such header.
+   */
+  preferenceStream?: StreamKey;
 }
 
 export interface TrackedEmailResult {
@@ -128,6 +139,35 @@ export async function sendTrackedEmail(input: TrackedEmailInput): Promise<Tracke
     return { status: 'skipped', reason: 'no_api_key' };
   }
 
+  // Marketing-stream governance: honor the recipient's opt-out and attach a
+  // per-recipient List-Unsubscribe header. Best-effort — a lookup failure must
+  // not block a send (isSuppressed-style fail-open).
+  let unsubHeaders: Record<string, string> | undefined;
+  if (input.preferenceStream && toList[0]) {
+    try {
+      const pref = await getOrCreateByEmail(toList[0]);
+      if (pref[input.preferenceStream] === false) {
+        const suppressed: TrackedEmailResult = {
+          status: 'skipped',
+          reason: 'unsubscribed',
+          error: 'suppressed: recipient unsubscribed from this stream',
+        };
+        // Record the suppression so the admin can see we intentionally didn't send.
+        if (input.log !== false) await writeEmailLog(input, toList, ccList, suppressed);
+        return suppressed;
+      }
+      const unsubUrl =
+        `${SITE_URL}/api/preferences/unsubscribe?token=${encodeURIComponent(pref.preference_token)}` +
+        `&stream=${input.preferenceStream}`;
+      unsubHeaders = {
+        'List-Unsubscribe': `<${unsubUrl}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      };
+    } catch (e) {
+      console.error('preference lookup failed (sending anyway):', e instanceof Error ? e.message : e);
+    }
+  }
+
   let result: TrackedEmailResult;
   try {
     const resend = new Resend(apiKey);
@@ -137,6 +177,7 @@ export async function sendTrackedEmail(input: TrackedEmailInput): Promise<Tracke
       ...(ccList.length ? { cc: ccList } : {}),
       ...(input.replyTo ? { replyTo: input.replyTo } : {}),
       subject: input.subject,
+      ...(unsubHeaders ? { headers: unsubHeaders } : {}),
       // Resend requires at least one of html/text; senders always pass one.
       ...(input.html !== undefined ? { html: input.html } : {}),
       ...(input.text !== undefined ? { text: input.text } : {}),

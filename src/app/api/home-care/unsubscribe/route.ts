@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findHomeownerByUnsubscribeToken, updateHomeowner } from '@/lib/homecare/homeowners';
 import { HC_ACCESS_COOKIE, HC_KNOWN_COOKIE } from '@/lib/homecare/accessCookie';
+import { setStreamByEmail } from '@/lib/preferences/preferences';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,6 +21,10 @@ export async function GET(request: NextRequest) {
     const ho = await findHomeownerByUnsubscribeToken(token);
     if (ho && ho.status !== 'unsubscribed') {
       await updateHomeowner(ho.id, { status: 'unsubscribed', unsubscribed_at: new Date().toISOString() });
+      // Keep the unified preference model in sync (best-effort).
+      await setStreamByEmail(ho.email, 'home_care', false, 'self', 'home-care-unsubscribe-link').catch(
+        (e) => console.error('preference sync on home-care unsubscribe failed:', e),
+      );
     }
     return done('ok');
   } catch (error) {

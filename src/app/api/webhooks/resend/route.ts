@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Webhook } from 'svix';
 import { cleanEnv } from '@/lib/envClean';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { getOrCreateByEmail, applyUpdate, STREAM_KEYS } from '@/lib/preferences/preferences';
 
 /**
  * POST /api/webhooks/resend
@@ -28,8 +29,26 @@ interface ResendEvent {
   created_at?: string;
   data?: {
     email_id?: string;
+    to?: string[];
     [k: string]: unknown;
   };
+}
+
+// A hard bounce or spam complaint means we should stop marketing to this address
+// (deliverability + reputation). Turn OFF every marketing stream, audited as a
+// webhook-driven change. Best-effort — never fail the webhook over this.
+async function autoSuppress(email: string, event: string): Promise<void> {
+  try {
+    const pref = await getOrCreateByEmail(email);
+    await applyUpdate({
+      current: pref,
+      changes: Object.fromEntries(STREAM_KEYS.map((k) => [k, false])),
+      actor: 'webhook',
+      actorDetail: event,
+    });
+  } catch (e) {
+    console.error('auto-suppress failed (non-fatal):', e instanceof Error ? e.message : e);
+  }
 }
 
 // Delivery progression rank — we only advance status forward so an out-of-order
@@ -146,6 +165,12 @@ export async function POST(request: NextRequest) {
     await supabaseRest('PATCH', `email_log?id=eq.${row.id}`, patch, {
       prefer: 'return=minimal',
     });
+
+    // Hard bounce / spam complaint → stop all marketing to this address.
+    if (newStatus === 'bounced' || newStatus === 'complained') {
+      const recipient = event.data?.to?.[0];
+      if (recipient) await autoSuppress(recipient, event.type);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

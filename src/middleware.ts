@@ -92,6 +92,7 @@ const CRON_AUTH_ROUTES = [
 const PUBLIC_ROUTES = [
   '/api/leads/webhook',
   '/api/webhooks/resend',   // Resend delivery events — auth is the Svix signature
+  '/api/preferences',       // Self-service preference center — auth is the token
   '/api/leads/submit',
   '/api/banners',          // Public banner retrieval (GET without /admin)
   '/api/referrals',

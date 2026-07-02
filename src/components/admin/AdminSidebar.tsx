@@ -89,6 +89,7 @@ const NAVIGATION: NavItem[] = [
       { id: 'send-estimate', icon: Send, label: 'Send Estimate' },
       { id: 'estimate-log', icon: History, label: 'Estimate Log' },
       { id: 'emails', icon: Mail, label: 'Email Tracking' },
+      { id: 'preferences', icon: Users, label: 'Subscriptions' },
       { id: 'feedback', icon: MessageSquare, label: 'Feedback Requests' },
       { id: 'estimates', icon: Calculator, label: 'Calculator Estimates' },
     ],
