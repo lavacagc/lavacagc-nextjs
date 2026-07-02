@@ -91,6 +91,7 @@ const CRON_AUTH_ROUTES = [
 // Routes that are always public (no auth needed)
 const PUBLIC_ROUTES = [
   '/api/leads/webhook',
+  '/api/webhooks/resend',   // Resend delivery events — auth is the Svix signature
   '/api/leads/submit',
   '/api/banners',          // Public banner retrieval (GET without /admin)
   '/api/referrals',
