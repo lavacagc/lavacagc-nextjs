@@ -63,7 +63,9 @@ Set in Vercel → Settings → Environment Variables (Production scope only):
 - `GA4_PROPERTY_ID` — numeric property id
 - `CRON_SECRET` — already set, gates `/api/cron/*`
 - `SEO_REPORT_EMAIL` — optional; weekly digest recipient (defaults to `LEAD_NOTIFICATION_EMAIL`, then `alex@vacamoo.com`)
-- `RESEND_API_KEY` — already set; the weekly digest is sent via Resend
+- `RESEND_API_KEY` — already set; the weekly digest is sent via Resend (through
+  `sendTrackedEmail`, so each send is recorded in `email_log` and visible in the
+  admin Email Tracking tab)
 
 The service account needs:
 - GSC: added as **Restricted user** to the property at search.google.com/search-console/users
