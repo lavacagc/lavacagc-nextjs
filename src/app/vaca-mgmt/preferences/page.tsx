@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Download, RefreshCw, Radio } from 'lucide-react';
-import { STREAMS, type StreamKey } from '@/lib/preferences/preferences';
+import { STREAMS, type StreamKey } from '@/lib/preferences/streams';
 
 interface BulkRow {
   email: string;
@@ -45,6 +45,7 @@ export default function AdminPreferencesPage() {
 
   // Bulk list + export
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
+  const [bulkTruncated, setBulkTruncated] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [filterStream, setFilterStream] = useState('');
   const [filterState, setFilterState] = useState('');
@@ -70,6 +71,7 @@ export default function AdminPreferencesPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Load failed');
       setBulkRows(data.rows || []);
+      setBulkTruncated(!!data.truncated);
     } catch (err) {
       toast({
         title: 'Failed to load contacts',
@@ -311,7 +313,11 @@ export default function AdminPreferencesPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <CardTitle className="text-lg">All contacts</CardTitle>
-              <CardDescription>{bulkRows.length} preference record(s).</CardDescription>
+              <CardDescription data-testid="bulk-count">
+                {bulkRows.length} preference record(s).
+                {bulkTruncated &&
+                  ' Showing the most recent only — download the CSV for the complete list.'}
+              </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <select

@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { normalizeEmail, STREAM_KEYS, type StreamKey } from '@/lib/preferences/streams';
 
 /**
  * Email preference center helpers (Phase 3).
@@ -8,35 +9,13 @@ import { supabaseRest } from '@/lib/notify/supabase-rest';
  * contact receives. Transactional mail is not represented here — it always
  * sends. The self-serve page authenticates by preference_token (a capability),
  * mirroring the existing unsubscribe-token trust model.
+ *
+ * Stream definitions live in ./streams (client-safe, no Node imports) and are
+ * re-exported here so server callers keep a single import path.
  */
 
-export type StreamKey = 'home_care' | 'buy_remodel' | 'announcements';
-
-export interface StreamDef {
-  key: StreamKey;
-  label: string;
-  description: string;
-}
-
-export const STREAMS: StreamDef[] = [
-  {
-    key: 'home_care',
-    label: 'La Vaca Home Care',
-    description: 'Your monthly seasonal home-maintenance checklist and reminders.',
-  },
-  {
-    key: 'buy_remodel',
-    label: 'Buy + Remodel listings',
-    description: 'New renovation-ready homes as they come to market.',
-  },
-  {
-    key: 'announcements',
-    label: 'News & occasional offers',
-    description: 'Company news and the occasional promotion — a few times a year at most.',
-  },
-];
-
-export const STREAM_KEYS: StreamKey[] = STREAMS.map((s) => s.key);
+export { STREAMS, STREAM_KEYS, normalizeEmail } from '@/lib/preferences/streams';
+export type { StreamKey, StreamDef } from '@/lib/preferences/streams';
 
 export interface EmailPreferences {
   email: string;
@@ -46,10 +25,6 @@ export interface EmailPreferences {
   announcements: boolean;
   created_at?: string;
   updated_at?: string;
-}
-
-export function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
 }
 
 function newToken(): string {
@@ -218,25 +193,29 @@ async function syncLegacyStatus(email: string, patch: Record<string, boolean>): 
   const enc = encodeURIComponent(email);
   const nowIso = new Date().toISOString();
 
+  // Re-enabling a stream only promotes 'unsubscribed' rows back to 'active';
+  // 'pending' rows stay pending until they complete double opt-in verification.
   if (typeof patch.home_care === 'boolean') {
-    const status = patch.home_care ? 'active' : 'unsubscribed';
     await supabaseRest(
       'PATCH',
-      `homeowners?email=eq.${enc}`,
       patch.home_care
-        ? { status, unsubscribed_at: null }
-        : { status, unsubscribed_at: nowIso },
+        ? `homeowners?email=eq.${enc}&status=eq.unsubscribed`
+        : `homeowners?email=eq.${enc}`,
+      patch.home_care
+        ? { status: 'active', unsubscribed_at: null }
+        : { status: 'unsubscribed', unsubscribed_at: nowIso },
       { prefer: 'return=minimal' },
     );
   }
   if (typeof patch.buy_remodel === 'boolean') {
-    const status = patch.buy_remodel ? 'active' : 'unsubscribed';
     await supabaseRest(
       'PATCH',
-      `newsletter_subscribers?email=eq.${enc}`,
       patch.buy_remodel
-        ? { status, unsubscribed_at: null }
-        : { status, unsubscribed_at: nowIso },
+        ? `newsletter_subscribers?email=eq.${enc}&status=eq.unsubscribed`
+        : `newsletter_subscribers?email=eq.${enc}`,
+      patch.buy_remodel
+        ? { status: 'active', unsubscribed_at: null }
+        : { status: 'unsubscribed', unsubscribed_at: nowIso },
       { prefer: 'return=minimal' },
     );
   }

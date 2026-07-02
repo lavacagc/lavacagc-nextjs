@@ -58,7 +58,7 @@ Every stream change is audited in `preference_events` (old/new value, actor `sel
 |---|---|---|
 | `POST /api/webhooks/resend` | Svix signature (`RESEND_WEBHOOK_SECRET`) | Delivery events → `email_log` backfill + bounce/complaint auto-suppress |
 | `GET/POST /api/preferences` | `preference_token` | Self-serve page: read / update streams |
-| `GET/POST /api/preferences/unsubscribe` | `preference_token` | Footer links (GET, per-stream or all) + RFC 8058 one-click (POST, all marketing) |
+| `GET/POST /api/preferences/unsubscribe` | `preference_token` | Footer links (GET — mutates nothing, redirects to the preference center with a confirm prompt) + RFC 8058 one-click (POST, unsubscribes all marketing) |
 | `GET /api/admin/emails` | admin middleware | Email log list (filter by `category`, `status`, `q`, `limit`) |
 | `GET /api/admin/emails/[id]` | admin middleware | Single email incl. full rendered body |
 | `GET/POST /api/admin/preferences` | admin middleware | Contact lookup + audit trail, admin toggles, bulk list (`?all=1`, optional `stream`/`state`), CSV export (`&format=csv`) |

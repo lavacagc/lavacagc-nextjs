@@ -4,11 +4,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { STREAMS, type StreamKey } from '@/lib/preferences/preferences';
+import { STREAMS, type StreamKey } from '@/lib/preferences/streams';
 
 type StreamState = Record<StreamKey, boolean>;
 
 const LOGO = 'https://www.lavacagc.com/logo.png';
+
+type ConfirmTarget = StreamKey | 'all';
+
+function parseConfirm(raw: string | null): ConfirmTarget | null {
+  if (!raw) return null;
+  if (raw === 'all') return 'all';
+  const match = STREAMS.find((s) => s.key === raw);
+  return match ? match.key : 'all';
+}
 
 export default function PreferencesClient() {
   const params = useSearchParams();
@@ -20,6 +29,9 @@ export default function PreferencesClient() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [invalid, setInvalid] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(
+    parseConfirm(params.get('confirm')),
+  );
   const [savedMsg, setSavedMsg] = useState<string | null>(
     justDone ? 'Your preferences have been updated.' : null,
   );
@@ -88,6 +100,28 @@ export default function PreferencesClient() {
     save(next, "You've been unsubscribed from all marketing emails.");
   };
 
+  const confirmLabel =
+    confirmTarget && confirmTarget !== 'all'
+      ? STREAMS.find((s) => s.key === confirmTarget)?.label ?? 'this list'
+      : 'all marketing emails';
+
+  const confirmUnsubscribe = () => {
+    if (!streams || !confirmTarget) return;
+    const target = confirmTarget;
+    setConfirmTarget(null);
+    const next: StreamState =
+      target === 'all'
+        ? { home_care: false, buy_remodel: false, announcements: false }
+        : { ...streams, [target]: false };
+    setStreams(next);
+    save(
+      next,
+      target === 'all'
+        ? "You've been unsubscribed from all marketing emails."
+        : `You've been unsubscribed from ${confirmLabel}.`,
+    );
+  };
+
   const allOff = streams && !streams.home_care && !streams.buy_remodel && !streams.announcements;
 
   return (
@@ -124,6 +158,40 @@ export default function PreferencesClient() {
               <p className="font-semibold mb-5 break-all" data-testid="pref-email">
                 {email}
               </p>
+
+              {confirmTarget && streams && (
+                <div
+                  className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-3"
+                  data-testid="confirm-unsubscribe"
+                >
+                  <p className="text-sm font-semibold text-amber-900 mb-2">
+                    Unsubscribe from {confirmLabel}?
+                  </p>
+                  <p className="text-xs text-amber-800 mb-3">
+                    Nothing has changed yet — confirm below, or keep your subscription and adjust
+                    individual lists instead.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      onClick={confirmUnsubscribe}
+                      disabled={saving}
+                      data-testid="confirm-unsubscribe-yes"
+                    >
+                      Yes, unsubscribe
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConfirmTarget(null)}
+                      disabled={saving}
+                      data-testid="confirm-unsubscribe-keep"
+                    >
+                      Keep my subscription
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {savedMsg && (
                 <div

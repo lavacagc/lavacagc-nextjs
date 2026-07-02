@@ -142,6 +142,20 @@ export async function sendTrackedEmail(input: TrackedEmailInput): Promise<Tracke
   // Marketing-stream governance: honor the recipient's opt-out and attach a
   // per-recipient List-Unsubscribe header. Best-effort — a lookup failure must
   // not block a send (isSuppressed-style fail-open).
+  //
+  // Stream-governed sends are strictly single-recipient: suppression and the
+  // unsubscribe token are per-recipient, so a multi-recipient send would skip
+  // opt-out checks for everyone past the first AND hand every recipient a
+  // header controlling the first recipient's preferences.
+  if (input.preferenceStream && toList.length > 1) {
+    const result: TrackedEmailResult = {
+      status: 'error',
+      error: `preferenceStream '${input.preferenceStream}' requires exactly one recipient, got ${toList.length}`,
+    };
+    console.error(`${input.category} email rejected:`, result.error);
+    if (input.log !== false) await writeEmailLog(input, toList, ccList, result);
+    return result;
+  }
   let unsubHeaders: Record<string, string> | undefined;
   if (input.preferenceStream && toList[0]) {
     try {

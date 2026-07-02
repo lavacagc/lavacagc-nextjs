@@ -63,13 +63,26 @@ export async function GET(request: NextRequest) {
       const format = sp.get('format'); // csv → download
       const limit = Math.min(Math.max(Number.parseInt(sp.get('limit') ?? '1000', 10) || 1000, 1), 5000);
 
-      let path = `email_preferences?select=email,home_care,buy_remodel,announcements,updated_at,created_at&order=updated_at.desc&limit=${limit}`;
-      if (stream && STREAM_KEYS.includes(stream as StreamKey) && (state === 'on' || state === 'off')) {
-        path += `&${stream}=eq.${state === 'on'}`;
-      }
-      const rows = (await supabaseRest<PrefRow[]>('GET', path)) ?? [];
+      const base = 'email_preferences?select=email,home_care,buy_remodel,announcements,updated_at,created_at&order=updated_at.desc,email.asc';
+      const filter =
+        stream && STREAM_KEYS.includes(stream as StreamKey) && (state === 'on' || state === 'off')
+          ? `&${stream}=eq.${state === 'on'}`
+          : '';
 
       if (format === 'csv') {
+        // Export paginates to completion — a CSV download must never silently
+        // truncate to the default page size.
+        const rows: PrefRow[] = [];
+        const pageSize = 1000;
+        for (let offset = 0; ; offset += pageSize) {
+          const batch =
+            (await supabaseRest<PrefRow[]>(
+              'GET',
+              `${base}${filter}&limit=${pageSize}&offset=${offset}`,
+            )) ?? [];
+          rows.push(...batch);
+          if (batch.length < pageSize) break;
+        }
         const header = 'email,home_care,buy_remodel,announcements,updated_at';
         const lines = rows.map((r) =>
           [r.email, r.home_care, r.buy_remodel, r.announcements, r.updated_at].map(csvEscape).join(','),
@@ -83,7 +96,9 @@ export async function GET(request: NextRequest) {
           },
         });
       }
-      return NextResponse.json({ rows, count: rows.length });
+
+      const rows = (await supabaseRest<PrefRow[]>('GET', `${base}${filter}&limit=${limit}`)) ?? [];
+      return NextResponse.json({ rows, count: rows.length, truncated: rows.length === limit });
     }
 
     if (emailParam) {

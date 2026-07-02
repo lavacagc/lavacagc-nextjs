@@ -10,9 +10,10 @@ import {
 /**
  * One-click unsubscribe target for email footers + the List-Unsubscribe header.
  *
- *   GET  ?token=…&stream=home_care   → user clicked a footer link; turns the
- *        stream off (or ALL marketing streams if no stream given) and redirects
- *        to the preference center so they can fine-tune / re-subscribe.
+ *   GET  ?token=…&stream=home_care   → user clicked a footer link; mutates
+ *        NOTHING (link prefetchers / security scanners fetch these URLs) and
+ *        redirects to the preference center with a one-click confirm prompt
+ *        for that stream (or all marketing streams if no stream given).
  *   POST ?token=…                    → RFC 8058 one-click (mail clients POST
  *        `List-Unsubscribe=One-Click`); turns off ALL marketing streams and
  *        returns 200 with no redirect.
@@ -49,15 +50,17 @@ export async function GET(request: NextRequest) {
   const stream = request.nextUrl.searchParams.get('stream');
   const origin = request.nextUrl.origin;
   try {
-    const ok = await unsubscribe(request, token, stream);
-    // Always land on the preference center (valid token) or its invalid state.
-    const url = ok
-      ? `/preferences?token=${encodeURIComponent(ok)}&done=${encodeURIComponent(stream || 'all')}`
+    const pref = await findByToken(token);
+    // Read-only: land on the preference center (valid token) or its invalid
+    // state, and let the human confirm the unsubscribe there.
+    const confirm = stream && (STREAM_KEYS as string[]).includes(stream) ? stream : 'all';
+    const url = pref
+      ? `/preferences?token=${encodeURIComponent(pref.preference_token)}&confirm=${encodeURIComponent(confirm)}`
       : `/preferences?invalid=1`;
     return NextResponse.redirect(new URL(url, origin));
   } catch (err) {
     console.error('preferences unsubscribe GET failed:', err);
-    return NextResponse.redirect(new URL('/preferences?error=1', origin));
+    return NextResponse.redirect(new URL('/preferences?invalid=1', origin));
   }
 }
 
