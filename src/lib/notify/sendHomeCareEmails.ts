@@ -103,13 +103,17 @@ export function sendHomeCareWelcomeEmail(args: {
   firstName?: string | null;
   checklistUrl: string;
   unsubscribeUrl: string;
+  preferencesUrl?: string | null;
   homeownerId?: string | null;
 }): Promise<HomeCareEmailResult> {
   const hi = args.firstName ? `Welcome, ${args.firstName}!` : 'Welcome!';
+  const manage = args.preferencesUrl
+    ? `<a href="${args.preferencesUrl}" style="color:#9aa3b0;text-decoration:underline">Manage email preferences</a> · `
+    : '';
   const body = `<p style="font-size:15px;color:#0c1730;margin:0 0 16px">${hi}</p>
     <p style="font-size:15px;color:#5b6b82;margin:0 0 20px">You're all set. Your seasonal checklist is ready — see what your home needs right now, check things off as you go, and tap "Book La Vaca" on anything you'd rather hand to us.</p>
     <p style="margin:0 0 22px">${button(args.checklistUrl, 'See my checklist')}</p>
-    <p style="font-size:13px;color:#9aa3b0;margin:0">We'll send a short seasonal reminder a few times a year. <a href="${args.unsubscribeUrl}" style="color:#9aa3b0">Unsubscribe</a> anytime.</p>`;
-  const text = `${hi}\n\nYour La Vaca Home Care checklist is ready: ${args.checklistUrl}\n\nUnsubscribe: ${args.unsubscribeUrl}`;
+    <p style="font-size:13px;color:#9aa3b0;margin:0">We'll send a short seasonal reminder a few times a year. ${manage}<a href="${args.unsubscribeUrl}" style="color:#9aa3b0">Unsubscribe</a> anytime.</p>`;
+  const text = `${hi}\n\nYour La Vaca Home Care checklist is ready: ${args.checklistUrl}\n\n${args.preferencesUrl ? `Manage email preferences: ${args.preferencesUrl}\n` : ''}Unsubscribe: ${args.unsubscribeUrl}`;
   return send(args.to, "You're in — your La Vaca Home Care checklist is ready", shell("Your plan is ready", body), text, 'welcome', args.homeownerId);
 }

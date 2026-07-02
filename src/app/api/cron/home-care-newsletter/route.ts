@@ -16,6 +16,7 @@ import { currentSeason } from '@/lib/homecare/season';
 import { buildNewsletter, type NewsletterTask } from '@/lib/homecare/newsletter';
 import { filterTasksForProfile, type HomeSystems } from '@/lib/homecare/profile';
 import { sendHomeCareNewsletterEmail } from '@/lib/notify/sendHomeCareEmails';
+import { preferencesUrlFor } from '@/lib/preferences/preferences';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -78,6 +79,9 @@ export async function GET(request: NextRequest) {
     if (!dryRun) {
       for (const h of eligible) {
         const personalTasks = filterTasksForProfile(tasks, systemsByOwner.get(h.id) ?? null);
+        // Per-recipient preference-center link (best-effort — fall back to the
+        // legacy unsubscribe link alone if the lookup fails).
+        const preferencesUrl = await preferencesUrlFor(origin, h.email).catch(() => undefined);
         const { subject, html, text } = buildNewsletter({
           firstName: h.first_name,
           season,
@@ -85,6 +89,7 @@ export async function GET(request: NextRequest) {
           isSeasonal,
           baseUrl: origin,
           unsubscribeUrl: `${origin}/api/home-care/unsubscribe?token=${encodeURIComponent(h.unsubscribe_token)}`,
+          preferencesUrl,
           monthLabel,
         });
         const res = await sendHomeCareNewsletterEmail({ to: h.email, subject, html, text, homeownerId: h.id });

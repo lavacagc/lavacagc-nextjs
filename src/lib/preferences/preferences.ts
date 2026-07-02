@@ -96,6 +96,16 @@ export async function getOrCreateByEmail(rawEmail: string): Promise<EmailPrefere
   return rows[0];
 }
 
+/**
+ * Build the self-serve preference-center URL for an email, creating the row +
+ * token on first touch. Used to put a real "manage preferences" link in email
+ * bodies (the footer), alongside the List-Unsubscribe header the wrapper sets.
+ */
+export async function preferencesUrlFor(baseUrl: string, rawEmail: string): Promise<string> {
+  const pref = await getOrCreateByEmail(rawEmail);
+  return `${baseUrl}/preferences?token=${encodeURIComponent(pref.preference_token)}`;
+}
+
 export async function findByToken(token: string): Promise<EmailPreferences | null> {
   if (!token) return null;
   const rows = await supabaseRest<EmailPreferences[]>(
@@ -103,6 +113,26 @@ export async function findByToken(token: string): Promise<EmailPreferences | nul
     `email_preferences?preference_token=eq.${encodeURIComponent(token)}&limit=1`,
   );
   return rows?.[0] ?? null;
+}
+
+/**
+ * All emails that have opted OUT of a stream. Used to suppress recipients from
+ * Resend broadcasts (which send via audiences, outside the sendTrackedEmail
+ * wrapper). Paginates so a large opt-out list is fully returned.
+ */
+export async function getSuppressedEmails(stream: StreamKey): Promise<string[]> {
+  const out: string[] = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const rows = await supabaseRest<Array<{ email: string }>>(
+      'GET',
+      `email_preferences?${stream}=eq.false&select=email&order=email.asc&limit=${pageSize}&offset=${offset}`,
+    );
+    if (!rows?.length) break;
+    for (const r of rows) out.push(r.email);
+    if (rows.length < pageSize) break;
+  }
+  return out;
 }
 
 /** True if the email has opted OUT of the given stream (so we must not send). */

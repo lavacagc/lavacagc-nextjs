@@ -37,10 +37,52 @@ function stateOf(p: EmailPreferences) {
   return { home_care: p.home_care, buy_remodel: p.buy_remodel, announcements: p.announcements };
 }
 
+interface PrefRow extends EmailPreferences {
+  updated_at?: string;
+  created_at?: string;
+}
+
+function csvEscape(v: unknown): string {
+  const s = v === null || v === undefined ? '' : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 export async function GET(request: NextRequest) {
-  const emailParam = request.nextUrl.searchParams.get('email');
+  const sp = request.nextUrl.searchParams;
+  const emailParam = sp.get('email');
+  const all = sp.get('all');
 
   try {
+    // Bulk list / export mode: every contact's stream state.
+    if (all) {
+      const stream = sp.get('stream'); // optional: home_care|buy_remodel|announcements
+      const state = sp.get('state'); // optional: on|off (requires stream)
+      const format = sp.get('format'); // csv → download
+      const limit = Math.min(Math.max(Number.parseInt(sp.get('limit') ?? '1000', 10) || 1000, 1), 5000);
+
+      let path = `email_preferences?select=email,home_care,buy_remodel,announcements,updated_at,created_at&order=updated_at.desc&limit=${limit}`;
+      if (stream && STREAM_KEYS.includes(stream as StreamKey) && (state === 'on' || state === 'off')) {
+        path += `&${stream}=eq.${state === 'on'}`;
+      }
+      const rows = (await supabaseRest<PrefRow[]>('GET', path)) ?? [];
+
+      if (format === 'csv') {
+        const header = 'email,home_care,buy_remodel,announcements,updated_at';
+        const lines = rows.map((r) =>
+          [r.email, r.home_care, r.buy_remodel, r.announcements, r.updated_at].map(csvEscape).join(','),
+        );
+        const csv = [header, ...lines].join('\n');
+        return new NextResponse(csv, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/csv; charset=utf-8',
+            'Content-Disposition': 'attachment; filename="email-preferences.csv"',
+          },
+        });
+      }
+      return NextResponse.json({ rows, count: rows.length });
+    }
+
     if (emailParam) {
       const email = normalizeEmail(emailParam);
       const rows = await supabaseRest<EmailPreferences[]>(
