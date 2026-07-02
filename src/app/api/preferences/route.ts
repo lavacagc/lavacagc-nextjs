@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getClientIp } from '@/lib/rateLimit';
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import {
   findByToken,
   applyUpdate,
@@ -28,6 +28,14 @@ function stateOf(pref: { home_care: boolean; buy_remodel: boolean; announcements
 }
 
 export async function GET(request: NextRequest) {
+  const rl = await checkRateLimit(`prefs-read:${getClientIp(request)}`, 30, 60 * 1000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter ?? 60) } },
+    );
+  }
+
   const token = request.nextUrl.searchParams.get('token') ?? '';
   try {
     const pref = await findByToken(token);
@@ -40,6 +48,14 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const rl = await checkRateLimit(`prefs-write:${getClientIp(request)}`, 15, 60 * 1000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter ?? 60) } },
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();

@@ -30,6 +30,10 @@ interface ResendEvent {
   data?: {
     email_id?: string;
     to?: string[];
+    bounce?: {
+      type?: string; // "Permanent" | "Transient" | "Undetermined"
+      [k: string]: unknown;
+    };
     [k: string]: unknown;
   };
 }
@@ -171,7 +175,12 @@ export async function POST(request: NextRequest) {
     });
 
     // Hard bounce / spam complaint → stop all marketing to this address.
-    if (newStatus === 'bounced' || newStatus === 'complained') {
+    // Only PERMANENT bounces suppress — a transient/undetermined bounce (e.g.
+    // mailbox full) must not permanently unsubscribe the contact. Complaints
+    // suppress unconditionally.
+    const isPermanentBounce =
+      newStatus === 'bounced' && event.data?.bounce?.type?.toLowerCase() === 'permanent';
+    if (isPermanentBounce || newStatus === 'complained') {
       const recipient = event.data?.to?.[0];
       if (recipient) await autoSuppress(recipient, event.type);
     }

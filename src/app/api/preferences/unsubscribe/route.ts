@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getClientIp } from '@/lib/rateLimit';
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import {
   findByToken,
   applyUpdate,
@@ -49,11 +49,24 @@ export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get('token') ?? '';
   const stream = request.nextUrl.searchParams.get('stream');
   const origin = request.nextUrl.origin;
+  const confirm = stream && (STREAM_KEYS as string[]).includes(stream) ? stream : 'all';
   try {
+    // Over the limit: skip the DB lookup but still land the human on the
+    // preference center — the page validates the token itself, so a scanner
+    // burst from a shared gateway IP can't break a real click.
+    const rl = await checkRateLimit(`prefs-unsub-get:${getClientIp(request)}`, 30, 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.redirect(
+        new URL(
+          `/preferences?token=${encodeURIComponent(token)}&confirm=${encodeURIComponent(confirm)}`,
+          origin,
+        ),
+      );
+    }
+
     const pref = await findByToken(token);
     // Read-only: land on the preference center (valid token) or its invalid
     // state, and let the human confirm the unsubscribe there.
-    const confirm = stream && (STREAM_KEYS as string[]).includes(stream) ? stream : 'all';
     const url = pref
       ? `/preferences?token=${encodeURIComponent(pref.preference_token)}&confirm=${encodeURIComponent(confirm)}`
       : `/preferences?invalid=1`;
@@ -67,6 +80,16 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const token = request.nextUrl.searchParams.get('token') ?? '';
   try {
+    // Generous per-IP limit — one-click POSTs arrive from shared mail-provider
+    // infrastructure, so keep the ceiling high; 429 lets the client retry.
+    const rl = await checkRateLimit(`prefs-unsub-post:${getClientIp(request)}`, 60, 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfter ?? 60) } },
+      );
+    }
+
     // RFC 8058: turn off all marketing regardless of body; ack 200.
     await unsubscribe(request, token, null);
     return NextResponse.json({ ok: true });

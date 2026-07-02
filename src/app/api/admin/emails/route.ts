@@ -42,7 +42,7 @@ const ALLOWED_CATEGORY = new Set([
   'rollback_digest', 'form_error', 'feedback_request', 'broadcast', 'other',
 ]);
 const ALLOWED_STATUS = new Set([
-  'queued', 'sent', 'failed', 'skipped',
+  'queued', 'sent', 'failed', 'error', 'skipped',
   'delivered', 'opened', 'clicked', 'bounced', 'complained', 'delivery_delayed',
 ]);
 

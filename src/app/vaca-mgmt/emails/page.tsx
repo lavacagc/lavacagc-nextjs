@@ -35,12 +35,12 @@ const CATEGORIES = [
   'rollback_digest', 'form_error', 'feedback_request', 'broadcast', 'other',
 ];
 
-const STATUS_FILTERS = ['', 'sent', 'delivered', 'opened', 'clicked', 'bounced', 'failed'];
+const STATUS_FILTERS = ['', 'sent', 'delivered', 'opened', 'clicked', 'bounced', 'failed', 'error'];
 
 function statusBadge(row: EmailListRow) {
   const s = row.status;
   const variant =
-    s === 'bounced' || s === 'complained' || s === 'failed'
+    s === 'bounced' || s === 'complained' || s === 'failed' || s === 'error'
       ? 'destructive'
       : s === 'opened' || s === 'clicked' || s === 'delivered'
         ? 'default'

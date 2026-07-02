@@ -64,7 +64,7 @@ export default function PreferencesClient() {
   }, [load]);
 
   const save = useCallback(
-    async (next: StreamState, message: string) => {
+    async (next: StreamState, prev: StreamState, message: string) => {
       setSaving(true);
       setSavedMsg(null);
       try {
@@ -78,6 +78,7 @@ export default function PreferencesClient() {
         setStreams(data.streams);
         setSavedMsg(message);
       } catch {
+        setStreams(prev);
         setSavedMsg('Something went wrong saving your preferences. Please try again.');
       } finally {
         setSaving(false);
@@ -90,14 +91,14 @@ export default function PreferencesClient() {
     if (!streams) return;
     const next = { ...streams, [key]: !streams[key] };
     setStreams(next);
-    save(next, 'Saved.');
+    save(next, streams, 'Saved.');
   };
 
   const unsubscribeAll = () => {
     if (!streams) return;
     const next: StreamState = { home_care: false, buy_remodel: false, announcements: false };
     setStreams(next);
-    save(next, "You've been unsubscribed from all marketing emails.");
+    save(next, streams, "You've been unsubscribed from all marketing emails.");
   };
 
   const confirmLabel =
@@ -116,6 +117,7 @@ export default function PreferencesClient() {
     setStreams(next);
     save(
       next,
+      streams,
       target === 'all'
         ? "You've been unsubscribed from all marketing emails."
         : `You've been unsubscribed from ${confirmLabel}.`,
