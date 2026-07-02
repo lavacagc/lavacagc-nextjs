@@ -37,6 +37,13 @@ CREATE TABLE IF NOT EXISTS public.estimate_leads (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid()
 );
 
+-- project_images is prod-only (dashboard-created). 20260629030000_project_images_pair_key
+-- ALTERs it (adds pair_key) + indexes it; only that column is referenced, so a bare id
+-- is enough here. On prod this CREATE IF NOT EXISTS no-ops.
+CREATE TABLE IF NOT EXISTS public.project_images (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+);
+
 CREATE TABLE IF NOT EXISTS public.service_areas (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT,
