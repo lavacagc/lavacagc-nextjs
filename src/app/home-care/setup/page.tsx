@@ -28,7 +28,7 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   const homeowner = await findHomeownerById(access.homeownerId);
   if (!homeowner || homeowner.status === 'unsubscribed') redirect('/home-care');
 
-  // Prefill from any existing profile (so "edit my program" resumes state).
+  // Prefill from any existing profile (so the program bar's "Edit" re-entry resumes state).
   let initialStage: Stage | null = null;
   let initialSystems: HomeSystems = {};
   try {
