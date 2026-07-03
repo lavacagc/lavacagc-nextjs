@@ -57,6 +57,47 @@ function costLabel(lo: number | null, hi: number | null): string | null {
   return null;
 }
 const id = (key: string, season: string) => `${key}|${season}`;
+
+/**
+ * Task blurb clamped to two lines with an ellipsis; when the text actually
+ * overflows, the whole blurb becomes a tap target that expands/collapses it.
+ * Keeps rows compact, which matters most on mobile.
+ */
+function ClampedBlurb({ text, expanded, onToggle }: { text: string; expanded: boolean; onToggle: () => void }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [overflows, setOverflows] = useState(false);
+
+  useEffect(() => {
+    // Measure only while clamped — an expanded blurb never reports overflow.
+    if (expanded) return;
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setOverflows(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [text, expanded]);
+
+  const body = (
+    // line-clamp needs its own -webkit-box display, so only use block when expanded
+    <span ref={ref} className={`text-sm text-text-secondary leading-relaxed ${expanded ? 'block' : 'line-clamp-2'}`}>
+      {text}
+    </span>
+  );
+
+  if (!overflows && !expanded) return <span className="mt-0.5 block">{body}</span>;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      className="mt-0.5 block w-full cursor-pointer text-left"
+    >
+      {body}
+      <span className="mt-0.5 inline-block text-xs font-semibold text-primary">{expanded ? 'Show less' : 'Read more'}</span>
+    </button>
+  );
+}
 // Dismissal is scoped to this season of this year, so the card comes back next season.
 const catchUpDismissKey = (season: string) => `hc-catchup-dismissed:${seasonStart().getUTCFullYear()}-${season}`;
 
@@ -83,6 +124,16 @@ export default function HomeCareChecklistClient({
   const [catchUpDismissed, setCatchUpDismissed] = useState(false);
   const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
   const [stickyTop, setStickyTop] = useState(0);
+  const [expandedBlurbs, setExpandedBlurbs] = useState<Set<string>>(new Set());
+
+  const toggleBlurb = (k: string) => {
+    setExpandedBlurbs((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  };
 
   // The plan header sticks just below the site header, whose height varies by
   // breakpoint — measure it instead of hardcoding offsets.
@@ -292,7 +343,7 @@ export default function HomeCareChecklistClient({
               {freq && <span className="text-[11px] text-slate-400">· {freq}</span>}
               {cost && <span className="text-[11px] text-slate-400">· Pro est. {cost}</span>}
             </div>
-            <p className="text-sm text-text-secondary mt-0.5 leading-relaxed">{t.blurb}</p>
+            <ClampedBlurb text={t.blurb} expanded={expandedBlurbs.has(id(t.key, season))} onToggle={() => toggleBlurb(id(t.key, season))} />
             <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
               {hasGuideItem(season, t.key) && (
                 <a href={`/home-care/guides/${season}#${t.key}`} className="inline-block text-xs font-semibold text-primary hover:underline">
