@@ -160,8 +160,10 @@ export default function HomeCareChecklistClient({
       }
     }
     const payload = `${SHARE_TEXT} ${SHARE_URL}`;
+    let copied = false;
     try {
       await navigator.clipboard.writeText(payload);
+      copied = true;
     } catch {
       // Clipboard API blocked (permissions, older browsers) — legacy path.
       const ta = document.createElement('textarea');
@@ -171,11 +173,14 @@ export default function HomeCareChecklistClient({
       document.body.appendChild(ta);
       ta.select();
       try {
-        document.execCommand('copy');
+        copied = document.execCommand('copy');
+      } catch {
+        copied = false;
       } finally {
         ta.remove();
       }
     }
+    if (!copied) return;
     setShareState('copied');
     setTimeout(() => setShareState('idle'), 2500);
   };
@@ -392,6 +397,7 @@ export default function HomeCareChecklistClient({
           <button
             type="button"
             onClick={shareHomeCare}
+            aria-live="polite"
             className="mt-3 inline-flex items-center gap-2 rounded-lg bg-secondary px-4 py-2.5 text-sm font-bold text-secondary-foreground shadow-button transition-all hover:-translate-y-px"
           >
             <Share2 className="h-4 w-4" /> {shareState === 'copied' ? 'Link copied' : 'Share Home Care'}
@@ -465,6 +471,7 @@ export default function HomeCareChecklistClient({
         <button
           type="button"
           onClick={shareHomeCare}
+          aria-live="polite"
           className="mt-3 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-primary to-accent-sunset px-4 py-2.5 text-sm font-bold text-white shadow-button transition-all hover:-translate-y-px"
         >
           {shareState === 'copied' ? <Copy className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}

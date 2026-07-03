@@ -61,6 +61,11 @@ export async function GET(request: NextRequest) {
       `maintenance_catalog?select=key,title,blurb,bookable,diy_or_pro,priority,applies_to&active=eq.true&starter=eq.false&seasons=cs.%7B${season}%7D&order=priority.desc`,
     )) ?? [];
 
+    if (tasks.length === 0) {
+      console.error('home-care-newsletter: seasonal catalog returned no tasks');
+      return NextResponse.json({ ok: false, error: 'seasonal catalog returned no tasks' }, { status: 500 });
+    }
+
     const homeowners = (await supabaseRest<HomeownerRow[]>(
       'GET',
       'homeowners?select=id,first_name,email,unsubscribe_token,last_newsletter_at&status=eq.active',
