@@ -18,7 +18,6 @@ export type Stage = 'just_bought' | 'established' | 'new_construction' | 'sellin
 
 export interface StageDef {
   key: Stage;
-  emoji: string;
   label: string;
   tagline: string;
   /** One-liner shown on the "your program" step. */
@@ -28,7 +27,6 @@ export interface StageDef {
 export const STAGES: StageDef[] = [
   {
     key: 'just_bought',
-    emoji: '🏡',
     label: 'Just bought this home',
     tagline: 'New to this house',
     intro:
@@ -36,7 +34,6 @@ export const STAGES: StageDef[] = [
   },
   {
     key: 'established',
-    emoji: '🔧',
     label: 'Established owner',
     tagline: 'Keep up the routine',
     intro:
@@ -44,7 +41,6 @@ export const STAGES: StageDef[] = [
   },
   {
     key: 'new_construction',
-    emoji: '🆕',
     label: 'Newly built',
     tagline: 'New construction',
     intro:
@@ -52,7 +48,6 @@ export const STAGES: StageDef[] = [
   },
   {
     key: 'selling',
-    emoji: '💰',
     label: 'Getting ready to sell',
     tagline: 'Pre-listing prep',
     intro:

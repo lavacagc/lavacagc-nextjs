@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { Check, Plus, Wrench, ClipboardList, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Check, Plus, Wrench, ClipboardList, Sparkles, History, X } from 'lucide-react';
 import { hasGuideItem } from '@/lib/homecare/guides';
+import { prevSeason, seasonStart, type Season } from '@/lib/homecare/season';
 
 export interface ChecklistTask {
   key: string;
@@ -53,22 +54,50 @@ function costLabel(lo: number | null, hi: number | null): string | null {
   return null;
 }
 const id = (key: string, season: string) => `${key}|${season}`;
+// Dismissal is scoped to this season of this year, so the card comes back next season.
+const catchUpDismissKey = (season: string) => `hc-catchup-dismissed:${seasonStart().getUTCFullYear()}-${season}`;
 
 export default function HomeCareChecklistClient({
   tasks,
   doneItems,
   showStarter = true,
   currentSeason,
+  showCatchUp = false,
 }: {
   tasks: ChecklistTask[];
   doneItems: { task_key: string; season: string }[];
   showStarter?: boolean;
   currentSeason: string;
+  showCatchUp?: boolean;
 }) {
   const [done, setDone] = useState<Set<string>>(new Set(doneItems.map((d) => id(d.task_key, d.season))));
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [activeSeason, setActiveSeason] = useState<string>(SEASONS.includes(currentSeason as (typeof SEASONS)[number]) ? currentSeason : 'spring');
+  const [catchUpDismissed, setCatchUpDismissed] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(catchUpDismissKey(currentSeason)) === '1') setCatchUpDismissed(true);
+    } catch {
+      // localStorage unavailable (e.g. blocked storage) — fall back to session-only dismissal
+    }
+  }, [currentSeason]);
+
+  const dismissCatchUp = () => {
+    setCatchUpDismissed(true);
+    try {
+      window.localStorage.setItem(catchUpDismissKey(currentSeason), '1');
+    } catch {
+      // localStorage unavailable — dismissal lasts for this page view only
+    }
+  };
+
+  // What slipped last season: applicable recurring tasks the member never
+  // checked off. Recomputed from live state so checking one shrinks the list.
+  const lastSeason = prevSeason(currentSeason as Season);
+  const missedTasks = tasks.filter((t) => !t.starter && t.seasons.includes(lastSeason) && !done.has(id(t.key, lastSeason)));
+  const showCatchUpCard = showCatchUp && !catchUpDismissed && missedTasks.length > 0 && activeSeason === currentSeason;
 
   const starterTasks = tasks.filter((t) => t.starter);
   const seasonTasks = tasks.filter((t) => !t.starter && t.seasons.includes(activeSeason));
@@ -181,6 +210,48 @@ export default function HomeCareChecklistClient({
           </div>
           <p className="text-sm text-text-secondary mb-3">One-time setup for a home you just bought — knock these out first, then the seasonal stuff is a breeze.</p>
           <div className="space-y-3">{starterTasks.map((t) => Row(t, 'starter'))}</div>
+        </div>
+      )}
+
+      {/* Catch-up: what slipped last season (returning members only) */}
+      {showCatchUpCard && (
+        <div className="rounded-2xl border-2 border-amber-300/70 bg-amber-50 p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 mb-1">
+              <History className="h-5 w-5 text-amber-700" />
+              <h2 className="text-lg font-extrabold text-text-primary">
+                Left over from {SEASON_LABEL[lastSeason]}: {missedTasks.length} task{missedTasks.length === 1 ? '' : 's'}
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={dismissCatchUp}
+              aria-label="Dismiss catch-up"
+              className="group flex shrink-0 items-start justify-center"
+            >
+              <span className="flex h-6 w-6 items-center justify-center rounded-full text-amber-700/70 group-hover:bg-amber-100 group-hover:text-amber-900 transition-colors">
+                <X className="h-4 w-4" />
+              </span>
+            </button>
+          </div>
+          <p className="text-sm text-text-secondary mb-3">
+            These didn&apos;t get checked off last season. Most still matter — knock them out (or check off the ones you already did) before diving into {SEASON_LABEL[activeSeason]}.
+          </p>
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {missedTasks.slice(0, 4).map((t) => (
+              <span key={t.key} className="rounded-full bg-white border border-amber-200 text-xs font-semibold text-text-secondary px-2.5 py-1">{t.title}</span>
+            ))}
+            {missedTasks.length > 4 && (
+              <span className="rounded-full bg-white border border-amber-200 text-xs font-semibold text-text-secondary px-2.5 py-1">+{missedTasks.length - 4} more</span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveSeason(lastSeason)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-4 py-2.5 text-sm font-bold text-secondary-foreground shadow-button transition-all hover:-translate-y-px"
+          >
+            Review {SEASON_LABEL[lastSeason]} →
+          </button>
         </div>
       )}
 

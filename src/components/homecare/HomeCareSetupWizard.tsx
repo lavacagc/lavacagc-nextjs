@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, ChevronLeft, Loader2, Sparkles, ArrowRight } from 'lucide-react';
+import { Check, ChevronLeft, Loader2, Sparkles, ArrowRight, Home, Wrench, HardHat, Tag, type LucideIcon } from 'lucide-react';
 import {
   STAGES,
   SYSTEM_QUESTIONS,
@@ -13,6 +13,14 @@ import {
 } from '@/lib/homecare/profile';
 
 const STEP_LABELS = ['Your stage', 'Your program', 'Your home', 'A few details', 'Done'];
+
+// Brand icon per stage (no-emoji design rule — lucide icons only).
+const STAGE_ICONS: Record<Stage, LucideIcon> = {
+  just_bought: Home,
+  established: Wrench,
+  new_construction: HardHat,
+  selling: Tag,
+};
 
 export interface WizardInitial {
   stage: Stage | null;
@@ -104,6 +112,7 @@ export default function HomeCareSetupWizard({
             <div className="grid sm:grid-cols-2 gap-3">
               {STAGES.map((s) => {
                 const on = stage === s.key;
+                const StageIcon = STAGE_ICONS[s.key];
                 return (
                   <button
                     key={s.key}
@@ -111,7 +120,7 @@ export default function HomeCareSetupWizard({
                     onClick={() => setStage(s.key)}
                     className={`flex flex-col items-start gap-1 rounded-xl border-2 p-4 text-left transition-all ${on ? 'border-primary bg-primary/5 shadow-button' : 'border-border hover:border-primary/40'}`}
                   >
-                    <span className="text-2xl">{s.emoji}</span>
+                    <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${on ? 'bg-primary text-white' : 'bg-primary/10 text-primary'}`}><StageIcon className="h-5 w-5" /></span>
                     <span className="font-bold text-text-primary">{s.label}</span>
                     <span className="text-sm text-text-secondary">{s.tagline}</span>
                   </button>
@@ -126,7 +135,7 @@ export default function HomeCareSetupWizard({
           <div>
             <div className="flex items-center gap-2 text-primary mb-3"><Sparkles className="h-5 w-5" /><span className="text-xs font-bold uppercase tracking-wider">Your program</span></div>
             <h2 className="text-2xl font-extrabold text-text-primary mb-3">
-              {stageDef.emoji} {stageDef.label}
+              {stageDef.label}
             </h2>
             <p className="text-lg text-text-secondary leading-relaxed mb-5">{stageDef.intro}</p>
             <ul className="space-y-2">
@@ -221,7 +230,7 @@ export default function HomeCareSetupWizard({
             <div className="flex items-center gap-2 text-secondary mb-3"><Check className="h-5 w-5" /><span className="text-xs font-bold uppercase tracking-wider">All set</span></div>
             <h2 className="text-2xl font-extrabold text-text-primary mb-3">Your personalized plan is ready</h2>
             <div className="rounded-xl bg-muted/50 border border-border p-4 mb-4">
-              <p className="text-sm"><span className="font-bold text-text-primary">Stage:</span> <span className="text-text-secondary">{stageDef ? `${stageDef.emoji} ${stageDef.label}` : '—'}</span></p>
+              <p className="text-sm"><span className="font-bold text-text-primary">Stage:</span> <span className="text-text-secondary">{stageDef ? stageDef.label : '—'}</span></p>
               <p className="text-sm mt-2"><span className="font-bold text-text-primary">Your home has:</span> </p>
               <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {SYSTEM_QUESTIONS.filter((q) => systems[q.key] === true).map((q) => (
