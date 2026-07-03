@@ -82,6 +82,19 @@ export default function HomeCareChecklistClient({
   const [activeSeason, setActiveSeason] = useState<string>(SEASONS.includes(currentSeason as (typeof SEASONS)[number]) ? currentSeason : 'spring');
   const [catchUpDismissed, setCatchUpDismissed] = useState(false);
   const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
+  const [stickyTop, setStickyTop] = useState(0);
+
+  // The plan header sticks just below the site header, whose height varies by
+  // breakpoint — measure it instead of hardcoding offsets.
+  useEffect(() => {
+    const measure = () => {
+      const header = document.querySelector('header');
+      setStickyTop(header ? Math.round(header.getBoundingClientRect().height) : 0);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
   const shareResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -119,10 +132,17 @@ export default function HomeCareChecklistClient({
   const showStarterSection = showStarter && starterTasks.length > 0;
   const hasBookable = tasks.some((t) => t.bookable);
 
-  // Season progress (dismissed tasks are out of the denominator).
+  // Plan progress: the active season's tasks plus (for members who see them)
+  // the one-time essentials — one bar for the whole visible plan, dismissed
+  // tasks out of the denominator.
+  const trackedStarter = showStarterSection ? starterTasks : [];
   const seasonDone = seasonTasks.filter((t) => done.has(id(t.key, activeSeason))).length;
-  const seasonPct = seasonTasks.length > 0 ? Math.round((seasonDone / seasonTasks.length) * 100) : 0;
-  const seasonComplete = seasonTasks.length > 0 && seasonDone === seasonTasks.length;
+  const starterDone = trackedStarter.filter((t) => done.has(id(t.key, 'starter'))).length;
+  const planTotal = seasonTasks.length + trackedStarter.length;
+  const planDone = seasonDone + starterDone;
+  const planPct = planTotal > 0 ? Math.round((planDone / planTotal) * 100) : 0;
+  const planComplete = planTotal > 0 && planDone === planTotal;
+  const planLabel = trackedStarter.length > 0 ? `${SEASON_LABEL[activeSeason]} + essentials` : SEASON_LABEL[activeSeason];
 
   const setDismissState = async (key: string, dismiss: boolean) => {
     setDismissed((prev) => {
@@ -316,14 +336,63 @@ export default function HomeCareChecklistClient({
 
   return (
     <div className="space-y-4 pb-24">
-      {showStarterSection && (
-        <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <Sparkles className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-extrabold text-text-primary">New Homeowner Essentials</h2>
+      {/* Sticky plan header: season tabs + one progress bar for the whole
+          visible plan (season + essentials). Sits just below the site header
+          (measured at runtime) so progress stays visible while checking off. */}
+      <div
+        className="sticky z-30 -mx-4 border-b border-border bg-background/95 px-4 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/75 sm:-mx-1 sm:rounded-xl sm:border sm:px-3"
+        style={{ top: stickyTop }}
+      >
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {SEASONS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setActiveSeason(s)}
+              className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-bold transition-colors ${activeSeason === s ? 'bg-secondary text-secondary-foreground' : 'bg-muted text-text-secondary hover:bg-muted/70'}`}
+            >
+              {SEASON_LABEL[s]}{s === currentSeason ? ' · now' : ''}
+            </button>
+          ))}
+        </div>
+        {planTotal > 0 && (
+          <div className="mt-1.5">
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2 font-bold text-text-primary">
+                <ClipboardList className="h-4 w-4 text-primary" />
+                {planLabel} · {planDone} of {planTotal} done
+              </span>
+              <span className="text-xs font-bold text-text-secondary">{planPct}%</span>
+            </div>
+            <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={planPct} aria-valuemin={0} aria-valuemax={100} aria-label={`${planLabel} progress`}>
+              <div className="h-full rounded-full bg-gradient-to-r from-primary to-accent-sunset transition-all duration-500" style={{ width: `${planPct}%` }} />
+            </div>
+            <p className="mt-1 text-xs text-text-muted">
+              {planComplete ? 'Everything handled — progress is saved.' : `${planTotal - planDone} to go — progress is saved.`}
+            </p>
           </div>
-          <p className="text-sm text-text-secondary mb-3">One-time setup for a home you just bought — knock these out first, then the seasonal stuff is a breeze.</p>
-          <div className="space-y-3">{starterTasks.map((t) => Row(t, 'starter'))}</div>
+        )}
+      </div>
+
+      {/* Plan 100% celebration */}
+      {planComplete && activeSeason === currentSeason && (
+        <div className="rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/10 to-accent-sunset/10 p-5 text-center">
+          <PartyPopper className="mx-auto h-8 w-8 text-primary" />
+          <h3 className="mt-2 text-lg font-extrabold text-text-primary">{SEASON_LABEL[activeSeason]}: done.</h3>
+          <p className="mx-auto mt-1 max-w-md text-sm text-text-secondary">
+            {trackedStarter.length > 0
+              ? 'Every task in your plan is handled — essentials and all. Your house officially likes you.'
+              : `Every ${SEASON_LABEL[activeSeason].toLowerCase()} task is handled — your house officially likes you.`}{' '}
+            Know someone who&apos;d want this kind of peace of mind?
+          </p>
+          <button
+            type="button"
+            onClick={shareHomeCare}
+            aria-live="polite"
+            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-secondary px-4 py-2.5 text-sm font-bold text-secondary-foreground shadow-button transition-all hover:-translate-y-px"
+          >
+            <Share2 className="h-4 w-4" /> {shareState === 'copied' ? 'Link copied' : 'Share Home Care'}
+          </button>
         </div>
       )}
 
@@ -369,58 +438,6 @@ export default function HomeCareChecklistClient({
         </div>
       )}
 
-      {/* Season tabs */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
-        {SEASONS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setActiveSeason(s)}
-            className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-bold transition-colors ${activeSeason === s ? 'bg-secondary text-secondary-foreground' : 'bg-muted text-text-secondary hover:bg-muted/70'}`}
-          >
-            {SEASON_LABEL[s]}{s === currentSeason ? ' · now' : ''}
-          </button>
-        ))}
-      </div>
-
-      {/* Season progress bar (dismissed tasks excluded from the denominator) */}
-      {seasonTasks.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="flex items-center gap-2 font-bold text-text-primary">
-              <ClipboardList className="h-4 w-4 text-primary" />
-              {SEASON_LABEL[activeSeason]} · {seasonDone} of {seasonTasks.length} done
-            </span>
-            <span className="text-xs font-bold text-text-secondary">{seasonPct}%</span>
-          </div>
-          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={seasonPct} aria-valuemin={0} aria-valuemax={100} aria-label={`${SEASON_LABEL[activeSeason]} progress`}>
-            <div className="h-full rounded-full bg-gradient-to-r from-primary to-accent-sunset transition-all duration-500" style={{ width: `${seasonPct}%` }} />
-          </div>
-          <p className="mt-1 text-xs text-text-muted">
-            {seasonComplete ? 'Everything handled — progress is saved.' : `${seasonTasks.length - seasonDone} to go — progress is saved.`}
-          </p>
-        </div>
-      )}
-
-      {/* Season 100% celebration */}
-      {seasonComplete && activeSeason === currentSeason && (
-        <div className="rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/10 to-accent-sunset/10 p-5 text-center">
-          <PartyPopper className="mx-auto h-8 w-8 text-primary" />
-          <h3 className="mt-2 text-lg font-extrabold text-text-primary">{SEASON_LABEL[activeSeason]}: done.</h3>
-          <p className="mx-auto mt-1 max-w-md text-sm text-text-secondary">
-            Every {SEASON_LABEL[activeSeason].toLowerCase()} task is handled — your house officially likes you. Know someone who&apos;d want this kind of peace of mind?
-          </p>
-          <button
-            type="button"
-            onClick={shareHomeCare}
-            aria-live="polite"
-            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-secondary px-4 py-2.5 text-sm font-bold text-secondary-foreground shadow-button transition-all hover:-translate-y-px"
-          >
-            <Share2 className="h-4 w-4" /> {shareState === 'copied' ? 'Link copied' : 'Share Home Care'}
-          </button>
-        </div>
-      )}
-
       {hasBookable && selected.size === 0 && (
         <div className="flex items-center gap-2 rounded-lg bg-primary/5 px-3 py-2 text-xs font-semibold text-text-secondary">
           <span className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-primary/40 text-primary"><Plus className="h-3.5 w-3.5" /></span>
@@ -429,6 +446,17 @@ export default function HomeCareChecklistClient({
       )}
 
       <div className="space-y-3">
+        {/* One-time essentials, part of the same list so the plan bar tracks them */}
+        {showStarterSection && (
+          <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-extrabold text-text-primary">New Homeowner Essentials</h2>
+            </div>
+            <p className="text-sm text-text-secondary mb-3">One-time setup for a home you just bought — knock these out first, then the seasonal stuff is a breeze.</p>
+            <div className="space-y-3">{starterTasks.map((t) => Row(t, 'starter'))}</div>
+          </div>
+        )}
         {SEASON_SPOTLIGHTS[activeSeason] && (
           <div className="rounded-2xl border border-accent-sunset/30 bg-gradient-to-br from-primary/5 to-accent-sunset/10 p-4">
             <p className="mb-1 text-[11px] font-extrabold uppercase tracking-[0.12em] text-accent-sunset">{SEASON_SPOTLIGHTS[activeSeason].eyebrow}</p>
