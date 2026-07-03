@@ -66,6 +66,7 @@ export function buildReleaseEmail(args: ReleaseEmailArgs): { subject: string; ht
 
       <div style="text-align:center;margin:4px 0 8px">
         <a href="${portalUrl}" style="display:inline-block;background:linear-gradient(135deg,#EE9639,#FF6F31);color:#fff;font-weight:800;text-decoration:none;padding:13px 26px;border-radius:10px;font-size:15px">Open my checklist →</a>
+        <div style="margin-top:10px;font-size:12px"><a href="${baseUrl}/home-care/whats-new?utm_source=release_email&amp;utm_medium=email&amp;utm_campaign=home_care_release" style="color:#5b6b82;text-decoration:underline">Browse every update we've shipped</a></div>
       </div>
 
       <!-- Share line -->

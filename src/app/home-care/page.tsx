@@ -93,6 +93,11 @@ export default async function HomeCarePage({ searchParams }: { searchParams: Pro
                 <p className="text-xl text-text-secondary leading-relaxed">
                   A free, personalized maintenance checklist for your Northern NJ home — gutters, furnace, sump pump, the works — delivered each season. Do it yourself, or book La Vaca to handle it. No account required.
                 </p>
+                <p className="mt-4">
+                  <Link href="/home-care/whats-new" className="inline-flex items-center gap-1 text-sm font-bold text-primary hover:underline">
+                    See what&apos;s new in Home Care →
+                  </Link>
+                </p>
               </div>
               <div>
                 <HomeCareOptInForm />
