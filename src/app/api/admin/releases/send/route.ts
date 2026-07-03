@@ -3,7 +3,9 @@
  *
  *   POST /api/admin/releases/send { mode: 'test' }              → one email to the signed-in admin only
  *   POST /api/admin/releases/send { mode: 'all', confirm: true } → every active Home Care member,
- *        preference-aware (home_care stream). The queued entries are claimed
+ *        preference-aware (home_care stream), capped at RECIPIENT_CAP recipients
+ *        per run (the response carries a warning naming how many were left
+ *        out). The queued entries are claimed
  *        (stamped 'sent') atomically up front so a concurrent trigger or a
  *        retry after a mid-batch crash can never double-send; if nothing was
  *        delivered for a non-suppression reason the claim is rolled back to
