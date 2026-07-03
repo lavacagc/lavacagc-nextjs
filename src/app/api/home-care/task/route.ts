@@ -1,5 +1,7 @@
 /**
- * Toggle a homeowner's checklist task done/undone (the "stored" checklist).
+ * Toggle a homeowner's checklist task done/undone (the "stored" checklist),
+ * or dismiss/restore a task via `dismiss: boolean` ("not relevant to my home",
+ * stored as one season='all' row with status 'dismissed'; restore sets 'todo').
  * Cookie-gated by hc_access. Upserts homeowner_maintenance for the current season.
  */
 import { NextRequest, NextResponse } from 'next/server';
@@ -24,13 +26,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Not signed in' }, { status: 401 });
     }
 
-    const body = (await request.json().catch(() => ({}))) as { task_key?: string; done?: boolean; season?: string };
+    const body = (await request.json().catch(() => ({}))) as { task_key?: string; done?: boolean; season?: string; dismiss?: boolean };
     const taskKey = (body.task_key ?? '').slice(0, 80);
     if (!taskKey) return NextResponse.json({ ok: false, error: 'task_key required' }, { status: 400 });
+    const now = new Date().toISOString();
+
+    // Dismissal ("not relevant to my home") is task-level, not per-season:
+    // one season='all' marker row. Restore flips it to 'todo', which every
+    // reader ignores, so the same upsert handles both directions.
+    if (typeof body.dismiss === 'boolean') {
+      await supabaseRest(
+        'POST',
+        'homeowner_maintenance?on_conflict=homeowner_id,task_key,season',
+        {
+          homeowner_id: access.homeownerId,
+          task_key: taskKey,
+          season: 'all',
+          status: body.dismiss ? 'dismissed' : 'todo',
+          completed_at: null,
+          updated_at: now,
+        },
+        { prefer: 'resolution=merge-duplicates,return=minimal' },
+      );
+      return NextResponse.json({ ok: true, task_key: taskKey, dismissed: body.dismiss });
+    }
+
     const done = body.done === true;
     const validSeasons = ['spring', 'summer', 'fall', 'winter', 'starter'];
     const season = validSeasons.includes(body.season ?? '') ? (body.season as string) : currentSeason();
-    const now = new Date().toISOString();
 
     await supabaseRest(
       'POST',

@@ -42,7 +42,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   const [allTasks, profileRows, doneRows] = await Promise.all([
     supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title,blurb,applies_to,stages,seasons,frequency,starter,diy_or_pro,bookable,est_cost_low,est_cost_high,priority&active=eq.true&order=priority.desc`),
     supabaseRest<{ systems: HomeSystems; stage: Stage | null; homeowner_type: string | null }[]>('GET', `home_profiles?select=systems,stage,homeowner_type&homeowner_id=eq.${homeowner.id}&limit=1`),
-    supabaseRest<{ task_key: string; season: string }[]>('GET', `homeowner_maintenance?select=task_key,season&homeowner_id=eq.${homeowner.id}&status=eq.done`),
+    supabaseRest<{ task_key: string; season: string; status: string }[]>('GET', `homeowner_maintenance?select=task_key,season,status&homeowner_id=eq.${homeowner.id}&status=in.(done,dismissed)`),
   ]);
 
   const systems = profileRows?.[0]?.systems ?? null;
@@ -50,7 +50,8 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   const stageDef = getStage(stage);
   const hasProfile = (!!systems && Object.keys(systems).length > 0) || stage !== null;
   const tasks = filterTasksForProfile(allTasks ?? [], systems, stage);
-  const doneItems = doneRows ?? [];
+  const doneItems = (doneRows ?? []).filter((r) => r.status === 'done').map(({ task_key, season }) => ({ task_key, season }));
+  const dismissedKeys = (doneRows ?? []).filter((r) => r.status === 'dismissed').map((r) => r.task_key);
   const ownedSystems = SYSTEM_QUESTIONS.filter((q) => systems?.[q.key] === true);
   const greeting = homeowner.first_name ? `Welcome back, ${homeowner.first_name}` : 'Your home checklist';
 
@@ -127,7 +128,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
             {(tasks?.length ?? 0) === 0 ? (
               <p className="text-text-secondary">Your checklist is being prepared — check back soon.</p>
             ) : (
-              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} />
+              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} dismissedKeys={dismissedKeys} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} />
             )}
           </div>
         </section>

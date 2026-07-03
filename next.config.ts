@@ -4,6 +4,15 @@ const nextConfig: NextConfig = {
   // Enable React strict mode for better development experience
   reactStrictMode: true,
 
+  // Several modules create a Supabase client at module scope, which throws
+  // during `next build` page-data collection when these vars are unset. The
+  // no-mistakes gate builds in a secret-free worktree, so fall back to inert
+  // placeholders there; real env values (Vercel, .env.local) take precedence.
+  env: {
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co',
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'sb_placeholder_anon_key',
+  },
+
   // Image optimization
   images: {
     formats: ['image/webp', 'image/avif'],
