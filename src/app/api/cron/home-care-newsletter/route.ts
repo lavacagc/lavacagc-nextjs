@@ -25,6 +25,7 @@ export const maxDuration = 300;
 const SEASON_START_MONTHS = new Set([2, 5, 8, 11]); // Mar, Jun, Sep, Dec (0-indexed)
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const MAX_PER_RUN = 400;
+const DISMISSED_CHUNK = 20;
 
 interface HomeownerRow {
   id: string;
@@ -72,26 +73,40 @@ export async function GET(request: NextRequest) {
     )) ?? [];
     const systemsByOwner = new Map(profiles.map((p) => [p.homeowner_id, p.systems]));
 
-    // Tasks each member marked "not relevant to my home" stay out of their email.
-    const dismissedRows = (await supabaseRest<{ homeowner_id: string; task_key: string }[]>(
-      'GET',
-      'homeowner_maintenance?select=homeowner_id,task_key&status=eq.dismissed',
-    )) ?? [];
-    const dismissedByOwner = new Map<string, Set<string>>();
-    for (const r of dismissedRows) {
-      if (!dismissedByOwner.has(r.homeowner_id)) dismissedByOwner.set(r.homeowner_id, new Set());
-      dismissedByOwner.get(r.homeowner_id)!.add(r.task_key);
-    }
-
     const eligible = homeowners.filter((h) => !sameMonth(h.last_newsletter_at, now)).slice(0, MAX_PER_RUN);
+
+    // Tasks each member marked "not relevant to my home" stay out of their email.
+    // Fetched per chunk of this run's recipients to stay under PostgREST's
+    // response-row cap and keep the in-list URLs a sane length.
+    const dismissedByOwner = new Map<string, Set<string>>();
+    for (let i = 0; i < eligible.length; i += DISMISSED_CHUNK) {
+      const ids = eligible.slice(i, i + DISMISSED_CHUNK).map((h) => h.id).join(',');
+      const rows = (await supabaseRest<{ homeowner_id: string; task_key: string }[]>(
+        'GET',
+        `homeowner_maintenance?select=homeowner_id,task_key&status=eq.dismissed&homeowner_id=in.(${ids})`,
+      )) ?? [];
+      for (const r of rows) {
+        if (!dismissedByOwner.has(r.homeowner_id)) dismissedByOwner.set(r.homeowner_id, new Set());
+        dismissedByOwner.get(r.homeowner_id)!.add(r.task_key);
+      }
+    }
 
     let sent = 0;
     let suppressed = 0;
+    let emptySkipped = 0;
     const failures: string[] = [];
     if (!dryRun) {
       for (const h of eligible) {
         const hidden = dismissedByOwner.get(h.id);
         const personalTasks = filterTasksForProfile(tasks, systemsByOwner.get(h.id) ?? null).filter((t) => !hidden?.has(t.key));
+        if (personalTasks.length === 0) {
+          // Nothing left after profile + dismissal filtering - a member who hid
+          // everything opted out of being nagged, so skip the send. Advance
+          // last_newsletter_at so the row isn't re-attempted every run this month.
+          emptySkipped += 1;
+          await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
+          continue;
+        }
         // Per-recipient preference-center link (best-effort — fall back to the
         // legacy unsubscribe link alone if the lookup fails).
         const preferencesUrl = await preferencesUrlFor(origin, h.email).catch(() => undefined);
@@ -131,6 +146,7 @@ export async function GET(request: NextRequest) {
       eligible: eligible.length,
       sent,
       suppressed,
+      empty_skipped: emptySkipped,
       failures: failures.length,
       dryRun,
     });

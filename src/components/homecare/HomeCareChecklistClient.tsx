@@ -118,23 +118,28 @@ export default function HomeCareChecklistClient({
   const seasonComplete = seasonTasks.length > 0 && seasonDone === seasonTasks.length;
 
   const setDismissState = async (key: string, dismiss: boolean) => {
-    const next = new Set(dismissed);
-    if (dismiss) next.add(key);
-    else next.delete(key);
-    setDismissed(next);
+    setDismissed((prev) => {
+      const next = new Set(prev);
+      if (dismiss) next.add(key);
+      else next.delete(key);
+      return next;
+    });
     setBusy(`dismiss|${key}`);
     try {
-      await fetch('/api/home-care/task', {
+      const res = await fetch('/api/home-care/task', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({ task_key: key, dismiss }),
       });
+      if (!res.ok) throw new Error(`dismiss failed: ${res.status}`);
     } catch {
-      const revert = new Set(dismissed);
-      if (dismiss) revert.delete(key);
-      else revert.add(key);
-      setDismissed(revert);
+      setDismissed((prev) => {
+        const revert = new Set(prev);
+        if (dismiss) revert.delete(key);
+        else revert.add(key);
+        return revert;
+      });
     } finally {
       setBusy(null);
     }
@@ -177,24 +182,29 @@ export default function HomeCareChecklistClient({
 
   const toggleDone = async (key: string, season: string) => {
     const k = id(key, season);
-    const next = new Set(done);
-    const nowDone = !next.has(k);
-    if (nowDone) next.add(k);
-    else next.delete(k);
-    setDone(next);
+    const nowDone = !done.has(k);
+    setDone((prev) => {
+      const next = new Set(prev);
+      if (nowDone) next.add(k);
+      else next.delete(k);
+      return next;
+    });
     setBusy(k);
     try {
-      await fetch('/api/home-care/task', {
+      const res = await fetch('/api/home-care/task', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({ task_key: key, season, done: nowDone }),
       });
+      if (!res.ok) throw new Error(`task update failed: ${res.status}`);
     } catch {
-      const revert = new Set(done);
-      if (nowDone) revert.delete(k);
-      else revert.add(k);
-      setDone(revert);
+      setDone((prev) => {
+        const revert = new Set(prev);
+        if (nowDone) revert.delete(k);
+        else revert.add(k);
+        return revert;
+      });
     } finally {
       setBusy(null);
     }
@@ -377,7 +387,7 @@ export default function HomeCareChecklistClient({
           <PartyPopper className="mx-auto h-8 w-8 text-primary" />
           <h3 className="mt-2 text-lg font-extrabold text-text-primary">{SEASON_LABEL[activeSeason]}: done.</h3>
           <p className="mx-auto mt-1 max-w-md text-sm text-text-secondary">
-            Every {SEASON_LABEL[activeSeason].toLowerCase()} task is handled — your house officially likes you. Know someone who'd want this kind of peace of mind?
+            Every {SEASON_LABEL[activeSeason].toLowerCase()} task is handled — your house officially likes you. Know someone who&apos;d want this kind of peace of mind?
           </p>
           <button
             type="button"
