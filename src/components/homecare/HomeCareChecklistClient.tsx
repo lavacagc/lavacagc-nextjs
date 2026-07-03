@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Plus, Wrench, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy } from 'lucide-react';
 import { hasGuideItem } from '@/lib/homecare/guides';
-import { prevSeason, seasonStart, type Season } from '@/lib/homecare/season';
+import { prevSeason, seasonStart, SEASONS, type Season } from '@/lib/homecare/season';
 
 const SHARE_URL = 'https://www.lavacagc.com/home-care?utm_source=member_share&utm_medium=portal&utm_campaign=home_care_share';
 const SHARE_TEXT = 'I use this free seasonal checklist to stay on top of the house — takes 20 seconds to set up, no account.';
@@ -22,7 +22,6 @@ export interface ChecklistTask {
   stages?: string[];
 }
 
-const SEASONS = ['spring', 'summer', 'fall', 'winter'] as const;
 const SEASON_LABEL: Record<string, string> = { spring: 'Spring', summer: 'Summer', fall: 'Fall', winter: 'Winter' };
 const FREQ_LABEL: Record<string, string> = { quarterly: 'Every few months', annual: 'Once a year' };
 
@@ -336,7 +335,7 @@ export default function HomeCareChecklistClient({
     return (
       <div key={`${t.key}-${season}`} className={`rounded-xl border bg-card p-4 shadow-card transition-colors ${isSel ? 'border-primary bg-primary/5' : 'border-border'} ${isDone ? 'opacity-70' : ''}`}>
         {/* Title line: checkbox + title + badges (+ estimate toggle). The
-            checkbox keeps its 44px tap target but negative margins shrink its
+            checkbox keeps a tall tap target but negative margins shrink its
             layout footprint so the title hugs the left edge — and the blurb
             below runs the full card width instead of indenting under it. */}
         <div className="flex items-center gap-2">
@@ -347,7 +346,9 @@ export default function HomeCareChecklistClient({
             aria-label={isDone ? 'Mark not done' : 'Mark done'}
             className="group -my-2.5 -ml-3 -mr-1 flex shrink-0 items-center justify-center"
           >
-            {/* 20px visible box inside the 44px tap target (global button min-size = WCAG AAA) */}
+            {/* 20px visible box inside a 44px-tall button; the full-width blurb
+                below overlaps the bottom ~10px, so the effective tap target is
+                ~34px — still above the WCAG AA minimum of 24px */}
             <span className={`flex h-5 w-5 items-center justify-center rounded-md border-2 transition-colors ${isDone ? 'border-secondary bg-secondary text-white' : 'border-slate-300 group-hover:border-primary'}`}>
               {isDone && <Check className="h-3.5 w-3.5" />}
             </span>
@@ -560,9 +561,9 @@ export default function HomeCareChecklistClient({
             </a>
           </div>
         )}
-        {seasonTasks.length === 0 ? (
+        {listMinimized ? null : seasonTasks.length === 0 ? (
           <p className="text-text-secondary">Nothing for {SEASON_LABEL[activeSeason]} with your current home details.</p>
-        ) : listMinimized ? null : (
+        ) : (
           sinkDone(seasonTasks, activeSeason).map((t) => Row(t, activeSeason))
         )}
       </div>

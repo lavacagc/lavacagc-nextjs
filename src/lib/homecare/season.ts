@@ -1,5 +1,8 @@
 /** Northern-NJ season from a date. Pure + testable. */
-export type Season = 'spring' | 'summer' | 'fall' | 'winter';
+
+/** Single source of truth for the four seasons, in display order (spring first). */
+export const SEASONS = ['spring', 'summer', 'fall', 'winter'] as const;
+export type Season = (typeof SEASONS)[number];
 
 /** Single source of truth for season boundaries: season → UTC start month (0=Jan). Each season runs 3 months. */
 const SEASON_START_MONTH: Record<Season, number> = {
@@ -9,11 +12,9 @@ const SEASON_START_MONTH: Record<Season, number> = {
   fall: 8, // Sep–Nov
 };
 
-const SEASON_ORDER: Season[] = ['winter', 'spring', 'summer', 'fall'];
-
 export function currentSeason(date: Date = new Date()): Season {
   const m = date.getUTCMonth(); // 0=Jan
-  return SEASON_ORDER.find((s) => (m - SEASON_START_MONTH[s] + 12) % 12 < 3) ?? 'winter';
+  return SEASONS.find((s) => (m - SEASON_START_MONTH[s] + 12) % 12 < 3) ?? 'winter';
 }
 
 export const SEASON_LABEL: Record<Season, string> = {
@@ -25,12 +26,12 @@ export const SEASON_LABEL: Record<Season, string> = {
 
 /** The next season after the given one (for "coming up" hints). */
 export function nextSeason(s: Season): Season {
-  return SEASON_ORDER[(SEASON_ORDER.indexOf(s) + 1) % SEASON_ORDER.length];
+  return SEASONS[(SEASONS.indexOf(s) + 1) % SEASONS.length];
 }
 
 /** The season before the given one (for "catch up on what you missed"). */
 export function prevSeason(s: Season): Season {
-  return SEASON_ORDER[(SEASON_ORDER.indexOf(s) + 3) % SEASON_ORDER.length];
+  return SEASONS[(SEASONS.indexOf(s) + 3) % SEASONS.length];
 }
 
 /**
@@ -45,9 +46,7 @@ export function seasonStart(date: Date = new Date()): Date {
 
 /**
  * UTC start of the most recent occurrence of season `s` (this year's if it has
- * begun, otherwise last year's). A completion only "counts" for a season while
- * that occurrence is the latest one — when the season next comes around, the
- * checkmark naturally expires and the checklist resets for the new year.
+ * begun, otherwise last year's).
  */
 export function mostRecentSeasonStart(s: Season, date: Date = new Date()): Date {
   const m = SEASON_START_MONTH[s];
@@ -55,4 +54,18 @@ export function mostRecentSeasonStart(s: Season, date: Date = new Date()): Date 
   return candidate.getTime() <= date.getTime()
     ? candidate
     : new Date(Date.UTC(date.getUTCFullYear() - 1, m, 1));
+}
+
+/**
+ * UTC cutoff for the seasonal reset: a completion of season `s` counts while
+ * `completed_at >= completionCutoff(s)`, then expires so the checklist starts
+ * fresh each year. The cutoff is the end of the occurrence BEFORE the most
+ * recent one (its start + 3 months = most recent start − 9 months), not the
+ * most recent start itself: season tabs are freely browsable, so checking off
+ * a task shortly before its season begins is legitimate prep and must count
+ * toward the upcoming occurrence instead of silently expiring on day one.
+ */
+export function completionCutoff(s: Season, date: Date = new Date()): Date {
+  const start = mostRecentSeasonStart(s, date);
+  return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - 9, 1));
 }

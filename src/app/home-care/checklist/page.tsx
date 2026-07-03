@@ -6,7 +6,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById, updateHomeowner } from '@/lib/homecare/homeowners';
-import { currentSeason, mostRecentSeasonStart, seasonStart, SEASON_LABEL, type Season } from '@/lib/homecare/season';
+import { completionCutoff, currentSeason, seasonStart, SEASON_LABEL, SEASONS, type Season } from '@/lib/homecare/season';
 import {
   filterTasksForProfile,
   getStage,
@@ -50,16 +50,16 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   const stageDef = getStage(stage);
   const hasProfile = (!!systems && Object.keys(systems).length > 0) || stage !== null;
   const tasks = filterTasksForProfile(allTasks ?? [], systems, stage);
-  // Seasonal reset: a completion only counts while its season's most recent
-  // occurrence is current — when the season next comes around, old checkmarks
-  // expire and the list starts fresh. One-time work ('starter' essentials)
-  // never expires; rows without a timestamp are counted leniently.
-  const SEASONAL: Season[] = ['spring', 'summer', 'fall', 'winter'];
+  // Seasonal reset: a completion counts until its season's cutoff passes
+  // (see completionCutoff — pre-season check-offs count toward the upcoming
+  // occurrence), then it expires and the list starts fresh. One-time work
+  // ('starter' essentials) never expires; rows without a timestamp are
+  // counted leniently.
   const doneItems = (doneRows ?? [])
     .filter((r) => {
       if (r.status !== 'done') return false;
-      if (!SEASONAL.includes(r.season as Season) || !r.completed_at) return true;
-      return new Date(r.completed_at).getTime() >= mostRecentSeasonStart(r.season as Season).getTime();
+      if (!SEASONS.includes(r.season as Season) || !r.completed_at) return true;
+      return new Date(r.completed_at).getTime() >= completionCutoff(r.season as Season).getTime();
     })
     .map(({ task_key, season }) => ({ task_key, season }));
   const dismissedKeys = (doneRows ?? []).filter((r) => r.status === 'dismissed').map((r) => r.task_key);
