@@ -32,7 +32,7 @@ export interface EmailListRow {
 const CATEGORIES = [
   '', 'verification', 'welcome', 'estimate', 'lead_followup', 'lead_notification',
   'home_care_newsletter', 'buy_remodel', 'seo_report', 'staged_draft',
-  'rollback_digest', 'form_error', 'feedback_request', 'broadcast', 'other',
+  'rollback_digest', 'form_error', 'feedback_request', 'broadcast', 'release', 'other',
 ];
 
 const STATUS_FILTERS = ['', 'sent', 'delivered', 'opened', 'clicked', 'bounced', 'failed', 'error'];
@@ -51,6 +51,7 @@ function statusBadge(row: EmailListRow) {
 }
 
 function catLabel(c: string) {
+  if (c === 'release') return 'Release notes';
   return c ? c.replace(/_/g, ' ') : 'All categories';
 }
 

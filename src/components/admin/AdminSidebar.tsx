@@ -90,6 +90,7 @@ const NAVIGATION: NavItem[] = [
       { id: 'estimate-log', icon: History, label: 'Estimate Log' },
       { id: 'emails', icon: Mail, label: 'Email Tracking' },
       { id: 'preferences', icon: Users, label: 'Subscriptions' },
+      { id: 'releases', icon: Megaphone, label: 'Release Notes' },
       { id: 'feedback', icon: MessageSquare, label: 'Feedback Requests' },
       { id: 'estimates', icon: Calculator, label: 'Calculator Estimates' },
     ],
