@@ -19,7 +19,7 @@ export const STREAMS: StreamDef[] = [
   {
     key: 'home_care',
     label: 'La Vaca Home Care',
-    description: 'Your monthly seasonal home-maintenance checklist and reminders.',
+    description: 'Your seasonal home-maintenance checklist, reminders, and occasional Home Care updates.',
   },
   {
     key: 'buy_remodel',
