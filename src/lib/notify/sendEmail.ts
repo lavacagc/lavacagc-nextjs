@@ -35,6 +35,7 @@ export type EmailCategory =
   | 'form_error'
   | 'feedback_request'
   | 'broadcast'
+  | 'release'
   | 'other';
 
 export interface TrackedEmailInput {

@@ -39,7 +39,7 @@ interface EmailListRow {
 const ALLOWED_CATEGORY = new Set([
   'verification', 'welcome', 'estimate', 'lead_followup', 'lead_notification',
   'home_care_newsletter', 'buy_remodel', 'seo_report', 'staged_draft',
-  'rollback_digest', 'form_error', 'feedback_request', 'broadcast', 'other',
+  'rollback_digest', 'form_error', 'feedback_request', 'broadcast', 'release', 'other',
 ]);
 const ALLOWED_STATUS = new Set([
   'queued', 'sent', 'failed', 'error', 'skipped',
