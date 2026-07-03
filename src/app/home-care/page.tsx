@@ -25,6 +25,13 @@ export const metadata: Metadata = {
 // /home-care/setup and avoids caching the returning-member block).
 export const dynamic = 'force-dynamic';
 
+// Punchy avoidance framing under the H1 — what the checklist saves you from.
+const NO_LINES = [
+  'guesswork.',
+  'forgotten maintenance.',
+  'surprise repair bills.',
+];
+
 const STEPS = [
   { icon: ListChecks, title: 'Tell us about your home', body: 'Just your email + ZIP (and your home type, if you like). 20 seconds, no account.' },
   { icon: CalendarCheck, title: 'Get your seasonal checklist', body: 'See exactly what your house needs this season — with a quick why for each task.' },
@@ -76,14 +83,16 @@ export default async function HomeCarePage({ searchParams }: { searchParams: Pro
                   Never wonder what your home needs this{' '}
                   <span className="text-transparent bg-gradient-to-r from-primary to-accent-sunset bg-clip-text">season</span>
                 </h1>
-                <p className="text-xl text-text-secondary leading-relaxed mb-6">
+                <ul className="mb-6 space-y-1.5">
+                  {NO_LINES.map((line) => (
+                    <li key={line} className="text-2xl md:text-[1.7rem] font-extrabold leading-snug text-text-primary">
+                      <span className="text-primary">No</span> {line}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xl text-text-secondary leading-relaxed">
                   A free, personalized maintenance checklist for your Northern NJ home — gutters, furnace, sump pump, the works — delivered each season. Do it yourself, or book La Vaca to handle it. No account required.
                 </p>
-                <ul className="space-y-2 text-text-secondary">
-                  <li>✅ Seasonal reminders so nothing slips</li>
-                  <li>✅ Clear DIY vs. pro guidance for each task</li>
-                  <li>✅ One-tap booking when you&apos;d rather we did it</li>
-                </ul>
               </div>
               <div>
                 <HomeCareOptInForm />
