@@ -11,6 +11,9 @@
  *        delivered for a non-suppression reason the claim is rolled back to
  *        'queued' (an all-suppressed batch counts as a successful send).
  *
+ * Stamping 'sent' is also what publishes an entry: the public
+ * /home-care/whats-new page renders sent rows (statically, revalidated hourly).
+ *
  * Never runs on a schedule — the whole point is that the owner pulls the trigger.
  */
 import { NextRequest, NextResponse } from 'next/server';

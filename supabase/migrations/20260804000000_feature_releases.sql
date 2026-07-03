@@ -1,7 +1,8 @@
 -- R1: release-notes email system. A queue of shipped features (headline,
 -- subhead, customer benefit, screenshot) that ONLY the admin turns into a
 -- member email from /vaca-mgmt/releases. Entries are written as features ship;
--- a send batches every 'queued' row and stamps it 'sent'.
+-- a send batches every 'queued' row and stamps it 'sent'. Sent rows also feed
+-- the public /home-care/whats-new page; queued rows stay private until sent.
 CREATE TABLE IF NOT EXISTS public.feature_releases (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   headline        TEXT NOT NULL,

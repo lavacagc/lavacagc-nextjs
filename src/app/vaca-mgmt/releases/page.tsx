@@ -4,6 +4,8 @@
  * Admin · Release Notes (R1) — review the queued feature announcements,
  * preview/test the email, and (only ever manually) send it to all Home Care
  * members. Entries are written as features ship; this screen is the trigger.
+ * Sending also publishes: sent entries appear on the public
+ * /home-care/whats-new page (refreshed hourly).
  */
 
 import { useState, useEffect, useCallback } from 'react';

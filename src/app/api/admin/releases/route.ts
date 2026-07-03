@@ -8,6 +8,9 @@
  *
  * Auth: /api/admin/* is session-gated by middleware. Sending lives in
  * ./send/route.ts and is a separate, deliberate admin action.
+ *
+ * Sent entries are public: /home-care/whats-new renders them, so a PATCH to a
+ * sent row also changes that page (after its hourly revalidation).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
