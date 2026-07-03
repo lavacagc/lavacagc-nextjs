@@ -136,7 +136,9 @@ const Header = () => {
         </div>
       </div>
 
-      {/* Main Header */}
+      {/* Main Header. HomeCareChecklistClient's sticky plan bar offsets itself by
+          this element's measured height (ResizeObserver on the page's first
+          <header>), so keep this the first <header> on pages that render it. */}
       <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-20 min-[480px]:h-24 md:h-28 lg:grid lg:grid-cols-[auto_1fr_auto]">
