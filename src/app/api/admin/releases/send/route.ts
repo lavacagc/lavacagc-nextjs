@@ -5,8 +5,9 @@
  *   POST /api/admin/releases/send { mode: 'all', confirm: true } → every active Home Care member,
  *        preference-aware (home_care stream). The queued entries are claimed
  *        (stamped 'sent') atomically up front so a concurrent trigger or a
- *        retry after a mid-batch crash can never double-send; if nothing at
- *        all was delivered the claim is rolled back to 'queued'.
+ *        retry after a mid-batch crash can never double-send; if nothing was
+ *        delivered for a non-suppression reason the claim is rolled back to
+ *        'queued' (an all-suppressed batch counts as a successful send).
  *
  * Never runs on a schedule — the whole point is that the owner pulls the trigger.
  */
@@ -88,7 +89,17 @@ export async function POST(request: NextRequest) {
         sentBy: adminEmail,
         campaign: { release_test: true, features: queued.length },
       });
-      return NextResponse.json({ ok: res.status === 'sent', mode, status: res.status, features: queued.length, to: adminEmail });
+      if (res.status !== 'sent') {
+        return NextResponse.json(
+          {
+            error: `test email was not delivered (${[res.status, res.reason].filter(Boolean).join(': ')})`,
+            mode,
+            status: res.status,
+          },
+          { status: 502 },
+        );
+      }
+      return NextResponse.json({ ok: true, mode, status: res.status, features: queued.length, to: adminEmail });
     }
 
     const homeowners = (await supabaseRest<HomeownerRow[]>(
@@ -145,11 +156,26 @@ export async function POST(request: NextRequest) {
       else failures.push(`${h.email}:${res.status}`);
     }
 
-    // Nothing was delivered (e.g. RESEND_API_KEY unset → every send skipped):
-    // release the claim so the announcements aren't silently lost.
-    if (sent === 0) {
+    // Nothing was delivered for a non-suppression reason (e.g. RESEND_API_KEY
+    // unset → every send skipped): release the claim so the announcements
+    // aren't silently lost. An all-suppressed batch is a success — every
+    // recipient's opt-out was honored — so it stays stamped 'sent'.
+    if (sent === 0 && failures.length > 0) {
       const ids = queued.map((q) => q.id).join(',');
-      await supabaseRest('PATCH', `feature_releases?id=in.(${ids})`, { status: 'queued', sent_at: null });
+      try {
+        await supabaseRest('PATCH', `feature_releases?id=in.(${ids})`, { status: 'queued', sent_at: null });
+      } catch (unclaimErr) {
+        console.error('release unclaim failed:', unclaimErr instanceof Error ? unclaimErr.message : unclaimErr);
+        return NextResponse.json(
+          {
+            error: 'no emails were delivered AND automatic requeue failed - the queue may still show sent; use Refresh and requeue manually',
+            sent,
+            suppressed,
+            failures: failures.length,
+          },
+          { status: 500 },
+        );
+      }
       return NextResponse.json(
         { error: 'no emails were delivered - the queue was left intact', sent, suppressed, failures: failures.length },
         { status: 500 },
