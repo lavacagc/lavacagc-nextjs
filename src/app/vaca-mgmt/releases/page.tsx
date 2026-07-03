@@ -42,6 +42,7 @@ export default function ReleasesAdminPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [edit, setEdit] = useState<EditState>({ headline: '', subhead: '', benefit: '' });
   const [confirmingSend, setConfirmingSend] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,6 +65,7 @@ export default function ReleasesAdminPage() {
 
   const startEdit = (e: ReleaseEntry) => {
     setEditing(e.id);
+    setConfirmingDelete(null);
     setEdit({ headline: e.headline, subhead: e.subhead, benefit: e.benefit });
   };
 
@@ -98,6 +100,7 @@ export default function ReleasesAdminPage() {
       toast({ title: 'Delete failed', variant: 'destructive' });
     } finally {
       setBusy(null);
+      setConfirmingDelete(null);
     }
   };
 
@@ -153,10 +156,20 @@ export default function ReleasesAdminPage() {
             )}
           </div>
           {e.status === 'queued' && (
-            <div className="flex shrink-0 gap-1">
-              <Button size="sm" variant="ghost" onClick={() => startEdit(e)} aria-label="Edit entry"><Pencil className="h-4 w-4" /></Button>
-              <Button size="sm" variant="ghost" onClick={() => remove(e.id)} disabled={busy === e.id} aria-label="Delete entry"><Trash2 className="h-4 w-4" /></Button>
-            </div>
+            confirmingDelete === e.id ? (
+              <span className="inline-flex shrink-0 items-center gap-2">
+                <span className="text-sm font-semibold text-destructive">Remove this entry?</span>
+                <Button size="sm" variant="destructive" onClick={() => remove(e.id)} disabled={busy === e.id}>
+                  <Trash2 className="h-4 w-4 mr-1" /> Remove
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setConfirmingDelete(null)}>Cancel</Button>
+              </span>
+            ) : (
+              <div className="flex shrink-0 gap-1">
+                <Button size="sm" variant="ghost" onClick={() => startEdit(e)} aria-label="Edit entry"><Pencil className="h-4 w-4" /></Button>
+                <Button size="sm" variant="ghost" onClick={() => setConfirmingDelete(e.id)} disabled={busy === e.id} aria-label="Delete entry"><Trash2 className="h-4 w-4" /></Button>
+              </div>
+            )
           )}
         </div>
       )}
