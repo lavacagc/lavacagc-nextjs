@@ -3,7 +3,10 @@
  *
  *   POST /api/admin/releases/send { mode: 'test' }              → one email to the signed-in admin only
  *   POST /api/admin/releases/send { mode: 'all', confirm: true } → every active Home Care member,
- *        preference-aware (home_care stream), then stamps the queued entries 'sent'
+ *        preference-aware (home_care stream). The queued entries are claimed
+ *        (stamped 'sent') atomically up front so a concurrent trigger or a
+ *        retry after a mid-batch crash can never double-send; if nothing at
+ *        all was delivered the claim is rolled back to 'queued'.
  *
  * Never runs on a schedule — the whole point is that the owner pulls the trigger.
  */
@@ -20,9 +23,12 @@ export const maxDuration = 300;
 
 const FROM = 'Alex from La Vaca GC <alex@email.lavaca.link>';
 const PROD_BASE = 'https://www.lavacagc.com';
+const RECIPIENT_CAP = 1000;
 
 interface QueuedRow extends ReleaseFeature {
   id: string;
+  sort_order: number;
+  created_at: string;
 }
 interface HomeownerRow {
   id: string;
@@ -53,19 +59,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const queued = (await supabaseRest<QueuedRow[]>(
-      'GET',
-      'feature_releases?select=id,headline,subhead,benefit,screenshot_path&status=eq.queued&order=sort_order.asc,created_at.asc',
-    )) ?? [];
-    if (queued.length === 0) {
-      return NextResponse.json({ error: 'nothing queued — add at least one feature first' }, { status: 400 });
-    }
-
     // Screenshot/link URLs must be absolute for email clients, and prod assets
     // only exist on the deployed site — always build against prod.
     const baseUrl = PROD_BASE;
 
     if (mode === 'test') {
+      const queued = (await supabaseRest<QueuedRow[]>(
+        'GET',
+        'feature_releases?select=id,headline,subhead,benefit,screenshot_path,sort_order,created_at&status=eq.queued&order=sort_order.asc,created_at.asc',
+      )) ?? [];
+      if (queued.length === 0) {
+        return NextResponse.json({ error: 'nothing queued — add at least one feature first' }, { status: 400 });
+      }
       const { subject, html, text } = buildReleaseEmail({
         firstName: null,
         features: queued,
@@ -90,11 +95,30 @@ export async function POST(request: NextRequest) {
       'GET',
       'homeowners?select=id,first_name,email,unsubscribe_token&status=eq.active',
     )) ?? [];
+    const recipients = homeowners.slice(0, RECIPIENT_CAP);
+    const truncated = homeowners.length - recipients.length;
+    if (recipients.length === 0) {
+      return NextResponse.json({ error: 'no active members to send to' }, { status: 400 });
+    }
+
+    // Claim the whole queue atomically BEFORE sending: a concurrent second
+    // trigger claims nothing and gets the "nothing queued" 400, and a
+    // mid-batch crash cannot cause a retry to re-email everyone - the failure
+    // mode is "some members missed it", visible per-recipient in email_log.
+    const queued = ((await supabaseRest<QueuedRow[]>(
+      'PATCH',
+      'feature_releases?status=eq.queued&select=id,headline,subhead,benefit,screenshot_path,sort_order,created_at',
+      { status: 'sent', sent_at: new Date().toISOString() },
+      { prefer: 'return=representation' },
+    )) ?? []).sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
+    if (queued.length === 0) {
+      return NextResponse.json({ error: 'nothing queued — add at least one feature first' }, { status: 400 });
+    }
 
     let sent = 0;
     let suppressed = 0;
     const failures: string[] = [];
-    for (const h of homeowners) {
+    for (const h of recipients) {
       const preferencesUrl = await preferencesUrlFor(baseUrl, h.email).catch(() => undefined);
       const { subject, html, text } = buildReleaseEmail({
         firstName: h.first_name,
@@ -121,14 +145,27 @@ export async function POST(request: NextRequest) {
       else failures.push(`${h.email}:${res.status}`);
     }
 
-    // Stamp the batch sent so the next edition starts fresh.
-    const ids = queued.map((q) => q.id).join(',');
-    await supabaseRest('PATCH', `feature_releases?id=in.(${ids})`, {
-      status: 'sent',
-      sent_at: new Date().toISOString(),
-    });
+    // Nothing was delivered (e.g. RESEND_API_KEY unset → every send skipped):
+    // release the claim so the announcements aren't silently lost.
+    if (sent === 0) {
+      const ids = queued.map((q) => q.id).join(',');
+      await supabaseRest('PATCH', `feature_releases?id=in.(${ids})`, { status: 'queued', sent_at: null });
+      return NextResponse.json(
+        { error: 'no emails were delivered - the queue was left intact', sent, suppressed, failures: failures.length },
+        { status: 500 },
+      );
+    }
 
-    return NextResponse.json({ ok: true, mode, features: queued.length, recipients: homeowners.length, sent, suppressed, failures: failures.length });
+    return NextResponse.json({
+      ok: true,
+      mode,
+      features: queued.length,
+      recipients: recipients.length,
+      sent,
+      suppressed,
+      failures: failures.length,
+      ...(truncated > 0 ? { warning: `recipient list capped at ${RECIPIENT_CAP}; ${truncated} active member(s) not emailed this run` } : {}),
+    });
   } catch (err) {
     console.error('release send failed:', err instanceof Error ? err.message : err);
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });

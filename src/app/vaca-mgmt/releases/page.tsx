@@ -115,7 +115,7 @@ export default function ReleasesAdminPage() {
       if (mode === 'test') {
         toast({ title: `Test sent to ${data.to}`, description: `${data.features} feature${data.features === 1 ? '' : 's'} in the email — check your inbox.` });
       } else {
-        toast({ title: `Release sent to ${data.sent} member${data.sent === 1 ? '' : 's'}`, description: `${data.suppressed} suppressed by preferences · ${data.failures} failures.` });
+        toast({ title: `Release sent to ${data.sent} member${data.sent === 1 ? '' : 's'}`, description: `${data.suppressed} suppressed by preferences · ${data.failures} failures.${data.warning ? ` ${data.warning}.` : ''}` });
         setConfirmingSend(false);
         await load();
       }

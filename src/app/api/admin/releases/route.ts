@@ -52,7 +52,9 @@ export async function GET() {
     )) ?? [];
     return NextResponse.json({
       queued: rows.filter((r) => r.status === 'queued'),
-      sent: rows.filter((r) => r.status === 'sent').reverse(),
+      sent: rows
+        .filter((r) => r.status === 'sent')
+        .sort((a, b) => (b.sent_at ?? b.created_at).localeCompare(a.sent_at ?? a.created_at)),
     });
   } catch (err) {
     console.error('releases GET failed:', err instanceof Error ? err.message : err);
