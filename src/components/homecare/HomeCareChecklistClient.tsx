@@ -1,9 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Check, Plus, Wrench, ClipboardList, Sparkles, History, X } from 'lucide-react';
+import { Check, Plus, Wrench, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy } from 'lucide-react';
 import { hasGuideItem } from '@/lib/homecare/guides';
 import { prevSeason, seasonStart, type Season } from '@/lib/homecare/season';
+
+const SHARE_URL = 'https://www.lavacagc.com/home-care?utm_source=member_share&utm_medium=portal&utm_campaign=home_care_share';
+const SHARE_TEXT = 'I use this free seasonal checklist to stay on top of the house — takes 20 seconds to set up, no account.';
 
 export interface ChecklistTask {
   key: string;
@@ -60,21 +63,25 @@ const catchUpDismissKey = (season: string) => `hc-catchup-dismissed:${seasonStar
 export default function HomeCareChecklistClient({
   tasks,
   doneItems,
+  dismissedKeys = [],
   showStarter = true,
   currentSeason,
   showCatchUp = false,
 }: {
   tasks: ChecklistTask[];
   doneItems: { task_key: string; season: string }[];
+  dismissedKeys?: string[];
   showStarter?: boolean;
   currentSeason: string;
   showCatchUp?: boolean;
 }) {
   const [done, setDone] = useState<Set<string>>(new Set(doneItems.map((d) => id(d.task_key, d.season))));
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set(dismissedKeys));
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [activeSeason, setActiveSeason] = useState<string>(SEASONS.includes(currentSeason as (typeof SEASONS)[number]) ? currentSeason : 'spring');
   const [catchUpDismissed, setCatchUpDismissed] = useState(false);
+  const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
 
   useEffect(() => {
     try {
@@ -96,13 +103,77 @@ export default function HomeCareChecklistClient({
   // What slipped last season: applicable recurring tasks the member never
   // checked off. Recomputed from live state so checking one shrinks the list.
   const lastSeason = prevSeason(currentSeason as Season);
-  const missedTasks = tasks.filter((t) => !t.starter && t.seasons.includes(lastSeason) && !done.has(id(t.key, lastSeason)));
+  const missedTasks = tasks.filter((t) => !t.starter && t.seasons.includes(lastSeason) && !done.has(id(t.key, lastSeason)) && !dismissed.has(t.key));
   const showCatchUpCard = showCatchUp && !catchUpDismissed && missedTasks.length > 0 && activeSeason === currentSeason;
 
-  const starterTasks = tasks.filter((t) => t.starter);
-  const seasonTasks = tasks.filter((t) => !t.starter && t.seasons.includes(activeSeason));
+  const starterTasks = tasks.filter((t) => t.starter && !dismissed.has(t.key));
+  const seasonTasks = tasks.filter((t) => !t.starter && t.seasons.includes(activeSeason) && !dismissed.has(t.key));
+  const hiddenTasks = tasks.filter((t) => dismissed.has(t.key));
   const showStarterSection = showStarter && starterTasks.length > 0;
   const hasBookable = tasks.some((t) => t.bookable);
+
+  // Season progress (dismissed tasks are out of the denominator).
+  const seasonDone = seasonTasks.filter((t) => done.has(id(t.key, activeSeason))).length;
+  const seasonPct = seasonTasks.length > 0 ? Math.round((seasonDone / seasonTasks.length) * 100) : 0;
+  const seasonComplete = seasonTasks.length > 0 && seasonDone === seasonTasks.length;
+
+  const setDismissState = async (key: string, dismiss: boolean) => {
+    const next = new Set(dismissed);
+    if (dismiss) next.add(key);
+    else next.delete(key);
+    setDismissed(next);
+    setBusy(`dismiss|${key}`);
+    try {
+      await fetch('/api/home-care/task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ task_key: key, dismiss }),
+      });
+    } catch {
+      const revert = new Set(dismissed);
+      if (dismiss) revert.delete(key);
+      else revert.add(key);
+      setDismissed(revert);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const shareHomeCare = async () => {
+    // Native share sheet only where it's a real UX (touch devices) — on
+    // desktop the sheet is rare/awkward and copy-link is what people expect.
+    const touchDevice = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+    if (touchDevice && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title: 'La Vaca Home Care', text: SHARE_TEXT, url: SHARE_URL });
+        return;
+      } catch (err) {
+        // AbortError = the user closed the share sheet — done. Anything else
+        // falls through to copy.
+        if (err instanceof Error && err.name === 'AbortError') return;
+      }
+    }
+    const payload = `${SHARE_TEXT} ${SHARE_URL}`;
+    try {
+      await navigator.clipboard.writeText(payload);
+    } catch {
+      // Clipboard API blocked (permissions, older browsers) — legacy path.
+      const ta = document.createElement('textarea');
+      ta.value = payload;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+      } finally {
+        ta.remove();
+      }
+    }
+    setShareState('copied');
+    setTimeout(() => setShareState('idle'), 2500);
+  };
 
   const toggleDone = async (key: string, season: string) => {
     const k = id(key, season);
@@ -178,6 +249,18 @@ export default function HomeCareChecklistClient({
                 <a href={`/home-care/book?task=${encodeURIComponent(t.key)}`} className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline">
                   <Wrench className="h-3.5 w-3.5" /> Book this now →
                 </a>
+              )}
+              {!isDone && (
+                <button
+                  type="button"
+                  onClick={() => setDismissState(t.key, true)}
+                  disabled={busy === `dismiss|${t.key}`}
+                  className="group inline-flex items-center justify-start"
+                >
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 group-hover:text-slate-600 transition-colors">
+                    <EyeOff className="h-3.5 w-3.5" /> Not relevant
+                  </span>
+                </button>
               )}
             </div>
           </div>
@@ -269,10 +352,42 @@ export default function HomeCareChecklistClient({
         ))}
       </div>
 
-      <div className="flex items-center gap-2 text-sm text-text-secondary">
-        <ClipboardList className="h-4 w-4 text-primary" />
-        <span>{SEASON_LABEL[activeSeason]}: {seasonTasks.filter((t) => done.has(id(t.key, activeSeason))).length} of {seasonTasks.length} done — progress is saved.</span>
-      </div>
+      {/* Season progress bar (dismissed tasks excluded from the denominator) */}
+      {seasonTasks.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="flex items-center gap-2 font-bold text-text-primary">
+              <ClipboardList className="h-4 w-4 text-primary" />
+              {SEASON_LABEL[activeSeason]} · {seasonDone} of {seasonTasks.length} done
+            </span>
+            <span className="text-xs font-bold text-text-secondary">{seasonPct}%</span>
+          </div>
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={seasonPct} aria-valuemin={0} aria-valuemax={100} aria-label={`${SEASON_LABEL[activeSeason]} progress`}>
+            <div className="h-full rounded-full bg-gradient-to-r from-primary to-accent-sunset transition-all duration-500" style={{ width: `${seasonPct}%` }} />
+          </div>
+          <p className="mt-1 text-xs text-text-muted">
+            {seasonComplete ? 'Everything handled — progress is saved.' : `${seasonTasks.length - seasonDone} to go — progress is saved.`}
+          </p>
+        </div>
+      )}
+
+      {/* Season 100% celebration */}
+      {seasonComplete && activeSeason === currentSeason && (
+        <div className="rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/10 to-accent-sunset/10 p-5 text-center">
+          <PartyPopper className="mx-auto h-8 w-8 text-primary" />
+          <h3 className="mt-2 text-lg font-extrabold text-text-primary">{SEASON_LABEL[activeSeason]}: done.</h3>
+          <p className="mx-auto mt-1 max-w-md text-sm text-text-secondary">
+            Every {SEASON_LABEL[activeSeason].toLowerCase()} task is handled — your house officially likes you. Know someone who'd want this kind of peace of mind?
+          </p>
+          <button
+            type="button"
+            onClick={shareHomeCare}
+            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-secondary px-4 py-2.5 text-sm font-bold text-secondary-foreground shadow-button transition-all hover:-translate-y-px"
+          >
+            <Share2 className="h-4 w-4" /> {shareState === 'copied' ? 'Link copied' : 'Share Home Care'}
+          </button>
+        </div>
+      )}
 
       {hasBookable && selected.size === 0 && (
         <div className="flex items-center gap-2 rounded-lg bg-primary/5 px-3 py-2 text-xs font-semibold text-text-secondary">
@@ -300,6 +415,51 @@ export default function HomeCareChecklistClient({
         ) : (
           seasonTasks.map((t) => Row(t, activeSeason))
         )}
+      </div>
+
+      {/* Hidden ("not relevant") tasks — collapsed strip with one-tap restore */}
+      {hiddenTasks.length > 0 && (
+        <details className="group rounded-xl border border-dashed border-border bg-muted/40 px-4 py-3">
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold text-text-secondary [&::-webkit-details-marker]:hidden">
+            <EyeOff className="h-4 w-4" />
+            Hidden ({hiddenTasks.length}) — marked not relevant to your home
+            <span className="ml-auto text-xs font-bold text-primary group-open:hidden">show</span>
+            <span className="ml-auto hidden text-xs font-bold text-primary group-open:inline">hide</span>
+          </summary>
+          <div className="mt-3 space-y-2 border-t border-border pt-3">
+            {hiddenTasks.map((t) => (
+              <div key={t.key} className="flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate text-sm text-text-secondary">{t.title}</span>
+                <button
+                  type="button"
+                  onClick={() => setDismissState(t.key, false)}
+                  disabled={busy === `dismiss|${t.key}`}
+                  className="group/r flex shrink-0 items-center justify-center"
+                >
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-bold text-primary group-hover/r:border-primary/50 transition-colors">
+                    <RotateCcw className="h-3 w-3" /> Restore
+                  </span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {/* Share card — members are the best ad channel */}
+      <div className="rounded-2xl bg-secondary p-5 text-secondary-foreground">
+        <h3 className="text-base font-extrabold">Know someone drowning in house stuff?</h3>
+        <p className="mt-1 text-sm text-secondary-foreground/75">
+          Home Care is free for any Northern NJ homeowner — send it to a friend or neighbor.
+        </p>
+        <button
+          type="button"
+          onClick={shareHomeCare}
+          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-primary to-accent-sunset px-4 py-2.5 text-sm font-bold text-white shadow-button transition-all hover:-translate-y-px"
+        >
+          {shareState === 'copied' ? <Copy className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
+          {shareState === 'copied' ? 'Link copied — paste it anywhere' : 'Share Home Care'}
+        </button>
       </div>
 
       {selected.size > 0 && (

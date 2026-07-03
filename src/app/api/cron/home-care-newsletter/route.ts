@@ -72,6 +72,17 @@ export async function GET(request: NextRequest) {
     )) ?? [];
     const systemsByOwner = new Map(profiles.map((p) => [p.homeowner_id, p.systems]));
 
+    // Tasks each member marked "not relevant to my home" stay out of their email.
+    const dismissedRows = (await supabaseRest<{ homeowner_id: string; task_key: string }[]>(
+      'GET',
+      'homeowner_maintenance?select=homeowner_id,task_key&status=eq.dismissed',
+    )) ?? [];
+    const dismissedByOwner = new Map<string, Set<string>>();
+    for (const r of dismissedRows) {
+      if (!dismissedByOwner.has(r.homeowner_id)) dismissedByOwner.set(r.homeowner_id, new Set());
+      dismissedByOwner.get(r.homeowner_id)!.add(r.task_key);
+    }
+
     const eligible = homeowners.filter((h) => !sameMonth(h.last_newsletter_at, now)).slice(0, MAX_PER_RUN);
 
     let sent = 0;
@@ -79,7 +90,8 @@ export async function GET(request: NextRequest) {
     const failures: string[] = [];
     if (!dryRun) {
       for (const h of eligible) {
-        const personalTasks = filterTasksForProfile(tasks, systemsByOwner.get(h.id) ?? null);
+        const hidden = dismissedByOwner.get(h.id);
+        const personalTasks = filterTasksForProfile(tasks, systemsByOwner.get(h.id) ?? null).filter((t) => !hidden?.has(t.key));
         // Per-recipient preference-center link (best-effort — fall back to the
         // legacy unsubscribe link alone if the lookup fails).
         const preferencesUrl = await preferencesUrlFor(origin, h.email).catch(() => undefined);

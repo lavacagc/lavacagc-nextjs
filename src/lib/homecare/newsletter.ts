@@ -114,6 +114,12 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
         <a href="${checklistUrl}" style="display:inline-block;background:linear-gradient(135deg,#EE9639,#FF6F31);color:#fff;font-weight:800;text-decoration:none;padding:13px 26px;border-radius:10px;font-size:15px">Open &amp; save my full checklist →</a>
       </div>
 
+      <!-- Share line: members are the best ad channel -->
+      <div style="background:#f4f6f9;border-radius:10px;padding:12px 16px;margin-top:8px;font-size:13px;color:#5b6b82;text-align:center">
+        Know someone who&rsquo;d want this? Forward this email — they can get their own free plan at
+        <a href="${baseUrl}/home-care?utm_source=member_share&amp;utm_medium=email&amp;utm_campaign=home_care_share" style="color:#EE9639;font-weight:700;text-decoration:none">lavacagc.com/home-care</a>.
+      </div>
+
       <!-- Branded footer -->
       <table width="100%" style="border-top:1px solid #e6e9ef;margin-top:20px;border-collapse:collapse"><tr>
         <td style="padding-top:16px">
@@ -134,7 +140,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
     text += `[ ] ${t.title} — ${t.blurb}\n`;
     if (t.bookable) text += `    Book La Vaca: ${baseUrl}/home-care/book?task=${t.key}\n`;
   }
-  text += `\nOpen & save your full checklist: ${checklistUrl}\n\nLa Vaca General Contractors · ${PHONE} · ${HIC}\n`;
+  text += `\nOpen & save your full checklist: ${checklistUrl}\n\nKnow someone who'd want this? They can get their own free plan: ${baseUrl}/home-care\n\nLa Vaca General Contractors · ${PHONE} · ${HIC}\n`;
   if (preferencesUrl) text += `Manage email preferences: ${preferencesUrl}\n`;
   text += `Unsubscribe: ${unsubscribeUrl}`;
 

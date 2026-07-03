@@ -113,7 +113,8 @@ export function sendHomeCareWelcomeEmail(args: {
   const body = `<p style="font-size:15px;color:#0c1730;margin:0 0 16px">${hi}</p>
     <p style="font-size:15px;color:#5b6b82;margin:0 0 20px">You're all set. Your seasonal checklist is ready — see what your home needs right now, check things off as you go, and tap "Book La Vaca" on anything you'd rather hand to us.</p>
     <p style="margin:0 0 22px">${button(args.checklistUrl, 'See my checklist')}</p>
+    <p style="font-size:13px;color:#5b6b82;margin:0 0 16px">Know someone who'd want this? Forward this email — they can get their own free plan at <a href="https://www.lavacagc.com/home-care?utm_source=member_share&utm_medium=email&utm_campaign=home_care_share" style="color:#EE9639;font-weight:700;text-decoration:none">lavacagc.com/home-care</a>.</p>
     <p style="font-size:13px;color:#9aa3b0;margin:0">We'll send a short seasonal reminder a few times a year. ${manage}<a href="${args.unsubscribeUrl}" style="color:#9aa3b0">Unsubscribe</a> anytime.</p>`;
-  const text = `${hi}\n\nYour La Vaca Home Care checklist is ready: ${args.checklistUrl}\n\n${args.preferencesUrl ? `Manage email preferences: ${args.preferencesUrl}\n` : ''}Unsubscribe: ${args.unsubscribeUrl}`;
+  const text = `${hi}\n\nYour La Vaca Home Care checklist is ready: ${args.checklistUrl}\n\nKnow someone who'd want this? They can get their own free plan: https://www.lavacagc.com/home-care\n\n${args.preferencesUrl ? `Manage email preferences: ${args.preferencesUrl}\n` : ''}Unsubscribe: ${args.unsubscribeUrl}`;
   return send(args.to, "You're in — your La Vaca Home Care checklist is ready", shell("Your plan is ready", body), text, 'welcome', args.homeownerId);
 }
