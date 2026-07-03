@@ -8,9 +8,10 @@ import { ArrowRight, Sparkles } from 'lucide-react';
 
 /**
  * Public release page for La Vaca Home Care (SEO surface). Reads the same
- * feature_releases queue that powers the member release email — every entry
- * here is a live, shipped capability. Statically generated and refreshed
- * hourly so new entries appear without a deploy.
+ * feature_releases queue that powers the member release email, showing only
+ * announced features (status=sent) — queued entries stay private until the
+ * release email goes out. Statically generated and refreshed hourly so new
+ * entries appear without a deploy.
  */
 export const dynamic = 'force-static';
 export const revalidate = 3600;
@@ -46,17 +47,21 @@ interface ReleaseRow {
 }
 
 async function loadReleases(): Promise<ReleaseRow[]> {
-  try {
-    const rows = await supabaseRest<ReleaseRow[]>(
-      'GET',
-      'feature_releases?select=id,headline,subhead,benefit,screenshot_path,status,sort_order,created_at,sent_at&order=sort_order.asc,created_at.asc',
-    );
-    return rows ?? [];
-  } catch {
+  if (!process.env.SUPABASE_SECRET_KEY) {
     // Build environments without Supabase credentials (CI) render the shell;
-    // the hourly revalidation fills in real entries in production.
+    // the hourly revalidation fills in real entries in production. Any other
+    // fetch failure throws so a failed revalidation keeps the last good page.
     return [];
   }
+  const rows = await supabaseRest<ReleaseRow[]>(
+    'GET',
+    'feature_releases?select=id,headline,subhead,benefit,screenshot_path,status,sort_order,created_at,sent_at&status=eq.sent&order=sent_at.desc,sort_order.asc,created_at.asc',
+  );
+  return rows ?? [];
+}
+
+function jsonLd(schema: unknown): string {
+  return JSON.stringify(schema).replace(/</g, '\\u003c');
 }
 
 function monthLabel(iso: string): string {
@@ -111,9 +116,9 @@ export default async function WhatsNewPage() {
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(webAppSchema) }} />
-      {itemListSchema && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }} />}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(webAppSchema) }} />
+      {itemListSchema && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(itemListSchema) }} />}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(breadcrumbSchema) }} />
       <main className="flex-1">
         {/* Hero */}
         <section className="bg-secondary text-secondary-foreground py-12 md:py-16">
@@ -148,7 +153,7 @@ export default async function WhatsNewPage() {
                 <article key={r.id} className="rounded-2xl border border-border bg-card p-6 md:p-8 shadow-card">
                   <div className="flex items-center gap-2 mb-3 text-xs font-bold uppercase tracking-wider text-primary">
                     <Sparkles className="h-3.5 w-3.5" />
-                    {r.sent_at ? monthLabel(r.sent_at) : 'Just shipped'}
+                    {monthLabel(r.sent_at ?? r.created_at)}
                   </div>
                   <h2 className="text-2xl font-bold text-text-primary mb-2">{r.headline}</h2>
                   <p className="text-text-secondary leading-relaxed mb-4">{r.subhead}</p>
