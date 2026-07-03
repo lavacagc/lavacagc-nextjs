@@ -6,7 +6,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById, updateHomeowner } from '@/lib/homecare/homeowners';
-import { currentSeason, SEASON_LABEL } from '@/lib/homecare/season';
+import { currentSeason, seasonStart, SEASON_LABEL } from '@/lib/homecare/season';
 import {
   filterTasksForProfile,
   getStage,
@@ -18,7 +18,7 @@ import {
 } from '@/lib/homecare/profile';
 import HomeCareChecklistClient, { type ChecklistTask } from '@/components/homecare/HomeCareChecklistClient';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
-import { CheckCircle2, Phone, ShieldCheck, SlidersHorizontal } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Phone, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +53,11 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   const doneItems = doneRows ?? [];
   const ownedSystems = SYSTEM_QUESTIONS.filter((q) => systems?.[q.key] === true);
   const greeting = homeowner.first_name ? `Welcome back, ${homeowner.first_name}` : 'Your home checklist';
+
+  // Catch-up applies to members who were already signed up before this season
+  // started — a brand-new member has nothing meaningful to have "missed".
+  const memberSince = homeowner.created_at ? new Date(homeowner.created_at) : null;
+  const showCatchUp = !!memberSince && memberSince.getTime() < seasonStart().getTime();
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -93,20 +98,25 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
           <div className="container mx-auto px-4 max-w-3xl space-y-4">
             {/* Your program summary + edit re-entry */}
             {hasProfile ? (
-              <div className="rounded-2xl border border-border bg-card p-5 shadow-card">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-primary mb-1"><SlidersHorizontal className="h-3.5 w-3.5" /> Your program</div>
-                    {stageDef && <p className="font-bold text-text-primary">{stageDef.emoji} {stageDef.label}</p>}
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {ownedSystems.length > 0 ? ownedSystems.map((q) => (
-                        <span key={q.key} className="rounded-full bg-primary/10 text-primary text-xs font-semibold px-2.5 py-1">{q.label}</span>
-                      )) : <span className="text-xs text-text-muted">Seasonal basics — add your home details for a sharper list.</span>}
-                    </div>
-                  </div>
-                  <Link href="/home-care/setup?edit=1" className="shrink-0 rounded-lg border border-border px-3.5 py-2 text-sm font-bold text-primary hover:border-primary/50 transition-colors">Edit my program</Link>
+              /* Condensed by default (owner: the full card was bulky) — a one-line
+                 summary that expands via native <details>; Edit is always visible. */
+              <details className="group rounded-2xl border border-border bg-card px-4 py-3 shadow-card">
+                <summary className="flex cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden">
+                  <SlidersHorizontal className="h-4 w-4 shrink-0 text-primary" />
+                  <span className="min-w-0 flex-1 truncate text-sm text-text-secondary">
+                    <span className="font-bold text-text-primary">Your program</span>
+                    {stageDef && <span className="font-semibold"> · {stageDef.label}</span>}
+                    {ownedSystems.length > 0 && <span> · {ownedSystems.length} home detail{ownedSystems.length === 1 ? '' : 's'}</span>}
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-text-muted transition-transform group-open:rotate-180" />
+                  <Link href="/home-care/setup?edit=1" className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-primary hover:border-primary/50 transition-colors">Edit</Link>
+                </summary>
+                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border pt-3">
+                  {ownedSystems.length > 0 ? ownedSystems.map((q) => (
+                    <span key={q.key} className="rounded-full bg-primary/10 text-primary text-xs font-semibold px-2.5 py-1">{q.label}</span>
+                  )) : <span className="text-xs text-text-muted">Seasonal basics — add your home details for a sharper list.</span>}
                 </div>
-              </div>
+              </details>
             ) : (
               <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-5 text-center">
                 <p className="font-bold text-text-primary mb-1">Personalize your plan</p>
@@ -117,7 +127,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
             {(tasks?.length ?? 0) === 0 ? (
               <p className="text-text-secondary">Your checklist is being prepared — check back soon.</p>
             ) : (
-              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} showStarter={stageShowsStarter(stage)} currentSeason={season} />
+              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} />
             )}
           </div>
         </section>
