@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Plus, Wrench, ClipboardList, Sparkles, History, X } from 'lucide-react';
 import { hasGuideItem } from '@/lib/homecare/guides';
-import { prevSeason, type Season } from '@/lib/homecare/season';
+import { prevSeason, seasonStart, type Season } from '@/lib/homecare/season';
 
 export interface ChecklistTask {
   key: string;
@@ -54,6 +54,8 @@ function costLabel(lo: number | null, hi: number | null): string | null {
   return null;
 }
 const id = (key: string, season: string) => `${key}|${season}`;
+// Dismissal is scoped to this season of this year, so the card comes back next season.
+const catchUpDismissKey = (season: string) => `hc-catchup-dismissed:${seasonStart().getUTCFullYear()}-${season}`;
 
 export default function HomeCareChecklistClient({
   tasks,
@@ -73,6 +75,23 @@ export default function HomeCareChecklistClient({
   const [busy, setBusy] = useState<string | null>(null);
   const [activeSeason, setActiveSeason] = useState<string>(SEASONS.includes(currentSeason as (typeof SEASONS)[number]) ? currentSeason : 'spring');
   const [catchUpDismissed, setCatchUpDismissed] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(catchUpDismissKey(currentSeason)) === '1') setCatchUpDismissed(true);
+    } catch {
+      // localStorage unavailable (e.g. blocked storage) — fall back to session-only dismissal
+    }
+  }, [currentSeason]);
+
+  const dismissCatchUp = () => {
+    setCatchUpDismissed(true);
+    try {
+      window.localStorage.setItem(catchUpDismissKey(currentSeason), '1');
+    } catch {
+      // localStorage unavailable — dismissal lasts for this page view only
+    }
+  };
 
   // What slipped last season: applicable recurring tasks the member never
   // checked off. Recomputed from live state so checking one shrinks the list.
@@ -206,7 +225,7 @@ export default function HomeCareChecklistClient({
             </div>
             <button
               type="button"
-              onClick={() => setCatchUpDismissed(true)}
+              onClick={dismissCatchUp}
               aria-label="Dismiss catch-up"
               className="group flex shrink-0 items-start justify-center"
             >

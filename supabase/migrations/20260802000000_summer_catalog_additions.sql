@@ -38,5 +38,5 @@ ON CONFLICT (key) DO NOTHING;
 -- laundry households (and the summer IG campaign references it) — show it in
 -- summer as well as fall.
 UPDATE public.maintenance_catalog
-SET seasons = ARRAY['summer', 'fall']
+SET seasons = array_append(seasons, 'summer')
 WHERE key = 'clean_dryer_vent' AND NOT ('summer' = ANY(seasons));
