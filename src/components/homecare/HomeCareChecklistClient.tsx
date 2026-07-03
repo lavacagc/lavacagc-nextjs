@@ -314,6 +314,20 @@ export default function HomeCareChecklistClient({
 
   const requestUrl = `/home-care/book?tasks=${[...selected].map(encodeURIComponent).join(',')}`;
 
+  // Finished tasks sink to the bottom of their group (stable within each half,
+  // so the catalog's priority order is preserved on both sides of the split).
+  const sinkDone = (list: ChecklistTask[], season: string) =>
+    [...list].sort((a, b) => Number(done.has(id(a.key, season))) - Number(done.has(id(b.key, season))));
+
+  // When the whole visible plan is complete, the list minimizes by default —
+  // the member can peek with "Show completed"; new tasks (a new season, a
+  // restore) bring the list back automatically because planComplete flips.
+  const [showCompleted, setShowCompleted] = useState(false);
+  useEffect(() => {
+    if (planComplete) setShowCompleted(false);
+  }, [planComplete]);
+  const listMinimized = planComplete && !showCompleted;
+
   const Row = (t: ChecklistTask, season: string) => {
     const isDone = done.has(id(t.key, season));
     const isSel = selected.has(t.key);
@@ -321,53 +335,30 @@ export default function HomeCareChecklistClient({
     const freq = FREQ_LABEL[t.frequency];
     return (
       <div key={`${t.key}-${season}`} className={`rounded-xl border bg-card p-4 shadow-card transition-colors ${isSel ? 'border-primary bg-primary/5' : 'border-border'} ${isDone ? 'opacity-70' : ''}`}>
-        <div className="flex items-start gap-3">
+        {/* Title line: checkbox + title + badges (+ estimate toggle). The
+            checkbox keeps its 44px tap target but negative margins shrink its
+            layout footprint so the title hugs the left edge — and the blurb
+            below runs the full card width instead of indenting under it. */}
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => toggleDone(t.key, season)}
             disabled={busy === id(t.key, season)}
             aria-label={isDone ? 'Mark not done' : 'Mark done'}
-            className="group flex shrink-0 items-start justify-center"
+            className="group -my-2.5 -ml-3 -mr-1 flex shrink-0 items-center justify-center"
           >
-            {/* 20px visible box inside a 44px tap target (global button min-size = WCAG AAA) */}
-            <span className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-md border-2 transition-colors ${isDone ? 'border-secondary bg-secondary text-white' : 'border-slate-300 group-hover:border-primary'}`}>
+            {/* 20px visible box inside the 44px tap target (global button min-size = WCAG AAA) */}
+            <span className={`flex h-5 w-5 items-center justify-center rounded-md border-2 transition-colors ${isDone ? 'border-secondary bg-secondary text-white' : 'border-slate-300 group-hover:border-primary'}`}>
               {isDone && <Check className="h-3.5 w-3.5" />}
             </span>
           </button>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className={`text-base font-bold text-text-primary ${isDone ? 'line-through' : ''}`}>{t.title}</h3>
-              <span className={`text-[11px] font-extrabold ${t.diy_or_pro === 'pro' ? 'text-amber-700' : t.diy_or_pro === 'diy' ? 'text-emerald-700' : 'text-slate-500'}`}>
-                {t.diy_or_pro === 'pro' ? 'PRO' : t.diy_or_pro === 'diy' ? 'DIY' : 'DIY / PRO'}
-              </span>
-              {freq && <span className="text-[11px] text-slate-400">· {freq}</span>}
-              {cost && <span className="text-[11px] text-slate-400">· Pro est. {cost}</span>}
-            </div>
-            <ClampedBlurb text={t.blurb} expanded={expandedBlurbs.has(id(t.key, season))} onToggle={() => toggleBlurb(id(t.key, season))} />
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-              {hasGuideItem(season, t.key) && (
-                <a href={`/home-care/guides/${season}#${t.key}`} className="inline-block text-xs font-semibold text-primary hover:underline">
-                  Learn more →
-                </a>
-              )}
-              {t.bookable && (
-                <a href={`/home-care/book?task=${encodeURIComponent(t.key)}`} className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline">
-                  <Wrench className="h-3.5 w-3.5" /> Book this now →
-                </a>
-              )}
-              {!isDone && (
-                <button
-                  type="button"
-                  onClick={() => setDismissState(t.key, true)}
-                  disabled={busy === `dismiss|${t.key}`}
-                  className="group inline-flex items-center justify-start"
-                >
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 group-hover:text-slate-600 transition-colors">
-                    <EyeOff className="h-3.5 w-3.5" /> Not relevant
-                  </span>
-                </button>
-              )}
-            </div>
+          <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <h3 className={`text-base font-bold text-text-primary ${isDone ? 'line-through' : ''}`}>{t.title}</h3>
+            <span className={`text-[11px] font-extrabold ${t.diy_or_pro === 'pro' ? 'text-amber-700' : t.diy_or_pro === 'diy' ? 'text-emerald-700' : 'text-slate-500'}`}>
+              {t.diy_or_pro === 'pro' ? 'PRO' : t.diy_or_pro === 'diy' ? 'DIY' : 'DIY / PRO'}
+            </span>
+            {freq && <span className="text-[11px] text-slate-400">· {freq}</span>}
+            {cost && <span className="text-[11px] text-slate-400">· Pro est. {cost}</span>}
           </div>
           {t.bookable && (
             <button
@@ -375,11 +366,37 @@ export default function HomeCareChecklistClient({
               onClick={() => toggleSelect(t.key)}
               aria-pressed={isSel}
               aria-label={isSel ? `Remove ${t.title} from estimate` : `Add ${t.title} to estimate`}
-              className="group flex shrink-0 items-start justify-center"
+              className="group -my-2.5 -mr-2 flex shrink-0 items-center justify-center"
             >
-              {/* 36px visible circle inside a 44px tap target */}
-              <span className={`mt-0.5 flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all ${isSel ? 'border-primary bg-primary text-white shadow-button' : 'border-slate-300 text-slate-400 group-hover:border-primary group-hover:text-primary'}`}>
+              {/* 36px visible circle inside the 44px tap target */}
+              <span className={`flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all ${isSel ? 'border-primary bg-primary text-white shadow-button' : 'border-slate-300 text-slate-400 group-hover:border-primary group-hover:text-primary'}`}>
                 {isSel ? <Check className="h-4 w-4" /> : <Plus className="h-5 w-5" />}
+              </span>
+            </button>
+          )}
+        </div>
+        {/* Description + actions run the full card width below the title line */}
+        <ClampedBlurb text={t.blurb} expanded={expandedBlurbs.has(id(t.key, season))} onToggle={() => toggleBlurb(id(t.key, season))} />
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+          {hasGuideItem(season, t.key) && (
+            <a href={`/home-care/guides/${season}#${t.key}`} className="inline-block text-xs font-semibold text-primary hover:underline">
+              Learn more →
+            </a>
+          )}
+          {t.bookable && (
+            <a href={`/home-care/book?task=${encodeURIComponent(t.key)}`} className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline">
+              <Wrench className="h-3.5 w-3.5" /> Book this now →
+            </a>
+          )}
+          {!isDone && (
+            <button
+              type="button"
+              onClick={() => setDismissState(t.key, true)}
+              disabled={busy === `dismiss|${t.key}`}
+              className="group inline-flex items-center justify-start"
+            >
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 group-hover:text-slate-600 transition-colors">
+                <EyeOff className="h-3.5 w-3.5" /> Not relevant
               </span>
             </button>
           )}
@@ -499,16 +516,35 @@ export default function HomeCareChecklistClient({
         </div>
       )}
 
+      {/* All done: the list minimizes until new tasks show up */}
+      {listMinimized && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-muted/40 px-4 py-3">
+          <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-text-secondary">
+            <Check className="h-4 w-4 shrink-0 text-secondary" />
+            All {planTotal} tasks handled — nothing left to do right now.
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowCompleted(true)}
+            className="group flex shrink-0 items-center justify-center"
+          >
+            <span className="inline-flex items-center rounded-lg border border-border px-2.5 py-1 text-xs font-bold text-primary group-hover:border-primary/50 transition-colors">
+              Show completed
+            </span>
+          </button>
+        </div>
+      )}
+
       <div className="space-y-3">
         {/* One-time essentials, part of the same list so the plan bar tracks them */}
-        {showStarterSection && (
+        {showStarterSection && !listMinimized && (
           <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-4">
             <div className="flex items-center gap-2 mb-1">
               <Sparkles className="h-5 w-5 text-primary" />
               <h2 className="text-lg font-extrabold text-text-primary">New Homeowner Essentials</h2>
             </div>
             <p className="text-sm text-text-secondary mb-3">One-time setup for a home you just bought — knock these out first, then the seasonal stuff is a breeze.</p>
-            <div className="space-y-3">{starterTasks.map((t) => Row(t, 'starter'))}</div>
+            <div className="space-y-3">{sinkDone(starterTasks, 'starter').map((t) => Row(t, 'starter'))}</div>
           </div>
         )}
         {SEASON_SPOTLIGHTS[activeSeason] && (
@@ -526,8 +562,8 @@ export default function HomeCareChecklistClient({
         )}
         {seasonTasks.length === 0 ? (
           <p className="text-text-secondary">Nothing for {SEASON_LABEL[activeSeason]} with your current home details.</p>
-        ) : (
-          seasonTasks.map((t) => Row(t, activeSeason))
+        ) : listMinimized ? null : (
+          sinkDone(seasonTasks, activeSeason).map((t) => Row(t, activeSeason))
         )}
       </div>
 

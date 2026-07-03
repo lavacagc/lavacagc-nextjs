@@ -42,3 +42,17 @@ export function seasonStart(date: Date = new Date()): Date {
   const y = date.getUTCFullYear() - (date.getUTCMonth() < startMonth ? 1 : 0);
   return new Date(Date.UTC(y, startMonth, 1));
 }
+
+/**
+ * UTC start of the most recent occurrence of season `s` (this year's if it has
+ * begun, otherwise last year's). A completion only "counts" for a season while
+ * that occurrence is the latest one — when the season next comes around, the
+ * checkmark naturally expires and the checklist resets for the new year.
+ */
+export function mostRecentSeasonStart(s: Season, date: Date = new Date()): Date {
+  const m = SEASON_START_MONTH[s];
+  const candidate = new Date(Date.UTC(date.getUTCFullYear(), m, 1));
+  return candidate.getTime() <= date.getTime()
+    ? candidate
+    : new Date(Date.UTC(date.getUTCFullYear() - 1, m, 1));
+}

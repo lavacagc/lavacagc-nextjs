@@ -6,7 +6,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById, updateHomeowner } from '@/lib/homecare/homeowners';
-import { currentSeason, seasonStart, SEASON_LABEL } from '@/lib/homecare/season';
+import { currentSeason, mostRecentSeasonStart, seasonStart, SEASON_LABEL, type Season } from '@/lib/homecare/season';
 import {
   filterTasksForProfile,
   getStage,
@@ -42,7 +42,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   const [allTasks, profileRows, doneRows] = await Promise.all([
     supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title,blurb,applies_to,stages,seasons,frequency,starter,diy_or_pro,bookable,est_cost_low,est_cost_high,priority&active=eq.true&order=priority.desc`),
     supabaseRest<{ systems: HomeSystems; stage: Stage | null; homeowner_type: string | null }[]>('GET', `home_profiles?select=systems,stage,homeowner_type&homeowner_id=eq.${homeowner.id}&limit=1`),
-    supabaseRest<{ task_key: string; season: string; status: string }[]>('GET', `homeowner_maintenance?select=task_key,season,status&homeowner_id=eq.${homeowner.id}&status=in.(done,dismissed)`),
+    supabaseRest<{ task_key: string; season: string; status: string; completed_at: string | null }[]>('GET', `homeowner_maintenance?select=task_key,season,status,completed_at&homeowner_id=eq.${homeowner.id}&status=in.(done,dismissed)`),
   ]);
 
   const systems = profileRows?.[0]?.systems ?? null;
@@ -50,7 +50,18 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   const stageDef = getStage(stage);
   const hasProfile = (!!systems && Object.keys(systems).length > 0) || stage !== null;
   const tasks = filterTasksForProfile(allTasks ?? [], systems, stage);
-  const doneItems = (doneRows ?? []).filter((r) => r.status === 'done').map(({ task_key, season }) => ({ task_key, season }));
+  // Seasonal reset: a completion only counts while its season's most recent
+  // occurrence is current — when the season next comes around, old checkmarks
+  // expire and the list starts fresh. One-time work ('starter' essentials)
+  // never expires; rows without a timestamp are counted leniently.
+  const SEASONAL: Season[] = ['spring', 'summer', 'fall', 'winter'];
+  const doneItems = (doneRows ?? [])
+    .filter((r) => {
+      if (r.status !== 'done') return false;
+      if (!SEASONAL.includes(r.season as Season) || !r.completed_at) return true;
+      return new Date(r.completed_at).getTime() >= mostRecentSeasonStart(r.season as Season).getTime();
+    })
+    .map(({ task_key, season }) => ({ task_key, season }));
   const dismissedKeys = (doneRows ?? []).filter((r) => r.status === 'dismissed').map((r) => r.task_key);
   const ownedSystems = SYSTEM_QUESTIONS.filter((q) => systems?.[q.key] === true);
   const greeting = homeowner.first_name ? `Welcome back, ${homeowner.first_name}` : 'Your home checklist';
