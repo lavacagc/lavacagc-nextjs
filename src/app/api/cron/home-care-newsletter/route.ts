@@ -4,6 +4,9 @@
  * Runs on the 1st of each month. Season-start months (Mar/Jun/Sep/Dec) send the
  * full seasonal checklist; other months send a lighter top-3 "nudge". One email
  * per active homeowner per calendar month (deduped via last_newsletter_at).
+ * Tasks a member dismissed ("not relevant to my home") are filtered out per
+ * recipient; a member with no tasks left after filtering is skipped for the
+ * month (reported as empty_skipped in the response).
  *
  *   ?dryRun=1 — compute recipients/counts but send nothing.
  *

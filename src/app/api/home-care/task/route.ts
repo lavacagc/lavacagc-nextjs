@@ -1,5 +1,7 @@
 /**
- * Toggle a homeowner's checklist task done/undone (the "stored" checklist).
+ * Toggle a homeowner's checklist task done/undone (the "stored" checklist),
+ * or dismiss/restore a task via `dismiss: boolean` ("not relevant to my home",
+ * stored as one season='all' row with status 'dismissed'; restore sets 'todo').
  * Cookie-gated by hc_access. Upserts homeowner_maintenance for the current season.
  */
 import { NextRequest, NextResponse } from 'next/server';
