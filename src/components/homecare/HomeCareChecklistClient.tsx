@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, Plus, Wrench, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy } from 'lucide-react';
 import { hasGuideItem } from '@/lib/homecare/guides';
 import { prevSeason, seasonStart, type Season } from '@/lib/homecare/season';
@@ -82,6 +82,13 @@ export default function HomeCareChecklistClient({
   const [activeSeason, setActiveSeason] = useState<string>(SEASONS.includes(currentSeason as (typeof SEASONS)[number]) ? currentSeason : 'spring');
   const [catchUpDismissed, setCatchUpDismissed] = useState(false);
   const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
+  const shareResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (shareResetTimer.current != null) clearTimeout(shareResetTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -124,6 +131,14 @@ export default function HomeCareChecklistClient({
       else next.delete(key);
       return next;
     });
+    if (dismiss) {
+      setSelected((prev) => {
+        if (!prev.has(key)) return prev;
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
     setBusy(`dismiss|${key}`);
     try {
       const res = await fetch('/api/home-care/task', {
@@ -182,7 +197,8 @@ export default function HomeCareChecklistClient({
     }
     if (!copied) return;
     setShareState('copied');
-    setTimeout(() => setShareState('idle'), 2500);
+    if (shareResetTimer.current != null) clearTimeout(shareResetTimer.current);
+    shareResetTimer.current = setTimeout(() => setShareState('idle'), 2500);
   };
 
   const toggleDone = async (key: string, season: string) => {
