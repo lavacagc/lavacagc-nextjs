@@ -87,13 +87,16 @@ export default function HomeCareChecklistClient({
   // The plan header sticks just below the site header, whose height varies by
   // breakpoint — measure it instead of hardcoding offsets.
   useEffect(() => {
-    const measure = () => {
-      const header = document.querySelector('header');
-      setStickyTop(header ? Math.round(header.getBoundingClientRect().height) : 0);
-    };
+    const header = document.querySelector('header');
+    if (!header) {
+      setStickyTop(0);
+      return;
+    }
+    const measure = () => setStickyTop(Math.round(header.getBoundingClientRect().height));
     measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
   }, []);
   const shareResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
