@@ -249,9 +249,11 @@ test.describe('Home Care portal: summer catalog + season catch-up (live UI)', ()
             res.writeHead(201).end();
             return;
           }
+          // The page selects task_key,season,status and keeps rows with
+          // status === 'done' (Wave 1) — this store only ever holds done rows.
           const rows = [...(doneStore.get(eq('homeowner_id')) ?? [])].map((k) => {
             const [task_key, season] = k.split('|');
-            return { task_key, season };
+            return { task_key, season, status: 'done' };
           });
           return json(200, rows);
         }
@@ -322,14 +324,14 @@ test.describe('Home Care portal: summer catalog + season catch-up (live UI)', ()
     await page.getByRole('button', { name: `Review ${LABEL_PREV}` }).click();
     // Card hides off the current-season tab; last season's list is shown with saved progress.
     await expect(page.getByRole('heading', { name: `Left over from ${LABEL_PREV}` })).toBeHidden();
-    await expect(page.getByText(`${LABEL_PREV}: ${doneKeys.length} of ${prevSeasonTasks.length} done`)).toBeVisible();
+    await expect(page.getByText(`${LABEL_PREV} · ${doneKeys.length} of ${prevSeasonTasks.length} done`)).toBeVisible();
     await shot(page, '03-review-previous-season-tab.png');
 
     // Knock out the first missed task.
     const firstMissed = prevSeasonTasks.find((t) => !doneKeys.includes(t.key))!;
     const row = page.locator('div.rounded-xl', { has: page.getByRole('heading', { name: firstMissed.title, exact: true }) });
     await row.getByRole('button', { name: 'Mark done' }).click();
-    await expect(page.getByText(`${LABEL_PREV}: ${doneKeys.length + 1} of ${prevSeasonTasks.length} done`)).toBeVisible();
+    await expect(page.getByText(`${LABEL_PREV} · ${doneKeys.length + 1} of ${prevSeasonTasks.length} done`)).toBeVisible();
 
     // Back on the current season the card recounts live.
     await page.getByRole('button', { name: `${LABEL_NOW} · now` }).click();
