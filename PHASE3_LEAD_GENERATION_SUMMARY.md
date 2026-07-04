@@ -27,7 +27,7 @@ A comprehensive lead scoring algorithm that evaluates leads based on:
   - Calculator: 20pts
   - Contact Form: 15pts
   - Chatbot: 10pts
-  - Exit Intent: 5pts
+  - Exit Intent: 5pts _(deprecated: as of the homepage Home Care promo change, the exit-intent popup offers the free Home Care seasonal checklist instead of submitting a lead, so no new `exit_intent` leads are produced. Kept in the scoring model and `leads.source` enum for historical leads.)_
 
 - **Budget Indicators (10-20 points)**
   - High budget (>$50k): 20pts
@@ -226,7 +226,7 @@ import { ClientLeadGenWidgets } from '@/components/ClientLeadGenWidgets'
 - "Other" project type (50pts)
 - Outside service area (0pts)
 - Email only (10pts)
-- Exit intent (5pts)
+- Exit intent (5pts) _(historical example; the exit-intent popup no longer submits leads - see the deprecation note under Lead Source Quality)_
 - No budget (0pts)
 - **Tier: 🔵 COLD**
 

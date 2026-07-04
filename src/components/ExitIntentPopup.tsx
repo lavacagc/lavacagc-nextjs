@@ -1,18 +1,22 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useToast } from '@/hooks/use-toast';
-import { Phone, X } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
-import { useRecaptchaChallenge } from '@/components/recaptcha/RecaptchaChallengeProvider';
-import { submitLead } from '@/lib/submitLead';
+import { readHcKnown } from '@/lib/homecare/knownClient';
+import { trackEvent } from '@/services/analyticsManager';
 
+/**
+ * Exit-intent popup: offers the free Home Care seasonal checklist to visitors
+ * leaving without converting (owner decision 2026-07-03 — replaced the second
+ * estimate ask; a free checklist is a much softer exit offer, and every
+ * signup is an owned email channel). Existing guardrails kept: once per
+ * session, suppressed on excluded pages and while the smart banner shows.
+ * Known Home Care members never see it — they already have the checklist.
+ */
 const ExitIntentPopup = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [bannerShowing, setBannerShowing] = useState(() => isBannerVisible());
@@ -21,14 +25,6 @@ const ExitIntentPopup = () => {
   useEffect(() => {
     return subscribeBannerState(setBannerShowing);
   }, []);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
-    projectType: '',
-  });
-  const { toast } = useToast();
-  const { requestChallenge } = useRecaptchaChallenge();
   const pathname = usePathname();
 
   // Check if current page should show the popup
@@ -55,6 +51,11 @@ const ExitIntentPopup = () => {
       return;
     }
 
+    // Members already have their checklist — nothing to pitch.
+    if (readHcKnown()) {
+      return;
+    }
+
     // Check if already shown this session
     const hasShown = sessionStorage.getItem('exit_intent_shown');
     if (hasShown) {
@@ -63,21 +64,23 @@ const ExitIntentPopup = () => {
 
     let timeoutId: NodeJS.Timeout;
 
+    const open = () => {
+      setIsOpen(true);
+      sessionStorage.setItem('exit_intent_shown', 'true');
+      trackEvent('home_care_promo_view', { placement: 'exit_intent' });
+    };
+
     // Desktop: detect mouse leaving viewport
     const handleMouseLeave = (e: MouseEvent) => {
       if (e.clientY <= 0 && !isOpen && !bannerShowing) {
-        timeoutId = setTimeout(() => {
-          setIsOpen(true);
-          sessionStorage.setItem('exit_intent_shown', 'true');
-        }, 100);
+        timeoutId = setTimeout(open, 100);
       }
     };
 
     // Mobile: detect back button intent (popstate event)
     const handlePopState = () => {
       if (!isOpen && !bannerShowing) {
-        setIsOpen(true);
-        sessionStorage.setItem('exit_intent_shown', 'true');
+        open();
         // Push state back to prevent actual navigation
         window.history.pushState(null, '', window.location.href);
       }
@@ -96,160 +99,44 @@ const ExitIntentPopup = () => {
     };
   }, [pathname, isOpen, bannerShowing, shouldShowOnPage]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleProjectTypeChange = (value: string) => {
-    setFormData((prev) => ({ ...prev, projectType: value }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!formData.name || !formData.phone || !formData.projectType) {
-      toast({
-        title: 'Missing Information',
-        description: 'Please fill in all fields.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      // Split name into first and last
-      const nameParts = formData.name.trim().split(' ');
-      const firstName = nameParts[0];
-      const lastName = nameParts.slice(1).join(' ') || firstName;
-
-      const submitResult = await submitLead({
-        first_name: firstName,
-        last_name: lastName,
-        phone: formData.phone,
-        email: '',
-        inquiry_type: 'exit_intent',
-        project_type: formData.projectType,
-        message: `Exit intent popup - ${formData.projectType} project`,
-        source: 'exit_intent',
-        recaptchaToken: 'exit_intent_bypass',
-        recaptchaAction: 'exit_intent',
-      }, requestChallenge);
-
-      if (!submitResult.ok) {
-        if (submitResult.cancelled) {
-          toast({ title: 'Verification needed', description: "Please complete the checkbox to send your request, or call us at (201) 212-4917.", variant: 'destructive' });
-          return;
-        }
-        throw new Error(submitResult.error || 'Failed to submit');
-      }
-
-      toast({
-        title: 'Success!',
-        description: "We'll call you within 24 hours with your free estimate.",
-      });
-
-      setIsOpen(false);
-      setFormData({ name: '', phone: '', projectType: '' });
-    } catch (error) {
-      console.error('Exit intent form submission error:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to submit. Please call us at (201) 212-4917.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="sm:max-w-md border-2 border-[#ea580c]">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold text-center">
-            Wait! Get a Free Estimate Before You Go
+          <div className="text-[11px] font-extrabold uppercase tracking-[0.13em] text-accent-sunset">
+            Before you go — it&apos;s free
+          </div>
+          <DialogTitle className="text-2xl font-bold leading-snug text-left">
+            Not ready to remodel? Take the checklist instead.
           </DialogTitle>
-          <DialogDescription className="text-center text-base">
-            Leave your details and we&apos;ll call you with a free estimate within 24 hours
+          <DialogDescription className="text-left text-base">
+            Get a seasonal maintenance plan personalized to your NJ home — what to do each season, in your inbox.
+            20-second setup, no account, unsubscribe anytime.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Your Name *</Label>
-            <Input
-              id="name"
-              name="name"
-              type="text"
-              value={formData.name}
-              onChange={handleInputChange}
-              placeholder="John Smith"
-              required
-              maxLength={100}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="phone">Phone Number *</Label>
-            <Input
-              id="phone"
-              name="phone"
-              type="tel"
-              value={formData.phone}
-              onChange={handleInputChange}
-              placeholder="(555) 123-4567"
-              required
-              maxLength={20}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="projectType">Project Type *</Label>
-            <Select value={formData.projectType} onValueChange={handleProjectTypeChange} required>
-              <SelectTrigger id="projectType">
-                <SelectValue placeholder="Select a project type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Kitchen">Kitchen Remodel</SelectItem>
-                <SelectItem value="Bathroom">Bathroom Remodel</SelectItem>
-                <SelectItem value="Basement">Basement Finishing</SelectItem>
-                <SelectItem value="Addition">Home Addition</SelectItem>
-                <SelectItem value="Other">Other Renovation</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex gap-3 pt-2">
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex-1 bg-[#ea580c] hover:bg-[#c2410c] text-white font-semibold"
-            >
-              {isSubmitting ? (
-                'Submitting...'
-              ) : (
-                <>
-                  <Phone className="mr-2 h-4 w-4" />
-                  Get Free Estimate
-                </>
-              )}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsOpen(false)}
-              className="px-4"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <p className="text-xs text-center text-muted-foreground">
-            No obligation. We respect your privacy.
-          </p>
-        </form>
+        <div className="mt-2 space-y-2">
+          <Link
+            href="/home-care"
+            onClick={() => {
+              trackEvent('home_care_promo_click', { placement: 'exit_intent' });
+              setIsOpen(false);
+            }}
+            className="flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-primary to-accent-sunset px-6 py-3.5 text-sm font-bold text-white shadow-button transition-all hover:-translate-y-px"
+          >
+            Get my free seasonal plan
+          </Link>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              trackEvent('home_care_promo_dismiss', { placement: 'exit_intent' });
+              setIsOpen(false);
+            }}
+            className="w-full text-sm text-muted-foreground"
+          >
+            No thanks, I&apos;ll wing it
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

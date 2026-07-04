@@ -10,19 +10,8 @@ import Image from "next/image";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 import { useAuth } from "@/hooks/useAuth";
 import { useBuyRemodelPublished } from "@/lib/listings/publishedClient";
-
-/** Read the readable `hc_known` hint cookie (first name) on the client. */
-function readHcKnown(): string | null {
-  if (typeof document === 'undefined') return null;
-  const entry = document.cookie.split('; ').find((c) => c.startsWith('hc_known='));
-  if (!entry) return null;
-  try {
-    const name = decodeURIComponent(entry.slice('hc_known='.length)).trim();
-    return name || null;
-  } catch {
-    return null;
-  }
-}
+import { readHcKnown } from "@/lib/homecare/knownClient";
+import { trackEvent } from "@/services/analyticsManager";
 
 const ITEM_CLASS =
   "block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors";
@@ -129,10 +118,32 @@ const Header = () => {
 
   return (
     <>
-      {/* Trust Bar */}
+      {/* Trust Bar + Home Care promo line. On mobile the promo takes the slot
+          (the license line stays in the footer and /warranty); desktop shows
+          both. Members get their portal link instead of the opt-in pitch. */}
       <div className="bg-secondary text-secondary-foreground py-2 text-sm">
-        <div className="container mx-auto px-4 text-center">
-          <span className="font-medium">Licensed, Bonded, & Insured | HIC# 13VH13373800</span>
+        <div className="container mx-auto px-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-center">
+          <span className="font-medium hidden md:inline">Licensed, Bonded, & Insured | HIC# 13VH13373800</span>
+          <Link
+            href={hcKnown ? '/home-care/checklist' : '/home-care'}
+            onClick={() => trackEvent('home_care_promo_click', { placement: 'utility_bar', member: !!hcKnown })}
+            className="group inline-flex items-center gap-2 py-0.5 font-semibold text-[#FFD9AD] hover:text-white transition-colors"
+          >
+            {hcKnown ? (
+              <span>
+                Your seasonal checklist is waiting —{' '}
+                <span className="underline underline-offset-2 decoration-[#FFD9AD]/60 group-hover:decoration-white">open it →</span>
+              </span>
+            ) : (
+              <>
+                <span className="rounded-full bg-gradient-to-r from-primary to-accent-sunset px-2 py-px text-[10px] font-extrabold tracking-wider text-white">NEW</span>
+                <span>
+                  Free seasonal home checklist —{' '}
+                  <span className="underline underline-offset-2 decoration-[#FFD9AD]/60 group-hover:decoration-white">get yours →</span>
+                </span>
+              </>
+            )}
+          </Link>
         </div>
       </div>
 

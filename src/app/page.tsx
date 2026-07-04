@@ -89,6 +89,10 @@ const WhyChoose = dynamic(() => import('@/components/WhyChoose'), {
 // const MobileContactBanner = dynamic(() => import('@/components/MobileContactBanner'))
 const TrackedSection = dynamic(() => import('@/components/TrackedSection'))
 
+const HomeCareBanner = dynamic(() => import('@/components/homecare/HomeCareBanner'), {
+  loading: () => <div className="h-64 bg-secondary" />
+})
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-background">
@@ -142,6 +146,17 @@ export default function Home() {
           className=""
         >
           <Testimonials />
+        </TrackedSection>
+
+        {/* Home Care band — free-checklist pitch for visitors who aren't
+            remodel-ready; placed right after testimonials so it lands with
+            trust established. */}
+        <TrackedSection
+          sectionId="home-care-banner"
+          sectionName="Home Care Banner"
+          className=""
+        >
+          <HomeCareBanner />
         </TrackedSection>
 
         {/* Services Section - Tracked */}
