@@ -28,7 +28,6 @@ export default function UnsubClient() {
   useEffect(() => {
     const prefill = params.get('email');
     if (prefill) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time prefill from the URL after mount
       setEmail(prefill);
     }
   }, [params]);
