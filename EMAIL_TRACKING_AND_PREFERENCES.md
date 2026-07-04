@@ -36,13 +36,17 @@ The webhook receives Resend delivery events (signed with Svix; the signature **i
 - `src/lib/preferences/preferences.ts` — token helpers, `applyUpdate` audit + legacy sync; re-exports everything in `streams.ts` for server callers
 - `supabase/migrations/20260801000000_create_email_preferences.sql` — `public.email_preferences` + `public.preference_events`
 - `src/app/preferences/page.tsx` + `PreferencesClient.tsx` — public self-serve page at `/preferences?token=…`
+- `src/app/unsub/page.tsx` + `UnsubClient.tsx` — public **tokenless** unsubscribe page at `/unsub` (aliased from `/unsubscribe`); pre-fills from `?email=`
 - `src/app/api/preferences/route.ts` — `GET/POST /api/preferences` (token-authenticated)
 - `src/app/api/preferences/unsubscribe/route.ts` — footer links + RFC 8058 one-click (List-Unsubscribe) target
+- `src/app/api/preferences/unsubscribe-by-email/route.ts` — `POST /api/preferences/unsubscribe-by-email`, the tokenless by-email backend for `/unsub`
 - `src/app/api/admin/preferences/route.ts` — admin view/toggle, bulk list, CSV export
 - `src/app/vaca-mgmt/preferences/page.tsx` — admin **Subscriptions** tab
 - `src/lib/notify/resendAudience.ts` + `src/app/api/admin/broadcasts/sync-suppression/route.ts` — broadcast suppression sync
 
 One row per (lowercased) email governs three **marketing streams** — `home_care`, `buy_remodel`, `announcements` (labels in `STREAMS`). Transactional mail (verification, estimates, lead follow-ups, internal notifications) is not represented and always sends. Authentication for the self-serve page is the `preference_token`, a capability — same trust model as the existing unsubscribe links. The page fails safe: a footer-link unsubscribe arrives as an in-page confirm prompt (nothing changes until the recipient confirms), a failed save reverts the toggle and shows an error-styled message, and a 429/5xx on load shows a retryable "Try again" state instead of the invalid-link screen.
+
+**Tokenless fallback (`/unsub`).** The self-serve preference center requires a signed token, so a recipient who reaches an unsubscribe URL without one — a short link, a mistyped address, a link that never carried a token — would otherwise hit a dead end. `/unsub` (and the `/unsubscribe` alias, a non-permanent redirect that preserves the query string) always lets a recipient opt out by entering their email, satisfying the CAN-SPAM requirement that the mechanism actually works. Submitting turns **every** marketing stream off for that email (via `getOrCreateByEmail` + `applyUpdate`), which cascades to the legacy `homeowners` / `newsletter_subscribers` status the same way any other opt-out does. The by-email endpoint always answers `200 { ok: true }` for any syntactically valid email so it can't be used to probe whether an address is subscribed, and is rate-limited per IP (20/min) to blunt row-creation abuse.
 
 How each stream is enforced:
 - **home_care** — the newsletter sender passes `preferenceStream: 'home_care'` to `sendTrackedEmail`, which skips suppressed recipients (logged as `skipped`/`unsubscribed` so the admin sees the intentional non-send) and attaches per-recipient `List-Unsubscribe` + one-click headers. Stream-governed sends are strictly single-recipient — a multi-recipient send with a `preferenceStream` is rejected and logged as `error` (suppression and the unsubscribe token are per-recipient). The newsletter footer also carries a "Manage email preferences" link.
@@ -60,6 +64,7 @@ Every stream change is audited in `preference_events` (old/new value, actor `sel
 | `POST /api/webhooks/resend` | Svix signature (`RESEND_WEBHOOK_SECRET`) | Delivery events → `email_log` backfill + permanent-bounce/complaint auto-suppress |
 | `GET/POST /api/preferences` | `preference_token` | Self-serve page: read / update streams |
 | `GET/POST /api/preferences/unsubscribe` | `preference_token` | Footer links (GET — mutates nothing, redirects to the preference center with a confirm prompt) + RFC 8058 one-click (POST, unsubscribes all marketing) |
+| `POST /api/preferences/unsubscribe-by-email` | none (by email) | Tokenless `/unsub` backend: turns off all marketing streams for the given email; always 200 `{ ok: true }` for a valid email (no subscription probing) |
 | `GET /api/admin/emails` | admin middleware | Email log list (filter by `category`, `status`, `q`, `limit`) |
 | `GET /api/admin/emails/[id]` | admin middleware | Single email incl. full rendered body |
 | `GET/POST /api/admin/preferences` | admin middleware | Contact lookup + audit trail, admin toggles, bulk list (`?all=1`, optional `stream`/`state`; JSON responses carry a `truncated` flag when the `limit` was hit), CSV export (`&format=csv` — paginates to completion, never truncates) |
@@ -67,7 +72,7 @@ Every stream change is audited in `preference_events` (old/new value, actor `sel
 
 `/api/webhooks/resend` and `/api/preferences` are declared in `PUBLIC_ROUTES` in `src/middleware.ts`.
 
-The public preference endpoints are rate-limited per IP via the existing `rate_limits` table (`src/lib/rateLimit.ts`): `GET /api/preferences` 30/min, `POST /api/preferences` 15/min, unsubscribe `GET` 30/min, one-click `POST` 60/min. Over the limit, the JSON endpoints return 429 with a `Retry-After` header; the unsubscribe `GET` instead skips the DB lookup and still redirects to the preference center (the page validates the token itself), so a scanner burst from a shared gateway IP can't break a real click.
+The public preference endpoints are rate-limited per IP via the existing `rate_limits` table (`src/lib/rateLimit.ts`): `GET /api/preferences` 30/min, `POST /api/preferences` 15/min, unsubscribe `GET` 30/min, one-click `POST` 60/min, tokenless unsubscribe-by-email `POST` 20/min. Over the limit, the JSON endpoints return 429 with a `Retry-After` header; the unsubscribe `GET` instead skips the DB lookup and still redirects to the preference center (the page validates the token itself), so a scanner burst from a shared gateway IP can't break a real click.
 
 ## Admin UI
 
