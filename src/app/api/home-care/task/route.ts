@@ -3,6 +3,9 @@
  * or dismiss/restore a task via `dismiss: boolean` ("not relevant to my home",
  * stored as one season='all' row with status 'dismissed'; restore sets 'todo').
  * Cookie-gated by hc_access. Upserts homeowner_maintenance for the current season.
+ * `completed_at` stamps each done-toggle; the checklist page compares it to
+ * `completionCutoff(season)` so seasonal completions expire when the season
+ * next comes around (see src/lib/homecare/season.ts).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
