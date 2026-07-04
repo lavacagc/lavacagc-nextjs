@@ -417,6 +417,53 @@ test.describe('admin /vaca-mgmt/releases', () => {
     await page.screenshot({ path: shot('03-test-send-toast.png') });
   });
 
+  test('test-send toast surfaces the preflight fail-open warning', async ({ page, context, baseURL }) => {
+    // AC: when the send API succeeds but preflight was skipped (control asset
+    // blocked), the returned warning is shown in the success toast so the
+    // owner knows the screenshots were NOT verified.
+    await signInAsAdmin(context, baseURL!);
+    await mockReleasesApi(page, wave1Rows(), [], []);
+    const warning =
+      'screenshot preflight skipped: control asset /logo.png failed (HTTP 403) — the CDN may be blocking server probes, so screenshots were NOT verified before this send';
+    await page.route('**/api/admin/releases/send', (route) =>
+      route.fulfill({ json: { ok: true, mode: 'test', status: 'sent', features: 3, to: 'admin@lavacagc.com', warning } }),
+    );
+
+    await page.goto('/vaca-mgmt/releases');
+    await expect(page.getByText('3 queued')).toBeVisible();
+    await page.getByRole('button', { name: 'Send test to me' }).click();
+    await expect(page.getByText('Test sent to admin@lavacagc.com').first()).toBeVisible();
+    await expect(page.getByText(/screenshots were NOT verified/).first()).toBeVisible();
+    await page.waitForTimeout(600); // toast slide-in
+    await page.screenshot({ path: shot('06-test-send-preflight-warning-toast.png') });
+  });
+
+  test('blocked send toast names the unreachable screenshot URLs', async ({ page, context, baseURL }) => {
+    // AC: a 400 from the failed preflight surfaces each failing probe URL in
+    // the destructive toast, so the owner sees exactly what to fix.
+    await signInAsAdmin(context, baseURL!);
+    await mockReleasesApi(page, wave1Rows(), [], []);
+    const failures = [
+      'https://www.lavacagc.com/email/releases/dismiss-task.png?v=ed1 → HTTP 404',
+      'https://www.lavacagc.com/email/releases/share-card.png?v=ed1 → HTTP 404',
+    ];
+    await page.route('**/api/admin/releases/send', (route) =>
+      route.fulfill({
+        status: 400,
+        json: { error: 'screenshot(s) not publicly reachable — fix them before sending', failures },
+      }),
+    );
+
+    await page.goto('/vaca-mgmt/releases');
+    await expect(page.getByText('3 queued')).toBeVisible();
+    await page.getByRole('button', { name: 'Send test to me' }).click();
+    await expect(page.getByText('Send failed').first()).toBeVisible();
+    await expect(page.getByText(/dismiss-task\.png\?v=ed1 → HTTP 404/).first()).toBeVisible();
+    await expect(page.getByText(/share-card\.png\?v=ed1 → HTTP 404/).first()).toBeVisible();
+    await page.waitForTimeout(600); // toast slide-in
+    await page.screenshot({ path: shot('07-preflight-failure-toast.png') });
+  });
+
   test('send-to-all needs an inline confirm; confirmed send batches the whole queue', async ({
     page,
     context,

@@ -16,6 +16,14 @@ const nextConfig: NextConfig = {
   // Image optimization
   images: {
     formats: ['image/webp', 'image/avif'],
+    // Next 16 rejects query strings on local next/image srcs unless
+    // localPatterns is set explicitly (`search` omitted = any query allowed).
+    // /home-care/whats-new cache-busts its release screenshots with ?v=.
+    localPatterns: [
+      {
+        pathname: '/**',
+      },
+    ],
     remotePatterns: [
       {
         protocol: 'https',
