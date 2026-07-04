@@ -40,9 +40,6 @@ export const maxDuration = 300;
 const FROM = 'La Vaca Home Care <alex@email.lavaca.link>';
 const PROD_BASE = 'https://www.lavacagc.com';
 const RECIPIENT_CAP = 1000;
-// Test-only override so specs can point the screenshot preflight at a local
-// stub; production always probes the same prod URLs the email embeds.
-const ASSET_PROBE_BASE = process.env.RELEASE_ASSET_PROBE_BASE || PROD_BASE;
 
 /**
  * Stamping 'sent' is what publishes entries on the public
@@ -110,7 +107,7 @@ export async function POST(request: NextRequest) {
       if (queued.length === 0) {
         return NextResponse.json({ error: 'nothing queued — add at least one feature first' }, { status: 400 });
       }
-      const preflight = await preflightReleaseAssets(ASSET_PROBE_BASE, queued.map((q) => q.screenshot_path), assetVersion);
+      const preflight = await preflightReleaseAssets(PROD_BASE, queued.map((q) => q.screenshot_path), assetVersion);
       if (!preflight.ok) {
         return NextResponse.json(
           { error: 'screenshot(s) not publicly reachable — fix them before sending', failures: preflight.failures },
@@ -167,11 +164,14 @@ export async function POST(request: NextRequest) {
 
     // Screenshots must be verified reachable BEFORE the queue is claimed —
     // a failed preflight leaves everything queued and nothing sent.
-    const peek = (await supabaseRest<QueuedRow[]>(
+    const peek = (await supabaseRest<Pick<QueuedRow, 'id' | 'screenshot_path'>[]>(
       'GET',
-      'feature_releases?select=screenshot_path&status=eq.queued',
+      'feature_releases?select=id,screenshot_path&status=eq.queued',
     )) ?? [];
-    const preflight = await preflightReleaseAssets(ASSET_PROBE_BASE, peek.map((q) => q.screenshot_path), assetVersion);
+    if (peek.length === 0) {
+      return NextResponse.json({ error: 'nothing queued — add at least one feature first' }, { status: 400 });
+    }
+    const preflight = await preflightReleaseAssets(PROD_BASE, peek.map((q) => q.screenshot_path), assetVersion);
     if (!preflight.ok) {
       return NextResponse.json(
         { error: 'screenshot(s) not publicly reachable — fix them before sending', failures: preflight.failures },
@@ -179,13 +179,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Claim the whole queue atomically BEFORE sending: a concurrent second
+    // Claim the queue atomically BEFORE sending: a concurrent second
     // trigger claims nothing and gets the "nothing queued" 400, and a
     // mid-batch crash cannot cause a retry to re-email everyone - the failure
     // mode is "some members missed it", visible per-recipient in email_log.
     const queued = ((await supabaseRest<QueuedRow[]>(
       'PATCH',
-      'feature_releases?status=eq.queued&select=id,headline,subhead,benefit,screenshot_path,sort_order,created_at',
+      `feature_releases?id=in.(${peek.map((q) => q.id).join(',')})&status=eq.queued&select=id,headline,subhead,benefit,screenshot_path,sort_order,created_at`,
       { status: 'sent', sent_at: new Date().toISOString() },
       { prefer: 'return=representation' },
     )) ?? []).sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));

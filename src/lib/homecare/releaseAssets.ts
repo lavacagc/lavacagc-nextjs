@@ -38,6 +38,7 @@ async function probe(url: string): Promise<{ ok: boolean; detail: string }> {
       cache: 'no-store',
     });
     const type = res.headers.get('content-type') ?? '';
+    await res.body?.cancel().catch(() => {});
     if (res.ok && type.startsWith('image/')) return { ok: true, detail: 'ok' };
     return { ok: false, detail: res.ok ? `content-type ${type || 'unknown'}` : `HTTP ${res.status}` };
   } catch (err) {
