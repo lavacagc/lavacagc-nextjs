@@ -9,7 +9,9 @@ import { sendTrackedEmail, type EmailCategory } from '@/lib/notify/sendEmail';
 /**
  * Customer-facing emails for the "Buy + Remodel" email gate (double opt-in +
  * newsletter). Sent from the warm identity per the email-from-address
- * convention (anything a customer reads is "Alex from La Vaca GC").
+ * convention (anything a customer reads is "Alex from La Vaca GC", except
+ * Home Care program mail, which sends as "La Vaca Home Care" - see
+ * sendHomeCareEmails.ts).
  *
  * Runs in-process — do NOT self-fetch. See note in sendEstimateEmail.ts.
  */

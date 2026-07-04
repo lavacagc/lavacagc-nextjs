@@ -10,7 +10,8 @@ import { ArrowRight, Sparkles } from 'lucide-react';
  * Public release page for La Vaca Home Care (SEO surface). Reads the same
  * feature_releases queue that powers the member release email, showing only
  * announced features (status=sent) — queued entries stay private until the
- * release email goes out. Statically generated and refreshed hourly so new
+ * release email goes out. Statically generated; the send route revalidates it
+ * on-demand right after each send, with hourly ISR as the fallback, so new
  * entries appear without a deploy.
  */
 export const dynamic = 'force-static';

@@ -5,7 +5,8 @@
  * preview/test the email, and (only ever manually) send it to all Home Care
  * members. Entries are written as features ship; this screen is the trigger.
  * Sending also publishes: sent entries appear on the public
- * /home-care/whats-new page (refreshed hourly).
+ * /home-care/whats-new page (revalidated right after the send, with hourly
+ * ISR as the fallback).
  */
 
 import { useState, useEffect, useCallback } from 'react';
