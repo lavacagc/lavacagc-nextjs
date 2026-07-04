@@ -20,6 +20,14 @@ export interface ReleaseEmailArgs {
   baseUrl: string;
   unsubscribeUrl: string;
   preferencesUrl?: string;
+  /**
+   * Cache-busting token appended to screenshot URLs (?v=...). Cloudflare
+   * caches error responses for image paths, so a screenshot fetched before
+   * its deploy landed can keep 404ing from cache long after the file is live
+   * (2026-07-03 release email). A per-send version gives every edition a
+   * fresh cache key that goes straight to origin.
+   */
+  assetVersion?: string;
 }
 
 const PHONE = '(201) 212-4917';
@@ -30,7 +38,7 @@ function esc(s: string): string {
 }
 
 export function buildReleaseEmail(args: ReleaseEmailArgs): { subject: string; html: string; text: string } {
-  const { firstName, features, baseUrl, unsubscribeUrl, preferencesUrl } = args;
+  const { firstName, features, baseUrl, unsubscribeUrl, preferencesUrl, assetVersion } = args;
   const n = features.length;
   const subject = n === 1
     ? `New in your Home Care portal: ${features[0].headline}`
@@ -39,7 +47,7 @@ export function buildReleaseEmail(args: ReleaseEmailArgs): { subject: string; ht
 
   const featureBlock = (f: ReleaseFeature) => `
     <table width="100%" style="border-collapse:collapse;margin:0 0 26px"><tr><td style="border:1px solid #e6e9ef;border-radius:12px;padding:20px 22px">
-      ${f.screenshot_path ? `<img src="${baseUrl}${esc(f.screenshot_path)}" alt="${esc(f.headline)}" width="100%" style="display:block;width:100%;height:auto;border-radius:8px;border:1px solid #e6e9ef;margin-bottom:14px">` : ''}
+      ${f.screenshot_path ? `<img src="${baseUrl}${esc(f.screenshot_path)}${assetVersion ? `?v=${encodeURIComponent(assetVersion)}` : ''}" alt="${esc(f.headline)}" width="100%" style="display:block;width:100%;height:auto;border-radius:8px;border:1px solid #e6e9ef;margin-bottom:14px">` : ''}
       <div style="font-size:17px;font-weight:800;color:#002855">${esc(f.headline)}</div>
       <div style="font-size:14px;color:#5b6b82;margin-top:4px;line-height:1.5">${esc(f.subhead)}</div>
       <div style="font-size:13px;color:#002855;margin-top:10px;line-height:1.5"><span style="font-weight:800;color:#EE9639">Why it matters:</span> ${esc(f.benefit)}</div>
