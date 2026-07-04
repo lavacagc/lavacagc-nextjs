@@ -222,7 +222,12 @@ test.describe('Home Care: sticky plan header + essentials in the plan progress (
   test('E2: finishing seasonal + essentials completes the plan with the combined celebration', async ({ page }) => {
     await openChecklist(page);
     await markDone(page, SEASONAL[1].title);
-    await markDone(page, ESSENTIALS[1].title);
+    // The final check-off completes the plan, which minimizes the whole list
+    // into the summary strip — so the row (and its "Mark not done" state)
+    // leaves the DOM. Click without the row-level confirmation and assert the
+    // minimized strip instead.
+    await taskRow(page, ESSENTIALS[1].title).getByRole('button', { name: 'Mark done' }).click();
+    await expect(page.getByText(`All ${PLAN_TOTAL} tasks handled — nothing left to do right now.`)).toBeVisible();
 
     await expect(planText(page)).toHaveText(`${PLAN_LABEL} · ${PLAN_TOTAL} of ${PLAN_TOTAL} done`);
     await expect(planBar(page)).toHaveAttribute('aria-valuenow', '100');

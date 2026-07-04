@@ -1,4 +1,7 @@
-/** Northern-NJ season from a date. Pure + testable. */
+/**
+ * Northern-NJ season math: season from a date, ordering, boundaries, and the
+ * seasonal-reset completion cutoff. Pure + testable.
+ */
 
 /** Single source of truth for the four seasons, in display order (spring first). */
 export const SEASONS = ['spring', 'summer', 'fall', 'winter'] as const;

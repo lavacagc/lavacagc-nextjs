@@ -281,10 +281,15 @@ test.describe('Home Care Wave 1: dismiss, progress + celebration, share (live UI
     await expect(page.getByText('50%', { exact: true })).toBeVisible();
     await shot(page, '05-progress-bar-50-percent.png');
 
-    for (const t of CATALOG.slice(2)) {
+    // The final check-off completes the plan, which minimizes the list into
+    // the summary strip — that last row's "Mark not done" state never becomes
+    // visible, so assert the strip instead.
+    for (const t of CATALOG.slice(2, -1)) {
       await taskRow(page, t.title).getByRole('button', { name: 'Mark done' }).click();
       await expect(taskRow(page, t.title).getByRole('button', { name: 'Mark not done' })).toBeVisible();
     }
+    await taskRow(page, CATALOG[CATALOG.length - 1].title).getByRole('button', { name: 'Mark done' }).click();
+    await expect(page.getByText(`All ${CATALOG.length} tasks handled — nothing left to do right now.`)).toBeVisible();
     await expect(progressLabel(page)).toHaveText(`${LABEL_NOW} · 4 of 4 done`);
     await expect(page.getByRole('progressbar', { name: `${LABEL_NOW} progress` })).toHaveAttribute('aria-valuenow', '100');
     await expect(page.getByText('Everything handled — progress is saved.')).toBeVisible();
