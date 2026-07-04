@@ -2,12 +2,15 @@ import { sendTrackedEmail, type EmailCategory } from '@/lib/notify/sendEmail';
 import type { StreamKey } from '@/lib/preferences/preferences';
 
 /**
- * Customer-facing emails for La Vaca Home Care (double opt-in + welcome). Warm
- * identity per the from-address convention. Runs in-process (do NOT self-fetch).
- * All sends funnel through sendTrackedEmail so they land in email_log.
+ * Customer-facing emails for La Vaca Home Care (double opt-in + welcome).
+ * Program identity: everything a Home Care member receives is from
+ * "La Vaca Home Care" (owner decision 2026-07-03 — program emails carry the
+ * program's name, not the personal warm identity used elsewhere). Runs
+ * in-process (do NOT self-fetch). All sends funnel through sendTrackedEmail
+ * so they land in email_log.
  */
 
-const FROM_ADDRESS = 'Alex from La Vaca GC <alex@email.lavaca.link>';
+const FROM_ADDRESS = 'La Vaca Home Care <alex@email.lavaca.link>';
 const DEFAULT_REPLY_TO = 'info@lavacagc.com';
 const LOGO = 'https://www.lavacagc.com/logo.png';
 const PHONE = '(201) 212-4917';

@@ -35,7 +35,9 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const FROM = 'Alex from La Vaca GC <alex@email.lavaca.link>';
+// Home Care program emails are from the program, not the personal identity
+// (owner decision 2026-07-03) — keep in sync with sendHomeCareEmails.ts.
+const FROM = 'La Vaca Home Care <alex@email.lavaca.link>';
 const PROD_BASE = 'https://www.lavacagc.com';
 const RECIPIENT_CAP = 1000;
 // Test-only override so specs can point the screenshot preflight at a local
