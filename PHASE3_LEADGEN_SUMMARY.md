@@ -4,12 +4,17 @@
 
 ### 1. Exit Intent Popup (`src/components/ExitIntentPopup.tsx`)
 - ✅ Detects mouse leaving viewport (desktop) and back button intent (mobile)
-- ✅ Shows modal: "Wait! Get a Free Estimate Before You Go"
-- ✅ Simple form: Name, Phone, Project Type dropdown (Kitchen, Bathroom, Basement, Addition, Other)
-- ✅ Saves to Supabase `leads` table with `inquiry_type='exit_intent'`
+- ✅ Shows modal: "Not ready to remodel? Take the checklist instead." — offers the
+  free La Vaca Home Care seasonal checklist instead of a second estimate ask
+  (owner decision 2026-07-03; a free checklist is a softer exit offer and every
+  signup is an owned email channel)
+- ✅ No form: a single "Get my free seasonal plan" link to `/home-care` plus a
+  dismiss button (no lead is submitted from the popup)
 - ✅ Only shows once per session (sessionStorage flag)
 - ✅ Only shows on service pages and homepage (excludes admin, blog, legal pages)
-- ✅ Clean, branded design with orange accent (#ea580c)
+- ✅ Suppressed while the smart banner is showing and on `/home-care` pages
+- ✅ Known Home Care members (readable `hc_known` cookie) never see it
+- ✅ Fires `home_care_promo_view` / `_click` / `_dismiss` analytics events (placement `exit_intent`)
 - ✅ Added to root layout with dynamic import (ssr:false)
 
 ### 2. Social Proof Popups (`src/components/SocialProofPopup.tsx`)
@@ -78,10 +83,11 @@ All TypeScript compilation successful, no errors.
 - [ ] Exit intent popup appears when mouse leaves viewport (desktop)
 - [ ] Exit intent popup appears on back button (mobile)
 - [ ] Exit intent popup only shows once per session
+- [ ] Exit intent popup offers the free Home Care checklist and links to `/home-care`
+- [ ] Exit intent popup never shows to known Home Care members (`hc_known` cookie)
 - [ ] Social proof notifications rotate every 30-45 seconds
 - [ ] Phone click tracking fires GA4 events
 - [ ] Phone clicks save to `lead_events` table in Supabase
-- [ ] Exit intent form submissions save to `leads` table
 - [ ] All popups don't show on admin/blog pages
 
 ## 📝 Notes
