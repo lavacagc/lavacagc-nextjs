@@ -147,7 +147,7 @@ export default function ReleasesAdminPage() {
         <div className="flex items-start gap-4">
           {e.screenshot_path && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={e.screenshot_path} alt="" className="hidden sm:block w-28 rounded-lg border border-border shrink-0" />
+            <img src={`${e.screenshot_path}?v=${Date.parse(e.created_at)}`} alt="" className="hidden sm:block w-28 rounded-lg border border-border shrink-0" />
           )}
           <div className="min-w-0 flex-1">
             <p className="font-bold text-text-primary">{e.headline}</p>

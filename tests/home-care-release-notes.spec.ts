@@ -194,7 +194,7 @@ test.describe('preflightReleaseAssets()', () => {
     // its probe outcome; healthy ones are not listed.
     const result = await preflightReleaseAssets(ASSET_BASE, ['/good.png', '/missing.png'], 'ed2');
     expect(result.ok).toBe(false);
-    expect(result.failures).toEqual([`${ASSET_BASE}/missing.png → HTTP 404`]);
+    expect(result.failures).toEqual([`${ASSET_BASE}/missing.png?v=ed2 → HTTP 404`]);
   });
 
   test('fail-opens with a loud warning when the control asset is blocked', async () => {

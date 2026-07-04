@@ -74,6 +74,6 @@ export async function preflightReleaseAssets(
   const results = await Promise.all(
     unique.map(async (p) => ({ p, r: await probe(`${baseUrl}${p}${v}`) })),
   );
-  const failures = results.filter((x) => !x.r.ok).map((x) => `${baseUrl}${x.p} → ${x.r.detail}`);
+  const failures = results.filter((x) => !x.r.ok).map((x) => `${baseUrl}${x.p}${v} → ${x.r.detail}`);
   return { ok: failures.length === 0, failures };
 }

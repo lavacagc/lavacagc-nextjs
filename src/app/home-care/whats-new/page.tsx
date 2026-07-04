@@ -159,7 +159,7 @@ export default async function WhatsNewPage() {
                   <p className="text-text-secondary leading-relaxed mb-4">{r.subhead}</p>
                   {r.screenshot_path && (
                     <Image
-                      src={r.screenshot_path}
+                      src={`${r.screenshot_path}?v=${Date.parse(r.sent_at ?? r.created_at)}`}
                       alt={`${r.headline} — La Vaca Home Care feature screenshot`}
                       width={736}
                       height={460}
