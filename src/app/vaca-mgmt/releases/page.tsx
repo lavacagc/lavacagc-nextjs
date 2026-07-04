@@ -122,7 +122,7 @@ export default function ReleasesAdminPage() {
         throw new Error([data.error ?? String(res.status), ...failures].join(' · '));
       }
       if (mode === 'test') {
-        toast({ title: `Test sent to ${data.to}`, description: `${data.features} feature${data.features === 1 ? '' : 's'} in the email — check your inbox.` });
+        toast({ title: `Test sent to ${data.to}`, description: `${data.features} feature${data.features === 1 ? '' : 's'} in the email — check your inbox.${data.warning ? ` ${data.warning}.` : ''}` });
       } else {
         toast({ title: `Release sent to ${data.sent} member${data.sent === 1 ? '' : 's'}`, description: `${data.suppressed} suppressed by preferences · ${data.failures} failures.${data.warning ? ` ${data.warning}.` : ''}` });
         setConfirmingSend(false);
