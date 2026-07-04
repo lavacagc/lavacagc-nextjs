@@ -171,6 +171,13 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       // ============================================
+      // UNSUBSCRIBE SHORT-LINK ALIASES → /unsub
+      // Any variant a recipient might reach must land on the working
+      // tokenless unsubscribe page (CAN-SPAM). Query string is preserved.
+      // ============================================
+      { source: '/unsubscribe', destination: '/unsub', permanent: false },
+
+      // ============================================
       // OLD SERVICE + CITY URL FORMAT REDIRECTS
       // Pattern: /service-city-nj → /locations/city/services/service
       // ============================================
