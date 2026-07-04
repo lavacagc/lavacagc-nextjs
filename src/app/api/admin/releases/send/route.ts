@@ -12,24 +12,48 @@
  *        'queued' (an all-suppressed batch counts as a successful send).
  *
  * Stamping 'sent' is also what publishes an entry: the public
- * /home-care/whats-new page renders sent rows (statically, revalidated hourly).
+ * /home-care/whats-new page renders sent rows (statically, revalidated hourly
+ * plus on-demand right after each send).
+ *
+ * Both modes preflight every screenshot URL (cache-busted, exactly as the
+ * email will embed it) before anything sends — Cloudflare caches image error
+ * responses, so an entry drafted before its screenshot deployed can otherwise
+ * ship a broken image days later.
  *
  * Never runs on a schedule — the whole point is that the owner pulls the trigger.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
+import { HOME_CARE_FROM } from '@/lib/notify/sendHomeCareEmails';
 import { buildReleaseEmail, type ReleaseFeature } from '@/lib/homecare/releaseEmail';
+import { preflightReleaseAssets } from '@/lib/homecare/releaseAssets';
 import { preferencesUrlFor } from '@/lib/preferences/preferences';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const FROM = 'Alex from La Vaca GC <alex@email.lavaca.link>';
 const PROD_BASE = 'https://www.lavacagc.com';
 const RECIPIENT_CAP = 1000;
+
+/**
+ * Stamping 'sent' is what publishes entries on the public
+ * /home-care/whats-new page (static, hourly ISR) — refresh it immediately so
+ * the owner sees the edition live right after sending, not up to an hour
+ * later. Never fails the send: the hourly revalidation is the fallback.
+ */
+function refreshWhatsNew(): boolean {
+  try {
+    revalidatePath('/home-care/whats-new');
+    return true;
+  } catch (err) {
+    console.error('whats-new revalidation failed (non-fatal):', err instanceof Error ? err.message : err);
+    return false;
+  }
+}
 
 interface QueuedRow extends ReleaseFeature {
   id: string;
@@ -68,6 +92,10 @@ export async function POST(request: NextRequest) {
     // Screenshot/link URLs must be absolute for email clients, and prod assets
     // only exist on the deployed site — always build against prod.
     const baseUrl = PROD_BASE;
+    // Per-send cache-bust token: every edition's screenshots get a fresh CDN
+    // cache key, so a frozen error entry from before their deploy can't
+    // resurface in recipients' mail clients.
+    const assetVersion = Date.now().toString(36);
 
     if (mode === 'test') {
       const queued = (await supabaseRest<QueuedRow[]>(
@@ -77,15 +105,23 @@ export async function POST(request: NextRequest) {
       if (queued.length === 0) {
         return NextResponse.json({ error: 'nothing queued — add at least one feature first' }, { status: 400 });
       }
+      const preflight = await preflightReleaseAssets(PROD_BASE, queued.map((q) => q.screenshot_path), assetVersion);
+      if (!preflight.ok) {
+        return NextResponse.json(
+          { error: 'screenshot(s) not publicly reachable — fix them before sending', failures: preflight.failures },
+          { status: 400 },
+        );
+      }
       const { subject, html, text } = buildReleaseEmail({
         firstName: null,
         features: queued,
         baseUrl,
         unsubscribeUrl: `${baseUrl}/home-care`,
         preferencesUrl: undefined,
+        assetVersion,
       });
       const res = await sendTrackedEmail({
-        from: FROM,
+        from: HOME_CARE_FROM,
         to: adminEmail!,
         subject: `[TEST] ${subject}`,
         html,
@@ -104,7 +140,14 @@ export async function POST(request: NextRequest) {
           { status: 502 },
         );
       }
-      return NextResponse.json({ ok: true, mode, status: res.status, features: queued.length, to: adminEmail });
+      return NextResponse.json({
+        ok: true,
+        mode,
+        status: res.status,
+        features: queued.length,
+        to: adminEmail,
+        ...(preflight.warning ? { warning: preflight.warning } : {}),
+      });
     }
 
     const homeowners = (await supabaseRest<HomeownerRow[]>(
@@ -117,13 +160,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'no active members to send to' }, { status: 400 });
     }
 
-    // Claim the whole queue atomically BEFORE sending: a concurrent second
+    // Screenshots must be verified reachable BEFORE the queue is claimed —
+    // a failed preflight leaves everything queued and nothing sent.
+    const peek = (await supabaseRest<Pick<QueuedRow, 'id' | 'screenshot_path'>[]>(
+      'GET',
+      'feature_releases?select=id,screenshot_path&status=eq.queued',
+    )) ?? [];
+    if (peek.length === 0) {
+      return NextResponse.json({ error: 'nothing queued — add at least one feature first' }, { status: 400 });
+    }
+    const preflight = await preflightReleaseAssets(PROD_BASE, peek.map((q) => q.screenshot_path), assetVersion);
+    if (!preflight.ok) {
+      return NextResponse.json(
+        { error: 'screenshot(s) not publicly reachable — fix them before sending', failures: preflight.failures },
+        { status: 400 },
+      );
+    }
+
+    // Claim the queue atomically BEFORE sending: a concurrent second
     // trigger claims nothing and gets the "nothing queued" 400, and a
     // mid-batch crash cannot cause a retry to re-email everyone - the failure
     // mode is "some members missed it", visible per-recipient in email_log.
     const queued = ((await supabaseRest<QueuedRow[]>(
       'PATCH',
-      'feature_releases?status=eq.queued&select=id,headline,subhead,benefit,screenshot_path,sort_order,created_at',
+      `feature_releases?id=in.(${peek.map((q) => q.id).join(',')})&status=eq.queued&select=id,headline,subhead,benefit,screenshot_path,sort_order,created_at`,
       { status: 'sent', sent_at: new Date().toISOString() },
       { prefer: 'return=representation' },
     )) ?? []).sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
@@ -142,9 +202,10 @@ export async function POST(request: NextRequest) {
         baseUrl,
         unsubscribeUrl: `${baseUrl}/api/home-care/unsubscribe?token=${encodeURIComponent(h.unsubscribe_token)}`,
         preferencesUrl,
+        assetVersion,
       });
       const res = await sendTrackedEmail({
-        from: FROM,
+        from: HOME_CARE_FROM,
         to: h.email,
         toName: h.first_name,
         subject,
@@ -169,6 +230,7 @@ export async function POST(request: NextRequest) {
       const ids = queued.map((q) => q.id).join(',');
       try {
         await supabaseRest('PATCH', `feature_releases?id=in.(${ids})`, { status: 'queued', sent_at: null });
+        refreshWhatsNew();
       } catch (unclaimErr) {
         console.error('release unclaim failed:', unclaimErr instanceof Error ? unclaimErr.message : unclaimErr);
         return NextResponse.json(
@@ -187,6 +249,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const revalidated = refreshWhatsNew();
+
+    const warnings = [
+      ...(truncated > 0 ? [`recipient list capped at ${RECIPIENT_CAP}; ${truncated} active member(s) not emailed this run`] : []),
+      ...(preflight.warning ? [preflight.warning] : []),
+    ];
     return NextResponse.json({
       ok: true,
       mode,
@@ -195,7 +263,8 @@ export async function POST(request: NextRequest) {
       sent,
       suppressed,
       failures: failures.length,
-      ...(truncated > 0 ? { warning: `recipient list capped at ${RECIPIENT_CAP}; ${truncated} active member(s) not emailed this run` } : {}),
+      revalidated,
+      ...(warnings.length > 0 ? { warning: warnings.join(' | ') } : {}),
     });
   } catch (err) {
     console.error('release send failed:', err instanceof Error ? err.message : err);

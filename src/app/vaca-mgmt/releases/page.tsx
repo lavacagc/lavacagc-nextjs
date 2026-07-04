@@ -5,7 +5,8 @@
  * preview/test the email, and (only ever manually) send it to all Home Care
  * members. Entries are written as features ship; this screen is the trigger.
  * Sending also publishes: sent entries appear on the public
- * /home-care/whats-new page (refreshed hourly).
+ * /home-care/whats-new page (revalidated right after the send, with hourly
+ * ISR as the fallback).
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -45,6 +46,7 @@ export default function ReleasesAdminPage() {
   const [edit, setEdit] = useState<EditState>({ headline: '', subhead: '', benefit: '' });
   const [confirmingSend, setConfirmingSend] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [assetToken] = useState(() => Date.now());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,9 +118,12 @@ export default function ReleasesAdminPage() {
         body: JSON.stringify(mode === 'all' ? { mode, confirm: true } : { mode }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? String(res.status));
+      if (!res.ok) {
+        const failures = Array.isArray(data.failures) ? data.failures : [];
+        throw new Error([data.error ?? String(res.status), ...failures].join(' · '));
+      }
       if (mode === 'test') {
-        toast({ title: `Test sent to ${data.to}`, description: `${data.features} feature${data.features === 1 ? '' : 's'} in the email — check your inbox.` });
+        toast({ title: `Test sent to ${data.to}`, description: `${data.features} feature${data.features === 1 ? '' : 's'} in the email — check your inbox.${data.warning ? ` ${data.warning}.` : ''}` });
       } else {
         toast({ title: `Release sent to ${data.sent} member${data.sent === 1 ? '' : 's'}`, description: `${data.suppressed} suppressed by preferences · ${data.failures} failures.${data.warning ? ` ${data.warning}.` : ''}` });
         setConfirmingSend(false);
@@ -147,7 +152,7 @@ export default function ReleasesAdminPage() {
         <div className="flex items-start gap-4">
           {e.screenshot_path && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={e.screenshot_path} alt="" className="hidden sm:block w-28 rounded-lg border border-border shrink-0" />
+            <img src={`${e.screenshot_path}?v=${assetToken}`} alt="" className="hidden sm:block w-28 rounded-lg border border-border shrink-0" />
           )}
           <div className="min-w-0 flex-1">
             <p className="font-bold text-text-primary">{e.headline}</p>

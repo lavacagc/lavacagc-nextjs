@@ -3,6 +3,7 @@ import http from 'http';
 import path from 'path';
 import { mkdirSync, writeFileSync } from 'fs';
 import { buildReleaseEmail, type ReleaseFeature } from '../src/lib/homecare/releaseEmail';
+import { preflightReleaseAssets } from '../src/lib/homecare/releaseAssets';
 
 /**
  * R1 release-notes email system:
@@ -91,6 +92,31 @@ test.describe('buildReleaseEmail()', () => {
     expect(html).not.toContain('Manage email preferences');
   });
 
+  test('assetVersion cache-busts every screenshot URL, and only those', () => {
+    // AC: with assetVersion, each screenshot src carries ?v=<version> (URL-encoded)
+    // so every send gets a fresh CDN cache key; the logo and all links stay
+    // unversioned; omitting assetVersion keeps the old URLs byte-identical.
+    const { html } = buildReleaseEmail({
+      firstName: null,
+      features: WAVE1,
+      baseUrl: PROD,
+      unsubscribeUrl: `${PROD}/u`,
+      assetVersion: 'v 1',
+    });
+    for (const f of WAVE1) {
+      expect(html).toContain(`src="${PROD}${f.screenshot_path}?v=v%201"`);
+    }
+    expect(html).toContain(`src="${PROD}/logo.png"`); // logo unversioned
+
+    const { html: unversioned } = buildReleaseEmail({
+      firstName: null,
+      features: WAVE1,
+      baseUrl: PROD,
+      unsubscribeUrl: `${PROD}/u`,
+    });
+    expect(unversioned).not.toContain('?v=');
+  });
+
   test('copy is HTML-escaped', () => {
     const { html } = buildReleaseEmail({
       firstName: '<b>Alex</b>',
@@ -108,6 +134,83 @@ test.describe('buildReleaseEmail()', () => {
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;');
     expect(html).toContain('Hi &lt;b&gt;Alex&lt;/b&gt;,');
+  });
+});
+
+test.describe('preflightReleaseAssets()', () => {
+  // Local stand-in for the prod origin: /logo.png is the control, /good.png a
+  // healthy screenshot, /missing.png a 404 (Cloudflare's frozen-error case
+  // looks identical from the probe's perspective). Ephemeral port — chromium
+  // and mobile workers run this block concurrently.
+  const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
+  let assetStub: http.Server;
+  let ASSET_BASE = '';
+  let requests: string[] = [];
+  let controlBroken = false;
+
+  test.beforeAll(async () => {
+    assetStub = http.createServer((req, res) => {
+      requests.push(req.url ?? '');
+      const pathOnly = (req.url ?? '').split('?')[0];
+      if (pathOnly === '/logo.png' && controlBroken) {
+        res.writeHead(403).end();
+      } else if (pathOnly === '/logo.png' || pathOnly === '/good.png' || pathOnly === '/good2.png') {
+        res.writeHead(200, { 'content-type': 'image/png' }).end(PNG);
+      } else {
+        res.writeHead(404, { 'content-type': 'text/html' }).end('not found');
+      }
+    });
+    await new Promise<void>((resolve, reject) => {
+      assetStub.once('error', reject);
+      assetStub.listen(0, '127.0.0.1', () => {
+        assetStub.removeAllListeners('error');
+        resolve();
+      });
+    });
+    const addr = assetStub.address();
+    if (!addr || typeof addr === 'string') throw new Error('asset stub did not bind a port');
+    ASSET_BASE = `http://127.0.0.1:${addr.port}`;
+  });
+  test.afterAll(async () => {
+    await new Promise((resolve) => assetStub.close(resolve));
+  });
+  test.beforeEach(() => {
+    requests = [];
+    controlBroken = false;
+  });
+
+  test('passes when every screenshot serves a real image, probing the cache-busted URLs', async () => {
+    // AC: healthy screenshots → ok, no failures; probes hit the exact ?v= URLs
+    // the email will embed (so a passing preflight warmed the same cache keys).
+    const result = await preflightReleaseAssets(ASSET_BASE, ['/good.png', '/good2.png', null], 'ed1');
+    expect(result).toEqual({ ok: true, failures: [] });
+    expect(requests).toContain('/logo.png?v=ed1');
+    expect(requests).toContain('/good.png?v=ed1');
+    expect(requests).toContain('/good2.png?v=ed1');
+  });
+
+  test('fails naming exactly the unreachable screenshot', async () => {
+    // AC: one broken screenshot blocks the send and the error names it with
+    // its probe outcome; healthy ones are not listed.
+    const result = await preflightReleaseAssets(ASSET_BASE, ['/good.png', '/missing.png'], 'ed2');
+    expect(result.ok).toBe(false);
+    expect(result.failures).toEqual([`${ASSET_BASE}/missing.png?v=ed2 → HTTP 404`]);
+  });
+
+  test('fail-opens with a loud warning when the control asset is blocked', async () => {
+    // AC: if the long-deployed control fails, the CDN is blocking probes —
+    // don't strand the send button on a false positive, but say so.
+    controlBroken = true;
+    const result = await preflightReleaseAssets(ASSET_BASE, ['/missing.png'], 'ed3');
+    expect(result.ok).toBe(true);
+    expect(result.warning).toContain('NOT verified');
+    expect(requests).toEqual(['/logo.png?v=ed3']); // screenshots never probed
+  });
+
+  test('no screenshots → no probes at all', async () => {
+    const result = await preflightReleaseAssets(ASSET_BASE, [null, null], 'ed4');
+    expect(result).toEqual({ ok: true, failures: [] });
+    expect(requests).toEqual([]);
   });
 });
 
@@ -312,6 +415,53 @@ test.describe('admin /vaca-mgmt/releases', () => {
     // Let its slide-in animation settle first.
     await page.waitForTimeout(600);
     await page.screenshot({ path: shot('03-test-send-toast.png') });
+  });
+
+  test('test-send toast surfaces the preflight fail-open warning', async ({ page, context, baseURL }) => {
+    // AC: when the send API succeeds but preflight was skipped (control asset
+    // blocked), the returned warning is shown in the success toast so the
+    // owner knows the screenshots were NOT verified.
+    await signInAsAdmin(context, baseURL!);
+    await mockReleasesApi(page, wave1Rows(), [], []);
+    const warning =
+      'screenshot preflight skipped: control asset /logo.png failed (HTTP 403) — the CDN may be blocking server probes, so screenshots were NOT verified before this send';
+    await page.route('**/api/admin/releases/send', (route) =>
+      route.fulfill({ json: { ok: true, mode: 'test', status: 'sent', features: 3, to: 'admin@lavacagc.com', warning } }),
+    );
+
+    await page.goto('/vaca-mgmt/releases');
+    await expect(page.getByText('3 queued')).toBeVisible();
+    await page.getByRole('button', { name: 'Send test to me' }).click();
+    await expect(page.getByText('Test sent to admin@lavacagc.com').first()).toBeVisible();
+    await expect(page.getByText(/screenshots were NOT verified/).first()).toBeVisible();
+    await page.waitForTimeout(600); // toast slide-in
+    await page.screenshot({ path: shot('06-test-send-preflight-warning-toast.png') });
+  });
+
+  test('blocked send toast names the unreachable screenshot URLs', async ({ page, context, baseURL }) => {
+    // AC: a 400 from the failed preflight surfaces each failing probe URL in
+    // the destructive toast, so the owner sees exactly what to fix.
+    await signInAsAdmin(context, baseURL!);
+    await mockReleasesApi(page, wave1Rows(), [], []);
+    const failures = [
+      'https://www.lavacagc.com/email/releases/dismiss-task.png?v=ed1 → HTTP 404',
+      'https://www.lavacagc.com/email/releases/share-card.png?v=ed1 → HTTP 404',
+    ];
+    await page.route('**/api/admin/releases/send', (route) =>
+      route.fulfill({
+        status: 400,
+        json: { error: 'screenshot(s) not publicly reachable — fix them before sending', failures },
+      }),
+    );
+
+    await page.goto('/vaca-mgmt/releases');
+    await expect(page.getByText('3 queued')).toBeVisible();
+    await page.getByRole('button', { name: 'Send test to me' }).click();
+    await expect(page.getByText('Send failed').first()).toBeVisible();
+    await expect(page.getByText(/dismiss-task\.png\?v=ed1 → HTTP 404/).first()).toBeVisible();
+    await expect(page.getByText(/share-card\.png\?v=ed1 → HTTP 404/).first()).toBeVisible();
+    await page.waitForTimeout(600); // toast slide-in
+    await page.screenshot({ path: shot('07-preflight-failure-toast.png') });
   });
 
   test('send-to-all needs an inline confirm; confirmed send batches the whole queue', async ({

@@ -10,8 +10,10 @@ import { sendTrackedEmail } from '@/lib/notify/sendEmail';
  *
  * Why a dedicated helper (not reusing newLeadEmail):
  *   - Different From identity. Per the email-from-address convention, anything
- *     a *customer* reads is sent as `Alex from La Vaca GC <alex@email.lavaca.link>`.
- *     newLeadEmail uses the noreply identity because it's inbox furniture for the team.
+ *     a *customer* reads is sent as `Alex from La Vaca GC <alex@email.lavaca.link>`
+ *     (except Home Care program mail, which sends as "La Vaca Home Care" -
+ *     see sendHomeCareEmails.ts). newLeadEmail uses the noreply identity
+ *     because it's inbox furniture for the team.
  *   - Different reply-to. Customers should reply to `info@lavacagc.com`, not the
  *     sending mailbox.
  *   - Different recipient model. newLeadEmail always sends to a single
