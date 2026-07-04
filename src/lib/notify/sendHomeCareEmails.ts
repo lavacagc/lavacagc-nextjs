@@ -10,7 +10,7 @@ import type { StreamKey } from '@/lib/preferences/preferences';
  * so they land in email_log.
  */
 
-const FROM_ADDRESS = 'La Vaca Home Care <alex@email.lavaca.link>';
+export const HOME_CARE_FROM = 'La Vaca Home Care <alex@email.lavaca.link>';
 const DEFAULT_REPLY_TO = 'info@lavacagc.com';
 const LOGO = 'https://www.lavacagc.com/logo.png';
 const PHONE = '(201) 212-4917';
@@ -62,7 +62,7 @@ function send(
   preferenceStream?: StreamKey,
 ): Promise<HomeCareEmailResult> {
   return sendTrackedEmail({
-    from: FROM_ADDRESS,
+    from: HOME_CARE_FROM,
     to,
     replyTo: DEFAULT_REPLY_TO,
     subject,

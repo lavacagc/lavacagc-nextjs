@@ -27,6 +27,7 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
+import { HOME_CARE_FROM } from '@/lib/notify/sendHomeCareEmails';
 import { buildReleaseEmail, type ReleaseFeature } from '@/lib/homecare/releaseEmail';
 import { preflightReleaseAssets } from '@/lib/homecare/releaseAssets';
 import { preferencesUrlFor } from '@/lib/preferences/preferences';
@@ -35,9 +36,6 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-// Home Care program emails are from the program, not the personal identity
-// (owner decision 2026-07-03) — keep in sync with sendHomeCareEmails.ts.
-const FROM = 'La Vaca Home Care <alex@email.lavaca.link>';
 const PROD_BASE = 'https://www.lavacagc.com';
 const RECIPIENT_CAP = 1000;
 
@@ -123,7 +121,7 @@ export async function POST(request: NextRequest) {
         assetVersion,
       });
       const res = await sendTrackedEmail({
-        from: FROM,
+        from: HOME_CARE_FROM,
         to: adminEmail!,
         subject: `[TEST] ${subject}`,
         html,
@@ -207,7 +205,7 @@ export async function POST(request: NextRequest) {
         assetVersion,
       });
       const res = await sendTrackedEmail({
-        from: FROM,
+        from: HOME_CARE_FROM,
         to: h.email,
         toName: h.first_name,
         subject,

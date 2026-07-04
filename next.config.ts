@@ -17,11 +17,19 @@ const nextConfig: NextConfig = {
   images: {
     formats: ['image/webp', 'image/avif'],
     // Next 16 rejects query strings on local next/image srcs unless
-    // localPatterns is set explicitly (`search` omitted = any query allowed).
-    // /home-care/whats-new cache-busts its release screenshots with ?v=.
+    // localPatterns allows them (`search` omitted = any query allowed).
+    // /home-care/whats-new cache-busts its release screenshots with ?v=;
+    // those are always under /email/releases/ (enforced by the admin
+    // releases API). Every other local image keeps the default strict
+    // no-query behavior (`search: ''`) so arbitrary ?v= values can't mint
+    // unlimited optimizer cache entries for any asset on the site.
     localPatterns: [
       {
+        pathname: '/email/releases/**',
+      },
+      {
         pathname: '/**',
+        search: '',
       },
     ],
     remotePatterns: [
