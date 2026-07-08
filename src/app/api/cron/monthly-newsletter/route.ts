@@ -108,12 +108,27 @@ export async function GET(request: NextRequest) {
         // Per-issue dedup + resume: if this issue was already sent to this
         // address, skip it. Makes a manual re-run (the only trigger) resume from
         // where a timed-out run left off instead of re-emailing everyone.
-        const priorSend = await supabaseRest<Array<{ id: string }>>(
-          'GET',
-          `email_log?select=id&to_email=eq.${encodeURIComponent(email)}` +
-            `&category=eq.broadcast&status=eq.sent` +
-            `&campaign->>issue=eq.${encodeURIComponent(issueLabel)}&limit=1`,
-        ).catch(() => null);
+        //
+        // FAIL-CLOSED: if the dedup query itself errors we skip this recipient
+        // rather than send. For a newsletter a duplicate is worse than a deferred
+        // send, and a skipped recipient is simply retried on the next run (their
+        // dedup check finds no prior send once the DB recovers).
+        let priorSend: Array<{ id: string }> | null;
+        try {
+          priorSend = await supabaseRest<Array<{ id: string }>>(
+            'GET',
+            `email_log?select=id&to_email=eq.${encodeURIComponent(email)}` +
+              `&category=eq.broadcast&status=eq.sent` +
+              `&campaign->>issue=eq.${encodeURIComponent(issueLabel)}&limit=1`,
+          );
+        } catch (e) {
+          console.error(
+            `monthly-newsletter dedup check failed for ${email} — skipping this run:`,
+            e instanceof Error ? e.message : e,
+          );
+          failed++;
+          continue;
+        }
         if (priorSend && priorSend.length > 0) {
           deduped++;
           continue;
