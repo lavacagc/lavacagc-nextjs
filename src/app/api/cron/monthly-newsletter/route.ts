@@ -94,6 +94,13 @@ export async function GET(request: NextRequest) {
 
   try {
     // Enumerate opted-in announcement subscribers, paginated.
+    // CONSENT MODEL (intentional, owner-reviewed): recipients are everyone with
+    // announcements=true, and getOrCreateByEmail defaults announcements to true.
+    // So a Home Care / Buy+Remodel double-opt-in subscriber receives this monthly
+    // broadcast by default. That is standard opt-out (CAN-SPAM) email with a
+    // working unsubscribe on every send; the cron is intentionally unscheduled so
+    // the owner confirms this before the first outward send. If explicit
+    // newsletter opt-in is ever required, add a dedicated stream + filter here.
     for (let offset = 0; ; offset += PAGE_SIZE) {
       const rows = await supabaseRest<Array<{ email: string }>>(
         'GET',

@@ -201,9 +201,16 @@ export async function syncAudienceSuppression(
  * missing or the API errors, it logs and returns without raising — a caller can
  * fire-and-forget it in a subscribe flow without risking the response.
  *
- * Strategy: try `create`; on conflict (contact already exists) fall back to
- * `update` by email so we don't clobber an existing unsubscribed flag unless a
- * value was explicitly passed.
+ * SUPPRESS-ONLY (CAN-SPAM invariant, matches syncAudienceSuppression): this
+ * helper NEVER writes `unsubscribed:false`. `opts.unsubscribed:true` suppresses;
+ * anything else leaves the flag alone. A brand-new contact is created without
+ * the flag (Resend defaults it to subscribed, correct for a fresh opt-in), and
+ * an EXISTING contact's flag is never cleared — because a Resend/Gmail-native
+ * unsubscribe may not have been mirrored into our DB, so we must not resurrect
+ * it. Re-subscription only ever happens by an explicit action in Resend itself.
+ *
+ * Strategy: try `create`; on conflict (contact exists) fall back to `update` by
+ * email — only ever adding suppression, never removing it.
  */
 export async function addOrUpdateResendContact(
   rawEmail: string,
@@ -219,21 +226,24 @@ export async function addOrUpdateResendContact(
 
     const resend = new Resend(apiKey);
     const firstName = opts.firstName ?? undefined;
+    // Suppress-only: only ever set unsubscribed:true, never false.
+    const suppress = opts.unsubscribed === true;
 
     const created = await resend.contacts.create({
       audienceId,
       email,
       ...(firstName ? { firstName } : {}),
-      ...(typeof opts.unsubscribed === 'boolean' ? { unsubscribed: opts.unsubscribed } : {}),
+      ...(suppress ? { unsubscribed: true } : {}),
     });
 
     // Already exists (or any create error) → update by email as a fallback.
+    // Only push a suppression; never clear an existing unsubscribed flag.
     if (created.error) {
       await resend.contacts.update({
         audienceId,
         email,
         ...(firstName ? { firstName } : {}),
-        ...(typeof opts.unsubscribed === 'boolean' ? { unsubscribed: opts.unsubscribed } : {}),
+        ...(suppress ? { unsubscribed: true } : {}),
       });
     }
   } catch (e) {
