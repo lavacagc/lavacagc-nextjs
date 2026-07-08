@@ -90,6 +90,7 @@ export async function GET(request: NextRequest) {
   let sent = 0;
   let skipped = 0;
   let failed = 0;
+  let deduped = 0;
 
   try {
     // Enumerate opted-in announcement subscribers, paginated.
@@ -103,6 +104,20 @@ export async function GET(request: NextRequest) {
       for (const { email } of rows) {
         recipients++;
         if (dryRun) continue;
+
+        // Per-issue dedup + resume: if this issue was already sent to this
+        // address, skip it. Makes a manual re-run (the only trigger) resume from
+        // where a timed-out run left off instead of re-emailing everyone.
+        const priorSend = await supabaseRest<Array<{ id: string }>>(
+          'GET',
+          `email_log?select=id&to_email=eq.${encodeURIComponent(email)}` +
+            `&category=eq.broadcast&status=eq.sent` +
+            `&campaign->>issue=eq.${encodeURIComponent(issueLabel)}&limit=1`,
+        ).catch(() => null);
+        if (priorSend && priorSend.length > 0) {
+          deduped++;
+          continue;
+        }
 
         try {
           // One token lookup drives both the visible footer unsubscribe link and
@@ -140,10 +155,10 @@ export async function GET(request: NextRequest) {
       if (rows.length < PAGE_SIZE) break;
     }
 
-    return NextResponse.json({ ok: true, issue: issueLabel, dryRun, recipients, sent, skipped, failed });
+    return NextResponse.json({ ok: true, issue: issueLabel, dryRun, recipients, sent, skipped, failed, deduped });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('monthly-newsletter failed:', message);
-    return NextResponse.json({ ok: false, error: message, recipients, sent, skipped, failed }, { status: 500 });
+    return NextResponse.json({ ok: false, error: message, recipients, sent, skipped, failed, deduped }, { status: 500 });
   }
 }

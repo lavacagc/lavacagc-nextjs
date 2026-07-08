@@ -62,7 +62,12 @@ async function autoSuppress(email: string, event: string): Promise<void> {
 // Pull a single email address out of a payload field that may be a string, a
 // string array (Resend `to`), or absent.
 function firstEmail(value: string | string[] | undefined): string | undefined {
-  if (typeof value === 'string') return value.trim() || undefined;
+  if (typeof value === 'string') {
+    const v = value.trim();
+    // Same '@' guard as the array branch — a non-address string must not reach
+    // autoSuppress → getOrCreateByEmail and create a junk email_preferences row.
+    return v.includes('@') ? v : undefined;
+  }
   if (Array.isArray(value)) return value.find((v) => typeof v === 'string' && v.includes('@'));
   return undefined;
 }

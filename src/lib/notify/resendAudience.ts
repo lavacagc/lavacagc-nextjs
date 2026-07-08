@@ -12,11 +12,17 @@ import {
  * Resend broadcasts send to an AUDIENCE, outside the sendTrackedEmail wrapper,
  * so the preference center's opt-outs can't gate them at send time. Resend does
  * natively skip contacts flagged `unsubscribed`, so we mirror our opt-out state
- * onto that flag in BOTH directions:
- *   - a contact opted OUT of the stream in our DB  → unsubscribed: true
- *   - a contact NOT opted out but currently flagged → unsubscribed: false
- * The re-subscribe direction is what lets a re-opt-in in the preference center
- * propagate back to Resend (the old one-way version could only suppress).
+ * onto that flag.
+ *
+ * SUPPRESS-ONLY by design (CAN-SPAM safety): this periodic sync only ever ADDS
+ * suppression (DB opt-out → unsubscribed:true). It NEVER clears `unsubscribed`,
+ * because a Resend-side / Gmail native unsubscribe on a broadcast may not be
+ * mirrored back into our DB reliably (the contact webhook is best-effort). A
+ * blanket "re-subscribe anyone our DB thinks is subscribed" pass could therefore
+ * resurrect a legitimate opt-out and resume emailing them — the exact leak this
+ * change set exists to close. Re-subscription is only ever done through an
+ * EXPLICIT affirmative opt-in (the double-opt-in verify flow → addOrUpdateResendContact
+ * with unsubscribed:false), never inferred from an absence of DB suppression.
  *
  * All Resend calls are best-effort / fail-open: a Resend hiccup returns an
  * `error` result but never throws, so a cron tick or admin click can't 500 and
@@ -36,7 +42,7 @@ export interface AudienceSyncResult {
   checked: number;
   /** Contacts newly flagged unsubscribed:true (were subscribed, now opted out). */
   suppressed: number;
-  /** Contacts newly flagged unsubscribed:false (re-opted-in in our DB). */
+  /** Always 0 — this sync is suppress-only; re-subscription is explicit-opt-in only (see header). */
   resubscribed: number;
   /**
    * Always false — this sync now paginates through the entire audience, so
@@ -109,7 +115,7 @@ export async function syncAudienceSuppression(
 
     let checked = 0;
     let suppressedCount = 0;
-    let resubscribed = 0;
+    const resubscribed = 0; // suppress-only sync — never re-subscribes (see header)
     let already = 0;
 
     let after: string | undefined;
@@ -142,13 +148,13 @@ export async function syncAudienceSuppression(
           if (isSuppressed && !c.unsubscribed) {
             await resend.contacts.update({ audienceId, id: c.id, unsubscribed: true });
             suppressedCount += 1;
-          } else if (!isSuppressed && c.unsubscribed) {
-            // Re-opt-in: our DB says subscribed but Resend still has them off.
-            await resend.contacts.update({ audienceId, id: c.id, unsubscribed: false });
-            resubscribed += 1;
           } else if (isSuppressed && c.unsubscribed) {
             already += 1;
           }
+          // Deliberately NO re-subscribe branch: never clear `unsubscribed` from a
+          // periodic sweep (see file header). A contact NOT in our opt-out set is
+          // left exactly as Resend has them — if Resend has them unsubscribed, we
+          // respect that; only an explicit opt-in re-subscribes them.
         } catch (e) {
           console.error(
             'resend contact update failed (non-fatal):',
