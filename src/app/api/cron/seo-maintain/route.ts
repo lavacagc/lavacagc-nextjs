@@ -223,6 +223,21 @@ async function maintainRow(
     return { topic_key: row.topic_key, slug: row.slug, outcome: 'up_to_date' };
   }
 
+  // Don't stack refreshes: if an unapplied refresh for this post is already open
+  // (pending / approved / drafted), skip — otherwise a monthly run would queue a
+  // new draft every cadence period and they'd accumulate, and applying a stale
+  // sibling later could overwrite a newer refresh with older content. We also do
+  // NOT stamp last_maintained_at here, so once the human applies the queued one
+  // the post is still due and gets a fresh refresh next run. (Saves an AI call too.)
+  const openRefresh = await supabaseRest<Array<{ id: string }>>(
+    'GET',
+    `content_actions?select=id&target_post_id=eq.${existing.id}` +
+      `&action_type=eq.refresh&status=in.(pending,approved,drafted)&limit=1`,
+  ).catch(() => null);
+  if (openRefresh && openRefresh.length > 0) {
+    return { topic_key: row.topic_key, slug: row.slug, outcome: 'refresh_pending', detail: 'an unapplied refresh is already queued' };
+  }
+
   const refreshDraft = await draftMarkdown(
     openai,
     {

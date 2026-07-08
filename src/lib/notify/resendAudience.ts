@@ -86,6 +86,11 @@ function emptyResult(
 // audience list, we never loop forever. 100/page × 200 pages = 20k contacts.
 const PAGE_SIZE = 100;
 const MAX_PAGES = 200;
+// Pace actual contact updates (not reads) so a large batch of new suppressions
+// can't trip Resend's rate limit — mirrors the ~1s pacing the send crons use,
+// but shorter since these are cheap idempotent contact updates, not emails.
+const UPDATE_DELAY_MS = 250;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Mirror every opt-out / re-opt-in for `stream` onto the given Resend audience.
@@ -148,6 +153,7 @@ export async function syncAudienceSuppression(
           if (isSuppressed && !c.unsubscribed) {
             await resend.contacts.update({ audienceId, id: c.id, unsubscribed: true });
             suppressedCount += 1;
+            await sleep(UPDATE_DELAY_MS); // only paces real updates, not reads
           } else if (isSuppressed && c.unsubscribed) {
             already += 1;
           }
