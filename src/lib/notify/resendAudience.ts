@@ -20,9 +20,12 @@ import {
  * mirrored back into our DB reliably (the contact webhook is best-effort). A
  * blanket "re-subscribe anyone our DB thinks is subscribed" pass could therefore
  * resurrect a legitimate opt-out and resume emailing them — the exact leak this
- * change set exists to close. Re-subscription is only ever done through an
- * EXPLICIT affirmative opt-in (the double-opt-in verify flow → addOrUpdateResendContact
- * with unsubscribed:false), never inferred from an absence of DB suppression.
+ * change set exists to close. Nothing here (nor addOrUpdateResendContact) EVER
+ * clears `unsubscribed`: re-subscription is deliberately NOT automatic. A contact
+ * who is unsubscribed in Resend stays that way until an operator explicitly
+ * re-subscribes them in the Resend dashboard. That is the CAN-SPAM-safe trade-off —
+ * we accept occasionally under-sending to a genuine re-opt-in rather than ever
+ * risk resurrecting a real opt-out.
  *
  * All Resend calls are best-effort / fail-open: a Resend hiccup returns an
  * `error` result but never throws, so a cron tick or admin click can't 500 and

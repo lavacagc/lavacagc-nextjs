@@ -19,7 +19,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cleanEnv } from '@/lib/envClean';
 import { supabaseRest } from '@/lib/seo/supabase-rest';
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
-import { getOrCreateByEmail } from '@/lib/preferences/preferences';
+import { getOrCreateByEmail, normalizeEmail } from '@/lib/preferences/preferences';
 import { buildMonthlyNewsletterHtml, type MonthlyNewsletterPayload } from '@/lib/notify/monthlyNewsletterEmail';
 
 export const dynamic = 'force-dynamic';
@@ -93,22 +93,31 @@ export async function GET(request: NextRequest) {
   let deduped = 0;
 
   try {
-    // Enumerate opted-in announcement subscribers, paginated.
-    // CONSENT MODEL (intentional, owner-reviewed): recipients are everyone with
-    // announcements=true, and getOrCreateByEmail defaults announcements to true.
-    // So a Home Care / Buy+Remodel double-opt-in subscriber receives this monthly
-    // broadcast by default. That is standard opt-out (CAN-SPAM) email with a
-    // working unsubscribe on every send; the cron is intentionally unscheduled so
-    // the owner confirms this before the first outward send. If explicit
-    // newsletter opt-in is ever required, add a dedicated stream + filter here.
-    for (let offset = 0; ; offset += PAGE_SIZE) {
-      const rows = await supabaseRest<Array<{ email: string }>>(
-        'GET',
-        `email_preferences?announcements=eq.true&select=email&order=email.asc&limit=${PAGE_SIZE}&offset=${offset}`,
-      );
-      if (!rows?.length) break;
+    // RECIPIENTS = people who AFFIRMATIVELY joined a marketing program: Home Care
+    // (double opt-in → homeowners.status='active') or Buy+Remodel
+    // (newsletter_subscribers.status='active'). We deliberately do NOT enumerate
+    // by email_preferences.announcements=true: getOrCreateByEmail creates that row
+    // with announcements defaulting TRUE on ANY transactional touch (a lead
+    // follow-up / review request, even a bare contact-form submitter), so that
+    // flag is not a reliable marketing-consent signal and would sweep in people
+    // who never opted into marketing. announcements opt-outs are still honored at
+    // send time by sendTrackedEmail's preferenceStream:'announcements' gate. (If a
+    // standalone announcements-only signup is ever added, union it in here.)
+    // The cron stays unscheduled until the owner confirms the first send.
+    const recipientEmails = new Set<string>();
+    for (const table of ['homeowners', 'newsletter_subscribers'] as const) {
+      for (let offset = 0; ; offset += PAGE_SIZE) {
+        const rows = await supabaseRest<Array<{ email: string | null }>>(
+          'GET',
+          `${table}?status=eq.active&select=email&order=email.asc&limit=${PAGE_SIZE}&offset=${offset}`,
+        );
+        if (!rows?.length) break;
+        for (const r of rows) if (r.email) recipientEmails.add(normalizeEmail(r.email));
+        if (rows.length < PAGE_SIZE) break;
+      }
+    }
 
-      for (const { email } of rows) {
+    for (const email of recipientEmails) {
         recipients++;
         if (dryRun) continue;
 
@@ -172,9 +181,6 @@ export async function GET(request: NextRequest) {
 
         // Pace sends ~1/sec to stay under Resend's rate limit (matches send-follow-ups).
         await delay(1000);
-      }
-
-      if (rows.length < PAGE_SIZE) break;
     }
 
     return NextResponse.json({ ok: true, issue: issueLabel, dryRun, recipients, sent, skipped, failed, deduped });
