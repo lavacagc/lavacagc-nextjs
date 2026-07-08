@@ -98,7 +98,7 @@ async function draftMarkdown(
 interface RowResult {
   topic_key: string;
   slug: string;
-  outcome: 'created' | 'refresh_queued' | 'skipped_seasonal' | 'up_to_date' | 'validation_failed' | 'error';
+  outcome: 'created' | 'refresh_queued' | 'refresh_pending' | 'skipped_seasonal' | 'up_to_date' | 'validation_failed' | 'error';
   detail?: string;
 }
 
