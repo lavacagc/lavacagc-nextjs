@@ -77,11 +77,21 @@ export async function GET(request: NextRequest) {
     let failed = 0;
     let cancelled = 0;
 
+    // Emails cancelled earlier in THIS batch (unsubscribed). The cancel query
+    // already flipped their DB rows to 'cancelled', but sibling items for the
+    // same address were loaded into this batch before that — skip them here so
+    // we don't re-invoke Resend or write duplicate 'skipped' audit rows.
+    const cancelledEmails = new Set<string>();
+
     // Helper: wait between sends to respect Resend 2 req/s rate limit
     const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     for (const item of pendingItems) {
       try {
+        if (item.lead_email && cancelledEmails.has(item.lead_email)) {
+          continue;
+        }
+
         // Validate email before sending
         if (!item.lead_email || !item.lead_email.includes('@')) {
           console.warn(`Skipping invalid email: ${item.lead_email}`);
@@ -131,6 +141,7 @@ export async function GET(request: NextRequest) {
             .eq('lead_email', item.lead_email)
             .eq('status', 'pending');
           cancelled += count ?? 1;
+          cancelledEmails.add(item.lead_email);
         } else if (sendResult.status !== 'sent') {
           console.error(`Failed to send follow-up ${item.id}:`, sendResult.error);
           await supabase

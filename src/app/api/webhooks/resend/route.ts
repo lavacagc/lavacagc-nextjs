@@ -96,8 +96,19 @@ function firstEmail(value: string | string[] | undefined): string | undefined {
  * @returns true if this was a contact event (handled — caller should ack 200).
  */
 async function handleContactEvent(event: ResendEvent): Promise<boolean> {
-  if (event.type !== 'contact.updated' && event.type !== 'contact.deleted') {
+  if (!event.type.startsWith('contact.')) {
     return false;
+  }
+  // Log EVERY contact.* event (type + payload keys) so the real webhook shape is
+  // observable in production traffic — the field assumptions below aren't yet
+  // validated against a live payload, and this makes a mismatch diagnosable
+  // instead of silent. Cheap: contact events are rare vs. email.* events.
+  console.info(
+    `resend webhook contact event: ${event.type}; data keys: [${Object.keys(event.data ?? {}).join(', ')}]`,
+  );
+  if (event.type !== 'contact.updated' && event.type !== 'contact.deleted') {
+    // Other contact.* types (e.g. contact.created) — nothing to suppress; ack.
+    return true;
   }
   const email =
     firstEmail(event.data?.email) ??
