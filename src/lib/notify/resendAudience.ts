@@ -1,69 +1,239 @@
 import { Resend } from 'resend';
 import { cleanEnv } from '@/lib/envClean';
-import { getSuppressedEmails, normalizeEmail } from '@/lib/preferences/preferences';
+import {
+  getSuppressedEmails,
+  normalizeEmail,
+  type SuppressionKey,
+} from '@/lib/preferences/preferences';
 
 /**
- * Broadcast suppression (Phase 3, option B).
+ * Resend audience ↔ preference-center two-way sync (Phase 2).
  *
  * Resend broadcasts send to an AUDIENCE, outside the sendTrackedEmail wrapper,
- * so the preference center's `announcements` opt-out can't gate them there.
- * Resend does natively skip contacts flagged `unsubscribed`, so the fix is to
- * mirror our opt-outs onto that flag: run this before a broadcast (or on a
- * schedule) and every contact who turned off "News & offers" is marked
- * unsubscribed in the audience, so the broadcast passes them by.
+ * so the preference center's opt-outs can't gate them at send time. Resend does
+ * natively skip contacts flagged `unsubscribed`, so we mirror our opt-out state
+ * onto that flag in BOTH directions:
+ *   - a contact opted OUT of the stream in our DB  → unsubscribed: true
+ *   - a contact NOT opted out but currently flagged → unsubscribed: false
+ * The re-subscribe direction is what lets a re-opt-in in the preference center
+ * propagate back to Resend (the old one-way version could only suppress).
  *
- * Idempotent — contacts already unsubscribed are left alone.
+ * All Resend calls are best-effort / fail-open: a Resend hiccup returns an
+ * `error` result but never throws, so a cron tick or admin click can't 500 and
+ * a user flow (contact creation) is never blocked.
  */
+
+/** Env var holding the Resend audience id used by broadcasts (cron + contact upsert). */
+export const RESEND_AUDIENCE_ENV = 'RESEND_AUDIENCE_ID';
 
 export interface AudienceSyncResult {
   status: 'ok' | 'skipped' | 'error';
   reason?: string;
-  audienceContacts?: number;
-  suppressedInDb?: number;
-  newlyUnsubscribed?: number;
-  alreadyUnsubscribed?: number;
-  hasMore?: boolean;
   error?: string;
+  /** Marketing stream this sync mirrored (its opt-outs drive `unsubscribed`). */
+  stream?: SuppressionKey;
+  /** Total audience contacts examined across all pages. */
+  checked: number;
+  /** Contacts newly flagged unsubscribed:true (were subscribed, now opted out). */
+  suppressed: number;
+  /** Contacts newly flagged unsubscribed:false (re-opted-in in our DB). */
+  resubscribed: number;
+  /**
+   * Always false — this sync now paginates through the entire audience, so
+   * there is never a leftover page for the caller to chase. Retained for the
+   * admin UI which reads it.
+   */
+  hasMore: boolean;
+
+  // --- Legacy aliases (admin UI in vaca-mgmt/preferences reads these) ---
+  /** Alias of `checked`. */
+  audienceContacts: number;
+  /** Alias of `suppressed`. */
+  newlyUnsubscribed: number;
+  /** Contacts already flagged unsubscribed that should stay suppressed. */
+  alreadyUnsubscribed: number;
+  /** Size of the DB opt-out set for this stream. */
+  suppressedInDb: number;
 }
 
-export async function syncAudienceSuppression(audienceId: string): Promise<AudienceSyncResult> {
+function emptyResult(
+  stream: SuppressionKey,
+  status: AudienceSyncResult['status'],
+  extra?: Partial<AudienceSyncResult>,
+): AudienceSyncResult {
+  return {
+    status,
+    stream,
+    checked: 0,
+    suppressed: 0,
+    resubscribed: 0,
+    hasMore: false,
+    audienceContacts: 0,
+    newlyUnsubscribed: 0,
+    alreadyUnsubscribed: 0,
+    suppressedInDb: 0,
+    ...extra,
+  };
+}
+
+// Defensive page cap: even if Resend ignores the `after` cursor for a legacy
+// audience list, we never loop forever. 100/page × 200 pages = 20k contacts.
+const PAGE_SIZE = 100;
+const MAX_PAGES = 200;
+
+/**
+ * Mirror every opt-out / re-opt-in for `stream` onto the given Resend audience.
+ *
+ * Paginates through ALL contacts. Best-effort per contact (one failed update
+ * does not abort the run). Returns a summary; `status:'error'` only when the
+ * run could not start (no key / no id) or the very first list call failed.
+ *
+ * @param audienceId Resend audience id.
+ * @param stream Marketing stream whose opt-outs drive the `unsubscribed` flag.
+ *   Defaults to 'announcements' (the broadcast stream) for backward compat with
+ *   the admin sync button, which calls this with only an audience id.
+ */
+export async function syncAudienceSuppression(
+  audienceId: string,
+  stream: SuppressionKey = 'announcements',
+): Promise<AudienceSyncResult> {
   const apiKey = cleanEnv(process.env.RESEND_API_KEY);
-  if (!apiKey) return { status: 'skipped', reason: 'no_api_key' };
-  if (!audienceId) return { status: 'error', error: 'audienceId required' };
+  if (!apiKey) return emptyResult(stream, 'skipped', { reason: 'no_api_key' });
+  if (!audienceId) return emptyResult(stream, 'error', { error: 'audienceId required' });
 
   try {
     const resend = new Resend(apiKey);
     const suppressed = new Set(
-      (await getSuppressedEmails('announcements')).map((e) => normalizeEmail(e)),
+      (await getSuppressedEmails(stream)).map((e) => normalizeEmail(e)),
     );
 
-    const list = await resend.contacts.list({ audienceId });
-    if (list.error) return { status: 'error', error: list.error.message };
-    const contacts = list.data?.data ?? [];
-
-    let newly = 0;
+    let checked = 0;
+    let suppressedCount = 0;
+    let resubscribed = 0;
     let already = 0;
-    for (const c of contacts) {
-      if (!c.email || !suppressed.has(normalizeEmail(c.email))) continue;
-      if (c.unsubscribed) {
-        already += 1;
-        continue;
+
+    let after: string | undefined;
+    let firstError: string | undefined;
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const opts: { audienceId: string; limit: number; after?: string } = {
+        audienceId,
+        limit: PAGE_SIZE,
+      };
+      if (after) opts.after = after;
+
+      const list = await resend.contacts.list(opts);
+      if (list.error) {
+        // First-page failure is fatal (nothing synced); a mid-run failure is
+        // logged and we return what we managed so far.
+        if (page === 0) return emptyResult(stream, 'error', { error: list.error.message });
+        firstError = list.error.message;
+        break;
       }
-      await resend.contacts.update({ audienceId, id: c.id, unsubscribed: true });
-      newly += 1;
+
+      const contacts = list.data?.data ?? [];
+      if (contacts.length === 0) break;
+
+      for (const c of contacts) {
+        if (!c.email) continue;
+        checked += 1;
+        const isSuppressed = suppressed.has(normalizeEmail(c.email));
+        try {
+          if (isSuppressed && !c.unsubscribed) {
+            await resend.contacts.update({ audienceId, id: c.id, unsubscribed: true });
+            suppressedCount += 1;
+          } else if (!isSuppressed && c.unsubscribed) {
+            // Re-opt-in: our DB says subscribed but Resend still has them off.
+            await resend.contacts.update({ audienceId, id: c.id, unsubscribed: false });
+            resubscribed += 1;
+          } else if (isSuppressed && c.unsubscribed) {
+            already += 1;
+          }
+        } catch (e) {
+          console.error(
+            'resend contact update failed (non-fatal):',
+            e instanceof Error ? e.message : e,
+          );
+        }
+      }
+
+      // Advance the cursor. Guard against an API that ignores `after` (would
+      // otherwise re-serve page 0 forever) by breaking when the cursor stalls.
+      if (!list.data?.has_more) break;
+      const lastId = contacts[contacts.length - 1]?.id;
+      if (!lastId || lastId === after) break;
+      after = lastId;
     }
 
     return {
       status: 'ok',
-      audienceContacts: contacts.length,
-      suppressedInDb: suppressed.size,
-      newlyUnsubscribed: newly,
+      stream,
+      reason: firstError ? 'partial' : undefined,
+      error: firstError,
+      checked,
+      suppressed: suppressedCount,
+      resubscribed,
+      hasMore: false,
+      audienceContacts: checked,
+      newlyUnsubscribed: suppressedCount,
       alreadyUnsubscribed: already,
-      // Resend paginates; for our audience sizes one page is expected. Surface
-      // the flag so the caller (and admin UI) can tell if a follow-up is needed.
-      hasMore: !!list.data?.has_more,
+      suppressedInDb: suppressed.size,
     };
   } catch (err) {
-    return { status: 'error', error: err instanceof Error ? err.message : String(err) };
+    return emptyResult(stream, 'error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * Add (or update) a contact in the broadcast audience. Called when a new
+ * subscriber becomes active so a fresh opt-in shows up as a Resend contact
+ * (otherwise broadcasts would never reach them).
+ *
+ * Best-effort and non-throwing: reads the audience id from env; if key/id are
+ * missing or the API errors, it logs and returns without raising — a caller can
+ * fire-and-forget it in a subscribe flow without risking the response.
+ *
+ * Strategy: try `create`; on conflict (contact already exists) fall back to
+ * `update` by email so we don't clobber an existing unsubscribed flag unless a
+ * value was explicitly passed.
+ */
+export async function addOrUpdateResendContact(
+  rawEmail: string,
+  opts: { firstName?: string | null; unsubscribed?: boolean } = {},
+): Promise<void> {
+  try {
+    const apiKey = cleanEnv(process.env.RESEND_API_KEY);
+    const audienceId = cleanEnv(process.env[RESEND_AUDIENCE_ENV]);
+    if (!apiKey || !audienceId) return; // Not configured — silently skip.
+
+    const email = normalizeEmail(rawEmail);
+    if (!email || !email.includes('@')) return;
+
+    const resend = new Resend(apiKey);
+    const firstName = opts.firstName ?? undefined;
+
+    const created = await resend.contacts.create({
+      audienceId,
+      email,
+      ...(firstName ? { firstName } : {}),
+      ...(typeof opts.unsubscribed === 'boolean' ? { unsubscribed: opts.unsubscribed } : {}),
+    });
+
+    // Already exists (or any create error) → update by email as a fallback.
+    if (created.error) {
+      await resend.contacts.update({
+        audienceId,
+        email,
+        ...(firstName ? { firstName } : {}),
+        ...(typeof opts.unsubscribed === 'boolean' ? { unsubscribed: opts.unsubscribed } : {}),
+      });
+    }
+  } catch (e) {
+    console.error(
+      'addOrUpdateResendContact failed (non-fatal):',
+      e instanceof Error ? e.message : e,
+    );
   }
 }

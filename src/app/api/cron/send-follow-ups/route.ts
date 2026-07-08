@@ -75,6 +75,7 @@ export async function GET(request: NextRequest) {
 
     let sent = 0;
     let failed = 0;
+    let cancelled = 0;
 
     // Helper: wait between sends to respect Resend 2 req/s rate limit
     const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -107,9 +108,30 @@ export async function GET(request: NextRequest) {
           toName: item.lead_name ?? null,
           leadId: item.lead_id ?? null,
           campaign: { follow_up_type: item.follow_up_type },
+          // Honor the follow-ups opt-out at send time — covers both lead
+          // follow-ups and review requests, which share this queue. A recipient
+          // who used the unsubscribe link is skipped (status recorded as
+          // 'skipped' in email_log) rather than emailed.
+          preferenceStream: 'follow_ups',
         });
 
-        if (sendResult.status !== 'sent') {
+        if (sendResult.status === 'skipped' && sendResult.reason === 'unsubscribed') {
+          // Recipient opted out of follow-ups — cancel this AND every other
+          // still-pending item for the same email so we never email them again.
+          const { count } = await supabase
+            .from('follow_up_queue')
+            .update(
+              {
+                status: 'cancelled',
+                error_message: 'Recipient unsubscribed from follow-ups',
+                sent_at: new Date().toISOString(),
+              },
+              { count: 'exact' },
+            )
+            .eq('lead_email', item.lead_email)
+            .eq('status', 'pending');
+          cancelled += count ?? 1;
+        } else if (sendResult.status !== 'sent') {
           console.error(`Failed to send follow-up ${item.id}:`, sendResult.error);
           await supabase
             .from('follow_up_queue')
@@ -152,6 +174,7 @@ export async function GET(request: NextRequest) {
       processed: pendingItems.length,
       sent,
       failed,
+      cancelled,
     });
   } catch (error) {
     console.error('Cron endpoint error:', error);

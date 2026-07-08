@@ -6,6 +6,19 @@ import {
   lead7dHtml,
 } from '@/lib/emailTemplates';
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
+import { cleanEnv } from '@/lib/envClean';
+import { normalizeEmail } from '@/lib/preferences/preferences';
+
+const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lavacagc.com';
+
+/**
+ * Visible "unsubscribe from these follow-ups" link baked into each follow-up
+ * email body (CAN-SPAM). Points at the /unsub page in follow-ups mode, which
+ * turns off ONLY the transactional follow_ups opt-out — never marketing streams.
+ */
+function followUpUnsubUrl(email: string): string {
+  return `${SITE_URL}/unsub?stream=follow_ups&email=${encodeURIComponent(normalizeEmail(email))}`;
+}
 
 export interface LeadFollowUpPayload {
   name: string;
@@ -44,28 +57,32 @@ async function sendInstantAck(
     toName: opts.name ?? null,
     leadId: opts.leadId ?? null,
     campaign: { follow_up_type: 'instant_ack' },
+    // Transactional, but commercial in purpose: honor the follow-ups opt-out and
+    // attach a one-click List-Unsubscribe header. A general marketing unsub does
+    // NOT reach this (follow_ups is not a marketing stream).
+    preferenceStream: 'follow_ups',
   });
   return result.status === 'sent';
 }
 
-function generateFollowUpEmails(name: string, projectType?: string) {
+function generateFollowUpEmails(name: string, projectType: string | undefined, unsubscribeUrl: string) {
   const firstName = name.split(' ')[0] || name;
   return {
     instant_ack: {
       subject: `Thanks for reaching out, ${firstName}! — La Vaca General Contractors`,
-      html: leadInstantAckHtml(name, projectType),
+      html: leadInstantAckHtml(name, projectType, unsubscribeUrl),
     },
     '24h': {
       subject: `Following up on your home renovation inquiry — La Vaca GC`,
-      html: lead24hHtml(name, projectType),
+      html: lead24hHtml(name, projectType, unsubscribeUrl),
     },
     '48h': {
       subject: `Your home renovation dreams — let's make them happen, ${firstName}`,
-      html: lead48hHtml(name, projectType),
+      html: lead48hHtml(name, projectType, unsubscribeUrl),
     },
     '7d': {
       subject: `Still thinking about your renovation? We're here when you're ready`,
-      html: lead7dHtml(name),
+      html: lead7dHtml(name, unsubscribeUrl),
     },
   };
 }
@@ -108,7 +125,7 @@ export async function createLeadFollowUpSequence(
       };
     }
 
-    const emails = generateFollowUpEmails(name, projectType);
+    const emails = generateFollowUpEmails(name, projectType, followUpUnsubUrl(email));
     const now = new Date();
 
     const followUps: Array<{

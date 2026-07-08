@@ -6,10 +6,18 @@ import {
   feedbackDay3Html,
   feedbackDay7Html,
 } from '@/lib/emailTemplates';
+import { cleanEnv } from '@/lib/envClean';
+import { normalizeEmail } from '@/lib/preferences/preferences';
 
 export const dynamic = 'force-dynamic';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lavacagc.com';
+
+/** Visible unsubscribe link for review-request emails (follow_ups opt-out). */
+function followUpUnsubUrl(email: string): string {
+  return `${SITE_URL}/unsub?stream=follow_ups&email=${encodeURIComponent(normalizeEmail(email))}`;
+}
 
 /**
  * POST /api/feedback/create
@@ -32,8 +40,9 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date();
+    const unsubUrl = followUpUnsubUrl(email);
     const day0Subject = 'How was your experience with La Vaca?';
-    const day0Html = feedbackDay0Html(customerName);
+    const day0Html = feedbackDay0Html(customerName, unsubUrl);
 
     // Send Day 0 email immediately
     const day0Result = await sendTrackedEmail({
@@ -44,6 +53,8 @@ export async function POST(request: NextRequest) {
       category: 'feedback_request',
       toName: customerName,
       campaign: { follow_up_type: 'feedback_day0' },
+      // Review requests are commercial → honor the follow-ups opt-out + one-click header.
+      preferenceStream: 'follow_ups',
     });
     const day0Sent = day0Result.status === 'sent';
 
@@ -65,7 +76,7 @@ export async function POST(request: NextRequest) {
         scheduled_at: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString(),
         status: 'pending',
         email_subject: `Quick follow-up — we'd love your feedback`,
-        email_body: feedbackDay3Html(customerName),
+        email_body: feedbackDay3Html(customerName, unsubUrl),
       },
       {
         lead_email: email,
@@ -74,7 +85,7 @@ export async function POST(request: NextRequest) {
         scheduled_at: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         status: 'pending',
         email_subject: `Last chance to share your thoughts`,
-        email_body: feedbackDay7Html(customerName),
+        email_body: feedbackDay7Html(customerName, unsubUrl),
       },
     ];
 

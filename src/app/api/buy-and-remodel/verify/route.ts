@@ -13,6 +13,7 @@ import {
   sanitizeKnownName,
 } from '@/lib/listings/accessCookie';
 import { sendListingsWelcomeEmail } from '@/lib/notify/sendListingsEmails';
+import { addOrUpdateResendContact } from '@/lib/notify/resendAudience';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -61,6 +62,14 @@ export async function GET(request: NextRequest) {
 
     // Welcome email only on the first activation, not on every magic-link reissue.
     if (wasPending) {
+      // New active opt-in → add to the Resend broadcast audience. Fire-and-forget:
+      // the helper never throws and no-ops when unconfigured, so it can't block
+      // or fail this verification redirect.
+      void addOrUpdateResendContact(sub.email, {
+        firstName: sub.first_name,
+        unsubscribed: false,
+      });
+
       await sendListingsWelcomeEmail({
         to: sub.email,
         firstName: sub.first_name,

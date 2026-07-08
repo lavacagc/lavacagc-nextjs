@@ -39,6 +39,14 @@
     {
       "path": "/api/cron/home-care-newsletter",
       "schedule": "0 14 1 * *"
+    },
+    {
+      "path": "/api/cron/resend-sync",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/seo-maintain",
+      "schedule": "0 8 2 * *"
     }
   ]
 }

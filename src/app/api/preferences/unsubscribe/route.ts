@@ -4,7 +4,7 @@ import {
   findByToken,
   applyUpdate,
   STREAM_KEYS,
-  type StreamKey,
+  type SuppressionKey,
 } from '@/lib/preferences/preferences';
 
 /**
@@ -14,9 +14,12 @@ import {
  *        NOTHING (link prefetchers / security scanners fetch these URLs) and
  *        redirects to the preference center with a one-click confirm prompt
  *        for that stream (or all marketing streams if no stream given).
- *   POST ?token=…                    → RFC 8058 one-click (mail clients POST
- *        `List-Unsubscribe=One-Click`); turns off ALL marketing streams and
- *        returns 200 with no redirect.
+ *        stream=follow_ups redirects to the /unsub page in follow-ups mode.
+ *   POST ?token=…[&stream=follow_ups] → RFC 8058 one-click (mail clients POST
+ *        `List-Unsubscribe=One-Click`). For a marketing link this turns off ALL
+ *        marketing streams; for the transactional follow_ups link it turns off
+ *        only follow_ups (a marketing unsubscribe must not silence sales
+ *        follow-ups, and vice-versa). Returns 200 with no redirect.
  *
  * Public route (declared in middleware PUBLIC_ROUTES); auth is the token.
  */
@@ -24,12 +27,17 @@ import {
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-function streamsToTurnOff(streamParam: string | null): Partial<Record<StreamKey, boolean>> {
-  if (streamParam && (STREAM_KEYS as string[]).includes(streamParam)) {
-    return { [streamParam as StreamKey]: false };
+function streamsToTurnOff(streamParam: string | null): Partial<Record<SuppressionKey, boolean>> {
+  // Transactional follow-ups opt-out — deliberately its own thing, never part of
+  // the marketing cascade.
+  if (streamParam === 'follow_ups') {
+    return { follow_ups: false };
   }
-  // No/unknown stream → unsubscribe from everything marketing.
-  return Object.fromEntries(STREAM_KEYS.map((k) => [k, false])) as Record<StreamKey, boolean>;
+  if (streamParam && (STREAM_KEYS as string[]).includes(streamParam)) {
+    return { [streamParam as SuppressionKey]: false };
+  }
+  // No/unknown stream → unsubscribe from everything marketing (NOT follow_ups).
+  return Object.fromEntries(STREAM_KEYS.map((k) => [k, false])) as Record<SuppressionKey, boolean>;
 }
 
 async function unsubscribe(request: NextRequest, token: string, streamParam: string | null) {
@@ -39,7 +47,7 @@ async function unsubscribe(request: NextRequest, token: string, streamParam: str
     current: pref,
     changes: streamsToTurnOff(streamParam),
     actor: 'self',
-    actorDetail: 'one-click',
+    actorDetail: streamParam === 'follow_ups' ? 'one-click-followups' : 'one-click',
     ip: getClientIp(request),
   });
   return pref.preference_token;
@@ -56,15 +64,20 @@ export async function GET(request: NextRequest) {
     // burst from a shared gateway IP can't break a real click.
     const rl = await checkRateLimit(`prefs-unsub-get:${getClientIp(request)}`, 30, 60 * 1000);
     if (!rl.allowed) {
-      return NextResponse.redirect(
-        new URL(
-          `/preferences?token=${encodeURIComponent(token)}&confirm=${encodeURIComponent(confirm)}`,
-          origin,
-        ),
-      );
+      const dest =
+        stream === 'follow_ups'
+          ? `/unsub?stream=follow_ups`
+          : `/preferences?token=${encodeURIComponent(token)}&confirm=${encodeURIComponent(confirm)}`;
+      return NextResponse.redirect(new URL(dest, origin));
     }
 
     const pref = await findByToken(token);
+    // Follow-ups opt-out is handled by the /unsub page in follow-ups mode (kept
+    // out of the marketing preference center). Prefill the email when we can.
+    if (stream === 'follow_ups') {
+      const q = pref ? `?stream=follow_ups&email=${encodeURIComponent(pref.email)}` : `?stream=follow_ups`;
+      return NextResponse.redirect(new URL(`/unsub${q}`, origin));
+    }
     // Read-only: land on the preference center (valid token) or its invalid
     // state, and let the human confirm the unsubscribe there.
     const url = pref
@@ -79,6 +92,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const token = request.nextUrl.searchParams.get('token') ?? '';
+  const stream = request.nextUrl.searchParams.get('stream');
   try {
     // Generous per-IP limit — one-click POSTs arrive from shared mail-provider
     // infrastructure, so keep the ceiling high; 429 lets the client retry.
@@ -90,8 +104,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // RFC 8058: turn off all marketing regardless of body; ack 200.
-    await unsubscribe(request, token, null);
+    // RFC 8058: follow_ups link → turn off follow_ups only; any marketing link →
+    // turn off all marketing. Ack 200 regardless.
+    await unsubscribe(request, token, stream === 'follow_ups' ? 'follow_ups' : null);
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('preferences unsubscribe POST failed:', err);

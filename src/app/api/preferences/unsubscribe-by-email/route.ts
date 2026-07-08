@@ -5,7 +5,7 @@ import {
   applyUpdate,
   STREAM_KEYS,
   normalizeEmail,
-  type StreamKey,
+  type SuppressionKey,
 } from '@/lib/preferences/preferences';
 
 /**
@@ -33,9 +33,11 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(request: NextRequest) {
   let email = '';
+  let stream = '';
   try {
-    const body = (await request.json().catch(() => ({}))) as { email?: unknown };
+    const body = (await request.json().catch(() => ({}))) as { email?: unknown; stream?: unknown };
     email = typeof body.email === 'string' ? normalizeEmail(body.email) : '';
+    stream = typeof body.stream === 'string' ? body.stream : '';
   } catch {
     email = '';
   }
@@ -54,12 +56,18 @@ export async function POST(request: NextRequest) {
 
   try {
     const current = await getOrCreateByEmail(email);
-    const changes = Object.fromEntries(STREAM_KEYS.map((k) => [k, false])) as Record<StreamKey, boolean>;
+    // stream=follow_ups → turn off ONLY the transactional follow-ups opt-out
+    // (the "unsubscribe" link on a lead follow-up / review-request email). Any
+    // other value → the default: turn off every marketing stream.
+    const changes: Partial<Record<SuppressionKey, boolean>> =
+      stream === 'follow_ups'
+        ? { follow_ups: false }
+        : (Object.fromEntries(STREAM_KEYS.map((k) => [k, false])) as Record<SuppressionKey, boolean>);
     await applyUpdate({
       current,
       changes,
       actor: 'self',
-      actorDetail: 'unsub-page-by-email',
+      actorDetail: stream === 'follow_ups' ? 'unsub-page-followups' : 'unsub-page-by-email',
       ip: getClientIp(request),
     });
     return NextResponse.json({ ok: true });

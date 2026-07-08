@@ -11,6 +11,7 @@ import {
 } from '@/lib/homecare/accessCookie';
 import { sendHomeCareWelcomeEmail } from '@/lib/notify/sendHomeCareEmails';
 import { preferencesUrlFor } from '@/lib/preferences/preferences';
+import { addOrUpdateResendContact } from '@/lib/notify/resendAudience';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,6 +41,15 @@ export async function GET(request: NextRequest) {
     });
 
     if (wasPending) {
+      // New active opt-in → add to the Resend broadcast audience so future
+      // broadcasts can reach them. Fire-and-forget: the helper is fully
+      // self-contained (never throws, no-ops if unconfigured) and must never
+      // block or fail this verification redirect.
+      void addOrUpdateResendContact(ho.email, {
+        firstName: ho.first_name,
+        unsubscribed: false,
+      });
+
       const preferencesUrl = await preferencesUrlFor(origin, ho.email).catch(() => undefined);
       await sendHomeCareWelcomeEmail({
         to: ho.email,

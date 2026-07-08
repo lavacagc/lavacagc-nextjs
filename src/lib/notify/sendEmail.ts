@@ -1,7 +1,7 @@
 import { Resend } from 'resend';
 import { cleanEnv } from '@/lib/envClean';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
-import { getOrCreateByEmail, type StreamKey } from '@/lib/preferences/preferences';
+import { getOrCreateByEmail, type SuppressionKey } from '@/lib/preferences/preferences';
 
 const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lavacagc.com';
 
@@ -66,12 +66,15 @@ export interface TrackedEmailInput {
   log?: boolean;
 
   /**
-   * When set, this send is governed by a marketing preference stream: the
+   * When set, this send is governed by a preference/suppression key: the
    * recipient's opt-out is honored (suppressed → skipped, not sent) and a
-   * per-recipient List-Unsubscribe header + one-click URL are attached. Omit for
-   * transactional/internal mail, which always sends and carries no such header.
+   * per-recipient List-Unsubscribe header + one-click URL are attached. Accepts
+   * a marketing stream (home_care | buy_remodel | announcements) OR the
+   * transactional 'follow_ups' opt-out (lead follow-ups / review requests, whose
+   * primary purpose is commercial so they still need a working unsubscribe).
+   * Omit for purely transactional/internal mail, which always sends.
    */
-  preferenceStream?: StreamKey;
+  preferenceStream?: SuppressionKey;
 }
 
 export interface TrackedEmailResult {

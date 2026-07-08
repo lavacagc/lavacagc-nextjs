@@ -25,6 +25,10 @@ export default function UnsubClient() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Follow-ups mode: the "unsubscribe" link on a lead follow-up / review-request
+  // email. Opts out of just those (transactional) emails, NOT marketing streams.
+  const isFollowUps = params.get('stream') === 'follow_ups';
+
   useEffect(() => {
     const prefill = params.get('email');
     if (prefill) {
@@ -40,7 +44,7 @@ export default function UnsubClient() {
       const res = await fetch('/api/preferences/unsubscribe-by-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify(isFollowUps ? { email, stream: 'follow_ups' } : { email }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (res.ok && data.ok) {
@@ -73,11 +77,23 @@ export default function UnsubClient() {
         <div className="bg-white rounded-b-2xl px-6 py-6 shadow-sm">
           {done ? (
             <div className="py-6 text-center" data-testid="unsub-done">
-              <h1 className="text-xl font-bold mb-2">You&apos;ve been unsubscribed</h1>
+              <h1 className="text-xl font-bold mb-2">
+                {isFollowUps ? 'Follow-ups stopped' : 'You’ve been unsubscribed'}
+              </h1>
               <p className="text-muted-foreground">
-                We&apos;ve removed <span className="font-semibold break-all">{email}</span> from La Vaca
-                marketing emails. You&apos;ll still receive important account and project messages (like
-                estimates and scheduling).
+                {isFollowUps ? (
+                  <>
+                    We&apos;ve stopped follow-up and review-request emails to{' '}
+                    <span className="font-semibold break-all">{email}</span>. You&apos;ll still receive any
+                    estimates, scheduling, or other messages you&apos;re expecting from us.
+                  </>
+                ) : (
+                  <>
+                    We&apos;ve removed <span className="font-semibold break-all">{email}</span> from La Vaca
+                    marketing emails. You&apos;ll still receive important account and project messages (like
+                    estimates and scheduling).
+                  </>
+                )}
               </p>
               <p className="text-muted-foreground mt-4 text-sm">
                 Changed your mind?{' '}
@@ -89,11 +105,22 @@ export default function UnsubClient() {
             </div>
           ) : (
             <form onSubmit={submit} data-testid="unsub-form">
-              <h1 className="text-xl font-bold mb-2">Unsubscribe from marketing emails</h1>
+              <h1 className="text-xl font-bold mb-2">
+                {isFollowUps ? 'Stop follow-up emails' : 'Unsubscribe from marketing emails'}
+              </h1>
               <p className="text-sm text-muted-foreground mb-5">
-                Enter your email and we&apos;ll stop sending La Vaca marketing emails — the Home Care
-                checklist, listings, and occasional news. Important account and project emails still
-                come through.
+                {isFollowUps ? (
+                  <>
+                    Enter your email and we&apos;ll stop the follow-up and review-request emails about your
+                    inquiry. This won&apos;t affect any newsletters or other La Vaca emails you signed up for.
+                  </>
+                ) : (
+                  <>
+                    Enter your email and we&apos;ll stop sending La Vaca marketing emails — the Home Care
+                    checklist, listings, and occasional news. Important account and project emails still
+                    come through.
+                  </>
+                )}
               </p>
 
               <label htmlFor="unsub-email" className="block text-sm font-semibold mb-1.5">
