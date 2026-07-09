@@ -133,7 +133,7 @@ export default function PreferencesClient() {
     );
   };
 
-  const allOff = streams && !streams.home_care && !streams.buy_remodel && !streams.announcements;
+  const allOff = streams && STREAM_KEYS.every((k) => !streams[k]);
 
   return (
     <div style={{ minHeight: '100vh', background: '#eef0ea' }} className="py-10 px-4">

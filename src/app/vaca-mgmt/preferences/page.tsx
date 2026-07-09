@@ -10,15 +10,12 @@ import { useToast } from '@/hooks/use-toast';
 import { Search, Download, RefreshCw, Radio } from 'lucide-react';
 import { STREAMS, STREAM_KEYS, type StreamKey } from '@/lib/preferences/streams';
 
-interface BulkRow {
-  email: string;
-  home_care: boolean;
-  buy_remodel: boolean;
-  announcements: boolean;
-  updated_at?: string;
-}
-
 type StreamState = Record<StreamKey, boolean>;
+
+type BulkRow = StreamState & {
+  email: string;
+  updated_at?: string;
+};
 
 /** All marketing streams set to `value` — derived so new streams can't be missed. */
 const allStreams = (value: boolean): StreamState =>
@@ -377,9 +374,9 @@ export default function AdminPreferencesPage() {
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b">
                     <th className="py-2 pr-4">Email</th>
-                    <th className="py-2 px-2 text-center">Home Care</th>
-                    <th className="py-2 px-2 text-center">Buy + Remodel</th>
-                    <th className="py-2 px-2 text-center">News</th>
+                    {STREAMS.map((s) => (
+                      <th key={s.key} className="py-2 px-2 text-center">{s.label}</th>
+                    ))}
                     <th className="py-2 pl-2 text-right">Updated</th>
                   </tr>
                 </thead>
@@ -387,9 +384,9 @@ export default function AdminPreferencesPage() {
                   {bulkRows.map((r) => (
                     <tr key={r.email} className="border-b last:border-0" data-testid={`bulk-row-${r.email}`}>
                       <td className="py-2 pr-4 break-all">{r.email}</td>
-                      <td className="py-2 px-2 text-center">{r.home_care ? '✓' : '—'}</td>
-                      <td className="py-2 px-2 text-center">{r.buy_remodel ? '✓' : '—'}</td>
-                      <td className="py-2 px-2 text-center">{r.announcements ? '✓' : '—'}</td>
+                      {STREAM_KEYS.map((k) => (
+                        <td key={k} className="py-2 px-2 text-center">{r[k] ? '✓' : '—'}</td>
+                      ))}
                       <td className="py-2 pl-2 text-right text-xs text-muted-foreground whitespace-nowrap">
                         {r.updated_at ? new Date(r.updated_at).toLocaleDateString() : '—'}
                       </td>
