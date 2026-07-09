@@ -26,11 +26,12 @@ UA="Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 
 
 ### Clarity + FB Pixel hostname gate
 
-`src/app/layout.tsx` wraps both analytics snippets in `if (window.location.hostname === 'www.lavacagc.com')`. On localhost, neither loads. Implications:
+`src/app/layout.tsx` wraps both analytics snippets in `if (window.location.hostname === 'www.lavacagc.com' && !navigator.globalPrivacyControl)`. On localhost, neither loads; on prod, neither loads when the browser sends a Global Privacy Control signal (GPC suppression is honored in real time). Implications:
 
 - Local console-error checks won't surface CSP issues caused by the analytics bundles.
 - Use the `new Function('return 1+1')()` probe (in `csp-probe-snippet.md`) as a direct CSP-eval test instead.
 - Always re-run console checks against prod after deploy. This is non-optional.
+- Verify prod with GPC **off** in the test browser, or the gated scripts silently won't load and a "0 errors" result is meaningless (same false-pass trap as the localhost gate).
 
 ### Vercel preview = 401
 

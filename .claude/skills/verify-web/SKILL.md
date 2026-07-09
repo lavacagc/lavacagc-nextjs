@@ -27,7 +27,7 @@ Skip for docs, `.gitignore`, `CLAUDE.md`, memory, internal scripts.
 ## Lavaca quirks
 
 - **curl needs browser UA** — middleware 403s default `curl/X.Y.Z`. Use `Mozilla/5.0 (Macintosh) AppleWebKit/537.36 ...`.
-- **Clarity + FB Pixel hostname-gated** to `www.lavacagc.com` (`src/app/layout.tsx`). Locally use `new Function('return 1+1')()` eval probe instead.
+- **Clarity + FB Pixel gated** on `www.lavacagc.com` **and** `!navigator.globalPrivacyControl` (`src/app/layout.tsx`) — with Global Privacy Control on in your browser they never load, even on prod. Locally use `new Function('return 1+1')()` eval probe instead.
 - **Vercel preview = 401** (Deployment Protection). Use local dev + queue prod re-verification.
 
 ## See helpers/
