@@ -108,7 +108,7 @@ If you sign up for our free **monthly newsletter** (for example, through the ema
 We record your affirmative consent to receive it, including the **date and time and the IP address** of your signup, as proof of consent.
 We use your email to send you about one message a month with seasonal home-maintenance tips, which may link to our La Vaca Home Care program.
 
-You can unsubscribe from any newsletter email, or choose exactly which La Vaca emails you receive in our email preference center (see Section 8.4).
+You can unsubscribe at any time using the **unsubscribe link** in any newsletter email, or through your **email preference center** (see Section 8.4).
 This is a marketing communication, separate from the Home Care and "Buy + Remodel" programs, and you can opt out of it at any time without affecting other emails you have asked for.
 
 ---
@@ -457,7 +457,7 @@ You have the right to request deletion of your personal information, subject to 
 
 You have the right to opt out of receiving marketing communications from us. You can unsubscribe by:
 - Clicking the "unsubscribe" link in marketing emails
-- Using our **email preference center** (reachable from the "manage preferences" link in the footer of any email we send you) to turn individual email categories - such as the monthly newsletter, Home Care, or "Buy + Remodel" - on or off independently
+- Using our **email preference center** (reachable from the "manage preferences" link in the footer of any email we send you) to turn individual email categories - such as Home Care, "Buy + Remodel", or news and occasional offers - on or off independently
 - Contacting us directly at **alex@lavacagc.com** with subject "Opt Out of Marketing"
 
 ### 8.5 Do Not Sell or Share My Personal Information (California Residents)

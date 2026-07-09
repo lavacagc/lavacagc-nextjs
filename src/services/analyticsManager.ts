@@ -324,6 +324,7 @@ class AnalyticsManager {
    */
   captureGclid(): void {
     if (typeof window === 'undefined') return;
+    if (isGpcEnabled()) return;
 
     try {
       const urlParams = new URLSearchParams(window.location.search);
