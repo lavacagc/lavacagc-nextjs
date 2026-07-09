@@ -21,7 +21,7 @@ import path from 'path';
  */
 
 const EVIDENCE_DIR = process.env.EVIDENCE_DIR || 'test-results/preferences-evidence';
-const STREAM_KEYS = ['home_care', 'buy_remodel', 'announcements'] as const;
+const STREAM_KEYS = ['newsletter', 'home_care', 'buy_remodel', 'announcements'] as const;
 
 function shot(name: string) {
   return path.join(EVIDENCE_DIR, name);
@@ -31,7 +31,7 @@ type Streams = Record<(typeof STREAM_KEYS)[number], boolean>;
 
 async function mockPublicPrefsApi(page: Page, posts: unknown[]) {
   const state: { streams: Streams } = {
-    streams: { home_care: true, buy_remodel: true, announcements: true },
+    streams: { newsletter: true, home_care: true, buy_remodel: true, announcements: true },
   };
   await page.route('**/api/preferences?*', async (route) => {
     await route.fulfill({
@@ -90,9 +90,9 @@ test.describe('public /preferences page', () => {
     expect(logoInfo.currentSrc).toBe(new URL('/logo.png', baseURL).href);
     expect(logoInfo.naturalWidth).toBeGreaterThan(0);
 
-    // 2. Toggle geometry: all three checked, track exactly 50px, knob inside.
+    // 2. Toggle geometry: all four checked, track exactly 50px, knob inside.
     const geo = await measureSwitches(page, 'switch-');
-    expect(geo).toHaveLength(3);
+    expect(geo).toHaveLength(4);
     for (const g of geo) {
       expect(g.checked).toBe(true);
       expect(g.trackW).toBe(50);
@@ -142,7 +142,7 @@ test.describe('public /preferences page', () => {
       .screenshot({ path: shot('04-counterfactual-overflow.png') });
   });
 
-  test('single toggle POSTs a per-stream delta; unsubscribe-all POSTs all three', async ({
+  test('single toggle POSTs a per-stream delta; unsubscribe-all POSTs all four', async ({
     page,
   }) => {
     const posts: { token?: string; changes?: Partial<Streams> }[] = [];
@@ -160,6 +160,7 @@ test.describe('public /preferences page', () => {
     await expect(page.getByTestId('saved-msg')).toContainText('unsubscribed from all');
     expect(posts).toHaveLength(2);
     expect(posts[1].changes).toEqual({
+      newsletter: false,
       home_care: false,
       buy_remodel: false,
       announcements: false,
@@ -235,7 +236,7 @@ test.describe('admin /vaca-mgmt/preferences page', () => {
     const adminPosts: { email?: string; changes?: Partial<Streams> }[] = [];
     const lookupEmails: string[] = [];
     const state: { streams: Streams } = {
-      streams: { home_care: true, buy_remodel: true, announcements: true },
+      streams: { newsletter: true, home_care: true, buy_remodel: true, announcements: true },
     };
 
     await page.route('**/api/admin/preferences?*', async (route) => {
