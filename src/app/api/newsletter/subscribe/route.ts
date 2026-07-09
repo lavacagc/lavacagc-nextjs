@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
-import { getOrCreateByEmail, applyUpdate, normalizeEmail, STREAM_KEYS } from '@/lib/preferences/preferences';
+import { getOrCreateByEmail, applyUpdate, normalizeEmail, isSuppressed, STREAM_KEYS } from '@/lib/preferences/preferences';
 import { addOrUpdateResendContact } from '@/lib/notify/resendAudience';
 
 /**
@@ -74,10 +74,12 @@ export async function POST(request: NextRequest) {
     });
 
     // Mirror the opt-in into the Resend audience (best-effort, never blocks the
-    // response). Suppress-only semantics inside the helper mean this only ever
-    // adds a fresh contact / leaves an existing one alone - it never clears a
-    // prior unsubscribe.
-    await addOrUpdateResendContact(email).catch((e) =>
+    // response). The audience represents the 'announcements' stream, so mirror
+    // THIS contact's announcements preference instead of hardcoding subscribed -
+    // a newsletter-only signup has announcements=false, so it is added suppressed
+    // and can't receive announcements broadcasts before the next suppression sweep.
+    const annOptedOut = await isSuppressed(email, 'announcements').catch(() => false);
+    await addOrUpdateResendContact(email, { unsubscribed: annOptedOut }).catch((e) =>
       console.error('newsletter Resend contact upsert failed (non-fatal):', e instanceof Error ? e.message : e),
     );
 
