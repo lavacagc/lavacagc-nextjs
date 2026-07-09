@@ -25,11 +25,16 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 interface ResendEvent {
-  type: string; // e.g. "email.delivered"
+  type: string; // e.g. "email.delivered" | "contact.updated"
   created_at?: string;
   data?: {
     email_id?: string;
-    to?: string[];
+    to?: string[] | string;
+    // contact.* events carry the contact's address here (assumption — see
+    // handleContactEvent). Some payloads may nest it under `contact`.
+    email?: string;
+    unsubscribed?: boolean;
+    contact?: { email?: string; unsubscribed?: boolean };
     bounce?: {
       type?: string; // "Permanent" | "Transient" | "Undetermined"
       [k: string]: unknown;
@@ -53,6 +58,81 @@ async function autoSuppress(email: string, event: string): Promise<void> {
   } catch (e) {
     console.error('auto-suppress failed (non-fatal):', e instanceof Error ? e.message : e);
   }
+}
+
+// Pull a single email address out of a payload field that may be a string, a
+// string array (Resend `to`), or absent.
+function firstEmail(value: string | string[] | undefined): string | undefined {
+  if (typeof value === 'string') {
+    const v = value.trim();
+    // Same '@' guard as the array branch — a non-address string must not reach
+    // autoSuppress → getOrCreateByEmail and create a junk email_preferences row.
+    return v.includes('@') ? v : undefined;
+  }
+  if (Array.isArray(value)) return value.find((v) => typeof v === 'string' && v.includes('@'));
+  return undefined;
+}
+
+/**
+ * A Resend-side unsubscribe (Gmail / Resend native one-click List-Unsubscribe on
+ * a dashboard broadcast) flips the contact's `unsubscribed` flag or deletes the
+ * contact, and never touches our DB. Mirror it back so email_preferences stays
+ * the source of truth.
+ *
+ * ASSUMPTIONS (field names verified against Resend's documented Contact object —
+ * `email` + `unsubscribed` — but NOT yet validated against a real captured
+ * contact webhook payload; do that before fully relying on this path):
+ *   - event.type is 'contact.updated' or 'contact.deleted'
+ *   - the contact email is in data.email (fallbacks: data.to, data.contact.email)
+ *   - on contact.updated the opt-out state is data.unsubscribed === true
+ *     (fallback data.contact.unsubscribed)
+ * We only suppress marketing streams (STREAM_KEYS) via autoSuppress — the
+ * transactional follow_ups stream is deliberately left untouched.
+ *
+ * If a contact.* event arrives but we CANNOT resolve an email (payload shape
+ * differs from the above), we log a WARNING rather than silently no-op — a real
+ * shape mismatch then shows up in logs instead of becoming a hidden CAN-SPAM gap.
+ *
+ * @returns true if this was a contact event (handled — caller should ack 200).
+ */
+async function handleContactEvent(event: ResendEvent): Promise<boolean> {
+  if (!event.type.startsWith('contact.')) {
+    return false;
+  }
+  // Log EVERY contact.* event (type + payload keys) so the real webhook shape is
+  // observable in production traffic — the field assumptions below aren't yet
+  // validated against a live payload, and this makes a mismatch diagnosable
+  // instead of silent. Cheap: contact events are rare vs. email.* events.
+  console.info(
+    `resend webhook contact event: ${event.type}; data keys: [${Object.keys(event.data ?? {}).join(', ')}]`,
+  );
+  if (event.type !== 'contact.updated' && event.type !== 'contact.deleted') {
+    // Other contact.* types (e.g. contact.created) — nothing to suppress; ack.
+    return true;
+  }
+  const email =
+    firstEmail(event.data?.email) ??
+    firstEmail(event.data?.to) ??
+    firstEmail(event.data?.contact?.email);
+  // A deletion removes the contact entirely → treat as an unsubscribe. An
+  // update only suppresses when the flag actually flipped to unsubscribed
+  // (a name/property edit must not opt anyone out).
+  const optedOut =
+    event.type === 'contact.deleted' ||
+    event.data?.unsubscribed === true ||
+    event.data?.contact?.unsubscribed === true;
+  if (email && optedOut) {
+    await autoSuppress(email, event.type);
+  } else if (optedOut && !email) {
+    // Opt-out signalled but no address resolved → almost certainly a payload
+    // shape we didn't anticipate. Surface it loudly so it can be fixed before it
+    // silently drops real unsubscribes.
+    console.warn(
+      `resend webhook: ${event.type} indicated an unsubscribe but no email could be resolved from the payload — ` +
+        `verify the contact webhook shape. Keys seen: ${Object.keys(event.data ?? {}).join(', ')}`,
+    );
+  }
+  return true;
 }
 
 // Delivery progression rank — we only advance status forward so an out-of-order
@@ -113,6 +193,12 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.warn('Resend webhook signature verification failed:', err instanceof Error ? err.message : err);
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
+  }
+
+  // Contact events (native unsubscribe / contact deletion) flow back into our
+  // suppression state before we consider email.* delivery events.
+  if (await handleContactEvent(event)) {
+    return NextResponse.json({ ok: true });
   }
 
   const messageId = event.data?.email_id;
@@ -191,7 +277,7 @@ export async function POST(request: NextRequest) {
     const isPermanentBounce =
       newStatus === 'bounced' && event.data?.bounce?.type?.toLowerCase() === 'permanent';
     if (isPermanentBounce || newStatus === 'complained') {
-      const recipient = event.data?.to?.[0];
+      const recipient = firstEmail(event.data?.to);
       if (recipient) await autoSuppress(recipient, event.type);
     }
 

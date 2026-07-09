@@ -13,6 +13,8 @@ import {
   sanitizeKnownName,
 } from '@/lib/listings/accessCookie';
 import { sendListingsWelcomeEmail } from '@/lib/notify/sendListingsEmails';
+import { addOrUpdateResendContact } from '@/lib/notify/resendAudience';
+import { isSuppressed } from '@/lib/preferences/preferences';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -61,6 +63,17 @@ export async function GET(request: NextRequest) {
 
     // Welcome email only on the first activation, not on every magic-link reissue.
     if (wasPending) {
+      // New active opt-in → add to the Resend broadcast audience. That audience
+      // represents the 'announcements' stream, so mirror THIS recipient's
+      // announcements preference instead of hardcoding subscribed — otherwise a
+      // Buy+Remodel opt-in would resurrect a prior announcements opt-out.
+      // Fire-and-forget: never block the verification redirect.
+      const annOptedOut = await isSuppressed(sub.email, 'announcements').catch(() => false);
+      void addOrUpdateResendContact(sub.email, {
+        firstName: sub.first_name,
+        unsubscribed: annOptedOut,
+      });
+
       await sendListingsWelcomeEmail({
         to: sub.email,
         firstName: sub.first_name,

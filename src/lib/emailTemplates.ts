@@ -135,11 +135,35 @@ function footer(): string {
     </div>`;
 }
 
+/**
+ * CAN-SPAM footer for lead follow-up + review-request email. These are
+ * commercial in purpose, so they legally need a working unsubscribe + physical
+ * address — but they are treated as TRANSACTIONAL (owner decision 2026-07): a
+ * general marketing unsubscribe does not silence them; only THIS link (or the
+ * one-click List-Unsubscribe header sendTrackedEmail attaches for the
+ * 'follow_ups' stream) opts a recipient out of just these. Added as a content
+ * block above the standard footer by the builders below.
+ */
+function followUpFooter(unsubscribeUrl: string): string {
+  const FF = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`;
+  return `
+    ${divider()}
+    <div style="text-align:center;padding:20px 48px 0 48px">
+      <p style="color:#717171;font-size:12px;font-family:${FF};margin:0;line-height:18px">
+        You're receiving this because you contacted La Vaca General Contractors about a project.
+      </p>
+      <p style="color:#717171;font-size:12px;font-family:${FF};margin:0;line-height:18px;padding-top:8px">
+        <a href="${unsubscribeUrl}" style="color:#717171;text-decoration:underline">Unsubscribe from these follow-ups</a>
+        &nbsp;·&nbsp; La Vaca General Contractors, LLC ·&nbsp;${BUSINESS_ADDRESS}
+      </p>
+    </div>`;
+}
+
 // ==========================================
 // FEEDBACK EMAILS (Review Requests)
 // ==========================================
 
-export function feedbackDay0Html(name: string): string {
+export function feedbackDay0Html(name: string, unsubscribeUrl: string): string {
   const firstName = name.split(' ')[0] || name;
   return emailShell(
     `${logo()}
@@ -149,12 +173,14 @@ export function feedbackDay0Html(name: string): string {
      ${paragraph('If you have a moment, it would mean the world to us:')}
      ${button('Leave a Google Review ★', REVIEW_LINK, true)}
      ${paragraph('<span style="color:#717171;font-size:14px">It only takes a couple of minutes, and it makes a huge difference for our small business.</span>')}
-     ${spacer(16)}`,
+     ${spacer(8)}
+     ${followUpFooter(unsubscribeUrl)}
+     ${spacer(8)}`,
     `Hi ${firstName}, we'd love to hear about your experience with La Vaca!`
   );
 }
 
-export function feedbackDay3Html(name: string): string {
+export function feedbackDay3Html(name: string, unsubscribeUrl: string): string {
   const firstName = name.split(' ')[0] || name;
   return emailShell(
     `${logo()}
@@ -165,12 +191,14 @@ export function feedbackDay3Html(name: string): string {
      ${paragraph('<span style="color:#717171;font-size:14px">Thanks so much!</span>')}
      ${spacer(8)}
      ${paragraphLeft('Best,<br><strong>Alex &amp; The La Vaca Team</strong>')}
-     ${spacer(16)}`,
+     ${spacer(8)}
+     ${followUpFooter(unsubscribeUrl)}
+     ${spacer(8)}`,
     `Just following up — we'd love your feedback, ${firstName}`
   );
 }
 
-export function feedbackDay7Html(name: string): string {
+export function feedbackDay7Html(name: string, unsubscribeUrl: string): string {
   const firstName = name.split(' ')[0] || name;
   return emailShell(
     `${logo()}
@@ -180,7 +208,9 @@ export function feedbackDay7Html(name: string): string {
      ${button('Leave a Google Review ★', REVIEW_LINK, true)}
      ${spacer(8)}
      ${paragraphLeft('Thank you for choosing La Vaca!<br><br>Best regards,<br><strong>Alex</strong>')}
-     ${spacer(16)}`,
+     ${spacer(8)}
+     ${followUpFooter(unsubscribeUrl)}
+     ${spacer(8)}`,
     `Last chance to share your thoughts, ${firstName}`
   );
 }
@@ -189,7 +219,7 @@ export function feedbackDay7Html(name: string): string {
 // LEAD FOLLOW-UP EMAILS
 // ==========================================
 
-export function leadInstantAckHtml(name: string, projectType?: string): string {
+export function leadInstantAckHtml(name: string, projectType: string | undefined, unsubscribeUrl: string): string {
   const firstName = name.split(' ')[0] || name;
   const projectMention = projectType ? ` about your ${projectType} project` : '';
 
@@ -213,12 +243,14 @@ export function leadInstantAckHtml(name: string, projectType?: string): string {
      </div>
      ${spacer(8)}
      ${paragraphLeft('We look forward to working with you!<br><br>Best regards,<br><strong>The La Vaca Team</strong>')}
-     ${spacer(16)}`,
+     ${spacer(8)}
+     ${followUpFooter(unsubscribeUrl)}
+     ${spacer(8)}`,
     `Thanks for reaching out, ${firstName}! We'll be in touch shortly.`
   );
 }
 
-export function lead24hHtml(name: string, projectType?: string): string {
+export function lead24hHtml(name: string, projectType: string | undefined, unsubscribeUrl: string): string {
   const firstName = name.split(' ')[0] || name;
   const projectMention = projectType ? ` about your ${projectType} project` : '';
 
@@ -242,12 +274,14 @@ export function lead24hHtml(name: string, projectType?: string): string {
      ${paragraph('Would you like to schedule a free, no-obligation estimate?')}
      ${button('Schedule Your Free Estimate', `${WEBSITE_URL}/contact`, true)}
      ${paragraph(`<span style="color:#717171;font-size:14px">Or call us anytime at <a href="tel:2012124917" style="color:${BRAND_COLOR};text-decoration:none;font-weight:500">${PHONE}</a></span>`)}
-     ${spacer(16)}`,
+     ${spacer(8)}
+     ${followUpFooter(unsubscribeUrl)}
+     ${spacer(8)}`,
     `Following up on your home renovation inquiry, ${firstName}`
   );
 }
 
-export function lead48hHtml(name: string, projectType?: string): string {
+export function lead48hHtml(name: string, projectType: string | undefined, unsubscribeUrl: string): string {
   const firstName = name.split(' ')[0] || name;
   const projectMention = projectType ? ` about your ${projectType} project` : '';
 
@@ -268,12 +302,14 @@ export function lead48hHtml(name: string, projectType?: string): string {
      ${paragraph(`<span style="color:#717171;font-size:14px">Or reply to this email — we'd love to chat.</span>`)}
      ${spacer(8)}
      ${paragraphLeft('Wishing you the best with your project!<br><br>Warm regards,<br><strong>The La Vaca Team</strong><br><span style="color:#717171;font-size:14px">Family-Owned &amp; Operated in Northern NJ</span>')}
-     ${spacer(16)}`,
+     ${spacer(8)}
+     ${followUpFooter(unsubscribeUrl)}
+     ${spacer(8)}`,
     `Your home renovation dreams — let's make them happen, ${firstName}`
   );
 }
 
-export function lead7dHtml(name: string): string {
+export function lead7dHtml(name: string, unsubscribeUrl: string): string {
   const firstName = name.split(' ')[0] || name;
 
   return emailShell(
@@ -294,7 +330,9 @@ export function lead7dHtml(name: string): string {
      ${paragraph(`We'll leave the ball in your court from here. Wishing you all the best, ${firstName}!`)}
      ${spacer(8)}
      ${paragraphLeft('Best regards,<br><strong>Alex &amp; The La Vaca Team</strong>')}
-     ${spacer(16)}`,
+     ${spacer(8)}
+     ${followUpFooter(unsubscribeUrl)}
+     ${spacer(8)}`,
     `Still thinking about your renovation? We're here when you're ready, ${firstName}`
   );
 }

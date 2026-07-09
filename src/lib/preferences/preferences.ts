@@ -1,6 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
-import { normalizeEmail, STREAM_KEYS, type StreamKey } from '@/lib/preferences/streams';
+import {
+  normalizeEmail,
+  SUPPRESSION_KEYS,
+  type SuppressionKey,
+} from '@/lib/preferences/streams';
 
 /**
  * Email preference center helpers (Phase 3).
@@ -14,8 +18,14 @@ import { normalizeEmail, STREAM_KEYS, type StreamKey } from '@/lib/preferences/s
  * re-exported here so server callers keep a single import path.
  */
 
-export { STREAMS, STREAM_KEYS, normalizeEmail } from '@/lib/preferences/streams';
-export type { StreamKey, StreamDef } from '@/lib/preferences/streams';
+export {
+  STREAMS,
+  STREAM_KEYS,
+  SUPPRESSION_KEYS,
+  TRANSACTIONAL_KEYS,
+  normalizeEmail,
+} from '@/lib/preferences/streams';
+export type { StreamKey, StreamDef, SuppressionKey, TransactionalKey } from '@/lib/preferences/streams';
 
 export interface EmailPreferences {
   email: string;
@@ -23,6 +33,8 @@ export interface EmailPreferences {
   home_care: boolean;
   buy_remodel: boolean;
   announcements: boolean;
+  /** Transactional lead follow-up / review-request opt-in (not a marketing stream). */
+  follow_ups: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -83,7 +95,7 @@ export async function findByToken(token: string): Promise<EmailPreferences | nul
  * Resend broadcasts (which send via audiences, outside the sendTrackedEmail
  * wrapper). Paginates so a large opt-out list is fully returned.
  */
-export async function getSuppressedEmails(stream: StreamKey): Promise<string[]> {
+export async function getSuppressedEmails(stream: SuppressionKey): Promise<string[]> {
   const out: string[] = [];
   const pageSize = 1000;
   for (let offset = 0; ; offset += pageSize) {
@@ -99,7 +111,7 @@ export async function getSuppressedEmails(stream: StreamKey): Promise<string[]> 
 }
 
 /** True if the email has opted OUT of the given stream (so we must not send). */
-export async function isSuppressed(rawEmail: string, stream: StreamKey): Promise<boolean> {
+export async function isSuppressed(rawEmail: string, stream: SuppressionKey): Promise<boolean> {
   try {
     const email = normalizeEmail(rawEmail);
     const rows = await supabaseRest<EmailPreferences[]>(
@@ -125,7 +137,7 @@ export type PrefActor = 'self' | 'admin' | 'webhook' | 'system';
  */
 export async function applyUpdate(args: {
   current: EmailPreferences;
-  changes: Partial<Record<StreamKey, boolean>>;
+  changes: Partial<Record<SuppressionKey, boolean>>;
   actor: PrefActor;
   actorDetail?: string | null;
   ip?: string | null;
@@ -134,7 +146,10 @@ export async function applyUpdate(args: {
 
   const patch: Record<string, boolean> = {};
   const events: Array<Record<string, unknown>> = [];
-  for (const key of STREAM_KEYS) {
+  // Iterate ALL suppression keys (marketing streams + transactional follow_ups)
+  // so a change to any of them is persisted + audited. syncLegacyStatus below
+  // only mirrors the marketing streams (follow_ups has no legacy identity table).
+  for (const key of SUPPRESSION_KEYS) {
     if (typeof changes[key] === 'boolean' && changes[key] !== current[key]) {
       patch[key] = changes[key] as boolean;
       events.push({
@@ -180,7 +195,7 @@ export async function applyUpdate(args: {
  */
 export async function setStreamByEmail(
   rawEmail: string,
-  stream: StreamKey,
+  stream: SuppressionKey,
   value: boolean,
   actor: PrefActor = 'self',
   actorDetail?: string | null,

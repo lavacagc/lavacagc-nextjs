@@ -10,7 +10,8 @@ import {
   sanitizeKnownName,
 } from '@/lib/homecare/accessCookie';
 import { sendHomeCareWelcomeEmail } from '@/lib/notify/sendHomeCareEmails';
-import { preferencesUrlFor } from '@/lib/preferences/preferences';
+import { preferencesUrlFor, isSuppressed } from '@/lib/preferences/preferences';
+import { addOrUpdateResendContact } from '@/lib/notify/resendAudience';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,6 +41,17 @@ export async function GET(request: NextRequest) {
     });
 
     if (wasPending) {
+      // New active opt-in → add to the Resend broadcast audience so future
+      // broadcasts can reach them. The audience represents the 'announcements'
+      // stream, so mirror THIS recipient's announcements preference rather than
+      // hardcoding subscribed — otherwise a Home Care opt-in would resurrect a
+      // prior announcements opt-out. Fire-and-forget: never block the redirect.
+      const annOptedOut = await isSuppressed(ho.email, 'announcements').catch(() => false);
+      void addOrUpdateResendContact(ho.email, {
+        firstName: ho.first_name,
+        unsubscribed: annOptedOut,
+      });
+
       const preferencesUrl = await preferencesUrlFor(origin, ho.email).catch(() => undefined);
       await sendHomeCareWelcomeEmail({
         to: ho.email,

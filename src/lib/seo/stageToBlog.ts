@@ -44,13 +44,15 @@ function toPlain(md: string): string {
 
 export function buildBlogPostFromDraft(
   markdown: string,
-  opts: { category?: string; author?: string } = {},
+  opts: { category?: string; author?: string; forcedSlug?: string } = {},
 ): BlogPostDraft {
   const lines = markdown.split('\n');
   const titleLine = lines.find((l) => /^#\s+/.test(l));
   const title = titleLine ? titleLine.replace(/^#\s+/, '').trim() : 'Untitled';
   const content = (titleLine ? markdown.replace(titleLine, '') : markdown).trim();
-  const slug = slugify(title) || 'post';
+  // A caller (e.g. the maintenance cron) can force the exact slug so a created
+  // post matches its roster entry; otherwise derive it from the H1 as before.
+  const slug = opts.forcedSlug ? slugify(opts.forcedSlug) || 'post' : slugify(title) || 'post';
 
   const plain = toPlain(content);
   const excerpt = plain.length > 200 ? `${plain.slice(0, 200).trim()}…` : plain;
