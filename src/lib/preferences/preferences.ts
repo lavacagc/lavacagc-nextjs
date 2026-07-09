@@ -33,6 +33,8 @@ export interface EmailPreferences {
   home_care: boolean;
   buy_remodel: boolean;
   announcements: boolean;
+  /** Affirmative-consent monthly-newsletter opt-in. Defaults false; true only on explicit signup. */
+  newsletter: boolean;
   /** Transactional lead follow-up / review-request opt-in (not a marketing stream). */
   follow_ups: boolean;
   created_at?: string;

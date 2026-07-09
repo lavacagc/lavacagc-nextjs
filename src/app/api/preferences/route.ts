@@ -19,12 +19,11 @@ import {
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-function stateOf(pref: { home_care: boolean; buy_remodel: boolean; announcements: boolean }) {
-  return {
-    home_care: pref.home_care,
-    buy_remodel: pref.buy_remodel,
-    announcements: pref.announcements,
-  };
+// Project the row down to the marketing streams the preference center manages.
+// Derived from STREAM_KEYS so a newly added stream (e.g. newsletter) shows up in
+// the UI automatically - never hand-list the streams here.
+function stateOf(pref: Record<StreamKey, boolean>): Record<StreamKey, boolean> {
+  return Object.fromEntries(STREAM_KEYS.map((k) => [k, pref[k]])) as Record<StreamKey, boolean>;
 }
 
 export async function GET(request: NextRequest) {

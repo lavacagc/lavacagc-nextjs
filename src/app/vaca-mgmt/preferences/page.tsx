@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Download, RefreshCw, Radio } from 'lucide-react';
-import { STREAMS, type StreamKey } from '@/lib/preferences/streams';
+import { STREAMS, STREAM_KEYS, type StreamKey } from '@/lib/preferences/streams';
 
 interface BulkRow {
   email: string;
@@ -19,6 +19,10 @@ interface BulkRow {
 }
 
 type StreamState = Record<StreamKey, boolean>;
+
+/** All marketing streams set to `value` — derived so new streams can't be missed. */
+const allStreams = (value: boolean): StreamState =>
+  Object.fromEntries(STREAM_KEYS.map((k) => [k, value])) as StreamState;
 interface PrefEvent {
   id: string;
   stream: string;
@@ -35,11 +39,7 @@ export default function AdminPreferencesPage() {
   const [activeEmail, setActiveEmail] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [exists, setExists] = useState(false);
-  const [streams, setStreams] = useState<StreamState>({
-    home_care: true,
-    buy_remodel: true,
-    announcements: true,
-  });
+  const [streams, setStreams] = useState<StreamState>(allStreams(true));
   const [events, setEvents] = useState<PrefEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -125,7 +125,7 @@ export default function AdminPreferencesPage() {
         setActiveEmail(target);
         setExists(data.exists);
         if (data.preferences) setStreams(data.preferences);
-        else setStreams({ home_care: true, buy_remodel: true, announcements: true });
+        else setStreams(allStreams(true));
         setEvents(data.events || []);
         setLoaded(true);
       } catch (err) {

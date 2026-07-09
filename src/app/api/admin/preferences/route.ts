@@ -36,8 +36,10 @@ interface PrefEvent {
   created_at: string;
 }
 
-function stateOf(p: EmailPreferences) {
-  return { home_care: p.home_care, buy_remodel: p.buy_remodel, announcements: p.announcements };
+// Derived from STREAM_KEYS so a newly added marketing stream (e.g. newsletter)
+// surfaces in the admin UI automatically - never hand-list the streams here.
+function stateOf(p: EmailPreferences): Record<StreamKey, boolean> {
+  return Object.fromEntries(STREAM_KEYS.map((k) => [k, p[k]])) as Record<StreamKey, boolean>;
 }
 
 interface PrefRow extends EmailPreferences {
