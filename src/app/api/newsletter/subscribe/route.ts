@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
-import { getOrCreateByEmail, applyUpdate, normalizeEmail } from '@/lib/preferences/preferences';
+import { getOrCreateByEmail, applyUpdate, normalizeEmail, STREAM_KEYS } from '@/lib/preferences/preferences';
 import { addOrUpdateResendContact } from '@/lib/notify/resendAudience';
 
 /**
@@ -59,7 +59,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const current = await getOrCreateByEmail(email);
+    // Seed every marketing stream off when creating a net-new contact so a
+    // newsletter-only signup records only the consent they actually gave; an
+    // existing contact is returned untouched. applyUpdate then flips newsletter
+    // on and writes the affirmative-consent audit event.
+    const streamsOff = Object.fromEntries(STREAM_KEYS.map((k) => [k, false] as const));
+    const current = await getOrCreateByEmail(email, streamsOff);
     await applyUpdate({
       current,
       changes: { newsletter: true },

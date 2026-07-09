@@ -48,8 +48,18 @@ function newToken(): string {
 /**
  * Fetch the preferences row for an email, creating it (all streams on, fresh
  * token) on first touch. Idempotent via upsert on the email PK.
+ *
+ * `createDefaults` seeds explicit stream values ONLY when this call actually
+ * inserts a brand-new row; an already-existing row is returned untouched (its
+ * real consent state is never overwritten). Acquisition entry points that must
+ * not inherit the identity-model true-defaults (e.g. an affirmative-consent
+ * newsletter-only signup) pass the marketing streams as false here so a net-new
+ * contact is not recorded as consenting to streams they never opted into.
  */
-export async function getOrCreateByEmail(rawEmail: string): Promise<EmailPreferences> {
+export async function getOrCreateByEmail(
+  rawEmail: string,
+  createDefaults?: Partial<Record<SuppressionKey, boolean>>,
+): Promise<EmailPreferences> {
   const email = normalizeEmail(rawEmail);
   const existing = await supabaseRest<EmailPreferences[]>(
     'GET',
@@ -62,7 +72,7 @@ export async function getOrCreateByEmail(rawEmail: string): Promise<EmailPrefere
   await supabaseRest(
     'POST',
     'email_preferences',
-    { email, preference_token: newToken() },
+    { email, preference_token: newToken(), ...(createDefaults ?? {}) },
     { onConflict: 'email', prefer: 'resolution=ignore-duplicates,return=minimal' },
   );
   const rows = await supabaseRest<EmailPreferences[]>(
