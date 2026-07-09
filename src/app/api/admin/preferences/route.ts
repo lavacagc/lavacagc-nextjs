@@ -63,12 +63,14 @@ export async function GET(request: NextRequest) {
   try {
     // Bulk list / export mode: every contact's stream state.
     if (all) {
-      const stream = sp.get('stream'); // optional: home_care|buy_remodel|announcements
+      const stream = sp.get('stream'); // optional: any StreamKey
       const state = sp.get('state'); // optional: on|off (requires stream)
       const format = sp.get('format'); // csv → download
       const limit = Math.min(Math.max(Number.parseInt(sp.get('limit') ?? '1000', 10) || 1000, 1), 5000);
 
-      const base = 'email_preferences?select=email,home_care,buy_remodel,announcements,updated_at,created_at&order=updated_at.desc,email.asc';
+      // Column set is derived from STREAM_KEYS so a newly added marketing stream
+      // (e.g. newsletter) surfaces in the bulk list + CSV export automatically.
+      const base = `email_preferences?select=email,${STREAM_KEYS.join(',')},updated_at,created_at&order=updated_at.desc,email.asc`;
       const filter =
         stream && STREAM_KEYS.includes(stream as StreamKey) && (state === 'on' || state === 'off')
           ? `&${stream}=eq.${state === 'on'}`
@@ -88,9 +90,9 @@ export async function GET(request: NextRequest) {
           rows.push(...batch);
           if (batch.length < pageSize) break;
         }
-        const header = 'email,home_care,buy_remodel,announcements,updated_at';
+        const header = ['email', ...STREAM_KEYS, 'updated_at'].join(',');
         const lines = rows.map((r) =>
-          [r.email, r.home_care, r.buy_remodel, r.announcements, r.updated_at].map(csvEscape).join(','),
+          [r.email, ...STREAM_KEYS.map((k) => r[k]), r.updated_at].map(csvEscape).join(','),
         );
         const csv = [header, ...lines].join('\n');
         return new NextResponse(csv, {
