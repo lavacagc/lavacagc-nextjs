@@ -357,6 +357,7 @@ class AnalyticsManager {
    */
   getStoredGclid(): string | null {
     if (typeof window === 'undefined') return null;
+    if (isGpcEnabled()) return null;
     try {
       const gclid = localStorage.getItem('lavaca_gclid');
       const timestamp = localStorage.getItem('lavaca_gclid_timestamp');
