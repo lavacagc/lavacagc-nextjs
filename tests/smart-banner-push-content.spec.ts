@@ -1,4 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
+import { mkdirSync } from 'fs';
+import { join } from 'path';
 
 /**
  * Verifies the SmartBanner top-bar fix: the fixed desktop bar must RESERVE
@@ -43,9 +45,13 @@ const TOP_BAR_BANNER = [
   },
 ];
 
+// Default to a repo-relative dir so the test is cross-platform: the hardcoded
+// macOS temp fallback does not exist (and can't be created) on the Linux CI
+// runner, which made every page.screenshot() call throw ENOENT.
 const EVIDENCE_DIR =
-  process.env.EVIDENCE_DIR ||
-  '/var/folders/55/gqy2vg197xj44q_bjx2q9l180000gn/T/no-mistakes-evidence/01KX3PKCB3DM4A24PKG6FRA7C8';
+  process.env.EVIDENCE_DIR || join(process.cwd(), 'test-results', 'smart-banner-push-content');
+
+mkdirSync(EVIDENCE_DIR, { recursive: true });
 
 // Desktop Chrome UA so the site's bad-bot middleware (which 403s HeadlessChrome)
 // lets us through.
