@@ -42,6 +42,22 @@ const GOOGLE_ADS_CONVERSION_VALUES: Record<string, number> = {
   chat_message: 25,
 };
 
+/**
+ * Global Privacy Control (GPC) — a browser signal that a visitor is opting out of
+ * the "sale/sharing" of their data for cross-context behavioral advertising.
+ * Honoring it is required by NJDPA (since 2025-07-15) and CCPA/CPRA, and our
+ * Privacy Policy promises it. When present we suppress the advertising partners
+ * (Meta Pixel + Clarity are gated in layout.tsx; Google Ads config, conversions,
+ * and Enhanced-Conversion PII are gated here). First-party GA4 analytics may
+ * still run, but with ad storage denied.
+ */
+export function isGpcEnabled(): boolean {
+  return (
+    typeof navigator !== 'undefined' &&
+    (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true
+  );
+}
+
 class AnalyticsManager {
   private config: AnalyticsConfig | null = null;
   private customEvents: CustomEvent[] = [];
@@ -211,6 +227,13 @@ class AnalyticsManager {
       // If parsing fails, keep default 'denied'
     }
 
+    // GPC opt-out overrides any ad consent: never grant ad storage, and skip
+    // loading Google Ads entirely (it's an advertising "sharing" partner).
+    const gpc = isGpcEnabled();
+    if (gpc) {
+      adConsent = 'denied';
+    }
+
     const consentBlock = this.config?.consent_mode_enabled ? `
       gtag('consent', 'default', {
         'analytics_storage': '${analyticsConsent}',
@@ -229,7 +252,7 @@ class AnalyticsManager {
         ${this.config?.ip_anonymization ? 'anonymize_ip: true,' : ''}
         ${configOptions.custom_map ? `custom_map: ${JSON.stringify(configOptions.custom_map)},` : ''}
       });
-      gtag('config', '${GOOGLE_ADS_CONVERSION_ID}');
+      ${gpc ? '' : `gtag('config', '${GOOGLE_ADS_CONVERSION_ID}');`}
     `;
     document.head.appendChild(script2);
   }
@@ -358,6 +381,9 @@ class AnalyticsManager {
    * Skips if bot detected or interaction too fast.
    */
   trackGoogleAdsConversion(conversionName: string, value?: number): void {
+    // Honor GPC: no Google Ads (advertising "sharing" partner) conversions.
+    if (isGpcEnabled()) return;
+
     // Don't fire conversions for bots
     if (this.isBotDetected || this.isInteractionTooFast()) {
       console.warn('[AnalyticsManager] Skipping conversion — bot or too-fast interaction');
@@ -388,6 +414,9 @@ class AnalyticsManager {
   async sendEnhancedConversionData(email?: string, phone?: string): Promise<void> {
     if (typeof window === 'undefined' || typeof window.gtag === 'undefined') return;
     if (!email && !phone) return;
+
+    // Honor GPC: never send hashed email/phone to Google for ad matching.
+    if (isGpcEnabled()) return;
 
     // Don't send for bots
     if (this.isBotDetected) return;
