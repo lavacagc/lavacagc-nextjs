@@ -47,7 +47,7 @@ export default function HorizontalNav({ activeTab, onTabChange, items }: Horizon
   }, []);
 
   return (
-    <div className="bg-background border-b border-border sticky top-0 z-10 w-full max-w-full">
+    <div className="bg-background border-b border-border sticky top-[var(--smart-banner-height,0px)] transition-[top] duration-300 z-10 w-full max-w-full">
       {/* Scrollable container - only this scrolls, not the page */}
       <div 
         className="overflow-x-auto overflow-y-hidden scrollbar-hide w-full"

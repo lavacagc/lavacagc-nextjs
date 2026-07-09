@@ -69,7 +69,7 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
   return (
     <>
       {/* Header with Back Button — compact on mobile */}
-      <section className="bg-background border-b sticky top-0 z-40">
+      <section className="bg-background border-b sticky top-[var(--smart-banner-height,0px)] transition-[top] duration-300 z-40">
         <div className="container mx-auto px-4 md:px-10 py-2 md:py-4">
           {/* Mobile: inline back arrow + breadcrumb in one row */}
           <div className="flex items-center gap-2 md:hidden">
