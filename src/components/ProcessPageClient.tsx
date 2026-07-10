@@ -140,8 +140,8 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
       <div
         ref={tabBarRef}
         className={`${
-          isSticky ? 'fixed top-0 left-0 right-0 shadow-md z-40' : ''
-        } bg-background/95 backdrop-blur-sm border-b transition-shadow duration-200`}
+          isSticky ? 'fixed top-[var(--smart-banner-height,0px)] left-0 right-0 shadow-md z-40' : ''
+        } bg-background/95 backdrop-blur-sm border-b transition-[top,box-shadow] duration-300`}
       >
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-center gap-1 md:gap-2 py-2">

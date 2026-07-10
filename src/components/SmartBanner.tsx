@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { X, Phone, ArrowRight, Eye, MessageCircle } from 'lucide-react';
 import { useVisitor } from '@/hooks/useVisitor';
@@ -100,10 +100,35 @@ function evaluateRule(
 // ---- TOP BAR COMPONENT (desktop: top bar, mobile: bottom floating card) ----
 function TopBar({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void }) {
   const d = rule.display;
+  const barRef = useRef<HTMLDivElement>(null);
+
+  // Reserve real layout space for the fixed desktop bar so it pushes the page
+  // (sticky header + hero) DOWN instead of covering it. globals.css consumes
+  // --smart-banner-height (body padding-top) and Header.tsx offsets its sticky
+  // top by the same var. The desktop bar is `hidden` on mobile (the bottom card
+  // below handles that), so it measures 0 there and no top offset is applied.
+  useEffect(() => {
+    const root = document.documentElement;
+    const el = barRef.current;
+    const apply = () => {
+      const h = el && getComputedStyle(el).display !== 'none' ? el.offsetHeight : 0;
+      root.style.setProperty('--smart-banner-height', `${h}px`);
+    };
+    apply();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(apply) : null;
+    if (el && ro) ro.observe(el);
+    window.addEventListener('resize', apply);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', apply);
+      root.style.removeProperty('--smart-banner-height');
+    };
+  }, []);
+
   return (
     <>
       {/* Desktop: slim top bar */}
-      <div className={`hidden md:block fixed top-0 left-0 right-0 z-[60] ${d.bgColor} ${d.textColor} shadow-lg animate-in slide-in-from-top duration-300`}>
+      <div ref={barRef} className={`hidden md:block fixed top-0 left-0 right-0 z-[60] ${d.bgColor} ${d.textColor} shadow-lg animate-in slide-in-from-top duration-300`}>
         <div className="container mx-auto px-4 py-2.5 flex items-center justify-center gap-3 text-base">
           {d.icon && <span className="text-lg flex-shrink-0">{d.icon}</span>}
           <span className="font-medium">{d.message}</span>

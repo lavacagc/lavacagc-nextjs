@@ -161,7 +161,7 @@ export default function FreeEstimateLanding({
       </div>
 
       {/* Minimal Header — logo + phone only */}
-      <header className="bg-background border-b border-border sticky top-0 z-50">
+      <header className="bg-background border-b border-border sticky top-[var(--smart-banner-height,0px)] transition-[top] duration-300 z-50">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-12 md:h-16">
             <div className="flex items-center space-x-2">

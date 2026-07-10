@@ -113,7 +113,7 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
   return (
     <>
       {/* Filter Section */}
-      <section className="py-8 bg-white sticky top-[88px] z-40 border-b">
+      <section className="py-8 bg-white sticky top-[calc(88px+var(--smart-banner-height,0px))] transition-[top] duration-300 z-40 border-b">
         <div className="container mx-auto px-4">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">

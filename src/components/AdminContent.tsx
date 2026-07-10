@@ -113,7 +113,7 @@ export default function AdminContent() {
       />
 
       <div className={`flex-1 ${isMobile ? 'ml-0' : 'ml-16'} overflow-x-hidden max-w-full`}>
-        <div className="border-b bg-background sticky top-0 z-10 max-w-full">
+        <div className="border-b bg-background sticky top-[var(--smart-banner-height,0px)] transition-[top] duration-300 z-10 max-w-full">
           <div className="container mx-auto px-4 py-4 max-w-full">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 md:gap-4">
