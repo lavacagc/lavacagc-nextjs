@@ -1,7 +1,7 @@
 # Privacy Policy
 
-**Last Updated: June 30, 2026**
-**Version: 2.2**
+**Last Updated: July 9, 2026**
+**Version: 2.3**
 
 ---
 
@@ -102,6 +102,15 @@ When you verify your email, we place a cookie on your browser (`hc_access`, desc
 
 This is an optional program separate from our "Buy + Remodel" listings. You can leave at any time using the **unsubscribe link** in any Home Care email, which removes you from the program, stops the seasonal emails, and clears your Home Care access cookie. You may also exercise the rights in Section 8 (including access and deletion) with respect to this information.
 
+### 3.7 Monthly Newsletter
+
+If you sign up for our free **monthly newsletter** (for example, through the email prompt that may appear as you leave a page), you give us your **email address**.
+We record your affirmative consent to receive it, including the **date and time and the IP address** of your signup, as proof of consent.
+We use your email to send you about one message a month with seasonal home-maintenance tips, which may link to our La Vaca Home Care program.
+
+You can unsubscribe at any time using the **unsubscribe link** in any newsletter email, or through your **email preference center** (see Section 8.4).
+This is a marketing communication, separate from the Home Care and "Buy + Remodel" programs, and you can opt out of it at any time without affecting other emails you have asked for.
+
 ---
 
 ## 4. How We Use Your Information
@@ -129,6 +138,8 @@ We use the information we collect for various purposes, including:
 You can opt out of marketing communications at any time by:
 - Clicking the "unsubscribe" link in any marketing email
 - Contacting us at **alex@lavacagc.com** with subject line "Opt Out of Marketing"
+
+After you contact us or request an estimate, we may also send a short series of **follow-up and review-request emails** about your inquiry. These support the service you asked about and each carries its own unsubscribe link, so you can stop them without affecting any other emails.
 
 **Note:** Even if you opt out of marketing communications, we will still send you transactional and service-related communications (e.g., appointment confirmations, payment receipts, important service updates) as necessary to provide our services.
 
@@ -178,7 +189,7 @@ These service providers include:
 
 - **Payment Processors**: For processing credit card and online payments such as **QuickBooks Payments**
 - **Hosting, Database, and Storage**: **Supabase** (database, file storage, and authentication) and our website hosting provider store the personal information described in this Policy
-- **Email Delivery**: **Resend** sends our transactional and newsletter emails (recipient name and email address, and message content)
+- **Email Delivery**: **Resend** sends our transactional and newsletter emails (recipient name and email address, and message content). We and Resend also **track whether the emails we send are delivered, opened, and whether links in them are clicked**, so we can measure engagement and improve our communications
 - **Internal Team Notifications**: **Telegram** is used to alert our staff of new leads (which includes the lead's name, contact details, and inquiry)
 - **AI Assistant Provider**: **OpenAI** processes chat messages to power our AI chat assistant (see Section 3.5)
 - **Bot Detection**: **Google reCAPTCHA Enterprise** evaluates form submissions to prevent spam and abuse; Google receives your IP address, interaction signals, and a site token (see Google's privacy policy at https://policies.google.com/privacy)
@@ -301,10 +312,10 @@ GPC is a browser setting that sends a signal to websites indicating you want to 
 **How We Respond to GPC:**
 
 When we detect a GPC signal from your browser:
-- We will treat it as a valid request to opt out of the sale or sharing of your personal information for targeted advertising purposes
-- We will stop sharing your data with advertising partners (Google Ads, Facebook Pixel) for cross-context behavioral advertising
-- We will apply the opt-out within 15 business days of detecting the signal
-- The opt-out will apply to the specific browser/device sending the signal
+- We treat it as a valid request to opt out of the sale or sharing of your personal information for targeted advertising purposes
+- We **do not load our advertising and cross-context tracking partners** (Google Ads, Meta/Facebook Pixel, and Microsoft Clarity) on that browser, and we do not send hashed contact information to Google for ad matching
+- We apply the opt-out **immediately in your browser** when the signal is present (the trackers are never loaded), rather than after a processing delay
+- The opt-out applies to the specific browser/device sending the signal
 
 **How to Enable GPC:**
 
@@ -446,6 +457,7 @@ You have the right to request deletion of your personal information, subject to 
 
 You have the right to opt out of receiving marketing communications from us. You can unsubscribe by:
 - Clicking the "unsubscribe" link in marketing emails
+- Using our **email preference center** (reachable from the "manage preferences" link in the footer of any email we send you) to turn individual email categories - such as Home Care, "Buy + Remodel", or news and occasional offers - on or off independently
 - Contacting us directly at **alex@lavacagc.com** with subject "Opt Out of Marketing"
 
 ### 8.5 Do Not Sell or Share My Personal Information (California Residents)
@@ -1046,7 +1058,7 @@ Before initiating any legal action, we encourage you to contact us using the inf
 
 This Privacy Policy is effective as of the "Last Updated" date indicated at the top of this document.
 
-**Last Updated:** November 12, 2025
-**Version:** 2.0
+**Last Updated:** July 9, 2026
+**Version:** 2.3
 **Original Effective Date:** November 12, 2025
 

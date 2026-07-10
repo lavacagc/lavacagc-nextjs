@@ -31,8 +31,24 @@ test.describe('Privacy policy disclosures', () => {
     }
 
     // Version bumped.
-    expect(body).toContain('version: 2.2');
+    expect(body).toContain('version: 2.3');
     // Home Care disclosure present.
     expect(body).toContain('home care');
+
+    // Newly-shipped features must be disclosed now that they exist in the code.
+    for (const phrase of [
+      // 3.7 Monthly Newsletter (exit-intent, affirmative consent)
+      'monthly newsletter',
+      'affirmative consent',
+      // 8.4 preference-center bullet
+      'email preference center',
+      // 5.1 Resend delivery/open/click tracking
+      'opened, and whether links in them are clicked',
+      // Corrected GPC section: real-time suppression of ad-tech partners
+      'meta/facebook pixel',
+      'immediately in your browser',
+    ]) {
+      expect(body, `privacy policy should mention "${phrase}"`).toContain(phrase);
+    }
   });
 });
