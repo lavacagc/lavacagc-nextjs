@@ -7,7 +7,7 @@
  * re-exports everything here.
  */
 
-export type StreamKey = 'home_care' | 'buy_remodel' | 'announcements';
+export type StreamKey = 'home_care' | 'buy_remodel' | 'announcements' | 'newsletter';
 
 export interface StreamDef {
   key: StreamKey;
@@ -16,6 +16,11 @@ export interface StreamDef {
 }
 
 export const STREAMS: StreamDef[] = [
+  {
+    key: 'newsletter',
+    label: 'Monthly newsletter',
+    description: 'Seasonal home-maintenance tips and what to tackle each month - plus the occasional La Vaca update.',
+  },
   {
     key: 'home_care',
     label: 'La Vaca Home Care',

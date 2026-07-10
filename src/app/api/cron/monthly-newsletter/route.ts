@@ -2,13 +2,18 @@
  * Monthly newsletter sender (Goal B, Phase 3).
  *
  * Monthly cron. Assembles the approved lineup into the branded navy/gold email
- * (buildMonthlyNewsletterHtml) and sends it to everyone still opted in to the
- * 'announcements' stream.
+ * (buildMonthlyNewsletterHtml) and sends it to two unioned audiences: the
+ * identity-table marketing members (Home Care / Buy+Remodel) gated on the
+ * 'announcements' stream, and the standalone affirmative-consent subscribers
+ * (email_preferences.newsletter=true) gated on the 'newsletter' stream.
+ * Explicit newsletter consent wins, so a member who also signed up for the
+ * newsletter is gated on 'newsletter'.
  *
- * Delivery goes through sendTrackedEmail with preferenceStream:'announcements',
- * which (a) skips anyone who unsubscribed and (b) attaches the per-recipient
- * List-Unsubscribe header — so this cron just needs to enumerate subscribers,
- * build a per-recipient unsubscribe URL for the visible footer, and pace sends.
+ * Delivery goes through sendTrackedEmail with each recipient's own
+ * preferenceStream, which (a) skips anyone who unsubscribed from that stream and
+ * (b) attaches the per-recipient List-Unsubscribe header — so this cron just
+ * needs to enumerate subscribers, build a per-recipient unsubscribe URL for the
+ * visible footer, and pace sends.
  *
  * The lineup is a static config here for now (real roster slugs); a later
  * iteration can source it from maintained_articles / content_actions.
@@ -104,7 +109,19 @@ export async function GET(request: NextRequest) {
     // send time by sendTrackedEmail's preferenceStream:'announcements' gate. (If a
     // standalone announcements-only signup is ever added, union it in here.)
     // The cron stays unscheduled until the owner confirms the first send.
-    const recipientEmails = new Set<string>();
+    //
+    // Each recipient carries the marketing stream that put them on the list, so
+    // the send gate + unsubscribe link match what they actually opted into:
+    //   - identity-table members (Home Care / Buy+Remodel) → 'announcements'
+    //     (unchanged behavior)
+    //   - anyone with email_preferences.newsletter=true (the affirmative-consent
+    //     stream fed by /api/newsletter/subscribe) → 'newsletter'
+    // Explicit newsletter consent is the more specific signal, so it WINS over
+    // the legacy announcements gate: a member who also signed up for the
+    // newsletter is gated on 'newsletter'. This honors someone who opted out of
+    // announcements but explicitly signed up for the newsletter (no lost send),
+    // and keeps their footer link, one-click header, and send gate consistent.
+    const recipientStream = new Map<string, 'announcements' | 'newsletter'>();
     for (const table of ['homeowners', 'newsletter_subscribers'] as const) {
       for (let offset = 0; ; offset += PAGE_SIZE) {
         const rows = await supabaseRest<Array<{ email: string | null }>>(
@@ -112,12 +129,34 @@ export async function GET(request: NextRequest) {
           `${table}?status=eq.active&select=email&order=email.asc&limit=${PAGE_SIZE}&offset=${offset}`,
         );
         if (!rows?.length) break;
-        for (const r of rows) if (r.email) recipientEmails.add(normalizeEmail(r.email));
+        for (const r of rows) {
+          if (r.email) {
+            const e = normalizeEmail(r.email);
+            if (!recipientStream.has(e)) recipientStream.set(e, 'announcements');
+          }
+        }
         if (rows.length < PAGE_SIZE) break;
       }
     }
+    // Union in the affirmative-consent newsletter subscribers. This runs after
+    // the identity tables and assigns 'newsletter' UNCONDITIONALLY, so explicit
+    // newsletter consent overrides any 'announcements' gate set above.
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const rows = await supabaseRest<Array<{ email: string | null }>>(
+        'GET',
+        `email_preferences?newsletter=eq.true&select=email&order=email.asc&limit=${PAGE_SIZE}&offset=${offset}`,
+      );
+      if (!rows?.length) break;
+      for (const r of rows) {
+        if (r.email) {
+          const e = normalizeEmail(r.email);
+          recipientStream.set(e, 'newsletter');
+        }
+      }
+      if (rows.length < PAGE_SIZE) break;
+    }
 
-    for (const email of recipientEmails) {
+    for (const [email, stream] of recipientStream) {
         recipients++;
         if (dryRun) continue;
 
@@ -153,10 +192,11 @@ export async function GET(request: NextRequest) {
         try {
           // One token lookup drives both the visible footer unsubscribe link and
           // the manage-preferences link. sendTrackedEmail does its own suppression
-          // check + List-Unsubscribe header for the 'announcements' stream.
+          // check + List-Unsubscribe header for this recipient's stream, so the
+          // footer link, the one-click header, and the send gate all agree.
           const pref = await getOrCreateByEmail(email);
           const unsubscribeUrl =
-            `${SITE_URL}/api/preferences/unsubscribe?token=${encodeURIComponent(pref.preference_token)}&stream=announcements`;
+            `${SITE_URL}/api/preferences/unsubscribe?token=${encodeURIComponent(pref.preference_token)}&stream=${stream}`;
           const preferencesUrl = `${SITE_URL}/preferences?token=${encodeURIComponent(pref.preference_token)}`;
 
           const html = buildMonthlyNewsletterHtml({ ...lineup, unsubscribeUrl, preferencesUrl });
@@ -167,7 +207,7 @@ export async function GET(request: NextRequest) {
             subject,
             html,
             category: 'broadcast',
-            preferenceStream: 'announcements',
+            preferenceStream: stream,
             campaign: { newsletter: 'monthly', issue: issueLabel },
           });
 

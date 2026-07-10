@@ -4,17 +4,22 @@
 
 ### 1. Exit Intent Popup (`src/components/ExitIntentPopup.tsx`)
 - ✅ Detects mouse leaving viewport (desktop) and back button intent (mobile)
-- ✅ Shows modal: "Not ready to remodel? Take the checklist instead." — offers the
-  free La Vaca Home Care seasonal checklist instead of a second estimate ask
-  (owner decision 2026-07-03; a free checklist is a softer exit offer and every
-  signup is an owned email channel)
-- ✅ No form: a single "Get my free seasonal plan" link to `/home-care` plus a
-  dismiss button (no lead is submitted from the popup)
+- ✅ Shows modal: "Get seasonal home-care tips in your inbox" — a one-field email
+  capture for the free **monthly newsletter** (owner decision 2026-08; the
+  lowest-friction way to stay in touch, and the in-email CTAs upsell La Vaca
+  Home Care). A secondary "Or get a plan personalized to your home →" link still
+  routes people to `/home-care`
+- ✅ Email form posts to `POST /api/newsletter/subscribe`, which records
+  affirmative consent into the `newsletter` marketing stream (covered by the
+  unsubscribe workflow). A visible consent line + Privacy Policy link sits below
+  the button (CAN-SPAM). On success the modal swaps to a confirmation with the
+  Home Care upsell CTA
 - ✅ Only shows once per session (sessionStorage flag)
 - ✅ Only shows on service pages and homepage (excludes admin, blog, legal pages)
 - ✅ Suppressed while the smart banner is showing and on `/home-care` pages
 - ✅ Known Home Care members (readable `hc_known` cookie) never see it
-- ✅ Fires `home_care_promo_view` / `_click` / `_dismiss` analytics events (placement `exit_intent`)
+- ✅ Fires `newsletter_promo_view` on open and `newsletter_signup` on successful
+  subscribe; the Home Care links fire `home_care_promo_click` (placement `exit_intent`)
 - ✅ Added to root layout with dynamic import (ssr:false)
 
 ### 2. Social Proof Popups (`src/components/SocialProofPopup.tsx`)
@@ -83,7 +88,7 @@ All TypeScript compilation successful, no errors.
 - [ ] Exit intent popup appears when mouse leaves viewport (desktop)
 - [ ] Exit intent popup appears on back button (mobile)
 - [ ] Exit intent popup only shows once per session
-- [ ] Exit intent popup offers the free Home Care checklist and links to `/home-care`
+- [ ] Exit intent popup captures an email and subscribes it to the monthly newsletter (`POST /api/newsletter/subscribe`), then shows the confirmation with the `/home-care` upsell link
 - [ ] Exit intent popup never shows to known Home Care members (`hc_known` cookie)
 - [ ] Social proof notifications rotate every 30-45 seconds
 - [ ] Phone click tracking fires GA4 events

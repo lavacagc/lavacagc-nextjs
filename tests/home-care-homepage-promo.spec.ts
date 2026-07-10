@@ -120,25 +120,74 @@ test.describe('B: homepage Home Care band', () => {
   });
 });
 
-test.describe('D: exit-intent checklist offer', () => {
-  test('leaving through the top opens the checklist offer once per session', async ({ page }) => {
+test.describe('D: exit-intent newsletter capture', () => {
+  test('leaving through the top opens the newsletter capture with consent + Home Care upsell', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     await triggerExitIntent(page);
 
     const dialog = page.getByRole('dialog');
-    await expect(dialog.getByText('Not ready to remodel? Take the checklist instead.')).toBeVisible();
-    const cta = dialog.getByRole('link', { name: 'Get my free seasonal plan' });
-    await expect(cta).toHaveAttribute('href', '/home-care');
-    await page.screenshot({ path: shot('05-exit-intent-open.png') });
+    // Redesigned popup: one-field monthly-newsletter capture (not the old checklist CTA).
+    await expect(dialog.getByText('Get seasonal home-care tips in your inbox')).toBeVisible();
+    await expect(dialog.getByTestId('newsletter-email')).toBeVisible();
+    await expect(dialog.getByTestId('newsletter-submit')).toBeVisible();
+    // Affirmative-consent statement is present at the point of signup (CAN-SPAM).
+    await expect(
+      dialog.getByText(/By subscribing you agree to receive the La Vaca monthly newsletter/i),
+    ).toBeVisible();
+    await expect(dialog.getByRole('link', { name: /Privacy Policy/i })).toHaveAttribute(
+      'href',
+      '/privacy-policy',
+    );
+    // Secondary Home Care upsell link still routes people who want the full plan.
+    await expect(
+      dialog.getByRole('link', { name: /get a plan personalized to your home/i }),
+    ).toHaveAttribute('href', '/home-care');
+    await page.waitForTimeout(350); // let the dialog open animation settle for a clean screenshot
+    await page.screenshot({ path: shot('05-exit-intent-newsletter-open.png') });
 
-    // Session-capped: dismiss, retrigger, stays closed.
-    await dialog.getByRole('button', { name: /No thanks/i }).click();
+    // Session-capped: dismiss (X), retrigger, stays closed.
+    await dialog.getByRole('button', { name: 'Close' }).click();
     await expect(dialog).toBeHidden();
     expect(await page.evaluate(() => sessionStorage.getItem('exit_intent_shown'))).toBe('true');
     await triggerExitIntent(page);
     await page.waitForTimeout(400);
     await expect(page.getByRole('dialog')).toBeHidden();
+  });
+
+  test('submitting an email signs up for the newsletter and shows the Home Care upsell', async ({ page }) => {
+    // Stub the backend so the end-to-end front-end flow is exercised without a live DB.
+    // The request body is asserted so we prove the popup sends the right stream/source.
+    let captured: { email?: string; source?: string } | null = null;
+    await page.route('**/api/newsletter/subscribe', async (route) => {
+      captured = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true }),
+      });
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await triggerExitIntent(page);
+
+    const dialog = page.getByRole('dialog');
+    await dialog.getByTestId('newsletter-email').fill('exit-intent-signup@example.com');
+    await dialog.getByTestId('newsletter-submit').click();
+
+    // Success state confirms the signup and upsells the personalized Home Care plan.
+    const done = dialog.getByTestId('newsletter-done');
+    await expect(done).toBeVisible();
+    await expect(done.getByText("You're on the list!")).toBeVisible();
+    await expect(done.getByText('exit-intent-signup@example.com')).toBeVisible();
+    await expect(
+      done.getByRole('link', { name: /Get my personalized Home Care plan/i }),
+    ).toHaveAttribute('href', '/home-care');
+    await page.screenshot({ path: shot('06-exit-intent-newsletter-success.png') });
+
+    // The popup posts the newsletter stream from the exit_intent placement.
+    expect(captured).toEqual({ email: 'exit-intent-signup@example.com', source: 'exit_intent' });
   });
 
   test('known members never see the popup', async ({ page, context, baseURL }) => {

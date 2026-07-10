@@ -8,17 +8,18 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Download, RefreshCw, Radio } from 'lucide-react';
-import { STREAMS, type StreamKey } from '@/lib/preferences/streams';
-
-interface BulkRow {
-  email: string;
-  home_care: boolean;
-  buy_remodel: boolean;
-  announcements: boolean;
-  updated_at?: string;
-}
+import { STREAMS, STREAM_KEYS, type StreamKey } from '@/lib/preferences/streams';
 
 type StreamState = Record<StreamKey, boolean>;
+
+type BulkRow = StreamState & {
+  email: string;
+  updated_at?: string;
+};
+
+/** All marketing streams set to `value` — derived so new streams can't be missed. */
+const allStreams = (value: boolean): StreamState =>
+  Object.fromEntries(STREAM_KEYS.map((k) => [k, value])) as StreamState;
 interface PrefEvent {
   id: string;
   stream: string;
@@ -35,11 +36,7 @@ export default function AdminPreferencesPage() {
   const [activeEmail, setActiveEmail] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [exists, setExists] = useState(false);
-  const [streams, setStreams] = useState<StreamState>({
-    home_care: true,
-    buy_remodel: true,
-    announcements: true,
-  });
+  const [streams, setStreams] = useState<StreamState>(allStreams(true));
   const [events, setEvents] = useState<PrefEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -125,7 +122,7 @@ export default function AdminPreferencesPage() {
         setActiveEmail(target);
         setExists(data.exists);
         if (data.preferences) setStreams(data.preferences);
-        else setStreams({ home_care: true, buy_remodel: true, announcements: true });
+        else setStreams(allStreams(true));
         setEvents(data.events || []);
         setLoaded(true);
       } catch (err) {
@@ -377,9 +374,9 @@ export default function AdminPreferencesPage() {
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b">
                     <th className="py-2 pr-4">Email</th>
-                    <th className="py-2 px-2 text-center">Home Care</th>
-                    <th className="py-2 px-2 text-center">Buy + Remodel</th>
-                    <th className="py-2 px-2 text-center">News</th>
+                    {STREAMS.map((s) => (
+                      <th key={s.key} className="py-2 px-2 text-center">{s.label}</th>
+                    ))}
                     <th className="py-2 pl-2 text-right">Updated</th>
                   </tr>
                 </thead>
@@ -387,9 +384,9 @@ export default function AdminPreferencesPage() {
                   {bulkRows.map((r) => (
                     <tr key={r.email} className="border-b last:border-0" data-testid={`bulk-row-${r.email}`}>
                       <td className="py-2 pr-4 break-all">{r.email}</td>
-                      <td className="py-2 px-2 text-center">{r.home_care ? '✓' : '—'}</td>
-                      <td className="py-2 px-2 text-center">{r.buy_remodel ? '✓' : '—'}</td>
-                      <td className="py-2 px-2 text-center">{r.announcements ? '✓' : '—'}</td>
+                      {STREAM_KEYS.map((k) => (
+                        <td key={k} className="py-2 px-2 text-center">{r[k] ? '✓' : '—'}</td>
+                      ))}
                       <td className="py-2 pl-2 text-right text-xs text-muted-foreground whitespace-nowrap">
                         {r.updated_at ? new Date(r.updated_at).toLocaleDateString() : '—'}
                       </td>

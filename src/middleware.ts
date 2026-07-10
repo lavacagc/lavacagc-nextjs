@@ -99,6 +99,7 @@ const PUBLIC_ROUTES = [
   '/api/chat',
   '/api/documents/',
   '/api/buy-and-remodel/', // Newsletter signup / email-verify / unsubscribe (self-guarded)
+  '/api/newsletter/',      // Monthly-newsletter signup (rate-limited, self-guarded)
 ];
 
 function isPublicRoute(pathname: string): boolean {

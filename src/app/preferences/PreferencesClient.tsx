@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { STREAMS, type StreamKey } from '@/lib/preferences/streams';
+import { STREAMS, STREAM_KEYS, type StreamKey } from '@/lib/preferences/streams';
 
 type StreamState = Record<StreamKey, boolean>;
 
@@ -105,7 +105,7 @@ export default function PreferencesClient() {
 
   const unsubscribeAll = () => {
     if (!streams) return;
-    const next: StreamState = { home_care: false, buy_remodel: false, announcements: false };
+    const next = Object.fromEntries(STREAM_KEYS.map((k) => [k, false])) as StreamState;
     setStreams(next);
     save(next, streams, "You've been unsubscribed from all marketing emails.");
   };
@@ -121,7 +121,7 @@ export default function PreferencesClient() {
     setConfirmTarget(null);
     const next: StreamState =
       target === 'all'
-        ? { home_care: false, buy_remodel: false, announcements: false }
+        ? (Object.fromEntries(STREAM_KEYS.map((k) => [k, false])) as StreamState)
         : { ...streams, [target]: false };
     setStreams(next);
     save(
@@ -133,7 +133,7 @@ export default function PreferencesClient() {
     );
   };
 
-  const allOff = streams && !streams.home_care && !streams.buy_remodel && !streams.announcements;
+  const allOff = streams && STREAM_KEYS.every((k) => !streams[k]);
 
   return (
     <div style={{ minHeight: '100vh', background: '#eef0ea' }} className="py-10 px-4">
