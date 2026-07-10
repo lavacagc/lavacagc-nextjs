@@ -123,7 +123,14 @@ const nextConfig: NextConfig = {
               //   live on dynamically-routed Cloud Run / AWS App Runner instances (the exact
               //   subdomain rotates per pixel + per session, so wildcards are unavoidable here).
               //   Required for full Conversions API attribution to flow back to Meta Ads.
-              "connect-src 'self' data: blob: https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://www.googletagmanager.com https://api.ipify.org https://www.google.com https://www.recaptcha.net https://recaptcha.google.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://*.a.run.app https://*.on.aws",
+              // - analytics.google.com — GA4 sends a secondary /g/collect beacon here for
+              //   Google Signals (cross-device); without it these hits are CSP-blocked.
+              // - stats.g.doubleclick.net — GA4↔Google Ads remarketing/audience collect.
+              // - ad.doubleclick.net — Google Ads conversion collect fired by the AW- tag;
+              //   without it conversion + Enhanced Conversions data never reaches Google Ads.
+              //   (GPC still suppresses all of these — the ad-tech gates in analyticsManager
+              //   are independent of the CSP allowlist.)
+              "connect-src 'self' data: blob: https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://api.ipify.org https://www.google.com https://www.recaptcha.net https://recaptcha.google.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://stats.g.doubleclick.net https://ad.doubleclick.net https://*.a.run.app https://*.on.aws",
               "worker-src 'self' blob:",
               "frame-src 'self' https://www.googletagmanager.com https://www.google.com https://www.recaptcha.net https://recaptcha.google.com",
               "frame-ancestors 'self'",
