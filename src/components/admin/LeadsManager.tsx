@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { sanitizeLeadForInsert } from '@/lib/leadSanitize';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -179,18 +180,28 @@ export function LeadsManager() {
         ? nameMatch[1].split(' ').slice(1).join(' ')
         : (leadData?.name?.split(' ').slice(1).join(' ') || 'Visitor');
 
+      // sanitizeLeadForInsert maps to what public.leads actually accepts.
+      // The old inline payload put the chat projectType (or 'General
+      // Inquiry') into the CHECK-constrained inquiry_type column, so this
+      // feature failed with 23514 on every use. It also fabricated
+      // placeholder contact data ('chatbot@lavacagc.com' / '0000000000');
+      // missing contact info is stored as '' instead.
+      const { lead } = sanitizeLeadForInsert({
+        first_name: firstName,
+        last_name: lastName,
+        email: leadData?.email || '',
+        phone: leadData?.phone || '',
+        inquiry_type: 'contact',
+        project_type: leadData?.projectType || null,
+        city: leadData?.location || null,
+        message: `[Created from chat conversation] ${allUserText.substring(0, 500)}`,
+        source: 'chatbot',
+      });
+      // The sanitizer guarantees the NOT NULL columns are present as strings;
+      // its Record return type just can't tell the generated client that.
       const { error } = await supabase
         .from('leads')
-        .insert({
-          first_name: firstName,
-          last_name: lastName,
-          email: leadData?.email || 'chatbot@lavacagc.com',
-          phone: leadData?.phone || '0000000000',
-          inquiry_type: leadData?.projectType || 'General Inquiry',
-          project_type: leadData?.projectType || null,
-          city: leadData?.location || null,
-          message: `[Created from chat conversation] ${allUserText.substring(0, 500)}`,
-        });
+        .insert(lead as unknown as { email: string; first_name: string; last_name: string; phone: string; inquiry_type: string });
 
       if (error) throw error;
 

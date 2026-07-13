@@ -33,28 +33,82 @@ import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBa
  *
  * Unit-level verification that each helper was invoked would require mocking
  * the modules — we rely on manual/staging verification of delivery for now.
+ *
+ * The submit crosses the real reCAPTCHA gate via RECAPTCHA_E2E_BYPASS_TOKEN
+ * (the server must run with the same token; see /api/leads/submit). Without
+ * it no browser-stubbed token can pass server-side verification and this
+ * spec used to fail on every local full-suite run.
  */
 
+const BYPASS_TOKEN = process.env.RECAPTCHA_E2E_BYPASS_TOKEN || '';
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY || '';
+const CONFIGURED = Boolean(BYPASS_TOKEN && SUPABASE_URL && SUPABASE_KEY);
+const CONFIG_REASON =
+  'Requires RECAPTCHA_E2E_BYPASS_TOKEN + NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SECRET_KEY ' +
+  '(server must run with the same bypass token).';
+
+const TEST_EMAIL = 'delivered+notify@resend.dev';
+
+// The submit writes a real lead + follow-up queue rows into the live DB;
+// remove them so repeated runs stay idempotent.
+async function cleanupTestRows(): Promise<void> {
+  for (const q of [
+    `follow_up_queue?lead_email=eq.${encodeURIComponent(TEST_EMAIL)}`,
+    `leads?email=eq.${encodeURIComponent(TEST_EMAIL)}`,
+    `rate_limits?ip_address=eq.${encodeURIComponent('lead-submit:203.0.113.85')}`,
+  ]) {
+    await fetch(`${SUPABASE_URL}/rest/v1/${q}`, {
+      method: 'DELETE',
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+    });
+  }
+}
+
+// This test's own rate-limit bucket (see pinRateLimitBucket note in
+// home-care-booking-contact-optional.spec.ts): live submits from parallel
+// specs otherwise share the 'unknown' bucket and trip the 5/min limiter.
+const TEST_IP = '203.0.113.85';
+
 test.describe('/api/leads/submit — notifications dispatch in-process', () => {
+  // Gate at the describe level so beforeEach/afterEach (which hit the live
+  // Supabase REST endpoint for cleanup) never run when unconfigured. In the
+  // default CI job NEXT_PUBLIC_SUPABASE_URL is empty, so an in-body-only skip
+  // would still let the hooks fetch a relative "/rest/v1/..." URL and throw
+  // "Invalid URL" before the test could skip itself.
+  test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
+  test.skip(!CONFIGURED, CONFIG_REASON);
+  // Server-path spec: one browser project is enough, and each mobile re-run
+  // doubles the REAL Telegram/email notifications sent to the owner.
+  test.skip(({ isMobile }) => Boolean(isMobile), 'server-path spec - chromium project only');
+
   test.beforeEach(async ({ page }) => {
     await page.route(/recaptcha|gstatic\.com\/recaptcha/, (route) => route.abort());
-    await page.addInitScript(() => {
-      // @ts-expect-error - runtime stub
-      window.grecaptcha = {
-        enterprise: {
-          ready: (cb: () => void) => cb(),
-          execute: async () => 'test-recaptcha-token',
-        },
-      };
-    });
+    await page.addInitScript(
+      ({ token }) => {
+        // @ts-expect-error - runtime stub
+        window.grecaptcha = {
+          enterprise: {
+            ready: (cb: () => void) => cb(),
+            execute: async () => token,
+          },
+        };
+      },
+      { token: BYPASS_TOKEN }
+    );
+    await cleanupTestRows();
+  });
+
+  test.afterEach(async () => {
+    await cleanupTestRows();
   });
 
   test('AC1+AC2+AC3: submit succeeds without self-fetching notify endpoints', async ({ page }) => {
     // This drives the REAL /api/leads/submit (route.fetch, not a mock): the
     // server must verify reCAPTCHA, insert into Supabase, and dispatch
     // notifications. That needs server secret keys + a live DB (and would emit
-    // real Telegram/email), so it can't run in the default CI job.
-    test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
+    // real Telegram/email), so it can't run in the default CI job (gated at the
+    // describe level above).
     const selfFetchedNotifyHits: string[] = [];
     let submitResponseTime = 0;
     let submitStarted = 0;
@@ -82,14 +136,21 @@ test.describe('/api/leads/submit — notifications dispatch in-process', () => {
 
     await page.route('**/api/leads/submit', async (route: Route) => {
       submitStarted = Date.now();
-      const response = await route.fetch();
+      // x-real-ip pins this test to its own rate-limit bucket (cleaned up in
+      // cleanupTestRows) so parallel live-submit specs can't 429 it.
+      const response = await route.fetch({
+        headers: { ...route.request().headers(), 'x-real-ip': TEST_IP },
+      });
       submitResponseTime = Date.now();
       await route.fulfill({ response });
     });
 
-    await page.goto('/free-estimate');
+    // domcontentloaded: the landing page pulls third-party scripts (ads/GA)
+    // that can hang the window load event in dev; the form is interactive
+    // long before that.
+    await page.goto('/free-estimate', { waitUntil: 'domcontentloaded' });
     await page.getByRole('textbox', { name: /full name/i }).fill('AC Test');
-    await page.getByRole('textbox', { name: /^email/i }).fill('test@example.com');
+    await page.getByRole('textbox', { name: /^email/i }).fill(TEST_EMAIL);
     await page.getByRole('textbox', { name: /phone/i }).fill('(201) 555-1234');
     await page.getByRole('textbox', { name: /zip code/i }).fill('07620');
     await page.getByRole('checkbox', { name: /i agree to the terms/i }).check();

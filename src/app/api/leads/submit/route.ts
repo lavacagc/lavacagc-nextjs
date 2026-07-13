@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
+import { sanitizeLeadForInsert } from '@/lib/leadSanitize';
 import { sendTelegramLead } from '@/lib/notify/telegramLead';
 import { sendNewLeadEmail } from '@/lib/notify/newLeadEmail';
 import { sendFormFailureAlert, FormErrorAlertPayload } from '@/lib/notify/formErrorAlert';
@@ -46,7 +47,16 @@ const MAX_BODY_BYTES = 16 * 1024;
 // "specific"). `.optional()` alone rejects null and would 400 the whole
 // submission ("Invalid request") before any processing. `.nullish()` treats a
 // null and an omitted field the same — both mean "not provided".
-const optStr = (max: number) => z.string().max(max).nullish();
+// Truncate rather than reject at the cap: a 3000-char document.referrer or an
+// extra-long booking note must never 400 the whole submission - the lead
+// matters more than the field's tail, and the 16 KB body cap above already
+// bounds abuse. (Truncating a reCAPTCHA token just makes verification fail,
+// which is the same outcome an over-long token deserves.)
+const optStr = (max: number) =>
+  z
+    .string()
+    .nullish()
+    .transform((v) => (v == null ? v : v.slice(0, max)));
 const LeadSubmitSchema = z
   .object({
     recaptchaToken: optStr(5000),
@@ -59,7 +69,6 @@ const LeadSubmitSchema = z
     phone: optStr(60),
     address: optStr(300),
     city: optStr(200),
-    state: optStr(100),
     zip_code: optStr(20),
     message: optStr(5000),
     inquiry_type: optStr(100),
@@ -156,6 +165,25 @@ async function verifyRecaptcha(
     console.error('reCAPTCHA verification error:', err);
     return { success: false, score: 0, reason: 'error' };
   }
+}
+
+// --- E2E test hook ----------------------------------------------------------
+// A submission whose recaptchaToken exactly matches RECAPTCHA_E2E_BYPASS_TOKEN
+// skips reCAPTCHA verification so Playwright can drive the FULL path (browser
+// form → this route → Supabase insert → notifications). Real tokens cannot be
+// minted for localhost, and automation-scored traffic would flake on the v2
+// challenge, so without this hook the insert layer is untestable end-to-end.
+// Inactive unless ALL hold: the env var is set (it is never set in Vercel),
+// it is ≥ 32 chars, this is NOT the production environment, and the token
+// matches exactly.
+function isE2eRecaptchaBypass(token: string | null | undefined): boolean {
+  const expected = process.env.RECAPTCHA_E2E_BYPASS_TOKEN;
+  return Boolean(
+    expected &&
+      expected.length >= 32 &&
+      process.env.VERCEL_ENV !== 'production' &&
+      token === expected
+  );
 }
 
 // Whether the v2 checkbox fallback is available. Requires a v2 (checkbox)
@@ -262,13 +290,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
 
-    const { recaptchaToken, recaptchaAction, recaptchaV2Token, honeypot, ...leadFields } = parsed.data as {
+    const { recaptchaToken, recaptchaAction, recaptchaV2Token, honeypot, ...rawLeadFields } = parsed.data as {
       recaptchaToken?: string;
       recaptchaAction?: string;
       recaptchaV2Token?: string;
       honeypot?: string;
       [key: string]: unknown;
     };
+    // Normalize the payload to what public.leads actually accepts (NOT NULL
+    // contact/name columns, enum CHECKs, integer/timestamp types, no unknown
+    // columns). A well-formed form payload passes through unchanged; anything
+    // that would have made Postgres reject the row - and lose the lead - is
+    // fixed up and reported via a warning alert after the insert succeeds.
+    const { lead: leadFields, adjustments: sanitizeAdjustments } = sanitizeLeadForInsert(rawLeadFields);
     leadFieldsForError = leadFields;
     sourceForError = String(leadFields.source || recaptchaAction || 'unknown');
     const leadContext = {
@@ -330,7 +364,9 @@ export async function POST(request: NextRequest) {
     //      and when v2 is configured, ask the client to show the checkbox
     //      instead of hard-blocking a possible real customer. Invalid tokens or
     //      a missing v2 key still hard-fail.
-    if (recaptchaV2Token) {
+    if (isE2eRecaptchaBypass(recaptchaToken)) {
+      console.warn('reCAPTCHA E2E bypass token accepted - non-production test mode');
+    } else if (recaptchaV2Token) {
       const v2Ok = await verifyRecaptchaV2(recaptchaV2Token);
       console.log(`reCAPTCHA v2 checkbox verification: success=${v2Ok}`);
       if (!v2Ok) {
@@ -406,6 +442,20 @@ export async function POST(request: NextRequest) {
         lead: leadContext,
       });
       return NextResponse.json({ error: 'Failed to save lead' }, { status: 500 });
+    }
+
+    // The lead is saved. If the sanitizer had to change anything to get it
+    // past the DB constraints, tell the owner - a form is sending
+    // non-standard values and should be fixed before the data quality slips.
+    if (sanitizeAdjustments.length > 0) {
+      await reportFailure({
+        stage: 'sanitize',
+        severity: 'warning',
+        source: sourceForError,
+        message: `Lead saved after auto-correcting ${sanitizeAdjustments.length} field(s) - a form is sending non-standard values`,
+        details: { adjustments: sanitizeAdjustments },
+        lead: leadContext,
+      });
     }
 
     // Fire notifications in-process. No self-fetch: Cloudflare would otherwise

@@ -53,7 +53,15 @@ test('opt-in flow files are wired', () => {
 
 test('booking form posts a valid lead (constraint-safe values)', () => {
   const src = readFileSync(join(process.cwd(), 'src/components/homecare/HomeCareBookingForm.tsx'), 'utf8');
-  expect(src).toContain('/api/leads/submit');
+  // The form submits through the shared submitLead helper (which owns the
+  // /api/leads/submit endpoint AND the reCAPTCHA v2 challenge fallback - a
+  // raw fetch here once treated the 200 {challenge} response as success and
+  // silently lost bookings).
+  expect(src).toContain("from '@/lib/submitLead'");
+  expect(src).toContain('submitLead(');
+  expect(src).toContain('requestChallenge');
+  const helper = readFileSync(join(process.cwd(), 'src/lib/submitLead.ts'), 'utf8');
+  expect(helper).toContain('/api/leads/submit');
   expect(src).toContain("inquiry_type: 'estimate'"); // valid CHECK value
   expect(src).toContain("project_type: 'other'"); // valid CHECK value
   expect(src).toContain("'home_care_booking'"); // single-task booking source
