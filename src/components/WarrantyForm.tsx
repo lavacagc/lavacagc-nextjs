@@ -312,16 +312,18 @@ const WarrantyForm = () => {
 
       // Log consent
       try {
-        await supabase.functions.invoke('log-consent', {
-          body: {
+        // Server-side consent logging (see /api/consent/log) - the old
+        // log-consent edge fn rejected ip_address: null, losing the record.
+        await fetch('/api/consent/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             user_email: formData.email,
             user_phone: formData.phone,
             consent_type: 'warranty_claim',
             tcpa_consent: true,
             consent_text: 'User agreed to Terms and Conditions and consented to receive communications about their warranty claim',
-            ip_address: null,
-            user_agent: navigator.userAgent
-          }
+          }),
         });
       } catch (consentError) {
         console.error('Failed to log consent:', consentError);

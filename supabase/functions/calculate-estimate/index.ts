@@ -49,7 +49,21 @@ const requestSchema = z.object({
   space_width: z.number().min(1).max(1000).optional(),
   space_height: z.number().min(7).max(30).optional(),
   square_footage: z.number().min(1).max(100000).optional(),
-  selected_options: z.array(z.string().min(1).max(100)),
+  // Legacy path: option NAMES. Kept for backward compatibility while the site
+  // deploy and this fn deploy are not atomic - but names never actually
+  // matched the client's kebab-case ids (selections were silently dropped for
+  // months), and duplicate names in the seeded catalog double-counted costs.
+  selected_options: z.array(z.string().min(1).max(100)).optional().default([]),
+  // Preferred path: catalog row UUIDs mapped client-side
+  // (src/lib/calculator/optionCatalog.ts). Deduped before matching.
+  selected_option_ids: z.array(z.string().uuid()).max(50).optional().default([]),
+  // Picks with no priced catalog row (unmapped options, quality level,
+  // additional features). Recorded as zero-cost selections - "priced at
+  // consultation" - so nothing a visitor chooses is lost.
+  unmatched_selections: z.array(z.object({
+    category: z.string().min(1).max(100),
+    label: z.string().min(1).max(200)
+  })).max(50).optional().default([]),
   lead_data: leadDataSchema,
   uploaded_image_path: z.string().max(500).optional()
 });
@@ -181,37 +195,53 @@ const handler = async (req)=>{
     // Get selected options and calculate costs
     const materialsList = [];
     let options = [];
-    if (body.selected_options.length > 0) {
-      const { data: fetchedOptions, error: optError } = await supabase.from("calculator_option_items").select("*").in("name", body.selected_options).eq("active", true);
+    const optionIds = [...new Set(body.selected_option_ids)];
+    if (optionIds.length > 0) {
+      // Preferred: match by row id (unambiguous - names duplicate in the
+      // seeded catalog and used to double-count).
+      const { data: fetchedOptions, error: optError } = await supabase.from("calculator_option_items").select("*").in("id", optionIds).eq("active", true);
       if (optError) throw optError;
       options = fetchedOptions || [];
+      if (options.length !== optionIds.length) {
+        console.log(`Requested ${optionIds.length} option ids, found ${options.length}`);
+      }
+    } else if (body.selected_options.length > 0) {
+      const { data: fetchedOptions, error: optError } = await supabase.from("calculator_option_items").select("*").in("name", body.selected_options).eq("active", true);
+      if (optError) throw optError;
+      // Dedupe by name: the seeded catalog contains duplicate rows per name,
+      // and pricing each duplicate double-counted the option's cost.
+      const byName = new Map();
+      for (const o of fetchedOptions || []){
+        if (!byName.has(o.name)) byName.set(o.name, o);
+      }
+      options = [...byName.values()];
       // Log if some options weren't found
       if (options.length !== body.selected_options.length) {
         console.log(`Requested ${body.selected_options.length} options, found ${options.length}`);
         console.log("Requested options:", body.selected_options);
         console.log("Found options:", options.map((o)=>o.name));
       }
-      // Calculate costs from options
-      for (const option of options){
-        totalMaterialCost += Number(option.material_cost || 0);
-        totalLaborCost += Number(option.labor_cost || 0);
-        // Generate materials list
-        if (option.materials_list) {
-          const materials = Array.isArray(option.materials_list) ? option.materials_list : [];
-          for (const material of materials){
-            // Evaluate quantity formula safely
-            const quantity = evaluateFormula(material.quantity_formula, {
-              sq_ft: squareFootage,
-              ceiling_height: body.space_height || 9
-            });
-            materialsList.push({
-              material_name: material.name,
-              estimated_quantity: Math.ceil(quantity * 100) / 100,
-              unit: material.unit,
-              notes: `From: ${option.name}`,
-              auto_generated: true
-            });
-          }
+    }
+    // Calculate costs from matched options (either matching path)
+    for (const option of options){
+      totalMaterialCost += Number(option.material_cost || 0);
+      totalLaborCost += Number(option.labor_cost || 0);
+      // Generate materials list
+      if (option.materials_list) {
+        const materials = Array.isArray(option.materials_list) ? option.materials_list : [];
+        for (const material of materials){
+          // Evaluate quantity formula safely
+          const quantity = evaluateFormula(material.quantity_formula, {
+            sq_ft: squareFootage,
+            ceiling_height: body.space_height || 9
+          });
+          materialsList.push({
+            material_name: material.name,
+            estimated_quantity: Math.ceil(quantity * 100) / 100,
+            unit: material.unit,
+            notes: `From: ${option.name}`,
+            auto_generated: true
+          });
         }
       }
     }
@@ -232,7 +262,8 @@ const handler = async (req)=>{
       combined_total: combinedTotal,
       estimate_range_max: rangeMax,
       metadata: {
-        selected_options: body.selected_options,
+        selected_options: options.map((o)=>o.name),
+        unmatched_selections: body.unmatched_selections.map((u)=>u.label),
         square_footage: squareFootage,
         project_timeline: body.lead_data.project_timeline
       }
@@ -304,9 +335,12 @@ const handler = async (req)=>{
       metadata: scoringInput.metadata
     }).select().single();
     if (leadError) throw leadError;
-    // Create lead selections with full option details
-    if (body.selected_options.length > 0 && options.length > 0) {
-      const selections = options.map((option)=>({
+    // Create lead selections with full option details. Matched options carry
+    // their catalog costs; unmatched picks (unmapped options, quality level,
+    // additional features) are recorded as zero-cost rows so EVERY choice the
+    // visitor made reaches the CRM - they are priced at consultation.
+    const selections = [
+      ...options.map((option)=>({
           estimate_lead_id: lead.id,
           option_item_id: option.id,
           option_item_name: option.name,
@@ -314,7 +348,18 @@ const handler = async (req)=>{
           material_cost: Number(option.material_cost || 0),
           labor_cost: Number(option.labor_cost || 0),
           total_cost: Number(option.material_cost || 0) + Number(option.labor_cost || 0)
-        }));
+        })),
+      ...body.unmatched_selections.map((u)=>({
+          estimate_lead_id: lead.id,
+          option_item_id: null,
+          option_item_name: u.label,
+          option_category_name: u.category,
+          material_cost: 0,
+          labor_cost: 0,
+          total_cost: 0
+        }))
+    ];
+    if (selections.length > 0) {
       const { error: selError } = await supabase.from("calculator_lead_selections").insert(selections);
       if (selError) {
         console.error("Error creating selections:", selError);
@@ -501,7 +546,7 @@ const handler = async (req)=>{
     // Don't throw - we want the lead to be created even if email fails
     }
     // Build per-option breakdown table
-    const optionsBreakdown = options?.map((opt)=>`
+    const optionsBreakdown = (options?.map((opt)=>`
       <tr>
         <td style="padding: 8px; border: 1px solid #ddd;">${opt.name}</td>
         <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">$${Number(opt.material_cost || 0).toLocaleString()}</td>
@@ -509,7 +554,15 @@ const handler = async (req)=>{
         <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">$${Number(opt.total_cost || 0).toLocaleString()}</td>
         <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${opt.labor_hours || 0} hrs</td>
       </tr>
-    `).join("\n") || "";
+    `).join("\n") || "") + (body.unmatched_selections.map((u)=>{
+      // Client-supplied strings - escape before interpolating into email HTML.
+      const esc = (s: string)=>s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      return `
+      <tr>
+        <td style="padding: 8px; border: 1px solid #ddd;">${esc(u.label)} <span style="color:#92400e;">(${esc(u.category)})</span></td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; color: #92400e;" colspan="4">Priced at consultation</td>
+      </tr>
+    `;}).join("\n"));
     const totalLaborHours = options?.reduce((sum, opt)=>sum + Number(opt.labor_hours || 0), 0) || 0;
     const encodedAddress = encodeURIComponent(`${body.lead_data.street_address}, ${body.lead_data.city}, ${body.lead_data.state} ${body.lead_data.zip_code}`);
     // Send admin notification
