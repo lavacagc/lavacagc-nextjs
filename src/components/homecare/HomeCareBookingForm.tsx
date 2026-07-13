@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { CheckCircle, Loader2, CalendarCheck, Wrench } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config';
+import { submitLead } from '@/lib/submitLead';
+import { useRecaptchaChallenge } from '@/components/recaptcha/RecaptchaChallengeProvider';
 
 const RECAPTCHA_ACTION = 'home_care_booking';
 
@@ -20,6 +22,7 @@ export interface BookingService {
 
 export default function HomeCareBookingForm({ services, prefill }: { services: BookingService[]; prefill: BookingPrefill }) {
   const { toast } = useToast();
+  const { requestChallenge } = useRecaptchaChallenge();
   const [name, setName] = useState(prefill.first_name);
   const [email, setEmail] = useState(prefill.email);
   const [phone, setPhone] = useState(prefill.phone);
@@ -89,10 +92,11 @@ export default function HomeCareBookingForm({ services, prefill }: { services: B
         return;
       }
       const parts = name.trim().split(/\s+/);
-      const res = await fetch('/api/leads/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // submitLead handles the v2 checkbox fallback: a low v3 score returns
+      // 200 {challenge:'recaptcha_v2'} WITHOUT saving anything - treating that
+      // as success silently lost bookings before (2026-07-12 incident review).
+      const result = await submitLead(
+        {
           first_name: parts[0] || 'Homeowner',
           last_name: parts.slice(1).join(' ') || (parts[0] || 'Homeowner'),
           email: email.trim() || null,
@@ -105,10 +109,16 @@ export default function HomeCareBookingForm({ services, prefill }: { services: B
           recaptchaToken,
           recaptchaAction: RECAPTCHA_ACTION,
           honeypot: website,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+        },
+        requestChallenge
+      );
+      if (!result.ok) {
+        if (result.cancelled) {
+          toast({ title: 'Verification needed', description: 'Please complete the checkbox to send your request, or call (201) 212-4917.', variant: 'destructive' });
+          return;
+        }
+        throw new Error(result.error || 'Failed to submit');
+      }
       setSent(true);
     } catch (e) {
       console.error('Home Care booking error:', e);

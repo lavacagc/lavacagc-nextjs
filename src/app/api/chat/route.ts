@@ -3,7 +3,9 @@ import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'crypto';
 import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
+import { sanitizeLeadForInsert } from '@/lib/leadSanitize';
 import { sendTelegramLead } from '@/lib/notify/telegramLead';
+import { sendFormFailureAlert } from '@/lib/notify/formErrorAlert';
 import { createLeadFollowUpSequence } from '@/lib/notify/leadFollowUp';
 import { checkRateLimit as ipRateLimit, getClientIp } from '@/lib/rateLimit';
 import { cleanEnv } from '@/lib/envClean';
@@ -335,8 +337,9 @@ export async function POST(request: NextRequest) {
     let savedConversationId = conversationId;
 
     if (conversation) {
-      // Update existing
-      await supabase
+      // Update existing. A rejected write (bad payload, RLS change, NUL byte
+      // in a pasted message) was previously swallowed - at least log it.
+      const { error: convoUpdateError } = await supabase
         .from('chat_conversations')
         .update({
           messages: existingMessages as unknown as Record<string, unknown>[],
@@ -345,9 +348,10 @@ export async function POST(request: NextRequest) {
           ip_address: ip,
         })
         .eq('id', conversationId);
+      if (convoUpdateError) console.error('chat_conversations update failed:', convoUpdateError);
     } else {
       // Create new
-      const { data: newConvo } = await supabase
+      const { data: newConvo, error: convoInsertError } = await supabase
         .from('chat_conversations')
         .insert({
           visitor_id: visitorId,
@@ -359,6 +363,7 @@ export async function POST(request: NextRequest) {
         })
         .select('id')
         .single();
+      if (convoInsertError) console.error('chat_conversations insert failed:', convoInsertError);
       savedConversationId = newConvo?.id || null;
     }
 
@@ -380,12 +385,15 @@ export async function POST(request: NextRequest) {
             ? nameMatch[1].split(' ').slice(1).join(' ')
             : 'Visitor';
 
-          // Prepare lead data with scoring
+          // Prepare lead data with scoring. Missing contact fields stay ''
+          // (leads.email/phone are NOT NULL) - never fabricate placeholder
+          // contact data like the old 'chatbot@lavacagc.com' / '0000000000':
+          // fake addresses leak into follow-up emails and the CRM.
           const leadData = {
             first_name: firstName,
             last_name: lastName,
-            email: currentMsgLeadInfo.email || 'chatbot@lavacagc.com',
-            phone: currentMsgLeadInfo.phone || '0000000000',
+            email: currentMsgLeadInfo.email || '',
+            phone: currentMsgLeadInfo.phone || '',
             inquiry_type: 'estimate',
             project_type: currentMsgLeadInfo.projectType || null,
             city: currentMsgLeadInfo.location || null,
@@ -397,32 +405,50 @@ export async function POST(request: NextRequest) {
           const scoringInput = prepareLeadForScoring(leadData);
           const scoringResult = scoreLead(scoringInput);
 
-          // Add scoring to lead data
-          const leadDataWithScoring = {
+          // Normalize to what public.leads actually accepts (NOT NULL columns,
+          // enum CHECKs) so a constraint violation can't silently eat the lead.
+          const { lead: leadDataWithScoring } = sanitizeLeadForInsert({
             ...leadData,
             score: scoringResult.score,
             tier: scoringResult.tier,
             scoring_reasons: scoringResult.reasons,
-          };
+          });
 
           const { error: insertError } = await leadsQuery('POST', undefined, leadDataWithScoring);
 
           if (insertError) {
+            // A lost chatbot lead used to die with only a console.error -
+            // invisible unless someone read Vercel logs. Alert the owner like
+            // every other form path does.
             console.error('Failed to insert lead:', insertError);
+            await sendFormFailureAlert({
+              stage: 'insert',
+              source: 'chatbot',
+              message: 'Supabase insert failed - chatbot lead was NOT saved',
+              details: { dbError: insertError },
+              lead: {
+                name: `${firstName} ${lastName}`,
+                email: currentMsgLeadInfo.email,
+                phone: currentMsgLeadInfo.phone,
+              },
+            });
           }
 
           // Trigger follow-up sequence in-process. Previously self-fetched
           // /api/leads/webhook but Cloudflare interstitials server-to-server
-          // requests hitting www.lavacagc.com.
-          try {
-            await createLeadFollowUpSequence({
-              name: `${firstName} ${lastName}`,
-              email: currentMsgLeadInfo.email || 'chatbot@lavacagc.com',
-              source: 'chatbot',
-              projectType: currentMsgLeadInfo.projectType,
-            });
-          } catch (webhookErr) {
-            console.error('Failed to trigger follow-up sequence:', webhookErr);
+          // requests hitting www.lavacagc.com. Only when the visitor shared a
+          // real email - the sequence sends actual emails.
+          if (currentMsgLeadInfo.email) {
+            try {
+              await createLeadFollowUpSequence({
+                name: `${firstName} ${lastName}`,
+                email: currentMsgLeadInfo.email,
+                source: 'chatbot',
+                projectType: currentMsgLeadInfo.projectType,
+              });
+            } catch (webhookErr) {
+              console.error('Failed to trigger follow-up sequence:', webhookErr);
+            }
           }
 
           // Send notification via Supabase Edge Function (same as ContactForm)

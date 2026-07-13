@@ -7,6 +7,12 @@ export interface FormErrorAlertPayload {
   message?: string;
   details?: unknown;
   lead?: { name?: string; email?: string; phone?: string };
+  /**
+   * 'failure' (default): the submission was lost - fix ASAP.
+   * 'warning': the lead WAS saved, but something needs attention (e.g. a form
+   * sent non-standard values that were auto-corrected before insert).
+   */
+  severity?: 'failure' | 'warning';
 }
 
 export interface FormErrorAlertResult {
@@ -38,7 +44,9 @@ export async function sendFormFailureAlert(payload: FormErrorAlertPayload): Prom
       message = 'Unknown error',
       details,
       lead,
+      severity = 'failure',
     } = payload;
+    const isFailure = severity === 'failure';
 
     const detailStr =
       details === undefined
@@ -54,17 +62,22 @@ export async function sendFormFailureAlert(payload: FormErrorAlertPayload): Prom
     const chatId = cleanEnv(process.env.TELEGRAM_CHAT_ID);
     if (botToken && chatId) {
       const lines = [
-        `🚨 <b>FORM FAILURE</b>`,
+        isFailure ? `🚨 <b>FORM FAILURE</b>` : `⚠️ <b>FORM WARNING</b>`,
         ``,
         `<b>Source:</b> ${source}`,
         `<b>Stage:</b> ${stage}`,
-        `<b>Error:</b> ${message}`,
+        `<b>${isFailure ? 'Error' : 'Issue'}:</b> ${message}`,
       ];
       if (lead?.name) lines.push(`<b>Lead:</b> ${lead.name}`);
       if (lead?.email) lines.push(`<b>Email:</b> ${lead.email}`);
       if (lead?.phone) lines.push(`<b>Phone:</b> <code>${lead.phone}</code>`);
       if (truncatedDetails) lines.push(``, `<pre>${escapeHtml(truncatedDetails)}</pre>`);
-      lines.push(``, `⚠️ A visitor tried to submit a form and it failed. Fix ASAP.`);
+      lines.push(
+        ``,
+        isFailure
+          ? `⚠️ A visitor tried to submit a form and it failed. Fix ASAP.`
+          : `✅ The lead WAS saved, but a form is sending non-standard data. Worth a look.`
+      );
 
       try {
         const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -92,22 +105,28 @@ export async function sendFormFailureAlert(payload: FormErrorAlertPayload): Prom
 
         const html = `
           <div style="font-family:-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:24px;border:1px solid #eee;border-radius:8px">
-            <h2 style="color:#c1121f;margin:0 0 16px">🚨 Form submission failed</h2>
+            <h2 style="color:${isFailure ? '#c1121f' : '#b45309'};margin:0 0 16px">${isFailure ? '🚨 Form submission failed' : '⚠️ Form data auto-corrected'}</h2>
             <p style="margin:0 0 8px"><strong>Source:</strong> ${escapeHtml(source)}</p>
             <p style="margin:0 0 8px"><strong>Stage:</strong> ${escapeHtml(stage)}</p>
-            <p style="margin:0 0 8px"><strong>Error:</strong> ${escapeHtml(message)}</p>
+            <p style="margin:0 0 8px"><strong>${isFailure ? 'Error' : 'Issue'}:</strong> ${escapeHtml(message)}</p>
             ${lead?.name ? `<p style="margin:0 0 8px"><strong>Lead name:</strong> ${escapeHtml(lead.name)}</p>` : ''}
             ${lead?.email ? `<p style="margin:0 0 8px"><strong>Lead email:</strong> ${escapeHtml(lead.email)}</p>` : ''}
             ${lead?.phone ? `<p style="margin:0 0 8px"><strong>Lead phone:</strong> ${escapeHtml(lead.phone)}</p>` : ''}
             ${truncatedDetails ? `<pre style="background:#f5f5f5;padding:12px;border-radius:4px;font-size:12px;overflow:auto">${escapeHtml(truncatedDetails)}</pre>` : ''}
-            <p style="margin:16px 0 0;color:#666;font-size:13px">A visitor attempted a form submission and it failed on the server. Check <code>/api/health/forms</code> for config diagnostics.</p>
+            <p style="margin:16px 0 0;color:#666;font-size:13px">${
+              isFailure
+                ? 'A visitor attempted a form submission and it failed on the server. Check <code>/api/health/forms</code> for config diagnostics.'
+                : 'The lead WAS saved - but a form is sending non-standard values that had to be auto-corrected before insert. Details above.'
+            }</p>
           </div>
         `;
 
         const sendResult = await sendTrackedEmail({
           from: 'La Vaca Alerts <noreply@email.lavaca.link>',
           to: notificationEmail,
-          subject: `🚨 Form failure: ${source} (${stage})`,
+          subject: isFailure
+            ? `🚨 Form failure: ${source} (${stage})`
+            : `⚠️ Form warning: ${source} (${stage})`,
           html,
           category: 'form_error',
         });

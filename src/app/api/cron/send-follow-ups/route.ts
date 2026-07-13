@@ -95,14 +95,18 @@ export async function GET(request: NextRequest) {
         // Validate email before sending
         if (!item.lead_email || !item.lead_email.includes('@')) {
           console.warn(`Skipping invalid email: ${item.lead_email}`);
-          await supabase
+          // NOTE: follow_up_queue has no error_message column - failure detail
+          // lives in the logs. Writing an unknown column makes PostgREST
+          // reject the whole update (PGRST204), leaving the row 'pending'
+          // forever and jamming the queue.
+          const { error: invalidEmailMarkError } = await supabase
             .from('follow_up_queue')
             .update({
               status: 'failed',
-              error_message: 'Invalid email address',
               sent_at: new Date().toISOString(),
             })
             .eq('id', item.id);
+          if (invalidEmailMarkError) console.error(`Failed to mark follow-up ${item.id} failed:`, invalidEmailMarkError);
           failed++;
           continue;
         }
@@ -128,30 +132,30 @@ export async function GET(request: NextRequest) {
         if (sendResult.status === 'skipped' && sendResult.reason === 'unsubscribed') {
           // Recipient opted out of follow-ups — cancel this AND every other
           // still-pending item for the same email so we never email them again.
-          const { count } = await supabase
+          const { count, error: cancelMarkError } = await supabase
             .from('follow_up_queue')
             .update(
               {
                 status: 'cancelled',
-                error_message: 'Recipient unsubscribed from follow-ups',
                 sent_at: new Date().toISOString(),
               },
               { count: 'exact' },
             )
             .eq('lead_email', item.lead_email)
             .eq('status', 'pending');
+          if (cancelMarkError) console.error(`Failed to cancel follow-ups for unsubscribed ${item.lead_email}:`, cancelMarkError);
           cancelled += count ?? 1;
           cancelledEmails.add(item.lead_email);
         } else if (sendResult.status !== 'sent') {
           console.error(`Failed to send follow-up ${item.id}:`, sendResult.error);
-          await supabase
+          const { error: sendFailMarkError } = await supabase
             .from('follow_up_queue')
             .update({
               status: 'failed',
-              error_message: sendResult.error || 'Send failed',
               sent_at: new Date().toISOString(),
             })
             .eq('id', item.id);
+          if (sendFailMarkError) console.error(`Failed to mark follow-up ${item.id} failed:`, sendFailMarkError);
           failed++;
         } else {
           await supabase
@@ -165,14 +169,14 @@ export async function GET(request: NextRequest) {
         }
       } catch (itemError) {
         console.error(`Error processing follow-up ${item.id}:`, itemError);
-        await supabase
+        const { error: crashMarkError } = await supabase
           .from('follow_up_queue')
           .update({
             status: 'failed',
-            error_message: itemError instanceof Error ? itemError.message : 'Unknown error',
             sent_at: new Date().toISOString(),
           })
           .eq('id', item.id);
+        if (crashMarkError) console.error(`Failed to mark follow-up ${item.id} failed:`, crashMarkError);
         failed++;
       }
 
