@@ -195,6 +195,7 @@ const handler = async (req)=>{
     // Get selected options and calculate costs
     const materialsList = [];
     let options = [];
+    const unresolvedOptionSelections = [];
     const optionIds = [...new Set(body.selected_option_ids)];
     if (optionIds.length > 0) {
       // Preferred: match by row id (unambiguous - names duplicate in the
@@ -204,6 +205,15 @@ const handler = async (req)=>{
       options = fetchedOptions || [];
       if (options.length !== optionIds.length) {
         console.log(`Requested ${optionIds.length} option ids, found ${options.length}`);
+        const foundIds = new Set(options.map((o)=>o.id));
+        for (const id of optionIds){
+          if (!foundIds.has(id)) {
+            unresolvedOptionSelections.push({
+              category: "Options",
+              label: `Unknown option ${id}`
+            });
+          }
+        }
       }
     } else if (body.selected_options.length > 0) {
       const { data: fetchedOptions, error: optError } = await supabase.from("calculator_option_items").select("*").in("name", body.selected_options).eq("active", true);
@@ -222,6 +232,10 @@ const handler = async (req)=>{
         console.log("Found options:", options.map((o)=>o.name));
       }
     }
+    const unmatchedSelections = [
+      ...body.unmatched_selections,
+      ...unresolvedOptionSelections
+    ];
     // Calculate costs from matched options (either matching path)
     for (const option of options){
       totalMaterialCost += Number(option.material_cost || 0);
@@ -263,7 +277,7 @@ const handler = async (req)=>{
       estimate_range_max: rangeMax,
       metadata: {
         selected_options: options.map((o)=>o.name),
-        unmatched_selections: body.unmatched_selections.map((u)=>u.label),
+        unmatched_selections: unmatchedSelections.map((u)=>u.label),
         square_footage: squareFootage,
         project_timeline: body.lead_data.project_timeline
       }
@@ -349,7 +363,7 @@ const handler = async (req)=>{
           labor_cost: Number(option.labor_cost || 0),
           total_cost: Number(option.material_cost || 0) + Number(option.labor_cost || 0)
         })),
-      ...body.unmatched_selections.map((u)=>({
+      ...unmatchedSelections.map((u)=>({
           estimate_lead_id: lead.id,
           option_item_id: null,
           option_item_name: u.label,
@@ -554,7 +568,7 @@ const handler = async (req)=>{
         <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">$${Number(opt.total_cost || 0).toLocaleString()}</td>
         <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${opt.labor_hours || 0} hrs</td>
       </tr>
-    `).join("\n") || "") + (body.unmatched_selections.map((u)=>{
+    `).join("\n") || "") + (unmatchedSelections.map((u)=>{
       // Client-supplied strings - escape before interpolating into email HTML.
       const esc = (s: string)=>s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
       return `
