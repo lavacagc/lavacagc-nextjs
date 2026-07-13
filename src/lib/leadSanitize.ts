@@ -111,6 +111,7 @@ export function sanitizeLeadForInsert(fields: Record<string, unknown>): LeadSani
   for (const col of INTEGER_COLUMNS) {
     const raw = fields[col];
     if (raw === undefined || raw === null) continue;
+    if (typeof raw === 'string' && raw.trim() === '') continue;
     const num = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw.trim()) : NaN;
     if (Number.isFinite(num)) {
       lead[col] = Math.trunc(num);

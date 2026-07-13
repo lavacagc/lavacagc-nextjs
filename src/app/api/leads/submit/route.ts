@@ -69,7 +69,6 @@ const LeadSubmitSchema = z
     phone: optStr(60),
     address: optStr(300),
     city: optStr(200),
-    state: optStr(100),
     zip_code: optStr(20),
     message: optStr(5000),
     inquiry_type: optStr(100),
