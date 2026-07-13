@@ -71,6 +71,13 @@ async function cleanupTestRows(): Promise<void> {
 const TEST_IP = '203.0.113.85';
 
 test.describe('/api/leads/submit — notifications dispatch in-process', () => {
+  // Gate at the describe level so beforeEach/afterEach (which hit the live
+  // Supabase REST endpoint for cleanup) never run when unconfigured. In the
+  // default CI job NEXT_PUBLIC_SUPABASE_URL is empty, so an in-body-only skip
+  // would still let the hooks fetch a relative "/rest/v1/..." URL and throw
+  // "Invalid URL" before the test could skip itself.
+  test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
+  test.skip(!CONFIGURED, CONFIG_REASON);
   // Server-path spec: one browser project is enough, and each mobile re-run
   // doubles the REAL Telegram/email notifications sent to the owner.
   test.skip(({ isMobile }) => Boolean(isMobile), 'server-path spec - chromium project only');
@@ -100,9 +107,8 @@ test.describe('/api/leads/submit — notifications dispatch in-process', () => {
     // This drives the REAL /api/leads/submit (route.fetch, not a mock): the
     // server must verify reCAPTCHA, insert into Supabase, and dispatch
     // notifications. That needs server secret keys + a live DB (and would emit
-    // real Telegram/email), so it can't run in the default CI job.
-    test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
-    test.skip(!CONFIGURED, CONFIG_REASON);
+    // real Telegram/email), so it can't run in the default CI job (gated at the
+    // describe level above).
     const selfFetchedNotifyHits: string[] = [];
     let submitResponseTime = 0;
     let submitStarted = 0;
