@@ -65,7 +65,11 @@ export const PDFUploadStep = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  const validateFile = (file: File): boolean => {
+  // prospectiveCount is how many files are already counted against the cap
+  // (uploaded + in-flight + earlier files accepted in this same batch). It has
+  // to be threaded in because uploadedFiles/uploadProgress state is still stale
+  // during the synchronous forEach that dispatches a multi-file selection.
+  const validateFile = (file: File, prospectiveCount: number): boolean => {
     if (file.type !== ALLOWED_TYPE) {
       toast({
         title: "Invalid file type",
@@ -84,7 +88,7 @@ export const PDFUploadStep = ({
       return false;
     }
 
-    if (uploadedFiles.length >= MAX_FILES) {
+    if (prospectiveCount >= MAX_FILES) {
       toast({
         title: "Maximum files reached",
         description: `You can upload up to ${MAX_FILES} files.`,
@@ -96,9 +100,16 @@ export const PDFUploadStep = ({
     return true;
   };
 
-  const processFile = async (file: File) => {
-    if (!validateFile(file)) return;
+  const handleFiles = (files: File[]) => {
+    let committed = uploadedFiles.length + Object.keys(uploadProgress).length;
+    for (const file of files) {
+      if (!validateFile(file, committed)) continue;
+      committed += 1;
+      processFile(file);
+    }
+  };
 
+  const processFile = async (file: File) => {
     // Real upload to the calculator-pdfs bucket via the
     // upload-calculator-pdfs edge fn (multipart field names file_N/label_N).
     // The fn returns the metadata shape submit-home-addition requires.
@@ -165,7 +176,7 @@ export const PDFUploadStep = ({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    files.forEach(processFile);
+    handleFiles(files);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -186,7 +197,7 @@ export const PDFUploadStep = ({
     setIsDragging(false);
 
     const files = Array.from(e.dataTransfer.files);
-    files.forEach(processFile);
+    handleFiles(files);
   };
 
   const handleRemoveFile = (id: string) => {

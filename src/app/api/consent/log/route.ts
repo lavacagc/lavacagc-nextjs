@@ -29,7 +29,7 @@ const ConsentSchema = z.object({
   consent_text: z.string().trim().max(2000).nullish(),
 });
 
-const RATE_LIMIT_MAX = 10; // per window, per IP
+const RATE_LIMIT_MAX = 60; // per window, per IP
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 export async function POST(request: NextRequest) {
@@ -43,6 +43,15 @@ export async function POST(request: NextRequest) {
     const ip = getClientIp(request);
     const rl = await checkRateLimit(`consent-log:${ip}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
     if (!rl.allowed) {
+      // Above 60/min/IP is flood/attack traffic, not legitimate lead volume,
+      // so dropping consent here is not a compliance loss. Log the drop so it
+      // is visible in Vercel logs, but deliberately do NOT fire
+      // sendFormFailureAlert on 429/400 - an attacker exceeding the ceiling or
+      // posting junk must not become an owner-alert flood vector.
+      const truncatedEmail = body.user_email ? body.user_email.slice(0, 3) + '***' : 'none';
+      console.error(
+        `consent-log rate limited: consent_type=${body.consent_type} email=${truncatedEmail}`
+      );
       return NextResponse.json(
         { error: 'Too many requests' },
         { status: 429, headers: { 'Retry-After': String(rl.retryAfter ?? 60) } }
