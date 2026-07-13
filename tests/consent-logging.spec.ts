@@ -20,7 +20,9 @@ import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBa
  *  AC2: missing consent_type -> 400, no row.
  *  AC3: ContactForm submission E2E fires a real consent log (the lead submit
  *       and notification edge fn are intercepted; the consent call is live).
- *  AC4: per-IP rate limit returns 429 after 10 requests in a minute.
+ *  AC4: per-IP flood ceiling returns 429 after 60 requests in a minute
+ *       (compliance-first: high enough that shared-egress IPs like office
+ *       NAT or CGNAT never drop a genuine consent).
  *
  * Live-backend gated; rows are cleaned up per test (unique markers, suite
  * runs fullyParallel).
@@ -166,14 +168,14 @@ test.describe('/api/consent/log - server-side TCPA consent logging', () => {
     await cleanupByEmail(email);
   });
 
-  test('AC4: rate limited after 10 requests per minute per IP', async ({ request }) => {
+  test('AC4: flood ceiling returns 429 after 60 requests per minute per IP', async ({ request }) => {
     const email = 'delivered+consent-ac4@resend.dev';
     const ip = '203.0.113.64';
     await cleanupByEmail(email);
     await rateBucketCleanup(ip);
 
     let got429 = false;
-    for (let i = 0; i < 11; i += 1) {
+    for (let i = 0; i < 61; i += 1) {
       const res = await request.post('/api/consent/log', {
         headers: { 'content-type': 'application/json', 'user-agent': CHROME_UA, 'x-real-ip': ip },
         data: { user_email: email, consent_type: 'estimate_form', tcpa_consent: true },
@@ -184,7 +186,7 @@ test.describe('/api/consent/log - server-side TCPA consent logging', () => {
       }
       expect(res.status()).toBe(200);
     }
-    expect(got429, '11th request within the window must be throttled').toBe(true);
+    expect(got429, '61st request within the window must be throttled').toBe(true);
 
     await cleanupByEmail(email);
     await rateBucketCleanup(ip);
