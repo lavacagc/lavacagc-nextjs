@@ -98,8 +98,8 @@ export const ConfirmationStep = ({
                 <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
                 <span className="font-medium">{pdf.label}</span>
                 <span className="text-muted-foreground">
-                  ({pdf.file.name}
-                  {pdf.pageCount && ` - ${pdf.pageCount} page${pdf.pageCount > 1 ? 's' : ''}`})
+                  ({pdf.filename}
+                  {pdf.pageCount > 0 && ` - ${pdf.pageCount} page${pdf.pageCount > 1 ? 's' : ''}`})
                 </span>
               </div>
             ))}

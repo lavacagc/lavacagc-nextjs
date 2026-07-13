@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -7,11 +8,17 @@ import { Upload, X, FileText, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
+// Server-side upload metadata returned by the upload-calculator-pdfs edge fn.
+// The raw browser File never leaves this step - it used to be passed along
+// and JSON.stringify'd to {}, so plans silently never reached the server.
 export interface PDFFile {
-  file: File;
-  label: string;
   id: string;
-  pageCount?: number;
+  filename: string;
+  label: string;
+  filePath: string;
+  fileSize: number;
+  pageCount: number;
+  uploadedAt: string;
 }
 
 export interface PDFUploadData {
@@ -58,7 +65,11 @@ export const PDFUploadStep = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  const validateFile = (file: File): boolean => {
+  // prospectiveCount is how many files are already counted against the cap
+  // (uploaded + in-flight + earlier files accepted in this same batch). It has
+  // to be threaded in because uploadedFiles/uploadProgress state is still stale
+  // during the synchronous forEach that dispatches a multi-file selection.
+  const validateFile = (file: File, prospectiveCount: number): boolean => {
     if (file.type !== ALLOWED_TYPE) {
       toast({
         title: "Invalid file type",
@@ -77,7 +88,7 @@ export const PDFUploadStep = ({
       return false;
     }
 
-    if (uploadedFiles.length >= MAX_FILES) {
+    if (prospectiveCount >= MAX_FILES) {
       toast({
         title: "Maximum files reached",
         description: `You can upload up to ${MAX_FILES} files.`,
@@ -89,43 +100,83 @@ export const PDFUploadStep = ({
     return true;
   };
 
-  const processFile = async (file: File) => {
-    if (!validateFile(file)) return;
+  const handleFiles = (files: File[]) => {
+    let committed = uploadedFiles.length + Object.keys(uploadProgress).length;
+    for (const file of files) {
+      if (!validateFile(file, committed)) continue;
+      committed += 1;
+      processFile(file);
+    }
+  };
 
-    const fileId = `${Date.now()}-${Math.random()}`;
-    
-    // Simulate upload progress
-    setUploadProgress(prev => ({ ...prev, [fileId]: 0 }));
+  const processFile = async (file: File) => {
+    // Real upload to the calculator-pdfs bucket via the
+    // upload-calculator-pdfs edge fn (multipart field names file_N/label_N).
+    // The fn returns the metadata shape submit-home-addition requires.
+    const tempId = `${Date.now()}-${Math.random()}`;
+    setUploadProgress(prev => ({ ...prev, [tempId]: 0 }));
     const interval = setInterval(() => {
       setUploadProgress(prev => {
-        const currentProgress = prev[fileId] || 0;
-        if (currentProgress >= 100) {
-          clearInterval(interval);
-          return prev;
-        }
-        return { ...prev, [fileId]: currentProgress + 10 };
+        const current = prev[tempId] ?? 0;
+        // Creep toward 90% while the upload is in flight; jump to 100 on response.
+        return current >= 90 ? prev : { ...prev, [tempId]: current + 10 };
       });
-    }, 50);
+    }, 200);
 
-    // Try to get page count (mock for now - real implementation would use PDF.js)
-    const pageCount = Math.floor(Math.random() * 5) + 1; // Mock: 1-5 pages
+    try {
+      const formData = new FormData();
+      formData.append("file_0", file, file.name);
+      formData.append("label_0", "Other");
+      const { data, error } = await supabase.functions.invoke("upload-calculator-pdfs", {
+        body: formData,
+      });
+      if (error || !data?.uploaded_files?.[0]) {
+        throw new Error(error?.message || "Upload failed");
+      }
+      const meta = data.uploaded_files[0] as {
+        id: string;
+        filename: string;
+        label: string;
+        file_path: string;
+        file_size: number;
+        page_count: number;
+        uploaded_at: string;
+      };
 
-    setUploadedFiles(prev => [...prev, {
-      file,
-      label: "Other",
-      id: fileId,
-      pageCount,
-    }]);
+      setUploadedFiles(prev => [...prev, {
+        id: meta.id,
+        filename: meta.filename,
+        label: "Other",
+        filePath: meta.file_path,
+        fileSize: meta.file_size,
+        pageCount: meta.page_count,
+        uploadedAt: meta.uploaded_at,
+      }]);
 
-    toast({
-      title: "PDF uploaded successfully",
-      description: `${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB, ${pageCount} page${pageCount > 1 ? 's' : ''})`,
-    });
+      toast({
+        title: "PDF uploaded successfully",
+        description: `${meta.filename} (${(meta.file_size / 1024 / 1024).toFixed(2)}MB, ${meta.page_count} page${meta.page_count > 1 ? 's' : ''})`,
+      });
+    } catch (err) {
+      console.error("PDF upload failed:", err);
+      toast({
+        title: "Upload failed",
+        description: `${file.name} could not be uploaded. Please try again.`,
+        variant: "destructive",
+      });
+    } finally {
+      clearInterval(interval);
+      setUploadProgress(prev => {
+        const rest = { ...prev };
+        delete rest[tempId];
+        return rest;
+      });
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    files.forEach(processFile);
+    handleFiles(files);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -146,10 +197,14 @@ export const PDFUploadStep = ({
     setIsDragging(false);
 
     const files = Array.from(e.dataTransfer.files);
-    files.forEach(processFile);
+    handleFiles(files);
   };
 
   const handleRemoveFile = (id: string) => {
+    // Removed and abandoned uploads intentionally stay in the private
+    // calculator-pdfs bucket for now. The calculator is unrouted
+    // (/project-calculator 308s to /free-estimate) so orphan volume is zero
+    // today; a delete/GC endpoint is deferred to the calculator relaunch.
     setUploadedFiles(prev => prev.filter(f => f.id !== id));
     setUploadProgress(prev => {
       const rest = { ...prev };
@@ -169,6 +224,15 @@ export const PDFUploadStep = ({
       toast({
         title: "Files required",
         description: "Please upload at least one PDF file to continue.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (Object.keys(uploadProgress).length > 0) {
+      toast({
+        title: "Uploads in progress",
+        description: "Please wait for all uploads to finish before continuing.",
         variant: "destructive",
       });
       return;
@@ -227,7 +291,7 @@ export const PDFUploadStep = ({
           )}
         </div>
 
-        {uploadedFiles.length === 0 ? (
+        {uploadedFiles.length === 0 && Object.keys(uploadProgress).length === 0 ? (
           <div
             className={cn(
               "border-2 border-dashed rounded-lg p-8 text-center transition-all cursor-pointer",
@@ -283,10 +347,10 @@ export const PDFUploadStep = ({
                   <div className="flex-1 space-y-2 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold truncate">{pdfFile.file.name}</p>
+                        <p className="font-semibold truncate">{pdfFile.filename}</p>
                         <p className="text-sm text-muted-foreground">
-                          {(pdfFile.file.size / 1024 / 1024).toFixed(2)} MB
-                          {pdfFile.pageCount && ` • ${pdfFile.pageCount} page${pdfFile.pageCount > 1 ? 's' : ''}`}
+                          {(pdfFile.fileSize / 1024 / 1024).toFixed(2)} MB
+                          {pdfFile.pageCount > 0 && ` • ${pdfFile.pageCount} page${pdfFile.pageCount > 1 ? 's' : ''}`}
                         </p>
                       </div>
                       <Button
@@ -321,16 +385,15 @@ export const PDFUploadStep = ({
                       </Select>
                     </div>
 
-                    {uploadProgress[pdfFile.id] !== undefined && uploadProgress[pdfFile.id] < 100 && (
-                      <div className="space-y-1">
-                        <Progress value={uploadProgress[pdfFile.id]} className="h-2" />
-                        <p className="text-xs text-muted-foreground">
-                          Uploading... {uploadProgress[pdfFile.id]}%
-                        </p>
-                      </div>
-                    )}
                   </div>
                 </div>
+              </div>
+            ))}
+            {/* In-flight uploads (files appear in the list once the server confirms) */}
+            {Object.entries(uploadProgress).map(([tempId, progress]) => (
+              <div key={tempId} className="border rounded-lg p-4 space-y-1 bg-card">
+                <Progress value={progress} className="h-2" />
+                <p className="text-xs text-muted-foreground">Uploading... {progress}%</p>
               </div>
             ))}
           </div>

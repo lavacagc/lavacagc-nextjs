@@ -20,6 +20,7 @@ import { ProjectOverviewStep, ProjectOverviewData } from "@/components/calculato
 import { PDFUploadStep, PDFUploadData } from "@/components/calculator/steps/PDFUploadStep";
 import { ConfirmationStep } from "@/components/calculator/steps/ConfirmationStep";
 import { trackCalculatorStep } from "@/services/analyticsManager";
+import { buildSelectionPayload } from "@/lib/calculator/optionCatalog";
 
 export default function UnifiedCalculator() {
   const router = useRouter();
@@ -109,12 +110,28 @@ export default function UnifiedCalculator() {
 
     try {
       if (projectTypeData.requiresPDFUpload) {
-        // Handle home addition submission
+        // Handle home addition submission. uploaded_plans carries the
+        // server-side upload metadata from upload-calculator-pdfs (the old
+        // code passed raw browser File objects, which JSON.stringify to {} -
+        // the backend rejected every submission and plans never left the
+        // browser). The backend requires at least one plan; PDFUploadStep
+        // enforces that before this step is reachable.
+        const pdfStepNotes = pdfUploadData?.projectDescription?.trim();
         const { error } = await supabase.functions.invoke("submit-home-addition", {
           body: {
-            project_description: projectOverviewData?.projectDescription || "",
+            project_description:
+              (projectOverviewData?.projectDescription || "") +
+              (pdfStepNotes ? `\n\nPlan notes: ${pdfStepNotes}` : ""),
             project_location: projectOverviewData?.projectLocation || "",
-            uploaded_plans: pdfUploadData?.uploadedPDFs || [],
+            uploaded_plans: (pdfUploadData?.uploadedPDFs || []).map((p) => ({
+              id: p.id,
+              filename: p.filename,
+              label: p.label,
+              file_path: p.filePath,
+              file_size: p.fileSize,
+              page_count: p.pageCount,
+              uploaded_at: p.uploadedAt,
+            })),
             lead_data: {
               first_name: data.firstName,
               last_name: data.lastName,
@@ -137,7 +154,16 @@ export default function UnifiedCalculator() {
         trackCalculatorStep(getTotalSteps() + 1, "Confirmation", 'complete');
         setCurrentStep(getTotalSteps() + 1); // Show confirmation
       } else {
-        // Handle standard calculator submission
+        // Handle standard calculator submission. buildSelectionPayload maps
+        // UI option ids to catalog row UUIDs (priced) and passes every other
+        // pick - unmapped options, quality level, additional features, all of
+        // which used to be silently dropped - as explicit zero-cost
+        // selections so they reach the CRM.
+        const selectionPayload = buildSelectionPayload({
+          materialOptionIds: materialOptionsData?.selectedOptions || [],
+          qualityLevel: qualityData?.qualityLevel,
+          additionalFeatureIds: additionalFeaturesData?.additionalFeatures || [],
+        });
         const { data: response, error } = await supabase.functions.invoke("calculate-estimate", {
           body: {
             project_type: projectTypeData.projectType,
@@ -145,7 +171,9 @@ export default function UnifiedCalculator() {
             space_height: dimensionsData?.ceilingHeight,
             space_length: dimensionsData?.length,
             space_width: dimensionsData?.width,
-            selected_options: materialOptionsData?.selectedOptions || [],
+            selected_options: [],
+            selected_option_ids: selectionPayload.selected_option_ids,
+            unmatched_selections: selectionPayload.unmatched_selections,
             lead_data: {
               first_name: data.firstName,
               last_name: data.lastName,

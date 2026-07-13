@@ -16,11 +16,20 @@ interface ProjectOverviewStepProps {
 }
 
 const MAX_CHARS = 500;
+// The submit-home-addition backend requires at least 50 characters - enforce
+// it here too so a visitor never types a short description, submits, and gets
+// a generic server rejection at the very last step.
+const MIN_CHARS = 50;
 
-const PROJECT_LOCATIONS = [
-  "Addition to existing home",
-  "Detached structure",
-  "Other"
+// Must match the submit-home-addition backend enum exactly. The old list
+// ("Addition to existing home" / "Detached structure" / "Other") had ZERO
+// overlap with it, so every home-addition submission was rejected server-side
+// (verified live 2026-07-13). Exported so tests can assert the sync.
+export const PROJECT_LOCATIONS = [
+  "Front Addition",
+  "Rear Addition",
+  "Side Addition",
+  "Second Story Addition"
 ];
 
 export const ProjectOverviewStep = ({
@@ -41,6 +50,8 @@ export const ProjectOverviewStep = ({
 
     if (!projectDescription.trim()) {
       newErrors.projectDescription = "Project description is required";
+    } else if (projectDescription.trim().length < MIN_CHARS) {
+      newErrors.projectDescription = `Please add a bit more detail (at least ${MIN_CHARS} characters)`;
     }
 
     if (!projectLocation) {
@@ -60,7 +71,7 @@ export const ProjectOverviewStep = ({
     }
   };
 
-  const isValid = projectDescription.trim().length > 0 && projectLocation.length > 0;
+  const isValid = projectDescription.trim().length >= MIN_CHARS && projectLocation.length > 0;
 
   return (
     <div className="space-y-6">

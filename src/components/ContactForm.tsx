@@ -293,16 +293,20 @@ const ContactForm = () => {
 
       // Log consent
       try {
-        await supabase.functions.invoke('log-consent', {
-          body: {
+        // Server-side consent logging - the old log-consent edge fn rejected
+        // ip_address: null (a browser can't know its own IP), so consent rows
+        // silently failed to write. /api/consent/log derives IP + UA from the
+        // request itself.
+        await fetch('/api/consent/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             user_email: sanitizedData.email,
             user_phone: sanitizedData.phone,
             consent_type: 'contact_form_submission',
             tcpa_consent: true,
             consent_text: `I have read and agree to the Terms and Conditions and Privacy Policy, including consent to receive calls and text messages as described in Section 3.3 of the Terms and Conditions. By checking this box, I expressly consent to receive calls and texts from lavacagc.com at the phone number provided, including via automated dialing systems, for marketing and service-related purposes.`,
-            ip_address: null,
-            user_agent: navigator.userAgent
-          }
+          }),
         });
       } catch (consentError) {
         console.error('Consent logging failed:', consentError);
