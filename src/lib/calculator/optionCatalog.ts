@@ -99,6 +99,13 @@ export function buildSelectionPayload(args: {
 }): SelectionPayload {
   const ids = new Set<string>();
   const unmatched: UnmatchedSelection[] = [];
+  const seenUnmatched = new Set<string>();
+  const addUnmatched = (selection: UnmatchedSelection) => {
+    const key = `${selection.category}\u0000${selection.label}`;
+    if (seenUnmatched.has(key)) return;
+    seenUnmatched.add(key);
+    unmatched.push(selection);
+  };
 
   for (const optionId of args.materialOptionIds) {
     const dbId = OPTION_DB_MAP[optionId];
@@ -106,15 +113,15 @@ export function buildSelectionPayload(args: {
       ids.add(dbId);
     } else {
       const meta = OPTION_LABELS[optionId];
-      unmatched.push(meta ?? { category: 'Options', label: optionId });
+      addUnmatched(meta ?? { category: 'Options', label: optionId });
     }
   }
   for (const featureId of args.additionalFeatureIds ?? []) {
     const meta = OPTION_LABELS[featureId];
-    unmatched.push(meta ?? { category: 'Additional Features', label: featureId });
+    addUnmatched(meta ?? { category: 'Additional Features', label: featureId });
   }
   if (args.qualityLevel) {
-    unmatched.push({
+    addUnmatched({
       category: 'Quality Level',
       label: QUALITY_LABELS[args.qualityLevel] ?? args.qualityLevel,
     });

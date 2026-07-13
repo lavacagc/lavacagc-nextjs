@@ -190,6 +190,10 @@ export const PDFUploadStep = ({
   };
 
   const handleRemoveFile = (id: string) => {
+    // Removed and abandoned uploads intentionally stay in the private
+    // calculator-pdfs bucket for now. The calculator is unrouted
+    // (/project-calculator 308s to /free-estimate) so orphan volume is zero
+    // today; a delete/GC endpoint is deferred to the calculator relaunch.
     setUploadedFiles(prev => prev.filter(f => f.id !== id));
     setUploadProgress(prev => {
       const rest = { ...prev };
@@ -209,6 +213,15 @@ export const PDFUploadStep = ({
       toast({
         title: "Files required",
         description: "Please upload at least one PDF file to continue.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (Object.keys(uploadProgress).length > 0) {
+      toast({
+        title: "Uploads in progress",
+        description: "Please wait for all uploads to finish before continuing.",
         variant: "destructive",
       });
       return;
