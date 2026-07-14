@@ -62,6 +62,9 @@ test('AC4: first-save consent is logged in-process, before the record, and block
   expect(route).not.toMatch(/fetch\(/);
   // The consent write is ordered before the record upsert.
   expect(route.indexOf("'consent_logs'")).toBeLessThan(route.indexOf("'home_records?on_conflict"));
+  // Home-details is a data-storage consent, not a telephone-marketing one, so the
+  // proof must NOT claim TCPA consent (mirrors newsletter_home_care, which omits it).
+  expect(route).not.toContain('tcpa_consent');
 });
 
 test('AC4b: without consent, the route requires a prior homeowner-authored row before storing', () => {

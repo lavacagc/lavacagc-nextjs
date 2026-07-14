@@ -51,10 +51,16 @@ export default function HomeCareRecordCapture({
     return init;
   });
   const [consentChecked, setConsentChecked] = useState(false);
+  const [forceConsent, setForceConsent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Show the consent checkbox on the first save, or when the server rejects a
+  // save with 403 (the homeowner cleared all their rows in another tab, so this
+  // stale panel thought consent was already on): let them re-consent inline.
+  const needConsent = showConsent || forceConsent;
 
   const trimmedNote = note.trim();
   // A save must carry something the server will keep: a note, or (for appliance
@@ -64,7 +70,7 @@ export default function HomeCareRecordCapture({
     f.type === 'year' ? isFilledYear(detail[f.key] ?? '') : (detail[f.key] ?? '').trim() !== '',
   );
   const hasContent = trimmedNote !== '' || hasDetail;
-  const canSave = !saving && hasContent && (!showConsent || consentChecked);
+  const canSave = !saving && hasContent && (!needConsent || consentChecked);
 
   const save = async () => {
     if (!canSave) return;
@@ -85,13 +91,18 @@ export default function HomeCareRecordCapture({
           source_task_key: sourceTaskKey,
           note: trimmedNote,
           detail: detailPayload,
-          // consent:true only on the homeowner's first save; the server logs it
+          // consent:true only when consent is still needed; the server logs it
           // before storing, and if that log fails it 500s without saving.
-          ...(showConsent ? { consent: true } : {}),
+          ...(needConsent ? { consent: true } : {}),
         }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!res.ok || !data.ok) {
+        if (res.status === 403) {
+          setForceConsent(true);
+          setError('Please confirm your consent to save.');
+          return;
+        }
         setError(data.error || 'Could not save. Please try again.');
         return;
       }
@@ -158,7 +169,7 @@ export default function HomeCareRecordCapture({
         </div>
       )}
 
-      {showConsent && (
+      {needConsent && (
         <div className="mt-3 rounded-lg border border-border bg-muted/30 p-4">
           <label className="flex items-start gap-2.5 text-xs leading-relaxed text-text-secondary">
             <input
