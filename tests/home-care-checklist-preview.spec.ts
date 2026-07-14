@@ -73,3 +73,12 @@ test('AC6: no em dashes in the newly authored files (global style rule)', () => 
   const previewSection = page.slice(page.indexOf('Animated checklist preview'));
   expect(previewSection.includes('—')).toBe(false);
 });
+
+test('AC7: preview uses no emoji on the Home Care page (owner style rule)', () => {
+  // Home Care surfaces avoid emojis; the completed-plan celebration uses the
+  // lucide PartyPopper icon (matching HomeCareChecklistClient), not "🎉".
+  expect(component.includes('🎉')).toBe(false);
+  expect(component).toContain('PartyPopper');
+  // No characters in the emoji/pictograph ranges anywhere in the component.
+  expect(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(component)).toBe(false);
+});

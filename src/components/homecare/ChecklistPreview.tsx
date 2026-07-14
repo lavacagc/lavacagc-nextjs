@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, Wrench } from 'lucide-react';
+import { Check, Wrench, PartyPopper } from 'lucide-react';
 
 /**
  * Animated checklist preview for the /home-care landing page. It shows a
@@ -144,8 +144,14 @@ export default function ChecklistPreview({ seasonLabel = 'Summer' }: { seasonLab
         <span className="font-semibold text-text-muted">
           {seasonLabel} · {doneCount} of {total} done
         </span>
-        <span className={`font-bold ${complete ? 'text-accent-teal' : 'text-text-muted'}`}>
-          {complete ? 'All handled 🎉' : `${pct}%`}
+        <span className={`flex items-center gap-1 font-bold ${complete ? 'text-accent-teal' : 'text-text-muted'}`}>
+          {complete ? (
+            <>
+              <PartyPopper className="h-3.5 w-3.5" /> All handled
+            </>
+          ) : (
+            `${pct}%`
+          )}
         </span>
       </div>
 
