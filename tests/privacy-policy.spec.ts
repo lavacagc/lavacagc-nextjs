@@ -45,6 +45,7 @@ test.describe('Privacy policy disclosures', () => {
       'brand, model, and installation year of appliances',
       'never store alarm or lock codes',
       'home care home details', // 7.1 retention row
+      'property and home-system details', // CCPA "Categories of Personal Information Collected"
     ]) {
       expect(body, `privacy policy should mention "${phrase}"`).toContain(phrase);
     }

@@ -743,7 +743,7 @@ If you are a California resident, you have additional rights under the Californi
 
 **Categories of Personal Information Collected:**
 - **Identifiers:** Name, email address, phone number, mailing address, IP address, device identifiers
-- **Commercial Information:** Transaction history, service requests, payment records, project details
+- **Commercial Information:** Transaction history, service requests, payment records, project details, property and home-system details (such as the locations of utility shut-offs and electrical panels, and appliance makes and models)
 - **Internet or Network Activity:** Browsing history, search history, interactions with our Website, pages visited, links clicked
 - **Geolocation Data:** General location based on IP address (not precise geolocation)
 - **Inferences:** Preferences, characteristics, trends, behavior patterns derived from your information
