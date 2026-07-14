@@ -51,10 +51,26 @@ test('AC3: prefers-reduced-motion shows the finished plan with no motion', () =>
   expect(component).toMatch(/reduce[\s\S]{0,120}setDoneCount\(total\)/);
 });
 
-test('AC4: page renders the preview after the steps with the pinned season label', () => {
+test('AC4: preview sits right below the signup (before the how-it-works steps), pinned to Summer', () => {
   expect(page).toContain("import ChecklistPreview from '@/components/homecare/ChecklistPreview'");
   expect(page).toContain('<ChecklistPreview');
   expect(page).toContain('seasonLabel="Summer"');
+  // Placement: the preview section renders before the "how it works" STEPS grid,
+  // so a visitor can preview their plan straight after the signup form.
+  const previewIdx = page.indexOf('id="plan-preview"');
+  const stepsIdx = page.indexOf('STEPS.map');
+  expect(previewIdx).toBeGreaterThan(-1);
+  expect(stepsIdx).toBeGreaterThan(-1);
+  expect(previewIdx).toBeLessThan(stepsIdx);
+});
+
+test('AC8: hero has a scroll cue that points to the plan preview', () => {
+  expect(page).toContain('id="plan-preview"');
+  expect(page).toContain('href="#plan-preview"');
+  expect(page).toContain('See a sample of your plan');
+  expect(page).toContain('ChevronDown');
+  // The cue lives in the hero (before the preview section it targets).
+  expect(page.indexOf('See a sample of your plan')).toBeLessThan(page.indexOf('id="plan-preview"'));
 });
 
 test('AC5: signup stays anchored at the top and the section funnels back to it', () => {

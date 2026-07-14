@@ -5,7 +5,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import HomeCareOptInForm from '@/components/homecare/HomeCareOptInForm';
 import ChecklistPreview from '@/components/homecare/ChecklistPreview';
-import { CalendarCheck, ListChecks, Wrench } from 'lucide-react';
+import { CalendarCheck, ChevronDown, ListChecks, Wrench } from 'lucide-react';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById } from '@/lib/homecare/homeowners';
 
@@ -104,28 +104,24 @@ export default async function HomeCarePage({ searchParams }: { searchParams: Pro
                 <HomeCareOptInForm />
               </div>
             </div>
-          </div>
-        </section>
-
-        <section className="py-12 md:py-16">
-          <div className="container mx-auto px-4">
-            <div className="max-w-5xl mx-auto grid md:grid-cols-3 gap-8">
-              {STEPS.map((s) => (
-                <div key={s.title} className="text-center">
-                  <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-4">
-                    <s.icon className="h-7 w-7" />
-                  </div>
-                  <h3 className="text-lg font-bold text-text-primary mb-2">{s.title}</h3>
-                  <p className="text-text-secondary leading-relaxed">{s.body}</p>
-                </div>
-              ))}
+            {/* Scroll cue so visitors know a live preview of their plan is just below. */}
+            <div className="mt-10 flex justify-center lg:mt-12">
+              <a
+                href="#plan-preview"
+                className="group inline-flex flex-col items-center gap-1.5 text-sm font-semibold text-text-secondary transition-colors hover:text-primary"
+              >
+                <span>See a sample of your plan</span>
+                <ChevronDown className="h-5 w-5 animate-bounce text-primary" aria-hidden />
+              </a>
             </div>
           </div>
         </section>
 
         {/* Animated checklist preview: show visitors the kind of content
-            (and the satisfying done-state) their real seasonal plan gives them. */}
-        <section className="py-14 md:py-20 bg-gradient-subtle border-t border-border/60">
+            (and the satisfying done-state) their real seasonal plan gives them.
+            Placed right below the signup so a visitor can immediately preview
+            what they'll get; the hero's scroll cue points here. */}
+        <section id="plan-preview" className="scroll-mt-24 py-14 md:py-20 bg-gradient-subtle border-t border-border/60">
           <div className="container mx-auto px-4">
             <div className="grid lg:grid-cols-2 gap-10 lg:gap-14 items-center max-w-6xl mx-auto">
               <div className="order-2 lg:order-1">
@@ -167,6 +163,22 @@ export default async function HomeCarePage({ searchParams }: { searchParams: Pro
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="py-12 md:py-16">
+          <div className="container mx-auto px-4">
+            <div className="max-w-5xl mx-auto grid md:grid-cols-3 gap-8">
+              {STEPS.map((s) => (
+                <div key={s.title} className="text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-4">
+                    <s.icon className="h-7 w-7" />
+                  </div>
+                  <h3 className="text-lg font-bold text-text-primary mb-2">{s.title}</h3>
+                  <p className="text-text-secondary leading-relaxed">{s.body}</p>
+                </div>
+              ))}
             </div>
           </div>
         </section>
