@@ -8,7 +8,6 @@ import ChecklistPreview from '@/components/homecare/ChecklistPreview';
 import { CalendarCheck, ListChecks, Wrench } from 'lucide-react';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById } from '@/lib/homecare/homeowners';
-import { currentSeason, SEASON_LABEL } from '@/lib/homecare/season';
 
 export const metadata: Metadata = {
   title: 'Free Seasonal Home Maintenance Plan | La Vaca Home Care',
@@ -49,7 +48,6 @@ export default async function HomeCarePage({ searchParams }: { searchParams: Pro
   const access = await verifyHomeAccess(cookieStore.get(HC_ACCESS_COOKIE)?.value);
   const homeowner = access ? await findHomeownerById(access.homeownerId) : null;
   const returning = homeowner && homeowner.status === 'active' ? homeowner : null;
-  const seasonLabel = SEASON_LABEL[currentSeason()];
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -163,7 +161,7 @@ export default async function HomeCarePage({ searchParams }: { searchParams: Pro
               </div>
               <div className="order-1 lg:order-2 flex justify-center">
                 <div>
-                  <ChecklistPreview seasonLabel={seasonLabel} />
+                  <ChecklistPreview seasonLabel="Summer" />
                   <p className="mt-3 text-center text-xs text-text-muted">
                     Sample plan for illustration. Your real checklist is personalized to your home.
                   </p>

@@ -11,9 +11,11 @@ import { Check, Wrench } from 'lucide-react';
  * kind of content (and the satisfying done-state) the real checklist gives
  * them. Purely decorative: no real member data, no network, no tracking.
  *
- * The task copy is lifted from the production maintenance catalog
- * (supabase/migrations/20260725000000_home_care_phase1.sql) so the preview
- * reflects what a real plan actually says.
+ * This sample is intentionally a fixed summer illustration (not the live
+ * season), so the labeled season always matches the hardcoded summer tasks
+ * below. Task titles come from the production maintenance catalog, and the
+ * cost ranges reflect the current production values after the catalog v2
+ * update (e.g. A/C $100-375, deck $400-1,800, driveway $300-1,200).
  */
 
 interface PreviewTask {
