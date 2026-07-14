@@ -73,7 +73,7 @@ export default async function GuidePage({ params }: { params: Promise<{ season: 
                       // Route to the checklist so pro jobs land in one request
                       // and check out together, instead of firing a separate
                       // booking (and a separate owner alert) per guide item.
-                      <Link href="/home-care/checklist" className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-primary to-accent-tangerine px-4 py-2 text-sm font-bold text-primary-foreground hover:shadow-button transition-all">
+                      <Link href={`/home-care/checklist?add=${encodeURIComponent(item.key)}`} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-primary to-accent-tangerine px-4 py-2 text-sm font-bold text-primary-foreground hover:shadow-button transition-all">
                         <Wrench className="h-4 w-4" /> Add this on my checklist →
                       </Link>
                     )}

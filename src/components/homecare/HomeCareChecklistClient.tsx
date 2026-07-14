@@ -107,6 +107,7 @@ export default function HomeCareChecklistClient({
   showStarter = true,
   currentSeason,
   showCatchUp = false,
+  autoAddKey,
 }: {
   tasks: ChecklistTask[];
   doneItems: { task_key: string; season: string }[];
@@ -114,10 +115,11 @@ export default function HomeCareChecklistClient({
   showStarter?: boolean;
   currentSeason: string;
   showCatchUp?: boolean;
+  autoAddKey?: string;
 }) {
   const [done, setDone] = useState<Set<string>>(new Set(doneItems.map((d) => id(d.task_key, d.season))));
   const [dismissed, setDismissed] = useState<Set<string>>(new Set(dismissedKeys));
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(autoAddKey ? [autoAddKey] : []));
   const [busy, setBusy] = useState<string | null>(null);
   const [activeSeason, setActiveSeason] = useState<string>(SEASONS.includes(currentSeason as (typeof SEASONS)[number]) ? currentSeason : 'spring');
   const [catchUpDismissed, setCatchUpDismissed] = useState(false);
@@ -163,6 +165,20 @@ export default function HomeCareChecklistClient({
       // localStorage unavailable (e.g. blocked storage) — fall back to session-only dismissal
     }
   }, [currentSeason]);
+
+  // A ?add= deep-link pre-selects a task; if it's a seasonal task that lives
+  // in another season, jump to the first season it applies to so the member
+  // can see the row they were promised. Starter/essentials tasks render in
+  // their own section regardless of season, so they never need a switch.
+  const autoAddApplied = useRef(false);
+  useEffect(() => {
+    if (autoAddApplied.current || !autoAddKey) return;
+    autoAddApplied.current = true;
+    const task = tasks.find((t) => t.key === autoAddKey);
+    if (!task || task.starter || task.seasons.includes(activeSeason)) return;
+    const target = SEASONS.find((s) => task.seasons.includes(s));
+    if (target) setActiveSeason(target);
+  }, [autoAddKey, tasks, activeSeason]);
 
   const dismissCatchUp = () => {
     setCatchUpDismissed(true);

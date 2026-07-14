@@ -32,6 +32,7 @@ const telegram = read('src/lib/notify/telegramLead.ts');
 const newLeadEmail = read('src/lib/notify/newLeadEmail.ts');
 const guides = read('src/app/home-care/guides/[season]/page.tsx');
 const newsletter = read('src/lib/homecare/newsletter.ts');
+const checklistPage = read('src/app/home-care/checklist/page.tsx');
 
 test('AC1: checklist has no per-row single-book link (the fan-out is removed)', () => {
   expect(checklist).not.toContain('book?task=');
@@ -100,4 +101,27 @@ test('AC8: guides + newsletter route into the checklist flow, not one-off book l
   expect(guides).toContain('/home-care/checklist');
   expect(newsletter).not.toContain('book?task=');
   expect(newsletter).toContain('Add to plan');
+});
+
+test('AC9: guides + newsletter per-task CTAs deep-link the task via ?add=', () => {
+  // Per-item guide CTA carries the task key so the checklist pre-selects it.
+  expect(guides).toContain('/home-care/checklist?add=${encodeURIComponent(item.key)}');
+  // Newsletter "Add to plan" (HTML) and per-task text line both carry ?add=.
+  expect(newsletter).toContain('${checklistUrl}?add=${encodeURIComponent(t.key)}');
+  expect(newsletter).toContain('${checklistUrl}?add=${t.key}');
+  // The full-checklist buttons stay bare (no ?add), so they open the whole plan.
+  expect(newsletter).toContain('Open &amp; save my full checklist');
+  expect(newsletter).toContain('Open & save your full checklist: ${checklistUrl}\\n');
+});
+
+test('AC10: checklist page derives autoAddKey behind a bookable/dismissed guard', () => {
+  expect(checklistPage).toContain('add?: string');
+  // Only a bookable, non-dismissed task actually in the catalog may pre-select.
+  expect(checklistPage).toContain('t.key === addKey && t.bookable && !dismissedKeys.includes(addKey)');
+  expect(checklistPage).toContain('autoAddKey={autoAddKey}');
+});
+
+test('AC11: client accepts autoAddKey and seeds the request cart from it', () => {
+  expect(checklist).toContain('autoAddKey?: string');
+  expect(checklist).toContain('new Set(autoAddKey ? [autoAddKey] : [])');
 });
