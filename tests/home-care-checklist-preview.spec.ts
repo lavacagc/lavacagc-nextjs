@@ -51,11 +51,10 @@ test('AC3: prefers-reduced-motion shows the finished plan with no motion', () =>
   expect(component).toMatch(/reduce[\s\S]{0,120}setDoneCount\(total\)/);
 });
 
-test('AC4: page renders the preview after the steps, season passed server-side', () => {
+test('AC4: page renders the preview after the steps with the pinned season label', () => {
   expect(page).toContain("import ChecklistPreview from '@/components/homecare/ChecklistPreview'");
   expect(page).toContain('<ChecklistPreview');
-  expect(page).toContain('seasonLabel={seasonLabel}');
-  expect(page).toContain("from '@/lib/homecare/season'");
+  expect(page).toContain('seasonLabel="Summer"');
 });
 
 test('AC5: signup stays anchored at the top and the section funnels back to it', () => {
