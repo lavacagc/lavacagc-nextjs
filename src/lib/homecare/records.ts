@@ -47,6 +47,18 @@ export interface HomeFact {
 export const MAX_NOTE = 500;
 const MIN_YEAR = 1900;
 
+/**
+ * Consent for saving sensitive home details. Logged to consent_logs on the
+ * homeowner's first save (separate from the Home Care opt-in and any marketing
+ * consent). The text is the single source of truth: the capture UI shows it and
+ * the server logs this exact string, so the recorded consent matches what the
+ * homeowner saw. v1 scope is locations + appliance makes/models (no photos, no
+ * serial numbers); update this text when the photo slice ships.
+ */
+export const HOME_DETAILS_CONSENT_TYPE = 'home_care_home_details';
+export const HOME_DETAILS_CONSENT_TEXT =
+  "I'm choosing to save details about my home, like where my water, gas, and electrical shut-offs are and my appliance makes and models, so La Vaca's team can help faster when I book service. I understand La Vaca staff who work on my home can see these details, that I can view or delete them anytime from my Home Care account, and that they're deleted when I leave the program.";
+
 // Registry. Every taskKey below is a real, verified maintenance_catalog key.
 export const HOME_FACTS: HomeFact[] = [
   // --- Locations (free-text note; no structured detail) ---
