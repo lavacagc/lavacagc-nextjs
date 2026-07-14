@@ -1,7 +1,7 @@
 # Privacy Policy
 
-**Last Updated: July 9, 2026**
-**Version: 2.3**
+**Last Updated: July 14, 2026**
+**Version: 2.4**
 
 ---
 
@@ -101,6 +101,8 @@ If you join our free **"La Vaca Home Care"** program, you give us your **name, e
 When you verify your email, we place a cookie on your browser (`hc_access`, described in Section 6.6) that **recognizes you when you return** so you can view your checklist **without creating a password or logging in**. We store the date/time you last visited your checklist. If you request that we perform a maintenance task ("Book La Vaca"), we use the contact information you provide to **create a lead and follow up with you** as described elsewhere in this Policy.
 
 This is an optional program separate from our "Buy + Remodel" listings. You can leave at any time using the **unsubscribe link** in any Home Care email, which removes you from the program, stops the seasonal emails, and clears your Home Care access cookie. You may also exercise the rights in Section 8 (including access and deletion) with respect to this information.
+
+**Home Details (optional).** If you choose to save **Home Details** in La Vaca Home Care, we collect information you provide about your home, which may include the **location of your water, gas, and electrical shut-offs and electrical panel** and the **brand, model, and installation year of appliances and systems** (such as your furnace, air conditioner, or water heater). We treat this as **sensitive home-security information**. We collect it only with your **explicit, separate consent** (recorded with the date, time, and your IP address as proof), use it **solely to prepare for and perform the home-maintenance services you request**, and make it visible only to the La Vaca personnel who need it to serve you. We store it privately with restricted access, do **not** sell or share it for advertising, and exclude it from analytics and marketing. We **never store alarm or lock codes, security-system configuration, spare-key locations, or occupancy schedules**. You can view or delete these details at any time from your Home Care account or by contacting us (Section 8), and we delete them when you leave the program.
 
 ### 3.7 Monthly Newsletter
 
@@ -397,6 +399,7 @@ We retain your personal information only for as long as necessary to fulfill the
 | **Communication Content** (emails, messages, inquiries) | Duration of business relationship + 7 years | Contract enforcement; dispute resolution; quality assurance; customer service |
 | **Website Usage Data and Analytics** (IP address, browsing behavior, device information) | 26 months | Website improvement; analytics (aligned with Google Analytics default); user experience optimization |
 | **Subscriber Activity Logs** (pages viewed while signed in as a Buy + Remodel subscriber, linked to your identity) | Duration of your subscription + up to 24 months, or until you unsubscribe or request deletion | Understanding subscriber interest; improving listings and communications |
+| **Home Care Home Details** (shut-off and electrical-panel locations, appliance makes/models/installation years) | Deleted when you leave the Home Care program or on request; otherwise only while your Home Care account is active | Sensitive home-security information kept only to prepare for and perform the services you request; retention is deliberately minimized |
 | **AI Chat Transcripts** (messages exchanged with our chat assistant) | Up to 24 months, or until you request deletion | Customer service; lead follow-up; quality and safety. Our AI provider (OpenAI) retains data per its own policies |
 | **Marketing Communications Records** | Until you opt out + 30 days to process opt-out, then deleted | Direct marketing; compliance with opt-out requests |
 | **Cookies and Tracking Technologies** | Varies by cookie type: Essential (session); Analytics (26 months); Marketing (13 months) | See Section 6 for cookie-specific retention |
