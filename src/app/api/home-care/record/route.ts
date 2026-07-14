@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById } from '@/lib/homecare/homeowners';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { getClientIp } from '@/lib/rateLimit';
 import {
   getFact,
   validateFactDetail,
@@ -74,18 +75,18 @@ export async function POST(request: NextRequest) {
     // logged, do not store the data.
     if (body.consent === true) {
       try {
-        await supabaseRest(
-          'POST',
-          'consent_logs',
-          {
-            consent_type: HOME_DETAILS_CONSENT_TYPE,
-            tcpa_consent: true,
-            user_email: homeowner.email || null,
-            consent_text: HOME_DETAILS_CONSENT_TEXT,
-            user_agent: request.headers.get('user-agent') || null,
-          },
-          { prefer: 'return=minimal' },
-        );
+        const consentRow: Record<string, unknown> = {
+          consent_type: HOME_DETAILS_CONSENT_TYPE,
+          tcpa_consent: true,
+          user_email: homeowner.email || null,
+          consent_text: HOME_DETAILS_CONSENT_TEXT,
+          user_agent: request.headers.get('user-agent') || null,
+        };
+        const ip = getClientIp(request);
+        if (ip && ip !== 'unknown' && /^[0-9a-fA-F.:]+$/.test(ip)) {
+          consentRow.ip_address = ip;
+        }
+        await supabaseRest('POST', 'consent_logs', consentRow, { prefer: 'return=minimal' });
       } catch (err) {
         console.error('home-care record consent log failed:', err instanceof Error ? err.message : String(err));
         return NextResponse.json(
