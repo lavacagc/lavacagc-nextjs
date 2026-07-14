@@ -52,13 +52,17 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   ]);
 
   // Saved home facts, keyed by canonical fact_key so one saved value prefills
-  // every task row that maps to it. A single saved row means consent was already
-  // logged (the write path records consent before storing), so the capture
-  // panels skip the consent checkbox after the first save.
+  // every task row that maps to it. Prefill is built from ALL rows so a future
+  // staff-entered value still shows up for the homeowner.
   const homeRecordPrefill = Object.fromEntries(
     (homeRecords ?? []).map((r) => [r.fact_key, { note: r.note, detail: r.detail ?? {} }]),
   );
-  const homeDetailsConsentGiven = (homeRecords?.length ?? 0) > 0;
+  // Consent-already-given is inferred only from a homeowner-authored row: the
+  // record route logs the homeowner's consent before storing a homeowner write,
+  // so their own saved row proves consent. A staff-entered row (updated_by =
+  // 'staff', arriving in the staff-view slice) does not imply homeowner consent,
+  // so this fails safe by re-prompting for consent on the homeowner's first save.
+  const homeDetailsConsentGiven = (homeRecords ?? []).some((r) => r.updated_by === 'homeowner');
 
   const systems = profileRows?.[0]?.systems ?? null;
   const stage: Stage | null = profileRows?.[0]?.stage ?? stageFromLegacyType(profileRows?.[0]?.homeowner_type);

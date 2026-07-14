@@ -36,9 +36,10 @@ test('AC1: the prefill read is server-only and fail-soft (never 500s the checkli
 test('AC2: the checklist page reads saved facts and passes prefill + consent state to the client', () => {
   expect(page).toContain("import { readHomeRecords } from '@/lib/homecare/homeRecords'");
   expect(page).toContain('readHomeRecords(homeowner.id)');
-  // Consent-already-given is inferred from a saved row existing (the write path
-  // logs consent before it stores anything).
-  expect(page).toContain('const homeDetailsConsentGiven = (homeRecords?.length ?? 0) > 0;');
+  // Consent-already-given is inferred only from a homeowner-authored row (the
+  // write path logs the homeowner's consent before it stores a homeowner write;
+  // a staff-entered row must not suppress the first-save consent checkbox).
+  expect(page).toContain("const homeDetailsConsentGiven = (homeRecords ?? []).some((r) => r.updated_by === 'homeowner');");
   expect(page).toContain('homeRecordPrefill={homeRecordPrefill}');
   expect(page).toContain('homeDetailsConsentGiven={homeDetailsConsentGiven}');
 });
