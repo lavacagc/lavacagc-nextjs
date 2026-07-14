@@ -18,6 +18,12 @@ export interface TelegramLeadPayload {
   contactTimePreference?: ContactTimePreference;
   contactTimeDetails?: string;
   contactTimezone?: string;
+  /**
+   * Requested service titles for a consolidated request (e.g. a Home Care
+   * multi-task estimate). Rendered as one itemized block so the whole request
+   * arrives as a single message instead of one alert per service.
+   */
+  services?: string[];
 }
 
 // Telegram parse_mode:'HTML' requires &, <, > in text to be escaped. A stray
@@ -57,6 +63,7 @@ export async function sendTelegramLead(payload: TelegramLeadPayload): Promise<Te
     contactTimePreference,
     contactTimeDetails,
     contactTimezone,
+    services,
   } = payload;
 
   // Defensive clean — env values pasted in dashboards can carry stray whitespace,
@@ -97,6 +104,12 @@ export async function sendTelegramLead(payload: TelegramLeadPayload): Promise<Te
   }
   if (email) lines.push(`📧 <b>Email:</b> ${esc(email)}`);
   if (projectType) lines.push(`🏠 <b>Project:</b> ${esc(projectType)}`);
+  // Itemized services for a consolidated request: one block listing every
+  // service the customer picked, so a multi-service request is a single alert.
+  if (services && services.length > 0) {
+    lines.push(`🧰 <b>Services requested (${services.length}):</b>`);
+    for (const s of services) lines.push(`   • ${esc(s)}`);
+  }
   if (location) lines.push(`📍 <b>Location:</b> ${esc(location)}`);
   if (estimate) lines.push(`💰 <b>Estimate:</b> $${Math.round(estimate).toLocaleString()}`);
   if (score !== undefined) lines.push(`⭐ <b>Score:</b> ${score}/100`);

@@ -353,8 +353,28 @@ export function newLeadNotificationHtml(data: {
   contactTimePreference?: string | null;
   contactTimeDetails?: string | null;
   contactTimezone?: string | null;
+  /**
+   * Requested service titles for a consolidated request (e.g. a Home Care
+   * multi-task estimate) - rendered as one itemized block so the whole request
+   * is a single notification, not one email per service.
+   */
+  services?: string[];
 }): string {
   const timeLabel = formatContactTime(data.contactTimePreference as Parameters<typeof formatContactTime>[0]);
+
+  // Itemized services block: lists every service the customer picked, escaped
+  // (catalog titles are trusted but a stray < or & must never break the email).
+  const services = (data.services ?? []).filter((s) => typeof s === 'string' && s.trim());
+  const servicesCard = services.length
+    ? `<div style="padding:0 48px 16px 48px">
+         <div style="background-color:#f4f8f6;border-left:4px solid #146356;border-radius:0 8px 8px 0;padding:14px 18px">
+           <div style="color:#717171;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">🧰 Services requested (${services.length})</div>
+           <ul style="margin:8px 0 0 0;padding-left:20px;color:#222;font-size:15px;font-weight:600;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+             ${services.map((s) => `<li style="padding:2px 0">${escapeHtml(s)}</li>`).join('')}
+           </ul>
+         </div>
+       </div>`
+    : '';
   // Best-time block rendered as a bold highlight card, not buried in the
   // details table — mirrors the Telegram design: this is the field that
   // decides whether the owner calls now or later.
@@ -382,6 +402,7 @@ export function newLeadNotificationHtml(data: {
      ${heading('New Lead 🔥')}
      ${paragraph(`A new lead just came in from <strong>${data.source || 'the website'}</strong>.`)}
      ${bestTimeCard}
+     ${servicesCard}
      <div style="padding:0 48px">
        <table cellpadding="0" role="presentation" style="border-collapse:collapse;width:100%;border-spacing:0" width="100%">
          <tr>

@@ -17,15 +17,20 @@ test('selectTasks: seasonal = all (by priority), nudge = top 3', () => {
   expect(nudge[0].key).toBe('test_smoke_co'); // highest priority first
 });
 
-test('seasonal newsletter renders full list + book links + unsubscribe', () => {
+test('seasonal newsletter renders full list + checklist CTAs + unsubscribe', () => {
   const n = buildNewsletter({
     firstName: 'Alex', season: 'fall', tasks: TASKS, isSeasonal: true,
     baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/api/home-care/unsubscribe?token=abc',
   });
   expect(n.subject).toContain('Fall');
   expect(n.html).toContain('Hi Alex,');
-  expect(n.html).toContain('/home-care/book?task=clean_gutters'); // bookable → book link
-  expect(n.html).not.toContain('/home-care/book?task=test_smoke_co'); // DIY → no book link
+  // Consolidation: no per-task one-off booking links anywhere - pro jobs route
+  // to the saved checklist so they land in one request, not a separate alert
+  // per link.
+  expect(n.html).not.toContain('/home-care/book?task=');
+  // Each bookable task (3 of the 4) gets an "Add to plan" checklist CTA; the
+  // DIY task (test_smoke_co) gets none.
+  expect((n.html.match(/Add to plan/g) || []).length).toBe(3);
   expect(n.html).toContain('unsubscribe?token=abc');
   expect(n.text).toContain('Clean gutters');
   // Branding present.

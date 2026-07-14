@@ -27,8 +27,10 @@ interface CatalogRow extends ChecklistTask {
   priority: number;
 }
 
-export default async function ChecklistPage({ searchParams }: { searchParams: Promise<{ welcome?: string }> }) {
+export default async function ChecklistPage({ searchParams }: { searchParams: Promise<{ welcome?: string; add?: string | string[] }> }) {
   const sp = await searchParams;
+  const rawAdd = Array.isArray(sp?.add) ? sp.add[0] : sp?.add;
+  const addKey = rawAdd?.trim().slice(0, 80) || undefined;
   const cookieStore = await cookies();
   const access = await verifyHomeAccess(cookieStore.get(HC_ACCESS_COOKIE)?.value);
   if (!access) redirect('/home-care');
@@ -63,6 +65,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
     })
     .map(({ task_key, season }) => ({ task_key, season }));
   const dismissedKeys = (doneRows ?? []).filter((r) => r.status === 'dismissed').map((r) => r.task_key);
+  const autoAddKey = addKey && tasks.some((t) => t.key === addKey && t.bookable && !t.starter && !dismissedKeys.includes(addKey)) ? addKey : undefined;
   const ownedSystems = SYSTEM_QUESTIONS.filter((q) => systems?.[q.key] === true);
   const greeting = homeowner.first_name ? `Welcome back, ${homeowner.first_name}` : 'Your home checklist';
 
@@ -139,7 +142,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
             {(tasks?.length ?? 0) === 0 ? (
               <p className="text-text-secondary">Your checklist is being prepared — check back soon.</p>
             ) : (
-              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} dismissedKeys={dismissedKeys} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} />
+              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} dismissedKeys={dismissedKeys} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} autoAddKey={autoAddKey} />
             )}
           </div>
         </section>

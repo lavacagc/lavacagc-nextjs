@@ -70,8 +70,11 @@ export default async function GuidePage({ params }: { params: Promise<{ season: 
                     <h2 className="text-xl md:text-2xl font-bold text-text-primary">{item.title}</h2>
                     <p className="text-text-secondary leading-relaxed mt-2">{item.body}</p>
                     {item.bookable && (
-                      <Link href={`/home-care/book?task=${encodeURIComponent(item.key)}`} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-primary to-accent-tangerine px-4 py-2 text-sm font-bold text-primary-foreground hover:shadow-button transition-all">
-                        <Wrench className="h-4 w-4" /> Book La Vaca for this
+                      // Route to the checklist so pro jobs land in one request
+                      // and check out together, instead of firing a separate
+                      // booking (and a separate owner alert) per guide item.
+                      <Link href={`/home-care/checklist?add=${encodeURIComponent(item.key)}`} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-primary to-accent-tangerine px-4 py-2 text-sm font-bold text-primary-foreground hover:shadow-button transition-all">
+                        <Wrench className="h-4 w-4" /> Add this on my checklist →
                       </Link>
                     )}
                   </div>
