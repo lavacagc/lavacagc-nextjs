@@ -761,7 +761,7 @@ If you are a California resident, you have additional rights under the Californi
 
 **Categories of Personal Information Collected:**
 - **Identifiers:** Name, email address, phone number, mailing address (including the street address of a home where we perform work), IP address, device identifiers
-- **Commercial Information:** Transaction history, service requests, scheduled service appointments (the date and time window of a booked visit and the services booked into it), service and maintenance history, payment records, project details
+- **Commercial Information:** Transaction history, service requests, scheduled service appointments (the date and time window of a booked visit and the services booked into it), service and maintenance history, payment records, project details, property and home-system details (such as the locations of utility shut-offs and electrical panels, and appliance makes and models)
 - **Internet or Network Activity:** Browsing history, search history, interactions with our Website, pages visited, links clicked
 - **Geolocation Data:** General location based on IP address (not precise geolocation)
 - **Visual Information:** Photographs of a property that you choose to upload to us (for example the photos of the space you can add in our intake assistant - see Section 3.5)
