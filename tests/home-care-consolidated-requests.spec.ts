@@ -116,8 +116,10 @@ test('AC9: guides + newsletter per-task CTAs deep-link the task via ?add=', () =
 
 test('AC10: checklist page derives autoAddKey behind a bookable/dismissed guard', () => {
   expect(checklistPage).toContain('add?: string');
-  // Only a bookable, non-dismissed task actually in the catalog may pre-select.
-  expect(checklistPage).toContain('t.key === addKey && t.bookable && !dismissedKeys.includes(addKey)');
+  // Only a bookable, non-starter, non-dismissed task in the catalog may pre-select.
+  expect(checklistPage).toContain('t.key === addKey && t.bookable && !t.starter && !dismissedKeys.includes(addKey)');
+  // The ?add value is coerced array-safely before any string methods run.
+  expect(checklistPage).toContain('Array.isArray(sp?.add) ? sp.add[0] : sp?.add');
   expect(checklistPage).toContain('autoAddKey={autoAddKey}');
 });
 

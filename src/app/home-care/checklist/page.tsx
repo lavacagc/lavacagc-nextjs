@@ -27,9 +27,10 @@ interface CatalogRow extends ChecklistTask {
   priority: number;
 }
 
-export default async function ChecklistPage({ searchParams }: { searchParams: Promise<{ welcome?: string; add?: string }> }) {
+export default async function ChecklistPage({ searchParams }: { searchParams: Promise<{ welcome?: string; add?: string | string[] }> }) {
   const sp = await searchParams;
-  const addKey = sp?.add?.trim().slice(0, 80) || undefined;
+  const rawAdd = Array.isArray(sp?.add) ? sp.add[0] : sp?.add;
+  const addKey = rawAdd?.trim().slice(0, 80) || undefined;
   const cookieStore = await cookies();
   const access = await verifyHomeAccess(cookieStore.get(HC_ACCESS_COOKIE)?.value);
   if (!access) redirect('/home-care');
@@ -64,7 +65,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
     })
     .map(({ task_key, season }) => ({ task_key, season }));
   const dismissedKeys = (doneRows ?? []).filter((r) => r.status === 'dismissed').map((r) => r.task_key);
-  const autoAddKey = addKey && tasks.some((t) => t.key === addKey && t.bookable && !dismissedKeys.includes(addKey)) ? addKey : undefined;
+  const autoAddKey = addKey && tasks.some((t) => t.key === addKey && t.bookable && !t.starter && !dismissedKeys.includes(addKey)) ? addKey : undefined;
   const ownedSystems = SYSTEM_QUESTIONS.filter((q) => systems?.[q.key] === true);
   const greeting = homeowner.first_name ? `Welcome back, ${homeowner.first_name}` : 'Your home checklist';
 
