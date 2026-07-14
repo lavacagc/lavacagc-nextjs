@@ -82,6 +82,11 @@ const LeadSubmitSchema = z
     contact_time_details: optStr(300),
     contact_timezone: optStr(100),
     referrer: optStr(2000),
+    // Structured service titles for a consolidated request (e.g. a Home Care
+    // multi-task estimate). This rides in the notification payload ONLY - it is
+    // pulled out below before the lead is sanitized/inserted, so it can't trip
+    // the "unknown column" alert or reach the leads table.
+    services: z.array(z.string().max(200)).max(30).nullish(),
   })
   .passthrough();
 
@@ -290,13 +295,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
 
-    const { recaptchaToken, recaptchaAction, recaptchaV2Token, honeypot, ...rawLeadFields } = parsed.data as {
+    const { recaptchaToken, recaptchaAction, recaptchaV2Token, honeypot, services: rawServices, ...rawLeadFields } = parsed.data as {
       recaptchaToken?: string;
       recaptchaAction?: string;
       recaptchaV2Token?: string;
       honeypot?: string;
+      services?: string[] | null;
       [key: string]: unknown;
     };
+    // Structured service titles for the owner alert only. Destructured OUT of
+    // the lead fields above so they never reach sanitizeLeadForInsert (which
+    // would flag "services" as an unknown column and spam a warning alert) or
+    // the leads table. The durable record stays in the lead's `message`.
+    const requestedServices = Array.isArray(rawServices)
+      ? rawServices.map((s) => String(s).trim()).filter(Boolean).slice(0, 30)
+      : [];
     // Normalize the payload to what public.leads actually accepts (NOT NULL
     // contact/name columns, enum CHECKs, integer/timestamp types, no unknown
     // columns). A well-formed form payload passes through unchanged; anything
@@ -464,6 +477,10 @@ export async function POST(request: NextRequest) {
     const name = leadContext.name || '';
     const projectType = (leadFields.project_type || leadFields.inquiry_type || 'General Inquiry') as string;
     const source = (leadFields.source || 'website') as string;
+    // Home Care requests store project_type 'other'; relabel just the owner
+    // alert to "Home Care" so the notification is legible at a glance. The
+    // stored lead value is unchanged.
+    const alertProjectType = source.startsWith('home_care') ? 'Home Care' : projectType;
     const email = (leadFields.email || '') as string;
     const phone = (leadFields.phone || '') as string;
 
@@ -487,13 +504,14 @@ export async function POST(request: NextRequest) {
           name,
           email,
           phone,
-          projectType,
+          projectType: alertProjectType,
           score: finalLeadData.score as number | undefined,
           tier: finalLeadData.tier as 'hot' | 'warm' | 'cold' | undefined,
           source,
           contactTimePreference,
           contactTimeDetails,
           contactTimezone,
+          services: requestedServices.length ? requestedServices : undefined,
         }),
         6000,
         'telegram-lead'
@@ -506,12 +524,13 @@ export async function POST(request: NextRequest) {
           name,
           email,
           phone,
-          projectType,
+          projectType: alertProjectType,
           source,
           tier: finalLeadData.tier as 'hot' | 'warm' | 'cold' | undefined,
           contactTimePreference,
           contactTimeDetails,
           contactTimezone,
+          services: requestedServices.length ? requestedServices : undefined,
           leadId,
         }),
         4000,

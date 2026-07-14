@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, Plus, Wrench, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy } from 'lucide-react';
+import { Check, Plus, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy } from 'lucide-react';
 import { hasGuideItem } from '@/lib/homecare/guides';
 import { prevSeason, seasonStart, SEASONS, type Season } from '@/lib/homecare/season';
 
@@ -366,7 +366,7 @@ export default function HomeCareChecklistClient({
               type="button"
               onClick={() => toggleSelect(t.key)}
               aria-pressed={isSel}
-              aria-label={isSel ? `Remove ${t.title} from estimate` : `Add ${t.title} to estimate`}
+              aria-label={isSel ? `Remove ${t.title} from request` : `Add ${t.title} to request`}
               className="group -my-2.5 -mr-2 flex shrink-0 items-center justify-center"
             >
               {/* 36px visible circle inside the 44px tap target */}
@@ -385,9 +385,20 @@ export default function HomeCareChecklistClient({
             </a>
           )}
           {t.bookable && (
-            <a href={`/home-care/book?task=${encodeURIComponent(t.key)}`} className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline">
-              <Wrench className="h-3.5 w-3.5" /> Book this now →
-            </a>
+            // Add-to-request toggle (the labelled sibling of the ＋ circle).
+            // There is no per-row "book now" anymore: every service goes into
+            // one request and checks out together, so the owner gets a single
+            // consolidated message instead of one alert per task.
+            <button
+              type="button"
+              onClick={() => toggleSelect(t.key)}
+              aria-pressed={isSel}
+              className="group inline-flex items-center justify-start"
+            >
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-primary group-hover:underline">
+                {isSel ? <><Check className="h-3.5 w-3.5" /> Added to request</> : <><Plus className="h-3.5 w-3.5" /> Add to request</>}
+              </span>
+            </button>
           )}
           {!isDone && (
             <button
@@ -513,7 +524,7 @@ export default function HomeCareChecklistClient({
       {hasBookable && selected.size === 0 && (
         <div className="flex items-center gap-2 rounded-lg bg-primary/5 px-3 py-2 text-xs font-semibold text-text-secondary">
           <span className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-primary/40 text-primary"><Plus className="h-3.5 w-3.5" /></span>
-          Tap the <span className="text-primary font-bold">＋</span> on any task to add it to your estimate.
+          Add any task you&apos;d like us to handle, then send them all as one request.
         </div>
       )}
 
@@ -617,10 +628,10 @@ export default function HomeCareChecklistClient({
       {selected.size > 0 && (
         <a
           href={requestUrl}
-          aria-label={`Request an estimate for ${selected.size} selected service${selected.size > 1 ? 's' : ''}`}
+          aria-label={`Review your request for ${selected.size} selected service${selected.size > 1 ? 's' : ''}`}
           className="fixed right-4 bottom-6 z-[60] inline-flex items-center gap-2.5 rounded-full bg-gradient-to-r from-primary via-accent-sunset to-accent-tangerine py-3 pl-5 pr-3 text-sm font-bold text-white shadow-button hover:-translate-y-px transition-all"
         >
-          <ClipboardList className="h-4 w-4" /> Estimate
+          <ClipboardList className="h-4 w-4" /> Review request
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-extrabold text-primary">{selected.size}</span>
         </a>
       )}

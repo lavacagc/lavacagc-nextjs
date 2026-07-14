@@ -17,6 +17,8 @@ export interface NewLeadEmailPayload {
   contactTimePreference?: ContactTimePreference;
   contactTimeDetails?: string;
   contactTimezone?: string;
+  /** Requested service titles for a consolidated request (itemized in the email). */
+  services?: string[];
   /** Lead row id, for linking the audit row back to the lead. */
   leadId?: string | null;
 }
@@ -45,6 +47,7 @@ export async function sendNewLeadEmail(payload: NewLeadEmailPayload): Promise<Ne
     contactTimePreference,
     contactTimeDetails,
     contactTimezone,
+    services,
     leadId,
   } = payload;
 
@@ -70,6 +73,7 @@ export async function sendNewLeadEmail(payload: NewLeadEmailPayload): Promise<Ne
       contactTimePreference,
       contactTimeDetails,
       contactTimezone,
+      services,
     }),
     category: 'lead_notification',
     leadId: leadId ?? null,

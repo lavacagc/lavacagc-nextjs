@@ -106,6 +106,10 @@ export default function HomeCareBookingForm({ services, prefill }: { services: B
           project_type: 'other',
           source: isMulti ? 'home_care_estimate_request' : 'home_care_booking',
           message: `Home Care ${isMulti ? 'estimate request' : 'booking'} — ${summary} (tasks: ${keys})${notes.trim() ? `\n\nNotes: ${notes.trim()}` : ''}`,
+          // Structured titles so the owner alert itemizes every requested
+          // service in one message (destructured out server-side before the
+          // lead is saved - the durable record stays in `message` above).
+          services: services.map((s) => s.title),
           recaptchaToken,
           recaptchaAction: RECAPTCHA_ACTION,
           honeypot: website,

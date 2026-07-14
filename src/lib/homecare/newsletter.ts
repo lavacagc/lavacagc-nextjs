@@ -65,8 +65,11 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
   const row = (t: NewsletterTask) => {
     const badge = t.diy_or_pro === 'pro' ? 'Pro' : t.diy_or_pro === 'diy' ? 'DIY' : 'DIY / Pro';
     const badgeColor = t.diy_or_pro === 'pro' ? '#b8761f' : '#177a66';
+    // Pro jobs route to the saved checklist (email can't hold a cart) so the
+    // member adds them to one request and checks out once - no per-task
+    // one-off booking, so no separate owner alert per link.
     const book = t.bookable
-      ? `<a href="${baseUrl}/home-care/book?task=${encodeURIComponent(t.key)}" style="display:inline-block;background:#EE9639;color:#1a1003;font-weight:800;text-decoration:none;padding:8px 14px;border-radius:8px;font-size:13px;white-space:nowrap">Book La Vaca</a>`
+      ? `<a href="${checklistUrl}" style="display:inline-block;background:#EE9639;color:#1a1003;font-weight:800;text-decoration:none;padding:8px 14px;border-radius:8px;font-size:13px;white-space:nowrap">Add to plan</a>`
       : '';
     return `<tr>
       <td width="30" valign="top" style="padding:14px 0 14px 0"><div style="width:20px;height:20px;border:2px solid #c7d0dc;border-radius:5px"></div></td>
@@ -138,7 +141,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
   let text = `${firstName ? `Hi ${firstName},` : 'Hi there,'}\n\n${intro}\n\n`;
   for (const t of list) {
     text += `[ ] ${t.title} — ${t.blurb}\n`;
-    if (t.bookable) text += `    Book La Vaca: ${baseUrl}/home-care/book?task=${t.key}\n`;
+    if (t.bookable) text += `    Add to your checklist to have La Vaca do it: ${checklistUrl}\n`;
   }
   text += `\nOpen & save your full checklist: ${checklistUrl}\n\nKnow someone who'd want this? They can get their own free plan: ${baseUrl}/home-care\n\nLa Vaca General Contractors · ${PHONE} · ${HIC}\n`;
   if (preferencesUrl) text += `Manage email preferences: ${preferencesUrl}\n`;
