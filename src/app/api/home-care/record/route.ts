@@ -83,7 +83,6 @@ export async function POST(request: NextRequest) {
       try {
         const consentRow: Record<string, unknown> = {
           consent_type: HOME_DETAILS_CONSENT_TYPE,
-          tcpa_consent: true,
           user_email: homeowner.email || null,
           consent_text: HOME_DETAILS_CONSENT_TEXT,
           user_agent: request.headers.get('user-agent') || null,

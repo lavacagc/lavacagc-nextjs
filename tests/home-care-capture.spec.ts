@@ -70,12 +70,12 @@ test('AC5: first-save consent uses the exact logged constant, only on the first 
   expect(capture).toContain("import { HOME_DETAILS_CONSENT_TEXT, MAX_NOTE, type HomeFact } from '@/lib/homecare/records'");
   expect(capture).toContain('{HOME_DETAILS_CONSENT_TEXT}');
   expect(capture).not.toContain(HOME_DETAILS_CONSENT_TEXT.slice(0, 40));
-  // Consent is sent ONLY on the first save (showConsent), and Save is blocked
-  // until the box is checked on that first save.
-  expect(capture).toContain('...(showConsent ? { consent: true } : {})');
-  expect(capture).toContain('(!showConsent || consentChecked)');
+  // Consent is sent only while it is still needed (first save, or after a 403
+  // re-prompt), and Save is blocked until the box is checked then.
+  expect(capture).toContain('...(needConsent ? { consent: true } : {})');
+  expect(capture).toContain('(!needConsent || consentChecked)');
   // The consent block only renders while consent is still needed.
-  expect(capture).toMatch(/\{showConsent && \([\s\S]{0,400}type="checkbox"/);
+  expect(capture).toMatch(/\{needConsent && \([\s\S]{0,400}type="checkbox"/);
 });
 
 test('AC6: the save posts the right contract in-process, never a self-fetch to another route', () => {
