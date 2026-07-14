@@ -14,9 +14,10 @@
  * It mirrors the sanitize-on-write discipline of SYSTEM_QUESTIONS/sanitizeSystems
  * in profile.ts.
  *
- * Slice 1: registry + validation only. No UI, no route (those are later slices).
- * Per owner decision, v1 captures locations + a few appliance details
- * (brand/model/install year/filter size) but NOT serial numbers.
+ * Slice 1 added the registry + validation; Slice 2 adds the homeowner write
+ * route (api/home-care/record) plus the first-save consent constants below. The
+ * capture UI is a later slice. Per owner decision, v1 captures locations + a few
+ * appliance details (brand/model/install year/filter size) but NOT serial numbers.
  */
 
 export type FactKind = 'location' | 'appliance';
