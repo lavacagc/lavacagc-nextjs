@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, Plus, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy } from 'lucide-react';
+import { Check, Plus, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy, MapPin, Wrench } from 'lucide-react';
 import { hasGuideItem } from '@/lib/homecare/guides';
 import { prevSeason, seasonStart, SEASONS, type Season } from '@/lib/homecare/season';
+import { getFactForTask } from '@/lib/homecare/records';
+import HomeCareRecordCapture, { type RecordValue } from '@/components/homecare/HomeCareRecordCapture';
 
 const SHARE_URL = 'https://www.lavacagc.com/home-care?utm_source=member_share&utm_medium=portal&utm_campaign=home_care_share';
 const SHARE_TEXT = 'I use this free seasonal checklist to stay on top of the house — takes 20 seconds to set up, no account.';
@@ -108,6 +110,8 @@ export default function HomeCareChecklistClient({
   currentSeason,
   showCatchUp = false,
   autoAddKey,
+  homeRecordPrefill = {},
+  homeDetailsConsentGiven = false,
 }: {
   tasks: ChecklistTask[];
   doneItems: { task_key: string; season: string }[];
@@ -116,6 +120,10 @@ export default function HomeCareChecklistClient({
   currentSeason: string;
   showCatchUp?: boolean;
   autoAddKey?: string;
+  /** Saved home facts keyed by canonical fact_key, for prefilling capture panels. */
+  homeRecordPrefill?: Record<string, RecordValue>;
+  /** Whether the homeowner has already consented to saving home details (skip the checkbox). */
+  homeDetailsConsentGiven?: boolean;
 }) {
   const [done, setDone] = useState<Set<string>>(new Set(doneItems.map((d) => id(d.task_key, d.season))));
   const [dismissed, setDismissed] = useState<Set<string>>(new Set(dismissedKeys));
@@ -134,6 +142,28 @@ export default function HomeCareChecklistClient({
       else next.add(k);
       return next;
     });
+  };
+
+  // My Home Systems: an overlay of saved facts keyed by canonical fact_key, so a
+  // save from one task row immediately prefills (and flips the label on) every
+  // sibling row that maps to the same fact. consentGiven flips to true after the
+  // first successful save so later panels skip the consent checkbox.
+  const [records, setRecords] = useState<Map<string, RecordValue>>(() => new Map(Object.entries(homeRecordPrefill)));
+  const [consentGiven, setConsentGiven] = useState(homeDetailsConsentGiven);
+  const [capturePanelOpen, setCapturePanelOpen] = useState<Set<string>>(new Set());
+
+  const toggleCapture = (k: string) => {
+    setCapturePanelOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  };
+
+  const handleRecordSaved = (factKey: string, value: RecordValue) => {
+    setRecords((prev) => new Map(prev).set(factKey, value));
+    setConsentGiven(true);
   };
 
   // The plan header sticks just below the site header, whose height varies by
@@ -348,6 +378,12 @@ export default function HomeCareChecklistClient({
     const isSel = selected.has(t.key);
     const cost = costLabel(t.est_cost_low, t.est_cost_high);
     const freq = FREQ_LABEL[t.frequency];
+    // My Home Systems: the canonical fact this task can capture (if any), whether
+    // it's already saved, and whether its inline panel is open.
+    const fact = getFactForTask(t.key);
+    const panelKey = id(t.key, season);
+    const captureOpen = capturePanelOpen.has(panelKey);
+    const saved = fact ? records.has(fact.key) : false;
     return (
       <div key={`${t.key}-${season}`} className={`rounded-xl border bg-card p-4 shadow-card transition-colors ${isSel ? 'border-primary bg-primary/5' : 'border-border'} ${isDone ? 'opacity-70' : ''}`}>
         {/* Title line: checkbox + title + badges (+ estimate toggle). The
@@ -416,6 +452,28 @@ export default function HomeCareChecklistClient({
               </span>
             </button>
           )}
+          {fact && (
+            // My Home Systems: save where a system is (or its make/model) so La
+            // Vaca can help faster next time. Teal to read as "your home", not a
+            // booking action. The button keeps a full 44px tap target; the small
+            // visual lives in the nested span.
+            <button
+              type="button"
+              onClick={() => toggleCapture(panelKey)}
+              aria-expanded={captureOpen}
+              className="group inline-flex items-center justify-start"
+            >
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-accent-teal group-hover:underline">
+                {saved ? (
+                  <><Check className="h-3.5 w-3.5" /> Saved home detail · edit</>
+                ) : fact.kind === 'location' ? (
+                  <><MapPin className="h-3.5 w-3.5" /> Add where this is</>
+                ) : (
+                  <><Wrench className="h-3.5 w-3.5" /> Add details</>
+                )}
+              </span>
+            </button>
+          )}
           {!isDone && (
             <button
               type="button"
@@ -429,6 +487,17 @@ export default function HomeCareChecklistClient({
             </button>
           )}
         </div>
+        {fact && captureOpen && (
+          <div className="mt-3">
+            <HomeCareRecordCapture
+              fact={fact}
+              sourceTaskKey={t.key}
+              prefill={records.get(fact.key)}
+              showConsent={!consentGiven}
+              onSaved={(value) => handleRecordSaved(fact.key, value)}
+            />
+          </div>
+        )}
       </div>
     );
   };
