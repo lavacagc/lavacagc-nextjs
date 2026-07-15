@@ -52,7 +52,9 @@ test('AC3: recap entries edit in place by reusing the capture component', () => 
 test('AC4: delete is a two-tap confirm, optimistic with revert, in-process DELETE', () => {
   // Two-tap confirm so a saved detail is never lost by an accidental tap.
   expect(client).toContain('confirmDelete === fact.key ?');
-  expect(client).toContain('onClick={() => setConfirmDelete(fact.key)}');
+  // First tap arms the confirm for this fact (the trigger also clears any prior
+  // delete error). Assert the state-setter, not the exact handler body.
+  expect(client).toContain('setConfirmDelete(fact.key)');
   // Optimistic remove from the overlay Map, DELETE to the record route, revert on failure.
   expect(client).toContain("method: 'DELETE'");
   expect(client).toContain("fetch('/api/home-care/record'");

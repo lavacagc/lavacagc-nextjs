@@ -16,10 +16,13 @@
  *
  * Slice 1 added the registry + validation; Slice 2 added the homeowner write
  * route (api/home-care/record) plus the first-save consent constants below;
- * Slice 3 adds the inline capture UI on the checklist (HomeCareRecordCapture,
- * prefilled via readHomeRecords in homeRecords.ts). Per owner decision, v1
- * captures locations + a few appliance details (brand/model/install year/filter
- * size) but NOT serial numbers.
+ * Slice 3 added the inline capture UI on the checklist (HomeCareRecordCapture,
+ * prefilled via readHomeRecords in homeRecords.ts); Slice 4 adds the "My Home"
+ * recap on the checklist - a collapsed summary of every saved detail with
+ * view/edit/delete controls (delete via DELETE api/home-care/record), honoring
+ * the "view or delete anytime" half of the consent promise. Per owner decision,
+ * v1 captures locations + a few appliance details (brand/model/install year/
+ * filter size) but NOT serial numbers.
  */
 
 export type FactKind = 'location' | 'appliance';
