@@ -193,10 +193,11 @@ export default function HomeCareChecklistClient({
   // promise. Optimistic with revert, and a two-tap confirm so a saved detail is
   // never lost by an accidental tap.
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [deletingFact, setDeletingFact] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleRecordDelete = async (factKey: string) => {
     const prev = records.get(factKey);
+    setDeleteError(null);
     setRecords((m) => {
       const next = new Map(m);
       next.delete(factKey);
@@ -208,7 +209,6 @@ export default function HomeCareChecklistClient({
       return next;
     });
     setConfirmDelete(null);
-    setDeletingFact(factKey);
     try {
       const res = await fetch('/api/home-care/record', {
         method: 'DELETE',
@@ -220,8 +220,7 @@ export default function HomeCareChecklistClient({
     } catch {
       // Revert so the homeowner never silently loses a saved detail.
       if (prev) setRecords((m) => new Map(m).set(factKey, prev));
-    } finally {
-      setDeletingFact(null);
+      setDeleteError(factKey);
     }
   };
 
@@ -623,7 +622,7 @@ export default function HomeCareChecklistClient({
                     {confirmDelete === fact.key ? (
                       <div className="flex shrink-0 items-center gap-0.5">
                         <span className="text-xs font-semibold text-text-secondary">Remove?</span>
-                        <button type="button" onClick={() => handleRecordDelete(fact.key)} disabled={deletingFact === fact.key} aria-label={`Confirm remove ${fact.label}`} className="group/y flex items-center justify-center">
+                        <button type="button" onClick={() => handleRecordDelete(fact.key)} aria-label={`Confirm remove ${fact.label}`} className="group/y flex items-center justify-center">
                           <span className="flex h-7 w-7 items-center justify-center rounded-md text-destructive group-hover/y:bg-destructive/10"><Check className="h-4 w-4" /></span>
                         </button>
                         <button type="button" onClick={() => setConfirmDelete(null)} aria-label="Cancel remove" className="group/n flex items-center justify-center">
@@ -635,12 +634,15 @@ export default function HomeCareChecklistClient({
                         <button type="button" onClick={() => toggleCapture(editKey)} aria-expanded={editing} aria-label={`Edit ${fact.label}`} className="group/e flex items-center justify-center">
                           <span className="flex h-7 w-7 items-center justify-center rounded-md text-accent-teal group-hover/e:bg-accent-teal/15"><Pencil className="h-3.5 w-3.5" /></span>
                         </button>
-                        <button type="button" onClick={() => setConfirmDelete(fact.key)} aria-label={`Remove ${fact.label}`} className="group/d flex items-center justify-center">
+                        <button type="button" onClick={() => { setConfirmDelete(fact.key); setDeleteError(null); }} aria-label={`Remove ${fact.label}`} className="group/d flex items-center justify-center">
                           <span className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted group-hover/d:bg-destructive/10 group-hover/d:text-destructive"><Trash2 className="h-3.5 w-3.5" /></span>
                         </button>
                       </div>
                     )}
                   </div>
+                  {deleteError === fact.key && (
+                    <p className="px-2 pt-0.5 text-xs font-semibold text-destructive">Could not remove that. Please try again.</p>
+                  )}
                   {editing && (
                     <div className="px-2 pb-2 pt-1">
                       <HomeCareRecordCapture
