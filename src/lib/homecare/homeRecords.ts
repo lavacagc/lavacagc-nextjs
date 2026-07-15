@@ -42,6 +42,25 @@ export async function readHomeRecords(homeownerId: string): Promise<HomeRecordRo
 }
 
 /**
+ * Strict variant for the STAFF Home Record detail view (Slice 6). Unlike the
+ * homeowner-facing readHomeRecords, this does NOT swallow Supabase errors: on a
+ * sensitive visit-prep path a transient read failure must surface as a 500, not
+ * masquerade as an empty "Nothing saved yet" record (which would also write an
+ * audit row with fact_keys: [] misrepresenting what was actually shown). Any
+ * Supabase error - including a missing secret key or a not-yet-created table -
+ * throws, so the caller fails closed before the audit insert. Pre-go-live this
+ * path is never reached: the fail-soft roster returns [] so no detail link
+ * exists to open.
+ */
+export async function readHomeRecordsStrict(homeownerId: string): Promise<HomeRecordRow[]> {
+  const rows = await supabaseRest<HomeRecordRow[]>(
+    'GET',
+    `home_records?select=fact_key,note,detail,updated_by,updated_at&homeowner_id=eq.${encodeURIComponent(homeownerId)}`,
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
+/**
  * The saved home details relevant to a set of booked task keys, formatted as
  * "Label: value" lines for the booking owner-alert rider (Slice 5).
  *

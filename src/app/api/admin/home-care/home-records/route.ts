@@ -24,7 +24,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireHomeCareStaff } from '@/lib/homecare/staffAccess';
 import { findHomeownerById } from '@/lib/homecare/homeowners';
-import { readHomeRecords } from '@/lib/homecare/homeRecords';
+import { readHomeRecordsStrict } from '@/lib/homecare/homeRecords';
 import { HOME_FACTS, factValueSummary } from '@/lib/homecare/records';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { getClientIp } from '@/lib/rateLimit';
@@ -33,6 +33,9 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const ROSTER_PAGE = 1000;
+const ROSTER_MAX_ROWS = 100000;
 
 interface RosterSourceRow {
   homeowner_id: string;
@@ -77,12 +80,16 @@ export async function GET(request: NextRequest) {
  * staff page should render an empty roster, not an error.
  */
 async function roster() {
-  let rows: RosterSourceRow[] = [];
+  const rows: RosterSourceRow[] = [];
   try {
-    rows = (await supabaseRest<RosterSourceRow[]>(
-      'GET',
-      'home_records?select=homeowner_id,updated_at',
-    )) ?? [];
+    for (let offset = 0; offset < ROSTER_MAX_ROWS; offset += ROSTER_PAGE) {
+      const page = (await supabaseRest<RosterSourceRow[]>(
+        'GET',
+        `home_records?select=homeowner_id,updated_at&order=id.asc&limit=${ROSTER_PAGE}&offset=${offset}`,
+      )) ?? [];
+      rows.push(...page);
+      if (page.length < ROSTER_PAGE) break;
+    }
   } catch (err) {
     console.error('home-record roster read failed:', err instanceof Error ? err.message : String(err));
     return NextResponse.json({ ok: true, roster: [] });
@@ -138,7 +145,7 @@ async function detail(request: NextRequest, staffEmail: string, homeownerId: str
       return NextResponse.json({ ok: false, error: 'Homeowner not found' }, { status: 404 });
     }
 
-    const rows = await readHomeRecords(homeownerId);
+    const rows = await readHomeRecordsStrict(homeownerId);
     const byFactKey = new Map(rows.map((r) => [r.fact_key, r]));
 
     // Registry order + registry filter, same as the recap and the booking rider.

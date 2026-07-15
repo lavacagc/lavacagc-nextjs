@@ -106,10 +106,12 @@ test('AC6: the audit row logs fact KEYS and requester metadata, never values', (
 });
 
 test('AC7: the roster exposes counts and freshness only - no fact values, no logged view needed', () => {
-  // Roster reads only homeowner_id + updated_at from home_records...
-  expect(route).toContain("'home_records?select=homeowner_id,updated_at'");
+  // Roster reads only homeowner_id + updated_at from home_records, paged with an
+  // explicit limit/offset so a large dataset never silently truncates...
+  expect(route).toContain('home_records?select=homeowner_id,updated_at&order=id.asc&limit=');
+  expect(route).toMatch(/offset=\$\{offset\}/);
   // ...and identity fields from homeowners - never note/detail.
-  expect(route).toMatch(/homeowners\?id=in\.[^']*select=id,email,first_name,zip,home_type,status/);
+  expect(route).toMatch(/homeowners\?id=in\.[^`']*select=id,email,first_name,zip,home_type,status/);
 });
 
 test('AC8: detail rendering goes through the registry chokepoint', () => {
