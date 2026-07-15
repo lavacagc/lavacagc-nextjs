@@ -110,8 +110,10 @@ test('AC7: the roster exposes counts and freshness only - no fact values, no log
   // explicit limit/offset so a large dataset never silently truncates...
   expect(route).toContain('home_records?select=homeowner_id,updated_at&order=id.asc&limit=');
   expect(route).toMatch(/offset=\$\{offset\}/);
-  // ...and identity fields from homeowners - never note/detail.
+  // ...and identity fields from homeowners - never note/detail. The id lookup is
+  // batched so a large id set never truncates or overflows the request URL.
   expect(route).toMatch(/homeowners\?id=in\.[^`']*select=id,email,first_name,zip,home_type,status/);
+  expect(route).toMatch(/slice\(i,\s*i\s*\+\s*OWNER_ID_BATCH\)/);
 });
 
 test('AC8: detail rendering goes through the registry chokepoint', () => {

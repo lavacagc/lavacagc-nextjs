@@ -36,6 +36,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const ROSTER_PAGE = 1000;
 const ROSTER_MAX_ROWS = 100000;
+const OWNER_ID_BATCH = 100;
 
 interface RosterSourceRow {
   homeowner_id: string;
@@ -106,13 +107,17 @@ async function roster() {
     }
   }
 
-  let owners: HomeownerLite[] = [];
+  const owners: HomeownerLite[] = [];
   try {
-    const ids = [...byOwner.keys()].join(',');
-    owners = (await supabaseRest<HomeownerLite[]>(
-      'GET',
-      `homeowners?id=in.(${ids})&select=id,email,first_name,zip,home_type,status`,
-    )) ?? [];
+    const allIds = [...byOwner.keys()];
+    for (let i = 0; i < allIds.length; i += OWNER_ID_BATCH) {
+      const ids = allIds.slice(i, i + OWNER_ID_BATCH).join(',');
+      const batch = (await supabaseRest<HomeownerLite[]>(
+        'GET',
+        `homeowners?id=in.(${ids})&select=id,email,first_name,zip,home_type,status`,
+      )) ?? [];
+      owners.push(...batch);
+    }
   } catch (err) {
     console.error('home-record roster owners read failed:', err instanceof Error ? err.message : String(err));
     return NextResponse.json({ ok: true, roster: [] });
