@@ -1,7 +1,8 @@
 /**
  * Server-only read of a homeowner's saved "home facts" (My Home Systems), used
  * to prefill the inline capture panels and seed the "My Home" recap on the
- * checklist.
+ * checklist (readHomeRecords), and to attach the booked services' saved details
+ * to the booking owner-alert (readBookedHomeDetails, Slice 5).
  *
  * This lives in its own module - NOT in records.ts - on purpose: records.ts is a
  * pure registry that client components import (getFactForTask, the consent text,

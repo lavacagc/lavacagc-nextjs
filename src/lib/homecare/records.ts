@@ -20,9 +20,12 @@
  * prefilled via readHomeRecords in homeRecords.ts); Slice 4 adds the "My Home"
  * recap on the checklist - a collapsed summary of every saved detail with
  * view/edit/delete controls (delete via DELETE api/home-care/record), honoring
- * the "view or delete anytime" half of the consent promise. Per owner decision,
- * v1 captures locations + a few appliance details (brand/model/install year/
- * filter size) but NOT serial numbers.
+ * the "view or delete anytime" half of the consent promise; Slice 5 lifts
+ * factValueSummary (below) into this pure registry so the recap and the booking
+ * owner-alert rider (readBookedHomeDetails in homeRecords.ts) render a saved
+ * detail identically. Per owner decision, v1 captures locations + a few
+ * appliance details (brand/model/install year/filter size) but NOT serial
+ * numbers.
  */
 
 export type FactKind = 'location' | 'appliance';
