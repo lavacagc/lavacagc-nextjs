@@ -62,7 +62,8 @@ test('AC4: booking form sends structured service titles for itemization', () => 
 test('AC5: submit route strips services before the sanitizer and passes them to both alerts', () => {
   // Destructured out of the lead fields, so they never reach
   // sanitizeLeadForInsert (no "unknown column" alert) or the leads table.
-  expect(submitRoute).toMatch(/services:\s*rawServices,\s*\.\.\.rawLeadFields/);
+  // (Slice 5's task_keys is destructured out alongside services here too.)
+  expect(submitRoute).toMatch(/services:\s*rawServices,\s*task_keys:\s*rawTaskKeys,\s*\.\.\.rawLeadFields/);
   expect(submitRoute).toContain('requestedServices');
   // Handed to both owner-alert channels.
   const passCount = submitRoute.split('services: requestedServices.length ? requestedServices : undefined').length - 1;

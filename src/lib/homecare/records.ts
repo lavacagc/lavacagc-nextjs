@@ -173,6 +173,31 @@ export function isCaptureTask(taskKey: string): boolean {
   return BY_TASK.has(taskKey);
 }
 
+/** A saved fact's value: free-text `note` (locations) and/or structured `detail` (appliances). */
+export interface FactValue {
+  note: string | null;
+  detail?: Record<string, unknown> | null;
+}
+
+/**
+ * One-line human summary of a saved fact's value. Shared by the checklist "My
+ * Home" recap and the booking owner-alert rider (Slice 5), so both render a
+ * saved detail identically. Location facts show their note; appliance facts join
+ * their filled fields (then any note) with a middot separator. Pure - depends
+ * only on the registry and the {note, detail} shape - so it stays importable by
+ * both client and server.
+ */
+export function factValueSummary(fact: HomeFact, val: FactValue): string {
+  if (fact.kind === 'location') return val.note ?? '';
+  const parts = fact.fields
+    .map((f) => val.detail?.[f.key])
+    .filter((v) => v != null && v !== '')
+    .map(String);
+  const base = parts.join(' · ');
+  if (val.note) return base ? `${base} · ${val.note}` : val.note;
+  return base;
+}
+
 export interface FactValidation {
   ok: boolean;
   cleaned: Record<string, string | number>;

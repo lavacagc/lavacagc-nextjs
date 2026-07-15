@@ -19,6 +19,12 @@ export interface NewLeadEmailPayload {
   contactTimezone?: string;
   /** Requested service titles for a consolidated request (itemized in the email). */
   services?: string[];
+  /**
+   * Saved home details ("My Home Systems") for the booked services, itemized in
+   * the email. Internal to La Vaca; resolved server-side from the homeowner's
+   * own records.
+   */
+  homeDetails?: string[];
   /** Lead row id, for linking the audit row back to the lead. */
   leadId?: string | null;
 }
@@ -48,6 +54,7 @@ export async function sendNewLeadEmail(payload: NewLeadEmailPayload): Promise<Ne
     contactTimeDetails,
     contactTimezone,
     services,
+    homeDetails,
     leadId,
   } = payload;
 
@@ -74,6 +81,7 @@ export async function sendNewLeadEmail(payload: NewLeadEmailPayload): Promise<Ne
       contactTimeDetails,
       contactTimezone,
       services,
+      homeDetails,
     }),
     category: 'lead_notification',
     leadId: leadId ?? null,

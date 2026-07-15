@@ -24,6 +24,13 @@ export interface TelegramLeadPayload {
    * arrives as a single message instead of one alert per service.
    */
   services?: string[];
+  /**
+   * Saved home details ("My Home Systems") for the booked services - e.g.
+   * "Water main shut-off: Basement, behind the stairs". Resolved server-side
+   * from the homeowner's own records; internal to La Vaca so the crew arrives
+   * knowing where things are.
+   */
+  homeDetails?: string[];
 }
 
 // Telegram parse_mode:'HTML' requires &, <, > in text to be escaped. A stray
@@ -64,6 +71,7 @@ export async function sendTelegramLead(payload: TelegramLeadPayload): Promise<Te
     contactTimeDetails,
     contactTimezone,
     services,
+    homeDetails,
   } = payload;
 
   // Defensive clean — env values pasted in dashboards can carry stray whitespace,
@@ -109,6 +117,12 @@ export async function sendTelegramLead(payload: TelegramLeadPayload): Promise<Te
   if (services && services.length > 0) {
     lines.push(`🧰 <b>Services requested (${services.length}):</b>`);
     for (const s of services) lines.push(`   • ${esc(s)}`);
+  }
+  // Saved home details for the booked services (My Home Systems). Internal to
+  // La Vaca - helps the crew arrive knowing where the shut-offs/panel are.
+  if (homeDetails && homeDetails.length > 0) {
+    lines.push(`🏡 <b>Home details for this visit (${homeDetails.length}):</b>`);
+    for (const d of homeDetails) lines.push(`   • ${esc(d)}`);
   }
   if (location) lines.push(`📍 <b>Location:</b> ${esc(location)}`);
   if (estimate) lines.push(`💰 <b>Estimate:</b> $${Math.round(estimate).toLocaleString()}`);
