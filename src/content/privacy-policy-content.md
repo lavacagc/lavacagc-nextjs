@@ -1061,7 +1061,7 @@ Before initiating any legal action, we encourage you to contact us using the inf
 
 This Privacy Policy is effective as of the "Last Updated" date indicated at the top of this document.
 
-**Last Updated:** July 9, 2026
-**Version:** 2.3
+**Last Updated:** July 14, 2026
+**Version:** 2.4
 **Original Effective Date:** November 12, 2025
 
