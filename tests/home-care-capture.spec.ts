@@ -45,7 +45,9 @@ test('AC2: the checklist page reads saved facts and passes prefill + consent sta
 });
 
 test('AC3: the capture trigger + panel render only for a task that maps to a fact', () => {
-  expect(client).toContain("import { getFactForTask } from '@/lib/homecare/records'");
+  // getFactForTask is imported from the records registry (slice 4 later added
+  // HOME_FACTS/HomeFact to the same import, so match the symbol, not the line).
+  expect(client).toMatch(/import \{[^}]*\bgetFactForTask\b[^}]*\} from '@\/lib\/homecare\/records'/);
   expect(client).toContain("import HomeCareRecordCapture, { type RecordValue } from '@/components/homecare/HomeCareRecordCapture'");
   expect(client).toContain('const fact = getFactForTask(t.key);');
   // Trigger is gated on `fact` and toggles the panel.
