@@ -4,6 +4,7 @@ import path from 'path';
 import { mkdirSync, writeFileSync } from 'fs';
 import { buildReleaseEmail, type ReleaseFeature } from '../src/lib/homecare/releaseEmail';
 import { preflightReleaseAssets } from '../src/lib/homecare/releaseAssets';
+import { probeStubWired, STUB_SKIP_REASON } from './helpers/adminStubGuard';
 
 /**
  * R1 release-notes email system:
@@ -315,6 +316,14 @@ async function mockReleasesApi(page: Page, rows: MockRow[], sendCalls: SendCall[
 test.describe('admin /vaca-mgmt/releases', () => {
   const STUB_PORT = 9099;
   let stub: http.Server;
+  let stubWired = false;
+
+  // These flows only work against a server started with
+  // NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:9099; anything else must skip
+  // deterministically instead of flaking on middleware 401s.
+  test.beforeEach(() => {
+    test.skip(!stubWired, STUB_SKIP_REASON);
+  });
 
   test.beforeAll(async () => {
     // Minimal GoTrue stand-in (same as preferences-ui-fixes.spec.ts):
@@ -355,6 +364,7 @@ test.describe('admin /vaca-mgmt/releases', () => {
         await new Promise((r) => setTimeout(r, 500));
       }
     }
+    stubWired = await probeStubWired(process.env.TEST_URL || 'http://localhost:3000');
   });
 
   test.afterAll(async () => {

@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import http from 'http';
 import path from 'path';
+import { probeStubWired, STUB_SKIP_REASON } from './helpers/adminStubGuard';
 
 /**
  * UI-level verification of the preference-center fixes:
@@ -177,6 +178,14 @@ test.describe('public /preferences page', () => {
 test.describe('admin /vaca-mgmt/preferences page', () => {
   const STUB_PORT = 9099;
   let stub: http.Server;
+  let stubWired = false;
+
+  // Same guard as home-care-release-notes: these flows only work against a
+  // server started with NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:9099; any
+  // other server must skip deterministically instead of flaking on 401s.
+  test.beforeEach(() => {
+    test.skip(!stubWired, STUB_SKIP_REASON);
+  });
 
   test.beforeAll(async () => {
     // Minimal GoTrue stand-in: middleware's supabase.auth.getUser() hits
@@ -200,10 +209,25 @@ test.describe('admin /vaca-mgmt/preferences page', () => {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end('{}');
     });
-    await new Promise<void>((resolve, reject) => {
-      stub.once('error', reject);
-      stub.listen(STUB_PORT, '127.0.0.1', resolve);
-    });
+    // Another spec's worker may hold the port briefly — retry until free
+    // (same pattern as home-care-release-notes.spec.ts).
+    const deadline = Date.now() + 60_000;
+    for (;;) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          stub.once('error', reject);
+          stub.listen(STUB_PORT, '127.0.0.1', () => {
+            stub.removeAllListeners('error');
+            resolve();
+          });
+        });
+        break;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE' || Date.now() > deadline) throw err;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    stubWired = await probeStubWired(process.env.TEST_URL || 'http://localhost:3000');
   });
 
   test.afterAll(async () => {
