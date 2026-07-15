@@ -101,7 +101,7 @@ test('AC8: both renderers add a guarded home-details block with the correct esca
   expect(templates).toMatch(/const\s+details\s*=\s*\(data\.homeDetails\s*\?\?\s*\[\]\)\.filter/);
   expect(templates).toMatch(/const\s+homeDetailsCard\s*=\s*details\.length/);
   const cardWindow = templates.slice(templates.indexOf('const homeDetailsCard'), templates.indexOf('const homeDetailsCard') + 1200);
-  expect(cardWindow).toMatch(/details\.map\(\(d\)\s*=>.*escapeHtml\(d\)/s);
+  expect(cardWindow).toMatch(/details\.map\(\(d\)\s*=>[\s\S]*escapeHtml\(d\)/);
   // Rendered into the shell after the services block.
   expect(templates).toMatch(/\$\{servicesCard\}\s*\n\s*\$\{homeDetailsCard\}/);
 });
