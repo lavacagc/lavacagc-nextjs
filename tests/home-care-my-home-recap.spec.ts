@@ -35,8 +35,14 @@ test('AC2: the recap renders only when something is saved, in registry order, wi
   // Each entry shows the fact label and a one-line value summary.
   expect(client).toContain('factValueSummary(fact, val)');
   expect(client).toContain('{fact.label}');
+  // factValueSummary is the shared registry helper (Slice 5 lifted it into
+  // records.ts so the booking rider renders a saved detail identically); the
+  // recap imports it rather than defining its own copy.
+  expect(client).toMatch(/import\s*\{[^}]*factValueSummary[^}]*\}\s*from\s*'@\/lib\/homecare\/records'/);
+  expect(client).not.toMatch(/function factValueSummary/);
   // Location facts show the note; appliance facts join filled fields.
-  expect(client).toMatch(/function factValueSummary[\s\S]{0,120}kind === 'location'[\s\S]{0,60}val\.note/);
+  const records = readFileSync(join(__dirname, '..', 'src/lib/homecare/records.ts'), 'utf8');
+  expect(records).toMatch(/export function factValueSummary[\s\S]{0,160}kind === 'location'[\s\S]{0,60}val\.note/);
 });
 
 test('AC3: recap entries edit in place by reusing the capture component', () => {

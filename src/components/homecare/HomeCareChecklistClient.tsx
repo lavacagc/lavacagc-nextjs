@@ -5,7 +5,7 @@ import { Check, Plus, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, Pa
 import { hasGuideItem } from '@/lib/homecare/guides';
 import { costLabel, CONSULT_COST } from '@/lib/homecare/cost';
 import { prevSeason, seasonStart, SEASONS, type Season } from '@/lib/homecare/season';
-import { getFactForTask, HOME_FACTS, type HomeFact } from '@/lib/homecare/records';
+import { getFactForTask, HOME_FACTS, factValueSummary } from '@/lib/homecare/records';
 import HomeCareRecordCapture, { type RecordValue } from '@/components/homecare/HomeCareRecordCapture';
 
 const SHARE_URL = 'https://www.lavacagc.com/home-care?utm_source=member_share&utm_medium=portal&utm_campaign=home_care_share';
@@ -53,20 +53,6 @@ const SEASON_SPOTLIGHTS: Record<string, { eyebrow: string; title: string; body: 
 };
 
 const id = (key: string, season: string) => `${key}|${season}`;
-
-// One-line value summary for a saved home fact, shown in the "My Home" recap.
-// Location facts show their note; appliance facts join their filled fields (and
-// any note) with a middot separator.
-function factValueSummary(fact: HomeFact, val: RecordValue): string {
-  if (fact.kind === 'location') return val.note ?? '';
-  const parts = fact.fields
-    .map((f) => val.detail?.[f.key])
-    .filter((v) => v != null && v !== '')
-    .map(String);
-  const base = parts.join(' · ');
-  if (val.note) return base ? `${base} · ${val.note}` : val.note;
-  return base;
-}
 
 /**
  * Task blurb clamped to two lines with an ellipsis; when the text actually

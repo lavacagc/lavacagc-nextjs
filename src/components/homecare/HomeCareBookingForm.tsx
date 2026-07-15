@@ -110,6 +110,11 @@ export default function HomeCareBookingForm({ services, prefill }: { services: B
           // service in one message (destructured out server-side before the
           // lead is saved - the durable record stays in `message` above).
           services: services.map((s) => s.title),
+          // Machine-readable booked task keys (non-sensitive catalog slugs). The
+          // server uses these + the verified hc_access cookie to attach the
+          // homeowner's saved home details for ONLY these services to the owner
+          // alert. The sensitive details themselves are never sent from here.
+          task_keys: services.map((s) => s.key),
           recaptchaToken,
           recaptchaAction: RECAPTCHA_ACTION,
           honeypot: website,
