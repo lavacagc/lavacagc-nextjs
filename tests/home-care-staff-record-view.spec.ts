@@ -26,7 +26,6 @@ import { parseStaffEmails, isHomeCareStaff } from '../src/lib/homecare/staffAllo
 const root = join(__dirname, '..');
 const read = (p: string) => readFileSync(join(root, p), 'utf8');
 
-const allowlistSrc = read('src/lib/homecare/staffAllowlist.ts');
 const staffAccess = read('src/lib/homecare/staffAccess.ts');
 const route = read('src/app/api/admin/home-care/home-records/route.ts');
 const migration = read('supabase/migrations/20260813000000_home_record_access_log.sql');
