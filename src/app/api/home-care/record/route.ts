@@ -20,6 +20,9 @@
  * (proven by a prior homeowner-authored home_records row). A save without
  * consent and without prior consent is rejected, and consent-verification
  * errors fail closed.
+ *
+ * DELETE removes one of the homeowner's own saved facts (scoped by homeowner_id),
+ * fulfilling the "you can view or delete these anytime" promise in the consent.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
@@ -141,6 +144,38 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, fact_key: factKey });
   } catch (err) {
     console.error('home-care record save failed:', err instanceof Error ? err.message : String(err));
+    return NextResponse.json({ ok: false, error: 'Something went wrong. Please try again.' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const access = await verifyHomeAccess(request.cookies.get(HC_ACCESS_COOKIE)?.value);
+  if (!access) return NextResponse.json({ ok: false, error: 'Not signed in' }, { status: 401 });
+
+  try {
+    // Same fail-closed active-account re-check as the write path.
+    const homeowner = await findHomeownerById(access.homeownerId);
+    if (!homeowner || homeowner.status !== 'active') {
+      return NextResponse.json({ ok: false, error: 'Not signed in' }, { status: 401 });
+    }
+
+    const body = (await request.json().catch(() => ({}))) as { fact_key?: string };
+    const factKey = (body.fact_key ?? '').slice(0, 80);
+    if (!getFact(factKey)) return NextResponse.json({ ok: false, error: 'Unknown fact' }, { status: 400 });
+
+    // Scoped to the signed-in homeowner: the filter carries their own id, so a
+    // homeowner can only ever delete their own row. Honors the "you can view or
+    // delete these anytime" promise in HOME_DETAILS_CONSENT_TEXT.
+    await supabaseRest(
+      'DELETE',
+      `home_records?homeowner_id=eq.${access.homeownerId}&fact_key=eq.${encodeURIComponent(factKey)}`,
+      undefined,
+      { prefer: 'return=minimal' },
+    );
+
+    return NextResponse.json({ ok: true, fact_key: factKey });
+  } catch (err) {
+    console.error('home-care record delete failed:', err instanceof Error ? err.message : String(err));
     return NextResponse.json({ ok: false, error: 'Something went wrong. Please try again.' }, { status: 500 });
   }
 }

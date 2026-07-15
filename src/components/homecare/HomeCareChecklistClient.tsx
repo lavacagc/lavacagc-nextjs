@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, Plus, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy, MapPin, Wrench } from 'lucide-react';
+import { Check, Plus, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy, MapPin, Wrench, Home, ChevronDown, Pencil, Trash2 } from 'lucide-react';
 import { hasGuideItem } from '@/lib/homecare/guides';
 import { costLabel, CONSULT_COST } from '@/lib/homecare/cost';
 import { prevSeason, seasonStart, SEASONS, type Season } from '@/lib/homecare/season';
-import { getFactForTask } from '@/lib/homecare/records';
+import { getFactForTask, HOME_FACTS, type HomeFact } from '@/lib/homecare/records';
 import HomeCareRecordCapture, { type RecordValue } from '@/components/homecare/HomeCareRecordCapture';
 
 const SHARE_URL = 'https://www.lavacagc.com/home-care?utm_source=member_share&utm_medium=portal&utm_campaign=home_care_share';
@@ -53,6 +53,20 @@ const SEASON_SPOTLIGHTS: Record<string, { eyebrow: string; title: string; body: 
 };
 
 const id = (key: string, season: string) => `${key}|${season}`;
+
+// One-line value summary for a saved home fact, shown in the "My Home" recap.
+// Location facts show their note; appliance facts join their filled fields (and
+// any note) with a middot separator.
+function factValueSummary(fact: HomeFact, val: RecordValue): string {
+  if (fact.kind === 'location') return val.note ?? '';
+  const parts = fact.fields
+    .map((f) => val.detail?.[f.key])
+    .filter((v) => v != null && v !== '')
+    .map(String);
+  const base = parts.join(' · ');
+  if (val.note) return base ? `${base} · ${val.note}` : val.note;
+  return base;
+}
 
 /**
  * Task blurb clamped to two lines with an ellipsis; when the text actually
@@ -175,6 +189,42 @@ export default function HomeCareChecklistClient({
     setConsentGiven(true);
   };
 
+  // "My Home" recap delete: fulfills the "view or delete anytime" consent
+  // promise. Optimistic with revert, and a two-tap confirm so a saved detail is
+  // never lost by an accidental tap.
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deletingFact, setDeletingFact] = useState<string | null>(null);
+
+  const handleRecordDelete = async (factKey: string) => {
+    const prev = records.get(factKey);
+    setRecords((m) => {
+      const next = new Map(m);
+      next.delete(factKey);
+      return next;
+    });
+    setCapturePanelOpen((s) => {
+      const next = new Set(s);
+      next.delete(`recap:${factKey}`);
+      return next;
+    });
+    setConfirmDelete(null);
+    setDeletingFact(factKey);
+    try {
+      const res = await fetch('/api/home-care/record', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ fact_key: factKey }),
+      });
+      if (!res.ok) throw new Error(`delete failed: ${res.status}`);
+    } catch {
+      // Revert so the homeowner never silently loses a saved detail.
+      if (prev) setRecords((m) => new Map(m).set(factKey, prev));
+    } finally {
+      setDeletingFact(null);
+    }
+  };
+
   // The plan header sticks just below the site header, whose height varies by
   // breakpoint — measure it instead of hardcoding offsets.
   useEffect(() => {
@@ -239,6 +289,8 @@ export default function HomeCareChecklistClient({
   const hiddenTasks = tasks.filter((t) => dismissed.has(t.key));
   const showStarterSection = showStarter && starterTasks.length > 0;
   const hasBookable = tasks.some((t) => t.bookable);
+  // Saved home facts for the "My Home" recap, in registry order (stable).
+  const savedFacts = HOME_FACTS.filter((f) => records.has(f.key));
 
   // Plan progress: the active season's tasks plus (for members who see them)
   // the one-time essentials — one bar for the whole visible plan, dismissed
@@ -539,6 +591,74 @@ export default function HomeCareChecklistClient({
 
   return (
     <div className="space-y-4 pb-24">
+      {/* "My Home" recap: everything the homeowner has saved about their home,
+          collapsed by default. Lets them review, edit in place, or delete a
+          detail (the "view or delete anytime" half of the consent promise). */}
+      {savedFacts.length > 0 && (
+        <details className="group rounded-2xl border border-accent-teal/30 bg-accent-teal/5 px-4 py-3">
+          <summary className="flex cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden">
+            <Home className="h-4 w-4 shrink-0 text-accent-teal" />
+            <span className="min-w-0 flex-1 text-sm text-text-secondary">
+              <span className="font-bold text-text-primary">My Home</span> · {savedFacts.length} detail{savedFacts.length === 1 ? '' : 's'} saved
+            </span>
+            <ChevronDown className="h-4 w-4 shrink-0 text-text-muted transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="mt-2 border-t border-accent-teal/20 pt-1">
+            {savedFacts.map((fact) => {
+              const val = records.get(fact.key);
+              if (!val) return null;
+              const editKey = `recap:${fact.key}`;
+              const editing = capturePanelOpen.has(editKey);
+              const summary = factValueSummary(fact, val);
+              return (
+                <div key={fact.key}>
+                  {/* One compact line per saved detail: label + a short value,
+                      with pencil/trash actions that surface on hover; the whole
+                      row highlights on hover. */}
+                  <div className={`group/row flex items-center gap-2 rounded-lg px-2 transition-colors ${editing ? 'bg-accent-teal/10' : 'hover:bg-accent-teal/10'}`}>
+                    <div className="flex min-w-0 flex-1 items-baseline gap-2 py-1">
+                      <span className="shrink-0 text-sm font-bold text-text-primary">{fact.label}</span>
+                      {summary && <span className="min-w-0 flex-1 truncate text-xs text-text-secondary">{summary}</span>}
+                    </div>
+                    {confirmDelete === fact.key ? (
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <span className="text-xs font-semibold text-text-secondary">Remove?</span>
+                        <button type="button" onClick={() => handleRecordDelete(fact.key)} disabled={deletingFact === fact.key} aria-label={`Confirm remove ${fact.label}`} className="group/y flex items-center justify-center">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-md text-destructive group-hover/y:bg-destructive/10"><Check className="h-4 w-4" /></span>
+                        </button>
+                        <button type="button" onClick={() => setConfirmDelete(null)} aria-label="Cancel remove" className="group/n flex items-center justify-center">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted group-hover/n:bg-muted"><X className="h-4 w-4" /></span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-hover/row:opacity-100">
+                        <button type="button" onClick={() => toggleCapture(editKey)} aria-expanded={editing} aria-label={`Edit ${fact.label}`} className="group/e flex items-center justify-center">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-md text-accent-teal group-hover/e:bg-accent-teal/15"><Pencil className="h-3.5 w-3.5" /></span>
+                        </button>
+                        <button type="button" onClick={() => setConfirmDelete(fact.key)} aria-label={`Remove ${fact.label}`} className="group/d flex items-center justify-center">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted group-hover/d:bg-destructive/10 group-hover/d:text-destructive"><Trash2 className="h-3.5 w-3.5" /></span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {editing && (
+                    <div className="px-2 pb-2 pt-1">
+                      <HomeCareRecordCapture
+                        fact={fact}
+                        sourceTaskKey={fact.taskKeys[0]}
+                        prefill={val}
+                        showConsent={!consentGiven}
+                        onSaved={(v) => { handleRecordSaved(fact.key, v); toggleCapture(editKey); }}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      )}
+
       {/* Sticky plan header: season tabs + one progress bar for the whole
           visible plan (season + essentials). Sits just below the site header
           (measured at runtime) so progress stays visible while checking off. */}
