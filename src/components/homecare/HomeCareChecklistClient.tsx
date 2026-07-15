@@ -185,6 +185,7 @@ export default function HomeCareChecklistClient({
   // never lost by an accidental tap.
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [recapOpen, setRecapOpen] = useState(false);
 
   const handleRecordDelete = async (factKey: string) => {
     const prev = records.get(factKey);
@@ -212,6 +213,7 @@ export default function HomeCareChecklistClient({
       // Revert so the homeowner never silently loses a saved detail.
       if (prev) setRecords((m) => new Map(m).set(factKey, prev));
       setDeleteError(factKey);
+      setRecapOpen(true);
     }
   };
 
@@ -559,7 +561,7 @@ export default function HomeCareChecklistClient({
           collapsed by default. Lets them review, edit in place, or delete a
           detail (the "view or delete anytime" half of the consent promise). */}
       {savedFacts.length > 0 && (
-        <details className="group rounded-2xl border border-accent-teal/30 bg-accent-teal/5 px-4 py-3">
+        <details open={recapOpen} onToggle={(e) => setRecapOpen(e.currentTarget.open)} className="group rounded-2xl border border-accent-teal/30 bg-accent-teal/5 px-4 py-3">
           <summary className="flex cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden">
             <Home className="h-4 w-4 shrink-0 text-accent-teal" />
             <span className="min-w-0 flex-1 text-sm text-text-secondary">
