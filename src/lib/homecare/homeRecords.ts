@@ -23,6 +23,7 @@ export interface HomeRecordRow {
   note: string | null;
   detail: Record<string, unknown>;
   updated_by: string;
+  updated_at: string;
 }
 
 export async function readHomeRecords(homeownerId: string): Promise<HomeRecordRow[]> {
@@ -30,7 +31,7 @@ export async function readHomeRecords(homeownerId: string): Promise<HomeRecordRo
   try {
     const rows = await supabaseRest<HomeRecordRow[]>(
       'GET',
-      `home_records?select=fact_key,note,detail,updated_by&homeowner_id=eq.${encodeURIComponent(homeownerId)}`,
+      `home_records?select=fact_key,note,detail,updated_by,updated_at&homeowner_id=eq.${encodeURIComponent(homeownerId)}`,
     );
     return Array.isArray(rows) ? rows : [];
   } catch {
