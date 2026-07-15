@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { purgeHomeRecordsByEmail } from '@/lib/homecare/retention';
 import {
   normalizeEmail,
   SUPPRESSION_KEYS,
@@ -237,6 +238,14 @@ async function syncLegacyStatus(email: string, patch: Record<string, boolean>): 
         : { status: 'unsubscribed', unsubscribed_at: nowIso },
       { prefer: 'return=minimal' },
     );
+    if (!patch.home_care) {
+      // Leaving Home Care deletes saved home details + their access-log trail
+      // (the "deleted when you leave" promise, Slice 8). Every leave path -
+      // preference center, unsubscribe-by-email, admin Subscriptions, Resend
+      // webhook - funnels through here. Never throws; a real failure alerts
+      // internally while the opt-out itself still sticks.
+      await purgeHomeRecordsByEmail(email, 'preference-stream-off');
+    }
   }
   if (typeof patch.buy_remodel === 'boolean') {
     await supabaseRest(
