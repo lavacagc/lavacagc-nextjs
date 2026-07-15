@@ -79,7 +79,8 @@ export default function HomeCareRecordCapture({
     const detailPayload: Record<string, string> = {};
     for (const field of fact.fields) {
       const v = (detail[field.key] ?? '').trim();
-      if (v) detailPayload[field.key] = v;
+      const keep = field.type === 'year' ? isFilledYear(v) : v !== '';
+      if (keep) detailPayload[field.key] = v;
     }
     try {
       const res = await fetch('/api/home-care/record', {
