@@ -23,6 +23,15 @@ import {
  * stream off is idempotent, so re-submitting is harmless. Rate-limited per IP
  * to blunt row-creation abuse.
  *
+ * Acts as 'self_unverified', NOT 'self': this route is tokenless by design, so
+ * the caller has only CLAIMED the address - anyone can post anyone's email. The
+ * suppression is safe to act on unproven (it is idempotent, reversible from the
+ * preference center, and CAN-SPAM requires it to work without a token), but the
+ * Home Care retention purge is irreversible, so the actor is excluded from
+ * INTENTIONAL_LEAVE_ACTORS and no home details are deleted here. The
+ * token-bearing paths (/api/preferences, /api/preferences/unsubscribe,
+ * /api/home-care/unsubscribe) prove identity and do purge.
+ *
  * Public route (under /api/preferences, declared in middleware PUBLIC_ROUTES).
  */
 
@@ -66,7 +75,7 @@ export async function POST(request: NextRequest) {
     await applyUpdate({
       current,
       changes,
-      actor: 'self',
+      actor: 'self_unverified',
       actorDetail: stream === 'follow_ups' ? 'unsub-page-followups' : 'unsub-page-by-email',
       ip: getClientIp(request),
     });

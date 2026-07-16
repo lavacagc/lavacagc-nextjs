@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS public.preference_events (
   stream      TEXT NOT NULL,                    -- home_care | buy_remodel | announcements
   old_value   BOOLEAN,
   new_value   BOOLEAN NOT NULL,
-  actor       TEXT NOT NULL DEFAULT 'self',     -- self | admin | webhook | system
+  actor       TEXT NOT NULL DEFAULT 'self',     -- self | self_unverified | admin | webhook | system
   actor_detail TEXT,                            -- admin email, webhook event, etc.
   ip          TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
