@@ -18,20 +18,30 @@
  * with it via ON DELETE CASCADE - the stronger case keeps the stronger wipe.
  *
  * Call sites - every path where a homeowner DELIBERATELY leaves the program:
- *   1. /api/home-care/unsubscribe (the legacy one-click link - clear intent)
- *   2. syncLegacyStatus in src/lib/preferences/preferences.ts (preference
- *      center, unsubscribe-by-email, admin Subscriptions - they all funnel
- *      through applyUpdate -> syncLegacyStatus)
+ *   1. /api/home-care/unsubscribe (the legacy one-click link - the unsubscribe
+ *      token proves intent)
+ *   2. syncLegacyStatus in src/lib/preferences/preferences.ts (token-bearing
+ *      preference center, admin Subscriptions - they funnel through
+ *      applyUpdate -> syncLegacyStatus)
  * A manual homeowners-row deletion still purges via the FK cascade.
  *
  * INTENT GATE (owner decision 2026-07-16): syncLegacyStatus purges only when
- * the acting party is a human choosing to leave - actor 'self' (the homeowner)
- * or 'admin' (acting for them). It deliberately does NOT purge for actor
- * 'webhook' or 'system': Resend's auto-suppression turns every marketing stream
- * off on a hard bounce, a spam complaint about an unrelated newsletter, or an
- * admin tidying up a Resend contact. None of those is the homeowner leaving,
- * yet all of them would otherwise irreversibly destroy the shut-off maps and
- * appliance details they saved. Those events still suppress the mail (the
+ * the acting party is a human choosing to leave AND their identity is proven -
+ * actor 'self' (the homeowner, established by a capability token only their
+ * inbox holds) or 'admin' (an authenticated staff member acting for them).
+ * It deliberately does NOT purge for:
+ *   - 'webhook' / 'system': Resend's auto-suppression turns every marketing
+ *     stream off on a hard bounce, a spam complaint about an unrelated
+ *     newsletter, or an admin tidying up a Resend contact. None of those is the
+ *     homeowner leaving.
+ *   - 'self_unverified': the public, tokenless /api/preferences/
+ *     unsubscribe-by-email route, where the address is merely CLAIMED. Honoring
+ *     an unproven claim is right for suppression (idempotent, reversible,
+ *     required by CAN-SPAM without a token) but not for an irreversible delete:
+ *     otherwise an anonymous POST of a victim's address would destroy their
+ *     records.
+ * Each of these would otherwise irreversibly destroy the shut-off maps and
+ * appliance details the homeowner saved. They all still suppress the mail (the
  * homeowners status flip is unconditional) - they just don't delete the data.
  *
  * FAILURE POSTURE: never throws - an unsubscribe must always complete (the

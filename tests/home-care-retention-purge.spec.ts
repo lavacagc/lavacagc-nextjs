@@ -16,11 +16,12 @@ import { applyUpdate } from '../src/lib/preferences/preferences';
  * 2026-07-16 decisions: the staff access log is deliberately KEPT on an
  * ordinary leave (staff-accountability data, categories only, still cascades
  * away on a true homeowners-row deletion), and the purge fires on intentional
- * human departure ONLY - never on machine-driven Resend suppression. Leave
- * paths:
- *   1. /api/home-care/unsubscribe (legacy one-click link)
+ * human departure with PROVEN identity ONLY - never on machine-driven Resend
+ * suppression, and never on the public tokenless /unsub form, where the address
+ * is merely claimed by whoever typed it. Leave paths:
+ *   1. /api/home-care/unsubscribe (legacy one-click link - token proves intent)
  *   2. syncLegacyStatus in preferences.ts, gated on actor self/admin
- *      (preference center, unsubscribe-by-email, admin Subscriptions)
+ *      (token-bearing preference center, admin Subscriptions)
  *
  * The purge itself is exercised for real here (actual supabaseRest, stubbed
  * global fetch): happy path, pre-go-live missing table, hard failure. The
@@ -116,7 +117,7 @@ test.describe('AC6: syncLegacyStatus purges on an INTENTIONAL leave only', () =>
 
   // Exercised through the real applyUpdate: the acting party must reach the
   // purge gate, so a refactor that drops the actor thread fails here.
-  async function leaveHomeCare(actor: 'self' | 'admin' | 'webhook' | 'system') {
+  async function leaveHomeCare(actor: 'self' | 'self_unverified' | 'admin' | 'webhook' | 'system') {
     const calls: string[] = [];
     stubFetch(async (url, init) => {
       calls.push(`${init?.method} ${url}`);
@@ -169,6 +170,25 @@ test.describe('AC6: syncLegacyStatus purges on an INTENTIONAL leave only', () =>
       expect(suppressed(calls)).toBe(true);
     });
   }
+
+  // The public /unsub form is tokenless: the address is CLAIMED, never proven,
+  // so an anonymous POST of a victim's email must not reach the irreversible
+  // purge. It must still suppress exactly as before (CAN-SPAM).
+  test("a tokenless 'self_unverified' unsubscribe suppresses but never purges", async () => {
+    const calls = await leaveHomeCare('self_unverified');
+    expect(purged(calls)).toBe(false);
+    expect(calls.some((c) => c.includes('/homeowners?email=eq.') && c.startsWith('GET'))).toBe(false);
+    expect(suppressed(calls)).toBe(true);
+  });
+
+  test('the tokenless unsubscribe-by-email route acts as self_unverified', () => {
+    const byEmail = read('src/app/api/preferences/unsubscribe-by-email/route.ts');
+    expect(byEmail).toContain("actor: 'self_unverified'");
+    expect(byEmail).not.toMatch(/actor: 'self'/);
+    // The token-bearing paths keep proving identity, so they still purge.
+    expect(read('src/app/api/preferences/route.ts')).toContain('findByToken');
+    expect(read('src/app/api/preferences/unsubscribe/route.ts')).toContain('findByToken');
+  });
 
   test('re-enabling the stream never purges, whoever does it', async () => {
     const calls: string[] = [];

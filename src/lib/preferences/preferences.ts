@@ -145,15 +145,25 @@ export async function isSuppressed(rawEmail: string, stream: SuppressionKey): Pr
   }
 }
 
-export type PrefActor = 'self' | 'admin' | 'webhook' | 'system';
+export type PrefActor = 'self' | 'self_unverified' | 'admin' | 'webhook' | 'system';
 
 /**
- * Actors whose stream change carries deliberate human intent to leave: the
- * homeowner themselves, or an admin acting for them. 'webhook' (Resend
- * bounce/complaint auto-suppression, contact.deleted) and 'system' are
- * machine-driven deliverability signals, not a decision to leave the program:
- * they suppress email but must never trigger the irreversible Home Care
- * retention purge (owner decision 2026-07-16; see homecare/retention.ts).
+ * Actors whose stream change carries deliberate human intent to leave, PROVEN
+ * by an identity check: 'self' (the homeowner, established by a capability
+ * token only their inbox holds - preference token or unsubscribe token) or
+ * 'admin' (an authenticated staff member acting for them).
+ *
+ * Deliberately excluded:
+ *  - 'self_unverified': a tokenless caller who merely typed an address into the
+ *    public /unsub form. The claim "I am this person" is unproven, so anyone
+ *    could submit a victim's address; it suppresses the mail (CAN-SPAM requires
+ *    the mechanism to work for a recipient who has no token) but must never
+ *    trigger the irreversible purge.
+ *  - 'webhook' / 'system': machine-driven deliverability signals (Resend
+ *    bounce/complaint auto-suppression, contact.deleted), not a decision to
+ *    leave the program.
+ * All of them still suppress email; only the purge is gated
+ * (owner decision 2026-07-16; see homecare/retention.ts).
  */
 const INTENTIONAL_LEAVE_ACTORS: readonly PrefActor[] = ['self', 'admin'];
 
@@ -257,14 +267,14 @@ async function syncLegacyStatus(
       { prefer: 'return=minimal' },
     );
     if (!patch.home_care && isIntentionalLeaveActor(actor)) {
-      // An INTENTIONAL leave deletes saved home details (the "deleted when you
-      // leave" promise, Slice 8; the staff access log is deliberately kept -
-      // see retention.ts). Human leave paths - preference center,
-      // unsubscribe-by-email, admin Subscriptions - funnel through here. The
+      // An INTENTIONAL, identity-proven leave deletes saved home details (the
+      // "deleted when you leave" promise, Slice 8; the staff access log is
+      // deliberately kept - see retention.ts). Those paths - the token-bearing
+      // preference center and admin Subscriptions - funnel through here. The
       // status flip above still applies to every actor, so a Resend
-      // bounce/complaint suppression stops the mail without destroying the
-      // homeowner's records. Never throws; a real failure alerts internally
-      // while the opt-out itself still sticks.
+      // bounce/complaint suppression or a tokenless /unsub submission stops the
+      // mail without destroying the homeowner's records. Never throws; a real
+      // failure alerts internally while the opt-out itself still sticks.
       await purgeHomeRecordsByEmail(email, `preference-stream-off:${actor}`);
     }
   }
