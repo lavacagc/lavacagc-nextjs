@@ -237,8 +237,9 @@ export default function PreferencesClient() {
                     <div className="min-w-0">
                       <div className="font-semibold">{s.label}</div>
                       <div className="text-sm text-muted-foreground">{s.description}</div>
-                      {s.key === 'home_care' && (
+                      {s.key === 'home_care' && streams?.home_care && (
                         <div
+                          id="home-care-purge-notice"
                           className="text-sm text-amber-800 mt-1.5"
                           data-testid="home-care-purge-notice"
                         >
@@ -253,6 +254,11 @@ export default function PreferencesClient() {
                       disabled={saving}
                       onCheckedChange={() => toggle(s.key)}
                       aria-label={`Toggle ${s.label}`}
+                      aria-describedby={
+                        s.key === 'home_care' && streams?.home_care
+                          ? 'home-care-purge-notice'
+                          : undefined
+                      }
                       data-testid={`switch-${s.key}`}
                     />
                   </div>

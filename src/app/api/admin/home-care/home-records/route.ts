@@ -88,13 +88,24 @@ export async function GET(request: NextRequest) {
 async function roster() {
   const rows: RosterSourceRow[] = [];
   try {
+    let complete = false;
     for (let offset = 0; offset < ROSTER_MAX_ROWS; offset += ROSTER_PAGE) {
       const page = (await supabaseRest<RosterSourceRow[]>(
         'GET',
         `home_records?select=homeowner_id,fact_key,updated_at&order=id.asc&limit=${ROSTER_PAGE}&offset=${offset}`,
       )) ?? [];
       rows.push(...page);
-      if (page.length < ROSTER_PAGE) break;
+      if (page.length < ROSTER_PAGE) {
+        complete = true;
+        break;
+      }
+    }
+    // A roster silently truncated at the cap reads to staff as a complete one -
+    // the same masquerade rosterReadFailure narrowing exists to prevent.
+    if (!complete) {
+      console.warn(
+        `home-record roster truncated at ROSTER_MAX_ROWS=${ROSTER_MAX_ROWS}; some homeowners are omitted`,
+      );
     }
   } catch (err) {
     return rosterReadFailure('home-record roster read failed', err);
