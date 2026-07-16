@@ -1,9 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { NextRequest } from 'next/server';
 import './helpers/retentionEnvStub';
 import { purgeHomeRecords, purgeHomeRecordsByEmail } from '../src/lib/homecare/retention';
 import { applyUpdate } from '../src/lib/preferences/preferences';
+import { GET as homeCareUnsubscribeGET } from '../src/app/api/home-care/unsubscribe/route';
 
 /**
  * Home Care "My Home Systems" - Slice 8: the retention purge.
@@ -18,10 +20,12 @@ import { applyUpdate } from '../src/lib/preferences/preferences';
  * away on a true homeowners-row deletion), and the purge fires on intentional
  * human departure with PROVEN identity ONLY - never on machine-driven Resend
  * suppression, and never on the public tokenless /unsub form, where the address
- * is merely claimed by whoever typed it. Leave paths:
- *   1. /api/home-care/unsubscribe (legacy one-click link - token proves intent)
- *   2. syncLegacyStatus in preferences.ts, gated on actor self/admin
- *      (token-bearing preference center, admin Subscriptions)
+ * is merely claimed by whoever typed it. Every leave funnels through one place:
+ *   syncLegacyStatus in preferences.ts, gated on actor self/admin
+ *   (token-bearing preference center, admin Subscriptions). The legacy
+ *   /api/home-care/unsubscribe footer link mutates nothing on GET - link
+ *   scanners fetch it - and redirects to the preference center's confirm
+ *   prompt, so it reaches the purge only via a human's confirmed POST.
  *
  * The purge itself is exercised for real here (actual supabaseRest, stubbed
  * global fetch): happy path, pre-go-live missing table, hard failure. The
@@ -102,12 +106,71 @@ test.describe('purgeHomeRecords (real function, stubbed fetch)', () => {
   });
 });
 
-test('AC5: the legacy unsubscribe route purges right after flipping the status', () => {
-  const flipIdx = unsubRoute.indexOf("status: 'unsubscribed'");
-  const purgeIdx = unsubRoute.indexOf("purgeHomeRecords(ho.id, 'home-care-unsubscribe-link')");
-  expect(flipIdx).toBeGreaterThan(-1);
-  expect(purgeIdx).toBeGreaterThan(flipIdx);
-  expect(unsubRoute).toContain("from '@/lib/homecare/retention'");
+test.describe('AC5: the legacy unsubscribe GET mutates nothing and redirects to confirm', () => {
+  // Link scanners and mail-client prefetchers (SafeLinks, Mimecast, Proofpoint)
+  // GET every footer URL, so a genuine unsubscribe token arrives with no human
+  // behind it. The purge is irreversible, so the leave cannot start from a GET:
+  // this route resolves the token read-only and hands off to the preference
+  // center's confirm prompt. The leave itself happens on the confirmed POST
+  // (AC6), which proves identity AND intent.
+  test.afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  /** Drive the real route handler; returns every Supabase call it made. */
+  async function scannerFetchesTheLink(token: string, homeowner: unknown) {
+    const calls: string[] = [];
+    stubFetch(async (url, init) => {
+      calls.push(`${init?.method ?? 'GET'} ${url}`);
+      if (url.includes('/homeowners?')) {
+        return new Response(JSON.stringify(homeowner ? [homeowner] : []), { status: 200 });
+      }
+      if (url.includes('/email_preferences?')) {
+        return new Response(JSON.stringify([{ email: 'rachel@example.com', preference_token: 'pt-1' }]), {
+          status: 200,
+        });
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+    const res = await homeCareUnsubscribeGET(
+      new NextRequest(`https://www.lavacagc.com/api/home-care/unsubscribe?token=${token}`),
+    );
+    return { res, calls };
+  }
+
+  test('a valid token redirects to the confirm prompt without unsubscribing or purging', async () => {
+    const { res, calls } = await scannerFetchesTheLink('tok-1', {
+      id: 'h1',
+      email: 'rachel@example.com',
+      status: 'active',
+    });
+
+    expect(res.status).toBe(307);
+    const dest = new URL(res.headers.get('location') ?? '');
+    expect(dest.pathname).toBe('/preferences');
+    expect(dest.searchParams.get('confirm')).toBe('home_care');
+    expect(dest.searchParams.get('token')).toBe('pt-1');
+
+    // The crux: nothing was destroyed and nobody was unsubscribed.
+    expect(calls.some((c) => c.startsWith('DELETE'))).toBe(false);
+    expect(calls.some((c) => c.startsWith('PATCH'))).toBe(false);
+    expect(calls.some((c) => c.includes('/home_records'))).toBe(false);
+  });
+
+  test('an unknown token redirects to the invalid-link state, still mutating nothing', async () => {
+    const { res, calls } = await scannerFetchesTheLink('garbage', null);
+    const dest = new URL(res.headers.get('location') ?? '');
+    expect(dest.pathname).toBe('/preferences');
+    expect(dest.searchParams.get('invalid')).toBe('1');
+    expect(calls.some((c) => c.startsWith('DELETE') || c.startsWith('PATCH'))).toBe(false);
+  });
+
+  test('the purge is not reachable from this route at all', () => {
+    expect(unsubRoute).not.toContain('purgeHomeRecords');
+    expect(unsubRoute).not.toContain("from '@/lib/homecare/retention'");
+    expect(unsubRoute).not.toContain('updateHomeowner');
+    expect(unsubRoute).not.toContain('setStreamByEmail');
+  });
 });
 
 test.describe('AC6: syncLegacyStatus purges on an INTENTIONAL leave only', () => {

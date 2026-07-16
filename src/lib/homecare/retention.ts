@@ -17,12 +17,13 @@
  * true homeowners-row deletion (e.g. a CCPA delete request) the log still goes
  * with it via ON DELETE CASCADE - the stronger case keeps the stronger wipe.
  *
- * Call sites - every path where a homeowner DELIBERATELY leaves the program:
- *   1. /api/home-care/unsubscribe (the legacy one-click link - the unsubscribe
- *      token proves intent)
- *   2. syncLegacyStatus in src/lib/preferences/preferences.ts (token-bearing
- *      preference center, admin Subscriptions - they funnel through
- *      applyUpdate -> syncLegacyStatus)
+ * Call site - the single path where a homeowner DELIBERATELY leaves the
+ * program: syncLegacyStatus in src/lib/preferences/preferences.ts. Every leave
+ * funnels through applyUpdate -> syncLegacyStatus: the token-bearing preference
+ * center, admin Subscriptions, and the legacy /api/home-care/unsubscribe footer
+ * link, whose GET mutates nothing and instead redirects to the preference
+ * center's confirm prompt (a link scanner presents a genuine token with no
+ * human behind it, so a token alone must not start an irreversible delete).
  * A manual homeowners-row deletion still purges via the FK cascade.
  *
  * INTENT GATE (owner decision 2026-07-16): syncLegacyStatus purges only when

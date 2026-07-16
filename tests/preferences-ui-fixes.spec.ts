@@ -153,6 +153,44 @@ test.describe('public /preferences page', () => {
     );
   });
 
+  test('the unsubscribe confirm card warns about the purge before the destructive click', async ({
+    page,
+  }) => {
+    // This card - not the stream row - is what an email footer link lands on,
+    // and "Yes, unsubscribe" is the click that destroys the data. The Home Care
+    // footer link redirects here with confirm=home_care rather than acting on
+    // the GET itself, so this is the last screen before an irreversible delete.
+    const posts: unknown[] = [];
+    await mockPublicPrefsApi(page, posts);
+
+    for (const confirm of ['home_care', 'all'] as const) {
+      await page.goto(`/preferences?token=test-token&confirm=${confirm}`);
+      const card = page.getByTestId('confirm-unsubscribe');
+      await expect(card).toBeVisible();
+      // Above the CTA, in the card the user is actually reading.
+      const warning = page.getByTestId('confirm-home-care-purge-notice');
+      await expect(warning).toBeVisible();
+      await expect(warning).toContainText(/permanently deletes/i);
+      await expect(warning).toContainText(/ends your Home Care membership/i);
+      await expect(card).toContainText(/permanently deletes/i);
+    }
+
+    await page.screenshot({ path: shot('06-confirm-card-purge-notice.png'), fullPage: true });
+
+    // A confirm that cannot reach home_care must not borrow the scare copy.
+    await page.goto('/preferences?token=test-token&confirm=newsletter');
+    await expect(page.getByTestId('confirm-unsubscribe')).toBeVisible();
+    await expect(page.getByTestId('confirm-home-care-purge-notice')).toHaveCount(0);
+
+    // Already left: nothing left to delete, so the warning would be untrue.
+    await page.goto('/preferences?token=test-token');
+    await page.getByTestId('switch-home_care').click();
+    await expect(page.getByTestId('home-care-purge-notice')).toHaveCount(0);
+    await page.goto('/preferences?token=test-token&confirm=all');
+    await expect(page.getByTestId('confirm-unsubscribe')).toBeVisible();
+    await expect(page.getByTestId('confirm-home-care-purge-notice')).toHaveCount(0);
+  });
+
   test('narrow mobile viewport still cannot compress the track', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 740 });
     const posts: unknown[] = [];
