@@ -235,11 +235,12 @@ async function syncLegacyStatus(email: string, patch: Record<string, boolean>): 
       { prefer: 'return=minimal' },
     );
     if (!patch.home_care) {
-      // Leaving Home Care deletes saved home details + their access-log trail
-      // (the "deleted when you leave" promise, Slice 8). Every leave path -
-      // preference center, unsubscribe-by-email, admin Subscriptions, Resend
-      // webhook - funnels through here. Never throws; a real failure alerts
-      // internally while the opt-out itself still sticks.
+      // Leaving Home Care deletes saved home details (the "deleted when you
+      // leave" promise, Slice 8; the staff access log is deliberately kept -
+      // see retention.ts). Every leave path - preference center,
+      // unsubscribe-by-email, admin Subscriptions, Resend webhook - funnels
+      // through here. Never throws; a real failure alerts internally while
+      // the opt-out itself still sticks.
       await purgeHomeRecordsByEmail(email, 'preference-stream-off');
     }
   }

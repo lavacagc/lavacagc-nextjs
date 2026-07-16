@@ -5,10 +5,17 @@
  * "deleted when you leave the program". Unsubscribing does NOT delete the
  * homeowners row (it only sets status='unsubscribed'), so the schema's
  * ON DELETE CASCADE never fires on an ordinary leave - this module is the
- * explicit enforcement. It deletes the homeowner's home_records rows AND their
- * home_record_access_log rows (the access log references them and carries no
- * independent value once the record is gone; keeping it would contradict
- * "deleted when you leave"). Photos join in Slice 7 when that table exists.
+ * explicit enforcement. It deletes the homeowner's home_records rows. Photos
+ * join in Slice 7 when that table exists.
+ *
+ * The home_record_access_log rows are deliberately KEPT on an ordinary leave -
+ * the owner's explicit 2026-07-16 decision (reversing the initial purge-it
+ * call): the audit trail of who viewed a record is accountability data about
+ * STAFF, stores fact categories only (never values), and losing it on
+ * unsubscribe would let a badly-timed exit erase evidence of staff access. The
+ * promise "deleted when you leave" covers the home DETAILS, which do go. On a
+ * true homeowners-row deletion (e.g. a CCPA delete request) the log still goes
+ * with it via ON DELETE CASCADE - the stronger case keeps the stronger wipe.
  *
  * Call sites - every path that takes a homeowner OUT of the program:
  *   1. /api/home-care/unsubscribe (the legacy one-click link)
@@ -58,7 +65,6 @@ async function alertPurgeFailure(payload: {
 export interface PurgeOutcome {
   ok: boolean;
   purgedRecords: number;
-  purgedAccessLogRows: number;
 }
 
 /** True for "the table isn't there yet" errors - nothing to purge, not a failure. */
@@ -78,11 +84,12 @@ async function deleteReturningIds(path: string): Promise<number> {
 }
 
 /**
- * Delete every saved home detail (and its access-log trail) for one homeowner.
- * Never throws; a real failure alerts internally and returns ok: false.
+ * Delete every saved home detail for one homeowner. The staff access log is
+ * deliberately NOT touched (see the module comment). Never throws; a real
+ * failure alerts internally and returns ok: false.
  */
 export async function purgeHomeRecords(homeownerId: string, trigger: string): Promise<PurgeOutcome> {
-  const outcome: PurgeOutcome = { ok: true, purgedRecords: 0, purgedAccessLogRows: 0 };
+  const outcome: PurgeOutcome = { ok: true, purgedRecords: 0 };
   if (!homeownerId) return outcome;
   try {
     // select=id keeps the DELETE's return representation to ids only - the
@@ -90,13 +97,10 @@ export async function purgeHomeRecords(homeownerId: string, trigger: string): Pr
     outcome.purgedRecords = await deleteReturningIds(
       `home_records?homeowner_id=eq.${encodeURIComponent(homeownerId)}&select=id`,
     );
-    outcome.purgedAccessLogRows = await deleteReturningIds(
-      `home_record_access_log?homeowner_id=eq.${encodeURIComponent(homeownerId)}&select=id`,
-    );
-    if (outcome.purgedRecords > 0 || outcome.purgedAccessLogRows > 0) {
+    if (outcome.purgedRecords > 0) {
       console.log(
         `home-care retention purge (${trigger}): homeowner ${homeownerId} - ` +
-          `${outcome.purgedRecords} record(s), ${outcome.purgedAccessLogRows} access-log row(s) deleted`,
+          `${outcome.purgedRecords} record(s) deleted`,
       );
     }
     return outcome;
@@ -108,8 +112,8 @@ export async function purgeHomeRecords(homeownerId: string, trigger: string): Pr
       source: trigger,
       message:
         `Retention purge failed for homeowner ${homeownerId} - saved home details may still exist ` +
-        `after they left the program. Re-run the purge or delete home_records/home_record_access_log ` +
-        `rows for this homeowner manually. Error: ${message.slice(0, 300)}`,
+        `after they left the program. Re-run the purge or delete home_records rows for this ` +
+        `homeowner manually. Error: ${message.slice(0, 300)}`,
     });
     return { ...outcome, ok: false };
   }
@@ -121,7 +125,7 @@ export async function purgeHomeRecords(homeownerId: string, trigger: string): Pr
  * handled with the same loud-but-never-throwing posture.
  */
 export async function purgeHomeRecordsByEmail(email: string, trigger: string): Promise<PurgeOutcome> {
-  const outcome: PurgeOutcome = { ok: true, purgedRecords: 0, purgedAccessLogRows: 0 };
+  const outcome: PurgeOutcome = { ok: true, purgedRecords: 0 };
   const normalized = email.trim().toLowerCase();
   if (!normalized) return outcome;
   let ids: string[] = [];
@@ -148,7 +152,6 @@ export async function purgeHomeRecordsByEmail(email: string, trigger: string): P
     const one = await purgeHomeRecords(id, trigger);
     outcome.ok = outcome.ok && one.ok;
     outcome.purgedRecords += one.purgedRecords;
-    outcome.purgedAccessLogRows += one.purgedAccessLogRows;
   }
   return outcome;
 }

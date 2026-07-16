@@ -11,7 +11,10 @@ import { purgeHomeRecords, purgeHomeRecordsByEmail } from '../src/lib/homecare/r
  * "deleted when you leave the program". Unsubscribing never deletes the
  * homeowners row (only status='unsubscribed'), so the schema's ON DELETE
  * CASCADE can't fulfill that promise - purgeHomeRecords is the explicit
- * enforcement, wired into EVERY leave path:
+ * enforcement, wired into EVERY leave path. Per the owner's 2026-07-16
+ * decision, the staff access log is deliberately KEPT on an ordinary leave
+ * (staff-accountability data, categories only); it still cascades away on a
+ * true homeowners-row deletion. Leave paths:
  *   1. /api/home-care/unsubscribe (legacy one-click link)
  *   2. syncLegacyStatus in preferences.ts (preference center,
  *      unsubscribe-by-email, admin Subscriptions, Resend webhook)
@@ -44,29 +47,28 @@ test.describe('purgeHomeRecords (real function, stubbed fetch)', () => {
     globalThis.fetch = realFetch;
   });
 
-  test('AC1: deletes home_records AND home_record_access_log for the homeowner, reporting counts', async () => {
+  test('AC1: deletes home_records for the homeowner - and deliberately NOT the access log', async () => {
     const calls: string[] = [];
     stubFetch(async (url, init) => {
       calls.push(`${init?.method} ${url}`);
-      if (url.includes('home_records?')) {
-        return new Response(JSON.stringify([{ id: 'r1' }, { id: 'r2' }]), { status: 200 });
-      }
-      return new Response(JSON.stringify([{ id: 'a1' }]), { status: 200 });
+      return new Response(JSON.stringify([{ id: 'r1' }, { id: 'r2' }]), { status: 200 });
     });
 
     const outcome = await purgeHomeRecords('11111111-2222-3333-4444-555555555555', 'spec');
-    expect(outcome).toEqual({ ok: true, purgedRecords: 2, purgedAccessLogRows: 1 });
-    // Both tables, both scoped to the homeowner, both id-only representations
-    // (the purge must never echo sensitive values into logs/alerts).
+    expect(outcome).toEqual({ ok: true, purgedRecords: 2 });
+    // Scoped to the homeowner, id-only representation (the purge must never
+    // echo sensitive values into logs/alerts).
     expect(calls.some((c) => c.startsWith('DELETE') && c.includes('/home_records?homeowner_id=eq.11111111') && c.includes('select=id'))).toBe(true);
-    expect(calls.some((c) => c.startsWith('DELETE') && c.includes('/home_record_access_log?homeowner_id=eq.11111111') && c.includes('select=id'))).toBe(true);
+    // Owner decision (2026-07-16): the staff access log survives an ordinary
+    // leave - no delete may touch it here.
+    expect(calls.some((c) => c.includes('home_record_access_log'))).toBe(false);
   });
 
   test('AC2: a missing table (pre-go-live) is "nothing to purge", not a failure', async () => {
     stubFetch(async () => new Response('relation "public.home_records" does not exist', { status: 404 }));
 
     const outcome = await purgeHomeRecords('11111111-2222-3333-4444-555555555555', 'spec');
-    expect(outcome).toEqual({ ok: true, purgedRecords: 0, purgedAccessLogRows: 0 });
+    expect(outcome).toEqual({ ok: true, purgedRecords: 0 });
   });
 
   test('AC3: a hard failure never throws - it reports ok:false (and alerts internally)', async () => {
@@ -92,7 +94,7 @@ test.describe('purgeHomeRecords (real function, stubbed fetch)', () => {
     });
 
     const outcome = await purgeHomeRecordsByEmail('  Rachel@Example.com ', 'spec');
-    expect(outcome).toEqual({ ok: true, purgedRecords: 2, purgedAccessLogRows: 0 });
+    expect(outcome).toEqual({ ok: true, purgedRecords: 2 });
   });
 });
 
@@ -129,12 +131,15 @@ test('AC7: the purge never throws and alerts loudly on real failure', () => {
   expect(retention).not.toMatch(/^import .*formErrorAlert/m);
 });
 
-test('AC8: re-consent stays coherent - a purge leaves no homeowner-authored rows behind', () => {
-  // The whole point of deleting BOTH tables: after a purge the Slice-3 consent
-  // inference (updated_by=eq.homeowner) finds nothing, so a returning
-  // homeowner is asked for fresh consent before anything is stored again.
+test('AC8: re-consent stays coherent, and the access log is kept by explicit owner decision', () => {
+  // After a purge the Slice-3 consent inference (updated_by=eq.homeowner)
+  // finds nothing, so a returning homeowner is asked for fresh consent before
+  // anything is stored again.
   expect(retention).toContain('home_records?homeowner_id=eq.');
-  expect(retention).toContain('home_record_access_log?homeowner_id=eq.');
-  // And the doc comment records the intent.
   expect(retention).toMatch(/re-joins[\s\S]*fresh consent|require fresh consent/i);
+  // Owner decision (2026-07-16): no delete against the access log on an
+  // ordinary leave - it survives as staff-accountability data and only
+  // cascades away on a true homeowners-row deletion.
+  expect(retention).not.toContain('home_record_access_log?');
+  expect(retention).toMatch(/deliberately KEPT/);
 });

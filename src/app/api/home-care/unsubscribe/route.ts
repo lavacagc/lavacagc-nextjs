@@ -22,9 +22,10 @@ export async function GET(request: NextRequest) {
     const ho = await findHomeownerByUnsubscribeToken(token);
     if (ho && ho.status !== 'unsubscribed') {
       await updateHomeowner(ho.id, { status: 'unsubscribed', unsubscribed_at: new Date().toISOString() });
-      // Leaving the program deletes saved home details + their access-log
-      // trail (the "deleted when you leave" promise). Never throws; a real
-      // failure alerts internally while the unsubscribe still completes.
+      // Leaving the program deletes saved home details (the "deleted when you
+      // leave" promise; the staff access log is deliberately kept - see
+      // retention.ts). Never throws; a real failure alerts internally while
+      // the unsubscribe still completes.
       await purgeHomeRecords(ho.id, 'home-care-unsubscribe-link');
       // Keep the unified preference model in sync (best-effort).
       await setStreamByEmail(ho.email, 'home_care', false, 'self', 'home-care-unsubscribe-link').catch(
