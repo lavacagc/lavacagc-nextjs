@@ -10,9 +10,15 @@
 -- We log fact KEYS (categories), never the values - the log must not become a
 -- second copy of the sensitive data.
 --
--- ON DELETE CASCADE is deliberate: retention for this program is "delete when
--- the homeowner leaves" (Slice 8 purge), and that includes rows that reference
--- them. Mirrors the estimate_emails audit-table pattern otherwise.
+-- This log deliberately SURVIVES an ordinary leave (owner decision 2026-07-16):
+-- it is accountability data about STAFF, so a badly-timed unsubscribe must not
+-- erase evidence of who looked at a record. The Slice 8 retention purge deletes
+-- home_records only and never touches this table.
+--
+-- ON DELETE CASCADE therefore fires only on a true homeowners-row deletion
+-- (e.g. a CCPA erasure request), where the homeowner ceases to exist for us and
+-- everything referencing them goes with it. Mirrors the estimate_emails
+-- audit-table pattern otherwise.
 
 CREATE TABLE IF NOT EXISTS public.home_record_access_log (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),

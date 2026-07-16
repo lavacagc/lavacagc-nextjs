@@ -144,6 +144,20 @@ export async function isSuppressed(rawEmail: string, stream: SuppressionKey): Pr
 export type PrefActor = 'self' | 'admin' | 'webhook' | 'system';
 
 /**
+ * Actors whose stream change carries deliberate human intent to leave: the
+ * homeowner themselves, or an admin acting for them. 'webhook' (Resend
+ * bounce/complaint auto-suppression, contact.deleted) and 'system' are
+ * machine-driven deliverability signals, not a decision to leave the program:
+ * they suppress email but must never trigger the irreversible Home Care
+ * retention purge (owner decision 2026-07-16; see homecare/retention.ts).
+ */
+const INTENTIONAL_LEAVE_ACTORS: readonly PrefActor[] = ['self', 'admin'];
+
+export function isIntentionalLeaveActor(actor: PrefActor): boolean {
+  return INTENTIONAL_LEAVE_ACTORS.includes(actor);
+}
+
+/**
  * Apply a set of stream changes to a preferences row, write an audit event per
  * changed stream, and sync the legacy identity-table status columns so the rest
  * of the app (middleware access gate, newsletter cron) sees the change too.
@@ -193,7 +207,7 @@ export async function applyUpdate(args: {
 
   // Sync legacy status columns (best-effort). home_care → homeowners,
   // buy_remodel → newsletter_subscribers. announcements has no identity table.
-  await syncLegacyStatus(current.email, patch).catch((e) =>
+  await syncLegacyStatus(current.email, patch, actor).catch((e) =>
     console.error('legacy status sync failed (non-fatal):', e),
   );
 
@@ -217,7 +231,11 @@ export async function setStreamByEmail(
   await applyUpdate({ current, changes: { [stream]: value }, actor, actorDetail });
 }
 
-async function syncLegacyStatus(email: string, patch: Record<string, boolean>): Promise<void> {
+async function syncLegacyStatus(
+  email: string,
+  patch: Record<string, boolean>,
+  actor: PrefActor,
+): Promise<void> {
   const enc = encodeURIComponent(email);
   const nowIso = new Date().toISOString();
 
@@ -234,14 +252,16 @@ async function syncLegacyStatus(email: string, patch: Record<string, boolean>): 
         : { status: 'unsubscribed', unsubscribed_at: nowIso },
       { prefer: 'return=minimal' },
     );
-    if (!patch.home_care) {
-      // Leaving Home Care deletes saved home details (the "deleted when you
+    if (!patch.home_care && isIntentionalLeaveActor(actor)) {
+      // An INTENTIONAL leave deletes saved home details (the "deleted when you
       // leave" promise, Slice 8; the staff access log is deliberately kept -
-      // see retention.ts). Every leave path - preference center,
-      // unsubscribe-by-email, admin Subscriptions, Resend webhook - funnels
-      // through here. Never throws; a real failure alerts internally while
-      // the opt-out itself still sticks.
-      await purgeHomeRecordsByEmail(email, 'preference-stream-off');
+      // see retention.ts). Human leave paths - preference center,
+      // unsubscribe-by-email, admin Subscriptions - funnel through here. The
+      // status flip above still applies to every actor, so a Resend
+      // bounce/complaint suppression stops the mail without destroying the
+      // homeowner's records. Never throws; a real failure alerts internally
+      // while the opt-out itself still sticks.
+      await purgeHomeRecordsByEmail(email, `preference-stream-off:${actor}`);
     }
   }
   if (typeof patch.buy_remodel === 'boolean') {

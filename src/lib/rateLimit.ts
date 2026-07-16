@@ -50,6 +50,37 @@ export function getClientIp(request: Request): string {
   return 'unknown';
 }
 
+/**
+ * The client IP as a value Postgres will accept for an INET column, or null.
+ *
+ * `ip_address` is an optional audit field, so a header we can't parse must drop
+ * the field - never fail the write it decorates (an INET cast error would 422
+ * the whole insert, and the same header repeats on every retry, so it would not
+ * self-heal). Deliberately strict: proxies do append ports ("1.2.3.4:5678") and
+ * zone ids ("fe80::1%eth0"), and 'unknown' is getClientIp's own sentinel -
+ * none of those are INET values.
+ */
+export function clientInetOrNull(request: Request): string | null {
+  const ip = getClientIp(request);
+  if (!ip || ip === 'unknown') return null;
+  return isInetAddress(ip) ? ip : null;
+}
+
+const IPV4_RE = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+
+/** Strict IPv4 / IPv6 literal check (no ports, no zone ids, no CIDR suffix). */
+export function isInetAddress(value: string): boolean {
+  if (IPV4_RE.test(value)) return true;
+  if (!value.includes(':')) return false;
+  try {
+    // The URL parser is the platform's own IPv6 validator: it accepts exactly
+    // the RFC 4291 forms (including '::ffff:1.2.3.4') and rejects the rest.
+    return new URL(`http://[${value}]`).hostname.startsWith('[');
+  } catch {
+    return false;
+  }
+}
+
 export async function checkRateLimit(
   bucket: string,
   limit: number,
