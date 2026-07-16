@@ -104,6 +104,35 @@ test.describe('public /preferences page', () => {
       .screenshot({ path: shot('02-toggle-row-closeup.png') });
   });
 
+  test('the Home Care toggle warns that turning it off deletes saved home details', async ({
+    page,
+  }) => {
+    // Slice 8 makes this toggle destructive: turning it off is an intentional
+    // leave, which permanently purges the homeowner's saved home details. The
+    // row must say so - a customer throttling email volume would otherwise read
+    // it as a plain subscription switch and lose their shut-off map.
+    const posts: unknown[] = [];
+    await mockPublicPrefsApi(page, posts);
+    await page.goto('/preferences?token=test-token');
+    await expect(page.getByTestId('pref-email')).toHaveText('alex@vacamoo.com');
+
+    const notice = page.getByTestId('home-care-purge-notice');
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText(/permanently deletes/i);
+    await expect(notice).toContainText(/ends your Home Care membership/i);
+
+    // Scoped to Home Care: it is the only stream whose opt-out destroys data.
+    await expect(page.getByTestId('home-care-purge-notice')).toHaveCount(1);
+    await expect(page.getByTestId('stream-home_care')).toContainText(/permanently deletes/i);
+    for (const key of ['newsletter', 'buy_remodel', 'announcements'] as const) {
+      await expect(page.getByTestId(`stream-${key}`)).not.toContainText(/permanently deletes/i);
+    }
+
+    await page
+      .getByTestId('stream-home_care')
+      .screenshot({ path: shot('05-home-care-purge-notice.png') });
+  });
+
   test('narrow mobile viewport still cannot compress the track', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 740 });
     const posts: unknown[] = [];

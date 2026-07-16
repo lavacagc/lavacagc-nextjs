@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import './helpers/retentionEnvStub';
 import { purgeHomeRecords, purgeHomeRecordsByEmail } from '../src/lib/homecare/retention';
+import { applyUpdate } from '../src/lib/preferences/preferences';
 
 /**
  * Home Care "My Home Systems" - Slice 8: the retention purge.
@@ -11,13 +12,15 @@ import { purgeHomeRecords, purgeHomeRecordsByEmail } from '../src/lib/homecare/r
  * "deleted when you leave the program". Unsubscribing never deletes the
  * homeowners row (only status='unsubscribed'), so the schema's ON DELETE
  * CASCADE can't fulfill that promise - purgeHomeRecords is the explicit
- * enforcement, wired into EVERY leave path. Per the owner's 2026-07-16
- * decision, the staff access log is deliberately KEPT on an ordinary leave
- * (staff-accountability data, categories only); it still cascades away on a
- * true homeowners-row deletion. Leave paths:
+ * enforcement, wired into every DELIBERATE leave path. Per the owner's
+ * 2026-07-16 decisions: the staff access log is deliberately KEPT on an
+ * ordinary leave (staff-accountability data, categories only, still cascades
+ * away on a true homeowners-row deletion), and the purge fires on intentional
+ * human departure ONLY - never on machine-driven Resend suppression. Leave
+ * paths:
  *   1. /api/home-care/unsubscribe (legacy one-click link)
- *   2. syncLegacyStatus in preferences.ts (preference center,
- *      unsubscribe-by-email, admin Subscriptions, Resend webhook)
+ *   2. syncLegacyStatus in preferences.ts, gated on actor self/admin
+ *      (preference center, unsubscribe-by-email, admin Subscriptions)
  *
  * The purge itself is exercised for real here (actual supabaseRest, stubbed
  * global fetch): happy path, pre-go-live missing table, hard failure. The
@@ -106,16 +109,98 @@ test('AC5: the legacy unsubscribe route purges right after flipping the status',
   expect(unsubRoute).toContain("from '@/lib/homecare/retention'");
 });
 
-test('AC6: every preference-pipeline leave path purges via syncLegacyStatus', () => {
-  // Turning the home_care stream OFF purges; turning it back ON must not.
-  const offBranch = preferences.slice(
-    preferences.indexOf('if (!patch.home_care)'),
-    preferences.indexOf("purgeHomeRecordsByEmail(email, 'preference-stream-off')") + 80,
-  );
-  expect(offBranch).toContain("purgeHomeRecordsByEmail(email, 'preference-stream-off')");
-  // Exactly one purge call, guarded by the stream-off check.
-  expect(preferences.match(/purgeHomeRecordsByEmail\(/g)?.length).toBe(1);
-  expect(preferences).toContain("import { purgeHomeRecordsByEmail } from '@/lib/homecare/retention'");
+test.describe('AC6: syncLegacyStatus purges on an INTENTIONAL leave only', () => {
+  test.afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  // Exercised through the real applyUpdate: the acting party must reach the
+  // purge gate, so a refactor that drops the actor thread fails here.
+  async function leaveHomeCare(actor: 'self' | 'admin' | 'webhook' | 'system') {
+    const calls: string[] = [];
+    stubFetch(async (url, init) => {
+      calls.push(`${init?.method} ${url}`);
+      if (init?.method === 'GET' && url.includes('/homeowners?email=eq.')) {
+        return new Response(JSON.stringify([{ id: 'h1' }]), { status: 200 });
+      }
+      if (init?.method === 'DELETE' && url.includes('/home_records?')) {
+        return new Response(JSON.stringify([{ id: 'r1' }]), { status: 200 });
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+    await applyUpdate({
+      current: {
+        email: 'rachel@example.com',
+        preference_token: 't',
+        home_care: true,
+        buy_remodel: false,
+        announcements: false,
+        newsletter: false,
+        follow_ups: false,
+      },
+      changes: { home_care: false },
+      actor,
+    });
+    return calls;
+  }
+
+  const purged = (calls: string[]) =>
+    calls.some((c) => c.startsWith('DELETE') && c.includes('/home_records?'));
+  const suppressed = (calls: string[]) =>
+    calls.some((c) => c.startsWith('PATCH') && c.includes('/homeowners?email=eq.'));
+
+  for (const actor of ['self', 'admin'] as const) {
+    test(`a deliberate leave by '${actor}' purges the saved home details`, async () => {
+      const calls = await leaveHomeCare(actor);
+      expect(purged(calls)).toBe(true);
+      expect(suppressed(calls)).toBe(true);
+    });
+  }
+
+  // The crux of the owner's 2026-07-16 decision: Resend's auto-suppression
+  // fires on a hard bounce, a spam complaint about an unrelated newsletter, or
+  // a deleted contact. None is the homeowner leaving, and the purge is
+  // irreversible - so it must stop the mail WITHOUT destroying the data.
+  for (const actor of ['webhook', 'system'] as const) {
+    test(`automated suppression by '${actor}' suppresses but never purges`, async () => {
+      const calls = await leaveHomeCare(actor);
+      expect(purged(calls)).toBe(false);
+      expect(calls.some((c) => c.includes('/homeowners?email=eq.') && c.startsWith('GET'))).toBe(false);
+      expect(suppressed(calls)).toBe(true);
+    });
+  }
+
+  test('re-enabling the stream never purges, whoever does it', async () => {
+    const calls: string[] = [];
+    stubFetch(async (url, init) => {
+      calls.push(`${init?.method} ${url}`);
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+    await applyUpdate({
+      current: {
+        email: 'rachel@example.com',
+        preference_token: 't',
+        home_care: false,
+        buy_remodel: false,
+        announcements: false,
+        newsletter: false,
+        follow_ups: false,
+      },
+      changes: { home_care: true },
+      actor: 'self',
+    });
+    expect(purged(calls)).toBe(false);
+  });
+
+  test('the purge is wired to exactly one intent-gated call site', () => {
+    expect(preferences.match(/purgeHomeRecordsByEmail\(/g)?.length).toBe(1);
+    expect(preferences).toContain('if (!patch.home_care && isIntentionalLeaveActor(actor))');
+    expect(preferences).toContain("import { purgeHomeRecordsByEmail } from '@/lib/homecare/retention'");
+    // The gate itself: automated actors are excluded by construction.
+    expect(preferences).toMatch(
+      /INTENTIONAL_LEAVE_ACTORS: readonly PrefActor\[\] = \['self', 'admin'\]/,
+    );
+  });
 });
 
 test('AC7: the purge never throws and alerts loudly on real failure', () => {

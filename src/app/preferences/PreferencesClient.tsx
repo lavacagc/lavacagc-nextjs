@@ -237,6 +237,16 @@ export default function PreferencesClient() {
                     <div className="min-w-0">
                       <div className="font-semibold">{s.label}</div>
                       <div className="text-sm text-muted-foreground">{s.description}</div>
+                      {s.key === 'home_care' && (
+                        <div
+                          className="text-sm text-amber-800 mt-1.5"
+                          data-testid="home-care-purge-notice"
+                        >
+                          Turning this off ends your Home Care membership and permanently deletes
+                          the home details you saved with us, like shut-off locations and appliance
+                          info.
+                        </div>
+                      )}
                     </div>
                     <Switch
                       checked={streams?.[s.key] ?? false}

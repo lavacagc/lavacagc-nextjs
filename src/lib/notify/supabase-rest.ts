@@ -80,3 +80,17 @@ export async function supabaseRest<T = unknown>(
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
 }
+
+/**
+ * True only for "that table isn't there yet" errors (PostgREST 404 /
+ * undefined_table 42P01) thrown by supabaseRest.
+ *
+ * The one error class a pre-go-live caller may treat as an empty result: a
+ * table this deploy adds does not exist until its migration runs. Anything else
+ * - an outage, a bad key, a permission error - is a real failure and must NOT
+ * masquerade as "no rows", so callers keep this check narrow.
+ */
+export function isMissingTableError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes(' 404 ') || msg.includes('42P01') || /relation .* does not exist/i.test(msg);
+}

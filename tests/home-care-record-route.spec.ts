@@ -54,8 +54,10 @@ test('AC4: first-save consent is logged in-process, before the record, and block
   // ...and if consent can't be recorded, the sensitive data is NOT stored (500).
   expect(route).toMatch(/Could not record consent[\s\S]{0,80}500/);
   // The logged consent proof includes the IP address the privacy policy promises,
-  // guarded to the inet format (consent_logs.ip_address is a Postgres inet column).
-  expect(route).toContain('getClientIp(request)');
+  // validated as a real inet value (consent_logs.ip_address is a Postgres inet
+  // column). An unparseable header drops the field rather than 422ing the insert
+  // and blocking a consented save.
+  expect(route).toContain('clientInetOrNull(request)');
   expect(route).toContain('consentRow.ip_address = ip');
   // NOT via a self-fetch to our own domain (Cloudflare would interstitial it).
   expect(route).not.toContain('/api/consent/log');

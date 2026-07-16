@@ -72,21 +72,28 @@ export default function HomeRecordsPage() {
   const [roster, setRoster] = useState<RosterRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [detail, setDetail] = useState<DetailPayload | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   const fetchRoster = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const res = await fetch('/api/admin/home-care/home-records');
-      const data = await res.json();
       if (res.status === 403) {
         setForbidden(true);
         return;
       }
+      const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load home records');
       setRoster(data.roster || []);
     } catch (err) {
+      // A failed read must never fall through to the empty state below: "no
+      // homeowners have saved details" during an outage reads as truth long
+      // after the toast has faded.
+      setLoadError(true);
+      setRoster([]);
       toast({
         title: 'Failed to load home records',
         description: err instanceof Error ? err.message : String(err),
@@ -108,11 +115,11 @@ export default function HomeRecordsPage() {
         const res = await fetch(
           `/api/admin/home-care/home-records?homeowner_id=${encodeURIComponent(homeownerId)}`,
         );
-        const data = await res.json();
         if (res.status === 403) {
           setForbidden(true);
           return;
         }
+        const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to load this home record');
         setDetail(data as DetailPayload);
       } catch (err) {
@@ -295,13 +302,31 @@ export default function HomeRecordsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">
-            {roster.length} {roster.length === 1 ? 'home' : 'homes'} with saved details
+            {loadError
+              ? 'Homes with saved details'
+              : `${roster.length} ${roster.length === 1 ? 'home' : 'homes'} with saved details`}
           </CardTitle>
-          <CardDescription>Most recently updated first. Open one to see its details.</CardDescription>
+          <CardDescription>
+            {loadError
+              ? 'The roster could not be loaded, so the count is unknown.'
+              : 'Most recently updated first. Open one to see its details.'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading && roster.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">Loading…</div>
+          ) : loadError ? (
+            <div className="text-center py-8" data-testid="roster-load-error">
+              <p className="text-red-800 font-medium">Couldn&apos;t load the roster.</p>
+              <p className="text-muted-foreground text-sm mt-1">
+                This is a load failure, not an empty list - homeowners may well have saved details.
+                Try again, and if it keeps failing, check the logs before assuming there is nothing
+                here.
+              </p>
+              <Button variant="outline" size="sm" className="mt-3" onClick={fetchRoster}>
+                Try again
+              </Button>
+            </div>
           ) : roster.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground" data-testid="empty-roster">
               No homeowners have saved home details yet.

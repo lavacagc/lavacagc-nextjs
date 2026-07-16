@@ -17,12 +17,22 @@
  * true homeowners-row deletion (e.g. a CCPA delete request) the log still goes
  * with it via ON DELETE CASCADE - the stronger case keeps the stronger wipe.
  *
- * Call sites - every path that takes a homeowner OUT of the program:
- *   1. /api/home-care/unsubscribe (the legacy one-click link)
+ * Call sites - every path where a homeowner DELIBERATELY leaves the program:
+ *   1. /api/home-care/unsubscribe (the legacy one-click link - clear intent)
  *   2. syncLegacyStatus in src/lib/preferences/preferences.ts (preference
- *      center, unsubscribe-by-email, admin Subscriptions, Resend webhook -
- *      they all funnel through applyUpdate -> syncLegacyStatus)
+ *      center, unsubscribe-by-email, admin Subscriptions - they all funnel
+ *      through applyUpdate -> syncLegacyStatus)
  * A manual homeowners-row deletion still purges via the FK cascade.
+ *
+ * INTENT GATE (owner decision 2026-07-16): syncLegacyStatus purges only when
+ * the acting party is a human choosing to leave - actor 'self' (the homeowner)
+ * or 'admin' (acting for them). It deliberately does NOT purge for actor
+ * 'webhook' or 'system': Resend's auto-suppression turns every marketing stream
+ * off on a hard bounce, a spam complaint about an unrelated newsletter, or an
+ * admin tidying up a Resend contact. None of those is the homeowner leaving,
+ * yet all of them would otherwise irreversibly destroy the shut-off maps and
+ * appliance details they saved. Those events still suppress the mail (the
+ * homeowners status flip is unconditional) - they just don't delete the data.
  *
  * FAILURE POSTURE: never throws - an unsubscribe must always complete (the
  * opt-out is legally required to stick even if cleanup hiccups). But a failed
@@ -37,7 +47,7 @@
  * server-side consent check (updated_by=eq.homeowner) require fresh consent
  * before anything is stored again (Slice 3 decision c/d).
  */
-import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { supabaseRest, isMissingTableError } from '@/lib/notify/supabase-rest';
 
 /**
  * Lazy alert dispatch: preferences.ts imports this module, and the alert
@@ -65,12 +75,6 @@ async function alertPurgeFailure(payload: {
 export interface PurgeOutcome {
   ok: boolean;
   purgedRecords: number;
-}
-
-/** True for "the table isn't there yet" errors - nothing to purge, not a failure. */
-function isMissingTableError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return msg.includes(' 404 ') || msg.includes('42P01') || /relation .* does not exist/i.test(msg);
 }
 
 async function deleteReturningIds(path: string): Promise<number> {
