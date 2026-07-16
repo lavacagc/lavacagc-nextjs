@@ -12,6 +12,12 @@ const LOGO = '/logo.png';
 
 type ConfirmTarget = StreamKey | 'all';
 
+// One source of truth for the deletion warning, so the stream row and the
+// confirm card a footer link lands on can never drift apart.
+const PURGE_WARNING =
+  'ends your Home Care membership and permanently deletes the home details you ' +
+  'saved with us, like shut-off locations and appliance info.';
+
 function parseConfirm(raw: string | null): ConfirmTarget | null {
   if (!raw) return null;
   if (raw === 'all') return 'all';
@@ -188,6 +194,15 @@ export default function PreferencesClient() {
                   <p className="text-sm font-semibold text-amber-900 mb-2">
                     Unsubscribe from {confirmLabel}?
                   </p>
+                  {(confirmTarget === 'home_care' || confirmTarget === 'all') &&
+                    streams.home_care && (
+                      <p
+                        className="text-xs font-semibold text-amber-900 mb-2"
+                        data-testid="confirm-home-care-purge-notice"
+                      >
+                        Confirming {PURGE_WARNING}
+                      </p>
+                    )}
                   <p className="text-xs text-amber-800 mb-3">
                     Nothing has changed yet — confirm below, or keep your subscription and adjust
                     individual lists instead.
@@ -243,9 +258,7 @@ export default function PreferencesClient() {
                           className="text-sm text-amber-800 mt-1.5"
                           data-testid="home-care-purge-notice"
                         >
-                          Turning this off ends your Home Care membership and permanently deletes
-                          the home details you saved with us, like shut-off locations and appliance
-                          info.
+                          Turning this off {PURGE_WARNING}
                         </div>
                       )}
                     </div>

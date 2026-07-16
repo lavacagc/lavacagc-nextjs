@@ -29,8 +29,8 @@ import {
  * preference center, and CAN-SPAM requires it to work without a token), but the
  * Home Care retention purge is irreversible, so the actor is excluded from
  * INTENTIONAL_LEAVE_ACTORS and no home details are deleted here. The
- * token-bearing paths (/api/preferences, /api/preferences/unsubscribe,
- * /api/home-care/unsubscribe) prove identity and do purge.
+ * token-bearing paths (/api/preferences, /api/preferences/unsubscribe) prove
+ * identity and do purge; the footer links redirect there to be confirmed.
  *
  * Public route (under /api/preferences, declared in middleware PUBLIC_ROUTES).
  */

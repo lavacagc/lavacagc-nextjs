@@ -1,8 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findHomeownerByUnsubscribeToken, updateHomeowner } from '@/lib/homecare/homeowners';
-import { HC_ACCESS_COOKIE, HC_KNOWN_COOKIE } from '@/lib/homecare/accessCookie';
-import { purgeHomeRecords } from '@/lib/homecare/retention';
-import { setStreamByEmail } from '@/lib/preferences/preferences';
+import { findHomeownerByUnsubscribeToken } from '@/lib/homecare/homeowners';
+import { getOrCreateByEmail } from '@/lib/preferences/preferences';
+
+/**
+ * Legacy one-click Home Care unsubscribe link (still live in the footer of
+ * every Home Care email).
+ *
+ *   GET ?token=… → mutates NOTHING. Resolves the unsubscribe token read-only
+ *        and redirects to the preference center with a confirm prompt for the
+ *        Home Care stream; the actual leave (status flip + retention purge)
+ *        happens on the confirmed POST, which carries the tokened identity AND
+ *        a human's intent. Same rule and same destination as
+ *        /api/preferences/unsubscribe.
+ *
+ * A GET that acted on the token would unsubscribe people who never clicked:
+ * mail-client prefetchers and corporate link scanners (SafeLinks, Mimecast,
+ * Proofpoint URL Defense) fetch every footer URL with browser-like user agents,
+ * so the bot filter does not stop them. A genuine token with zero human intent
+ * used to cost a recoverable status flip; since the Slice 8 retention purge it
+ * would irreversibly delete the homeowner's saved home details, so the leave
+ * cannot start here.
+ *
+ * The hc_access / hc_known cookies are deliberately left alone: nothing has
+ * happened yet, and clearing them would sign a homeowner out of their portal
+ * for merely opening the link. Once they do leave, the cookie grants nothing -
+ * every consumer re-checks that the homeowner is still active.
+ *
+ * Public route (declared in middleware PUBLIC_ROUTES); auth is the token.
+ */
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -10,31 +35,21 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   const origin = request.nextUrl.origin;
   const token = request.nextUrl.searchParams.get('token');
-  const done = (status: string) => {
-    const res = NextResponse.redirect(new URL(`/home-care?unsub=${status}`, origin));
-    res.cookies.set(HC_ACCESS_COOKIE, '', { path: '/', maxAge: 0 });
-    res.cookies.set(HC_KNOWN_COOKIE, '', { path: '/', maxAge: 0 });
-    return res;
-  };
+  const invalid = () => NextResponse.redirect(new URL('/preferences?invalid=1', origin));
 
-  if (!token) return done('invalid');
+  if (!token) return invalid();
   try {
     const ho = await findHomeownerByUnsubscribeToken(token);
-    if (ho && ho.status !== 'unsubscribed') {
-      await updateHomeowner(ho.id, { status: 'unsubscribed', unsubscribed_at: new Date().toISOString() });
-      // Leaving the program deletes saved home details (the "deleted when you
-      // leave" promise; the staff access log is deliberately kept - see
-      // retention.ts). Never throws; a real failure alerts internally while
-      // the unsubscribe still completes.
-      await purgeHomeRecords(ho.id, 'home-care-unsubscribe-link');
-      // Keep the unified preference model in sync (best-effort).
-      await setStreamByEmail(ho.email, 'home_care', false, 'self', 'home-care-unsubscribe-link').catch(
-        (e) => console.error('preference sync on home-care unsubscribe failed:', e),
-      );
-    }
-    return done('ok');
+    if (!ho) return invalid();
+    // Every email carrying this link builds its "manage preferences" URL with
+    // preferencesUrlFor, so the row already exists; the create is an idempotent
+    // fallback (all streams on = the identity-model default), never a
+    // consequential mutation.
+    const pref = await getOrCreateByEmail(ho.email);
+    const dest = `/preferences?token=${encodeURIComponent(pref.preference_token)}&confirm=home_care`;
+    return NextResponse.redirect(new URL(dest, origin));
   } catch (error) {
-    console.error('Home Care unsubscribe error:', error);
-    return done('error');
+    console.error('Home Care unsubscribe link error:', error);
+    return invalid();
   }
 }
