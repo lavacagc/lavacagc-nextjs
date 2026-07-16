@@ -66,19 +66,37 @@ export function clientInetOrNull(request: Request): string | null {
   return isInetAddress(ip) ? ip : null;
 }
 
-const IPV4_RE = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+const V4_OCTET = '(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
+const V4 = `${V4_OCTET}(\\.${V4_OCTET}){3}`;
+const V6_SEG = '[0-9a-fA-F]{1,4}';
+
+const IPV4_RE = new RegExp(`^${V4}$`);
+
+/**
+ * Self-contained RFC 4291 IPv6 matcher: full, compressed ('::'), and
+ * IPv4-mapped/embedded forms. Written out rather than delegating to the URL
+ * parser, which is not an anchored validator - it terminates the host at the
+ * first '/', '?' or '#', so "::1]/evil" parsed clean and reached Postgres.
+ */
+const IPV6_RE = new RegExp(
+  '^(' +
+    `(${V6_SEG}:){7}${V6_SEG}|` +
+    `(${V6_SEG}:){1,7}:|` +
+    `(${V6_SEG}:){1,6}:${V6_SEG}|` +
+    `(${V6_SEG}:){1,5}(:${V6_SEG}){1,2}|` +
+    `(${V6_SEG}:){1,4}(:${V6_SEG}){1,3}|` +
+    `(${V6_SEG}:){1,3}(:${V6_SEG}){1,4}|` +
+    `(${V6_SEG}:){1,2}(:${V6_SEG}){1,5}|` +
+    `${V6_SEG}:(:${V6_SEG}){1,6}|` +
+    `:((:${V6_SEG}){1,7}|:)|` +
+    `::(ffff(:0{1,4})?:)?${V4}|` +
+    `(${V6_SEG}:){1,4}:${V4}` +
+    ')$',
+);
 
 /** Strict IPv4 / IPv6 literal check (no ports, no zone ids, no CIDR suffix). */
 export function isInetAddress(value: string): boolean {
-  if (IPV4_RE.test(value)) return true;
-  if (!value.includes(':')) return false;
-  try {
-    // The URL parser is the platform's own IPv6 validator: it accepts exactly
-    // the RFC 4291 forms (including '::ffff:1.2.3.4') and rejects the rest.
-    return new URL(`http://[${value}]`).hostname.startsWith('[');
-  } catch {
-    return false;
-  }
+  return IPV4_RE.test(value) || IPV6_RE.test(value);
 }
 
 export async function checkRateLimit(

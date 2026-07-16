@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { parseStaffEmails, isHomeCareStaff } from '../src/lib/homecare/staffAllowlist';
+import { isInetAddress } from '../src/lib/rateLimit';
 
 /**
  * Home Care "My Home Systems" - Slice 6: the staff Home Record view.
@@ -139,6 +140,44 @@ test('AC7b: only a missing table reads as an empty roster - a real fault 500s', 
   const catches = rosterFn.match(/catch \(err\) \{\s*\n\s*[^\n]+/g) ?? [];
   expect(catches.length).toBe(2);
   for (const c of catches) expect(c).toContain('return rosterReadFailure(');
+});
+
+test('AC7c: a roster truncated at the row cap is observable, not silent', () => {
+  // The pager stops at ROSTER_MAX_ROWS. Exiting on the cap (rather than on a
+  // short page) means homeowners are missing, which renders identically to a
+  // complete roster - the same masquerade AC7b guards. It must announce itself.
+  const rosterFn = route.slice(route.indexOf('async function roster()'), route.indexOf('async function detail('));
+  expect(rosterFn).toMatch(/complete = true;/);
+  expect(rosterFn).toMatch(/if \(!complete\) \{\s*\n\s*console\.warn\(/);
+  expect(rosterFn).toContain('ROSTER_MAX_ROWS');
+});
+
+test('AC7d: the audit IP validator is anchored - a junk header drops the field, never blocks a view', () => {
+  // ip_address is an optional INET column on an audit row. A value Postgres
+  // rejects 422s the insert, and the "no log, no look" catch turns that into a
+  // 500 - so an unparseable header would deny staff a legitimate, audited view,
+  // and would not self-heal (the same header repeats on every retry).
+  for (const ok of ['1.2.3.4', '255.255.255.255', '::1', '::ffff:1.2.3.4', '2001:db8::1', 'fe80::1']) {
+    expect(isInetAddress(ok)).toBe(true);
+  }
+  // Suffixes the URL parser silently truncated the host at ('/', '?', '#'), plus
+  // the real-world near-misses: appended proxy port, zone id, CIDR, sentinel.
+  for (const bad of [
+    '::1]/evil',
+    '::1]?x=1',
+    '::1]#f',
+    '[::1]',
+    '1.2.3.4:5678',
+    'fe80::1%eth0',
+    '1.2.3.4/24',
+    '999.1.1.1',
+    '01.2.3.4',
+    'abc',
+    'unknown',
+    '',
+  ]) {
+    expect(isInetAddress(bad)).toBe(false);
+  }
 });
 
 test('AC8: detail rendering goes through the registry chokepoint', () => {

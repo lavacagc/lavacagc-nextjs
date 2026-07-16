@@ -130,9 +130,27 @@ test.describe('public /preferences page', () => {
       await expect(page.getByTestId(`stream-${key}`)).not.toContainText(/permanently deletes/i);
     }
 
+    // The warning reaches a screen reader AT the control it describes - this is
+    // the one switch whose flip destroys data, so the aria-label alone ("Toggle
+    // La Vaca Home Care") would announce none of the consequence.
+    await expect(notice).toHaveAttribute('id', 'home-care-purge-notice');
+    await expect(page.getByTestId('switch-home_care')).toHaveAttribute(
+      'aria-describedby',
+      'home-care-purge-notice',
+    );
+
     await page
       .getByTestId('stream-home_care')
       .screenshot({ path: shot('05-home-care-purge-notice.png') });
+
+    // Already left: the details are gone, so warning about deleting them is
+    // both alarming and untrue. The notice describes an available action only.
+    await page.getByTestId('switch-home_care').click();
+    await expect(page.getByTestId('home-care-purge-notice')).toHaveCount(0);
+    await expect(page.getByTestId('switch-home_care')).not.toHaveAttribute(
+      'aria-describedby',
+      /.*/,
+    );
   });
 
   test('narrow mobile viewport still cannot compress the track', async ({ page }) => {
