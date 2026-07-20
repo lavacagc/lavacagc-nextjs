@@ -41,6 +41,12 @@
  *     required by CAN-SPAM without a token) but not for an irreversible delete:
  *     otherwise an anonymous POST of a victim's address would destroy their
  *     records.
+ *   - 'self_oneclick': the RFC 8058 List-Unsubscribe=One-Click POST from a mail
+ *     client's native Unsubscribe button. The token proves identity, but the
+ *     marketing link turns off ALL streams (the click may have meant only a
+ *     newsletter or listings list) and the button lives inside the mail client,
+ *     so the deletion warning can never be shown first. It suppresses the mail
+ *     but must not delete - the purge stays on the preference-center confirm.
  * Each of these would otherwise irreversibly destroy the shut-off maps and
  * appliance details the homeowner saved. They all still suppress the mail (the
  * homeowners status flip is unconditional) - they just don't delete the data.

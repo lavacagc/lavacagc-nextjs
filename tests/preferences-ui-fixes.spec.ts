@@ -240,7 +240,13 @@ test.describe('public /preferences page', () => {
     expect(posts[0].token).toBe('test-token');
     expect(posts[0].changes).toEqual({ home_care: false });
 
+    // Unsubscribe-all routes through the same confirm card as a footer link, so
+    // the deletion warning can never be bypassed; the POST fires only on the
+    // confirmed "Yes, unsubscribe" click.
     await page.getByTestId('unsubscribe-all').click();
+    await expect(page.getByTestId('confirm-unsubscribe')).toBeVisible();
+    expect(posts).toHaveLength(1);
+    await page.getByTestId('confirm-unsubscribe-yes').click();
     await expect(page.getByTestId('saved-msg')).toContainText('unsubscribed from all');
     expect(posts).toHaveLength(2);
     expect(posts[1].changes).toEqual({

@@ -180,7 +180,9 @@ test.describe('AC6: syncLegacyStatus purges on an INTENTIONAL leave only', () =>
 
   // Exercised through the real applyUpdate: the acting party must reach the
   // purge gate, so a refactor that drops the actor thread fails here.
-  async function leaveHomeCare(actor: 'self' | 'self_unverified' | 'admin' | 'webhook' | 'system') {
+  async function leaveHomeCare(
+    actor: 'self' | 'self_unverified' | 'self_oneclick' | 'admin' | 'webhook' | 'system',
+  ) {
     const calls: string[] = [];
     stubFetch(async (url, init) => {
       calls.push(`${init?.method} ${url}`);
@@ -242,6 +244,26 @@ test.describe('AC6: syncLegacyStatus purges on an INTENTIONAL leave only', () =>
     expect(purged(calls)).toBe(false);
     expect(calls.some((c) => c.includes('/homeowners?email=eq.') && c.startsWith('GET'))).toBe(false);
     expect(suppressed(calls)).toBe(true);
+  });
+
+  // The RFC 8058 one-click POST carries a token (identity is proven) but the
+  // mail client's native Unsubscribe button turns off ALL marketing streams and
+  // lives outside any page where the deletion warning could be shown. It must
+  // suppress but never purge - the purge stays on the preference-center confirm.
+  test("an RFC 8058 'self_oneclick' unsubscribe suppresses but never purges", async () => {
+    const calls = await leaveHomeCare('self_oneclick');
+    expect(purged(calls)).toBe(false);
+    expect(calls.some((c) => c.includes('/homeowners?email=eq.') && c.startsWith('GET'))).toBe(false);
+    expect(suppressed(calls)).toBe(true);
+  });
+
+  test('the one-click List-Unsubscribe POST acts as self_oneclick, not self', () => {
+    const oneClick = read('src/app/api/preferences/unsubscribe/route.ts');
+    expect(oneClick).toContain("actor: 'self_oneclick'");
+    expect(oneClick).not.toMatch(/actor: 'self'/);
+    // self_oneclick is excluded from the intent gate by construction.
+    expect(preferences).not.toMatch(/INTENTIONAL_LEAVE_ACTORS[^\n]*self_oneclick/);
+    expect(preferences).toContain("'self_oneclick'");
   });
 
   test('the tokenless unsubscribe-by-email route acts as self_unverified', () => {

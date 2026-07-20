@@ -40,7 +40,7 @@ const STEPS = [
   { icon: Wrench, title: 'DIY it — or book us', body: 'Knock out the easy ones yourself, and tap “Book La Vaca” on anything you’d rather hand off.' },
 ];
 
-export default async function HomeCarePage({ searchParams }: { searchParams: Promise<{ error?: string; unsub?: string }> }) {
+export default async function HomeCarePage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const sp = await searchParams;
 
   // Returning member? Read the signed access cookie and greet them with a direct
@@ -68,9 +68,6 @@ export default async function HomeCarePage({ searchParams }: { searchParams: Pro
               </div>
             </div>
           </section>
-        )}
-        {sp?.unsub === 'ok' && (
-          <div className="bg-secondary/10 text-center text-sm py-3 px-4 text-text-secondary">You&apos;ve been unsubscribed from La Vaca Home Care. You can re-join anytime below.</div>
         )}
         {sp?.error && (
           <div className="bg-destructive/10 text-center text-sm py-3 px-4 text-destructive">{accessErrorCopy(sp.error)}</div>

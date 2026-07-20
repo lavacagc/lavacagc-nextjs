@@ -109,13 +109,6 @@ export default function PreferencesClient() {
     save({ [key]: next[key] }, streams, 'Saved.');
   };
 
-  const unsubscribeAll = () => {
-    if (!streams) return;
-    const next = Object.fromEntries(STREAM_KEYS.map((k) => [k, false])) as StreamState;
-    setStreams(next);
-    save(next, streams, "You've been unsubscribed from all marketing emails.");
-  };
-
   const confirmLabel =
     confirmTarget && confirmTarget !== 'all'
       ? STREAMS.find((s) => s.key === confirmTarget)?.label ?? 'this list'
@@ -287,7 +280,7 @@ export default function PreferencesClient() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={unsubscribeAll}
+                    onClick={() => setConfirmTarget('all')}
                     disabled={saving}
                     data-testid="unsubscribe-all"
                     className="flex-shrink-0"
