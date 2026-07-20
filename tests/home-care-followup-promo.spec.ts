@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mkdirSync } from 'fs';
 import {
   lead24hHtml,
   lead48hHtml,
@@ -24,7 +25,7 @@ import {
  */
 
 const EVIDENCE_DIR =
-  '/var/folders/55/gqy2vg197xj44q_bjx2q9l180000gn/T/no-mistakes-evidence/01KY0E46NK7WWS7AQ2063DFFSJ';
+  process.env.EVIDENCE_DIR || 'test-results/home-care-followup-promo-evidence';
 
 const UNSUB = 'https://www.lavacagc.com/unsubscribe?token=demo';
 
@@ -104,6 +105,8 @@ test.describe('Home Care promo — visual evidence', () => {
     const soft = lead24hHtml('Sarah Mitchell', 'Kitchen Remodel', UNSUB);
     const direct = lead48hHtml('Sarah Mitchell', 'Kitchen Remodel', UNSUB);
     const suppressed = stripHomeCarePromo(soft);
+
+    mkdirSync(EVIDENCE_DIR, { recursive: true });
 
     const variants = [
       { name: 'email2-soft-24h', html: soft },
