@@ -11,9 +11,19 @@
  * (`%`, `_`, `\`) are escaped so the match stays literal (underscores are valid
  * in email local-parts).
  *
+ * `follow_up_queue` is shared: it also holds post-job review-request emails
+ * (`feedback_day0`/`feedback_day3`/`feedback_day7`) for the same address. We
+ * therefore scope the cancel to the lead-nurture drip types only
+ * (`instant_ack`/`24h`/`48h`/`7d`) so converting an estimate lead never silently
+ * kills a repeat customer's pending review solicitations.
+ *
  * Takes any Supabase-like client so it works from the admin browser client today
  * and is unit-testable with a stub.
  */
+
+/** Lead-nurture drip follow-up types created by leadFollowUp - the only rows a
+ * "Converted" estimate lead should cancel. Excludes shared review-request rows. */
+export const LEAD_NURTURE_FOLLOW_UP_TYPES = ['instant_ack', '24h', '48h', '7d'] as const;
 
 /** Escape Postgres LIKE/ILIKE wildcards so a value matches literally. */
 export function escapeLikePattern(value: string): string {
@@ -30,6 +40,7 @@ export async function cancelPendingFollowUps(client: any, email: string): Promis
     .update({ status: 'cancelled' })
     .eq('status', 'pending')
     .ilike('lead_email', escapeLikePattern(target))
+    .in('follow_up_type', LEAD_NURTURE_FOLLOW_UP_TYPES)
     .select('id');
 
   if (error) throw error;
