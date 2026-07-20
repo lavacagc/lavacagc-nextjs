@@ -25,13 +25,39 @@
  * "Converted" estimate lead should cancel. Excludes shared review-request rows. */
 export const LEAD_NURTURE_FOLLOW_UP_TYPES = ['instant_ack', '24h', '48h', '7d'] as const;
 
+/** Post-job review-request types created by feedback/create, sharing the queue. */
+export const REVIEW_REQUEST_FOLLOW_UP_TYPES = ['feedback_day0', 'feedback_day3', 'feedback_day7'] as const;
+
+/**
+ * The sibling sequence a given follow_up_type belongs to. Used so a "stop this
+ * person's follow-ups" action cancels the SAME sequence the row is part of
+ * (nurture vs review request) instead of blindly cancelling everything for the
+ * email. Unknown types fall back to the nurture set.
+ */
+export function followUpSequenceTypes(followUpType: string): readonly string[] {
+  return (REVIEW_REQUEST_FOLLOW_UP_TYPES as readonly string[]).includes(followUpType)
+    ? REVIEW_REQUEST_FOLLOW_UP_TYPES
+    : LEAD_NURTURE_FOLLOW_UP_TYPES;
+}
+
 /** Escape Postgres LIKE/ILIKE wildcards so a value matches literally. */
 export function escapeLikePattern(value: string): string {
   return value.replace(/([\\%_])/g, '\\$1');
 }
 
+/**
+ * Cancel an email's still-PENDING follow-ups, scoped to a set of follow_up_types
+ * (defaults to the lead-nurture drip). Because `follow_up_queue` is shared between
+ * the nurture drip and post-job review requests, callers pass the type-set they
+ * actually mean so one sequence is never cancelled by touching the other. Returns
+ * the number of rows stopped.
+ */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-export async function cancelPendingFollowUps(client: any, email: string): Promise<number> {
+export async function cancelPendingFollowUps(
+  client: any,
+  email: string,
+  types: readonly string[] = LEAD_NURTURE_FOLLOW_UP_TYPES,
+): Promise<number> {
   const target = (email ?? '').trim();
   if (!target) return 0;
 
@@ -40,7 +66,7 @@ export async function cancelPendingFollowUps(client: any, email: string): Promis
     .update({ status: 'cancelled' })
     .eq('status', 'pending')
     .ilike('lead_email', escapeLikePattern(target))
-    .in('follow_up_type', LEAD_NURTURE_FOLLOW_UP_TYPES)
+    .in('follow_up_type', types)
     .select('id');
 
   if (error) throw error;

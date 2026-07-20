@@ -2,7 +2,9 @@ import { test, expect } from '@playwright/test';
 import {
   escapeLikePattern,
   cancelPendingFollowUps,
+  followUpSequenceTypes,
   LEAD_NURTURE_FOLLOW_UP_TYPES,
+  REVIEW_REQUEST_FOLLOW_UP_TYPES,
 } from '../src/lib/notify/cancelFollowUps';
 
 /**
@@ -132,5 +134,34 @@ test.describe('cancelPendingFollowUps', () => {
     const boom = new Error('supabase down');
     const { client } = stubClient({ data: null, error: boom });
     await expect(cancelPendingFollowUps(client, 'x@example.com')).rejects.toThrow('supabase down');
+  });
+
+  test('scopes to an explicitly-passed type set (review requests) when given one', async () => {
+    const { client, recorded } = stubClient({ data: [{ id: 'r' }], error: null });
+
+    const count = await cancelPendingFollowUps(client, 'x@example.com', REVIEW_REQUEST_FOLLOW_UP_TYPES);
+
+    expect(count).toBe(1);
+    const [column, types] = recorded.in[0];
+    expect(column).toBe('follow_up_type');
+    expect(types).toEqual([...REVIEW_REQUEST_FOLLOW_UP_TYPES]);
+    // Passing the review set must NOT cancel the nurture drip.
+    for (const nurtureType of LEAD_NURTURE_FOLLOW_UP_TYPES) {
+      expect(types).not.toContain(nurtureType);
+    }
+  });
+});
+
+test.describe('followUpSequenceTypes', () => {
+  test('maps each feedback_* type to the review-request set', () => {
+    for (const t of REVIEW_REQUEST_FOLLOW_UP_TYPES) {
+      expect(followUpSequenceTypes(t)).toEqual(REVIEW_REQUEST_FOLLOW_UP_TYPES);
+    }
+  });
+
+  test('maps nurture types (and unknown types) to the nurture set', () => {
+    for (const t of [...LEAD_NURTURE_FOLLOW_UP_TYPES, 'something_else']) {
+      expect(followUpSequenceTypes(t)).toEqual(LEAD_NURTURE_FOLLOW_UP_TYPES);
+    }
   });
 });

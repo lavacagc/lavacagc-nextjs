@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
+import { cancelPendingFollowUps, followUpSequenceTypes } from '@/lib/notify/cancelFollowUps';
 
 interface FollowUpItem {
   id: string;
@@ -76,27 +77,30 @@ export default function FollowUpsPage() {
     }
   }, [activeFilter, followUps]);
 
-  const handleMarkResponded = async (followUpId: string, leadEmail: string) => {
+  // Stop this person's remaining follow-ups for the sequence the clicked row
+  // belongs to (nurture drip vs review requests share the queue). Cancels only
+  // still-pending rows via the shared, type-scoped helper so we never nuke the
+  // other sequence for the same address.
+  const handleStopFollowUps = async (leadEmail: string, followUpType: string) => {
     try {
-      // Cancel all pending follow-ups for this lead
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase.from as any)('follow_up_queue')
-        .update({ status: 'responded' })
-        .eq('lead_email', leadEmail)
-        .in('status', ['pending', 'sent']);
-
-      if (error) throw error;
+      const stopped = await cancelPendingFollowUps(
+        supabase,
+        leadEmail,
+        followUpSequenceTypes(followUpType),
+      );
 
       toast({
         title: 'Success',
-        description: 'Marked as responded and cancelled remaining sequence',
+        description: stopped > 0
+          ? `Stopped ${stopped} pending follow-up${stopped === 1 ? '' : 's'}`
+          : 'No pending follow-ups to stop',
       });
       fetchFollowUps();
     } catch (error) {
-      console.error('Error marking responded:', error);
+      console.error('Error stopping follow-ups:', error);
       toast({
         title: 'Error',
-        description: 'Failed to update status',
+        description: 'Failed to stop follow-ups',
         variant: 'destructive',
       });
     }
@@ -287,9 +291,9 @@ export default function FollowUpsPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleMarkResponded(fu.id, fu.lead_email)}
+                                onClick={() => handleStopFollowUps(fu.lead_email, fu.follow_up_type)}
                               >
-                                Mark Responded
+                                Stop follow-ups
                               </Button>
                             )}
                             {fu.status === 'pending' && (
