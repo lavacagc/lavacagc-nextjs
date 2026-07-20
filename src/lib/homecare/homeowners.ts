@@ -48,6 +48,32 @@ export function findHomeownerByEmail(email: string): Promise<Homeowner | null> {
   return findOne('email', normalizeEmail(email));
 }
 
+/**
+ * True only if this email is a CONFIRMED (status='active') La Vaca Home Care
+ * subscriber. Pending (unverified) and unsubscribed homeowners both return
+ * false. Used to suppress the Home Care promo in lead follow-up emails for
+ * people who already receive Home Care mail, so we never pitch a membership
+ * to someone who already has it.
+ *
+ * Reads with SUPABASE_SECRET_KEY (bypasses RLS). Fails OPEN: any lookup error
+ * returns false, i.e. the promo is left in place rather than blocking the send.
+ * Showing the promo to an already-subscribed recipient is a mild annoyance;
+ * dropping it for a genuine prospect over a transient DB blip is the worse miss.
+ */
+export async function isActiveHomeCareSubscriber(email: string): Promise<boolean> {
+  if (!email) return false;
+  try {
+    const rows = await supabaseRest<Array<{ id: string }>>(
+      'GET',
+      `homeowners?email=eq.${encodeURIComponent(normalizeEmail(email))}&status=eq.active&select=id&limit=1`,
+    );
+    return !!rows && rows.length > 0;
+  } catch (err) {
+    console.error('isActiveHomeCareSubscriber lookup failed (failing open):', err);
+    return false;
+  }
+}
+
 export function findHomeownerByVerifyToken(token: string): Promise<Homeowner | null> {
   return findOne('verify_token', token);
 }

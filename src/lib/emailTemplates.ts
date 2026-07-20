@@ -160,6 +160,104 @@ function followUpFooter(unsubscribeUrl: string): string {
 }
 
 // ==========================================
+// HOME CARE PROMO (embedded in lead follow-ups 2 & 3)
+// ==========================================
+
+/**
+ * HTML-comment delimiters wrapping the Home Care promo. The follow-up bodies are
+ * rendered and frozen into follow_up_queue.email_body at lead-submit time, but
+ * the send happens 24–48h later. The cron (send-follow-ups) checks Home Care
+ * subscription status at SEND time and strips everything between these markers
+ * when the recipient is already an active subscriber. Keep these strings in sync
+ * with the stripper in src/app/api/cron/send-follow-ups/route.ts.
+ */
+export const HC_PROMO_START = '<!--HC_PROMO_START-->';
+export const HC_PROMO_END = '<!--HC_PROMO_END-->';
+
+const HOMECARE_NAVY = '#002855'; // La Vaca Home Care card header (matches /home-care)
+
+/** Home Care link with follow-up attribution. */
+function homeCareUrl(content: string): string {
+  return `${WEBSITE_URL}/home-care?utm_source=lead_followup&utm_medium=email&utm_campaign=home_care_promo&utm_content=${content}`;
+}
+
+/**
+ * Small "interpretive" checklist card — an inline-HTML recreation of the
+ * /home-care homepage checklist visual (orange checkmarks). White card so it
+ * pops against the navy promo band it sits inside. Rendered as a table so it
+ * survives every email client and needs no hosted image (images are blocked by
+ * default in most inboxes; the ideal hero.png also 403s on prod).
+ */
+function homeCareChecklistCard(): string {
+  const FF = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`;
+  const row = (label: string, last: boolean) => `
+          <tr>
+            <td style="padding:9px 0;${last ? '' : 'border-bottom:1px solid #eeeeee;'}width:24px;vertical-align:middle">
+              <div style="width:22px;height:22px;background-color:${BRAND_COLOR};border-radius:6px;color:#ffffff;font-size:13px;font-weight:700;text-align:center;line-height:22px">&#10003;</div>
+            </td>
+            <td style="padding:9px 0 9px 12px;${last ? '' : 'border-bottom:1px solid #eeeeee;'}font-family:${FF};font-size:15px;line-height:20px;color:#222222;font-weight:600;vertical-align:middle">${label}</td>
+          </tr>`;
+  return `
+      <div style="max-width:360px;margin:0 auto;background-color:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 10px 30px -12px rgba(0,0,0,0.45);text-align:left">
+        <div style="padding:16px 20px 4px 20px">
+          <p style="margin:0;font-family:${FF};font-size:11px;letter-spacing:0.08em;font-weight:700;color:${BRAND_COLOR};text-transform:uppercase">La Vaca Home Care</p>
+          <p style="margin:3px 0 0 0;font-family:${FF};font-size:17px;font-weight:700;color:${HOMECARE_NAVY}">Your seasonal checklist</p>
+        </div>
+        <div style="padding:2px 20px 16px 20px">
+          <p style="margin:0;padding:10px 0 2px 0;font-family:${FF};font-size:11px;letter-spacing:0.06em;font-weight:700;color:#8a8a8a;text-transform:uppercase">A few things this season</p>
+          <table cellpadding="0" cellspacing="0" role="presentation" width="100%" style="border-collapse:collapse;width:100%">
+            ${row('Clean gutters &amp; downspouts', false)}
+            ${row('Service the furnace before winter', false)}
+            ${row('Test the sump pump &amp; seal cracks', true)}
+          </table>
+        </div>
+      </div>`;
+}
+
+/**
+ * The Home Care promo block appended to lead follow-up 2 (soft) and 3 (direct).
+ * A navy band (matching the site's dark-blue brand sections) holding a white
+ * checklist card. Wrapped in HC_PROMO_START/END so the cron can strip it for
+ * existing subscribers at send time. `variant` tunes the framing:
+ *  - 'soft'   (24h email): value-first, but with a clear join CTA.
+ *  - 'direct' (48h email): a direct invitation to join Home Care now.
+ */
+function homeCarePromo(variant: 'soft' | 'direct'): string {
+  const FF = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`;
+  const isSoft = variant === 'soft';
+  const url = homeCareUrl(isSoft ? 'email2_24h' : 'email3_48h');
+
+  const eyebrow = isSoft ? 'Free for every homeowner' : 'Don\'t leave your home to chance';
+  const headingText = isSoft
+    ? 'Grab your free home-care checklist'
+    : 'Join La Vaca Home Care — it\'s free';
+  const bodyText = isSoft
+    ? `While you weigh your project, do one easy thing for your home: get your free, personalized <strong>seasonal home-care checklist</strong>. It's the small stuff — gutters, furnace, sump pump — that keeps little problems from becoming the heavy repairs nobody wants. Join free and we'll send exactly what your home needs each season.`
+    : `Even if we're not the right fit for this project, don't let the small maintenance jobs pile up. <strong>La Vaca Home Care</strong> tells you exactly what your home needs each season — one short email a month, 100% free, no account. Join today and stay ahead of the costly repairs.`;
+  const ctaText = isSoft ? 'Get my free checklist' : 'Start my free Home Care';
+
+  return `${HC_PROMO_START}
+     ${spacer(8)}
+     ${divider()}
+     ${spacer(16)}
+     <div style="padding:0 48px">
+       <div style="background-color:${HOMECARE_NAVY};border-radius:16px;padding:30px 26px;text-align:center">
+         <p style="margin:0;font-family:${FF};font-size:12px;letter-spacing:0.07em;font-weight:700;color:#ff9051;text-transform:uppercase">${eyebrow}</p>
+         <p style="margin:8px 0 0 0;font-family:${FF};font-size:22px;line-height:29px;font-weight:700;color:#ffffff">${headingText}</p>
+         <p style="margin:12px 0 24px 0;font-family:${FF};font-size:15px;line-height:24px;color:#c4d2e4">${bodyText}</p>
+         ${homeCareChecklistCard()}
+         <div style="text-align:center;padding-top:26px">
+           <div style="display:inline-block;border-radius:8px;background-color:${BRAND_COLOR}">
+             <a href="${url}" style="display:inline-block;text-decoration:none;color:#ffffff;font-family:${FF};font-size:16px;font-weight:600;line-height:22px;padding:15px 32px">${ctaText} &rarr;</a>
+           </div>
+         </div>
+         <p style="margin:16px 0 0 0;font-family:${FF};font-size:13px;line-height:18px;color:#8ea3bd">100% free &nbsp;&middot;&nbsp; one email a month &nbsp;&middot;&nbsp; no account</p>
+       </div>
+     </div>
+     ${HC_PROMO_END}`;
+}
+
+// ==========================================
 // FEEDBACK EMAILS (Review Requests)
 // ==========================================
 
@@ -274,6 +372,7 @@ export function lead24hHtml(name: string, projectType: string | undefined, unsub
      ${paragraph('Would you like to schedule a free, no-obligation estimate?')}
      ${button('Schedule Your Free Estimate', `${WEBSITE_URL}/contact`, true)}
      ${paragraph(`<span style="color:#717171;font-size:14px">Or call us anytime at <a href="tel:2012124917" style="color:${BRAND_COLOR};text-decoration:none;font-weight:500">${PHONE}</a></span>`)}
+     ${homeCarePromo('soft')}
      ${spacer(8)}
      ${followUpFooter(unsubscribeUrl)}
      ${spacer(8)}`,
@@ -302,6 +401,7 @@ export function lead48hHtml(name: string, projectType: string | undefined, unsub
      ${paragraph(`<span style="color:#717171;font-size:14px">Or reply to this email — we'd love to chat.</span>`)}
      ${spacer(8)}
      ${paragraphLeft('Wishing you the best with your project!<br><br>Warm regards,<br><strong>The La Vaca Team</strong><br><span style="color:#717171;font-size:14px">Family-Owned &amp; Operated in Northern NJ</span>')}
+     ${homeCarePromo('direct')}
      ${spacer(8)}
      ${followUpFooter(unsubscribeUrl)}
      ${spacer(8)}`,

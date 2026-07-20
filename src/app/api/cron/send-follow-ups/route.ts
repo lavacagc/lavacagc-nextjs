@@ -1,10 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
+import { isActiveHomeCareSubscriber } from '@/lib/homecare/homeowners';
+import { HC_PROMO_START, HC_PROMO_END } from '@/lib/emailTemplates';
 
 export const dynamic = 'force-dynamic';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+
+/**
+ * Remove the Home Care promo block (and only that block) from a follow-up body.
+ * Lead follow-ups 2 & 3 embed a "join Home Care" pitch between HC_PROMO_START and
+ * HC_PROMO_END; we strip it at send time for recipients who are already active
+ * Home Care subscribers so we never pitch them a membership they already have.
+ * Safe on bodies without the markers (older queued rows) — it's a no-op.
+ */
+function stripHomeCarePromo(html: string): string {
+  const pattern = new RegExp(
+    `${HC_PROMO_START.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${HC_PROMO_END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+    'g',
+  );
+  return html.replace(pattern, '');
+}
 
 /**
  * GET /api/cron/send-follow-ups
@@ -111,13 +128,27 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
+        // Home Care promo suppression: follow-ups 2 & 3 embed a "join Home Care"
+        // pitch. Because the body was frozen at lead-submit time (24–48h ago),
+        // decide HERE, at send time, using live subscription state — someone may
+        // have subscribed in the interim. If they're already an active Home Care
+        // subscriber, strip just that block so we don't pitch them a membership
+        // they already have. Only query when the marker is actually present.
+        let bodyToSend: string = item.email_body ?? '';
+        if (bodyToSend.includes(HC_PROMO_START)) {
+          const alreadySubscribed = await isActiveHomeCareSubscriber(item.lead_email);
+          if (alreadySubscribed) {
+            bodyToSend = stripHomeCarePromo(bodyToSend);
+          }
+        }
+
         // Detect if body is HTML or plain text
-        const isHtml = item.email_body?.trim().startsWith('<!DOCTYPE') || item.email_body?.trim().startsWith('<html');
+        const isHtml = bodyToSend.trim().startsWith('<!DOCTYPE') || bodyToSend.trim().startsWith('<html');
         const sendResult = await sendTrackedEmail({
           from: 'La Vaca General Contractors <info@email.lavaca.link>',
           to: item.lead_email,
           subject: item.email_subject,
-          ...(isHtml ? { html: item.email_body } : { text: item.email_body }),
+          ...(isHtml ? { html: bodyToSend } : { text: bodyToSend }),
           category: 'lead_followup',
           toName: item.lead_name ?? null,
           leadId: item.lead_id ?? null,
