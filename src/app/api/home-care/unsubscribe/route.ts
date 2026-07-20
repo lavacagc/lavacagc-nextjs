@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findHomeownerByUnsubscribeToken } from '@/lib/homecare/homeowners';
-import { getOrCreateByEmail } from '@/lib/preferences/preferences';
+import { findByEmail } from '@/lib/preferences/preferences';
 
 /**
  * Legacy one-click Home Care unsubscribe link (still live in the footer of
@@ -41,11 +41,14 @@ export async function GET(request: NextRequest) {
   try {
     const ho = await findHomeownerByUnsubscribeToken(token);
     if (!ho) return invalid();
-    // Every email carrying this link builds its "manage preferences" URL with
-    // preferencesUrlFor, so the row already exists; the create is an idempotent
-    // fallback (all streams on = the identity-model default), never a
-    // consequential mutation.
-    const pref = await getOrCreateByEmail(ho.email);
+    // Read-only lookup: every email carrying this link builds its "manage
+    // preferences" URL with preferencesUrlFor, so the row already exists. We must
+    // NOT create one here - a link scanner fetching this URL after a homeowner
+    // has left would otherwise seed a row asserting they consent to every stream,
+    // contradicting the identity table. No row = nothing to confirm from a
+    // token; send them to the invalid state rather than mutating anything.
+    const pref = await findByEmail(ho.email);
+    if (!pref) return invalid();
     const dest = `/preferences?token=${encodeURIComponent(pref.preference_token)}&confirm=home_care`;
     return NextResponse.redirect(new URL(dest, origin));
   } catch (error) {

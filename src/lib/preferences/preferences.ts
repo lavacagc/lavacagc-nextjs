@@ -104,6 +104,21 @@ export async function findByToken(token: string): Promise<EmailPreferences | nul
 }
 
 /**
+ * Non-creating lookup by email. Returns null when no preferences row exists.
+ * Use this where a read must NOT seed a consent row (e.g. a link-scanner GET on
+ * a footer unsubscribe link, where getOrCreateByEmail would otherwise record a
+ * departed homeowner as consenting to every stream).
+ */
+export async function findByEmail(rawEmail: string): Promise<EmailPreferences | null> {
+  const email = normalizeEmail(rawEmail);
+  const rows = await supabaseRest<EmailPreferences[]>(
+    'GET',
+    `email_preferences?email=eq.${encodeURIComponent(email)}&limit=1`,
+  );
+  return rows?.[0] ?? null;
+}
+
+/**
  * All emails that have opted OUT of a stream. Used to suppress recipients from
  * Resend broadcasts (which send via audiences, outside the sendTrackedEmail
  * wrapper). Paginates so a large opt-out list is fully returned.
@@ -141,13 +156,15 @@ export async function isSuppressed(rawEmail: string, stream: SuppressionKey): Pr
   }
 }
 
-export type PrefActor = 'self' | 'self_unverified' | 'admin' | 'webhook' | 'system';
+export type PrefActor = 'self' | 'self_unverified' | 'self_oneclick' | 'admin' | 'webhook' | 'system';
 
 /**
  * Actors whose stream change carries deliberate human intent to leave, PROVEN
- * by an identity check: 'self' (the homeowner, established by a capability
- * token only their inbox holds - preference token or unsubscribe token) or
- * 'admin' (an authenticated staff member acting for them).
+ * by an identity check AND surfaceable with a deletion warning before the fact:
+ * 'self' (the homeowner, established by a capability token only their inbox
+ * holds - preference token or unsubscribe token, acting through the preference
+ * center where the purge is shown and confirmed) or 'admin' (an authenticated
+ * staff member acting for them).
  *
  * Deliberately excluded:
  *  - 'self_unverified': a tokenless caller who merely typed an address into the
@@ -155,6 +172,13 @@ export type PrefActor = 'self' | 'self_unverified' | 'admin' | 'webhook' | 'syst
  *    could submit a victim's address; it suppresses the mail (CAN-SPAM requires
  *    the mechanism to work for a recipient who has no token) but must never
  *    trigger the irreversible purge.
+ *  - 'self_oneclick': an RFC 8058 List-Unsubscribe=One-Click POST from a mail
+ *    client's native Unsubscribe button. The token proves identity, but the
+ *    button turns off ALL marketing streams (the user may have meant only a
+ *    newsletter or listings list) and lives inside the mail client, so there is
+ *    no surface on which to show the deletion warning first. It suppresses the
+ *    mail but must never delete home records; the purge stays on the
+ *    preference-center confirm and admin paths, where the warning is shown.
  *  - 'webhook' / 'system': machine-driven deliverability signals (Resend
  *    bounce/complaint auto-suppression, contact.deleted), not a decision to
  *    leave the program.
