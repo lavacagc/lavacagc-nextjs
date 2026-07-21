@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { cancelPendingFollowUps } from '@/lib/notify/cancelFollowUps';
+import { stopDrip } from '@/lib/followups/followUpsApi';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -193,7 +193,7 @@ export function EstimatesManager() {
       // not fail the status change itself, so surface it separately.
       if (status === 'converted' && selectedLead.email) {
         try {
-          const stopped = await cancelPendingFollowUps(supabase, selectedLead.email);
+          const stopped = await stopDrip(selectedLead.email, 'nurture');
           toast({
             title: "Success",
             description: stopped > 0
@@ -232,7 +232,7 @@ export function EstimatesManager() {
     if (!selectedLead?.email) return;
     if (!window.confirm(`Stop all pending follow-up emails for ${selectedLead.email}?`)) return;
     try {
-      const stopped = await cancelPendingFollowUps(supabase, selectedLead.email);
+      const stopped = await stopDrip(selectedLead.email, 'nurture');
       toast({
         title: "Success",
         description: stopped > 0

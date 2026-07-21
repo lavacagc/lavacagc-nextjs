@@ -11,8 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Send, Eye, FileText, Search, MailX } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { cancelPendingFollowUps } from '@/lib/notify/cancelFollowUps';
+import { stopDrip } from '@/lib/followups/followUpsApi';
 
 interface LeadHit {
   id: string;
@@ -234,7 +233,7 @@ export default function SendEstimatePage() {
     if (!window.confirm(`Stop all pending follow-up emails for ${email}?`)) return;
     setIsStopping(true);
     try {
-      const stopped = await cancelPendingFollowUps(supabase, email);
+      const stopped = await stopDrip(email, 'nurture');
       toast({
         title: stopped > 0 ? 'Follow-ups stopped' : 'Nothing to stop',
         description: stopped > 0

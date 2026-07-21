@@ -1,36 +1,29 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from '@/hooks/use-toast';
 import { RefreshCw, Search } from 'lucide-react';
 import {
-  cancelPendingFollowUps,
-  followUpSequenceTypes,
-  LEAD_NURTURE_FOLLOW_UP_TYPES,
-  REVIEW_REQUEST_FOLLOW_UP_TYPES,
-} from '@/lib/notify/cancelFollowUps';
-import {
   buildActiveDrips,
+  sequenceOf,
   sequenceLabel,
   followUpTypeLabel,
   type ActiveDrip,
-  type FollowUpRow,
 } from '@/lib/followups/activeDrips';
 import { ActiveDripsList } from '@/components/admin/ActiveDripsList';
-
-interface FollowUpItem extends FollowUpRow {
-  sent_at: string | null;
-  email_subject: string;
-  email_body: string;
-  created_at: string;
-}
+import {
+  fetchFollowUpQueue,
+  stopDrip,
+  cancelFollowUp,
+  resendFollowUp,
+  type FollowUpQueueRow,
+} from '@/lib/followups/followUpsApi';
 
 export default function FollowUpsPage() {
-  const [followUps, setFollowUps] = useState<FollowUpItem[]>([]);
+  const [followUps, setFollowUps] = useState<FollowUpQueueRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'drips' | 'all'>('drips');
   const [search, setSearch] = useState('');
@@ -39,12 +32,7 @@ export default function FollowUpsPage() {
   const fetchFollowUps = useCallback(async () => {
     setLoading(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.from as any)('follow_up_queue')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      setFollowUps((data || []) as FollowUpItem[]);
+      setFollowUps(await fetchFollowUpQueue());
     } catch (error) {
       console.error('Error fetching follow-ups:', error);
       toast({ title: 'Error', description: 'Failed to load follow-ups', variant: 'destructive' });
@@ -80,8 +68,7 @@ export default function FollowUpsPage() {
   const handleStopDrip = async (drip: ActiveDrip) => {
     if (!window.confirm(`Stop the ${sequenceLabel(drip.sequence).toLowerCase()} drip for ${drip.name}? This cancels ${drip.pendingCount} pending email${drip.pendingCount === 1 ? '' : 's'}.`)) return;
     try {
-      const types = drip.sequence === 'review' ? REVIEW_REQUEST_FOLLOW_UP_TYPES : LEAD_NURTURE_FOLLOW_UP_TYPES;
-      const stopped = await cancelPendingFollowUps(supabase, drip.email, types);
+      const stopped = await stopDrip(drip.email, drip.sequence);
       toast({
         title: 'Drip stopped',
         description: stopped > 0 ? `Cancelled ${stopped} pending email${stopped === 1 ? '' : 's'} for ${drip.name}.` : 'Nothing left to stop.',
@@ -95,7 +82,7 @@ export default function FollowUpsPage() {
 
   const handleStopFollowUps = async (leadEmail: string, followUpType: string) => {
     try {
-      const stopped = await cancelPendingFollowUps(supabase, leadEmail, followUpSequenceTypes(followUpType));
+      const stopped = await stopDrip(leadEmail, sequenceOf(followUpType));
       toast({ title: 'Success', description: stopped > 0 ? `Stopped ${stopped} pending follow-up${stopped === 1 ? '' : 's'}` : 'No pending follow-ups to stop' });
       fetchFollowUps();
     } catch (error) {
@@ -106,9 +93,7 @@ export default function FollowUpsPage() {
 
   const handleCancel = async (followUpId: string) => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase.from as any)('follow_up_queue').update({ status: 'cancelled' }).eq('id', followUpId);
-      if (error) throw error;
+      await cancelFollowUp(followUpId);
       toast({ title: 'Success', description: 'Follow-up cancelled' });
       fetchFollowUps();
     } catch (error) {
@@ -117,19 +102,15 @@ export default function FollowUpsPage() {
     }
   };
 
-  const handleResend = async (followUp: FollowUpItem) => {
+  const handleResend = async (followUp: FollowUpQueueRow) => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase.from as any)('follow_up_queue').insert({
+      await resendFollowUp({
         lead_email: followUp.lead_email,
         lead_name: followUp.lead_name,
         follow_up_type: followUp.follow_up_type,
-        scheduled_at: new Date().toISOString(),
-        status: 'pending',
         email_subject: followUp.email_subject,
         email_body: followUp.email_body,
       });
-      if (error) throw error;
       toast({ title: 'Success', description: 'Follow-up queued for resending' });
       fetchFollowUps();
     } catch (error) {
