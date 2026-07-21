@@ -10,7 +10,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Send, Eye, FileText, Search } from 'lucide-react';
+import { Loader2, Send, Eye, FileText, Search, MailX } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { cancelPendingFollowUps } from '@/lib/notify/cancelFollowUps';
 
 interface LeadHit {
   id: string;
@@ -52,6 +54,7 @@ export default function SendEstimatePage() {
   const [previewHtml, setPreviewHtml] = useState('');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
 
   // Lead search
   const [leadSearch, setLeadSearch] = useState('');
@@ -219,6 +222,34 @@ export default function SendEstimatePage() {
       });
     } finally {
       setIsSending(false);
+    }
+  };
+
+  // Stop the recipient's remaining nurture follow-ups — for estimates sent to
+  // people who haven't (and may never) convert, without marking them a lead
+  // status. Scoped so review-request emails are never affected.
+  const handleStopFollowUps = async () => {
+    const email = recipientEmail.trim();
+    if (!email) return;
+    if (!window.confirm(`Stop all pending follow-up emails for ${email}?`)) return;
+    setIsStopping(true);
+    try {
+      const stopped = await cancelPendingFollowUps(supabase, email);
+      toast({
+        title: stopped > 0 ? 'Follow-ups stopped' : 'Nothing to stop',
+        description: stopped > 0
+          ? `Cancelled ${stopped} pending follow-up${stopped === 1 ? '' : 's'} for ${email}.`
+          : `No pending follow-ups found for ${email}.`,
+      });
+    } catch (err) {
+      console.error('Failed to stop follow-ups:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to stop follow-ups.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsStopping(false);
     }
   };
 
@@ -434,9 +465,19 @@ export default function SendEstimatePage() {
               </Button>
               <Button
                 type="button"
+                variant="outline"
+                onClick={handleStopFollowUps}
+                disabled={!recipientEmail.trim() || isStopping}
+                className="md:ml-auto text-orange-700 border-orange-200 hover:bg-orange-50 hover:text-orange-800"
+                data-testid="btn-stop-followups"
+              >
+                {isStopping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MailX className="mr-2 h-4 w-4" />}
+                Stop follow-ups
+              </Button>
+              <Button
+                type="button"
                 onClick={() => handleSend(false)}
                 disabled={isSending}
-                className="md:ml-auto"
                 data-testid="btn-send"
               >
                 {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}

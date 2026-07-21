@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard,
   Activity,
@@ -160,6 +160,11 @@ export default function AdminSidebar({
   const isMobile = useIsMobile();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [hydrated, setHydrated] = useState(false);
+  // The currently-active nav button (leaf). In collapsed icon-only mode the
+  // sub-items are unmounted, so the scroll container resets to the top; when the
+  // sidebar expands we scroll this back into view so it opens at the section
+  // you're in rather than the top of the list.
+  const activeItemRef = useRef<HTMLButtonElement | null>(null);
 
   // Hydrate expansion state from localStorage on first mount only. We do this
   // here (not in useState init) so SSR and client paint match — Sets aren't
@@ -237,6 +242,18 @@ export default function AdminSidebar({
   // Children render only when sidebar is showing labels (mobile drawer or
   // hover-expanded). In collapsed icon-only mode we show top-level icons only.
   const showLabels = isMobile || isExpanded;
+
+  // When the sidebar expands (hover) or the mobile drawer opens, bring the active
+  // item back into view. Sub-items only mount once labels show, so we wait a
+  // frame for them to render, then scroll the nearest scroll container (the nav
+  // list) — not the page — to reveal the current section.
+  useEffect(() => {
+    if (!showLabels) return;
+    const id = requestAnimationFrame(() => {
+      activeItemRef.current?.scrollIntoView({ block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [showLabels, activeTab, expandedGroups]);
 
   return (
     <>
@@ -326,6 +343,7 @@ export default function AdminSidebar({
                       return (
                         <button
                           key={child.id}
+                          ref={isActive ? activeItemRef : undefined}
                           onClick={() => handleLeafClick(child.id)}
                           className={cn(
                             'flex items-center rounded-lg transition-colors duration-200 px-3 py-2 ml-4',
@@ -353,6 +371,7 @@ export default function AdminSidebar({
             return (
               <button
                 key={item.id}
+                ref={isActive ? activeItemRef : undefined}
                 onClick={() => handleLeafClick(item.id)}
                 className={cn(
                   'flex items-center rounded-lg transition-all duration-500 ease-out px-3 py-2.5',

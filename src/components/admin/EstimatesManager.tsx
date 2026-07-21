@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, Download, Eye, MapPin, Phone, Mail, Calendar, DollarSign, FileText, Image as ImageIcon, Archive, Trash2 } from 'lucide-react';
+import { Search, Download, Eye, MapPin, Phone, Mail, MailX, Calendar, DollarSign, FileText, Image as ImageIcon, Archive, Trash2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -220,6 +220,30 @@ export function EstimatesManager() {
         title: "Error",
         description: "Failed to update status",
         variant: "destructive"
+      });
+    }
+  };
+
+  // Manually stop this lead's remaining nurture follow-ups without changing the
+  // lead status — for estimates sent to people who haven't (and may never)
+  // convert. Same scoped helper the Converted auto-stop uses, so review-request
+  // emails are never touched.
+  const stopFollowUpsForLead = async () => {
+    if (!selectedLead?.email) return;
+    try {
+      const stopped = await cancelPendingFollowUps(supabase, selectedLead.email);
+      toast({
+        title: "Success",
+        description: stopped > 0
+          ? `Stopped ${stopped} pending follow-up${stopped === 1 ? '' : 's'}`
+          : "No pending follow-ups to stop",
+      });
+    } catch (error) {
+      console.error('Error stopping follow-ups:', error);
+      toast({
+        title: "Error",
+        description: "Failed to stop follow-ups",
+        variant: "destructive",
       });
     }
   };
@@ -838,6 +862,23 @@ export function EstimatesManager() {
                         <SelectItem value="lost">Lost</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground mb-2 block">Follow-up drip</label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={stopFollowUpsForLead}
+                      disabled={!selectedLead.email}
+                      className="text-orange-700 border-orange-200 hover:bg-orange-50 hover:text-orange-800"
+                    >
+                      <MailX className="w-4 h-4 mr-1.5" />
+                      Stop follow-ups
+                    </Button>
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      Cancels this lead&apos;s remaining nurture emails now. Marking &ldquo;Converted&rdquo; above also does this automatically.
+                    </p>
                   </div>
 
                   <div>
