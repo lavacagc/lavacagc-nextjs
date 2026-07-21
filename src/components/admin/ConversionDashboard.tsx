@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchFollowUpQueue } from '@/lib/followups/followUpsApi';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, TrendingUp, Users, Mail, Target, RefreshCw } from 'lucide-react';
@@ -18,13 +19,6 @@ interface EstimateLeadRow {
   created_at: string | null;
   lead_source: string | null;
   lead_status: string | null;
-}
-
-interface FollowUpRow {
-  id: string;
-  status: string;
-  created_at: string;
-  sent_at: string | null;
 }
 
 interface DashboardMetrics {
@@ -121,16 +115,20 @@ export default function ConversionDashboard() {
       const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString();
 
       // Fetch all data in parallel
-      const [leadsRes, estimateLeadsRes, followUpsRes] = await Promise.all([
+      const [leadsRes, estimateLeadsRes] = await Promise.all([
         supabase.from('leads').select('id, created_at, inquiry_type, project_type').order('created_at', { ascending: false }),
         supabase.from('estimate_leads').select('id, created_at, lead_source, lead_status').order('created_at', { ascending: false }),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase.from as any)('follow_up_queue').select('id, status, created_at, sent_at').order('created_at', { ascending: false }),
       ]);
 
       const leads = (leadsRes.data || []) as LeadRow[];
       const estimateLeads = (estimateLeadsRes.data || []) as EstimateLeadRow[];
-      const followUps = (followUpsRes.data || []) as unknown as FollowUpRow[];
+
+      let followUps: { status: string }[] = [];
+      try {
+        followUps = await fetchFollowUpQueue();
+      } catch (followUpErr) {
+        console.error('Error fetching follow-up queue:', followUpErr);
+      }
 
       // Combine for time-based metrics
       const allLeadDates = [
