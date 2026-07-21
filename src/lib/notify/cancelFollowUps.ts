@@ -7,9 +7,13 @@
  * recalled, so only 'pending' rows are touched.
  *
  * The queue is keyed on the raw submitted email, which is NOT normalized on
- * write, so we match case-insensitively with ilike. LIKE wildcards in the address
- * (`%`, `_`, `\`) are escaped so the match stays literal (underscores are valid
- * in email local-parts).
+ * write, so we match case-insensitively. The ilike prefilter alone is not safe:
+ * PostgREST treats `*` as an alias for `%` (with no way to escape it), and the
+ * lead-email validator accepts `*`, so an address like `a*@example.com` would
+ * over-match unrelated leads. We therefore SELECT candidate rows with an escaped
+ * ilike prefilter and then keep only rows whose `lead_email` is an EXACT
+ * case-insensitive match in JS - that equality check is immune to any wildcard,
+ * so a literal `*`, `%`, `_`, or `\` in the address can never over-match.
  *
  * `follow_up_queue` is shared: it also holds post-job review-request emails
  * (`feedback_day0`/`feedback_day3`/`feedback_day7`) for the same address. We
@@ -49,8 +53,12 @@ export function escapeLikePattern(value: string): string {
  * Cancel an email's still-PENDING follow-ups, scoped to a set of follow_up_types
  * (defaults to the lead-nurture drip). Because `follow_up_queue` is shared between
  * the nurture drip and post-job review requests, callers pass the type-set they
- * actually mean so one sequence is never cancelled by touching the other. Returns
- * the number of rows stopped.
+ * actually mean so one sequence is never cancelled by touching the other.
+ *
+ * The email match is EXACT case-insensitive: an escaped ilike prefilter narrows
+ * the candidate rows, then a JS equality check keeps only the true matches so a
+ * wildcard character in the stored address can never over-match another lead.
+ * Returns the number of rows stopped.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export async function cancelPendingFollowUps(
@@ -63,13 +71,25 @@ export async function cancelPendingFollowUps(
 
   const { data, error } = await client
     .from('follow_up_queue')
-    .update({ status: 'cancelled' })
+    .select('id, lead_email')
     .eq('status', 'pending')
-    .ilike('lead_email', escapeLikePattern(target))
     .in('follow_up_type', types)
-    .select('id');
+    .ilike('lead_email', escapeLikePattern(target));
 
   if (error) throw error;
-  return Array.isArray(data) ? data.length : 0;
+
+  const wanted = target.toLowerCase();
+  const ids = (Array.isArray(data) ? data : [])
+    .filter((row: any) => (row?.lead_email ?? '').trim().toLowerCase() === wanted)
+    .map((row: any) => row.id);
+  if (ids.length === 0) return 0;
+
+  const { error: updateError } = await client
+    .from('follow_up_queue')
+    .update({ status: 'cancelled' })
+    .in('id', ids);
+
+  if (updateError) throw updateError;
+  return ids.length;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
