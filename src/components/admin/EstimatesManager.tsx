@@ -230,6 +230,7 @@ export function EstimatesManager() {
   // emails are never touched.
   const stopFollowUpsForLead = async () => {
     if (!selectedLead?.email) return;
+    if (!window.confirm(`Stop all pending follow-up emails for ${selectedLead.email}?`)) return;
     try {
       const stopped = await cancelPendingFollowUps(supabase, selectedLead.email);
       toast({
