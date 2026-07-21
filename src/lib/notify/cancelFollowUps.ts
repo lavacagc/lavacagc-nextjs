@@ -58,7 +58,11 @@ export function escapeLikePattern(value: string): string {
  * The email match is EXACT case-insensitive: an escaped ilike prefilter narrows
  * the candidate rows, then a JS equality check keeps only the true matches so a
  * wildcard character in the stored address can never over-match another lead.
- * Returns the number of rows stopped.
+ *
+ * The UPDATE re-asserts `status = 'pending'` so a row the send-follow-ups cron
+ * flips pending -> sent between our SELECT and UPDATE is left alone rather than
+ * clobbered back to 'cancelled'. Returns the number of rows actually stopped,
+ * which may be fewer than the selected candidates when such a race occurs.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export async function cancelPendingFollowUps(
@@ -84,12 +88,14 @@ export async function cancelPendingFollowUps(
     .map((row: any) => row.id);
   if (ids.length === 0) return 0;
 
-  const { error: updateError } = await client
+  const { data: updated, error: updateError } = await client
     .from('follow_up_queue')
     .update({ status: 'cancelled' })
-    .in('id', ids);
+    .eq('status', 'pending')
+    .in('id', ids)
+    .select('id');
 
   if (updateError) throw updateError;
-  return ids.length;
+  return Array.isArray(updated) ? updated.length : 0;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

@@ -34,6 +34,11 @@ interface StubOptions {
   selectData?: unknown;
   selectError?: unknown;
   updateError?: unknown;
+  // Rows the UPDATE ... .select() returns. Defaults to one row per id in the
+  // update's in('id', ...) filter, i.e. every targeted row was still pending.
+  // Set explicitly to model the send-follow-ups race where a candidate flipped
+  // pending -> sent and is therefore skipped by the status-guarded UPDATE.
+  updateData?: unknown[];
 }
 
 // Stub Supabase-like client for the SELECT-then-UPDATE helper. Each `from()`
@@ -73,9 +78,14 @@ function stubClient(opts: StubOptions) {
           resolve: (value: { data: unknown; error: unknown }) => unknown,
           reject: (reason: unknown) => unknown,
         ) {
-          const result = isUpdate
-            ? { data: null, error: opts.updateError ?? null }
-            : { data: opts.selectData ?? [], error: opts.selectError ?? null };
+          let result: { data: unknown; error: unknown };
+          if (isUpdate) {
+            const idFilter = recorded.in.find(([column]) => column === 'id');
+            const defaultUpdated = (idFilter?.[1] ?? []).map((id) => ({ id }));
+            result = { data: opts.updateData ?? defaultUpdated, error: opts.updateError ?? null };
+          } else {
+            result = { data: opts.selectData ?? [], error: opts.selectError ?? null };
+          }
           return Promise.resolve(result).then(resolve, reject);
         },
       };
@@ -132,6 +142,29 @@ test.describe('cancelPendingFollowUps', () => {
     const update = queries[1];
     expect(update.table).toBe('follow_up_queue');
     expect(update.update).toEqual({ status: 'cancelled' });
+    expect(update.in).toContainEqual(['id', ['a', 'b']]);
+    // The UPDATE re-asserts status='pending' so a row the cron sent between the
+    // SELECT and UPDATE is skipped rather than clobbered back to 'cancelled'.
+    expect(update.eq).toContainEqual(['status', 'pending']);
+  });
+
+  test('skips a candidate the cron sent between SELECT and UPDATE, returning the truly-cancelled count', async () => {
+    // Both ids are still-pending candidates at SELECT time, but the status-guarded
+    // UPDATE only affects 'b' because 'a' flipped pending -> sent in the meantime.
+    const { client, queries } = stubClient({
+      selectData: [
+        { id: 'a', lead_email: 'x@example.com' },
+        { id: 'b', lead_email: 'x@example.com' },
+      ],
+      updateData: [{ id: 'b' }],
+    });
+
+    const count = await cancelPendingFollowUps(client, 'x@example.com');
+
+    // Only the row that was still pending at UPDATE time is counted.
+    expect(count).toBe(1);
+    const update = queries[1];
+    expect(update.eq).toContainEqual(['status', 'pending']);
     expect(update.in).toContainEqual(['id', ['a', 'b']]);
   });
 
