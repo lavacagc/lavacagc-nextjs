@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { cancelPendingFollowUps } from '@/lib/notify/cancelFollowUps';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -184,13 +185,35 @@ export function EstimatesManager() {
 
       if (error) throw error;
 
-      toast({
-        title: "Success",
-        description: "Lead status updated"
-      });
-
       loadLeads();
       setSelectedLead({ ...selectedLead, lead_status: status });
+
+      // Estimate accepted → stop the lead follow-up cycle so we don't keep
+      // nudging a customer who already said yes. Failure to stop the drip must
+      // not fail the status change itself, so surface it separately.
+      if (status === 'converted' && selectedLead.email) {
+        try {
+          const stopped = await cancelPendingFollowUps(supabase, selectedLead.email);
+          toast({
+            title: "Success",
+            description: stopped > 0
+              ? `Lead marked Converted · stopped ${stopped} pending follow-up${stopped === 1 ? '' : 's'}`
+              : "Lead marked Converted",
+          });
+        } catch (dripError) {
+          console.error('Failed to stop follow-ups on convert:', dripError);
+          toast({
+            title: "Status updated",
+            description: "Marked Converted, but couldn't stop the follow-up emails automatically. Use the Follow-ups admin to stop them.",
+            variant: "destructive",
+          });
+        }
+      } else {
+        toast({
+          title: "Success",
+          description: "Lead status updated",
+        });
+      }
     } catch (error) {
       console.error('Error updating status:', error);
       toast({
