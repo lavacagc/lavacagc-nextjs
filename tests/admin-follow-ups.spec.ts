@@ -1,4 +1,4 @@
-import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { test, expect, type BrowserContext } from '@playwright/test';
 import http from 'http';
 import path from 'path';
 import { mkdirSync } from 'fs';
