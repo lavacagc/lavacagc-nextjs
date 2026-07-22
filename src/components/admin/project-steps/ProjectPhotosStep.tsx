@@ -78,7 +78,7 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
   const [isCategorizing, setIsCategorizing] = useState(false);
   const [showDuring, setShowDuring] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
-  // Before/After pairing form state (global indices into formData.images, as strings for Select)
+  // Before/After pairing form state (global indices into formData.images, as strings set by the thumbnail pickers)
   const [pairBefore, setPairBefore] = useState('');
   const [pairAfter, setPairAfter] = useState('');
   const [pairLabel, setPairLabel] = useState('');
