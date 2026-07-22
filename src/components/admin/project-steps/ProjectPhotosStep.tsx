@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Image as ImageIcon, Star, Trash2,
   Sparkles, ArrowLeftRight, ChevronDown, ChevronUp,
-  Camera, Home, Link2
+  Camera, Home, Link2, Check
 } from 'lucide-react';
 import NextImage from 'next/image';
 import { toast } from '@/hooks/use-toast';
@@ -841,31 +841,60 @@ export function ProjectPhotosStep({ formData, updateFormData }: ProjectPhotosSte
             {availableBefore.length > 0 && availableAfter.length > 0 ? (
               <div className="space-y-2 rounded-lg border border-dashed p-3">
                 <p className="text-xs font-medium">Create a pair</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <Select value={pairBefore} onValueChange={setPairBefore}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Choose a BEFORE photo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableBefore.map(({ img, idx }) => (
-                        <SelectItem key={idx} value={String(idx)} className="text-xs">
-                          {img.room || img.alt_text || `Before photo ${idx + 1}`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={pairAfter} onValueChange={setPairAfter}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Choose an AFTER photo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableAfter.map(({ img, idx }) => (
-                        <SelectItem key={idx} value={String(idx)} className="text-xs">
-                          {img.room || img.alt_text || `After photo ${idx + 1}`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                {/* Pick by SEEING the photos — click a before thumbnail, then an after thumbnail. */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold text-red-700 mb-1.5">
+                      Pick the BEFORE photo {pairBefore === '' && <span className="text-muted-foreground font-normal">— tap one</span>}
+                    </p>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {availableBefore.map(({ img, idx }) => {
+                        const selected = pairBefore === String(idx);
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setPairBefore(selected ? '' : String(idx))}
+                            title={img.room || img.alt_text || `Before photo ${idx + 1}`}
+                            className={`relative aspect-[4/3] rounded-md overflow-hidden border-2 transition ${selected ? 'border-red-500 ring-2 ring-red-500/40' : 'border-transparent hover:border-muted-foreground/40'}`}
+                          >
+                            <NextImage src={img.url || ''} alt="" fill sizes="120px" className="object-cover" />
+                            {selected && (
+                              <span className="absolute inset-0 bg-red-500/25 flex items-center justify-center">
+                                <Check className="w-5 h-5 text-white drop-shadow" />
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold text-green-700 mb-1.5">
+                      Pick the AFTER photo {pairAfter === '' && <span className="text-muted-foreground font-normal">— tap one</span>}
+                    </p>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {availableAfter.map(({ img, idx }) => {
+                        const selected = pairAfter === String(idx);
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setPairAfter(selected ? '' : String(idx))}
+                            title={img.room || img.alt_text || `After photo ${idx + 1}`}
+                            className={`relative aspect-[4/3] rounded-md overflow-hidden border-2 transition ${selected ? 'border-green-500 ring-2 ring-green-500/40' : 'border-transparent hover:border-muted-foreground/40'}`}
+                          >
+                            <NextImage src={img.url || ''} alt="" fill sizes="120px" className="object-cover" />
+                            {selected && (
+                              <span className="absolute inset-0 bg-green-500/25 flex items-center justify-center">
+                                <Check className="w-5 h-5 text-white drop-shadow" />
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
                 <Input
                   value={pairLabel}
