@@ -46,11 +46,20 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
 
   // On mobile the filter chips are a single scrollable row, so a deep-linked
   // filter (?filter=Basement Finishing) could start selected but off-screen.
-  // Bring the active chip into view on mount; 'nearest' keeps the page from
-  // vertical-jumping and is a no-op in the desktop wrap layout.
+  // Center the active chip on mount by adjusting ONLY the chip row's scrollLeft
+  // (never scrollIntoView, which would scroll every ancestor including the
+  // window - PortfolioContent is lazy-loaded far below the hero/lead form on
+  // FreeEstimateLanding, so touching window scroll would yank the visitor down
+  // the page). No-op in the desktop wrap layout where the row never overflows.
   const selectedChipRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
-    selectedChipRef.current?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    const chip = selectedChipRef.current;
+    const row = chip?.parentElement;
+    if (!chip || !row) return;
+    if (row.scrollWidth <= row.clientWidth + 1) return;
+    const rowRect = row.getBoundingClientRect();
+    const chipRect = chip.getBoundingClientRect();
+    row.scrollLeft += chipRect.left - rowRect.left - (row.clientWidth - chipRect.width) / 2;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only: after that the user is driving the scroll themselves
   }, []);
 
@@ -148,7 +157,7 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
                   }}
                   variant={selectedFilter === category ? 'default' : 'outline'}
                   size="sm"
-                  className={`whitespace-nowrap shrink-0 ${selectedFilter === category ? 'bg-primary' : ''}`}
+                  className={`shrink-0 ${selectedFilter === category ? 'bg-primary' : ''}`}
                 >
                   {category}
                 </Button>
