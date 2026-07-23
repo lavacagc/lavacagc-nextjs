@@ -60,7 +60,7 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
     const rowRect = row.getBoundingClientRect();
     const chipRect = chip.getBoundingClientRect();
     row.scrollLeft += chipRect.left - rowRect.left - (row.clientWidth - chipRect.width) / 2;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only: after that the user is driving the scroll themselves
+    // Mount only: after that the user is driving the scroll themselves.
   }, []);
 
   // Scroll tracking for portfolio section
