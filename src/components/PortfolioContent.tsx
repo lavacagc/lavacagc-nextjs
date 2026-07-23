@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -43,6 +43,16 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
   >([]);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const router = useRouter();
+
+  // On mobile the filter chips are a single scrollable row, so a deep-linked
+  // filter (?filter=Basement Finishing) could start selected but off-screen.
+  // Bring the active chip into view on mount; 'nearest' keeps the page from
+  // vertical-jumping and is a no-op in the desktop wrap layout.
+  const selectedChipRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    selectedChipRef.current?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only: after that the user is driving the scroll themselves
+  }, []);
 
   // Scroll tracking for portfolio section
   const portfolioSectionRef = useScrollTracking({
@@ -112,19 +122,22 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
 
   return (
     <>
-      {/* Filter Section */}
-      <section className="py-8 bg-white sticky top-[calc(88px+var(--smart-banner-height,0px))] transition-[top] duration-300 z-40 border-b">
+      {/* Filter Section — on mobile the chips are ONE horizontally-scrollable row
+          (this bar is sticky, so a wrapping chip grid would permanently cover
+          half the viewport above the project scrollers); sm+ keeps the wrap. */}
+      <section className="py-3 sm:py-8 bg-white sticky top-[calc(88px+var(--smart-banner-height,0px))] transition-[top] duration-300 z-40 border-b">
         <div className="container mx-auto px-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
             <div className="flex items-center gap-2">
-              <Filter className="h-5 w-5 text-text-secondary" />
-              <span className="font-medium text-text-primary">Filter by Type:</span>
+              <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-text-secondary" />
+              <span className="font-medium text-sm sm:text-base text-text-primary">Filter by Type:</span>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="w-full sm:w-auto -mx-4 px-4 sm:mx-0 sm:px-0 flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {categories.map((category) => (
                 <Button
                   key={category}
+                  ref={selectedFilter === category ? selectedChipRef : undefined}
                   onClick={() => {
                     setSelectedFilter(category);
                     // Track filter interaction
@@ -135,7 +148,7 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
                   }}
                   variant={selectedFilter === category ? 'default' : 'outline'}
                   size="sm"
-                  className={selectedFilter === category ? 'bg-primary' : ''}
+                  className={`whitespace-nowrap shrink-0 ${selectedFilter === category ? 'bg-primary' : ''}`}
                 >
                   {category}
                 </Button>
