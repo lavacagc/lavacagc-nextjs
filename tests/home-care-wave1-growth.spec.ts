@@ -86,6 +86,25 @@ test('newsletter cron filters task state per homeowner, chunk-scoped to eligible
   expect(src).toMatch(/visible\.length === 0 \|\| \(outstanding\.length === 0 && !caughtUp\)/);
 });
 
+test('newsletter recipients are deduped, ordered and bounded by the database', () => {
+  const src = read('src/app/api/cron/home-care-newsletter/route.ts');
+  // The failure this guards is silent: an unordered, unbounded read that hits
+  // PostgREST's row cap drops recipients arbitrarily, and the same members sort
+  // into the same arbitrary tail every month - indistinguishable from "those
+  // people never signed up". Ordering longest-waiting first makes starvation
+  // self-correcting; the bound keeps one run's work to one run.
+  expect(src).toContain('&or=(last_newsletter_at.is.null,last_newsletter_at.lt."${monthStart}")');
+  expect(src).toContain('&order=last_newsletter_at.asc.nullsfirst,id.asc&limit=${MAX_PER_RUN}');
+  // The server predicate and the client dedup must share a calendar: sameMonth
+  // compares UTC parts, so the boundary it is given has to be built in UTC too.
+  expect(src).toContain('Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)');
+  expect(src).toMatch(/d\.getUTCFullYear\(\) === now\.getUTCFullYear\(\) && d\.getUTCMonth\(\) === now\.getUTCMonth\(\)/);
+  // Kept as a second line of defence, so dropping the predicate can't double-send.
+  expect(src).toContain('due.filter((h) => !sameMonth(h.last_newsletter_at, now))');
+  // No silent caps - a truncated page is reported in the response and the log.
+  expect(src).toContain('capped: due.length === MAX_PER_RUN');
+});
+
 test('welcome email carries the forward-to-a-friend line with email UTM tags', () => {
   const src = read('src/lib/notify/sendHomeCareEmails.ts');
   expect(src).toContain('utm_source=member_share&utm_medium=email&utm_campaign=home_care_share');

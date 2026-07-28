@@ -89,12 +89,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'catalog select is missing stages' }, { status: 500 });
     }
 
-    const homeowners = (await supabaseRest<HomeownerRow[]>(
+    // Who is due this month, decided by Postgres rather than by whatever slice of
+    // the table came back. An unordered, unbounded read that hits PostgREST's row
+    // cap drops recipients arbitrarily, and because the same members would sort
+    // into the same arbitrary tail every run they'd simply never be mailed - a
+    // failure that looks exactly like "those people don't want the newsletter".
+    // So: the dedup predicate runs server-side, longest-waiting go first (nobody
+    // can be starved twice), and the page is bounded to what one run can send.
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    const due = (await supabaseRest<HomeownerRow[]>(
       'GET',
-      'homeowners?select=id,first_name,email,unsubscribe_token,last_newsletter_at&status=eq.active',
+      'homeowners?select=id,first_name,email,unsubscribe_token,last_newsletter_at&status=eq.active'
+        // Quoted: an ISO timestamp carries `.` and `:`, both reserved inside or().
+        + `&or=(last_newsletter_at.is.null,last_newsletter_at.lt."${monthStart}")`
+        + `&order=last_newsletter_at.asc.nullsfirst,id.asc&limit=${MAX_PER_RUN}`,
     )) ?? [];
 
-    const eligible = homeowners.filter((h) => !sameMonth(h.last_newsletter_at, now)).slice(0, MAX_PER_RUN);
+    // Belt and braces on the one-per-calendar-month rule: if the predicate above
+    // is ever dropped or mangled, this still prevents a second send this month.
+    const eligible = due.filter((h) => !sameMonth(h.last_newsletter_at, now));
+    if (due.length === MAX_PER_RUN) {
+      console.warn(`home-care-newsletter: hit the ${MAX_PER_RUN}-recipient page cap; the rest sort first next run`);
+    }
 
     // Everything per-homeowner, fetched in chunks of this run's recipients so no
     // response can reach PostgREST's row cap and the in-list URLs stay a sane
@@ -209,7 +225,8 @@ export async function GET(request: NextRequest) {
       season,
       month: monthLabel,
       tasks: tasks.length,
-      active_homeowners: homeowners.length,
+      due_this_month: due.length,
+      capped: due.length === MAX_PER_RUN,
       eligible: eligible.length,
       sent,
       suppressed,

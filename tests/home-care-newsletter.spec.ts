@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
-import sharp from 'sharp';
 import { buildNewsletter, homeCareHeroUrl, selectTasks, type NewsletterTask } from '../src/lib/homecare/newsletter';
 import { costLabel, CONSULT_COST } from '../src/lib/homecare/cost';
 
@@ -306,18 +305,51 @@ test('the caught-up note survives being sent every month of the season', () => {
   expect(withTasks.text).not.toContain('/blog');
 });
 
-test('all twelve monthly hero images exist and are the 2:1 email band size', async () => {
+/**
+ * Dimensions straight out of the JPEG frame header. An image library would do
+ * this too, but the only one available here is sharp, and declaring it as a dev
+ * dependency for one assertion flags its platform binaries as dev-only in the
+ * lockfile - which would strand Next's image optimization on any install that
+ * prunes dev packages. Returns null for anything that isn't a readable JPEG.
+ */
+function readJpegHeader(file: string): { format: string; width: number; height: number } | null {
+  const buf = readFileSync(file);
+  if (buf.length < 4 || buf.readUInt16BE(0) !== 0xffd8) return null; // no SOI
+  let i = 2;
+  while (i + 9 < buf.length) {
+    if (buf[i] !== 0xff) return null; // segments are byte-aligned after SOI
+    const marker = buf[i + 1];
+    if (marker === 0xff) { i += 1; continue; } // fill byte
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd9)) { i += 2; continue; } // no payload
+    // SOF0-SOF15 carry the frame size; DHT/JPG/DAC share the range and don't.
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { format: 'jpeg', height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7) };
+    }
+    i += 2 + buf.readUInt16BE(i + 2);
+  }
+  return null;
+}
+
+test('all twelve monthly hero images exist and are the 2:1 email band size', () => {
   for (let m = 0; m < 12; m++) {
     const mm = String(m + 1).padStart(2, '0');
     const file = join(process.cwd(), `public/email/home-care/hero-${mm}.jpg`);
     // A missing month renders a BROKEN image in the send, not a skipped band.
     expect(existsSync(file), `missing hero-${mm}.jpg`).toBe(true);
-    const { width, height, format } = await sharp(file).metadata();
-    expect(format).toBe('jpeg');
-    expect({ mm, width, height }).toEqual({ mm, width: 1040, height: 520 });
+    const header = readJpegHeader(file);
+    expect(header?.format, `hero-${mm}.jpg is not a readable JPEG`).toBe('jpeg');
+    expect({ mm, width: header?.width, height: header?.height }).toEqual({ mm, width: 1040, height: 520 });
     // Keep the band light - these load on phones over cell data.
     expect(statSync(file).size, `hero-${mm}.jpg too heavy`).toBeLessThan(200 * 1024);
   }
+});
+
+test('the hero-image check reads real frame headers, not just any two numbers', () => {
+  // Guards the parser itself: a reader that silently returned null (or the wrong
+  // offsets) would make the twelve-hero assertion above pass vacuously.
+  const real = readJpegHeader(join(process.cwd(), 'public/email/home-care/hero-01.jpg'));
+  expect(real).toEqual({ format: 'jpeg', width: 1040, height: 520 });
+  expect(readJpegHeader(join(process.cwd(), 'public/logo.png'))).toBeNull();
 });
 
 test('hero URL rotates by calendar month', () => {
