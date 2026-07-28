@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { existsSync, statSync } from 'fs';
+import { existsSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import sharp from 'sharp';
 import { buildNewsletter, homeCareHeroUrl, selectTasks, type NewsletterTask } from '../src/lib/homecare/newsletter';
+import { costLabel, CONSULT_COST } from '../src/lib/homecare/cost';
 
 const TASKS: NewsletterTask[] = [
   // clean_gutters carries a cost range; the rest deliberately don't, so the
@@ -122,6 +123,43 @@ test('cost segment: real range, zero floor, and no data each render differently'
   // 3. No catalog numbers at all - the meta line stays badge · blurb.
   expect(n.html).toContain('DIY &nbsp;&middot;&nbsp; Press test.');
   expect(n.text).toContain('DIY · Press test.');
+});
+
+test('the email and the checklist page quote one cost label, not two', () => {
+  // They diverged: the email said "Consult with our team" for a zero floor
+  // while the page said "up to $375" for the same catalog row, so clicking the
+  // email's CTA changed the price. One formatter now, both callers.
+  expect(costLabel(150, 250)).toBe('$150–$250');
+  expect(costLabel(0, 375)).toBe(CONSULT_COST);
+  expect(costLabel(null, null)).toBeNull();
+  // A single figure and a half-populated row, for completeness.
+  expect(costLabel(200, 200)).toBe('$200');
+  expect(costLabel(null, 375)).toBeNull();
+
+  // Neither surface keeps a private copy to drift away again.
+  const src = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8');
+  const client = src('src/components/homecare/HomeCareChecklistClient.tsx');
+  expect(client).toContain("from '@/lib/homecare/cost'");
+  expect(client).not.toMatch(/function costLabel/);
+  expect(client).not.toContain('up to $');
+  expect(src('src/lib/homecare/newsletter.ts')).not.toMatch(/function costLabel/);
+
+  // And the email renders exactly what that formatter returns, en dash spelled
+  // for the medium: `&ndash;` in HTML, a hyphen in plain text.
+  const n = buildNewsletter({
+    firstName: 'Alex', season: 'fall', isSeasonal: true,
+    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
+    tasks: [
+      { key: 'clean_gutters', title: 'Clean gutters', blurb: 'Clear them out.', bookable: true, diy_or_pro: 'pro', priority: 10, applies_to: ['all'], est_cost_low: 150, est_cost_high: 250 },
+      { key: 'roof_inspect', title: 'Inspect the roof', blurb: 'Look for lifted shingles.', bookable: true, diy_or_pro: 'pro', priority: 9, applies_to: ['all'], est_cost_low: 0, est_cost_high: 375 },
+    ],
+  });
+  expect(n.html).toContain('$150&ndash;$250');
+  expect(n.text).toContain('$150-$250');
+  expect(n.html).toContain(CONSULT_COST);
+  expect(n.text).toContain(CONSULT_COST);
+  expect(n.html).not.toContain('$375');
+  expect(n.text).not.toContain('$375');
 });
 
 test('hero image band is omitted unless a hosted URL is supplied', () => {

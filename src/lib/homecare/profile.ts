@@ -242,6 +242,26 @@ export function sanitizeSystems(input: unknown): HomeSystems {
 }
 
 /**
+ * Does a `maintenance_catalog` response actually carry the column the stage
+ * gate reads?
+ *
+ * The gate below is only as strong as `stages`, and PostgREST omits a key that
+ * wasn't selected rather than returning null, so `filterTasksForProfile` reads
+ * a forgotten `stages` as "applies to everyone". That is exactly how "get ready
+ * to sell your house" became items 01 and 02 in every member's newsletter. The
+ * type on each call site can't catch it (the response is an unchecked cast), so
+ * every surface that fetches the catalog checks the shape it actually got and
+ * fails loudly. One predicate rather than one per caller: a second copy is how
+ * the email and the checklist page drifted apart in the first place.
+ *
+ * An empty catalog passes - there is nothing to leak, and each caller already
+ * handles "no tasks" on its own terms.
+ */
+export function catalogCarriesStages(rows: readonly { stages?: string[] }[]): boolean {
+  return rows.length === 0 || 'stages' in rows[0];
+}
+
+/**
  * Filter catalog tasks to a homeowner's systems + stage. With no systems yet
  * (null/empty) returns everything (full list + a prompt to personalize).
  */

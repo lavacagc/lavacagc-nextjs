@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Plus, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy } from 'lucide-react';
 import { hasGuideItem } from '@/lib/homecare/guides';
+import { costLabel, CONSULT_COST } from '@/lib/homecare/cost';
 import { prevSeason, seasonStart, SEASONS, type Season } from '@/lib/homecare/season';
 
 const SHARE_URL = 'https://www.lavacagc.com/home-care?utm_source=member_share&utm_medium=portal&utm_campaign=home_care_share';
@@ -49,12 +50,6 @@ const SEASON_SPOTLIGHTS: Record<string, { eyebrow: string; title: string; body: 
   },
 };
 
-function costLabel(lo: number | null, hi: number | null): string | null {
-  if (lo == null && hi == null) return null;
-  if (lo === 0 && hi != null) return `up to $${hi}`;
-  if (lo != null && hi != null) return `$${lo}–$${hi}`;
-  return null;
-}
 const id = (key: string, season: string) => `${key}|${season}`;
 
 /**
@@ -375,7 +370,9 @@ export default function HomeCareChecklistClient({
               {t.diy_or_pro === 'pro' ? 'PRO' : t.diy_or_pro === 'diy' ? 'DIY' : 'DIY / PRO'}
             </span>
             {freq && <span className="text-[11px] text-slate-400">· {freq}</span>}
-            {cost && <span className="text-[11px] text-slate-400">· Pro est. {cost}</span>}
+            {/* "Pro est." prefixes a figure, not the consult copy - "Pro est.
+                Consult with our team" reads as a stray word. */}
+            {cost && <span className="text-[11px] text-slate-400">· {cost === CONSULT_COST ? cost : `Pro est. ${cost}`}</span>}
           </div>
           {t.bookable && (
             <button

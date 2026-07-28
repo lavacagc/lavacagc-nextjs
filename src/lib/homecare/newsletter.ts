@@ -24,6 +24,7 @@
  */
 import { SEASON_LABEL, type Season } from './season';
 import { hasGuideItem } from './guides';
+import { costLabel, COST_DASH } from './cost';
 
 export interface NewsletterTask {
   key: string;
@@ -115,24 +116,13 @@ const MUTED = '#666666';
 const HAIRLINE = '#E2E8F0';
 const PANEL_BG = '#FBFAF8';
 
-/** Short enough to sit as one segment of "badge · cost · blurb". */
-const CONSULT_COST = 'Consult with our team';
-
 /**
- * The cost segment of a task's meta line: "$150", "$150–$250", the consult
- * copy when the catalog's low end is 0, or '' when there are no numbers at all.
- *
- * A 0 low end is the catalog's way of saying "no meaningful floor" - four
- * active tasks carry one - not a price we can quote. Rendered literally it
- * gives "Inspect the roof · Pro job · $0–$375", which reads as a data error and
- * undercuts the rule this module already follows: a wrong price in a customer
- * email is worse than no price.
+ * The cost segment of a task's meta line, from the formatter the checklist page
+ * also renders, with the en dash spelled the way each build needs it: an HTML
+ * entity for the widest mail-client support, a hyphen for plain text.
  */
-function costLabel(t: NewsletterTask): string {
-  const { est_cost_low: lo, est_cost_high: hi } = t;
-  if (typeof lo !== 'number' || typeof hi !== 'number') return '';
-  if (lo <= 0) return CONSULT_COST;
-  return lo === hi ? `$${lo}` : `$${lo}&ndash;$${hi}`;
+function costSegment(t: NewsletterTask, dash: string): string {
+  return (costLabel(t.est_cost_low, t.est_cost_high) ?? '').replace(COST_DASH, dash);
 }
 
 function badgeFor(t: NewsletterTask): string {
@@ -243,7 +233,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
 
   /** One numbered task row, matching the comp's 01/02/03 treatment. */
   const row = (t: NewsletterTask, i: number, last: boolean) => {
-    const meta = [badgeFor(t), costLabel(t), esc(t.blurb)].filter(Boolean).join(DOT);
+    const meta = [badgeFor(t), costSegment(t, '&ndash;'), esc(t.blurb)].filter(Boolean).join(DOT);
     const guide = hasGuideItem(season, t.key)
       ? `<div style="padding-top:6px"><a href="${baseUrl}/home-care/guides/${season}#${encodeURIComponent(t.key)}" style="font-family:${FF};font-size:12px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;color:${ORANGE_DEEP};text-decoration:none">Learn more &rarr;</a></div>`
       : '';
@@ -416,10 +406,8 @@ ${keepInTouch}
 </body>
 </html>`;
 
-  const plainMeta = (t: NewsletterTask) => {
-    const cost = costLabel(t).replace(/&ndash;/g, '-');
-    return [badgeFor(t), cost, t.blurb].filter(Boolean).join(' · ');
-  };
+  const plainMeta = (t: NewsletterTask) =>
+    [badgeFor(t), costSegment(t, '-'), t.blurb].filter(Boolean).join(' · ');
 
   let text = `${hi}\n\n${copy.intro(false)}\n\n`;
   if (!caughtUp) {

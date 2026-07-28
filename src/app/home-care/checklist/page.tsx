@@ -9,6 +9,7 @@ import { findHomeownerById, updateHomeowner } from '@/lib/homecare/homeowners';
 import { currentSeason, seasonStart, SEASON_LABEL } from '@/lib/homecare/season';
 import { isRowCurrent } from '@/lib/homecare/selection';
 import {
+  catalogCarriesStages,
   filterTasksForProfile,
   getStage,
   stageFromLegacyType,
@@ -53,6 +54,14 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
     supabaseRest<{ systems: HomeSystems; stage: Stage | null; homeowner_type: string | null }[]>('GET', `home_profiles?select=systems,stage,homeowner_type&homeowner_id=eq.${homeowner.id}&limit=1`),
     supabaseRest<{ task_key: string; season: string; status: string; completed_at: string | null; updated_at: string | null }[]>('GET', `homeowner_maintenance?select=task_key,season,status,completed_at,updated_at&homeowner_id=eq.${homeowner.id}&status=in.(done,dismissed)`),
   ]);
+
+  // Same exposure as the newsletter cron, so the same guard: the select above
+  // is an unchecked cast, and a `stages` that goes missing from it reads as
+  // "applies to everyone" instead of failing. Throw rather than quietly show
+  // "get ready to sell your house" to a member who never said they're selling.
+  if (!catalogCarriesStages(allTasks ?? [])) {
+    throw new Error('maintenance_catalog select is missing `stages` - the stage gate would not apply');
+  }
 
   const systems = profileRows?.[0]?.systems ?? null;
   const stage: Stage | null = profileRows?.[0]?.stage ?? stageFromLegacyType(profileRows?.[0]?.homeowner_type);

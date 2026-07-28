@@ -19,7 +19,7 @@ import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { updateHomeowner } from '@/lib/homecare/homeowners';
 import { currentSeason } from '@/lib/homecare/season';
 import { buildNewsletter, homeCareHeroUrl, type NewsletterTask } from '@/lib/homecare/newsletter';
-import { stageFromLegacyType, type HomeSystems, type Stage } from '@/lib/homecare/profile';
+import { catalogCarriesStages, stageFromLegacyType, type HomeSystems, type Stage } from '@/lib/homecare/profile';
 import { isCaughtUp, resolveMemberTasks, type MaintenanceRow } from '@/lib/homecare/selection';
 import { sendHomeCareNewsletterEmail } from '@/lib/notify/sendHomeCareEmails';
 import { preferencesUrlFor } from '@/lib/preferences/preferences';
@@ -81,12 +81,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'seasonal catalog returned no tasks' }, { status: 500 });
     }
 
-    // The stage gate is only as strong as the column feeding it. PostgREST omits
-    // the key entirely when it isn't selected, and `filterTasksForProfile` reads
-    // a missing `stages` as "applies to everyone" - which is how pre-listing
-    // tasks became items 01 and 02 in every member's email. Refuse to send
-    // rather than repeat that silently.
-    if (!('stages' in tasks[0])) {
+    // The stage gate is only as strong as the column feeding it, and the
+    // response above is an unchecked cast. Refuse to send rather than repeat
+    // the leak silently - see catalogCarriesStages.
+    if (!catalogCarriesStages(tasks)) {
       console.error('home-care-newsletter: catalog select is missing `stages` - the stage gate would not apply');
       return NextResponse.json({ ok: false, error: 'catalog select is missing stages' }, { status: 500 });
     }

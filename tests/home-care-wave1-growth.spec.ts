@@ -5,6 +5,7 @@ import http from 'http';
 import { createHmac } from 'crypto';
 import { currentSeason, nextSeason, seasonStart, SEASON_LABEL } from '@/lib/homecare/season';
 import { buildNewsletter, type NewsletterTask } from '@/lib/homecare/newsletter';
+import { catalogCarriesStages } from '@/lib/homecare/profile';
 
 const root = process.cwd();
 const read = (rel: string) => readFileSync(join(root, rel), 'utf8');
@@ -34,7 +35,27 @@ test('newsletter cron selects the stage column the stage gate depends on', () =>
   expect(src).toContain('select=key,title,blurb,bookable,diy_or_pro,priority,applies_to,stages,est_cost_low,est_cost_high');
   expect(src).toContain('type CatalogTask = NewsletterTask & { stages: string[] }');
   expect(src).toContain('supabaseRest<CatalogTask[]>');
-  expect(src).toMatch(/if \(!\('stages' in tasks\[0\]\)\)/);
+  expect(src).toContain('if (!catalogCarriesStages(tasks))');
+});
+
+test('checklist page carries the same stage-select guard as the cron', () => {
+  // The page reads the same catalog through the same unchecked cast, so it has
+  // the same exposure: drop `stages` from its select and every pre-listing task
+  // renders for every member, silently. Guarded by the same predicate, and the
+  // column is pinned here so the regression fails in CI rather than in prod.
+  const src = read('src/app/home-care/checklist/page.tsx');
+  expect(src).toContain('select=key,title,blurb,applies_to,stages,seasons');
+  expect(src).toContain('stages: string[]');
+  expect(src).toContain('if (!catalogCarriesStages(allTasks ?? []))');
+});
+
+test('the stage guard is one predicate, not a copy per surface', () => {
+  const src = read('src/lib/homecare/profile.ts');
+  expect(src).toContain('export function catalogCarriesStages');
+  // Present but empty is not a leak - each caller handles "no tasks" itself.
+  expect(catalogCarriesStages([])).toBe(true);
+  expect(catalogCarriesStages([{ stages: ['all'] }])).toBe(true);
+  expect(catalogCarriesStages([{} as { stages?: string[] }])).toBe(false);
 });
 
 test('newsletter cron filters task state per homeowner, chunk-scoped to eligible recipients', () => {
