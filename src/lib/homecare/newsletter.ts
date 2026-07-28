@@ -151,7 +151,16 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
   /** Everything that applies but didn't fit - the hook back to the checklist. */
   const remaining = Math.max(0, args.tasks.length - list.length);
   const name = firstName ? esc(firstName) : '';
-  const hi = firstName ? `Hi ${name},` : 'Hi there,';
+  /**
+   * The greeting is built twice on purpose. Escaping belongs to the markup, and
+   * only to it: "Hi John &amp; Mary," is correct in the HTML part and a visible
+   * defect in the text/plain one - which is what several clients and most spam
+   * filters read. `first_name` has no character restriction at signup, and
+   * couples enter "John & Mary" routinely. Same rule as the subject line, which
+   * is not HTML either and interpolates the raw name.
+   */
+  const hi = name ? `Hi ${name},` : 'Hi there,';
+  const hiText = firstName ? `Hi ${firstName},` : 'Hi there,';
   const checklistUrl = `${baseUrl}/home-care/checklist`;
   /**
    * Standing links for the caught-up email. Tagged like the member-share line
@@ -409,7 +418,7 @@ ${keepInTouch}
   const plainMeta = (t: NewsletterTask) =>
     [badgeFor(t), costSegment(t, '-'), t.blurb].filter(Boolean).join(' · ');
 
-  let text = `${hi}\n\n${copy.intro(false)}\n\n`;
+  let text = `${hiText}\n\n${copy.intro(false)}\n\n`;
   if (!caughtUp) {
     text += `${panelHeading.toUpperCase()}\n\n`;
     list.forEach((t, i) => {

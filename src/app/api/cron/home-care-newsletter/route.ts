@@ -10,11 +10,16 @@
  * list emptied without a single completion is skipped for the month (reported
  * as empty_skipped in the response).
  *
- *   ?dryRun=1 — compute recipients/counts but send nothing.
+ *   ?dryRun=1 — classify every recipient and report what would happen, but
+ *   write nothing: no sends, no email_log rows, no last_newsletter_at touches,
+ *   no preference-centre rows. The three-way outcome (would_send, of which
+ *   caught_up, plus empty_skipped) is the point of the flag, so it is computed
+ *   on a dry run too - the per-homeowner reads it needs already ran.
  *
  * Auth: Bearer CRON_SECRET (also enforced by middleware on /api/cron/*).
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { cleanEnv } from '@/lib/envClean';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { updateHomeowner } from '@/lib/homecare/homeowners';
 import { currentSeason } from '@/lib/homecare/season';
@@ -33,6 +38,16 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const MAX_PER_RUN = 400;
 /** How many recipients each per-homeowner query covers - keeps responses under PostgREST's row cap. */
 const OWNER_CHUNK = 20;
+/**
+ * Canonical host for anything a mail client fetches, resolved exactly the way
+ * the sibling monthly-newsletter cron and the List-Unsubscribe header do. The
+ * hero band must not ride on the request origin: invoke this route from a
+ * preview deployment and every recipient gets an image URL on a host that may
+ * 404 or 403 - and `/email/*` responses carry a one-week Cache-Control, so one
+ * bad send freezes that month's hero at the CDN for days. The logo directly
+ * above the hero has always been pinned; now both are.
+ */
+const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lavacagc.com';
 
 /**
  * The catalog row this cron selects. `stages` is required, not optional: it is
@@ -174,60 +189,70 @@ export async function GET(request: NextRequest) {
     let sent = 0;
     let suppressed = 0;
     let emptySkipped = 0;
+    let wouldSend = 0;
+    let caughtUpCount = 0;
     const failures: string[] = [];
-    if (!dryRun) {
-      for (const h of eligible) {
-        const resolved = resolveMemberTasks({
-          catalog: tasks,
-          systems: systemsByOwner.get(h.id) ?? null,
-          stage: stageByOwner.get(h.id) ?? null,
-          rows: rowsByOwner.get(h.id) ?? [],
-          season,
-          now,
-        });
-        const { visible, outstanding } = resolved;
-        // Everything that applies is already done/booked/snoozed/dismissed.
-        // Members who cleared it by doing the work get the short "all caught
-        // up" note rather than silence - it still carries the booking CTA.
-        // Everyone else with an empty list (nothing applies to their home at
-        // all, or they hid it all) has no honest email to write, so skip them
-        // and advance last_newsletter_at so the row isn't retried every run.
-        const caughtUp = isCaughtUp(resolved);
-        if (visible.length === 0 || (outstanding.length === 0 && !caughtUp)) {
-          emptySkipped += 1;
-          await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
-          continue;
-        }
-        const personalTasks = caughtUp ? [] : outstanding;
-        // Per-recipient preference-center link (best-effort — fall back to the
-        // legacy unsubscribe link alone if the lookup fails).
-        const preferencesUrl = await preferencesUrlFor(origin, h.email).catch(() => undefined);
-        const { subject, html, text } = buildNewsletter({
-          firstName: h.first_name,
-          season,
-          tasks: personalTasks,
-          isSeasonal,
-          baseUrl: origin,
-          unsubscribeUrl: `${origin}/api/home-care/unsubscribe?token=${encodeURIComponent(h.unsubscribe_token)}`,
-          preferencesUrl,
-          monthLabel,
-          year: now.getUTCFullYear(),
-          heroImageUrl: homeCareHeroUrl(origin, now),
-          caughtUp,
-        });
-        const res = await sendHomeCareNewsletterEmail({ to: h.email, subject, html, text, homeownerId: h.id });
-        if (res.status === 'sent') {
-          sent += 1;
-          await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
-        } else if (res.status === 'skipped' && res.reason === 'unsubscribed') {
-          // Preference opt-out that the legacy homeowners.status sync missed —
-          // an intentional suppression, not a failure. Advance last_newsletter_at
-          // so the row isn't re-attempted (and re-logged) every run this month.
-          suppressed += 1;
-          await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
-        } else {
-          failures.push(`${h.email}:${res.status}`);
-        }
+    // Classification runs on every invocation, dry or not. It is the whole
+    // question a dry run is asked before a send that happens once a month with
+    // no retry - "who gets the checklist, who gets the caught-up note, who gets
+    // nothing" - and the reads it needs already happened above. Only the writes
+    // are gated: sends, email_log rows, the preference-centre lookup (which
+    // creates a row) and every last_newsletter_at touch.
+    for (const h of eligible) {
+      const resolved = resolveMemberTasks({
+        catalog: tasks,
+        systems: systemsByOwner.get(h.id) ?? null,
+        stage: stageByOwner.get(h.id) ?? null,
+        rows: rowsByOwner.get(h.id) ?? [],
+        season,
+        now,
+      });
+      const { visible, outstanding } = resolved;
+      // Everything that applies is already done/booked/snoozed/dismissed.
+      // Members who cleared it by doing the work get the short "all caught
+      // up" note rather than silence - it still carries the booking CTA.
+      // Everyone else with an empty list (nothing applies to their home at
+      // all, or they hid it all) has no honest email to write, so skip them
+      // and advance last_newsletter_at so the row isn't retried every run.
+      const caughtUp = isCaughtUp(resolved);
+      if (visible.length === 0 || (outstanding.length === 0 && !caughtUp)) {
+        emptySkipped += 1;
+        if (!dryRun) await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
+        continue;
+      }
+      wouldSend += 1;
+      if (caughtUp) caughtUpCount += 1;
+      if (dryRun) continue;
+
+      const personalTasks = caughtUp ? [] : outstanding;
+      // Per-recipient preference-center link (best-effort — fall back to the
+      // legacy unsubscribe link alone if the lookup fails).
+      const preferencesUrl = await preferencesUrlFor(origin, h.email).catch(() => undefined);
+      const { subject, html, text } = buildNewsletter({
+        firstName: h.first_name,
+        season,
+        tasks: personalTasks,
+        isSeasonal,
+        baseUrl: origin,
+        unsubscribeUrl: `${origin}/api/home-care/unsubscribe?token=${encodeURIComponent(h.unsubscribe_token)}`,
+        preferencesUrl,
+        monthLabel,
+        year: now.getUTCFullYear(),
+        heroImageUrl: homeCareHeroUrl(SITE_URL, now),
+        caughtUp,
+      });
+      const res = await sendHomeCareNewsletterEmail({ to: h.email, subject, html, text, homeownerId: h.id });
+      if (res.status === 'sent') {
+        sent += 1;
+        await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
+      } else if (res.status === 'skipped' && res.reason === 'unsubscribed') {
+        // Preference opt-out that the legacy homeowners.status sync missed —
+        // an intentional suppression, not a failure. Advance last_newsletter_at
+        // so the row isn't re-attempted (and re-logged) every run this month.
+        suppressed += 1;
+        await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
+      } else {
+        failures.push(`${h.email}:${res.status}`);
       }
     }
 
@@ -240,9 +265,14 @@ export async function GET(request: NextRequest) {
       due_page: due.length,
       capped,
       eligible: eligible.length,
+      // The three-way classification, reported identically dry or live:
+      // would_send + empty_skipped === eligible, and caught_up is the share of
+      // would_send that gets the no-task note. `sent` stays 0 on a dry run.
+      would_send: wouldSend,
+      caught_up: caughtUpCount,
+      empty_skipped: emptySkipped,
       sent,
       suppressed,
-      empty_skipped: emptySkipped,
       failures: failures.length,
       dryRun,
     });

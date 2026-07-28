@@ -4,7 +4,7 @@ import { join } from 'path';
 import http from 'http';
 import { createHmac } from 'crypto';
 import { currentSeason, nextSeason, seasonStart, SEASON_LABEL } from '@/lib/homecare/season';
-import { buildNewsletter, type NewsletterTask } from '@/lib/homecare/newsletter';
+import { buildNewsletter, homeCareHeroUrl, type NewsletterTask } from '@/lib/homecare/newsletter';
 import { catalogCarriesStages } from '@/lib/homecare/profile';
 
 const root = process.cwd();
@@ -127,6 +127,54 @@ test('the newsletter recipient query cannot be mangled by the minifier', () => {
   expect(queryArg).toContain('status=eq.active');
   // Whatever the query is, its parens balance.
   expect(queryArg.split('(').length).toBe(queryArg.split(')').length);
+});
+
+test('a dry run classifies every recipient and writes nothing', () => {
+  // ?dryRun=1 exists to answer "who gets the checklist, who gets the caught-up
+  // note, who gets nothing" BEFORE a send that fires once a month with no
+  // retry. Classification used to sit inside `if (!dryRun)`, so a dry run
+  // always answered "0 and 0" - the reads were paid for and thrown away.
+  const src = read('src/app/api/cron/home-care-newsletter/route.ts');
+  const at = (needle: string) => src.indexOf(needle);
+
+  // The loop is not wrapped in a dry-run guard any more...
+  expect(src).not.toMatch(/if \(!dryRun\) \{\s*\n\s*for \(const h of eligible\)/);
+  // ...and the three-way outcome is reported either way.
+  expect(src).toContain('would_send: wouldSend');
+  expect(src).toContain('caught_up: caughtUpCount');
+  expect(src).toContain('empty_skipped: emptySkipped');
+
+  // Every write sits behind the guard. The skip branch touches
+  // last_newsletter_at inline, so it carries its own; everything else lives
+  // past the `continue`, including the preference-centre lookup, which creates
+  // a row as a side effect.
+  const bail = at('if (dryRun) continue;');
+  expect(bail, 'expected the send half of the loop to bail out on a dry run').toBeGreaterThan(0);
+  expect(at('await preferencesUrlFor(')).toBeGreaterThan(bail);
+  expect(at('await sendHomeCareNewsletterEmail(')).toBeGreaterThan(bail);
+  for (const m of src.matchAll(/^(.*)updateHomeowner\(/gm)) {
+    const guarded = m[1].includes('if (!dryRun)') || m.index! > bail;
+    expect(guarded, `unguarded updateHomeowner: ${m[0].trim()}`).toBe(true);
+  }
+});
+
+test('the newsletter hero is pinned to the production host, like the logo above it', () => {
+  // The hero used to be built from request.nextUrl.origin while the logo
+  // directly above it was absolute, so the two biggest images in one email
+  // resolved differently. Invoked from a preview origin that means a broken
+  // hero - and /email/* carries a one-week Cache-Control, so a single bad send
+  // freezes the 404 at the CDN for days.
+  const src = read('src/app/api/cron/home-care-newsletter/route.ts');
+  expect(src).toContain("const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lavacagc.com'");
+  expect(src).toContain('homeCareHeroUrl(SITE_URL, now)');
+  expect(src).not.toContain('homeCareHeroUrl(origin');
+  // Resolved the same way as the sibling cron and the List-Unsubscribe header.
+  expect(read('src/app/api/cron/monthly-newsletter/route.ts'))
+    .toContain("cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lavacagc.com'");
+  // The builder keeps taking a base so tests and local previews can still point
+  // it at localhost - only the cron stopped passing the request origin.
+  expect(homeCareHeroUrl('http://localhost:3000', new Date(Date.UTC(2026, 7, 1))))
+    .toBe('http://localhost:3000/email/home-care/hero-08.jpg');
 });
 
 test('welcome email carries the forward-to-a-friend line with email UTM tags', () => {

@@ -161,6 +161,35 @@ test('the email and the checklist page quote one cost label, not two', () => {
   expect(n.text).not.toContain('$375');
 });
 
+test('HTML entities stay in the HTML part - the text part gets the raw name', () => {
+  // "John & Mary" is an ordinary entry on a home-services signup (first_name is
+  // an unrestricted string), and the greeting is the first line of the message.
+  // Escaping it once and reusing it for both builds put "Hi John &amp; Mary,"
+  // in the text/plain part, which is what several clients and most spam filters
+  // read.
+  const n = buildNewsletter({
+    firstName: 'John & Mary', season: 'fall', tasks: TASKS, isSeasonal: true,
+    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
+  });
+  expect(n.html).toContain('Hi John &amp; Mary,');
+  expect(n.text).toContain('Hi John & Mary,');
+  expect(n.text).not.toContain('&amp;');
+
+  // The subject is not HTML either, in both variants that carry a name.
+  expect(buildNewsletter({
+    firstName: 'John & Mary', season: 'fall', tasks: [], isSeasonal: false, monthLabel: 'October',
+    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u', caughtUp: true,
+  }).subject).toBe("You're all caught up, John & Mary");
+
+  // And no name at all still greets both readers.
+  const anon = buildNewsletter({
+    firstName: null, season: 'fall', tasks: TASKS, isSeasonal: true,
+    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
+  });
+  expect(anon.html).toContain('Hi there,');
+  expect(anon.text).toContain('Hi there,');
+});
+
 test('hero image band is omitted unless a hosted URL is supplied', () => {
   const base = {
     firstName: 'Alex', season: 'fall' as const, tasks: TASKS, isSeasonal: true,

@@ -110,7 +110,16 @@ test('links: every URL is built from the send origin, so no environment leaks in
     expect(hrefs.filter((h) => !h.startsWith(ORIGIN))).toEqual([]);
     expect([...variant.text.matchAll(/https?:\/\/[^\s]+/g)].map((m) => m[0]).filter((u) => !u.startsWith(ORIGIN))).toEqual([]);
   }
-  // The logo is the one deliberate absolute: mail clients need a hosted asset,
-  // and it must stay on the production host even in a preview render.
+  // Images are the deliberate exception: a mail client fetches them itself, so
+  // they must stay on the production host even in a preview render. The logo is
+  // absolute in the builder; the hero comes in pre-pinned from the cron, which
+  // resolves it from NEXT_PUBLIC_SITE_URL rather than the request origin.
   expect(n.html).toContain('https://www.lavacagc.com/logo.png');
+  const hero = 'https://www.lavacagc.com/email/home-care/hero-09.jpg';
+  const withHero = build({ ...at, heroImageUrl: hero });
+  expect(withHero.html).toContain(`<img src="${hero}"`);
+  // No link ever follows an image onto that host - clicks stay on the origin
+  // that sent the mail, so a tokenized opt-out still resolves.
+  expect([...withHero.html.matchAll(/href="(https?:[^"]+)"/g)].map((m) => m[1]).filter((h) => !h.startsWith(ORIGIN))).toEqual([]);
+  expect(cron).toContain('homeCareHeroUrl(SITE_URL, now)');
 });
