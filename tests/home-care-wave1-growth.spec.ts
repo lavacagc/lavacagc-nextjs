@@ -30,18 +30,24 @@ test('newsletter cron filters task state per homeowner, chunk-scoped to eligible
   // Still chunk-scoped to this run's recipients (PostgREST row cap / URL length).
   expect(src).toContain('homeowner_id=in.(');
   // The fetch is no longer dismissed-only: the seasonal-reset rule needs season
-  // + completed_at to tell a live completion from one that expired this year.
-  expect(src).toContain('select=homeowner_id,task_key,season,status,completed_at');
+  // + a timestamp to tell a live row from one that expired this year. It is
+  // still scoped to the statuses the resolver reads, so 'todo' rows (the bulk
+  // of the table) never come back and can't push the response past the row cap.
+  expect(src).toContain('select=homeowner_id,task_key,season,status,completed_at,updated_at');
+  expect(src).toContain('&status=in.(done,booked,snoozed,dismissed)');
   // Suppression + the stage gate now live in the shared resolver that the
-  // checklist page also uses - see tests/home-care-selection.spec.ts.
+  // checklist page also uses - see tests/home-care-selection.spec.ts. It is
+  // given the season being built so a completion from another season can't
+  // suppress a multi-season task here.
   expect(src).toContain('resolveMemberTasks');
   expect(src).toContain('stage: stageByOwner.get(h.id)');
+  expect(src).toMatch(/season,\s*\n\s*now,/);
   // Members for whom nothing in the catalog applies are skipped and not
-  // re-attempted this month; members who finished everything get the
-  // caught-up note instead of silence.
+  // re-attempted this month, as are members whose list emptied without a single
+  // completion. Only members who did the work get the caught-up note.
   expect(src).toContain('empty_skipped');
-  expect(src).toMatch(/visible\.length === 0/);
-  expect(src).toMatch(/caughtUp = outstanding\.length === 0/);
+  expect(src).toMatch(/caughtUp = isCaughtUp\(resolved\)/);
+  expect(src).toMatch(/visible\.length === 0 \|\| \(outstanding\.length === 0 && !caughtUp\)/);
 });
 
 test('welcome email carries the forward-to-a-friend line with email UTM tags', () => {

@@ -142,6 +142,49 @@ test('teaser: singular wording, and no teaser when nothing is held back', () => 
   expect(exact.text).not.toContain('+ 0 more');
 });
 
+test('copy stays grammatical when only one job is left', () => {
+  // Late in a season a member can have exactly one thing outstanding. Every
+  // count-bearing string has to survive that, not just the teaser line.
+  const one = [{ key: 't0', title: 'Clean the gutters', blurb: 'Do it.', bookable: false, diy_or_pro: 'diy' as const, priority: 1, applies_to: ['all'] }];
+  const base = {
+    firstName: 'Alex', season: 'fall' as const, tasks: one, monthLabel: 'October', year: 2026,
+    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
+  };
+
+  const nudge = buildNewsletter({ ...base, isSeasonal: false });
+  expect(nudge.subject).toBe('October: 1 quick home to-do');
+  expect(nudge.html).toContain('Your top job for October');
+  expect(nudge.html).not.toContain('Your top 1 for');
+  expect(nudge.html).toContain('One timely job worth knocking out');
+  expect(nudge.html).toContain("so you know whether it's worth handing off");
+  expect(nudge.html).not.toContain('Each one is tagged');
+
+  const seasonal = buildNewsletter({ ...base, isSeasonal: true });
+  expect(seasonal.html).toContain("Here's the one worth doing first");
+  expect(seasonal.html).toContain('Start with this one');
+  expect(seasonal.html).not.toMatch(/Here are the 1\b/);
+  expect(seasonal.html).not.toContain('Start with these 1');
+});
+
+test('the plain-text intro tells the same story as the HTML one', () => {
+  // The text intro used to promise "the full run of jobs for your home" while
+  // the body below it listed three and teased the rest.
+  const many = Array.from({ length: 20 }, (_, i) => ({
+    key: `t${i}`, title: `Task ${i}`, blurb: 'Do it.', bookable: false,
+    diy_or_pro: 'diy' as const, priority: 20 - i, applies_to: ['all'],
+  }));
+  const n = buildNewsletter({
+    firstName: 'Alex', season: 'fall', tasks: many, isSeasonal: true, monthLabel: 'September', year: 2026,
+    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
+  });
+  expect(n.text).not.toContain('full run of jobs');
+  expect(n.text).toContain('Here are the 3 worth doing first, with 17 more waiting on your list');
+  expect(n.html).toContain('Here are the 3 worth doing first, with 17 more waiting on your list');
+  // Same sentence either way, minus the HTML emphasis.
+  expect(n.text).toContain('Each one is tagged DIY or pro');
+  expect(n.html).toContain('>DIY or pro</strong> so you know');
+});
+
 test('all twelve monthly hero images exist and are the 2:1 email band size', async () => {
   for (let m = 0; m < 12; m++) {
     const mm = String(m + 1).padStart(2, '0');

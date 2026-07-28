@@ -4,9 +4,11 @@
  * Runs on the 1st of each month. Season-start months (Mar/Jun/Sep/Dec) send the
  * full seasonal checklist; other months send a lighter top-3 "nudge". One email
  * per active homeowner per calendar month (deduped via last_newsletter_at).
- * Tasks a member dismissed ("not relevant to my home") are filtered out per
- * recipient; a member with no tasks left after filtering is skipped for the
- * month (reported as empty_skipped in the response).
+ * Tasks a member dismissed ("not relevant to my home"), already checked off,
+ * booked or snoozed are filtered out per recipient. A member who has cleared
+ * their list by doing the work gets the short "all caught up" note; one whose
+ * list emptied without a single completion is skipped for the month (reported
+ * as empty_skipped in the response).
  *
  *   ?dryRun=1 — compute recipients/counts but send nothing.
  *
@@ -18,7 +20,7 @@ import { updateHomeowner } from '@/lib/homecare/homeowners';
 import { currentSeason } from '@/lib/homecare/season';
 import { buildNewsletter, homeCareHeroUrl, type NewsletterTask } from '@/lib/homecare/newsletter';
 import { stageFromLegacyType, type HomeSystems, type Stage } from '@/lib/homecare/profile';
-import { resolveMemberTasks, type MaintenanceRow } from '@/lib/homecare/selection';
+import { isCaughtUp, resolveMemberTasks, type MaintenanceRow } from '@/lib/homecare/selection';
 import { sendHomeCareNewsletterEmail } from '@/lib/notify/sendHomeCareEmails';
 import { preferencesUrlFor } from '@/lib/preferences/preferences';
 
@@ -95,9 +97,11 @@ export async function GET(request: NextRequest) {
     // Each member's task state: what they dismissed as irrelevant, what they've
     // already checked off, booked, or snoozed. All of it suppresses the task in
     // their email - nobody should be nudged about a job they finished last week.
-    // We fetch EVERY status (not just dismissed) because the seasonal-reset rule
-    // lives in resolveMemberTasks and needs `season` + `completed_at` to decide
-    // whether a completion is still current or has expired for a new year.
+    // We fetch every SUPPRESSING status (not just dismissed) because the
+    // seasonal-reset rule lives in resolveMemberTasks and needs `season` plus a
+    // timestamp to decide whether a row is still current or has expired for a
+    // new year. 'todo' rows are excluded: the resolver never reads them, and
+    // pulling them would multiply the response size for nothing.
     //
     // Fetched per chunk of this run's recipients to stay under PostgREST's
     // response-row cap and keep the in-list URLs a sane length.
@@ -106,7 +110,7 @@ export async function GET(request: NextRequest) {
       const ids = eligible.slice(i, i + DISMISSED_CHUNK).map((h) => h.id).join(',');
       const rows = (await supabaseRest<(MaintenanceRow & { homeowner_id: string })[]>(
         'GET',
-        `homeowner_maintenance?select=homeowner_id,task_key,season,status,completed_at&homeowner_id=in.(${ids})`,
+        `homeowner_maintenance?select=homeowner_id,task_key,season,status,completed_at,updated_at&homeowner_id=in.(${ids})&status=in.(done,booked,snoozed,dismissed)`,
       )) ?? [];
       for (const r of rows) {
         if (!rowsByOwner.has(r.homeowner_id)) rowsByOwner.set(r.homeowner_id, []);
@@ -120,25 +124,27 @@ export async function GET(request: NextRequest) {
     const failures: string[] = [];
     if (!dryRun) {
       for (const h of eligible) {
-        const { visible, outstanding } = resolveMemberTasks({
+        const resolved = resolveMemberTasks({
           catalog: tasks,
           systems: systemsByOwner.get(h.id) ?? null,
           stage: stageByOwner.get(h.id) ?? null,
           rows: rowsByOwner.get(h.id) ?? [],
+          season,
           now,
         });
-        if (visible.length === 0) {
-          // Nothing in the catalog even applies to this home (systems + stage
-          // filtered everything out). There is no email to write, so skip and
-          // advance last_newsletter_at so the row isn't retried every run.
+        const { visible, outstanding } = resolved;
+        // Everything that applies is already done/booked/snoozed/dismissed.
+        // Members who cleared it by doing the work get the short "all caught
+        // up" note rather than silence - it still carries the booking CTA.
+        // Everyone else with an empty list (nothing applies to their home at
+        // all, or they hid it all) has no honest email to write, so skip them
+        // and advance last_newsletter_at so the row isn't retried every run.
+        const caughtUp = isCaughtUp(resolved);
+        if (visible.length === 0 || (outstanding.length === 0 && !caughtUp)) {
           emptySkipped += 1;
           await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
           continue;
         }
-        // Everything that applies is already done/booked/snoozed/dismissed.
-        // Rather than go silent on our most engaged members, send the short
-        // "all caught up" note - it still carries the booking CTA.
-        const caughtUp = outstanding.length === 0;
         const personalTasks = caughtUp ? [] : outstanding;
         // Per-recipient preference-center link (best-effort — fall back to the
         // legacy unsubscribe link alone if the lookup fails).

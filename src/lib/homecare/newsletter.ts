@@ -128,6 +128,18 @@ function badgeFor(t: NewsletterTask): string {
 
 const DOT = ' &nbsp;&middot;&nbsp; ';
 
+/** Every string that varies between the caught-up, seasonal and nudge emails. */
+interface NewsletterCopy {
+  subject: string;
+  preheader: string;
+  headlineTop: string;
+  headlineAccent: string;
+  /** One intro for both renderings; `strong` is false for the plain-text build. */
+  intro: (strong: boolean) => string;
+  panelHeading: string;
+  ctaLabel: string;
+}
+
 export function buildNewsletter(args: NewsletterArgs): { subject: string; html: string; text: string } {
   const { firstName, season, isSeasonal, baseUrl, unsubscribeUrl, preferencesUrl, year, heroImageUrl, caughtUp } = args;
   const seasonLabel = SEASON_LABEL[season];
@@ -139,41 +151,64 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
   const hi = firstName ? `Hi ${name},` : 'Hi there,';
   const checklistUrl = `${baseUrl}/home-care/checklist`;
 
-  const subject = caughtUp
-    ? `You're all caught up, ${firstName || 'neighbor'}`
-    : isSeasonal
-      ? `Your ${seasonLabel} home checklist`
-      : `${monthLabel}: ${list.length} quick home to-dos`;
+  const shown = list.length;
+  const seasonLower = seasonLabel.toLowerCase();
+  const jobWord = (n: number) => (n === 1 ? 'job' : 'jobs');
+  /**
+   * The one sentence both the HTML and plain-text intros end on. `strong` is
+   * the only difference between them, so it's a parameter rather than a second
+   * copy of the sentence.
+   */
+  const taggedTail = (strong: boolean) => {
+    const tag = strong ? `<strong style="color:${INK}">DIY or pro</strong>` : 'DIY or pro';
+    return shown === 1
+      ? `It's tagged ${tag} so you know whether it's worth handing off.`
+      : `Each one is tagged ${tag} so you know what's worth handing off.`;
+  };
 
-  // Hidden preheader - the grey line inboxes show next to the subject.
-  const preheader = caughtUp
-    ? `Nothing left on your ${seasonLabel.toLowerCase()} list. Here's what that's worth.`
+  /**
+   * Every string that varies by email mode, in one place. The HTML and text
+   * intros live side by side deliberately: they were separate branches and the
+   * text one drifted, still promising "the full run of jobs" long after the
+   * HTML became a top-3 teaser.
+   *
+   * Counts are singular-safe throughout - late in a season a member can have
+   * exactly one job left, and "Your top 1 for October" reads like a bug.
+   */
+  const copy: NewsletterCopy = caughtUp
+    ? {
+        subject: `You're all caught up, ${firstName || 'neighbor'}`,
+        preheader: `Nothing left on your ${seasonLower} list. Here's what that's worth.`,
+        headlineTop: `Your home is`,
+        headlineAccent: 'all caught up.',
+        intro: () =>
+          `You've cleared everything on your ${seasonLower} list - nice work. That's the boring maintenance that quietly prevents the expensive repairs, and most homeowners never get to the end of it. Nothing to do this month; we'll be back when the next season's list is ready.`,
+        panelHeading: '',
+        ctaLabel: `Review My ${seasonLabel} List`,
+      }
     : isSeasonal
-      ? `The ${list.length} to do first${remaining ? `, plus ${remaining} more on your list` : ''}. What to DIY, what to hand off.`
-      : `${list.length} ${list.length === 1 ? 'job' : 'jobs'} worth doing this month${remaining ? `, and ${remaining} more waiting` : ''}.`;
+      ? {
+          subject: `Your ${seasonLabel} home checklist`,
+          preheader: `${shown === 1 ? 'The one' : `The ${shown}`} to do first${remaining ? `, plus ${remaining} more on your list` : ''}. What to DIY, what to hand off.`,
+          headlineTop: `Your ${seasonLower} checklist`,
+          headlineAccent: 'has arrived.',
+          intro: (strong: boolean) =>
+            `${seasonLabel} is here and your checklist is ready. ${shown === 1 ? `Here's the one worth doing first` : `Here are the ${shown} worth doing first`}${remaining ? `, with ${remaining} more waiting on your list` : ''}. ${taggedTail(strong)}`,
+          panelHeading: shown === 1 ? 'Start with this one' : `Start with these ${shown}`,
+          ctaLabel: `Open My ${seasonLabel} Checklist`,
+        }
+      : {
+          subject: `${monthLabel}: ${shown} quick home to-do${shown === 1 ? '' : 's'}`,
+          preheader: `${shown} ${jobWord(shown)} worth doing this month${remaining ? `, and ${remaining} more waiting` : ''}.`,
+          headlineTop: `Your ${monthLabel} check-in`,
+          headlineAccent: 'is here.',
+          intro: (strong: boolean) =>
+            `${shown === 1 ? 'One timely job worth knocking out this month.' : 'A few timely jobs worth knocking out this month.'} ${taggedTail(strong)}`,
+          panelHeading: shown === 1 ? `Your top job for ${monthLabel}` : `Your top ${shown} for ${monthLabel}`,
+          ctaLabel: `Open My ${monthLabel} Checklist`,
+        };
 
-  const headlineTop = caughtUp
-    ? `Your home is`
-    : isSeasonal
-      ? `Your ${seasonLabel.toLowerCase()} checklist`
-      : `Your ${monthLabel} check-in`;
-  const headlineAccent = caughtUp ? 'all caught up.' : isSeasonal ? 'has arrived.' : 'is here.';
-
-  const introBody = caughtUp
-    ? `You've cleared everything on your ${seasonLabel.toLowerCase()} list - nice work. That's the boring maintenance that quietly prevents the expensive repairs, and most homeowners never get to the end of it. Nothing to do this month; we'll be back when the next season's list is ready.`
-    : isSeasonal
-      ? `${seasonLabel} is here and your checklist is ready. Here are the ${list.length} worth doing first${remaining ? `, with ${remaining} more waiting on your list` : ''}. Each one is tagged <strong style="color:${INK}">DIY or pro</strong> so you know what's worth handing off.`
-      : `A few timely jobs worth knocking out this month. Each one is tagged <strong style="color:${INK}">DIY or pro</strong> so you know what's worth handing off.`;
-
-  const panelHeading = isSeasonal
-    ? `Start with these ${list.length}`
-    : `Your top ${list.length} for ${monthLabel}`;
-
-  const ctaLabel = caughtUp
-    ? `Review My ${seasonLabel} List`
-    : isSeasonal
-      ? `Open My ${seasonLabel} Checklist`
-      : `Open My ${monthLabel} Checklist`;
+  const { subject, preheader, headlineTop, headlineAccent, panelHeading, ctaLabel } = copy;
 
   const pillParts = [
     firstName ? `${name}'s Home Care` : 'La Vaca Home Care',
@@ -217,7 +252,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
    */
   const teaserRow = remaining
     ? `<tr><td style="padding:14px 22px 20px 22px">
-        <a href="${checklistUrl}" style="display:block;font-family:${FF};font-size:15px;line-height:22px;mso-line-height-rule:exactly;font-weight:bold;color:${ORANGE_DEEP};text-decoration:none">+ ${remaining} more ${remaining === 1 ? 'job' : 'jobs'} on your ${seasonLabel.toLowerCase()} list &rarr;</a>
+        <a href="${checklistUrl}" style="display:block;font-family:${FF};font-size:15px;line-height:22px;mso-line-height-rule:exactly;font-weight:bold;color:${ORANGE_DEEP};text-decoration:none">+ ${remaining} more ${jobWord(remaining)} on your ${seasonLower} list &rarr;</a>
         <div style="padding-top:3px;font-family:${FF};font-size:13px;line-height:19px;mso-line-height-rule:exactly;color:${MUTED}">Open your checklist to see the rest and tick them off as you go.</div>
       </td></tr>`
     : '';
@@ -273,7 +308,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
     <h1 class="h1" style="margin:0;font-family:${FF};font-size:38px;line-height:42px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:-0.02em;color:${INK}">${headlineTop}<br /><span style="color:${ORANGE}">${headlineAccent}</span></h1>
   </td></tr>
 
-  <tr><td class="px" style="padding:16px 40px 0 40px;font-family:${FF};font-size:17px;line-height:26px;mso-line-height-rule:exactly;color:${BODY}"><div style="font-weight:bold;color:${INK}">${hi}</div><div style="padding-top:6px">${introBody}</div></td></tr>
+  <tr><td class="px" style="padding:16px 40px 0 40px;font-family:${FF};font-size:17px;line-height:26px;mso-line-height-rule:exactly;color:${BODY}"><div style="font-weight:bold;color:${INK}">${hi}</div><div style="padding-top:6px">${copy.intro(true)}</div></td></tr>
 ${heroBand}
 ${
   caughtUp
@@ -333,13 +368,7 @@ ${teaserRow}
     return [badgeFor(t), cost, t.blurb].filter(Boolean).join(' · ');
   };
 
-  let text = `${hi}\n\n${
-    caughtUp
-      ? `You've cleared everything on your ${seasonLabel.toLowerCase()} list - nice work. That's the boring maintenance that quietly prevents the expensive repairs, and most homeowners never get to the end of it. Nothing to do this month; we'll be back when the next season's list is ready.`
-      : isSeasonal
-        ? `${seasonLabel} is here, so here's the full run of jobs for your home. Each one is tagged DIY or pro so you know what's worth handing off.`
-        : `A few timely jobs worth knocking out this month. Each one is tagged DIY or pro so you know what's worth handing off.`
-  }\n\n`;
+  let text = `${hi}\n\n${copy.intro(false)}\n\n`;
   if (!caughtUp) {
     text += `${panelHeading.toUpperCase()}\n\n`;
     list.forEach((t, i) => {
@@ -347,7 +376,7 @@ ${teaserRow}
       if (t.bookable) text += `    Add to your plan: ${checklistUrl}?add=${t.key}\n`;
     });
     if (remaining) {
-      text += `\n+ ${remaining} more ${remaining === 1 ? 'job' : 'jobs'} on your ${seasonLabel.toLowerCase()} list. Open your checklist to see the rest: ${checklistUrl}\n`;
+      text += `\n+ ${remaining} more ${jobWord(remaining)} on your ${seasonLower} list. Open your checklist to see the rest: ${checklistUrl}\n`;
     }
   }
   text += `\n${ctaLabel}: ${checklistUrl}\nFree · No account · Nothing to download\n\nRather we handled it? Call ${PHONE} - 24-hour response guaranteed.\n\nKnow someone who'd want this? They can get their own free plan: ${baseUrl}/home-care\n\n- The La Vaca Team\nLa Vaca General Contractors · ${BUSINESS_ADDRESS} · ${PHONE} · ${HIC}\n`;

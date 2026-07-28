@@ -45,7 +45,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   const [allTasks, profileRows, doneRows] = await Promise.all([
     supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title,blurb,applies_to,stages,seasons,frequency,starter,diy_or_pro,bookable,est_cost_low,est_cost_high,priority&active=eq.true&order=priority.desc`),
     supabaseRest<{ systems: HomeSystems; stage: Stage | null; homeowner_type: string | null }[]>('GET', `home_profiles?select=systems,stage,homeowner_type&homeowner_id=eq.${homeowner.id}&limit=1`),
-    supabaseRest<{ task_key: string; season: string; status: string; completed_at: string | null }[]>('GET', `homeowner_maintenance?select=task_key,season,status,completed_at&homeowner_id=eq.${homeowner.id}&status=in.(done,dismissed)`),
+    supabaseRest<{ task_key: string; season: string; status: string; completed_at: string | null; updated_at: string | null }[]>('GET', `homeowner_maintenance?select=task_key,season,status,completed_at,updated_at&homeowner_id=eq.${homeowner.id}&status=in.(done,dismissed)`),
   ]);
 
   const systems = profileRows?.[0]?.systems ?? null;
