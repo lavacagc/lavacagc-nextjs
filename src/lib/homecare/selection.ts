@@ -5,7 +5,15 @@
  * they used to answer it separately. They drifted: the page gated on stage and
  * expired stale completions, the newsletter did neither, so members got
  * pre-listing tasks they'd never asked for and reminders for jobs they'd already
- * checked off. This module is the single answer both call.
+ * checked off.
+ *
+ * What is shared today is `isRowCurrent`, the seasonal-reset rule: both the
+ * checklist page (`src/app/home-care/checklist/page.tsx`) and the cron call it,
+ * so they cannot disagree about when a completion expires. `resolveMemberTasks`
+ * has one production caller, the cron - the page still applies the stage and
+ * systems gate itself. Moving the page onto it is a deliberate follow-up rather
+ * than an oversight (it is live and customer-facing); until then a test asserts
+ * the two agree on what is visible.
  *
  * Three rules carry the subtlety:
  *
@@ -87,7 +95,12 @@ export interface ResolvedTasks<T> {
   outstanding: T[];
   /** task_keys this member actually checked off this season (for checkmarks, and for telling "cleared it" from "hid it"). */
   doneKeys: Set<string>;
-  /** task_keys the member hid as not relevant. */
+  /**
+   * task_keys the member hid as not relevant. No production consumer yet - the
+   * page derives its own set from the same rows - so it exists for the caller
+   * that needs to tell "hid it" from "never applied", which is what the page
+   * will read when it moves onto this resolver.
+   */
   dismissedKeys: Set<string>;
 }
 

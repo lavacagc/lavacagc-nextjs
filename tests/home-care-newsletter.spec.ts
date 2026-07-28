@@ -95,6 +95,35 @@ test('cost ranges render only when the catalog actually has them', () => {
   expect(n.html).toContain('DIY');
 });
 
+test('cost segment: real range, zero floor, and no data each render differently', () => {
+  // Four active catalog tasks carry est_cost_low = 0 (roof_inspect, attic_check,
+  // winterize_faucets, test_sump_pump). "Inspect the roof · Pro job · $0-$375"
+  // reads as a data error, so a zero floor quotes no figure at all.
+  const tasks: NewsletterTask[] = [
+    { key: 'clean_gutters', title: 'Clean gutters', blurb: 'Clear them out.', bookable: true, diy_or_pro: 'pro', priority: 10, applies_to: ['all'], est_cost_low: 150, est_cost_high: 250 },
+    { key: 'roof_inspect', title: 'Inspect the roof', blurb: 'Look for lifted shingles.', bookable: true, diy_or_pro: 'pro', priority: 9, applies_to: ['all'], est_cost_low: 0, est_cost_high: 375 },
+    { key: 'test_smoke_co', title: 'Test detectors', blurb: 'Press test.', bookable: false, diy_or_pro: 'diy', priority: 8, applies_to: ['all'] },
+  ];
+  const n = buildNewsletter({
+    firstName: 'Alex', season: 'fall', tasks, isSeasonal: true,
+    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
+  });
+
+  // 1. A genuine range renders exactly as before.
+  expect(n.html).toContain('Pro job &nbsp;&middot;&nbsp; $150&ndash;$250 &nbsp;&middot;&nbsp; Clear them out.');
+  expect(n.text).toContain('Pro job · $150-$250 · Clear them out.');
+  // 2. A zero floor is not a price - no dollar figure, consult copy instead.
+  expect(n.html).not.toContain('$0');
+  expect(n.text).not.toContain('$0');
+  expect(n.html).toContain('Pro job &nbsp;&middot;&nbsp; Consult with our team &nbsp;&middot;&nbsp; Look for lifted shingles.');
+  expect(n.text).toContain('Pro job · Consult with our team · Look for lifted shingles.');
+  // Only the one real range puts numbers in the email.
+  expect((n.html.match(/\$\d+/g) || []).length).toBe(2);
+  // 3. No catalog numbers at all - the meta line stays badge · blurb.
+  expect(n.html).toContain('DIY &nbsp;&middot;&nbsp; Press test.');
+  expect(n.text).toContain('DIY · Press test.');
+});
+
 test('hero image band is omitted unless a hosted URL is supplied', () => {
   const base = {
     firstName: 'Alex', season: 'fall' as const, tasks: TASKS, isSeasonal: true,
@@ -207,6 +236,36 @@ test('the plain-text intro tells the same story as the HTML one', () => {
   // Same sentence either way, minus the HTML emphasis.
   expect(n.text).toContain('Each one is tagged DIY or pro');
   expect(n.html).toContain('>DIY or pro</strong> so you know');
+});
+
+test('the caught-up note survives being sent every month of the season', () => {
+  const base = {
+    firstName: 'Alex', season: 'fall' as const, isSeasonal: false, monthLabel: 'November', year: 2026,
+    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
+  };
+  const n = buildNewsletter({ ...base, tasks: [], caughtUp: true });
+
+  // A member who clears their fall list in September gets this again in October
+  // and November, so it cannot promise to stay quiet until the next season.
+  expect(n.html).not.toContain("we'll be back when the next season's list is ready");
+  expect(n.html).toContain('check in again next month');
+  expect(n.text).toContain('check in again next month');
+
+  // What makes the repeat worth opening: two standing links, no per-send fetch,
+  // tagged like the member-share line so the traffic is attributable.
+  const utm = (content: string) =>
+    `utm_source=home_care_newsletter&amp;utm_medium=email&amp;utm_campaign=home_care_caught_up&amp;utm_content=${content}`;
+  expect(n.html).toContain("While you're ahead");
+  expect(n.html).toContain(`https://www.lavacagc.com/portfolio?${utm('portfolio')}`);
+  expect(n.html).toContain(`https://www.lavacagc.com/blog?${utm('blog')}`);
+  expect(n.text).toContain('https://www.lavacagc.com/portfolio?utm_source=home_care_newsletter');
+  expect(n.text).toContain('https://www.lavacagc.com/blog?utm_source=home_care_newsletter');
+
+  // Only in this variant - an email with a task list already has its own hooks.
+  const withTasks = buildNewsletter({ ...base, tasks: TASKS });
+  expect(withTasks.html).not.toContain("While you're ahead");
+  expect(withTasks.html).not.toContain('/portfolio');
+  expect(withTasks.text).not.toContain('/blog');
 });
 
 test('all twelve monthly hero images exist and are the 2:1 email band size', async () => {

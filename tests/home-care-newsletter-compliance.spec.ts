@@ -97,14 +97,19 @@ test('suppression: only active members are mailed, and opt-outs are skipped at s
 test('links: every URL is built from the send origin, so no environment leaks in', () => {
   // The cron derives all three from one origin, so the test must too.
   const ORIGIN = 'https://staging.example.com';
-  const n = build({
+  const at = {
     baseUrl: ORIGIN,
     unsubscribeUrl: `${ORIGIN}/api/home-care/unsubscribe?token=TOK`,
     preferencesUrl: `${ORIGIN}/preferences?token=PREF`,
-  });
-  const hrefs = [...n.html.matchAll(/href="(https?:[^"]+)"/g)].map((m) => m[1]);
-  expect(hrefs.filter((h) => !h.startsWith(ORIGIN))).toEqual([]);
-  expect([...n.text.matchAll(/https?:\/\/[^\s]+/g)].map((m) => m[0]).filter((u) => !u.startsWith(ORIGIN))).toEqual([]);
+  };
+  const n = build(at);
+  // The caught-up variant carries links the task email doesn't (portfolio,
+  // blog), so it is checked too rather than assumed to match.
+  for (const variant of [n, build({ ...at, tasks: [], caughtUp: true })]) {
+    const hrefs = [...variant.html.matchAll(/href="(https?:[^"]+)"/g)].map((m) => m[1]);
+    expect(hrefs.filter((h) => !h.startsWith(ORIGIN))).toEqual([]);
+    expect([...variant.text.matchAll(/https?:\/\/[^\s]+/g)].map((m) => m[0]).filter((u) => !u.startsWith(ORIGIN))).toEqual([]);
+  }
   // The logo is the one deliberate absolute: mail clients need a hosted asset,
   // and it must stay on the production host even in a preview render.
   expect(n.html).toContain('https://www.lavacagc.com/logo.png');

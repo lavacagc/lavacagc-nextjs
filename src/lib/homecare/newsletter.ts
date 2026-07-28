@@ -115,10 +115,23 @@ const MUTED = '#666666';
 const HAIRLINE = '#E2E8F0';
 const PANEL_BG = '#FBFAF8';
 
-/** "$150" / "$150–$250" / '' when the catalog has no numbers for this task. */
-function costRange(t: NewsletterTask): string {
+/** Short enough to sit as one segment of "badge · cost · blurb". */
+const CONSULT_COST = 'Consult with our team';
+
+/**
+ * The cost segment of a task's meta line: "$150", "$150–$250", the consult
+ * copy when the catalog's low end is 0, or '' when there are no numbers at all.
+ *
+ * A 0 low end is the catalog's way of saying "no meaningful floor" - four
+ * active tasks carry one - not a price we can quote. Rendered literally it
+ * gives "Inspect the roof · Pro job · $0–$375", which reads as a data error and
+ * undercuts the rule this module already follows: a wrong price in a customer
+ * email is worse than no price.
+ */
+function costLabel(t: NewsletterTask): string {
   const { est_cost_low: lo, est_cost_high: hi } = t;
   if (typeof lo !== 'number' || typeof hi !== 'number') return '';
+  if (lo <= 0) return CONSULT_COST;
   return lo === hi ? `$${lo}` : `$${lo}&ndash;$${hi}`;
 }
 
@@ -150,6 +163,15 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
   const name = firstName ? esc(firstName) : '';
   const hi = firstName ? `Hi ${name},` : 'Hi there,';
   const checklistUrl = `${baseUrl}/home-care/checklist`;
+  /**
+   * Standing links for the caught-up email. Tagged like the member-share line
+   * so the traffic is attributable, and pointed at the index pages rather than
+   * individual posts so a send needs no extra data fetch.
+   */
+  const utm = (content: string) =>
+    `utm_source=home_care_newsletter&utm_medium=email&utm_campaign=home_care_caught_up&utm_content=${content}`;
+  const portfolioUrl = `${baseUrl}/portfolio?${utm('portfolio')}`;
+  const blogUrl = `${baseUrl}/blog?${utm('blog')}`;
 
   const shown = list.length;
   const seasonLower = seasonLabel.toLowerCase();
@@ -178,11 +200,14 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
   const copy: NewsletterCopy = caughtUp
     ? {
         subject: `You're all caught up, ${firstName || 'neighbor'}`,
-        preheader: `Nothing left on your ${seasonLower} list. Here's what that's worth.`,
+        preheader: `Nothing left on your ${seasonLower} list. Two things worth a look while you're ahead.`,
         headlineTop: `Your home is`,
         headlineAccent: 'all caught up.',
+        // Deliberately true on a repeat: a member who clears their list in
+        // September gets this again in October and November, so it cannot
+        // promise silence until the next season.
         intro: () =>
-          `You've cleared everything on your ${seasonLower} list - nice work. That's the boring maintenance that quietly prevents the expensive repairs, and most homeowners never get to the end of it. Nothing to do this month; we'll be back when the next season's list is ready.`,
+          `You've cleared everything on your ${seasonLower} list - nice work. That's the boring maintenance that quietly prevents the expensive repairs, and most homeowners never get to the end of it. Nothing new to add this month - we'll check in again next month, and your next season's list will be waiting here when it opens.`,
         panelHeading: '',
         ctaLabel: `Review My ${seasonLabel} List`,
       }
@@ -218,7 +243,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
 
   /** One numbered task row, matching the comp's 01/02/03 treatment. */
   const row = (t: NewsletterTask, i: number, last: boolean) => {
-    const meta = [badgeFor(t), costRange(t), esc(t.blurb)].filter(Boolean).join(DOT);
+    const meta = [badgeFor(t), costLabel(t), esc(t.blurb)].filter(Boolean).join(DOT);
     const guide = hasGuideItem(season, t.key)
       ? `<div style="padding-top:6px"><a href="${baseUrl}/home-care/guides/${season}#${encodeURIComponent(t.key)}" style="font-family:${FF};font-size:12px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;color:${ORANGE_DEEP};text-decoration:none">Learn more &rarr;</a></div>`
       : '';
@@ -263,6 +288,30 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
   const heroBand = heroImageUrl
     ? `<tr><td class="px" style="padding:26px 40px 0 40px">
     <img src="${esc(heroImageUrl)}" width="520" alt="" style="display:block;width:100%;max-width:520px;height:auto;border:0;border-radius:12px" />
+  </td></tr>`
+    : '';
+
+  /**
+   * The caught-up email keeps arriving monthly for the rest of the season -
+   * a member who clears their fall list in September gets it again in October
+   * and November - so the congratulation alone would wear out fast. This block
+   * takes the task panel's slot, above the CTA like every other variant, and
+   * gives each repeat something new to open: the work we've been doing, and
+   * what we've written since. Both are index pages, so a send still needs no
+   * extra fetch. Same panel treatment as the task list so it reads as part of
+   * the email, not an ad bolted on.
+   */
+  const linkStyle = `font-family:${FF};font-size:15px;line-height:22px;mso-line-height-rule:exactly;font-weight:bold;color:${ORANGE_DEEP};text-decoration:none`;
+  const keepInTouch = caughtUp
+    ? `  <tr><td class="px" style="padding:26px 40px 0 40px">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;background:${PANEL_BG};border:1px solid ${HAIRLINE};border-radius:12px">
+      <tr><td style="padding:20px 22px 6px 22px;font-family:${FF};font-size:11px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.12em;color:${MUTED};text-transform:uppercase">While you're ahead</td></tr>
+      <tr><td style="padding:0 22px 20px 22px;font-family:${FF};font-size:15px;line-height:22px;mso-line-height-rule:exactly;color:${BODY}">
+        Two things worth a look this month:
+        <div style="padding-top:10px"><a href="${esc(portfolioUrl)}" style="${linkStyle}">See what we've been building &rarr;</a></div>
+        <div style="padding-top:8px"><a href="${esc(blogUrl)}" style="${linkStyle}">Read our latest home guides &rarr;</a></div>
+      </td></tr>
+    </table>
   </td></tr>`
     : '';
 
@@ -324,6 +373,7 @@ ${teaserRow}
     </table>
   </td></tr>`
 }
+${keepInTouch}
 
   <tr><td class="px" align="center" style="padding:28px 40px 0 40px">
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto">
@@ -367,7 +417,7 @@ ${teaserRow}
 </html>`;
 
   const plainMeta = (t: NewsletterTask) => {
-    const cost = costRange(t).replace(/&ndash;/g, '-');
+    const cost = costLabel(t).replace(/&ndash;/g, '-');
     return [badgeFor(t), cost, t.blurb].filter(Boolean).join(' · ');
   };
 
@@ -381,6 +431,8 @@ ${teaserRow}
     if (remaining) {
       text += `\n+ ${remaining} more ${jobWord(remaining)} on your ${seasonLower} list. Open your checklist to see the rest: ${checklistUrl}\n`;
     }
+  } else {
+    text += `WHILE YOU'RE AHEAD\n\nTwo things worth a look this month:\n- See what we've been building: ${portfolioUrl}\n- Read our latest home guides: ${blogUrl}\n`;
   }
   text += `\n${ctaLabel}: ${checklistUrl}\nFree · No account · Nothing to download\n\nRather we handled it? Call ${PHONE} - 24-hour response guaranteed.\n\nKnow someone who'd want this? They can get their own free plan: ${baseUrl}/home-care\n\n- The La Vaca Team\nLa Vaca General Contractors · ${BUSINESS_ADDRESS} · ${PHONE} · ${HIC}\n`;
   if (preferencesUrl) text += `Manage email preferences: ${preferencesUrl}\n`;
