@@ -1,23 +1,30 @@
 import { test, expect } from '@playwright/test';
-import { existsSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 import { join } from 'path';
-import { buildNewsletter, selectTasks, type NewsletterTask } from '../src/lib/homecare/newsletter';
+import sharp from 'sharp';
+import { buildNewsletter, homeCareHeroUrl, selectTasks, type NewsletterTask } from '../src/lib/homecare/newsletter';
 
 const TASKS: NewsletterTask[] = [
-  { key: 'clean_gutters', title: 'Clean gutters', blurb: 'Clear them out.', bookable: true, diy_or_pro: 'pro', priority: 9, applies_to: ['all'] },
+  // clean_gutters carries a cost range; the rest deliberately don't, so the
+  // suite covers both sides of the "only render costs we actually have" rule.
+  { key: 'clean_gutters', title: 'Clean gutters', blurb: 'Clear them out.', bookable: true, diy_or_pro: 'pro', priority: 9, applies_to: ['all'], est_cost_low: 150, est_cost_high: 250 },
   { key: 'test_smoke_co', title: 'Test detectors', blurb: 'Press test.', bookable: false, diy_or_pro: 'diy', priority: 10, applies_to: ['all'] },
   { key: 'seal_deck', title: 'Seal the deck', blurb: 'Protect the wood.', bookable: true, diy_or_pro: 'pro', priority: 5, applies_to: ['deck'] },
   { key: 'reseal_driveway', title: 'Seal driveway', blurb: 'Protect asphalt.', bookable: true, diy_or_pro: 'pro', priority: 4, applies_to: ['driveway'] },
 ];
 
-test('selectTasks: seasonal = all (by priority), nudge = top 3', () => {
-  expect(selectTasks(TASKS, true)).toHaveLength(4);
-  const nudge = selectTasks(TASKS, false);
-  expect(nudge).toHaveLength(3);
-  expect(nudge[0].key).toBe('test_smoke_co'); // highest priority first
+/** One numbered task row in the ported design = one 30px number cell. */
+const rowCount = (html: string) => (html.match(/width="30" valign="top"/g) || []).length;
+
+test('selectTasks: every email shows the top 3 by priority, seasonal included', () => {
+  const picked = selectTasks(TASKS);
+  expect(picked).toHaveLength(3);
+  expect(picked[0].key).toBe('test_smoke_co'); // highest priority first
+  // Shorter lists are returned whole - no padding, no teaser to earn.
+  expect(selectTasks(TASKS.slice(0, 2))).toHaveLength(2);
 });
 
-test('seasonal newsletter renders full list + checklist CTAs + unsubscribe', () => {
+test('seasonal newsletter teases the top 3 + checklist CTAs + unsubscribe', () => {
   const n = buildNewsletter({
     firstName: 'Alex', season: 'fall', tasks: TASKS, isSeasonal: true,
     baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/api/home-care/unsubscribe?token=abc',
@@ -28,11 +35,13 @@ test('seasonal newsletter renders full list + checklist CTAs + unsubscribe', () 
   // to the saved checklist so they land in one request, not a separate alert
   // per link.
   expect(n.html).not.toContain('/home-care/book?task=');
-  // Each bookable task (3 of the 4) gets an "Add to plan" checklist CTA; the
-  // DIY task (test_smoke_co) gets none.
-  expect((n.html.match(/Add to plan/g) || []).length).toBe(3);
+  // Only the top 3 render, so only the bookable ones AMONG THOSE get an "Add to
+  // plan" CTA: test_smoke_co (p10) is DIY, clean_gutters (p9) and seal_deck (p5)
+  // are bookable. reseal_driveway (p4) falls below the cut into the teaser.
+  expect((n.html.match(/Add to plan/g) || []).length).toBe(2);
   expect(n.html).toContain('unsubscribe?token=abc');
   expect(n.text).toContain('Clean gutters');
+  expect(n.html).not.toContain('Seal driveway'); // below the fold, teased not listed
   // Branding present.
   expect(n.html).toContain('13VH13373800'); // license
   expect(n.html).toContain('(201) 212-4917'); // phone
@@ -47,8 +56,110 @@ test('nudge newsletter is the short version', () => {
   });
   expect(n.subject).toContain('July');
   expect(n.html).toContain('Hi there,');
-  // only 3 checklist rows in a nudge (count the checkbox squares)
-  expect((n.html.match(/border:2px solid #c7d0dc/g) || []).length).toBe(3);
+  // only 3 checklist rows in a nudge
+  expect(rowCount(n.html)).toBe(3);
+});
+
+test('design: license bar, season pill, numbered rows, call block, postal address', () => {
+  const n = buildNewsletter({
+    firstName: 'Alex', season: 'summer', tasks: TASKS, isSeasonal: false, monthLabel: 'August', year: 2026,
+    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
+    preferencesUrl: 'https://www.lavacagc.com/preferences?token=xyz',
+  });
+  expect(n.html).toContain('Licensed, Bonded, &amp; Insured');
+  expect(n.html).toContain("Alex's Home Care"); // pill personalization
+  expect(n.html).toContain('August 2026 &nbsp;&middot;&nbsp; Summer'); // month + year + season in the pill
+  expect(n.html).toMatch(/>01</); // numbered rows, not checkboxes
+  expect(n.html).toContain('Rather we handled it?');
+  expect(n.html).toContain('24-hour response guaranteed');
+  expect(n.html).toContain('Open My August Checklist');
+  // CAN-SPAM postal address (absent from the pre-design footer).
+  expect(n.html).toContain('51 Crestmont Rd, West Orange, NJ 07052');
+  expect(n.text).toContain('51 Crestmont Rd, West Orange, NJ 07052');
+  expect(n.html).toContain('Manage email preferences');
+  // Outlook line-height guard used throughout the comp.
+  expect(n.html).toContain('mso-line-height-rule:exactly');
+});
+
+test('cost ranges render only when the catalog actually has them', () => {
+  const n = buildNewsletter({
+    firstName: 'Alex', season: 'fall', tasks: TASKS, isSeasonal: true,
+    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
+  });
+  // clean_gutters has 150/250 -> shows a range next to its "Pro job" badge.
+  expect(n.html).toContain('$150&ndash;$250');
+  expect(n.text).toContain('$150-$250');
+  // Exactly one task has costs, so exactly one range appears - no invented prices.
+  expect((n.html.match(/\$\d+/g) || []).length).toBe(2); // low + high of the one range
+  expect(n.html).toContain('Pro job');
+  expect(n.html).toContain('DIY');
+});
+
+test('hero image band is omitted unless a hosted URL is supplied', () => {
+  const base = {
+    firstName: 'Alex', season: 'fall' as const, tasks: TASKS, isSeasonal: true,
+    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
+  };
+  const without = buildNewsletter(base);
+  expect(without.html).not.toContain('Image placeholder');
+  expect((without.html.match(/<img /g) || []).length).toBe(1); // logo only
+
+  const withHero = buildNewsletter({ ...base, heroImageUrl: 'https://www.lavacagc.com/email/hero.png' });
+  expect(withHero.html).toContain('https://www.lavacagc.com/email/hero.png');
+  expect((withHero.html.match(/<img /g) || []).length).toBe(2);
+});
+
+test('teaser: the remainder is counted and links to the checklist', () => {
+  const many = Array.from({ length: 20 }, (_, i) => ({
+    key: `t${i}`, title: `Task ${i}`, blurb: 'Do it.', bookable: false,
+    diy_or_pro: 'diy' as const, priority: 20 - i, applies_to: ['all'],
+  }));
+  const n = buildNewsletter({
+    firstName: 'Alex', season: 'fall', tasks: many, isSeasonal: true, monthLabel: 'September', year: 2026,
+    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
+  });
+  expect(rowCount(n.html)).toBe(3); // still only 3 rows, even on the season opener
+  expect(n.html).toContain('+ 17 more jobs on your fall list');
+  expect(n.html).toContain('Open your checklist to see the rest');
+  expect(n.text).toContain('+ 17 more jobs on your fall list');
+  expect(n.html).toContain('Start with these 3'); // seasonal panel heading
+});
+
+test('teaser: singular wording, and no teaser when nothing is held back', () => {
+  const mk = (count: number) => Array.from({ length: count }, (_, i) => ({
+    key: `t${i}`, title: `Task ${i}`, blurb: 'Do it.', bookable: false,
+    diy_or_pro: 'diy' as const, priority: count - i, applies_to: ['all'],
+  }));
+  const base = {
+    firstName: 'Alex', season: 'fall' as const, isSeasonal: false, monthLabel: 'October', year: 2026,
+    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
+  };
+  expect(buildNewsletter({ ...base, tasks: mk(4) }).html).toContain('+ 1 more job on your fall list');
+  // Exactly 3 applicable tasks: everything shown, so no dangling "+0 more".
+  const exact = buildNewsletter({ ...base, tasks: mk(3) });
+  expect(exact.html).not.toContain('more jobs on your');
+  expect(exact.html).not.toContain('+ 0 more');
+  expect(exact.text).not.toContain('+ 0 more');
+});
+
+test('all twelve monthly hero images exist and are the 2:1 email band size', async () => {
+  for (let m = 0; m < 12; m++) {
+    const mm = String(m + 1).padStart(2, '0');
+    const file = join(process.cwd(), `public/email/home-care/hero-${mm}.jpg`);
+    // A missing month renders a BROKEN image in the send, not a skipped band.
+    expect(existsSync(file), `missing hero-${mm}.jpg`).toBe(true);
+    const { width, height, format } = await sharp(file).metadata();
+    expect(format).toBe('jpeg');
+    expect({ mm, width, height }).toEqual({ mm, width: 1040, height: 520 });
+    // Keep the band light - these load on phones over cell data.
+    expect(statSync(file).size, `hero-${mm}.jpg too heavy`).toBeLessThan(200 * 1024);
+  }
+});
+
+test('hero URL rotates by calendar month', () => {
+  expect(homeCareHeroUrl('https://x.test', new Date(Date.UTC(2026, 0, 15)))).toBe('https://x.test/email/home-care/hero-01.jpg');
+  expect(homeCareHeroUrl('https://x.test', new Date(Date.UTC(2026, 7, 1)))).toBe('https://x.test/email/home-care/hero-08.jpg');
+  expect(homeCareHeroUrl('https://x.test', new Date(Date.UTC(2026, 11, 31)))).toBe('https://x.test/email/home-care/hero-12.jpg');
 });
 
 test('newsletter cron route is wired', () => {

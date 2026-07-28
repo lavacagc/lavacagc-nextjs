@@ -6,7 +6,8 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById, updateHomeowner } from '@/lib/homecare/homeowners';
-import { completionCutoff, currentSeason, seasonStart, SEASON_LABEL, SEASONS, type Season } from '@/lib/homecare/season';
+import { currentSeason, seasonStart, SEASON_LABEL } from '@/lib/homecare/season';
+import { isRowCurrent } from '@/lib/homecare/selection';
 import {
   filterTasksForProfile,
   getStage,
@@ -52,17 +53,10 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   const stageDef = getStage(stage);
   const hasProfile = (!!systems && Object.keys(systems).length > 0) || stage !== null;
   const tasks = filterTasksForProfile(allTasks ?? [], systems, stage);
-  // Seasonal reset: a completion counts until its season's cutoff passes
-  // (see completionCutoff — pre-season check-offs count toward the upcoming
-  // occurrence), then it expires and the list starts fresh. One-time work
-  // ('starter' essentials) never expires; rows without a timestamp are
-  // counted leniently.
+  // Seasonal reset lives in isRowCurrent (shared with the monthly newsletter so
+  // the page and the email can't disagree about what still counts as done).
   const doneItems = (doneRows ?? [])
-    .filter((r) => {
-      if (r.status !== 'done') return false;
-      if (!SEASONS.includes(r.season as Season) || !r.completed_at) return true;
-      return new Date(r.completed_at).getTime() >= completionCutoff(r.season as Season).getTime();
-    })
+    .filter((r) => r.status === 'done' && isRowCurrent(r))
     .map(({ task_key, season }) => ({ task_key, season }));
   const dismissedKeys = (doneRows ?? []).filter((r) => r.status === 'dismissed').map((r) => r.task_key);
   const autoAddKey = addKey && tasks.some((t) => t.key === addKey && t.bookable && !t.starter && !dismissedKeys.includes(addKey)) ? addKey : undefined;

@@ -251,9 +251,16 @@ export function filterTasksForProfile<T extends { applies_to: string[]; stages?:
   stage?: Stage | null,
 ): T[] {
   return tasks.filter((t) => {
-    // Stage gate: a task with a specific stages[] only shows for those stages (or 'all').
-    if (stage && Array.isArray(t.stages) && t.stages.length > 0) {
-      if (!t.stages.includes('all') && !t.stages.includes(stage)) return false;
+    // Stage gate: a task with a specific stages[] only shows for those stages.
+    //
+    // A member with NO stage yet sees only 'all' tasks. This fails closed on
+    // purpose: the stage-specific tasks are pre-listing ("Consider a pre-listing
+    // inspection") and new-construction ones, and showing "get ready to sell
+    // your house" to someone who never said they're selling is worse than
+    // showing them slightly less. Previously a null stage skipped the gate
+    // entirely, so anyone who hadn't finished the questionnaire got all of them.
+    if (Array.isArray(t.stages) && t.stages.length > 0 && !t.stages.includes('all')) {
+      if (!stage || !t.stages.includes(stage)) return false;
     }
     // Systems gate: unset profile shows everything.
     if (!systems || Object.keys(systems).length === 0) return true;

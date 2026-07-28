@@ -16,8 +16,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { updateHomeowner } from '@/lib/homecare/homeowners';
 import { currentSeason } from '@/lib/homecare/season';
-import { buildNewsletter, type NewsletterTask } from '@/lib/homecare/newsletter';
-import { filterTasksForProfile, type HomeSystems } from '@/lib/homecare/profile';
+import { buildNewsletter, homeCareHeroUrl, type NewsletterTask } from '@/lib/homecare/newsletter';
+import { stageFromLegacyType, type HomeSystems, type Stage } from '@/lib/homecare/profile';
+import { resolveMemberTasks, type MaintenanceRow } from '@/lib/homecare/selection';
 import { sendHomeCareNewsletterEmail } from '@/lib/notify/sendHomeCareEmails';
 import { preferencesUrlFor } from '@/lib/preferences/preferences';
 
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
   try {
     const tasks = (await supabaseRest<NewsletterTask[]>(
       'GET',
-      `maintenance_catalog?select=key,title,blurb,bookable,diy_or_pro,priority,applies_to&active=eq.true&starter=eq.false&seasons=cs.%7B${season}%7D&order=priority.desc`,
+      `maintenance_catalog?select=key,title,blurb,bookable,diy_or_pro,priority,applies_to,stages,est_cost_low,est_cost_high&active=eq.true&starter=eq.false&seasons=cs.%7B${season}%7D&order=priority.desc`,
     )) ?? [];
 
     if (tasks.length === 0) {
@@ -74,28 +75,42 @@ export async function GET(request: NextRequest) {
       'homeowners?select=id,first_name,email,unsubscribe_token,last_newsletter_at&status=eq.active',
     )) ?? [];
 
-    // Per-homeowner personalization: filter the season tasks to each home's systems.
-    const profiles = (await supabaseRest<{ homeowner_id: string; systems: HomeSystems }[]>(
-      'GET',
-      'home_profiles?select=homeowner_id,systems',
-    )) ?? [];
+    // Per-homeowner personalization: the season's tasks are filtered to each
+    // home's systems AND life stage. `stage` matters because the catalog holds
+    // pre-listing and new-construction tasks that must not go to everyone;
+    // homeowner_type is the legacy column older rows still use.
+    const profiles = (await supabaseRest<{
+      homeowner_id: string;
+      systems: HomeSystems;
+      stage: string | null;
+      homeowner_type: string | null;
+    }[]>('GET', 'home_profiles?select=homeowner_id,systems,stage,homeowner_type')) ?? [];
     const systemsByOwner = new Map(profiles.map((p) => [p.homeowner_id, p.systems]));
+    const stageByOwner = new Map<string, Stage | null>(
+      profiles.map((p) => [p.homeowner_id, (p.stage as Stage | null) ?? stageFromLegacyType(p.homeowner_type)]),
+    );
 
     const eligible = homeowners.filter((h) => !sameMonth(h.last_newsletter_at, now)).slice(0, MAX_PER_RUN);
 
-    // Tasks each member marked "not relevant to my home" stay out of their email.
+    // Each member's task state: what they dismissed as irrelevant, what they've
+    // already checked off, booked, or snoozed. All of it suppresses the task in
+    // their email - nobody should be nudged about a job they finished last week.
+    // We fetch EVERY status (not just dismissed) because the seasonal-reset rule
+    // lives in resolveMemberTasks and needs `season` + `completed_at` to decide
+    // whether a completion is still current or has expired for a new year.
+    //
     // Fetched per chunk of this run's recipients to stay under PostgREST's
     // response-row cap and keep the in-list URLs a sane length.
-    const dismissedByOwner = new Map<string, Set<string>>();
+    const rowsByOwner = new Map<string, MaintenanceRow[]>();
     for (let i = 0; i < eligible.length; i += DISMISSED_CHUNK) {
       const ids = eligible.slice(i, i + DISMISSED_CHUNK).map((h) => h.id).join(',');
-      const rows = (await supabaseRest<{ homeowner_id: string; task_key: string }[]>(
+      const rows = (await supabaseRest<(MaintenanceRow & { homeowner_id: string })[]>(
         'GET',
-        `homeowner_maintenance?select=homeowner_id,task_key&status=eq.dismissed&homeowner_id=in.(${ids})`,
+        `homeowner_maintenance?select=homeowner_id,task_key,season,status,completed_at&homeowner_id=in.(${ids})`,
       )) ?? [];
       for (const r of rows) {
-        if (!dismissedByOwner.has(r.homeowner_id)) dismissedByOwner.set(r.homeowner_id, new Set());
-        dismissedByOwner.get(r.homeowner_id)!.add(r.task_key);
+        if (!rowsByOwner.has(r.homeowner_id)) rowsByOwner.set(r.homeowner_id, []);
+        rowsByOwner.get(r.homeowner_id)!.push(r);
       }
     }
 
@@ -105,16 +120,26 @@ export async function GET(request: NextRequest) {
     const failures: string[] = [];
     if (!dryRun) {
       for (const h of eligible) {
-        const hidden = dismissedByOwner.get(h.id);
-        const personalTasks = filterTasksForProfile(tasks, systemsByOwner.get(h.id) ?? null).filter((t) => !hidden?.has(t.key));
-        if (personalTasks.length === 0) {
-          // Nothing left after profile + dismissal filtering - a member who hid
-          // everything opted out of being nagged, so skip the send. Advance
-          // last_newsletter_at so the row isn't re-attempted every run this month.
+        const { visible, outstanding } = resolveMemberTasks({
+          catalog: tasks,
+          systems: systemsByOwner.get(h.id) ?? null,
+          stage: stageByOwner.get(h.id) ?? null,
+          rows: rowsByOwner.get(h.id) ?? [],
+          now,
+        });
+        if (visible.length === 0) {
+          // Nothing in the catalog even applies to this home (systems + stage
+          // filtered everything out). There is no email to write, so skip and
+          // advance last_newsletter_at so the row isn't retried every run.
           emptySkipped += 1;
           await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
           continue;
         }
+        // Everything that applies is already done/booked/snoozed/dismissed.
+        // Rather than go silent on our most engaged members, send the short
+        // "all caught up" note - it still carries the booking CTA.
+        const caughtUp = outstanding.length === 0;
+        const personalTasks = caughtUp ? [] : outstanding;
         // Per-recipient preference-center link (best-effort — fall back to the
         // legacy unsubscribe link alone if the lookup fails).
         const preferencesUrl = await preferencesUrlFor(origin, h.email).catch(() => undefined);
@@ -127,6 +152,9 @@ export async function GET(request: NextRequest) {
           unsubscribeUrl: `${origin}/api/home-care/unsubscribe?token=${encodeURIComponent(h.unsubscribe_token)}`,
           preferencesUrl,
           monthLabel,
+          year: now.getUTCFullYear(),
+          heroImageUrl: homeCareHeroUrl(origin, now),
+          caughtUp,
         });
         const res = await sendHomeCareNewsletterEmail({ to: h.email, subject, html, text, homeownerId: h.id });
         if (res.status === 'sent') {

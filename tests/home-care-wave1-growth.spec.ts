@@ -25,13 +25,23 @@ test('migration 20260803 adds dismissed to the homeowner_maintenance status CHEC
   expect(sql).toContain('DROP CONSTRAINT IF EXISTS homeowner_maintenance_status_check');
 });
 
-test('newsletter cron filters dismissed tasks per homeowner, chunk-scoped to eligible recipients', () => {
+test('newsletter cron filters task state per homeowner, chunk-scoped to eligible recipients', () => {
   const src = read('src/app/api/cron/home-care-newsletter/route.ts');
-  expect(src).toContain('status=eq.dismissed&homeowner_id=in.(');
-  expect(src).toContain('.filter((t) => !hidden?.has(t.key))');
-  // Members who hid everything are skipped (not emailed) and not re-attempted this month.
+  // Still chunk-scoped to this run's recipients (PostgREST row cap / URL length).
+  expect(src).toContain('homeowner_id=in.(');
+  // The fetch is no longer dismissed-only: the seasonal-reset rule needs season
+  // + completed_at to tell a live completion from one that expired this year.
+  expect(src).toContain('select=homeowner_id,task_key,season,status,completed_at');
+  // Suppression + the stage gate now live in the shared resolver that the
+  // checklist page also uses - see tests/home-care-selection.spec.ts.
+  expect(src).toContain('resolveMemberTasks');
+  expect(src).toContain('stage: stageByOwner.get(h.id)');
+  // Members for whom nothing in the catalog applies are skipped and not
+  // re-attempted this month; members who finished everything get the
+  // caught-up note instead of silence.
   expect(src).toContain('empty_skipped');
-  expect(src).toMatch(/personalTasks\.length === 0/);
+  expect(src).toMatch(/visible\.length === 0/);
+  expect(src).toMatch(/caughtUp = outstanding\.length === 0/);
 });
 
 test('welcome email carries the forward-to-a-friend line with email UTM tags', () => {

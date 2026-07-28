@@ -162,6 +162,31 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // Email assets exist to be embedded from OTHER origins - the recipient's
+      // mail client. The site-wide `Cross-Origin-Resource-Policy: same-origin`
+      // is exactly wrong for them: any webmail client that renders our <img>
+      // directly (rather than proxying it, as Gmail/Yahoo/Outlook do) gets
+      // ERR_BLOCKED_BY_RESPONSE.NotSameOrigin and shows a broken image.
+      // Scoped to /email/* so the stricter default still covers everything else.
+      {
+        source: '/email/:path*',
+        headers: [
+          {
+            key: 'Cross-Origin-Resource-Policy',
+            value: 'cross-origin',
+          },
+        ],
+      },
+      // The logo is embedded in every transactional email for the same reason.
+      {
+        source: '/logo.png',
+        headers: [
+          {
+            key: 'Cross-Origin-Resource-Policy',
+            value: 'cross-origin',
+          },
+        ],
+      },
     ]
   },
 
