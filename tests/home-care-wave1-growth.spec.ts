@@ -25,10 +25,25 @@ test('migration 20260803 adds dismissed to the homeowner_maintenance status CHEC
   expect(sql).toContain('DROP CONSTRAINT IF EXISTS homeowner_maintenance_status_check');
 });
 
+test('newsletter cron selects the stage column the stage gate depends on', () => {
+  const src = read('src/app/api/cron/home-care-newsletter/route.ts');
+  // The bug this guards: `stages` was dropped from this select, filterTasksForProfile
+  // saw undefined for every task, and the two highest-priority pre-listing jobs went
+  // out as items 01 and 02 to every member. The column is asserted verbatim here, the
+  // row type requires it, and the route refuses to send if the response lacks the key.
+  expect(src).toContain('select=key,title,blurb,bookable,diy_or_pro,priority,applies_to,stages,est_cost_low,est_cost_high');
+  expect(src).toContain('type CatalogTask = NewsletterTask & { stages: string[] }');
+  expect(src).toContain('supabaseRest<CatalogTask[]>');
+  expect(src).toMatch(/if \(!\('stages' in tasks\[0\]\)\)/);
+});
+
 test('newsletter cron filters task state per homeowner, chunk-scoped to eligible recipients', () => {
   const src = read('src/app/api/cron/home-care-newsletter/route.ts');
   // Still chunk-scoped to this run's recipients (PostgREST row cap / URL length).
-  expect(src).toContain('homeowner_id=in.(');
+  // Both per-homeowner reads are scoped: an unbounded home_profiles read that hit
+  // the row cap would silently null out stage for everyone past it.
+  expect(src).toContain('home_profiles?select=homeowner_id,systems,stage,homeowner_type&homeowner_id=in.(${ids})');
+  expect(src).toContain('&homeowner_id=in.(${ids})&status=in.(done,booked,snoozed,dismissed)');
   // The fetch is no longer dismissed-only: the seasonal-reset rule needs season
   // + a timestamp to tell a live row from one that expired this year. It is
   // still scoped to the statuses the resolver reads, so 'todo' rows (the bulk

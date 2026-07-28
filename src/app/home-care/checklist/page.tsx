@@ -26,6 +26,12 @@ export const dynamic = 'force-dynamic';
 interface CatalogRow extends ChecklistTask {
   applies_to: string[];
   priority: number;
+  /**
+   * Required here even though the client prop leaves it optional: this is what
+   * the stage gate reads, and a select that forgets it reads as "applies to
+   * everyone" rather than failing.
+   */
+  stages: string[];
 }
 
 export default async function ChecklistPage({ searchParams }: { searchParams: Promise<{ welcome?: string; add?: string | string[] }> }) {

@@ -220,6 +220,35 @@ test('CAUGHT-UP GATE: only a member who actually did the work gets congratulated
   expect(isCaughtUp(winterOnly)).toBe(false);
 });
 
+test('CAUGHT-UP GATE: the completion has to be of a task they can still see', () => {
+  // A done row outlives the profile edit that drops its task off the list. Here
+  // the member checked off the pool close, then told us they have no pool, then
+  // hid the two tasks that were left. Nothing outstanding and one done row - but
+  // the only thing they finished is no longer on their list, so "you've cleared
+  // everything" is the same false congratulation the gate exists to prevent.
+  const now = new Date(Date.UTC(2026, 9, 15));
+  const at = '2026-10-01T00:00:00.000Z';
+  const rows: MaintenanceRow[] = [
+    { task_key: 'pool_close', season: 'fall', status: 'done', completed_at: at },
+    { task_key: 'clean_gutters', season: 'all', status: 'dismissed', completed_at: null, updated_at: at },
+    { task_key: 'test_smoke_co', season: 'all', status: 'dismissed', completed_at: null, updated_at: at },
+  ];
+  const soldThePool = resolveMemberTasks({
+    catalog: CATALOG, systems: { pool: false }, stage: 'established', season: 'fall', rows, now,
+  });
+  expect(keys(soldThePool.visible)).not.toContain('pool_close');
+  expect(soldThePool.outstanding).toEqual([]);
+  expect(soldThePool.doneKeys.has('pool_close')).toBe(true);
+  expect(isCaughtUp(soldThePool)).toBe(false);
+
+  // Still has the pool, so the same completion does earn it.
+  const stillHasIt = resolveMemberTasks({
+    catalog: CATALOG, systems: { pool: true }, stage: 'established', season: 'fall', rows, now,
+  });
+  expect(keys(stillHasIt.visible)).toContain('pool_close');
+  expect(isCaughtUp(stillHasIt)).toBe(true);
+});
+
 test('caught-up email drops the task panel but keeps the CTA and unsubscribe', () => {
   const n = buildNewsletter({
     firstName: 'Alex', season: 'fall', tasks: [], isSeasonal: false, monthLabel: 'October', year: 2026,

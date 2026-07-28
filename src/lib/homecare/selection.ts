@@ -115,7 +115,14 @@ export function resolveMemberTasks<T extends { key: string; applies_to: string[]
  * opposite - they told us not to nag them about it - so "you've cleared
  * everything, nice work" would be both untrue and unwelcome. Those members go
  * back to the silent skip.
+ *
+ * The completion has to be of a task they can still see. A `done` row outlives
+ * the profile and catalog edits that can drop its task out of `visible` - say
+ * they check off the furnace service and then tell us they have no HVAC - and
+ * a completion of something no longer on their list is not "you cleared
+ * everything".
  */
-export function isCaughtUp<T>(resolved: ResolvedTasks<T>): boolean {
-  return resolved.visible.length > 0 && resolved.outstanding.length === 0 && resolved.doneKeys.size > 0;
+export function isCaughtUp<T extends { key: string }>(resolved: ResolvedTasks<T>): boolean {
+  if (resolved.visible.length === 0 || resolved.outstanding.length > 0) return false;
+  return resolved.visible.some((t) => resolved.doneKeys.has(t.key));
 }

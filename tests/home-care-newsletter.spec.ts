@@ -166,6 +166,30 @@ test('copy stays grammatical when only one job is left', () => {
   expect(seasonal.html).not.toContain('Start with these 1');
 });
 
+test('the last row closes the panel out, even when it is also the first row', () => {
+  // A one-task panel's only row is both first and last. Bottom padding is set
+  // independently of top so the panel does not end up with a visibly tighter
+  // bottom edge than every other email's.
+  const mk = (count: number) => Array.from({ length: count }, (_, i) => ({
+    key: `t${i}`, title: `Task ${i}`, blurb: 'Do it.', bookable: false,
+    diy_or_pro: 'diy' as const, priority: count - i, applies_to: ['all'],
+  }));
+  const base = {
+    firstName: 'Alex', season: 'fall' as const, isSeasonal: false, monthLabel: 'October', year: 2026,
+    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
+  };
+  const rowPads = (html: string) =>
+    [...html.matchAll(/<tr><td style="padding:([^"]+)">\n\s*<table role="presentation"/g)].map((m) => m[1]);
+
+  expect(rowPads(buildNewsletter({ ...base, tasks: mk(1) }).html)).toEqual(['8px 22px 22px 22px']);
+  // Three rows: first tucks under the heading, last closes the panel.
+  expect(rowPads(buildNewsletter({ ...base, tasks: mk(3) }).html))
+    .toEqual(['8px 22px 14px 22px', '14px 22px 14px 22px', '14px 22px 22px 22px']);
+  // With a teaser row below, the last task keeps normal padding.
+  expect(rowPads(buildNewsletter({ ...base, tasks: mk(4) }).html))
+    .toEqual(['8px 22px 14px 22px', '14px 22px 14px 22px', '14px 22px 14px 22px']);
+});
+
 test('the plain-text intro tells the same story as the HTML one', () => {
   // The text intro used to promise "the full run of jobs for your home" while
   // the body below it listed three and teased the rest.

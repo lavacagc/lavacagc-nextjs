@@ -31,7 +31,16 @@ export const maxDuration = 300;
 const SEASON_START_MONTHS = new Set([2, 5, 8, 11]); // Mar, Jun, Sep, Dec (0-indexed)
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const MAX_PER_RUN = 400;
-const DISMISSED_CHUNK = 20;
+/** How many recipients each per-homeowner query covers - keeps responses under PostgREST's row cap. */
+const OWNER_CHUNK = 20;
+
+/**
+ * The catalog row this cron selects. `stages` is required, not optional: it is
+ * what the stage gate reads, and omitting it from the select once already sent
+ * "get ready to sell your house" to every member. Declaring it here means the
+ * type stops matching the moment the shape stops carrying it.
+ */
+type CatalogTask = NewsletterTask & { stages: string[] };
 
 interface HomeownerRow {
   id: string;
@@ -62,7 +71,7 @@ export async function GET(request: NextRequest) {
   const origin = request.nextUrl.origin;
 
   try {
-    const tasks = (await supabaseRest<NewsletterTask[]>(
+    const tasks = (await supabaseRest<CatalogTask[]>(
       'GET',
       `maintenance_catalog?select=key,title,blurb,bookable,diy_or_pro,priority,applies_to,stages,est_cost_low,est_cost_high&active=eq.true&starter=eq.false&seasons=cs.%7B${season}%7D&order=priority.desc`,
     )) ?? [];
@@ -72,47 +81,65 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'seasonal catalog returned no tasks' }, { status: 500 });
     }
 
+    // The stage gate is only as strong as the column feeding it. PostgREST omits
+    // the key entirely when it isn't selected, and `filterTasksForProfile` reads
+    // a missing `stages` as "applies to everyone" - which is how pre-listing
+    // tasks became items 01 and 02 in every member's email. Refuse to send
+    // rather than repeat that silently.
+    if (!('stages' in tasks[0])) {
+      console.error('home-care-newsletter: catalog select is missing `stages` - the stage gate would not apply');
+      return NextResponse.json({ ok: false, error: 'catalog select is missing stages' }, { status: 500 });
+    }
+
     const homeowners = (await supabaseRest<HomeownerRow[]>(
       'GET',
       'homeowners?select=id,first_name,email,unsubscribe_token,last_newsletter_at&status=eq.active',
     )) ?? [];
 
-    // Per-homeowner personalization: the season's tasks are filtered to each
-    // home's systems AND life stage. `stage` matters because the catalog holds
-    // pre-listing and new-construction tasks that must not go to everyone;
-    // homeowner_type is the legacy column older rows still use.
-    const profiles = (await supabaseRest<{
-      homeowner_id: string;
-      systems: HomeSystems;
-      stage: string | null;
-      homeowner_type: string | null;
-    }[]>('GET', 'home_profiles?select=homeowner_id,systems,stage,homeowner_type')) ?? [];
-    const systemsByOwner = new Map(profiles.map((p) => [p.homeowner_id, p.systems]));
-    const stageByOwner = new Map<string, Stage | null>(
-      profiles.map((p) => [p.homeowner_id, (p.stage as Stage | null) ?? stageFromLegacyType(p.homeowner_type)]),
-    );
-
     const eligible = homeowners.filter((h) => !sameMonth(h.last_newsletter_at, now)).slice(0, MAX_PER_RUN);
 
-    // Each member's task state: what they dismissed as irrelevant, what they've
-    // already checked off, booked, or snoozed. All of it suppresses the task in
-    // their email - nobody should be nudged about a job they finished last week.
-    // We fetch every SUPPRESSING status (not just dismissed) because the
-    // seasonal-reset rule lives in resolveMemberTasks and needs `season` plus a
-    // timestamp to decide whether a row is still current or has expired for a
-    // new year. 'todo' rows are excluded: the resolver never reads them, and
-    // pulling them would multiply the response size for nothing.
+    // Everything per-homeowner, fetched in chunks of this run's recipients so no
+    // response can reach PostgREST's row cap and the in-list URLs stay a sane
+    // length. Both queries are scoped: an unfiltered table read that silently
+    // truncates is indistinguishable from a member having no data, and both of
+    // these narrow the email when they come back empty.
     //
-    // Fetched per chunk of this run's recipients to stay under PostgREST's
-    // response-row cap and keep the in-list URLs a sane length.
+    //  - home_profiles: the season's tasks are filtered to each home's systems
+    //    AND life stage. `stage` matters because the catalog holds pre-listing
+    //    and new-construction tasks that must not go to everyone, and the gate
+    //    fails closed - a missing profile row hides them rather than leaking
+    //    them, so a truncated read would quietly shrink someone's list.
+    //    homeowner_type is the legacy column older rows still use.
+    //  - homeowner_maintenance: what they dismissed as irrelevant, checked off,
+    //    booked or snoozed. All of it suppresses the task in their email -
+    //    nobody should be nudged about a job they finished last week. We fetch
+    //    every SUPPRESSING status (not just dismissed) because the seasonal-reset
+    //    rule lives in resolveMemberTasks and needs `season` plus a timestamp to
+    //    decide whether a row is still current or has expired for a new year.
+    //    'todo' rows are excluded: the resolver never reads them, and pulling
+    //    them would multiply the response size for nothing.
+    const systemsByOwner = new Map<string, HomeSystems>();
+    const stageByOwner = new Map<string, Stage | null>();
     const rowsByOwner = new Map<string, MaintenanceRow[]>();
-    for (let i = 0; i < eligible.length; i += DISMISSED_CHUNK) {
-      const ids = eligible.slice(i, i + DISMISSED_CHUNK).map((h) => h.id).join(',');
-      const rows = (await supabaseRest<(MaintenanceRow & { homeowner_id: string })[]>(
-        'GET',
-        `homeowner_maintenance?select=homeowner_id,task_key,season,status,completed_at,updated_at&homeowner_id=in.(${ids})&status=in.(done,booked,snoozed,dismissed)`,
-      )) ?? [];
-      for (const r of rows) {
+    for (let i = 0; i < eligible.length; i += OWNER_CHUNK) {
+      const ids = eligible.slice(i, i + OWNER_CHUNK).map((h) => h.id).join(',');
+      const [profiles, rows] = await Promise.all([
+        supabaseRest<{
+          homeowner_id: string;
+          systems: HomeSystems;
+          stage: string | null;
+          homeowner_type: string | null;
+        }[]>('GET', `home_profiles?select=homeowner_id,systems,stage,homeowner_type&homeowner_id=in.(${ids})`),
+        supabaseRest<(MaintenanceRow & { homeowner_id: string })[]>(
+          'GET',
+          `homeowner_maintenance?select=homeowner_id,task_key,season,status,completed_at,updated_at&homeowner_id=in.(${ids})&status=in.(done,booked,snoozed,dismissed)`,
+        ),
+      ]);
+      for (const p of profiles ?? []) {
+        systemsByOwner.set(p.homeowner_id, p.systems);
+        stageByOwner.set(p.homeowner_id, (p.stage as Stage | null) ?? stageFromLegacyType(p.homeowner_type));
+      }
+      for (const r of rows ?? []) {
         if (!rowsByOwner.has(r.homeowner_id)) rowsByOwner.set(r.homeowner_id, []);
         rowsByOwner.get(r.homeowner_id)!.push(r);
       }

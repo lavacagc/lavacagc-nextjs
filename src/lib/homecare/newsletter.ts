@@ -228,10 +228,13 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
     const book = t.bookable
       ? `<div style="padding-top:10px"><a href="${checklistUrl}?add=${encodeURIComponent(t.key)}" style="display:inline-block;background:${ORANGE};border-radius:8px;padding:9px 16px;font-family:${FF};font-size:13px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none">Add to plan</a></div>`
       : '';
-    // When a teaser row follows, the last task keeps normal padding so the
-    // divider above the teaser sits evenly.
-    const pad = last && !remaining ? '14px 22px 22px 22px' : '14px 22px';
-    return `<tr><td style="padding:${i === 0 ? '8px 22px 14px 22px' : pad}">
+    // Top and bottom are independent: the first row tucks under the panel
+    // heading, and the last row closes the panel out - unless a teaser row
+    // follows, which keeps normal padding so the divider above it sits evenly.
+    // A one-task panel is both, so neither edge can win over the other.
+    const padTop = i === 0 ? '8px' : '14px';
+    const padBottom = last && !remaining ? '22px' : '14px';
+    return `<tr><td style="padding:${padTop} 22px ${padBottom} 22px">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%">
           <tr>
             <td width="30" valign="top" style="width:30px;font-family:${FF};font-size:20px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:${ORANGE}">${String(i + 1).padStart(2, '0')}</td>
