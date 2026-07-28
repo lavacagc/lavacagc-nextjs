@@ -93,16 +93,40 @@ test('newsletter recipients are deduped, ordered and bounded by the database', (
   // into the same arbitrary tail every month - indistinguishable from "those
   // people never signed up". Ordering longest-waiting first makes starvation
   // self-correcting; the bound keeps one run's work to one run.
-  expect(src).toContain('&or=(last_newsletter_at.is.null,last_newsletter_at.lt."${monthStart}")');
   expect(src).toContain('&order=last_newsletter_at.asc.nullsfirst,id.asc&limit=${MAX_PER_RUN}');
-  // The server predicate and the client dedup must share a calendar: sameMonth
-  // compares UTC parts, so the boundary it is given has to be built in UTC too.
-  expect(src).toContain('Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)');
-  expect(src).toMatch(/d\.getUTCFullYear\(\) === now\.getUTCFullYear\(\) && d\.getUTCMonth\(\) === now\.getUTCMonth\(\)/);
-  // Kept as a second line of defence, so dropping the predicate can't double-send.
+  // Dedup is client-side by design (see the minifier guard below). It rides on
+  // that ordering: already-mailed rows carry the newest last_newsletter_at, so
+  // they sort behind every due member and can't push one off the page.
   expect(src).toContain('due.filter((h) => !sameMonth(h.last_newsletter_at, now))');
+  expect(src).toMatch(/d\.getUTCFullYear\(\) === now\.getUTCFullYear\(\) && d\.getUTCMonth\(\) === now\.getUTCMonth\(\)/);
   // No silent caps - a truncated page is reported in the response and the log.
-  expect(src).toContain('capped: due.length === MAX_PER_RUN');
+  // Measured on `eligible`: room left for an already-mailed row proves no due
+  // member was cut off, whereas a page of 400 due rows may have more behind it.
+  expect(src).toContain('const capped = eligible.length === MAX_PER_RUN');
+  expect(src).toContain('capped,');
+});
+
+test('the newsletter recipient query cannot be mangled by the minifier', () => {
+  // This repo has already lost a cron to exactly one construction: a PostgREST
+  // `or=(...)` logic tree built from `+`-concatenated template segments, where
+  // a Turbopack minifier bug dropped the trailing `))` from the production
+  // bundle and PostgREST answered PGRST100 (see tests/renderings-cron.spec.ts
+  // and generate-renderings/route.ts). The newsletter is the worse place for it
+  // to come back: it runs `0 14 1 * *` with no retry, so a malformed query
+  // means every member silently misses the month with nobody to complain.
+  const src = read('src/app/api/cron/home-care-newsletter/route.ts');
+  const call = src.match(/supabaseRest<HomeownerRow\[\]>\(\s*'GET',\s*([\s\S]*?)\)\) \?\? \[\]/);
+  expect(call, 'expected the homeowners GET call to be present').toBeTruthy();
+  const queryArg = call![1];
+  // One unbroken backtick literal - no `+` splice for the minifier to truncate.
+  expect(queryArg).not.toContain('` +');
+  expect(queryArg).not.toContain('+ `');
+  // And no logic tree at all: `status=eq.active` plus an order/limit is flat,
+  // so there are no parens left to lose.
+  expect(queryArg).not.toContain('or=(');
+  expect(queryArg).toContain('status=eq.active');
+  // Whatever the query is, its parens balance.
+  expect(queryArg.split('(').length).toBe(queryArg.split(')').length);
 });
 
 test('welcome email carries the forward-to-a-friend line with email UTM tags', () => {

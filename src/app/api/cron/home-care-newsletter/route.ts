@@ -89,26 +89,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'catalog select is missing stages' }, { status: 500 });
     }
 
-    // Who is due this month, decided by Postgres rather than by whatever slice of
-    // the table came back. An unordered, unbounded read that hits PostgREST's row
-    // cap drops recipients arbitrarily, and because the same members would sort
-    // into the same arbitrary tail every run they'd simply never be mailed - a
-    // failure that looks exactly like "those people don't want the newsletter".
-    // So: the dedup predicate runs server-side, longest-waiting go first (nobody
-    // can be starved twice), and the page is bounded to what one run can send.
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    // Who gets mailed, ordered and bounded by Postgres rather than by whatever
+    // slice of the table came back. An unordered, unbounded read that hits
+    // PostgREST's row cap drops recipients arbitrarily, and because the same
+    // members would sort into the same arbitrary tail every run they'd simply
+    // never be mailed - a failure that looks exactly like "those people don't
+    // want the newsletter". So: longest-waiting first (nobody can be starved
+    // twice), and one page is one run's work.
+    //
+    // NOTE: kept as a single template literal with a flat filter on purpose, and
+    // the month predicate deliberately stays on the client. An `or=(...)` clause
+    // split across `+`-concatenated segments is what cost this repo a cron once
+    // already - see the note in generate-renderings/route.ts - where a Turbopack
+    // minifier bug dropped the trailing `))` from the production bundle and
+    // PostgREST rejected the logic tree (PGRST100). Here the blast radius would
+    // be worse: this runs once a month with no retry, so a mangled query means
+    // nobody gets an email and nobody knows to complain.
     const due = (await supabaseRest<HomeownerRow[]>(
       'GET',
-      'homeowners?select=id,first_name,email,unsubscribe_token,last_newsletter_at&status=eq.active'
-        // Quoted: an ISO timestamp carries `.` and `:`, both reserved inside or().
-        + `&or=(last_newsletter_at.is.null,last_newsletter_at.lt."${monthStart}")`
-        + `&order=last_newsletter_at.asc.nullsfirst,id.asc&limit=${MAX_PER_RUN}`,
+      `homeowners?select=id,first_name,email,unsubscribe_token,last_newsletter_at&status=eq.active&order=last_newsletter_at.asc.nullsfirst,id.asc&limit=${MAX_PER_RUN}`,
     )) ?? [];
 
-    // Belt and braces on the one-per-calendar-month rule: if the predicate above
-    // is ever dropped or mangled, this still prevents a second send this month.
+    // The one-per-calendar-month rule. Nothing is lost by deduping here: anyone
+    // already mailed this month carries the newest last_newsletter_at in the
+    // table, so they sort behind every member who is actually due, and the page
+    // fills with the due ones first.
     const eligible = due.filter((h) => !sameMonth(h.last_newsletter_at, now));
-    if (due.length === MAX_PER_RUN) {
+    // Conversely, a page that had no room for even one already-mailed row is a
+    // page that may have cut off due members - report it rather than capping
+    // silently. They sort first next run, so the backlog drains rather than
+    // stranding the same people every month.
+    const capped = eligible.length === MAX_PER_RUN;
+    if (capped) {
       console.warn(`home-care-newsletter: hit the ${MAX_PER_RUN}-recipient page cap; the rest sort first next run`);
     }
 
@@ -225,8 +237,8 @@ export async function GET(request: NextRequest) {
       season,
       month: monthLabel,
       tasks: tasks.length,
-      due_this_month: due.length,
-      capped: due.length === MAX_PER_RUN,
+      due_page: due.length,
+      capped,
       eligible: eligible.length,
       sent,
       suppressed,
