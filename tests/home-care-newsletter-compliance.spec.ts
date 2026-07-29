@@ -1,6 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+// Must precede the sender import: it stubs the env that module captures on load.
+import './helpers/stubEmailEnv';
+import { sendTrackedEmail } from '../src/lib/notify/sendEmail';
 import { buildNewsletter, type NewsletterTask } from '../src/lib/homecare/newsletter';
 
 /**
@@ -92,6 +95,58 @@ test('suppression: only active members are mailed, and opt-outs are skipped at s
   expect(cron).toContain('homeowners?select=id,first_name,email,unsubscribe_token,last_newsletter_at&status=eq.active');
   // ...and sendTrackedEmail independently skips anyone who opted out of the stream.
   expect(sendEmail).toContain('if (pref[input.preferenceStream] === false)');
+});
+
+test('suppression: an opt-out the cron already knows about is refused and recorded', async () => {
+  // Honouring an unsubscribe is only half of it - the other half is being able
+  // to show that we did. The cron classifies every recipient against one
+  // read of the home_care opt-out list, and hands that verdict to the sender
+  // instead of skipping the call, precisely so the suppression still lands in
+  // email_log. Driven through the real sender here rather than asserted from
+  // source, because "no send happened" and "a row was written" are the two
+  // things the source cannot prove.
+  const calls: Array<{ url: string; body?: string }> = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), body: typeof init?.body === 'string' ? init.body : undefined });
+    return new Response('', { status: 201 });
+  }) as typeof fetch;
+
+  try {
+    const result = await sendTrackedEmail({
+      from: 'La Vaca Home Care <alex@email.lavaca.link>',
+      to: 'optedout@example.com',
+      subject: 'September: your fall home checklist',
+      html: '<p>Fall checklist</p>',
+      text: 'Fall checklist',
+      category: 'home_care_newsletter',
+      preferenceStream: 'home_care',
+      knownSuppressed: true,
+    });
+    expect(result).toMatchObject({ status: 'skipped', reason: 'unsubscribed' });
+
+    // Nothing reached the mailer...
+    expect(calls.filter((c) => c.url.includes('resend'))).toEqual([]);
+    // ...and the preference lookup never ran either: it fails OPEN by design,
+    // so consulting it for a recipient we have already ruled out would let a
+    // DB hiccup deliver mail to somebody who unsubscribed.
+    expect(calls.filter((c) => c.url.includes('email_preferences'))).toEqual([]);
+
+    // The suppression is on the record, in the shape the admin Emails view
+    // reads: same category as a real send, status 'skipped', never sent_at.
+    const logged = calls.filter((c) => c.url.includes('/rest/v1/email_log'));
+    expect(logged, 'expected exactly one email_log row for the honoured opt-out').toHaveLength(1);
+    const row = JSON.parse(logged[0].body!);
+    expect(row).toMatchObject({
+      category: 'home_care_newsletter',
+      to_email: 'optedout@example.com',
+      status: 'skipped',
+      sent_at: null,
+    });
+    expect(row.error_message).toContain('suppressed');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 test('links: every URL is built from the send origin, so no environment leaks in', () => {

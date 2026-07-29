@@ -255,12 +255,17 @@ export async function GET(request: NextRequest) {
       let outcome = classifyRecipient(state);
 
       if (!dryRun) {
-        // empty_skipped and a known opt-out both close the month out without
-        // mail: there is nothing honest to write for the first, and the sender
-        // would only skip the second. Sending closes it out too; a failed send
-        // deliberately does not, so the member stays due and retries next run.
-        let closeOut = outcome !== 'would_send';
-        if (outcome === 'would_send') {
+        // empty_skipped closes the month out with no mail - there is nothing
+        // honest to write. Everyone else goes to the sender, INCLUDING a
+        // recipient the opt-out snapshot already flagged: it refuses the send
+        // itself and writes the email_log row that is the only per-recipient
+        // evidence we honored the unsubscribe. Short-circuiting it here left
+        // last_newsletter_at advanced and no trace at all, so an honored
+        // opt-out looked exactly like a member the run never reached.
+        // Sending closes the month out too; a failed send deliberately does
+        // not, so the member stays due and retries next run.
+        let closeOut = outcome === 'empty_skipped';
+        if (outcome !== 'empty_skipped') {
           // Per-recipient preference-center link (best-effort — fall back to the
           // legacy unsubscribe link alone if the lookup fails).
           const preferencesUrl = await preferencesUrlFor(origin, h.email).catch(() => undefined);
@@ -277,7 +282,18 @@ export async function GET(request: NextRequest) {
             heroImageUrl: homeCareHeroUrl(SITE_URL, now),
             caughtUp: state.caughtUp,
           });
-          const res = await sendHomeCareNewsletterEmail({ to: h.email, subject, html, text, homeownerId: h.id });
+          const res = await sendHomeCareNewsletterEmail({
+            to: h.email,
+            subject,
+            html,
+            text,
+            homeownerId: h.id,
+            // What the snapshot already decided. The sender refuses the send on
+            // this alone rather than re-reading the preference, whose lookup
+            // fails OPEN - so a DB hiccup cannot turn a known opt-out into a
+            // delivered email - and logs the suppression either way.
+            knownSuppressed: outcome === 'suppressed',
+          });
           // A preference opt-out the snapshot above missed is an intentional
           // suppression, not a failure. It MOVES this recipient's bucket rather
           // than adding one, so the totals still come to `eligible`.

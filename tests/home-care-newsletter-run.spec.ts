@@ -34,20 +34,35 @@ const SENT: SendVerdict = { status: 'sent' };
 const UNSUBSCRIBED: SendVerdict = { status: 'skipped', reason: 'unsubscribed' };
 
 /**
- * One run's accounting, mirroring the cron loop exactly: classify once from the
- * recipient's state, let a live send's verdict CORRECT that classification, and
- * record once. The only difference between the two modes is whether mail is
- * attempted at all.
+ * One run, mirroring the cron loop exactly: classify once from the recipient's
+ * state, hand everyone but an empty list to the sender, let its verdict CORRECT
+ * that classification, and record once. The only difference between the two
+ * modes is whether the sender is called at all.
+ *
+ * A recipient the snapshot already flagged is NOT skipped here - it goes to the
+ * sender carrying that verdict, which refuses the send itself and writes the
+ * email_log row. That row is tracked as `audited` below because it is the only
+ * per-recipient evidence an opt-out was honoured.
  */
-function runBuckets(recipients: Recipient[], opts: { dryRun: boolean }) {
+function runRecipients(recipients: Recipient[], opts: { dryRun: boolean }) {
   const tally = createOutcomeTally();
+  const delivered: string[] = [];
+  const audited: string[] = [];
   for (const r of recipients) {
     let outcome = classifyRecipient(r.state);
-    if (!opts.dryRun && outcome === 'would_send') outcome = reconcileWithSend(outcome, r.verdict);
+    if (!opts.dryRun && outcome !== 'empty_skipped') {
+      const verdict = outcome === 'suppressed' ? UNSUBSCRIBED : r.verdict;
+      if (verdict.status === 'sent') delivered.push(r.label);
+      if (verdict.status === 'skipped' && verdict.reason === 'unsubscribed') audited.push(r.label);
+      outcome = reconcileWithSend(outcome, verdict);
+    }
     tally.record(outcome, r.state);
   }
-  return tally.counts();
+  return { counts: tally.counts(), delivered, audited };
 }
+
+const runBuckets = (recipients: Recipient[], opts: { dryRun: boolean }) =>
+  runRecipients(recipients, opts).counts;
 
 const total = (c: { would_send: number; suppressed: number; empty_skipped: number }) =>
   c.would_send + c.suppressed + c.empty_skipped;
@@ -143,6 +158,32 @@ test('an opt-out the snapshot missed moves a bucket instead of adding one', () =
   expect(live.caught_up).toBe(1);
 });
 
+test('an honoured opt-out is counted, never delivered, and recorded - live only', () => {
+  // The regression this pins: once the opt-out snapshot classified a recipient
+  // as suppressed, the route stopped calling the sender for them, so the
+  // email_log row sendTrackedEmail writes for an honoured unsubscribe was never
+  // written - while last_newsletter_at was still advanced. The member's row
+  // then looked identical to one that was mailed, and the admin could not tell
+  // "we correctly honoured an opt-out" from "the run never reached them".
+  const OFF_STREAM = 'a member off the home_care stream';
+  const CAUGHT_UP_OFF_STREAM = 'a caught-up member who is also off the stream';
+
+  const live = runRecipients(FIXTURES, { dryRun: false });
+  // (a) counted as suppressed - both of them, and in that bucket only.
+  expect(live.counts.suppressed).toBe(2);
+  // (b) never delivered to.
+  expect(live.delivered).not.toContain(OFF_STREAM);
+  expect(live.delivered).not.toContain(CAUGHT_UP_OFF_STREAM);
+  // (c) but still on the record, one row each.
+  expect(live.audited).toEqual([OFF_STREAM, CAUGHT_UP_OFF_STREAM]);
+
+  // ...and a dry run does none of the three: same bucket, no mail, no row.
+  const dry = runRecipients(FIXTURES, { dryRun: true });
+  expect(dry.counts).toEqual(live.counts);
+  expect(dry.delivered).toEqual([]);
+  expect(dry.audited).toEqual([]);
+});
+
 test('classifyRecipient is decided by the recipient alone', () => {
   const base: RecipientState = { visible: 3, outstanding: 2, caughtUp: false, optedOut: false };
   expect(classifyRecipient(base)).toBe('would_send');
@@ -165,7 +206,10 @@ test('only an unsubscribe verdict may correct a classification', () => {
   for (const verdict of [SENT, { status: 'failed' }, { status: 'error' }, { status: 'skipped', reason: 'no_api_key' }]) {
     expect(reconcileWithSend('would_send', verdict)).toBe('would_send');
   }
-  // And a bucket that never involved a send is not reachable from here.
+  // An already-suppressed recipient does reach the sender (that is what writes
+  // the audit row), but it is handed the verdict rather than asked for one, so
+  // the answer that comes back can only confirm the bucket it went in with.
+  // empty_skipped never reaches a send on either path.
   for (const outcome of ['suppressed', 'empty_skipped'] as NewsletterOutcome[]) {
     expect(reconcileWithSend(outcome, UNSUBSCRIBED)).toBe(outcome);
   }

@@ -65,10 +65,15 @@ export function classifyRecipient(state: RecipientState): NewsletterOutcome {
 /**
  * Fold a live run's send verdict into the classification.
  *
- * The sender re-reads the preference per recipient at send time, so it is both
- * newer than the run's opt-out snapshot and the thing that actually decided
- * whether mail went out - it wins. It can only ever MOVE a recipient between
- * buckets: the caller records one outcome per recipient, after this.
+ * For a recipient the snapshot did NOT flag, the sender re-reads the preference
+ * at send time, so it is both newer than the snapshot and the thing that
+ * actually decided whether mail went out - it wins. (A recipient the snapshot
+ * DID flag is handed to the sender as already-suppressed, so it comes back
+ * unsubscribed and this changes nothing; the point of still calling it is the
+ * email_log row recording the honored opt-out.)
+ *
+ * Either way this can only ever MOVE a recipient between buckets: the caller
+ * records one outcome per recipient, after this.
  */
 export function reconcileWithSend(outcome: NewsletterOutcome, verdict: SendVerdict): NewsletterOutcome {
   if (outcome === 'would_send' && verdict.status === 'skipped' && verdict.reason === 'unsubscribed') {

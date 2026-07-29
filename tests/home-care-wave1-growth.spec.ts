@@ -152,8 +152,16 @@ test('a dry run classifies every recipient and writes nothing', () => {
   // row it writes, the preference-centre lookup (which creates a row as a side
   // effect) and every last_newsletter_at touch. Classification and the tally
   // sit outside it.
-  const guard = at('      if (!dryRun) {');
-  expect(guard, 'expected a single !dryRun block around the send half').toBeGreaterThan(0);
+  //
+  // Anchored on the guard itself, not on its indentation: pinning the six
+  // leading spaces made this assertion track the block's NESTING DEPTH, so
+  // hoisting the loop body into a helper would return -1 and the ordering
+  // checks below would then pass vacuously against a bogus anchor. Requiring
+  // exactly one occurrence also pins that there is a single block, which is
+  // what "every write is inside it" depends on.
+  const guards = [...src.matchAll(/if \(!dryRun\) \{/g)];
+  expect(guards, 'expected a single !dryRun block around the send half').toHaveLength(1);
+  const guard = guards[0].index!;
   expect(at('await preferencesUrlFor(')).toBeGreaterThan(guard);
   expect(at('await sendHomeCareNewsletterEmail(')).toBeGreaterThan(guard);
   for (const m of src.matchAll(/updateHomeowner\(/g)) {
@@ -205,6 +213,43 @@ test('the outcome buckets are single-sourced - no counter is incremented outside
   expect(src.match(/tally\.record\(/g)).toHaveLength(1);
   // A live-only opt-out moves the bucket instead of adding one.
   expect(src).toContain('outcome = reconcileWithSend(outcome, res);');
+});
+
+test('a suppressed recipient still goes through the sender, so the opt-out is audited', () => {
+  // Single-sourcing the buckets had a side effect: once the snapshot
+  // classified somebody as suppressed, the route stopped calling the sender for
+  // them - and the sender is what writes the email_log row for an honoured
+  // unsubscribe. last_newsletter_at was still advanced, so the member's row
+  // looked exactly like one that was mailed and /vaca-mgmt/emails lost every
+  // suppression record for the stream. For mail governed by an unsubscribe,
+  // that row is the compliance evidence.
+  const src = read('src/app/api/cron/home-care-newsletter/route.ts');
+  const sendEmail = read('src/lib/notify/sendEmail.ts');
+  const sendHomeCare = read('src/lib/notify/sendHomeCareEmails.ts');
+
+  // Only an empty list skips the sender now; suppressed goes through it...
+  expect(src).toContain("let closeOut = outcome === 'empty_skipped';");
+  expect(src).toContain("if (outcome !== 'empty_skipped') {");
+  expect(src).not.toMatch(/if \(outcome === 'would_send'\) \{/);
+  // ...carrying the snapshot's verdict, so the send is refused inside the
+  // sender (which logs it) rather than at the call site (which cannot).
+  expect(src).toContain("knownSuppressed: outcome === 'suppressed',");
+  expect(sendHomeCare).toContain('knownSuppressed?: boolean');
+  expect(sendHomeCare).toContain("'home_care', args.knownSuppressed)");
+
+  // Both ways of learning about an opt-out end in one suppression path, so the
+  // row's shape cannot drift between them.
+  expect(sendEmail).toContain('if (input.knownSuppressed) return suppress(input, toList, ccList);');
+  expect(sendEmail).toContain('if (pref[input.preferenceStream] === false) return suppress(input, toList, ccList);');
+  const suppressFn = sendEmail.slice(
+    sendEmail.indexOf('async function suppress('),
+    sendEmail.indexOf('export async function sendTrackedEmail'),
+  );
+  expect(suppressFn, 'expected a single suppress() helper above sendTrackedEmail').toContain("reason: 'unsubscribed'");
+  expect(suppressFn).toContain('await writeEmailLog(input, toList, ccList, result)');
+  // The known opt-out is refused BEFORE the preference lookup, which fails open
+  // - a DB hiccup there must not turn an unsubscribe into a delivered email.
+  expect(sendEmail.indexOf('if (input.knownSuppressed)')).toBeLessThan(sendEmail.indexOf('await getOrCreateByEmail('));
 });
 
 test('the newsletter hero is pinned to the production host, like the logo above it', () => {

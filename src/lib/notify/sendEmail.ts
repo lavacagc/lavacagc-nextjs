@@ -75,6 +75,16 @@ export interface TrackedEmailInput {
    * Omit for purely transactional/internal mail, which always sends.
    */
   preferenceStream?: SuppressionKey;
+
+  /**
+   * Set when the caller has ALREADY established that this recipient is off the
+   * stream - e.g. the monthly cron reads the whole opt-out list once and
+   * classifies every recipient against it. Such a send still comes through
+   * here rather than being dropped at the call site, so the opt-out leaves the
+   * same email_log row any other honored opt-out leaves. Only meaningful
+   * alongside preferenceStream.
+   */
+  knownSuppressed?: boolean;
 }
 
 export interface TrackedEmailResult {
@@ -129,6 +139,30 @@ async function writeEmailLog(
 }
 
 /**
+ * Honor an opt-out: no send, and one email_log row recording that we
+ * intentionally didn't send.
+ *
+ * Both routes into a suppression end here - the per-recipient lookup below and
+ * a caller that already read the stream's opt-out list - so the audit row is
+ * written once, in one shape, whichever side noticed. Without it the admin
+ * cannot tell "we correctly honored an unsubscribe" from "the run never
+ * reached this member", which for commercial mail is the record that matters.
+ */
+async function suppress(
+  input: TrackedEmailInput,
+  toList: string[],
+  ccList: string[],
+): Promise<TrackedEmailResult> {
+  const result: TrackedEmailResult = {
+    status: 'skipped',
+    reason: 'unsubscribed',
+    error: 'suppressed: recipient unsubscribed from this stream',
+  };
+  if (input.log !== false) await writeEmailLog(input, toList, ccList, result);
+  return result;
+}
+
+/**
  * Send an email via Resend and record it in email_log.
  * Mirrors the {status,emailId,error} result shape the existing senders return.
  */
@@ -162,18 +196,14 @@ export async function sendTrackedEmail(input: TrackedEmailInput): Promise<Tracke
   }
   let unsubHeaders: Record<string, string> | undefined;
   if (input.preferenceStream && toList[0]) {
+    // An opt-out the caller already knows about is refused here, before the
+    // lookup below - which fails OPEN. Failing open is the right default for a
+    // send nobody has ruled out, and the wrong one for a send somebody has: a
+    // DB hiccup must not turn a known unsubscribe into a delivered email.
+    if (input.knownSuppressed) return suppress(input, toList, ccList);
     try {
       const pref = await getOrCreateByEmail(toList[0]);
-      if (pref[input.preferenceStream] === false) {
-        const suppressed: TrackedEmailResult = {
-          status: 'skipped',
-          reason: 'unsubscribed',
-          error: 'suppressed: recipient unsubscribed from this stream',
-        };
-        // Record the suppression so the admin can see we intentionally didn't send.
-        if (input.log !== false) await writeEmailLog(input, toList, ccList, suppressed);
-        return suppressed;
-      }
+      if (pref[input.preferenceStream] === false) return suppress(input, toList, ccList);
       const unsubUrl =
         `${SITE_URL}/api/preferences/unsubscribe?token=${encodeURIComponent(pref.preference_token)}` +
         `&stream=${input.preferenceStream}`;
