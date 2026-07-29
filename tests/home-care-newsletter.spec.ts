@@ -179,7 +179,7 @@ test('HTML entities stay in the HTML part - the text part gets the raw name', ()
   expect(buildNewsletter({
     firstName: 'John & Mary', season: 'fall', tasks: [], isSeasonal: false, monthLabel: 'October',
     baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u', caughtUp: true,
-  }).subject).toBe("You're all caught up, John & Mary");
+  }).subject).toBe("October: you're all caught up, John & Mary");
 
   // And no name at all still greets both readers.
   const anon = buildNewsletter({
@@ -316,6 +316,20 @@ test('the caught-up note survives being sent every month of the season', () => {
   expect(n.html).not.toContain("we'll be back when the next season's list is ready");
   expect(n.html).toContain('check in again next month');
   expect(n.text).toContain('check in again next month');
+
+  // And each repeat has to land as its own message. Gmail and Apple Mail thread
+  // on subject + sender, so a subject with nothing month-specific in it would
+  // fold October and November under September - unopened, taking the links
+  // above with them, which is the entire reason the repeat is sent at all.
+  const subjects = ['September', 'October', 'November'].map(
+    (m) => buildNewsletter({ ...base, monthLabel: m, tasks: [], caughtUp: true }).subject,
+  );
+  expect(subjects).toEqual([
+    "September: you're all caught up, Alex",
+    "October: you're all caught up, Alex",
+    "November: you're all caught up, Alex",
+  ]);
+  expect(new Set(subjects).size).toBe(3);
 
   // What makes the repeat worth opening: two standing links, no per-send fetch,
   // tagged like the member-share line so the traffic is attributable.

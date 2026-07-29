@@ -62,7 +62,7 @@ function send(
   preferenceStream?: StreamKey,
   knownSuppressed?: boolean,
 ): Promise<HomeCareEmailResult> {
-  return sendTrackedEmail({
+  const base = {
     from: HOME_CARE_FROM,
     to,
     replyTo: DEFAULT_REPLY_TO,
@@ -71,9 +71,13 @@ function send(
     text,
     category,
     homeownerId: homeownerId ?? null,
-    ...(preferenceStream ? { preferenceStream } : {}),
-    ...(knownSuppressed ? { knownSuppressed: true } : {}),
-  });
+  };
+  // The stream and a verdict about it are one decision, so they're attached in
+  // one branch: sendTrackedEmail's type has no shape where a suppression exists
+  // without the stream it came from.
+  return sendTrackedEmail(
+    preferenceStream ? { ...base, preferenceStream, knownSuppressed: knownSuppressed === true } : base,
+  );
 }
 
 export function sendHomeCareVerificationEmail(args: {

@@ -255,7 +255,7 @@ test('caught-up email drops the task panel but keeps the CTA and unsubscribe', (
     baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u?token=abc',
     caughtUp: true,
   });
-  expect(n.subject).toBe("You're all caught up, Alex");
+  expect(n.subject).toBe("October: you're all caught up, Alex");
   expect(n.html).toContain('all caught up.');
   expect(n.html).not.toContain('Add to plan'); // nothing to nag about
   expect(n.html).not.toMatch(/>01</); // no numbered rows

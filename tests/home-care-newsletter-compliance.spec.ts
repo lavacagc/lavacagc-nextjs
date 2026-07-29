@@ -73,7 +73,7 @@ test('CAN-SPAM: opt-out survives even when the preference-centre lookup fails', 
 test('CAN-SPAM: subject lines describe the actual contents, no deception', () => {
   expect(build().subject).toBe('Your Fall home checklist');
   expect(build({ isSeasonal: false }).subject).toBe('September: 3 quick home to-dos');
-  expect(build({ tasks: [], caughtUp: true }).subject).toBe("You're all caught up, Alex");
+  expect(build({ tasks: [], caughtUp: true }).subject).toBe("September: you're all caught up, Alex");
   // The nudge subject promises a count; it must match what is actually rendered.
   const nudge = build({ isSeasonal: false });
   expect((nudge.html.match(/width="30" valign="top"/g) || []).length).toBe(3);

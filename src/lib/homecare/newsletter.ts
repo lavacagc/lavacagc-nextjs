@@ -52,8 +52,10 @@ export interface NewsletterArgs {
   /** Calendar year for the season pill, e.g. 2026. Omitted from the pill if unset. */
   year?: number;
   /**
-   * Absolute URL of a hosted photo for the 600x200 hero band (a recent
-   * Northern NJ project reads best). Omit and the band is not rendered.
+   * Absolute URL of a hosted photo for the hero band (a recent Northern NJ
+   * project reads best). The band renders 520px wide inside the card's 40px
+   * padding, from a 2:1 source at 1040x520 so it stays sharp on retina - not
+   * the comp's 600x200 placeholder. Omit and the band is not rendered.
    */
   heroImageUrl?: string;
   /**
@@ -198,13 +200,16 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
    */
   const copy: NewsletterCopy = caughtUp
     ? {
-        subject: `You're all caught up, ${firstName || 'neighbor'}`,
+        // Everything here has to read correctly on a repeat: a member who
+        // clears their list in September gets this again in October and
+        // November. Hence the month in the subject - Gmail and Apple Mail
+        // thread on subject + sender, so three identical ones would collapse
+        // into the first and never be opened - and an intro that cannot
+        // promise silence until the next season.
+        subject: `${monthLabel}: you're all caught up, ${firstName || 'neighbor'}`,
         preheader: `Nothing left on your ${seasonLower} list. Two things worth a look while you're ahead.`,
         headlineTop: `Your home is`,
         headlineAccent: 'all caught up.',
-        // Deliberately true on a repeat: a member who clears their list in
-        // September gets this again in October and November, so it cannot
-        // promise silence until the next season.
         intro: () =>
           `You've cleared everything on your ${seasonLower} list - nice work. That's the boring maintenance that quietly prevents the expensive repairs, and most homeowners never get to the end of it. Nothing new to add this month - we'll check in again next month, and your next season's list will be waiting here when it opens.`,
         panelHeading: '',

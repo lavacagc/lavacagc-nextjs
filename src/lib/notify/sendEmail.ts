@@ -38,7 +38,7 @@ export type EmailCategory =
   | 'release'
   | 'other';
 
-export interface TrackedEmailInput {
+interface TrackedEmailBase {
   from: string;
   to: string | string[];
   cc?: string | string[];
@@ -64,28 +64,41 @@ export interface TrackedEmailInput {
    * send itself in its own table). Defaults to true: log everything.
    */
   log?: boolean;
-
-  /**
-   * When set, this send is governed by a preference/suppression key: the
-   * recipient's opt-out is honored (suppressed → skipped, not sent) and a
-   * per-recipient List-Unsubscribe header + one-click URL are attached. Accepts
-   * a marketing stream (home_care | buy_remodel | announcements) OR the
-   * transactional 'follow_ups' opt-out (lead follow-ups / review requests, whose
-   * primary purpose is commercial so they still need a working unsubscribe).
-   * Omit for purely transactional/internal mail, which always sends.
-   */
-  preferenceStream?: SuppressionKey;
-
-  /**
-   * Set when the caller has ALREADY established that this recipient is off the
-   * stream - e.g. the monthly cron reads the whole opt-out list once and
-   * classifies every recipient against it. Such a send still comes through
-   * here rather than being dropped at the call site, so the opt-out leaves the
-   * same email_log row any other honored opt-out leaves. Only meaningful
-   * alongside preferenceStream.
-   */
-  knownSuppressed?: boolean;
 }
+
+/**
+ * Stream governance travels as a pair, and the type says so: `knownSuppressed`
+ * is a verdict ABOUT a stream, so it cannot be set without naming one. Left
+ * independent, a stray `knownSuppressed: true` on a stream-less send read as
+ * "no stream, nothing to check" and delivered mail to a recipient the caller
+ * had already established was unsubscribed - the inverse of what it says.
+ */
+type StreamGovernance =
+  | {
+      /**
+       * This send is governed by a preference/suppression key: the recipient's
+       * opt-out is honored (suppressed → skipped, not sent) and a per-recipient
+       * List-Unsubscribe header + one-click URL are attached. Accepts a
+       * marketing stream (home_care | buy_remodel | announcements) OR the
+       * transactional 'follow_ups' opt-out (lead follow-ups / review requests,
+       * whose primary purpose is commercial so they still need a working
+       * unsubscribe).
+       */
+      preferenceStream: SuppressionKey;
+
+      /**
+       * Set when the caller has ALREADY established that this recipient is off
+       * the stream - e.g. the monthly cron reads the whole opt-out list once and
+       * classifies every recipient against it. Such a send still comes through
+       * here rather than being dropped at the call site, so the opt-out leaves
+       * the same email_log row any other honored opt-out leaves.
+       */
+      knownSuppressed?: boolean;
+    }
+  /** Purely transactional/internal mail: no stream, and so no verdict about one. */
+  | { preferenceStream?: never; knownSuppressed?: never };
+
+export type TrackedEmailInput = TrackedEmailBase & StreamGovernance;
 
 export interface TrackedEmailResult {
   status: 'sent' | 'skipped' | 'failed' | 'error';
@@ -194,13 +207,16 @@ export async function sendTrackedEmail(input: TrackedEmailInput): Promise<Tracke
     if (input.log !== false) await writeEmailLog(input, toList, ccList, result);
     return result;
   }
+  // An opt-out the caller already knows about is refused on its own terms -
+  // ahead of the lookup below, which fails OPEN. Failing open is the right
+  // default for a send nobody has ruled out, and the wrong one for a send
+  // somebody has: a DB hiccup must not turn a known unsubscribe into a
+  // delivered email. Nothing about it is conditional on the stream being
+  // readable here, so nothing about it is nested under that.
+  if (input.knownSuppressed) return suppress(input, toList, ccList);
+
   let unsubHeaders: Record<string, string> | undefined;
   if (input.preferenceStream && toList[0]) {
-    // An opt-out the caller already knows about is refused here, before the
-    // lookup below - which fails OPEN. Failing open is the right default for a
-    // send nobody has ruled out, and the wrong one for a send somebody has: a
-    // DB hiccup must not turn a known unsubscribe into a delivered email.
-    if (input.knownSuppressed) return suppress(input, toList, ccList);
     try {
       const pref = await getOrCreateByEmail(toList[0]);
       if (pref[input.preferenceStream] === false) return suppress(input, toList, ccList);

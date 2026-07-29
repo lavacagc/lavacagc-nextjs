@@ -248,8 +248,15 @@ test('a suppressed recipient still goes through the sender, so the opt-out is au
   expect(suppressFn, 'expected a single suppress() helper above sendTrackedEmail').toContain("reason: 'unsubscribed'");
   expect(suppressFn).toContain('await writeEmailLog(input, toList, ccList, result)');
   // The known opt-out is refused BEFORE the preference lookup, which fails open
-  // - a DB hiccup there must not turn an unsubscribe into a delivered email.
+  // - a DB hiccup there must not turn an unsubscribe into a delivered email -
+  // and outside the stream guard, so it cannot be skipped for want of a stream.
   expect(sendEmail.indexOf('if (input.knownSuppressed)')).toBeLessThan(sendEmail.indexOf('await getOrCreateByEmail('));
+  expect(sendEmail.indexOf('if (input.knownSuppressed)'))
+    .toBeLessThan(sendEmail.search(/if \(input\.preferenceStream && toList\[0\]\)/));
+  // And the two travel together in the type: a suppression is a verdict about a
+  // stream, so there is no shape that carries one without naming the other.
+  expect(sendEmail).toMatch(/preferenceStream: SuppressionKey;[\s\S]{0,700}knownSuppressed\?: boolean;/);
+  expect(sendEmail).toContain('{ preferenceStream?: never; knownSuppressed?: never }');
 });
 
 test('the newsletter hero is pinned to the production host, like the logo above it', () => {
