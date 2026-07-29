@@ -263,7 +263,9 @@ export function catalogCarriesStages(rows: readonly { stages?: string[] }[]): bo
 
 /**
  * Filter catalog tasks to a homeowner's systems + stage. With no systems yet
- * (null/empty) returns everything (full list + a prompt to personalize).
+ * (null/empty) the systems gate passes everything (full list + a prompt to
+ * personalize); the stage gate still applies, and with no stage yet it hides
+ * stage-specific tasks rather than showing them - see below.
  */
 export function filterTasksForProfile<T extends { applies_to: string[]; stages?: string[] }>(
   tasks: T[],

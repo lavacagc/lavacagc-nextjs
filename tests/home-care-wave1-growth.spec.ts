@@ -313,6 +313,13 @@ test('seasonal newsletter HTML + text carry the forward-to-a-friend line with em
   // Reviewer-visible evidence: the rendered email with the share line.
   mkdirSync(EVIDENCE_DIR, { recursive: true });
   writeFileSync(join(EVIDENCE_DIR, 'newsletter-share-line.html'), n.html);
+  // The brand logo is absolute on the production host by design (a mail client
+  // fetches it itself). Serve it from this checkout so the capture shows what a
+  // recipient sees: the live site's bot filter 403s an automated browser, which
+  // would leave a broken image in the middle of the evidence screenshot.
+  await page.route('https://www.lavacagc.com/**', (route) =>
+    route.fulfill({ path: join(root, 'public', new URL(route.request().url()).pathname) }),
+  );
   await page.setViewportSize({ width: 700, height: 1200 });
   await page.setContent(n.html, { waitUntil: 'domcontentloaded' });
   await expect(page.getByText('Forward this email')).toBeVisible();

@@ -1,9 +1,13 @@
 /**
  * La Vaca Home Care — seasonal newsletter (monthly cron).
  *
- * Runs on the 1st of each month. Season-start months (Mar/Jun/Sep/Dec) send the
- * full seasonal checklist; other months send a lighter top-3 "nudge". One email
- * per active homeowner per calendar month (deduped via last_newsletter_at).
+ * Runs on the 1st of each month. Season-start months (Mar/Jun/Sep/Dec) open the
+ * season's checklist; other months send a lighter "nudge". Either way the email
+ * shows the top three outstanding tasks and teases the remainder as "+N more on
+ * your list" - see lib/homecare/newsletter. One email per active homeowner per
+ * calendar month (deduped via last_newsletter_at), longest-waiting first and one
+ * page of MAX_PER_RUN recipients per run (reported as due_page/capped; anyone
+ * past the cap sorts first next run rather than being stranded).
  * Tasks a member dismissed ("not relevant to my home"), already checked off,
  * booked or snoozed are filtered out per recipient. A member who has cleared
  * their list by doing the work gets the short "all caught up" note; one whose

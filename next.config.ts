@@ -77,6 +77,9 @@ const nextConfig: NextConfig = {
             value: 'same-origin-allow-popups'
           },
           {
+            // The default for everything. `/email/*` and `/logo.png` override it
+            // to `cross-origin` further down - they exist to be embedded from a
+            // recipient's mail client.
             key: 'Cross-Origin-Resource-Policy',
             value: 'same-origin'
           },

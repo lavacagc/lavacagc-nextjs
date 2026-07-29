@@ -1,9 +1,14 @@
 /**
  * La Vaca Home Care - newsletter content builder (pure, testable).
  *
- * Two modes from one monthly cron:
- *  - seasonal (at each season start): the full seasonal checklist.
- *  - nudge (other months): the top few timely tasks, lighter touch.
+ * Three variants from one monthly cron. Every one of them is a teaser: the
+ * email shows the top three tasks and counts the rest as "+N more on your
+ * list", so even the season opener no longer renders a 20-item list in full.
+ *  - seasonal (at each season start): the season's checklist, top three first.
+ *  - nudge (other months): the same three, lighter framing.
+ *  - caught up (`caughtUp`): the member cleared their list by doing the work,
+ *    so the task panel is replaced by a short note that keeps the hero, the
+ *    booking CTA and the compliance footer rather than going silent.
  *
  * Layout ported from the "Home Care Monthly Email" Claude Design project:
  * a 600px card on a cream page, navy license bar, brand row, season pill,
@@ -48,7 +53,8 @@ export interface NewsletterArgs {
   unsubscribeUrl: string;
   /** Self-serve preference-center link (per-recipient token). Preferred footer CTA. */
   preferencesUrl?: string;
-  monthLabel?: string; // e.g. "July" (for nudge subject)
+  /** e.g. "July". Season pill, plus the subject/headline/CTA of the nudge and caught-up variants. */
+  monthLabel?: string;
   /** Calendar year for the season pill, e.g. 2026. Omitted from the pill if unset. */
   year?: number;
   /**
@@ -82,7 +88,11 @@ const SHOW_COUNT = 3;
  *
  * Every month must have a file - `tests/home-care-newsletter.spec.ts` asserts
  * all twelve exist on disk, because a missing one renders a broken image in
- * the send rather than degrading to no band.
+ * the send rather than degrading to no band. The same test pins the shape a
+ * replacement has to match: JPEG, 1040x520 (the 520px band at 2x for retina),
+ * under 200KB so the band stays light on cell data. Crop from the top - faces
+ * sit in the upper half of these photos, and a centre/attention crop
+ * decapitates them.
  */
 export function homeCareHeroUrl(baseUrl: string, date: Date): string {
   const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
