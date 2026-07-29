@@ -82,8 +82,11 @@ test('newsletter cron filters task state per homeowner, chunk-scoped to eligible
   // re-attempted this month, as are members whose list emptied without a single
   // completion. Only members who did the work get the caught-up note.
   expect(src).toContain('empty_skipped');
-  expect(src).toMatch(/caughtUp = isCaughtUp\(resolved\)/);
-  expect(src).toMatch(/visible\.length === 0 \|\| \(outstanding\.length === 0 && !caughtUp\)/);
+  expect(src).toMatch(/caughtUp: isCaughtUp\(resolved\)/);
+  // The empty-list rule itself lives in the shared classifier, so a dry run and
+  // a live run cannot answer it differently - see tests/home-care-newsletter-run.
+  expect(read('src/lib/homecare/newsletterRun.ts'))
+    .toMatch(/state\.visible === 0 \|\| \(state\.outstanding === 0 && !state\.caughtUp\)/);
 });
 
 test('newsletter recipients are deduped, ordered and bounded by the database', () => {
@@ -139,23 +142,25 @@ test('a dry run classifies every recipient and writes nothing', () => {
 
   // The loop is not wrapped in a dry-run guard any more...
   expect(src).not.toMatch(/if \(!dryRun\) \{\s*\n\s*for \(const h of eligible\)/);
-  // ...and the three-way outcome is reported either way.
-  expect(src).toContain('would_send: wouldSend');
-  expect(src).toContain('caught_up: caughtUpCount');
-  expect(src).toContain('empty_skipped: emptySkipped');
+  // ...and the outcome is reported either way, out of the one tally.
+  expect(src).toContain('would_send: buckets.would_send');
+  expect(src).toContain('caught_up: buckets.caught_up');
+  expect(src).toContain('empty_skipped: buckets.empty_skipped');
+  expect(src).toContain('suppressed: buckets.suppressed');
 
-  // Every write sits behind the guard. The skip branch touches
-  // last_newsletter_at inline, so it carries its own; everything else lives
-  // past the `continue`, including the preference-centre lookup, which creates
-  // a row as a side effect.
-  const bail = at('if (dryRun) continue;');
-  expect(bail, 'expected the send half of the loop to bail out on a dry run').toBeGreaterThan(0);
-  expect(at('await preferencesUrlFor(')).toBeGreaterThan(bail);
-  expect(at('await sendHomeCareNewsletterEmail(')).toBeGreaterThan(bail);
-  for (const m of src.matchAll(/^(.*)updateHomeowner\(/gm)) {
-    const guarded = m[1].includes('if (!dryRun)') || m.index! > bail;
-    expect(guarded, `unguarded updateHomeowner: ${m[0].trim()}`).toBe(true);
+  // Every write sits inside the one `if (!dryRun)` block: the mail, the audit
+  // row it writes, the preference-centre lookup (which creates a row as a side
+  // effect) and every last_newsletter_at touch. Classification and the tally
+  // sit outside it.
+  const guard = at('      if (!dryRun) {');
+  expect(guard, 'expected a single !dryRun block around the send half').toBeGreaterThan(0);
+  expect(at('await preferencesUrlFor(')).toBeGreaterThan(guard);
+  expect(at('await sendHomeCareNewsletterEmail(')).toBeGreaterThan(guard);
+  for (const m of src.matchAll(/updateHomeowner\(/g)) {
+    expect(m.index!, `updateHomeowner outside the !dryRun block`).toBeGreaterThan(guard);
   }
+  // The tally is recorded after the guard closes, so both paths reach it.
+  expect(at('tally.record(outcome, state);')).toBeGreaterThan(guard);
 });
 
 test('a dry run predicts the stream opt-outs the live send would honour', () => {
@@ -163,14 +168,16 @@ test('a dry run predicts the stream opt-outs the live send would honour', () => 
   // one more filter: sendTrackedEmail skips anyone with pref.home_care ===
   // false. That is a real state rather than a corner case - a member can sit at
   // status=eq.active in `homeowners` and still be off the stream, which is why
-  // the suppressed branch further down exists at all. So a dry run reported as
-  // "would send" the very people a live run reports as suppressed, at exactly
-  // the moment the number is used to sanity-check a one-shot monthly send.
+  // the suppressed bucket exists at all. So a dry run reported as "would send"
+  // the very people a live run reports as suppressed, at exactly the moment the
+  // number is used to sanity-check a one-shot monthly send.
   const src = read('src/app/api/cron/home-care-newsletter/route.ts');
   const at = (needle: string) => src.indexOf(needle);
 
-  // Consulted on dry runs, through the read-only select...
-  expect(src).toContain('const optedOut = dryRun ? await homeCareOptOuts() : null;');
+  // Consulted on BOTH paths, through the read-only select. Making the check
+  // itself conditional on dryRun is what let one person land in two buckets.
+  expect(src).toContain('const optedOut = await homeCareOptOuts();');
+  expect(src).not.toContain('dryRun ? await homeCareOptOuts()');
   const helper = src.slice(at('async function homeCareOptOuts'), at('export async function GET'));
   expect(helper).toContain("await getSuppressedEmails('home_care')");
   // ...never through the sender's lookup, which writes a row on first touch.
@@ -179,15 +186,25 @@ test('a dry run predicts the stream opt-outs the live send would honour', () => 
   expect(helper).toMatch(/catch[\s\S]*return null;/);
   expect(src).toContain('suppression_checked: dryRun ? optedOut !== null : true');
 
-  // Opt-outs get their own bucket instead of inflating would_send, and the
-  // check sits after the empty-list branch so the buckets fill in the order a
-  // live run fills them (an opted-out member with an empty list never reaches
-  // the send there either, so they count as empty_skipped on both paths).
-  const optOutCheck = at('if (optedOut?.has(normalizeEmail(h.email))) {');
-  expect(optOutCheck, 'expected the dry run to consult the opt-out set').toBeGreaterThan(0);
-  expect(optOutCheck).toBeGreaterThan(at('emptySkipped += 1;'));
-  expect(optOutCheck).toBeLessThan(at('wouldSend += 1;'));
-  expect(src.slice(optOutCheck, at('wouldSend += 1;'))).toContain('suppressed += 1;');
+  // The opt-out feeds the shared classifier as one more field of the
+  // recipient's state, rather than being a branch that increments a counter.
+  expect(src).toContain('optedOut: optedOut?.has(normalizeEmail(h.email)) ?? false,');
+  expect(src).toContain('let outcome = classifyRecipient(state);');
+});
+
+test('the outcome buckets are single-sourced - no counter is incremented outside the tally', () => {
+  // The regression this pins: `optedOut` was consulted only on a dry run, so a
+  // live run did `wouldSend += 1` for a recipient the sender then counted under
+  // `suppressed` - one person, two buckets, and a total that overshot
+  // `eligible`. Identical data reported would_send=2 dry and would_send=3 live.
+  const src = read('src/app/api/cron/home-care-newsletter/route.ts');
+  // No ad-hoc bucket counters left in the route at all.
+  expect(src).not.toMatch(/(wouldSend|suppressed|emptySkipped|caughtUpCount)\s*(\+=|--|\+\+)/);
+  expect(src).not.toMatch(/let (wouldSend|suppressed|emptySkipped|caughtUpCount)/);
+  // Exactly one record() call, reached by both paths.
+  expect(src.match(/tally\.record\(/g)).toHaveLength(1);
+  // A live-only opt-out moves the bucket instead of adding one.
+  expect(src).toContain('outcome = reconcileWithSend(outcome, res);');
 });
 
 test('the newsletter hero is pinned to the production host, like the logo above it', () => {

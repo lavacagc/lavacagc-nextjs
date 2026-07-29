@@ -14,9 +14,10 @@
  *   write nothing: no sends, no email_log rows, no last_newsletter_at touches,
  *   no preference-centre rows. The outcome buckets (would_send, of which
  *   caught_up, plus suppressed and empty_skipped) are the point of the flag, so
- *   they are computed on a dry run too - the per-homeowner reads they need
- *   already ran - and they use the same names a live run reports, so the two
- *   reconcile line for line.
+ *   the classification runs on both paths and only the mail is conditional. It
+ *   is one shared unit - see lib/homecare/newsletterRun - that puts each
+ *   recipient in exactly one bucket, so the two runs reconcile line for line
+ *   rather than each keeping its own tally of the same people.
  *
  * Auth: Bearer CRON_SECRET (also enforced by middleware on /api/cron/*).
  */
@@ -27,6 +28,12 @@ import { updateHomeowner } from '@/lib/homecare/homeowners';
 import { currentSeason } from '@/lib/homecare/season';
 import { buildNewsletter, homeCareHeroUrl, type NewsletterTask } from '@/lib/homecare/newsletter';
 import { catalogCarriesStages, stageFromLegacyType, type HomeSystems, type Stage } from '@/lib/homecare/profile';
+import {
+  classifyRecipient,
+  createOutcomeTally,
+  reconcileWithSend,
+  type RecipientState,
+} from '@/lib/homecare/newsletterRun';
 import { isCaughtUp, resolveMemberTasks, type MaintenanceRow } from '@/lib/homecare/selection';
 import { sendHomeCareNewsletterEmail } from '@/lib/notify/sendHomeCareEmails';
 import { getSuppressedEmails, normalizeEmail, preferencesUrlFor } from '@/lib/preferences/preferences';
@@ -74,16 +81,21 @@ function sameMonth(iso: string | null, now: Date): boolean {
 }
 
 /**
- * The home_care stream opt-outs a live send would honour, for a dry run to
- * predict. A member can sit at status=eq.active in `homeowners` and still be off
- * the stream (the legacy status sync is best-effort), and sendTrackedEmail skips
- * those rather than sending - so without this a dry run counts them in
- * would_send and the live run then reports them under suppressed.
+ * The home_care stream opt-outs a send would honour. A member can sit at
+ * status=eq.active in `homeowners` and still be off the stream (the legacy
+ * status sync is best-effort), and sendTrackedEmail skips those rather than
+ * sending.
+ *
+ * Read on every invocation, dry or live, because it is what classifies a
+ * recipient: making the check itself conditional on dryRun is what let the same
+ * person be counted as would_send by one path and suppressed by the other.
  *
  * Read-only by construction: getSuppressedEmails is a plain paginated select,
  * unlike the getOrCreateByEmail the sender uses, which writes a row on first
- * touch. Best-effort - null means "could not check", reported as
- * suppression_checked:false rather than passed off as zero opt-outs.
+ * touch. Best-effort - null means "could not check". A live run still gets the
+ * right buckets then (the sender re-checks per recipient); a dry run cannot, so
+ * it says so via suppression_checked rather than passing the gap off as zero
+ * opt-outs.
  */
 async function homeCareOptOuts(): Promise<Set<string> | null> {
   try {
@@ -211,21 +223,18 @@ export async function GET(request: NextRequest) {
     }
 
     let sent = 0;
-    let suppressed = 0;
-    let emptySkipped = 0;
-    let wouldSend = 0;
-    let caughtUpCount = 0;
     const failures: string[] = [];
-    // A live run learns each recipient's stream opt-out from the sender itself;
-    // a dry run has to ask, or it reports as would_send people who would get
-    // nothing. One select for the whole list, and only when it is needed.
-    const optedOut = dryRun ? await homeCareOptOuts() : null;
-    // Classification runs on every invocation, dry or not. It is the whole
+    // One classification per recipient, recorded once - see newsletterRun. The
+    // counters are not reachable from here, so no branch below can slip a
+    // second bucket to the same person the way the send path used to.
+    const tally = createOutcomeTally();
+    const optedOut = await homeCareOptOuts();
+    // The loop runs on every invocation, dry or not. Classification is the whole
     // question a dry run is asked before a send that happens once a month with
     // no retry - "who gets the checklist, who gets the caught-up note, who gets
-    // nothing" - and the reads it needs already happened above. Only the writes
-    // are gated: sends, email_log rows, the preference-centre lookup (which
-    // creates a row) and every last_newsletter_at touch.
+    // nothing" - and the reads it needs already happened above. Only the mail is
+    // gated: sends, email_log rows, the preference-centre lookup (which creates
+    // a row) and every last_newsletter_at touch.
     for (const h of eligible) {
       const resolved = resolveMemberTasks({
         catalog: tasks,
@@ -235,62 +244,59 @@ export async function GET(request: NextRequest) {
         season,
         now,
       });
-      const { visible, outstanding } = resolved;
-      // Everything that applies is already done/booked/snoozed/dismissed.
-      // Members who cleared it by doing the work get the short "all caught
-      // up" note rather than silence - it still carries the booking CTA.
-      // Everyone else with an empty list (nothing applies to their home at
-      // all, or they hid it all) has no honest email to write, so skip them
-      // and advance last_newsletter_at so the row isn't retried every run.
-      const caughtUp = isCaughtUp(resolved);
-      if (visible.length === 0 || (outstanding.length === 0 && !caughtUp)) {
-        emptySkipped += 1;
-        if (!dryRun) await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
-        continue;
-      }
-      // Checked here rather than before the empty-list branch so the buckets
-      // fall in the same order a live run fills them: an opted-out member whose
-      // list is empty is counted as empty_skipped there too, because that run
-      // never reaches the send.
-      if (optedOut?.has(normalizeEmail(h.email))) {
-        suppressed += 1;
-        continue;
-      }
-      wouldSend += 1;
-      if (caughtUp) caughtUpCount += 1;
-      if (dryRun) continue;
+      const state: RecipientState = {
+        visible: resolved.visible.length,
+        outstanding: resolved.outstanding.length,
+        // Cleared the list by doing the work, so they get the short "all caught
+        // up" note rather than silence - it still carries the booking CTA.
+        caughtUp: isCaughtUp(resolved),
+        optedOut: optedOut?.has(normalizeEmail(h.email)) ?? false,
+      };
+      let outcome = classifyRecipient(state);
 
-      const personalTasks = caughtUp ? [] : outstanding;
-      // Per-recipient preference-center link (best-effort — fall back to the
-      // legacy unsubscribe link alone if the lookup fails).
-      const preferencesUrl = await preferencesUrlFor(origin, h.email).catch(() => undefined);
-      const { subject, html, text } = buildNewsletter({
-        firstName: h.first_name,
-        season,
-        tasks: personalTasks,
-        isSeasonal,
-        baseUrl: origin,
-        unsubscribeUrl: `${origin}/api/home-care/unsubscribe?token=${encodeURIComponent(h.unsubscribe_token)}`,
-        preferencesUrl,
-        monthLabel,
-        year: now.getUTCFullYear(),
-        heroImageUrl: homeCareHeroUrl(SITE_URL, now),
-        caughtUp,
-      });
-      const res = await sendHomeCareNewsletterEmail({ to: h.email, subject, html, text, homeownerId: h.id });
-      if (res.status === 'sent') {
-        sent += 1;
-        await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
-      } else if (res.status === 'skipped' && res.reason === 'unsubscribed') {
-        // Preference opt-out that the legacy homeowners.status sync missed —
-        // an intentional suppression, not a failure. Advance last_newsletter_at
-        // so the row isn't re-attempted (and re-logged) every run this month.
-        suppressed += 1;
-        await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
-      } else {
-        failures.push(`${h.email}:${res.status}`);
+      if (!dryRun) {
+        // empty_skipped and a known opt-out both close the month out without
+        // mail: there is nothing honest to write for the first, and the sender
+        // would only skip the second. Sending closes it out too; a failed send
+        // deliberately does not, so the member stays due and retries next run.
+        let closeOut = outcome !== 'would_send';
+        if (outcome === 'would_send') {
+          // Per-recipient preference-center link (best-effort — fall back to the
+          // legacy unsubscribe link alone if the lookup fails).
+          const preferencesUrl = await preferencesUrlFor(origin, h.email).catch(() => undefined);
+          const { subject, html, text } = buildNewsletter({
+            firstName: h.first_name,
+            season,
+            tasks: state.caughtUp ? [] : resolved.outstanding,
+            isSeasonal,
+            baseUrl: origin,
+            unsubscribeUrl: `${origin}/api/home-care/unsubscribe?token=${encodeURIComponent(h.unsubscribe_token)}`,
+            preferencesUrl,
+            monthLabel,
+            year: now.getUTCFullYear(),
+            heroImageUrl: homeCareHeroUrl(SITE_URL, now),
+            caughtUp: state.caughtUp,
+          });
+          const res = await sendHomeCareNewsletterEmail({ to: h.email, subject, html, text, homeownerId: h.id });
+          // A preference opt-out the snapshot above missed is an intentional
+          // suppression, not a failure. It MOVES this recipient's bucket rather
+          // than adding one, so the totals still come to `eligible`.
+          outcome = reconcileWithSend(outcome, res);
+          if (res.status === 'sent') {
+            sent += 1;
+            closeOut = true;
+          } else if (outcome === 'suppressed') {
+            closeOut = true;
+          } else {
+            failures.push(`${h.email}:${res.status}`);
+          }
+        }
+        if (closeOut) await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
       }
+
+      tally.record(outcome, state);
     }
+    const buckets = tally.counts();
 
     return NextResponse.json({
       ok: true,
@@ -301,18 +307,19 @@ export async function GET(request: NextRequest) {
       due_page: due.length,
       capped,
       eligible: eligible.length,
-      // The classification, in the same buckets dry or live:
-      // would_send + suppressed + empty_skipped === eligible, and caught_up is
-      // the share of would_send that gets the no-task note. `sent` stays 0 on a
-      // dry run; `suppressed` is measured by the sender on a live run and
-      // predicted from the opt-out list on a dry one.
-      would_send: wouldSend,
-      caught_up: caughtUpCount,
-      empty_skipped: emptySkipped,
+      // The classification, in the same buckets dry or live, each recipient in
+      // exactly one of them: would_send + suppressed + empty_skipped ===
+      // eligible, and caught_up is the share of would_send that gets the
+      // no-task note. Only `sent` separates the two runs - it stays 0 on a dry
+      // one, where the mail is what is skipped, not the counting.
+      would_send: buckets.would_send,
+      caught_up: buckets.caught_up,
+      empty_skipped: buckets.empty_skipped,
       sent,
-      suppressed,
+      suppressed: buckets.suppressed,
       // False only when a dry run could not read the opt-out list, i.e. when
-      // would_send may still count members the live send would skip.
+      // would_send may still count members the live send would skip. A live run
+      // is never in doubt: the sender re-checks every recipient it is handed.
       suppression_checked: dryRun ? optedOut !== null : true,
       failures: failures.length,
       dryRun,
