@@ -62,11 +62,14 @@ export function mostRecentSeasonStart(s: Season, date: Date = new Date()): Date 
 /**
  * UTC cutoff for the seasonal reset: a completion of season `s` counts while
  * `completed_at >= completionCutoff(s)`, then expires so the checklist starts
- * fresh each year. The cutoff is the end of the occurrence BEFORE the most
- * recent one (its start + 3 months = most recent start − 9 months), not the
- * most recent start itself: season tabs are freely browsable, so checking off
- * a task shortly before its season begins is legitimate prep and must count
- * toward the upcoming occurrence instead of silently expiring on day one.
+ * fresh each year. Applied through `isRowCurrent` (selection.ts), which the
+ * checklist page and the monthly newsletter both read, so the page and the
+ * email agree on when a completion expires. The cutoff is the end of the
+ * occurrence BEFORE the most recent one (its start + 3 months = most recent
+ * start − 9 months), not the most recent start itself: season tabs are freely
+ * browsable, so checking off a task shortly before its season begins is
+ * legitimate prep and must count toward the upcoming occurrence instead of
+ * silently expiring on day one.
  */
 export function completionCutoff(s: Season, date: Date = new Date()): Date {
   const start = mostRecentSeasonStart(s, date);

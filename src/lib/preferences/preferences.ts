@@ -105,7 +105,11 @@ export async function findByToken(token: string): Promise<EmailPreferences | nul
 /**
  * All emails that have opted OUT of a stream. Used to suppress recipients from
  * Resend broadcasts (which send via audiences, outside the sendTrackedEmail
- * wrapper). Paginates so a large opt-out list is fully returned.
+ * wrapper), and by the monthly Home Care newsletter cron, which classifies
+ * every recipient against one read of this list so `?dryRun=1` reports the
+ * buckets a live send would produce. Read-only, unlike `getOrCreateByEmail`,
+ * which writes a row on first touch. Paginates so a large opt-out list is
+ * fully returned.
  */
 export async function getSuppressedEmails(stream: SuppressionKey): Promise<string[]> {
   const out: string[] = [];

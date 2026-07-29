@@ -60,8 +60,9 @@ function send(
   category: EmailCategory,
   homeownerId?: string | null,
   preferenceStream?: StreamKey,
+  knownSuppressed?: boolean,
 ): Promise<HomeCareEmailResult> {
-  return sendTrackedEmail({
+  const base = {
     from: HOME_CARE_FROM,
     to,
     replyTo: DEFAULT_REPLY_TO,
@@ -70,8 +71,13 @@ function send(
     text,
     category,
     homeownerId: homeownerId ?? null,
-    ...(preferenceStream ? { preferenceStream } : {}),
-  });
+  };
+  // The stream and a verdict about it are one decision, so they're attached in
+  // one branch: sendTrackedEmail's type has no shape where a suppression exists
+  // without the stream it came from.
+  return sendTrackedEmail(
+    preferenceStream ? { ...base, preferenceStream, knownSuppressed: knownSuppressed === true } : base,
+  );
 }
 
 export function sendHomeCareVerificationEmail(args: {
@@ -90,15 +96,23 @@ export function sendHomeCareVerificationEmail(args: {
   return send(args.to, "Confirm your email — your La Vaca Home Care plan", shell("Let's set up your home plan", body), text, 'verification', args.homeownerId);
 }
 
-/** Send a pre-rendered seasonal/monthly newsletter (content built by lib/homecare/newsletter). */
+/**
+ * Send a pre-rendered seasonal/monthly newsletter (content built by
+ * lib/homecare/newsletter).
+ *
+ * `knownSuppressed` is for a caller that classified this recipient against its
+ * own read of the home_care opt-out list: pass it rather than skipping the call,
+ * and the honored opt-out still lands in email_log as a suppression.
+ */
 export function sendHomeCareNewsletterEmail(args: {
   to: string;
   subject: string;
   html: string;
   text: string;
   homeownerId?: string | null;
+  knownSuppressed?: boolean;
 }): Promise<HomeCareEmailResult> {
-  return send(args.to, args.subject, args.html, args.text, 'home_care_newsletter', args.homeownerId, 'home_care');
+  return send(args.to, args.subject, args.html, args.text, 'home_care_newsletter', args.homeownerId, 'home_care', args.knownSuppressed);
 }
 
 export function sendHomeCareWelcomeEmail(args: {

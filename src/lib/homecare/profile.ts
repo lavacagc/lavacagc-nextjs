@@ -242,8 +242,30 @@ export function sanitizeSystems(input: unknown): HomeSystems {
 }
 
 /**
+ * Does a `maintenance_catalog` response actually carry the column the stage
+ * gate reads?
+ *
+ * The gate below is only as strong as `stages`, and PostgREST omits a key that
+ * wasn't selected rather than returning null, so `filterTasksForProfile` reads
+ * a forgotten `stages` as "applies to everyone". That is exactly how "get ready
+ * to sell your house" became items 01 and 02 in every member's newsletter. The
+ * type on each call site can't catch it (the response is an unchecked cast), so
+ * every surface that fetches the catalog checks the shape it actually got and
+ * fails loudly. One predicate rather than one per caller: a second copy is how
+ * the email and the checklist page drifted apart in the first place.
+ *
+ * An empty catalog passes - there is nothing to leak, and each caller already
+ * handles "no tasks" on its own terms.
+ */
+export function catalogCarriesStages(rows: readonly { stages?: string[] }[]): boolean {
+  return rows.length === 0 || 'stages' in rows[0];
+}
+
+/**
  * Filter catalog tasks to a homeowner's systems + stage. With no systems yet
- * (null/empty) returns everything (full list + a prompt to personalize).
+ * (null/empty) the systems gate passes everything (full list + a prompt to
+ * personalize); the stage gate still applies, and with no stage yet it hides
+ * stage-specific tasks rather than showing them - see below.
  */
 export function filterTasksForProfile<T extends { applies_to: string[]; stages?: string[] }>(
   tasks: T[],
@@ -251,9 +273,16 @@ export function filterTasksForProfile<T extends { applies_to: string[]; stages?:
   stage?: Stage | null,
 ): T[] {
   return tasks.filter((t) => {
-    // Stage gate: a task with a specific stages[] only shows for those stages (or 'all').
-    if (stage && Array.isArray(t.stages) && t.stages.length > 0) {
-      if (!t.stages.includes('all') && !t.stages.includes(stage)) return false;
+    // Stage gate: a task with a specific stages[] only shows for those stages.
+    //
+    // A member with NO stage yet sees only 'all' tasks. This fails closed on
+    // purpose: the stage-specific tasks are pre-listing ("Consider a pre-listing
+    // inspection") and new-construction ones, and showing "get ready to sell
+    // your house" to someone who never said they're selling is worse than
+    // showing them slightly less. Previously a null stage skipped the gate
+    // entirely, so anyone who hadn't finished the questionnaire got all of them.
+    if (Array.isArray(t.stages) && t.stages.length > 0 && !t.stages.includes('all')) {
+      if (!stage || !t.stages.includes(stage)) return false;
     }
     // Systems gate: unset profile shows everything.
     if (!systems || Object.keys(systems).length === 0) return true;

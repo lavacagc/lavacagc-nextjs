@@ -29,12 +29,15 @@ test('sanitizeSystems keeps valid follow-up values, drops invalid ones', () => {
   expect(s).toEqual({ hvac: true, hvac_type: 'gas_furnace', priority: 'avoid_emergencies' });
 });
 
-test('stage-tagged tasks only show for their stage (or when no stage)', () => {
+test('stage-tagged tasks only show for their stage, and fail closed with no stage', () => {
   const TASKS = [
     { key: 'seasonal', applies_to: ['all'] }, // no stages → everyone
     { key: 'presale', applies_to: ['all'], stages: ['selling'] },
   ];
-  expect(filterTasksForProfile(TASKS, null).map((t) => t.key).sort()).toEqual(['presale', 'seasonal']); // no stage → all
+  // No stage hides stage-specific tasks rather than showing them all: telling
+  // someone who never said they're selling to prep their house for listing is
+  // worse than showing them slightly less.
+  expect(filterTasksForProfile(TASKS, null).map((t) => t.key)).toEqual(['seasonal']);
   expect(filterTasksForProfile(TASKS, null, 'just_bought').map((t) => t.key)).toEqual(['seasonal']); // presale hidden
   expect(filterTasksForProfile(TASKS, null, 'selling').map((t) => t.key).sort()).toEqual(['presale', 'seasonal']);
 });

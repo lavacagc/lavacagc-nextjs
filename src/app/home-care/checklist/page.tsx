@@ -6,8 +6,10 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById, updateHomeowner } from '@/lib/homecare/homeowners';
-import { completionCutoff, currentSeason, seasonStart, SEASON_LABEL, SEASONS, type Season } from '@/lib/homecare/season';
+import { currentSeason, seasonStart, SEASON_LABEL } from '@/lib/homecare/season';
+import { isRowCurrent } from '@/lib/homecare/selection';
 import {
+  catalogCarriesStages,
   filterTasksForProfile,
   getStage,
   stageFromLegacyType,
@@ -25,6 +27,12 @@ export const dynamic = 'force-dynamic';
 interface CatalogRow extends ChecklistTask {
   applies_to: string[];
   priority: number;
+  /**
+   * Required here even though the client prop leaves it optional: this is what
+   * the stage gate reads, and a select that forgets it reads as "applies to
+   * everyone" rather than failing.
+   */
+  stages: string[];
 }
 
 export default async function ChecklistPage({ searchParams }: { searchParams: Promise<{ welcome?: string; add?: string | string[] }> }) {
@@ -44,25 +52,26 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   const [allTasks, profileRows, doneRows] = await Promise.all([
     supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title,blurb,applies_to,stages,seasons,frequency,starter,diy_or_pro,bookable,est_cost_low,est_cost_high,priority&active=eq.true&order=priority.desc`),
     supabaseRest<{ systems: HomeSystems; stage: Stage | null; homeowner_type: string | null }[]>('GET', `home_profiles?select=systems,stage,homeowner_type&homeowner_id=eq.${homeowner.id}&limit=1`),
-    supabaseRest<{ task_key: string; season: string; status: string; completed_at: string | null }[]>('GET', `homeowner_maintenance?select=task_key,season,status,completed_at&homeowner_id=eq.${homeowner.id}&status=in.(done,dismissed)`),
+    supabaseRest<{ task_key: string; season: string; status: string; completed_at: string | null; updated_at: string | null }[]>('GET', `homeowner_maintenance?select=task_key,season,status,completed_at,updated_at&homeowner_id=eq.${homeowner.id}&status=in.(done,dismissed)`),
   ]);
+
+  // Same exposure as the newsletter cron, so the same guard: the select above
+  // is an unchecked cast, and a `stages` that goes missing from it reads as
+  // "applies to everyone" instead of failing. Throw rather than quietly show
+  // "get ready to sell your house" to a member who never said they're selling.
+  if (!catalogCarriesStages(allTasks ?? [])) {
+    throw new Error('maintenance_catalog select is missing `stages` - the stage gate would not apply');
+  }
 
   const systems = profileRows?.[0]?.systems ?? null;
   const stage: Stage | null = profileRows?.[0]?.stage ?? stageFromLegacyType(profileRows?.[0]?.homeowner_type);
   const stageDef = getStage(stage);
   const hasProfile = (!!systems && Object.keys(systems).length > 0) || stage !== null;
   const tasks = filterTasksForProfile(allTasks ?? [], systems, stage);
-  // Seasonal reset: a completion counts until its season's cutoff passes
-  // (see completionCutoff — pre-season check-offs count toward the upcoming
-  // occurrence), then it expires and the list starts fresh. One-time work
-  // ('starter' essentials) never expires; rows without a timestamp are
-  // counted leniently.
+  // Seasonal reset lives in isRowCurrent (shared with the monthly newsletter so
+  // the page and the email can't disagree about what still counts as done).
   const doneItems = (doneRows ?? [])
-    .filter((r) => {
-      if (r.status !== 'done') return false;
-      if (!SEASONS.includes(r.season as Season) || !r.completed_at) return true;
-      return new Date(r.completed_at).getTime() >= completionCutoff(r.season as Season).getTime();
-    })
+    .filter((r) => r.status === 'done' && isRowCurrent(r))
     .map(({ task_key, season }) => ({ task_key, season }));
   const dismissedKeys = (doneRows ?? []).filter((r) => r.status === 'dismissed').map((r) => r.task_key);
   const autoAddKey = addKey && tasks.some((t) => t.key === addKey && t.bookable && !t.starter && !dismissedKeys.includes(addKey)) ? addKey : undefined;

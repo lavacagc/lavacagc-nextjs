@@ -110,8 +110,10 @@ test('AC9: guides + newsletter per-task CTAs deep-link the task via ?add=', () =
   expect(newsletter).toContain('${checklistUrl}?add=${encodeURIComponent(t.key)}');
   expect(newsletter).toContain('${checklistUrl}?add=${t.key}');
   // The full-checklist buttons stay bare (no ?add), so they open the whole plan.
-  expect(newsletter).toContain('Open &amp; save my full checklist');
-  expect(newsletter).toContain('Open & save your full checklist: ${checklistUrl}\\n');
+  // The label is season/month-specific since the design port ("Open My August
+  // Checklist"), so assert the bare link itself rather than the old copy.
+  expect(newsletter).toContain('<a href="${checklistUrl}" style="display:block;');
+  expect(newsletter).toContain('${ctaLabel}: ${checklistUrl}\\n');
 });
 
 test('AC10: checklist page derives autoAddKey behind a bookable/dismissed guard', () => {

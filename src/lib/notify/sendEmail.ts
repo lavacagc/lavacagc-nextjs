@@ -38,7 +38,7 @@ export type EmailCategory =
   | 'release'
   | 'other';
 
-export interface TrackedEmailInput {
+interface TrackedEmailBase {
   from: string;
   to: string | string[];
   cc?: string | string[];
@@ -64,18 +64,41 @@ export interface TrackedEmailInput {
    * send itself in its own table). Defaults to true: log everything.
    */
   log?: boolean;
-
-  /**
-   * When set, this send is governed by a preference/suppression key: the
-   * recipient's opt-out is honored (suppressed → skipped, not sent) and a
-   * per-recipient List-Unsubscribe header + one-click URL are attached. Accepts
-   * a marketing stream (home_care | buy_remodel | announcements) OR the
-   * transactional 'follow_ups' opt-out (lead follow-ups / review requests, whose
-   * primary purpose is commercial so they still need a working unsubscribe).
-   * Omit for purely transactional/internal mail, which always sends.
-   */
-  preferenceStream?: SuppressionKey;
 }
+
+/**
+ * Stream governance travels as a pair, and the type says so: `knownSuppressed`
+ * is a verdict ABOUT a stream, so it cannot be set without naming one. Left
+ * independent, a stray `knownSuppressed: true` on a stream-less send read as
+ * "no stream, nothing to check" and delivered mail to a recipient the caller
+ * had already established was unsubscribed - the inverse of what it says.
+ */
+type StreamGovernance =
+  | {
+      /**
+       * This send is governed by a preference/suppression key: the recipient's
+       * opt-out is honored (suppressed → skipped, not sent) and a per-recipient
+       * List-Unsubscribe header + one-click URL are attached. Accepts a
+       * marketing stream (home_care | buy_remodel | announcements) OR the
+       * transactional 'follow_ups' opt-out (lead follow-ups / review requests,
+       * whose primary purpose is commercial so they still need a working
+       * unsubscribe).
+       */
+      preferenceStream: SuppressionKey;
+
+      /**
+       * Set when the caller has ALREADY established that this recipient is off
+       * the stream - e.g. the monthly cron reads the whole opt-out list once and
+       * classifies every recipient against it. Such a send still comes through
+       * here rather than being dropped at the call site, so the opt-out leaves
+       * the same email_log row any other honored opt-out leaves.
+       */
+      knownSuppressed?: boolean;
+    }
+  /** Purely transactional/internal mail: no stream, and so no verdict about one. */
+  | { preferenceStream?: never; knownSuppressed?: never };
+
+export type TrackedEmailInput = TrackedEmailBase & StreamGovernance;
 
 export interface TrackedEmailResult {
   status: 'sent' | 'skipped' | 'failed' | 'error';
@@ -129,6 +152,30 @@ async function writeEmailLog(
 }
 
 /**
+ * Honor an opt-out: no send, and one email_log row recording that we
+ * intentionally didn't send.
+ *
+ * Both routes into a suppression end here - the per-recipient lookup below and
+ * a caller that already read the stream's opt-out list - so the audit row is
+ * written once, in one shape, whichever side noticed. Without it the admin
+ * cannot tell "we correctly honored an unsubscribe" from "the run never
+ * reached this member", which for commercial mail is the record that matters.
+ */
+async function suppress(
+  input: TrackedEmailInput,
+  toList: string[],
+  ccList: string[],
+): Promise<TrackedEmailResult> {
+  const result: TrackedEmailResult = {
+    status: 'skipped',
+    reason: 'unsubscribed',
+    error: 'suppressed: recipient unsubscribed from this stream',
+  };
+  if (input.log !== false) await writeEmailLog(input, toList, ccList, result);
+  return result;
+}
+
+/**
  * Send an email via Resend and record it in email_log.
  * Mirrors the {status,emailId,error} result shape the existing senders return.
  */
@@ -160,20 +207,19 @@ export async function sendTrackedEmail(input: TrackedEmailInput): Promise<Tracke
     if (input.log !== false) await writeEmailLog(input, toList, ccList, result);
     return result;
   }
+  // An opt-out the caller already knows about is refused on its own terms -
+  // ahead of the lookup below, which fails OPEN. Failing open is the right
+  // default for a send nobody has ruled out, and the wrong one for a send
+  // somebody has: a DB hiccup must not turn a known unsubscribe into a
+  // delivered email. Nothing about it is conditional on the stream being
+  // readable here, so nothing about it is nested under that.
+  if (input.knownSuppressed) return suppress(input, toList, ccList);
+
   let unsubHeaders: Record<string, string> | undefined;
   if (input.preferenceStream && toList[0]) {
     try {
       const pref = await getOrCreateByEmail(toList[0]);
-      if (pref[input.preferenceStream] === false) {
-        const suppressed: TrackedEmailResult = {
-          status: 'skipped',
-          reason: 'unsubscribed',
-          error: 'suppressed: recipient unsubscribed from this stream',
-        };
-        // Record the suppression so the admin can see we intentionally didn't send.
-        if (input.log !== false) await writeEmailLog(input, toList, ccList, suppressed);
-        return suppressed;
-      }
+      if (pref[input.preferenceStream] === false) return suppress(input, toList, ccList);
       const unsubUrl =
         `${SITE_URL}/api/preferences/unsubscribe?token=${encodeURIComponent(pref.preference_token)}` +
         `&stream=${input.preferenceStream}`;
