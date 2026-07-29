@@ -1,9 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-// Must precede the sender import: it stubs the env that module captures on load.
-import './helpers/stubEmailEnv';
-import { sendTrackedEmail } from '../src/lib/notify/sendEmail';
+import { stubEmailEnv } from './helpers/stubEmailEnv';
 import { buildNewsletter, type NewsletterTask } from '../src/lib/homecare/newsletter';
 
 /**
@@ -17,6 +15,10 @@ import { buildNewsletter, type NewsletterTask } from '../src/lib/homecare/newsle
  *
  * 15 U.S.C. 7704(a)(3)-(5); Gmail/Yahoo bulk sender rules (RFC 8058 one-click).
  */
+// Only the send-through test below needs credentials; the stub is scoped to
+// this file so it cannot follow the worker into the next spec.
+stubEmailEnv();
+
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
 const sendHomeCare = read('src/lib/notify/sendHomeCareEmails.ts');
 const sendEmail = read('src/lib/notify/sendEmail.ts');
@@ -105,6 +107,11 @@ test('suppression: an opt-out the cron already knows about is refused and record
   // email_log. Driven through the real sender here rather than asserted from
   // source, because "no send happened" and "a row was written" are the two
   // things the source cannot prove.
+  // Loaded here rather than at the top of the file: supabase-rest captures
+  // NEXT_PUBLIC_SUPABASE_URL when it loads, and stubEmailEnv only has it in
+  // place from beforeAll onwards.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Playwright compiles specs to CJS; a native import() would bypass its TS transform and fail to load the .ts module.
+  const { sendTrackedEmail }: typeof import('../src/lib/notify/sendEmail') = require('../src/lib/notify/sendEmail');
   const calls: Array<{ url: string; body?: string }> = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
