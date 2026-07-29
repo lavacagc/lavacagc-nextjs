@@ -12,9 +12,11 @@
  *
  *   ?dryRun=1 — classify every recipient and report what would happen, but
  *   write nothing: no sends, no email_log rows, no last_newsletter_at touches,
- *   no preference-centre rows. The three-way outcome (would_send, of which
- *   caught_up, plus empty_skipped) is the point of the flag, so it is computed
- *   on a dry run too - the per-homeowner reads it needs already ran.
+ *   no preference-centre rows. The outcome buckets (would_send, of which
+ *   caught_up, plus suppressed and empty_skipped) are the point of the flag, so
+ *   they are computed on a dry run too - the per-homeowner reads they need
+ *   already ran - and they use the same names a live run reports, so the two
+ *   reconcile line for line.
  *
  * Auth: Bearer CRON_SECRET (also enforced by middleware on /api/cron/*).
  */
@@ -27,7 +29,7 @@ import { buildNewsletter, homeCareHeroUrl, type NewsletterTask } from '@/lib/hom
 import { catalogCarriesStages, stageFromLegacyType, type HomeSystems, type Stage } from '@/lib/homecare/profile';
 import { isCaughtUp, resolveMemberTasks, type MaintenanceRow } from '@/lib/homecare/selection';
 import { sendHomeCareNewsletterEmail } from '@/lib/notify/sendHomeCareEmails';
-import { preferencesUrlFor } from '@/lib/preferences/preferences';
+import { getSuppressedEmails, normalizeEmail, preferencesUrlFor } from '@/lib/preferences/preferences';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -69,6 +71,28 @@ function sameMonth(iso: string | null, now: Date): boolean {
   if (!iso) return false;
   const d = new Date(iso);
   return d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() === now.getUTCMonth();
+}
+
+/**
+ * The home_care stream opt-outs a live send would honour, for a dry run to
+ * predict. A member can sit at status=eq.active in `homeowners` and still be off
+ * the stream (the legacy status sync is best-effort), and sendTrackedEmail skips
+ * those rather than sending - so without this a dry run counts them in
+ * would_send and the live run then reports them under suppressed.
+ *
+ * Read-only by construction: getSuppressedEmails is a plain paginated select,
+ * unlike the getOrCreateByEmail the sender uses, which writes a row on first
+ * touch. Best-effort - null means "could not check", reported as
+ * suppression_checked:false rather than passed off as zero opt-outs.
+ */
+async function homeCareOptOuts(): Promise<Set<string> | null> {
+  try {
+    const emails = await getSuppressedEmails('home_care');
+    return new Set(emails.map(normalizeEmail));
+  } catch (err) {
+    console.error('home-care-newsletter: home_care opt-out lookup failed:', err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -192,6 +216,10 @@ export async function GET(request: NextRequest) {
     let wouldSend = 0;
     let caughtUpCount = 0;
     const failures: string[] = [];
+    // A live run learns each recipient's stream opt-out from the sender itself;
+    // a dry run has to ask, or it reports as would_send people who would get
+    // nothing. One select for the whole list, and only when it is needed.
+    const optedOut = dryRun ? await homeCareOptOuts() : null;
     // Classification runs on every invocation, dry or not. It is the whole
     // question a dry run is asked before a send that happens once a month with
     // no retry - "who gets the checklist, who gets the caught-up note, who gets
@@ -218,6 +246,14 @@ export async function GET(request: NextRequest) {
       if (visible.length === 0 || (outstanding.length === 0 && !caughtUp)) {
         emptySkipped += 1;
         if (!dryRun) await updateHomeowner(h.id, { last_newsletter_at: now.toISOString() }).catch(() => {});
+        continue;
+      }
+      // Checked here rather than before the empty-list branch so the buckets
+      // fall in the same order a live run fills them: an opted-out member whose
+      // list is empty is counted as empty_skipped there too, because that run
+      // never reaches the send.
+      if (optedOut?.has(normalizeEmail(h.email))) {
+        suppressed += 1;
         continue;
       }
       wouldSend += 1;
@@ -265,14 +301,19 @@ export async function GET(request: NextRequest) {
       due_page: due.length,
       capped,
       eligible: eligible.length,
-      // The three-way classification, reported identically dry or live:
-      // would_send + empty_skipped === eligible, and caught_up is the share of
-      // would_send that gets the no-task note. `sent` stays 0 on a dry run.
+      // The classification, in the same buckets dry or live:
+      // would_send + suppressed + empty_skipped === eligible, and caught_up is
+      // the share of would_send that gets the no-task note. `sent` stays 0 on a
+      // dry run; `suppressed` is measured by the sender on a live run and
+      // predicted from the opt-out list on a dry one.
       would_send: wouldSend,
       caught_up: caughtUpCount,
       empty_skipped: emptySkipped,
       sent,
       suppressed,
+      // False only when a dry run could not read the opt-out list, i.e. when
+      // would_send may still count members the live send would skip.
+      suppression_checked: dryRun ? optedOut !== null : true,
       failures: failures.length,
       dryRun,
     });

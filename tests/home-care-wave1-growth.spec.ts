@@ -158,6 +158,38 @@ test('a dry run classifies every recipient and writes nothing', () => {
   }
 });
 
+test('a dry run predicts the stream opt-outs the live send would honour', () => {
+  // would_send used to count every classified recipient, but the send applies
+  // one more filter: sendTrackedEmail skips anyone with pref.home_care ===
+  // false. That is a real state rather than a corner case - a member can sit at
+  // status=eq.active in `homeowners` and still be off the stream, which is why
+  // the suppressed branch further down exists at all. So a dry run reported as
+  // "would send" the very people a live run reports as suppressed, at exactly
+  // the moment the number is used to sanity-check a one-shot monthly send.
+  const src = read('src/app/api/cron/home-care-newsletter/route.ts');
+  const at = (needle: string) => src.indexOf(needle);
+
+  // Consulted on dry runs, through the read-only select...
+  expect(src).toContain('const optedOut = dryRun ? await homeCareOptOuts() : null;');
+  const helper = src.slice(at('async function homeCareOptOuts'), at('export async function GET'));
+  expect(helper).toContain("await getSuppressedEmails('home_care')");
+  // ...never through the sender's lookup, which writes a row on first touch.
+  expect(src).not.toMatch(/getOrCreateByEmail\(/);
+  // A failed lookup is reported as such, not passed off as zero opt-outs.
+  expect(helper).toMatch(/catch[\s\S]*return null;/);
+  expect(src).toContain('suppression_checked: dryRun ? optedOut !== null : true');
+
+  // Opt-outs get their own bucket instead of inflating would_send, and the
+  // check sits after the empty-list branch so the buckets fill in the order a
+  // live run fills them (an opted-out member with an empty list never reaches
+  // the send there either, so they count as empty_skipped on both paths).
+  const optOutCheck = at('if (optedOut?.has(normalizeEmail(h.email))) {');
+  expect(optOutCheck, 'expected the dry run to consult the opt-out set').toBeGreaterThan(0);
+  expect(optOutCheck).toBeGreaterThan(at('emptySkipped += 1;'));
+  expect(optOutCheck).toBeLessThan(at('wouldSend += 1;'));
+  expect(src.slice(optOutCheck, at('wouldSend += 1;'))).toContain('suppressed += 1;');
+});
+
 test('the newsletter hero is pinned to the production host, like the logo above it', () => {
   // The hero used to be built from request.nextUrl.origin while the logo
   // directly above it was absolute, so the two biggest images in one email
