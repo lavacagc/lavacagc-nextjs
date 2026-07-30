@@ -103,6 +103,7 @@ export default function HomeCareChecklistClient({
   currentSeason,
   showCatchUp = false,
   autoAddKey,
+  lavacaCompleted,
 }: {
   tasks: ChecklistTask[];
   doneItems: { task_key: string; season: string }[];
@@ -111,6 +112,12 @@ export default function HomeCareChecklistClient({
   currentSeason: string;
   showCatchUp?: boolean;
   autoAddKey?: string;
+  /**
+   * task_key -> ISO date, for work LA VACA performed. A task the member ticked
+   * themselves is absent here and renders no label - that distinction is the
+   * whole point of completed_by.
+   */
+  lavacaCompleted?: Record<string, string>;
 }) {
   const [done, setDone] = useState<Set<string>>(new Set(doneItems.map((d) => id(d.task_key, d.season))));
   const [dismissed, setDismissed] = useState<Set<string>>(new Set(dismissedKeys));
@@ -366,6 +373,12 @@ export default function HomeCareChecklistClient({
           </button>
           <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <h3 className={`text-base font-bold text-text-primary ${isDone ? 'line-through' : ''}`}>{t.title}</h3>
+            {isDone && lavacaCompleted?.[t.key] && (
+              <div className="mt-0.5 text-xs font-bold text-primary" data-testid="completed-by-lavaca">
+                Completed by La Vaca &middot;{' '}
+                {new Date(lavacaCompleted[t.key]).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </div>
+            )}
             <span className={`text-[11px] font-extrabold ${t.diy_or_pro === 'pro' ? 'text-amber-700' : t.diy_or_pro === 'diy' ? 'text-emerald-700' : 'text-slate-500'}`}>
               {t.diy_or_pro === 'pro' ? 'PRO' : t.diy_or_pro === 'diy' ? 'DIY' : 'DIY / PRO'}
             </span>

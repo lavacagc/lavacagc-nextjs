@@ -36,6 +36,8 @@ export type EmailCategory =
   | 'feedback_request'
   | 'broadcast'
   | 'release'
+  | 'service_quote'
+  | 'visit_reminder'
   | 'other';
 
 interface TrackedEmailBase {

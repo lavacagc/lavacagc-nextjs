@@ -1,0 +1,105 @@
+import { CalendarCheck, Clock, MapPin } from 'lucide-react';
+import { visitDateLabel, visitTimeWindow, easternParts } from '@/lib/homecare/visitSchedule';
+
+/**
+ * The scheduled-visit card at the top of a member's checklist.
+ *
+ * Two states, because "tomorrow" and "three weeks out" deserve different
+ * weight: tomorrow gets the gradient header, anything further out gets a quiet
+ * one in the same position.
+ *
+ * The calendar file is served here rather than attached to the reminder email.
+ * That keeps it one tap away instead of buried in an email they have to find
+ * again, and it means the only .ics carrying the internal ops alarms is the
+ * owner's - a customer can never receive "text the customer when on the way".
+ */
+export interface UpcomingVisit {
+  start: string;
+  end: string | null;
+  address: string | null;
+  services: string[];
+}
+
+function isTomorrowEastern(start: Date, now: Date): boolean {
+  const s = easternParts(start);
+  const n = easternParts(now);
+  const nextDay = new Date(Date.UTC(n.y, n.m, n.day + 1));
+  return s.y === nextDay.getUTCFullYear() && s.m === nextDay.getUTCMonth() && s.day === nextDay.getUTCDate();
+}
+
+export default function UpcomingVisitCard({ visit, now = new Date() }: { visit: UpcomingVisit; now?: Date }) {
+  const start = new Date(visit.start);
+  const end = visit.end ? new Date(visit.end) : new Date(start.getTime() + 2 * 3600_000);
+  const soon = isTomorrowEastern(start, now);
+
+  const icsHref = `/api/home-care/visit.ics?${new URLSearchParams({
+    start: start.toISOString(),
+    end: end.toISOString(),
+    services: visit.services.join('|'),
+    ...(visit.address ? { address: visit.address } : {}),
+  })}`;
+
+  const reschedule = `mailto:alex@lavacagc.com,veronica@lavacagc.com?subject=${encodeURIComponent(
+    `Reschedule my ${visitDateLabel(start)} visit`,
+  )}`;
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-card" data-testid="upcoming-visit">
+      <div
+        className={
+          soon
+            ? 'bg-gradient-to-r from-primary to-accent-sunset px-4 py-2.5 text-xs font-bold uppercase tracking-[0.11em] text-white'
+            : 'border-b border-border bg-muted/40 px-4 py-2.5 text-xs font-bold uppercase tracking-[0.11em] text-text-muted'
+        }
+      >
+        {soon ? 'Coming up - tomorrow' : 'Scheduled'}
+      </div>
+      <div className="px-4 py-4">
+        <div className="flex items-start gap-2.5">
+          <CalendarCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+          <div className="min-w-0">
+            <div className="text-lg font-extrabold leading-tight text-text-primary">
+              {soon ? `Tomorrow, ${visitDateLabel(start)}` : visitDateLabel(start)}
+            </div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-sm font-bold text-primary">
+              <Clock className="h-3.5 w-3.5" /> {visitTimeWindow(start, end)}
+            </div>
+          </div>
+        </div>
+
+        <p className="mt-3 text-sm text-text-secondary">{visit.services.join(' · ')}</p>
+
+        {visit.address && (
+          <p className="mt-1.5 flex items-start gap-1.5 text-xs text-text-muted">
+            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {visit.address}
+          </p>
+        )}
+
+        <p className="mt-3 text-sm text-text-secondary">
+          <strong className="text-text-primary">We&apos;ll text you when we&apos;re on our way.</strong> You don&apos;t need to be home.
+        </p>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <a
+            href={icsHref}
+            className="inline-flex min-h-[44px] items-center rounded-xl bg-primary px-4 text-sm font-bold text-white shadow-button transition-all hover:-translate-y-[1px]"
+          >
+            Add to calendar
+          </a>
+          <a
+            href={reschedule}
+            className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-semibold text-text-primary transition-colors hover:border-primary"
+          >
+            Need to reschedule?
+          </a>
+          <a
+            href="tel:2012124917"
+            className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-semibold text-text-primary transition-colors hover:border-primary"
+          >
+            Or call us
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}

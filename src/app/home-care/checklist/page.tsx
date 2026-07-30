@@ -19,6 +19,7 @@ import {
   type Stage,
 } from '@/lib/homecare/profile';
 import HomeCareChecklistClient, { type ChecklistTask } from '@/components/homecare/HomeCareChecklistClient';
+import UpcomingVisitCard, { type UpcomingVisit } from '@/components/homecare/UpcomingVisitCard';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { CheckCircle2, ChevronDown, Phone, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 
@@ -48,11 +49,15 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
 
   updateHomeowner(homeowner.id, { last_seen_at: new Date().toISOString() }).catch(() => {});
 
+  // Captured once per request. This is a server component rendered fresh on
+  // every load (force-dynamic), so there is no memoised-render concern.
+  // eslint-disable-next-line react-hooks/purity
+  const nowMs = Date.now();
   const season = currentSeason();
   const [allTasks, profileRows, doneRows] = await Promise.all([
     supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title,blurb,applies_to,stages,seasons,frequency,starter,diy_or_pro,bookable,est_cost_low,est_cost_high,priority&active=eq.true&order=priority.desc`),
     supabaseRest<{ systems: HomeSystems; stage: Stage | null; homeowner_type: string | null }[]>('GET', `home_profiles?select=systems,stage,homeowner_type&homeowner_id=eq.${homeowner.id}&limit=1`),
-    supabaseRest<{ task_key: string; season: string; status: string; completed_at: string | null; updated_at: string | null }[]>('GET', `homeowner_maintenance?select=task_key,season,status,completed_at,updated_at&homeowner_id=eq.${homeowner.id}&status=in.(done,dismissed)`),
+    supabaseRest<{ task_key: string; season: string; status: string; completed_at: string | null; updated_at: string | null; completed_by: string | null; scheduled_start: string | null; scheduled_end: string | null; service_address: string | null }[]>('GET', `homeowner_maintenance?select=task_key,season,status,completed_at,updated_at,completed_by,scheduled_start,scheduled_end,service_address&homeowner_id=eq.${homeowner.id}&status=in.(done,dismissed,booked)`),
   ]);
 
   // Same exposure as the newsletter cron, so the same guard: the select above
@@ -74,6 +79,32 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
     .filter((r) => r.status === 'done' && isRowCurrent(r))
     .map(({ task_key, season }) => ({ task_key, season }));
   const dismissedKeys = (doneRows ?? []).filter((r) => r.status === 'dismissed').map((r) => r.task_key);
+  // Work La Vaca performed gets a label; a task the member ticked themselves
+  // does not - which is the whole point of completed_by.
+  const lavacaCompleted = Object.fromEntries(
+    (doneRows ?? [])
+      .filter((r) => r.status === 'done' && r.completed_by === 'lavaca' && r.completed_at)
+      .map((r) => [r.task_key, r.completed_at as string]),
+  );
+  // The next booked visit, if any. Several tasks can share one window, so they
+  // collapse into a single card listing every service.
+  const bookedRows = (doneRows ?? []).filter((r) => r.status === 'booked' && r.scheduled_start);
+  const nextStart = bookedRows
+    .map((r) => r.scheduled_start as string)
+    .filter((iso) => new Date(iso).getTime() > nowMs)
+    .sort()[0];
+  const upcomingVisit: UpcomingVisit | null = nextStart
+    ? (() => {
+        const rows = bookedRows.filter((r) => r.scheduled_start === nextStart);
+        const titleFor = (k: string) => (allTasks ?? []).find((t) => t.key === k)?.title ?? k;
+        return {
+          start: nextStart,
+          end: rows[0].scheduled_end,
+          address: rows[0].service_address,
+          services: rows.map((r) => titleFor(r.task_key)),
+        };
+      })()
+    : null;
   const autoAddKey = addKey && tasks.some((t) => t.key === addKey && t.bookable && !t.starter && !dismissedKeys.includes(addKey)) ? addKey : undefined;
   const ownedSystems = SYSTEM_QUESTIONS.filter((q) => systems?.[q.key] === true);
   const greeting = homeowner.first_name ? `Welcome back, ${homeowner.first_name}` : 'Your home checklist';
@@ -148,10 +179,13 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
                 <Link href="/home-care/setup" className="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-primary to-accent-tangerine px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-button hover:-translate-y-px transition-all">Set up my program →</Link>
               </div>
             )}
+            {/* A booked visit shows even when the task list is empty - it is
+                the most time-sensitive thing on the page. */}
+            {upcomingVisit && <UpcomingVisitCard visit={upcomingVisit} />}
             {(tasks?.length ?? 0) === 0 ? (
               <p className="text-text-secondary">Your checklist is being prepared — check back soon.</p>
             ) : (
-              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} dismissedKeys={dismissedKeys} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} autoAddKey={autoAddKey} />
+              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} dismissedKeys={dismissedKeys} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} autoAddKey={autoAddKey} lavacaCompleted={lavacaCompleted} />
             )}
           </div>
         </section>
