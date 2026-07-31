@@ -33,7 +33,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTelegramMessage, escapeTelegram } from '@/lib/notify/telegramMessage';
 import {
-  ensureVisitDispatch, VISIT_DISPATCH_COLUMNS, DISPATCH_ASSIGNMENT_COLUMNS,
+  ensureVisitDispatch, liveAssignments, VISIT_DISPATCH_COLUMNS, DISPATCH_ASSIGNMENT_COLUMNS,
   type DispatchAssignment, type VisitDispatchRow,
 } from '@/lib/homecare/dispatch';
 import {
@@ -135,7 +135,10 @@ export async function GET(request: NextRequest) {
       const label = `${visitDateLabel(start)} ${visitTimeWindow(start, end)}`;
 
       let dispatch = dispatchByVisit.get(`${first.homeowner_id}|${visitKey(start)}`) ?? null;
-      const mine = dispatch ? assignmentsByDispatch.get(dispatch.id) ?? [] : [];
+      // Only the people still ON the visit. Somebody un-ticked from a later
+      // re-dispatch is retired, and counting their earlier confirmation would
+      // silence both stages for a visit nobody going has answered.
+      const mine = liveAssignments(dispatch ? assignmentsByDispatch.get(dispatch.id) ?? [] : []);
 
       // ONLY a confirmation stops the chase. A flag is the opposite of an
       // all-clear: somebody said this visit has a problem, and the customer is

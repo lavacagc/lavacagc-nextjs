@@ -372,7 +372,85 @@ test('AC38 re-dispatching reuses each assignment, so a re-send cannot un-confirm
   const src = read('src/lib/homecare/dispatch.ts');
   const fn = src.slice(src.indexOf('export async function ensureAssignments'), src.indexOf('export interface VisitContext'));
   expect(fn).toContain('const missing = recipients.filter((r) => !byRecipient.has(r.id));');
-  expect(fn).not.toContain("status: 'sent'");
+  // The ONE row a re-send resets is a RETIRED one - somebody put back on the
+  // visit after being dropped, whose answer was retired with them. A live
+  // confirmation is never touched, which is what this AC has always guarded.
+  const revive = fn.slice(fn.indexOf('const returning ='), fn.indexOf('const missing ='));
+  expect(revive).toContain("wanted.has(a.recipient_id) && a.status === 'retired'");
+  expect(revive).toContain("{ status: 'sent', confirmed_at: null, note: null, updated_at: stamp }");
+  expect(fn.split("status: 'sent'").length - 1, 'no other write puts a row back to sent').toBe(1);
+});
+
+test('AC81 a recipient dropped from the selection is retired, not left with a live link', () => {
+  const src = read('src/lib/homecare/dispatch.ts');
+  const fn = src.slice(src.indexOf('export async function ensureAssignments'), src.indexOf('export interface VisitContext'));
+  // Deselecting is how a mis-addressed visit is corrected, and re-booking the
+  // same window is a re-dispatch rather than a supersede - so nothing else
+  // would ever clean the row up.
+  expect(fn).toContain("const dropped = existing.filter((a) => !wanted.has(a.recipient_id) && a.status !== 'retired');");
+  expect(fn).toContain("{ status: 'retired', updated_at: stamp }");
+  // The row is kept: it is the record that they were sent it.
+  expect(fn).not.toContain("supabaseRest('DELETE'");
+  // A revival that did not land skips the send rather than mailing a link that
+  // is still dead.
+  expect(fn).toContain("a!.status !== 'retired'");
+
+  // Owner decision: their calendar event is deliberately NOT retracted, so no
+  // METHOD:CANCEL is sent from here. AC82 is the mitigation.
+  expect(fn).not.toContain('sendDispatchRetraction');
+});
+
+test('AC81 a retired assignment counts for nothing, wherever the crew is read', () => {
+  const src = read('src/lib/homecare/dispatch.ts');
+  expect(src).toContain("return assignments.filter((a) => a.status !== 'retired');");
+  // Every reader goes through the one helper rather than remembering the rule.
+  const cron = read('src/app/api/cron/visit-dispatch-escalation/route.ts');
+  expect(cron).toContain('const mine = liveAssignments(');
+  const confirm = read('src/app/api/crew/confirm/route.ts');
+  expect(confirm).toContain('liveAssignments(rows)');
+
+  const a = (over: Partial<DispatchAssignment>): DispatchAssignment => ({
+    id: 'a1', dispatch_id: 'd1', recipient_id: 'r1', email: 'alex@lavacagc.com',
+    name: 'Alex', confirm_token: 't', status: 'sent', confirmed_at: null, note: null, ...over,
+  });
+  // Veronica confirmed, then was taken off the visit. Alex has not answered, so
+  // the visit is still awaiting - not confirmed on the strength of hers.
+  const dropped = dispatchStateOf([
+    a({}),
+    a({ id: 'a2', recipient_id: 'r2', name: 'Veronica', status: 'retired', confirmed_at: '2026-08-04T12:00:00Z' }),
+  ]);
+  expect(dropped.state).toBe('awaiting');
+  expect(dropped.confirmedBy).toEqual([]);
+  // And a retired flag is not an open problem either.
+  expect(dispatchStateOf([a({}), a({ id: 'a2', recipient_id: 'r2', status: 'retired', note: 'sub cancelled' })]).flags).toEqual([]);
+});
+
+test('AC82 a retired token says so plainly, and cannot answer', () => {
+  const page = read('src/app/crew/confirm/[token]/page.tsx');
+  expect(page).toContain("if (assignment.status === 'retired')");
+  expect(page).toContain('You are no longer on this visit');
+  // The whole point: they may be acting on the 7:00am alarm still on their
+  // calendar, which is not retracted.
+  expect(page).toContain('text the customer about it');
+  // Checked BEFORE the generic "not valid" fallback can swallow it...
+  expect(page.indexOf("assignment.status === 'retired'")).toBeGreaterThan(page.indexOf('This link is not valid'));
+  // ...and an unknown token still gets that generic answer, so AC44 holds.
+  expect(page).toContain('This link is not valid');
+
+  const route = read('src/app/api/crew/confirm/route.ts');
+  expect(route).toContain("if (assignment.status === 'retired')");
+  expect(route).toContain('{ status: 410 }');
+  // Refused before the write, or it would satisfy the escalation for people
+  // who have not answered.
+  expect(route.indexOf("assignment.status === 'retired'")).toBeLessThan(route.indexOf("supabaseRest('PATCH'"));
+});
+
+test('AC81 the status CHECK allows retired, and the migration stays re-runnable', () => {
+  const sql = read('supabase/migrations/20260818000000_crew_dispatch.sql');
+  expect(sql).toContain("CHECK (status IN ('sent', 'confirmed', 'flagged', 'retired'))");
+  // Widening a CHECK against a live table only works if the old one is dropped
+  // first, and this file is hand-applied to a database that already has it.
+  expect(sql).toContain('DROP CONSTRAINT IF EXISTS visit_dispatch_recipients_status_check;');
 });
 
 test('AC39 dispatched_at is stamped only when something actually sent', () => {
@@ -636,7 +714,9 @@ test('AC75 the flag alert reads the other assignments rather than asserting nobo
   expect(src).not.toContain('Nobody has confirmed it.');
   const verdict = src.slice(src.indexOf('async function siblingVerdict'));
   expect(verdict).toContain('assignmentsForDispatch(dispatch.id)');
-  expect(verdict).toContain('rows.filter((a) => a.id !== assignment.id)');
+  // Live siblings only - somebody retired off the visit is not a colleague who
+  // has answered it.
+  expect(verdict).toContain('liveAssignments(rows).filter((a) => a.id !== assignment.id)');
   expect(verdict).toContain("a.status === 'confirmed'");
   expect(verdict).toContain('escapeTelegram(confirmed.join');
   // A read that failed says so rather than guessing either way.
@@ -758,8 +838,8 @@ test('AC79 both callers surface it - the cancel response and the reschedule', ()
   expect(route).toContain("return NextResponse.json({ status: 'cancelled', reminder, dispatch });");
   // A reschedule used to discard it entirely, which made a failed retraction on
   // a moved visit invisible even in the response.
-  expect(route).toContain('const retired: ClearDispatchResult[] = [];');
-  expect(route).toContain('const stillHolding = [...new Set(retired.flatMap((r) => r.unretracted))];');
+  expect(route).toContain('const retired: { when: Date; result: ClearDispatchResult }[] = [];');
+  expect(route).toContain('const stillHolding = [...new Set(retired.flatMap((r) => r.result.unretracted))];');
   expect(route).toContain('stillHolding,');
 
   const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
@@ -767,6 +847,57 @@ test('AC79 both callers surface it - the cancel response and the reschedule', ()
   expect(page).toContain('The crew could NOT be told it is off');
   expect(page).toContain('data.stillHolding ?? []');
   expect(page).toContain('will text the customer about it at 7:00am');
+});
+
+test('AC83 a dispatch row that would not come off is never reported as a clean cancel', () => {
+  // The catch returns BEFORE the retraction is attempted, so an empty
+  // `unretracted` alongside 'unavailable' means nobody was told - not that
+  // everybody was.
+  const lib = read('src/lib/homecare/dispatch.ts');
+  const guard = lib.slice(lib.indexOf("return { status: 'unavailable'"));
+  expect(guard.indexOf('sendDispatchRetraction')).toBeGreaterThan(guard.indexOf("retraction: 'not_needed'"));
+
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  // The cancel toast reads the row's own verdict, says what it means, and is
+  // destructive on it.
+  expect(page).toContain("const dispatchStale = data.dispatch?.status === 'unavailable';");
+  expect(page).toContain('The crew record could NOT be cleared');
+  expect(page).toContain('variant: stranded || dispatchStale || stillHolding.length > 0');
+  // The complete toast reads the `dispatch` the route has always returned.
+  expect(page).toContain("const dispatchStale = data.dispatch === 'unavailable';");
+  expect(page).toContain('variant: stranded || dispatchStale ? ');
+  // And the reschedule names the window it could not retire.
+  expect(page).toContain('const unretiredWindows: string[] = data.unretiredWindows ?? [];');
+  expect(page).toContain('The crew record for the OLD window could NOT be retired');
+  expect(page).toContain('|| unretiredWindows.length > 0');
+
+  const schedule = read('src/app/api/admin/service-quote/schedule/route.ts');
+  expect(schedule).toContain("const unretiredWindows = retired\n      .filter((r) => r.result.status === 'unavailable')");
+  expect(schedule).toContain('unretiredWindows,');
+  const complete = read('src/app/api/admin/service-quote/complete/route.ts');
+  expect(complete).toContain("if (cleared.status === 'unavailable') dispatch = 'unavailable';");
+});
+
+test('AC84 a dispatch read that failed reads as unknown, never as never-dispatched', () => {
+  const intake = read('src/app/api/admin/service-quote/intake/route.ts');
+  // Both queries: a partial failure on either one used to make every visit read
+  // as never dispatched, and the screen renders nothing at all in that state -
+  // so a flagged visit vanished from the only surface a flag reaches, taking
+  // its "Mark handled" button with it.
+  expect(intake.match(/\.catch\(\(\) => null\)/g) ?? [], 'both reads fail closed').toHaveLength(2);
+  expect(intake).toContain('if (read === null) return unreadable();');
+  expect(intake).toContain('if (answered === null) return unreadable();');
+  expect(intake).toContain('dispatch: UNKNOWN_DISPATCH_STATE');
+  // An EMPTY read is still 'none' - that is a visit nobody was dispatched for,
+  // which is a different thing from one we could not read.
+  expect(intake).toContain('if (dispatches.length === 0) return bookings.map((b) => ({ ...b, dispatch: blank }));');
+
+  const lib = read('src/lib/homecare/dispatch.ts');
+  expect(lib).toContain("state: 'unknown', confirmedBy: [], flags: []");
+
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain("b.dispatch.state === 'unknown' ?");
+  expect(page).toContain('Could not read what the crew has said');
 });
 
 test('AC80 a missing scheduled_end resolves through visitEndsAt, never a second literal', () => {

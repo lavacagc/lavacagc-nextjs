@@ -40,7 +40,8 @@ interface PastRequest {
  * why the problem somebody raised has to stay visible on this screen.
  */
 interface BookingDispatch {
-  state: 'none' | 'awaiting' | 'confirmed' | 'flagged';
+  /** `unknown` is a read that FAILED - never the same answer as "none". */
+  state: 'unknown' | 'none' | 'awaiting' | 'confirmed' | 'flagged';
   confirmedBy: string[];
   flags: { by: string; note: string | null }[];
 }
@@ -263,10 +264,17 @@ export default function SendServiceQuotePage() {
       const movedLine = stillHolding.length > 0
         ? ` The OLD window could not be taken off ${stillHolding.join(', ')}'s calendar - call them, or they will text the customer about it at 7:00am.`
         : '';
-      const bad = data.reminder === 'unavailable' || data.dispatch !== 'sent' || stillHolding.length > 0;
+      // The row not coming off is the other verdict, and it means nothing was
+      // retracted for that window either.
+      const unretiredWindows: string[] = data.unretiredWindows ?? [];
+      const staleLine = unretiredWindows.length > 0
+        ? ' The crew record for the OLD window could NOT be retired - nobody was told it is off, and re-booking that slot may go unchased.'
+        : '';
+      const bad = data.reminder === 'unavailable' || data.dispatch !== 'sent'
+        || stillHolding.length > 0 || unretiredWindows.length > 0;
       toast({
         title: 'Visit scheduled',
-        description: reminderLine + dispatchLine + movedLine,
+        description: reminderLine + dispatchLine + movedLine + staleLine,
         variant: bad ? 'destructive' : undefined,
       });
     } catch (e) {
@@ -300,6 +308,11 @@ export default function SendServiceQuotePage() {
       if (!res.ok) throw new Error(data.error || 'Failed');
       await refreshBookings();
       const stranded = data.reminder === 'unavailable';
+      // The route has always answered with this and the screen never read it. A
+      // dispatch row that would not come off hands the next booking of the same
+      // slot an already-confirmed assignment and a `nudged_at` that tells the
+      // 5pm stage it has nothing to do.
+      const dispatchStale = data.dispatch === 'unavailable';
       // 'suppressed' is not a fault to chase: this customer used the opt-out the
       // quote offered them, so no review request is the correct outcome.
       const feedbackLine =
@@ -310,8 +323,9 @@ export default function SendServiceQuotePage() {
       toast({
         title: 'Marked complete',
         description: feedbackLine
-          + (stranded ? ' The night-before reminder could NOT be pulled - stop it on the Follow-Ups page.' : ''),
-        variant: stranded ? 'destructive' : undefined,
+          + (stranded ? ' The night-before reminder could NOT be pulled - stop it on the Follow-Ups page.' : '')
+          + (dispatchStale ? ' The crew record could NOT be cleared - re-booking this slot may go unchased.' : ''),
+        variant: stranded || dispatchStale ? 'destructive' : undefined,
       });
     } catch (e) {
       toast({ title: 'Failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
@@ -356,17 +370,24 @@ export default function SendServiceQuotePage() {
       // customer about it - the exact thing the retraction exists to stop - so
       // it is never reported as clean.
       const stillHolding: string[] = data.dispatch?.unretracted ?? [];
-      const crewLine = stillHolding.length > 0
-        ? ` The crew could NOT be told it is off (${stillHolding.join(', ')}) - call them.`
-        : data.dispatch?.retraction === 'sent'
-          ? ' The crew has been sent a calendar cancellation.'
-          : '';
+      // The other half of that verdict, and the one that used to be silent: when
+      // the read-or-delete threw, NOTHING was retracted either - the catch
+      // returns before the cancellation goes out - so an empty `unretracted`
+      // there means nobody was told, not that everybody was.
+      const dispatchStale = data.dispatch?.status === 'unavailable';
+      const crewLine = dispatchStale
+        ? ' The crew record could NOT be cleared - nobody has been told it is off, and re-booking this slot may go unchased. Call them.'
+        : stillHolding.length > 0
+          ? ` The crew could NOT be told it is off (${stillHolding.join(', ')}) - call them.`
+          : data.dispatch?.retraction === 'sent'
+            ? ' The crew has been sent a calendar cancellation.'
+            : '';
       toast({
         title: 'Visit cancelled',
         description: (stranded
           ? 'Off the books, but the night-before reminder could NOT be pulled - stop it on the Follow-Ups page.'
           : 'Off the books, and the reminder is pulled.') + crewLine,
-        variant: stranded || stillHolding.length > 0 ? 'destructive' : undefined,
+        variant: stranded || dispatchStale || stillHolding.length > 0 ? 'destructive' : undefined,
       });
     } catch (e) {
       toast({ title: 'Cancel failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
@@ -620,7 +641,14 @@ export default function SendServiceQuotePage() {
                       */}
                       {b.dispatch && b.dispatch.state !== 'none' && (
                         <span className="mt-1 block text-xs" data-testid="sq-dispatch-state">
-                          {b.dispatch.state === 'flagged' ? (
+                          {b.dispatch.state === 'unknown' ? (
+                            // Said out loud rather than shown as "not
+                            // dispatched": a flag that vanished because a read
+                            // failed takes its "Mark handled" button with it.
+                            <span className="font-semibold text-destructive">
+                              Could not read what the crew has said - look again before you rely on this.
+                            </span>
+                          ) : b.dispatch.state === 'flagged' ? (
                             <span className="font-semibold text-destructive">
                               Flagged by {b.dispatch.flags.map((f) => f.by).join(', ')}
                               {b.dispatch.flags.some((f) => f.note)

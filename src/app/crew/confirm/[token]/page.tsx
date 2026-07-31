@@ -45,6 +45,26 @@ export default async function CrewConfirmPage({
 
   const { assignment, dispatch, visit } = found;
 
+  // Taken off this visit - un-ticked on the picker and the window re-dispatched
+  // to somebody else. Deliberately NOT the generic answer above: their calendar
+  // still holds the event and its 7:00am "text the customer when the crew is on
+  // the way" alarm, which is not retracted (owner decision), so this page is
+  // where somebody acting on that alarm finds out the visit is not theirs -
+  // before they text a customer about a job they are not going to. An unknown
+  // token still gets the generic answer, so live tokens cannot be enumerated.
+  if (assignment.status === 'retired') {
+    return (
+      <Shell>
+        <h1 className="text-xl font-bold text-[#1A1A1A]">You are no longer on this visit</h1>
+        <p className="mt-2 text-sm text-[#666]">
+          Somebody else has been assigned to it, so there is nothing for you to confirm and
+          nothing to do - please don&apos;t text the customer about it. If it is still on your
+          calendar you can delete it. Call the office on (201) 212-4917 if that is a surprise.
+        </p>
+      </Shell>
+    );
+  }
+
   // The visit itself is gone - cancelled, or closed out - even though the
   // dispatch email is still sitting in their inbox. Say so rather than let
   // someone confirm a job nobody is attending.

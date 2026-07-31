@@ -30,7 +30,7 @@ import {
   type ServiceCatalogRow, type CompletionRow, type BookedRow, type Booking,
 } from '@/lib/homecare/serviceIntake';
 import {
-  dispatchStateOf, VISIT_DISPATCH_COLUMNS, DISPATCH_ASSIGNMENT_COLUMNS,
+  dispatchStateOf, UNKNOWN_DISPATCH_STATE, VISIT_DISPATCH_COLUMNS, DISPATCH_ASSIGNMENT_COLUMNS,
   type DispatchAssignment, type VisitDispatchRow, type VisitDispatchState,
 } from '@/lib/homecare/dispatch';
 
@@ -59,24 +59,36 @@ type BookedVisit = Booking & { dispatch: VisitDispatchState };
  * most the visits they have on the books.
  *
  * Best-effort. The lookup is worth answering without it - as it already is
- * without the scheduling columns - so a failure leaves the state unknown rather
+ * without the scheduling columns - so a failure leaves the state UNKNOWN rather
  * than failing the whole read.
+ *
+ * Unknown, never 'none'. Failing closed to "we could not read this" is safe;
+ * failing open to "never dispatched" is what hides a flag, because the screen
+ * renders nothing at all for a visit in that state - and this is the only
+ * surface a flag ever reaches, along with the button that clears it.
  */
 async function withDispatchState(homeownerId: string, bookings: Booking[]): Promise<BookedVisit[]> {
   const blank: VisitDispatchState = { state: 'none', confirmedBy: [], flags: [] };
+  const unreadable = () => bookings.map((b) => ({ ...b, dispatch: UNKNOWN_DISPATCH_STATE }));
   if (bookings.length === 0) return [];
 
-  const dispatches = (await supabaseRest<VisitDispatchRow[]>(
+  const read = await supabaseRest<VisitDispatchRow[]>(
     'GET',
     `visit_dispatch?select=${VISIT_DISPATCH_COLUMNS}&homeowner_id=eq.${homeownerId}`,
-  ).catch(() => [] as VisitDispatchRow[])) ?? [];
+  ).catch(() => null);
+  if (read === null) return unreadable();
+
+  const dispatches = read ?? [];
   if (dispatches.length === 0) return bookings.map((b) => ({ ...b, dispatch: blank }));
 
-  const assignments = (await supabaseRest<DispatchAssignment[]>(
+  const answered = await supabaseRest<DispatchAssignment[]>(
     'GET',
     `visit_dispatch_recipients?select=${DISPATCH_ASSIGNMENT_COLUMNS}` +
       `&dispatch_id=in.(${dispatches.map((d) => d.id).join(',')})`,
-  ).catch(() => [] as DispatchAssignment[])) ?? [];
+  ).catch(() => null);
+  if (answered === null) return unreadable();
+
+  const assignments = answered ?? [];
 
   const byDispatch = new Map<string, DispatchAssignment[]>();
   for (const a of assignments) {

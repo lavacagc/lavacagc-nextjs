@@ -94,11 +94,21 @@ CREATE TABLE IF NOT EXISTS public.visit_dispatch_recipients (
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 'retired' is somebody taken OFF the visit: un-ticked on the dispatch picker
+-- and the window re-dispatched to whoever is actually going. The row stays as
+-- the record they were once sent it, but it counts for nothing - their confirm
+-- token stops working, and the escalation neither waits on them nor accepts
+-- their answer. Without it the row survives with a live token, and a tap from
+-- somebody who is not on the visit satisfies "somebody confirmed" and silences
+-- the 5pm and 6pm chases for a visit nobody going has answered.
+--
+-- Widening a CHECK is safe to re-run against the live table: every existing row
+-- already satisfies the larger set.
 ALTER TABLE public.visit_dispatch_recipients
   DROP CONSTRAINT IF EXISTS visit_dispatch_recipients_status_check;
 ALTER TABLE public.visit_dispatch_recipients
   ADD CONSTRAINT visit_dispatch_recipients_status_check
-  CHECK (status IN ('sent', 'confirmed', 'flagged'));
+  CHECK (status IN ('sent', 'confirmed', 'flagged', 'retired'));
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_visit_dispatch_recipients_token
   ON public.visit_dispatch_recipients (confirm_token);

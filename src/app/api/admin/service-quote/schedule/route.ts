@@ -184,23 +184,28 @@ export async function POST(request: NextRequest) {
     // and the crew would be left holding two events - the moved visit's and the
     // new one's - each with its own 7:00am "text the customer" alarm.
     //
-    // The verdict is kept, not discarded: a retraction that never landed leaves
-    // somebody holding the OLD window and its alarm, and the admin who moved
-    // the visit is the only person in a position to call them.
-    const retired: ClearDispatchResult[] = [];
+    // BOTH verdicts are kept, not discarded. A retraction that never landed
+    // leaves somebody holding the OLD window and its alarm, and the admin who
+    // moved the visit is the only person in a position to call them; a row that
+    // would not come off leaves the next booking of that slot inheriting the
+    // stamps that say it has already been chased, and nothing else would ever
+    // say so.
+    const retired: { when: Date; result: ClearDispatchResult }[] = [];
     for (const { when, visit } of vacated) {
-      retired.push(
-        await clearVisitDispatch(homeowner.id, when, { reason: 'cancelled', visit })
-          .catch((err): ClearDispatchResult => {
-            console.error(
-              'crew dispatch for a superseded window could not be retired:',
-              err instanceof Error ? err.message : String(err),
-            );
-            return { status: 'unavailable', retraction: 'not_needed', unretracted: [] };
-          }),
-      );
+      const result = await clearVisitDispatch(homeowner.id, when, { reason: 'cancelled', visit })
+        .catch((err): ClearDispatchResult => {
+          console.error(
+            'crew dispatch for a superseded window could not be retired:',
+            err instanceof Error ? err.message : String(err),
+          );
+          return { status: 'unavailable', retraction: 'not_needed', unretracted: [] };
+        });
+      retired.push({ when, result });
     }
-    const stillHolding = [...new Set(retired.flatMap((r) => r.unretracted))];
+    const stillHolding = [...new Set(retired.flatMap((r) => r.result.unretracted))];
+    const unretiredWindows = retired
+      .filter((r) => r.result.status === 'unavailable')
+      .map((r) => r.when.toISOString());
 
     return NextResponse.json({
       status: 'scheduled',
@@ -212,6 +217,10 @@ export async function POST(request: NextRequest) {
       // Who was NOT told the old window is off, when this booking moved one.
       // Empty is the normal answer; anything in it is a phone call.
       stillHolding,
+      // Old windows whose dispatch record would not come off at all - so
+      // nothing was retracted for them either, and re-booking that slot would
+      // inherit stamps saying it has already been chased.
+      unretiredWindows,
       // What each task was actually filed under. "Mark complete" needs this:
       // the season is per task and derived here, so the caller cannot guess it.
       seasons: Object.fromEntries(tasks.map((t) => [t.taskKey, t.season])),

@@ -22,7 +22,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTelegramMessage, escapeTelegram } from '@/lib/notify/telegramMessage';
-import { lookupByToken, assignmentsForDispatch, type TokenLookup } from '@/lib/homecare/dispatch';
+import {
+  lookupByToken, assignmentsForDispatch, liveAssignments, type TokenLookup,
+} from '@/lib/homecare/dispatch';
 import { visitDateLabel, visitTimeWindow } from '@/lib/homecare/visitSchedule';
 import { z } from 'zod';
 
@@ -67,6 +69,20 @@ export async function POST(request: NextRequest) {
   if (!found) return NextResponse.json({ error: 'This link is not valid.' }, { status: 404 });
 
   const { assignment } = found;
+
+  // Taken OFF this visit - un-ticked on the picker and the window re-dispatched.
+  // The link is dead, and says so plainly rather than falling back to the
+  // generic "not valid": this person may be acting on the 7:00am alarm still
+  // sitting on their calendar, and the one thing they must learn before they
+  // text the customer is that the visit is not theirs. Answering would be
+  // worse - it would satisfy the escalation for people who have not answered.
+  if (assignment.status === 'retired') {
+    return NextResponse.json({
+      status: 'retired',
+      error: 'You are no longer on this visit - there is nothing to confirm.',
+    }, { status: 410 });
+  }
+
   const now = new Date().toISOString();
   try {
     await supabaseRest('PATCH', `visit_dispatch_recipients?id=eq.${assignment.id}`, {
@@ -147,7 +163,7 @@ async function notifyFlag(found: TokenLookup, note: string | null) {
 async function siblingVerdict(found: TokenLookup): Promise<string> {
   const { assignment, dispatch } = found;
   const others = await assignmentsForDispatch(dispatch.id)
-    .then((rows) => rows.filter((a) => a.id !== assignment.id))
+    .then((rows) => liveAssignments(rows).filter((a) => a.id !== assignment.id))
     .catch(() => null);
 
   if (!others) return '⚠️ Whether anybody else has confirmed could not be read - check the visit.';
@@ -158,6 +174,6 @@ async function siblingVerdict(found: TokenLookup): Promise<string> {
       + 'already confirmed this visit, so the 5pm and 6pm chases stay quiet. This is the only alert you get.';
   }
   return others.length === 0
-    ? 'Nobody else was sent this visit. It stays unconfirmed, so 5pm and 6pm will chase it.'
+    ? 'Nobody else is on this visit. It stays unconfirmed, so 5pm and 6pm will chase it.'
     : 'Nobody has confirmed it, so 5pm and 6pm will chase it until somebody does.';
 }

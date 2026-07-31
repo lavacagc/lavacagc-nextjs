@@ -58,6 +58,13 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 30. An inactive recipient is dropped even when explicitly named, so deactivating someone actually stops their mail.
 31. The admin page pre-ticks everyone active on load.
 32. Deselecting everyone disables the Schedule button and shows "nobody will be told to go".
+81. Un-ticking somebody and re-dispatching the **same** window **retires** their assignment: their confirm token stops working, and the escalation neither waits on them nor counts their answer.
+    Deselecting on the picker is the only way to take somebody off a visit, and re-booking the same window is a re-dispatch rather than a supersede, so nothing else would ever clean the row up.
+    Left live, a tap from somebody no longer on the visit satisfies "somebody confirmed" and silences the 5pm and 6pm chases for a visit the people actually going have never answered - and they would still show as having confirmed it on the admin list.
+    Put back on the visit later, they are revived as unanswered rather than counted as having confirmed a visit they were off; a revival that did not land skips the send rather than mailing a link that is still dead.
+    Their row is never deleted: it is the record that they were sent it.
+    **Accepted gap, deliberate (owner decision, 31 July 2026):** a dropped recipient is *not* sent a `METHOD:CANCEL`, so the visit stays on their calendar with its 7:00am "text the customer when the crew is on the way" alarm.
+    The mitigation is AC82, not a retraction - do not "fix" this by mailing one.
 
 ## Booking
 
@@ -83,6 +90,9 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 48. Both a confirm and a flag stamp `confirmed_at`, because both mean a human has *looked* at this - which is not the same as the visit being dealt with.
 49. `/api/crew/` is public in middleware, guarded by the token rather than a session.
     A server error on this public route answers a flat `server_error`; the thrown detail - table names, the token filter, PostgREST's own error body - stays in the logs.
+82. A **retired** token gets its own answer - "You are no longer on this visit", with "please don't text the customer about it" - never the generic "this link is not valid", and `POST /api/crew/confirm` refuses it with `410`.
+    This is the mitigation for the gap AC81 accepts: the event is still on their calendar and its 7:00am alarm will still fire, so this page is where somebody acting on that alarm learns the visit is not theirs *before* they text a customer about a job they are not going to.
+    An unknown token keeps the generic answer, so AC44 still holds and live tokens cannot be enumerated.
 
 ## Escalation
 
@@ -129,6 +139,9 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     "Mark handled" is offered only where there is a flag to clear, and is confirm-gated exactly as "Mark completed" is.
 78. A flag **outranks** a confirmation in that state.
     A colleague having confirmed silences both chases, which is precisely why the problem somebody raised has to stay visible somewhere else.
+84. A dispatch read that FAILS reads as `unknown`, never as `none`, and the list says so on the visit.
+    Both queries behind that state are best-effort so a lookup is still worth answering without them - but the screen renders nothing at all for a visit in state `none`, so failing open would make a flagged visit vanish from the only surface a flag reaches, taking its "Mark handled" button with it.
+    Failing closed to "could not read what the crew has said" is safe; failing open to "never dispatched" is what hides a flag.
 
 ## Retiring a visit
 
@@ -147,6 +160,10 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 79. Whether the retraction actually **reached each recipient** is reported, never assumed.
     A per-recipient failure is collected rather than only logged, a throw is treated as nobody having been told, and both callers surface it - the cancel in its response and the admin toast, the reschedule in `stillHolding` on the schedule response.
     A retraction that silently failed leaves the crew holding the visit and its 7:00am "text the customer" alarm, which is the precise outcome the retraction exists to prevent, so it must never be reported as clean.
+83. `clearVisitDispatch` returns **two independent verdicts** - `status`, whether the row came off, and `retraction`, whether the crew was told - and **all three** callers surface both.
+    `status: 'unavailable'` is the worse of the two and used to be the silent one: the catch returns before the cancellation is even attempted, so an empty `unretracted` alongside it means nobody was told rather than everybody was, and the surviving row makes the next booking of that window inherit the stamps saying it has already been chased.
+    So the cancel toast says the crew record could not be cleared and is destructive, the schedule response carries `unretiredWindows` next to `stillHolding` and the toast names it, and the complete toast reads the `dispatch` the route has always returned.
+    "Reported, never assumed" is not satisfied by reporting only the half that happens to be readable.
 80. A visit with no stored `scheduled_end` resolves through `visitEndsAt`, never a fallback spelled out again.
     That helper says two hours; an hour written out here made the 5pm Telegram and the crew's confirm page describe one visit as "8:00 - 10:00am" and "8:00 - 9:00am", and the CANCEL `.ics` inherited the shorter one.
 

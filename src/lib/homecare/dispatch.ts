@@ -36,7 +36,13 @@ export interface DispatchAssignment {
   email: string;
   name: string | null;
   confirm_token: string;
-  status: 'sent' | 'confirmed' | 'flagged';
+  /**
+   * `retired` means this person was taken OFF the visit - un-ticked on the
+   * picker and the window re-dispatched. Their row survives as the record that
+   * they were once sent it, but it counts for nothing: the token stops working
+   * and the escalation neither waits on them nor accepts their answer.
+   */
+  status: 'sent' | 'confirmed' | 'flagged' | 'retired';
   confirmed_at: string | null;
   note: string | null;
 }
@@ -69,12 +75,30 @@ export async function assignmentsForDispatch(dispatchId: string): Promise<Dispat
   )) ?? [];
 }
 
+/**
+ * Everybody still ON this visit.
+ *
+ * A retired assignment is somebody who was dropped from the selection: their
+ * confirmation is not an answer, their flag is not an open problem, and their
+ * silence is not something to chase. Every reader that asks "what has the crew
+ * said" goes through here, so no reader can forget.
+ */
+export function liveAssignments(assignments: DispatchAssignment[]): DispatchAssignment[] {
+  return assignments.filter((a) => a.status !== 'retired');
+}
+
 /** What the admin needs to see about one visit: has anybody answered, and how. */
 export interface VisitDispatchState {
-  state: 'none' | 'awaiting' | 'confirmed' | 'flagged';
+  /** `unknown` is a READ that failed - never the same answer as "none". */
+  state: 'unknown' | 'none' | 'awaiting' | 'confirmed' | 'flagged';
   confirmedBy: string[];
   flags: { by: string; note: string | null }[];
 }
+
+/** What a visit's state reads as when the dispatch tables could not be read. */
+export const UNKNOWN_DISPATCH_STATE: VisitDispatchState = {
+  state: 'unknown', confirmedBy: [], flags: [],
+};
 
 /**
  * The state of one visit's dispatch, read off its assignments.
@@ -86,11 +110,12 @@ export interface VisitDispatchState {
  */
 export function dispatchStateOf(assignments: DispatchAssignment[]): VisitDispatchState {
   const named = (a: DispatchAssignment) => a.name || a.email;
-  const confirmedBy = assignments.filter((a) => a.status === 'confirmed').map(named);
-  const flags = assignments
+  const live = liveAssignments(assignments);
+  const confirmedBy = live.filter((a) => a.status === 'confirmed').map(named);
+  const flags = live
     .filter((a) => a.status === 'flagged')
     .map((a) => ({ by: named(a), note: a.note }));
-  const state = assignments.length === 0
+  const state = live.length === 0
     ? 'none'
     : flags.length > 0
       ? 'flagged'
@@ -187,6 +212,16 @@ export async function ensureVisitDispatch(args: {
  * The email and name are stored AS SENT rather than read back through the
  * recipient row, so the record of what happened does not rewrite itself when
  * somebody is renamed or deactivated later.
+ *
+ * ANYBODY DROPPED FROM THE SELECTION IS RETIRED. Un-ticking somebody and
+ * re-dispatching the same window is how a mis-addressed visit is corrected -
+ * and re-booking the same window is a re-dispatch, not a supersede, so nothing
+ * else would ever clean their row up. Left alone it keeps a live confirm token,
+ * and a tap from somebody who is not on the visit satisfies the escalation's
+ * "somebody confirmed" - silencing the 5pm and 6pm chases for a visit the
+ * people actually going have never answered. Their calendar event is
+ * deliberately NOT retracted (owner decision): the confirm page tells them they
+ * are off it, which is where anybody acting on the stale 7:00am alarm lands.
  */
 export async function ensureAssignments(
   dispatchId: string,
@@ -194,6 +229,41 @@ export async function ensureAssignments(
 ): Promise<DispatchAssignment[]> {
   const existing = await assignmentsForDispatch(dispatchId);
   const byRecipient = new Map(existing.map((a) => [a.recipient_id, a]));
+  const wanted = new Set(recipients.map((r) => r.id));
+  const stamp = new Date().toISOString();
+
+  const dropped = existing.filter((a) => !wanted.has(a.recipient_id) && a.status !== 'retired');
+  if (dropped.length > 0) {
+    await supabaseRest('PATCH',
+      `visit_dispatch_recipients?id=in.(${dropped.map((a) => a.id).join(',')})`,
+      { status: 'retired', updated_at: stamp },
+    ).catch((err) => console.error(
+      `crew dispatch could not retire ${dropped.map((a) => a.email).join(', ')} - ` +
+        'their confirm link still works and can silence the escalation:',
+      err instanceof Error ? err.message : String(err),
+    ));
+  }
+
+  // Back on the visit after being dropped. Their answer went with the
+  // retirement, so they are asked again rather than counted as having confirmed
+  // a visit they were not on. Only what the database actually accepted is
+  // treated as revived - a failed PATCH would otherwise mail somebody a link
+  // that is still dead.
+  const returning = existing.filter((a) => wanted.has(a.recipient_id) && a.status === 'retired');
+  if (returning.length > 0) {
+    const revived = (await supabaseRest<DispatchAssignment[]>('PATCH',
+      `visit_dispatch_recipients?id=in.(${returning.map((a) => a.id).join(',')})` +
+        `&select=${DISPATCH_ASSIGNMENT_COLUMNS}`,
+      { status: 'sent', confirmed_at: null, note: null, updated_at: stamp },
+    ).catch((err) => {
+      console.error(
+        'crew dispatch could not put a returning recipient back on the visit:',
+        err instanceof Error ? err.message : String(err),
+      );
+      return [] as DispatchAssignment[];
+    })) ?? [];
+    for (const row of revived) byRecipient.set(row.recipient_id, row);
+  }
 
   const missing = recipients.filter((r) => !byRecipient.has(r.id));
   if (missing.length > 0) {
@@ -208,7 +278,12 @@ export async function ensureAssignments(
     for (const row of created ?? []) byRecipient.set(row.recipient_id, row);
   }
 
-  return recipients.map((r) => byRecipient.get(r.id)).filter((a): a is DispatchAssignment => Boolean(a));
+  // Still retired here means the revive above did not land. Skipped rather than
+  // mailed: the confirm link in that email would open "you are no longer on
+  // this visit", which is worse than not writing to them at all.
+  return recipients
+    .map((r) => byRecipient.get(r.id))
+    .filter((a): a is DispatchAssignment => Boolean(a) && a!.status !== 'retired');
 }
 
 export interface VisitContext {
