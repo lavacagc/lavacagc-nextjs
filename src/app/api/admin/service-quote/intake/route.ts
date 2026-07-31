@@ -120,7 +120,11 @@ export async function GET(request: NextRequest) {
     )) ?? [];
 
     const services = bookableCatalog(catalog);
-    if (!email) return NextResponse.json({ services, requests: [], history: {}, homeowner: null, bookings: [] });
+    if (!email) {
+      return NextResponse.json({
+        services, requests: [], history: {}, homeowner: null, bookings: [], bookingsRead: 'ok',
+      });
+    }
 
     const enc = encodeURIComponent(email);
 
@@ -176,6 +180,14 @@ export async function GET(request: NextRequest) {
     // homeowner record.
     let history: Record<string, { at: string; by: string; label: string }> = {};
     let bookings: BookedVisit[] = [];
+    // Whether the visits themselves could be read, handed back rather than left
+    // to look like a customer with nothing on the books. The read below is
+    // deliberately best-effort - the scheduling columns are hand-applied, and a
+    // lookup is worth answering without them - but "no visits" and "we could
+    // not read their visits" are not the same answer, and the second one hides
+    // a flag: this list is the only surface a flag reaches, and the empty state
+    // renders nothing at all. The same rule `withDispatchState` follows.
+    let bookingsRead: 'ok' | 'unavailable' = 'ok';
     if (homeowner) {
       const [done, booked] = await Promise.all([
         // Selected on the TIMESTAMP, not on `status`. The two answer different
@@ -194,7 +206,14 @@ export async function GET(request: NextRequest) {
           'GET',
           `homeowner_maintenance?select=task_key,season,scheduled_start,scheduled_end,service_address` +
             `&homeowner_id=eq.${homeowner.id}&scheduled_start=not.is.null&order=scheduled_start.asc`,
-        ).catch(() => [] as BookedRow[]),
+        ).catch((err) => {
+          console.error(
+            'service-quote intake could not read the visits on the books:',
+            err instanceof Error ? err.message : String(err),
+          );
+          bookingsRead = 'unavailable';
+          return [] as BookedRow[];
+        }),
       ]);
       history = Object.fromEntries(
         [...lastDoneFor(done ?? []).entries()].map(([k, v]) => [k, { at: v.at.toISOString(), by: v.by, label: lastDoneLabel(v) }]),
@@ -202,7 +221,7 @@ export async function GET(request: NextRequest) {
       bookings = await withDispatchState(homeowner.id, groupBookings(booked ?? [], byKey));
     }
 
-    return NextResponse.json({ services, requests, history, homeowner, bookings });
+    return NextResponse.json({ services, requests, history, homeowner, bookings, bookingsRead });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('service-quote intake failed:', message);

@@ -178,13 +178,33 @@ export async function GET(request: NextRequest) {
       // null, so a concurrent run that got there first updates nothing and this
       // one skips - the difference between telling the owner once and telling
       // them twice.
+      //
+      // A claim that THREW is not a claim somebody else won. Both leave this
+      // run with nothing to send, and folding them together answered `ok: true`
+      // with the visit filed under `already_chased` - so a permission error or
+      // a 5xx on this one PATCH silently dropped the visit from the last line
+      // of defence before the 7:30pm customer reminder, and said nothing.
       const stampedAt = new Date().toISOString();
       const claimed = await supabaseRest<VisitDispatchRow[]>(
         'PATCH',
         `visit_dispatch?id=eq.${dispatch.id}&${stampColumn}=is.null`,
         { [stampColumn]: stampedAt, updated_at: stampedAt },
-      ).catch(() => [] as VisitDispatchRow[]);
-      if (!claimed || claimed.length === 0) {
+      ).then((rows) => rows ?? []).catch((err) => {
+        console.error(
+          `visit-dispatch-escalation: could not claim ${stampColumn} for ${label} - ` +
+            'nobody has been told this visit is unconfirmed:',
+          err instanceof Error ? err.message : String(err),
+        );
+        return null;
+      });
+      if (claimed === null) {
+        failed.push(label);
+        wouldChase.pop();
+        continue;
+      }
+      // Zero rows and no error IS the lost race: a concurrent run stamped it
+      // first, so it has been chased and this one correctly stays quiet.
+      if (claimed.length === 0) {
         alreadyChased += 1;
         wouldChase.pop();
         continue;

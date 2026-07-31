@@ -59,6 +59,14 @@ interface Intake {
   history: Record<string, { at: string; by: string; label: string }>;
   homeowner: { id: string; first_name: string | null; phone: string | null; address: string | null; city: string | null; zip: string | null; status: string } | null;
   bookings: Booking[];
+  /**
+   * `unavailable` is a read that FAILED, answered 200 alongside everything that
+   * did load. It is not "this customer has nothing on the books" and must never
+   * be shown as one - the empty list renders no panel at all, so a flagged
+   * visit would vanish from the only screen a flag reaches.
+   */
+  bookingsRead?: 'ok' | 'unavailable';
+  error?: string;
 }
 
 const todayPlus = (days: number) => {
@@ -133,15 +141,37 @@ export default function SendServiceQuotePage() {
     });
   };
 
+  /**
+   * Re-read the visits on the books, and NEVER empty the list because the read
+   * failed.
+   *
+   * The route answers a failure with a 500 whose body still parses, so an
+   * unchecked `data.bookings ?? []` blanked the panel - and this runs straight
+   * after a cancel or a completion, where a shrinking list is exactly what
+   * success looks like. That made a failed refresh read as the write having
+   * worked, on the only screen a crew flag ever reaches and the only place
+   * "Mark handled" exists. So it keeps what it had and says the refresh failed,
+   * failing closed the way the server now does.
+   */
   const refreshBookings = useCallback(async () => {
     if (!email.trim()) return;
     try {
       const res = await fetch(`/api/admin/service-quote/intake?email=${encodeURIComponent(email.trim())}`);
       const data: Intake = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not read this customer\'s visits');
+      // A 200 that could not read the visits is the same failure wearing a
+      // success code, and replacing the list with its empty answer would hide
+      // whatever is on it.
+      if (data.bookingsRead === 'unavailable') throw new Error('Their visits could not be read');
       setBookings(data.bookings ?? []);
       if (data.homeowner?.id) setHomeownerId(data.homeowner.id);
-    } catch {
-      // A stale list is not worth a toast on top of whatever just succeeded.
+    } catch (e) {
+      toast({
+        title: 'The visit list could not be refreshed',
+        description: `${e instanceof Error ? e.message : 'Unknown error'}. What is shown below may be `
+          + 'out of date - look the customer up again before you rely on it.',
+        variant: 'destructive',
+      });
     }
   }, [email]);
 
@@ -151,9 +181,24 @@ export default function SendServiceQuotePage() {
     try {
       const res = await fetch(`/api/admin/service-quote/intake?email=${encodeURIComponent(email.trim())}`);
       const data: Intake = await res.json();
+      // Checked before anything is replaced: a 500 body still parses, so an
+      // unchecked read would swap a real list of visits for an empty one and
+      // report nothing.
+      if (!res.ok) throw new Error(data.error || 'Could not load this customer.');
       setIntake(data);
+      // This IS a different customer, so the old list cannot stay on screen -
+      // its windows belong to somebody else, and "Mark completed" would aim
+      // them at this homeowner. It goes, and the gap is said out loud instead.
       setBookings(data.bookings ?? []);
       setHomeownerId(data.homeowner?.id ?? null);
+      if (data.bookingsRead === 'unavailable') {
+        toast({
+          title: 'Their visits could not be read',
+          description: 'Everything else loaded, but the visits on the books did not - so this is NOT '
+            + '"nothing booked". Look them up again before you tell the customer anything.',
+          variant: 'destructive',
+        });
+      }
       const latest = data.requests[0];
       if (latest) {
         setName(latest.name || '');
@@ -166,8 +211,13 @@ export default function SendServiceQuotePage() {
         setName(data.homeowner.first_name || '');
         setAddress([data.homeowner.address, data.homeowner.city, data.homeowner.zip].filter(Boolean).join(', '));
       }
-    } catch {
-      toast({ title: 'Lookup failed', description: 'Could not load this customer.', variant: 'destructive' });
+    } catch (e) {
+      toast({
+        title: 'Lookup failed',
+        description: `${e instanceof Error ? e.message : 'Could not load this customer.'} `
+          + 'Nothing on screen has been changed.',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }

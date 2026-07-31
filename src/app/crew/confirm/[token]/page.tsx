@@ -43,7 +43,7 @@ export default async function CrewConfirmPage({
     );
   }
 
-  const { assignment, dispatch, visit } = found;
+  const { assignment, dispatch, visit, visitRead } = found;
 
   // Taken off this visit - un-ticked on the picker and the window re-dispatched
   // to somebody else. Deliberately NOT the generic answer above: their calendar
@@ -65,10 +65,29 @@ export default async function CrewConfirmPage({
     );
   }
 
+  // The visit could not be READ. Checked before the answer below and kept
+  // apart from it, because a failed read is not a verdict: told "this visit is
+  // off" the person who is supposed to drive to the house neither goes nor
+  // confirms, and the 5pm chase then reports "nobody has confirmed" rather than
+  // "we told them it was cancelled". The one honest thing to say is that we
+  // could not check.
+  if (visitRead === 'unavailable' || !visit) {
+    return (
+      <Shell>
+        <h1 className="text-xl font-bold text-[#1A1A1A]">We could not check this visit</h1>
+        <p className="mt-2 text-sm text-[#666]">
+          Your link is fine - we just could not read the visit right now, so this page cannot tell
+          you whether it is still on. <strong>Do not assume it is cancelled.</strong> Try again in a
+          minute, or call the office on (201) 212-4917.
+        </p>
+      </Shell>
+    );
+  }
+
   // The visit itself is gone - cancelled, or closed out - even though the
   // dispatch email is still sitting in their inbox. Say so rather than let
   // someone confirm a job nobody is attending.
-  if (!visit?.stillBooked) {
+  if (!visit.stillBooked) {
     return (
       <Shell>
         <h1 className="text-xl font-bold text-[#1A1A1A]">This visit is no longer on the books</h1>

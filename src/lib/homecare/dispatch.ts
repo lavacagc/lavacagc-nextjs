@@ -67,6 +67,29 @@ export const VISIT_DISPATCH_COLUMNS =
 export const DISPATCH_ASSIGNMENT_COLUMNS =
   'id,dispatch_id,recipient_id,email,name,confirm_token,status,confirmed_at,note';
 
+/**
+ * The dispatch row for one visit, or null if it has none.
+ *
+ * (homeowner, window) is the key that identifies a visit everywhere in this
+ * feature, and it is precisely the value that must not drift between readers:
+ * the `visitKey` normalisation and the URL encoding both have to be right in
+ * every one of them, and a reader that got either wrong would quietly find no
+ * row and report the visit as never dispatched. So it is spelled once, the same
+ * rule `assignmentsForDispatch` and `DISPATCH_ASSIGNMENT_COLUMNS` already hold
+ * the sibling read to.
+ */
+export async function dispatchForVisit(
+  homeownerId: string,
+  visitStart: Date,
+): Promise<VisitDispatchRow | null> {
+  const rows = (await supabaseRest<VisitDispatchRow[]>(
+    'GET',
+    `visit_dispatch?select=${VISIT_DISPATCH_COLUMNS}` +
+      `&homeowner_id=eq.${homeownerId}&visit_start=eq.${encodeURIComponent(visitKey(visitStart))}&limit=1`,
+  )) ?? [];
+  return rows[0] ?? null;
+}
+
 /** Everyone this visit was sent to, whatever each of them has answered. */
 export async function assignmentsForDispatch(dispatchId: string): Promise<DispatchAssignment[]> {
   return (await supabaseRest<DispatchAssignment[]>(
@@ -184,17 +207,13 @@ export async function ensureVisitDispatch(args: {
   subName?: string | null;
 }): Promise<VisitDispatchRow | null> {
   const key = visitKey(args.visitStart);
-  const existing = (await supabaseRest<VisitDispatchRow[]>(
-    'GET',
-    `visit_dispatch?select=${VISIT_DISPATCH_COLUMNS}` +
-      `&homeowner_id=eq.${args.homeownerId}&visit_start=eq.${encodeURIComponent(key)}&limit=1`,
-  )) ?? [];
+  const existing = await dispatchForVisit(args.homeownerId, args.visitStart);
 
-  if (existing[0]) {
+  if (existing) {
     // Only fill the sub in - never blank one an admin already typed by
     // re-booking without it.
-    if (args.subName && args.subName !== existing[0].sub_name) {
-      await supabaseRest('PATCH', `visit_dispatch?id=eq.${existing[0].id}`, {
+    if (args.subName && args.subName !== existing.sub_name) {
+      await supabaseRest('PATCH', `visit_dispatch?id=eq.${existing.id}`, {
         sub_name: args.subName, updated_at: new Date().toISOString(),
       }).catch((err) => console.error(
         `crew dispatch could not store the sub "${args.subName}" - this send still names them, ` +
@@ -204,9 +223,9 @@ export async function ensureVisitDispatch(args: {
       // What the admin typed, whether or not it was stored: this value is what
       // goes in the email, and a failed write is a reason to log, not a reason
       // to tell the crew a different sub's name.
-      return { ...existing[0], sub_name: args.subName };
+      return { ...existing, sub_name: args.subName };
     }
-    return existing[0];
+    return existing;
   }
 
   const created = await supabaseRest<VisitDispatchRow[]>('POST', 'visit_dispatch', [{
@@ -310,6 +329,15 @@ export async function ensureAssignments(
     for (const row of revived) byRecipient.set(row.recipient_id, row);
   }
 
+  // Caught like every other write here rather than thrown. This insert and the
+  // retire PATCH above hit the SAME table, so whatever breaks one - a revoked
+  // grant, RLS without the service key, a 5xx window - breaks both, which makes
+  // a combined failure the most likely way to get here rather than the least.
+  // Throwing would take the retirement verdict computed moments ago with it,
+  // and that verdict is the one thing only the admin can act on: somebody off
+  // the visit whose single tap still satisfies "the crew confirmed". Answering
+  // with nothing instead drops these recipients through to `notMailed` below,
+  // so both failures are named.
   const missing = recipients.filter((r) => !byRecipient.has(r.id));
   if (missing.length > 0) {
     const created = await supabaseRest<DispatchAssignment[]>('POST', 'visit_dispatch_recipients',
@@ -319,7 +347,14 @@ export async function ensureAssignments(
         email: r.email,
         name: r.name,
         confirm_token: newToken(),
-      })));
+      }))).catch((err) => {
+      console.error(
+        `crew dispatch could not create a record for ${missing.map((r) => r.email).join(', ')} - ` +
+          'nothing was mailed to them:',
+        err instanceof Error ? err.message : String(err),
+      );
+      return [] as DispatchAssignment[];
+    });
     for (const row of created ?? []) byRecipient.set(row.recipient_id, row);
   }
 
@@ -415,7 +450,17 @@ export async function visitContextFor(
 export interface TokenLookup {
   assignment: DispatchAssignment;
   dispatch: VisitDispatchRow;
+  /** Null ONLY when the read failed - never because the visit is off. */
   visit: VisitContext | null;
+  /**
+   * Whether the visit could be read at all.
+   *
+   * `unavailable` is not an answer ABOUT the visit and must never be rendered
+   * as one. The assignment and the dispatch row resolved; what did not is the
+   * description of the job - so "we could not check" is what the crew and the
+   * flag alert are told, not "this visit is off".
+   */
+  visitRead: 'ok' | 'unavailable';
 }
 
 /**
@@ -442,8 +487,19 @@ export async function lookupByToken(token: string): Promise<TokenLookup | null> 
   const dispatch = dispatches[0];
   if (!dispatch) return null;
 
-  const visit = await visitContextFor(dispatch.homeowner_id, new Date(dispatch.visit_start)).catch(() => null);
-  return { assignment, dispatch, visit };
+  // The visit read is the one part of this that is allowed to fail without
+  // losing the lookup - but the failure is HANDED BACK rather than folded into
+  // a null that reads like an answer. A caller that could not tell the two
+  // apart tells a crew member their live, booked visit is cancelled.
+  const visit = await visitContextFor(dispatch.homeowner_id, new Date(dispatch.visit_start))
+    .catch((err) => {
+      console.error(
+        `crew confirm could not read the visit behind dispatch ${dispatch.id}:`,
+        err instanceof Error ? err.message : String(err),
+      );
+      return null;
+    });
+  return { assignment, dispatch, visit, visitRead: visit ? 'ok' : 'unavailable' };
 }
 
 /** Whether the crew was actually told the visit is off. */
@@ -508,12 +564,7 @@ export async function clearVisitDispatch(
   let retracting = false;
   try {
     const key = visitKey(visitStart);
-    const rows = (await supabaseRest<VisitDispatchRow[]>(
-      'GET',
-      `visit_dispatch?select=${VISIT_DISPATCH_COLUMNS}` +
-        `&homeowner_id=eq.${homeownerId}&visit_start=eq.${encodeURIComponent(key)}&limit=1`,
-    )) ?? [];
-    dispatch = rows[0] ?? null;
+    dispatch = await dispatchForVisit(homeownerId, visitStart);
 
     // Read ONLY when there is a retraction to address, and always BEFORE the
     // delete - the assignments cascade with the row, taking the addresses and

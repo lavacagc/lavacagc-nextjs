@@ -22,10 +22,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import {
-  assignmentsForDispatch, dispatchStateOf, VISIT_DISPATCH_COLUMNS,
-  type DispatchAssignment, type VisitDispatchRow,
+  assignmentsForDispatch, dispatchForVisit, dispatchStateOf, type DispatchAssignment,
 } from '@/lib/homecare/dispatch';
-import { visitKey } from '@/lib/homecare/visitSchedule';
 import { handleFlagSchema } from '../_schema';
 
 export const dynamic = 'force-dynamic';
@@ -41,15 +39,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Validation failed', issues: parsed.error.issues }, { status: 400 });
   }
   const { homeownerId, start } = parsed.data;
-  const key = visitKey(new Date(start));
 
   try {
-    const rows = (await supabaseRest<VisitDispatchRow[]>(
-      'GET',
-      `visit_dispatch?select=${VISIT_DISPATCH_COLUMNS}` +
-        `&homeowner_id=eq.${homeownerId}&visit_start=eq.${encodeURIComponent(key)}&limit=1`,
-    )) ?? [];
-    const dispatch = rows[0];
+    // The one spelling of that read, next to `assignmentsForDispatch`: the
+    // (homeowner, window) key is what must not drift between readers.
+    const dispatch = await dispatchForVisit(homeownerId, new Date(start));
     if (!dispatch) {
       return NextResponse.json({ error: 'No crew dispatch for that visit' }, { status: 404 });
     }

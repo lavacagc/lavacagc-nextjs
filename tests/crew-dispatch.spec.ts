@@ -364,7 +364,9 @@ test('AC35+AC36 the toast reports both outcomes and distinguishes no_recipients'
 test('AC37 re-dispatching reuses the visit row rather than resetting its stamps', () => {
   const src = read('src/lib/homecare/dispatch.ts');
   const fn = src.slice(src.indexOf('export async function ensureVisitDispatch'), src.indexOf('export async function ensureAssignments'));
-  expect(fn).toContain('if (existing[0]) {');
+  expect(fn).toContain('const existing = await dispatchForVisit(args.homeownerId, args.visitStart);');
+  expect(fn).toContain('if (existing) {');
+  expect(fn).toContain('return existing;');
   expect(fn).not.toContain('nudged_at: null');
 });
 
@@ -422,6 +424,15 @@ test('AC85 a retirement that did not land is reported, never rendered as a clean
   );
   // A verdict reached before a later throw still comes back.
   expect(src).toContain("return { outcome: 'unavailable', sentTo: [], stillLive, notMailed, recorded: 'ok', error };");
+  // ...and no write in the function throws out of it in the first place. The
+  // insert and the retire PATCH hit the SAME table, so whatever breaks one
+  // breaks both - which makes a combined failure the likeliest way to reach
+  // that catch, and it would take the retirement verdict with it.
+  const insert = fn.slice(fn.indexOf('const missing = recipients.filter'));
+  expect(insert).toContain('crew dispatch could not create a record for');
+  expect(insert).toContain('return [] as DispatchAssignment[];');
+  // Those recipients then fall through to notMailed rather than being lost.
+  expect(insert).toContain('else notMailed.push(r.email);');
 
   const route = read('src/app/api/admin/service-quote/schedule/route.ts');
   expect(route).toContain('crewStillLive: dispatch.stillLive,');
@@ -589,8 +600,26 @@ test('AC44 an unknown token gets a generic answer that cannot be used to enumera
 
 test('AC45 a cancelled visit shows "no longer on the books" instead of a confirm button', () => {
   const page = read('src/app/crew/confirm/[token]/page.tsx');
-  expect(page).toContain('if (!visit?.stillBooked)');
+  expect(page).toContain('if (!visit.stillBooked)');
   expect(page).toContain('no longer on the books');
+});
+
+test('AC87 a visit that could not be READ is never rendered as a cancelled one', () => {
+  // The admin screen showing 'none' hides information; this screen would tell
+  // the person who is supposed to drive to the house that the job is off. They
+  // then neither go nor confirm, and the 5pm chase reports "nobody has
+  // confirmed" for a visit we told them was cancelled.
+  const src = read('src/lib/homecare/dispatch.ts');
+  const fn = src.slice(src.indexOf('export async function lookupByToken'), src.indexOf('export type RetractionOutcome'));
+  expect(fn).toContain("return { assignment, dispatch, visit, visitRead: visit ? 'ok' : 'unavailable' };");
+  expect(fn).toContain('console.error');
+
+  const page = read('src/app/crew/confirm/[token]/page.tsx');
+  expect(page).toContain("if (visitRead === 'unavailable' || !visit) {");
+  expect(page).toContain('We could not check this visit');
+  expect(page).toContain('Do not assume it is cancelled');
+  // Checked BEFORE the "no longer on the books" answer, or that one swallows it.
+  expect(page.indexOf("visitRead === 'unavailable'")).toBeLessThan(page.indexOf('no longer on the books'));
 });
 
 test('AC46 "Something is wrong" opens a note field rather than submitting', () => {
@@ -671,6 +700,21 @@ test('AC57 the stamp is claimed before the send, re-asserting is.null', () => {
   const src = cron();
   expect(src).toContain('${stampColumn}=is.null');
   expect(src.indexOf('${stampColumn}=is.null')).toBeLessThan(src.indexOf('await sendTelegramMessage(text)'));
+});
+
+test('AC88 a claim that threw is not a lost race, and never reports ok', () => {
+  // Both leave this run with nothing to send. Folding them together answered
+  // ok:true with the visit filed under already_chased, so a permission error or
+  // a 5xx dropped it from the last line of defence before the 7:30pm customer
+  // reminder and said nothing at all.
+  const src = cron();
+  expect(src).toContain('.then((rows) => rows ?? []).catch((err) => {');
+  expect(src).toContain('if (claimed === null) {\n        failed.push(label);');
+  // Zero rows and no error is still the lost race, and still a correct skip.
+  expect(src).toContain('if (claimed.length === 0) {\n        alreadyChased += 1;');
+  expect(src).not.toContain('.catch(() => [] as VisitDispatchRow[])');
+  // ...which turns the run's own verdict, since `failed` is what ok reads.
+  expect(src).toContain('ok: failed.length === 0');
 });
 
 test('AC58 a failed send releases its stamp so a re-hit can still get through', () => {
@@ -781,6 +825,13 @@ test('AC75 the flag alert reads the other assignments rather than asserting nobo
   expect(verdict).toContain('escapeTelegram(confirmed.join');
   // A read that failed says so rather than guessing either way.
   expect(verdict).toContain('could not be read');
+
+  // Both reads, not just the sibling one. The visit used to degrade quietly to
+  // "A customer" with no address and no services, and no sign anything failed -
+  // in the very case this alert is the only message the owner ever gets.
+  const alert = src.slice(src.indexOf('async function notifyFlag'), src.indexOf('async function siblingVerdict'));
+  expect(alert).toContain("visitRead === 'unavailable'");
+  expect(alert).toContain('The visit itself could NOT be read');
 });
 
 test('AC49 a server error on this public route leaks no Supabase detail', () => {
@@ -966,6 +1017,57 @@ test('AC84 a dispatch read that failed reads as unknown, never as never-dispatch
   const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
   expect(page).toContain("b.dispatch.state === 'unknown' ?");
   expect(page).toContain('Could not read what the crew has said');
+
+  // The screen fails closed too. A 500 body still parses, so an unchecked read
+  // emptied the panel - and this runs straight after a cancel or a completion,
+  // where a shrinking list is exactly what success looks like.
+  const refresh = page.slice(page.indexOf('const refreshBookings ='), page.indexOf('const lookup ='));
+  expect(refresh).toContain('if (!res.ok) throw new Error(');
+  expect(refresh).toContain('The visit list could not be refreshed');
+  expect(refresh).toContain("variant: 'destructive',");
+  // The previous list is KEPT: nothing is replaced before res.ok is checked.
+  expect(refresh.indexOf('if (!res.ok)')).toBeLessThan(refresh.indexOf('setBookings('));
+  const lookupFn = page.slice(page.indexOf('const lookup ='), page.indexOf('const toggle ='));
+  expect(lookupFn.indexOf('if (!res.ok)')).toBeLessThan(lookupFn.indexOf('setBookings('));
+
+  // And the read of the visits themselves. It stays best-effort - the
+  // scheduling columns are hand-applied - but an empty list wearing a 200 is
+  // the same lie: this panel is the only place a flag appears, and it renders
+  // nothing at all when the list is empty.
+  expect(intake).toContain("let bookingsRead: 'ok' | 'unavailable' = 'ok';");
+  expect(intake).toContain("bookingsRead = 'unavailable';");
+  expect(intake).toContain('bookings, bookingsRead });');
+  expect(refresh).toContain("if (data.bookingsRead === 'unavailable') throw new Error(");
+  // A lookup is a different customer, so its list is replaced either way -
+  // keeping it would aim "Mark completed" at the wrong homeowner - and the gap
+  // is said out loud instead.
+  expect(lookupFn).toContain("if (data.bookingsRead === 'unavailable') {");
+  expect(lookupFn).toContain('Their visits could not be read');
+  expect(lookupFn).toContain('is NOT ');
+});
+
+test('AC89 one spelling of the (homeowner, window) dispatch read', () => {
+  // The key that must not drift: visitKey normalisation and the URL encoding
+  // both have to be right in every copy, and a reader that got either wrong
+  // would quietly find no row and report a dispatched visit as never
+  // dispatched. The same rule assignmentsForDispatch already holds.
+  const lib = read('src/lib/homecare/dispatch.ts');
+  expect(lib).toContain('export async function dispatchForVisit(');
+  expect(lib).toContain('const existing = await dispatchForVisit(args.homeownerId, args.visitStart);');
+  expect(lib).toContain('dispatch = await dispatchForVisit(homeownerId, visitStart);');
+
+  const route = read('src/app/api/admin/service-quote/dispatch/route.ts');
+  expect(route).toContain('const dispatch = await dispatchForVisit(homeownerId, new Date(start));');
+
+  // One spelling, everywhere. The lookup by dispatch id, the window-range read
+  // in the cron and the DELETE are different reads and keep their own filters.
+  const spellings = [
+    'src/lib/homecare/dispatch.ts',
+    'src/app/api/admin/service-quote/dispatch/route.ts',
+    'src/app/api/admin/service-quote/intake/route.ts',
+    'src/app/api/cron/visit-dispatch-escalation/route.ts',
+  ].flatMap((f) => read(f).match(/visit_dispatch\?select=\$\{VISIT_DISPATCH_COLUMNS\}[\s\S]{0,200}?visit_start=eq\./g) ?? []);
+  expect(spellings, 'the (homeowner, window) dispatch read is written once').toHaveLength(1);
 });
 
 test('AC80 a missing scheduled_end resolves through visitEndsAt, never a second literal', () => {

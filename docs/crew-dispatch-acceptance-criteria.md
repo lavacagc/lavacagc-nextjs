@@ -70,6 +70,7 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     A revival that did not land is the milder twin - that person is skipped rather than mailed a link that is still dead - and is named too, because the only other clue would be a "dispatched to" list shorter than what the admin ticked.
     A send that could not be stamped onto its dispatch row is the third: the row now says it never went, so the 5pm stage chases it as "nobody was ever told" *and* cancelling the visit retracts nothing, since a retraction only goes out for a dispatch that sent.
     All three reach the admin toast by name, and the toast still says who *was* mailed rather than telling the admin to call people who received it.
+    No write in `ensureAssignments` throws out of it, including the insert: that insert and the retire PATCH hit the same table, so whatever breaks one breaks both - which makes a combined failure the *likeliest* way to reach the catch, not the least, and throwing would take the retirement verdict with it and collapse both into a generic `unavailable`.
 
 ## Booking
 
@@ -78,6 +79,8 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 35. The admin toast reports the reminder and the dispatch as two separate outcomes, and is destructive if either failed.
 36. `no_recipients` is reported distinctly, because "nobody is configured" and "the send failed" need different fixes.
 37. Re-dispatching a visit reuses its `visit_dispatch` row, so escalation stamps and existing confirmations survive.
+89. Every reader that resolves a visit's dispatch row goes through **one** `dispatchForVisit(homeownerId, visitStart)`, the rule `assignmentsForDispatch` and `DISPATCH_ASSIGNMENT_COLUMNS` already hold the sibling read to.
+    The (homeowner, window) key is exactly the value that must not drift: the `visitKey` normalisation and the URL encoding both have to be right in every copy, and a reader that got either wrong would quietly find no row and report a dispatched visit as never dispatched.
 38. Re-dispatching reuses each recipient's existing assignment row and token, so a re-send never silently un-confirms a visit the crew already signed off.
 39. `dispatched_at` is stamped only when at least one email actually landed.
 40. Cancelling a visit deletes its dispatch row, so re-booking that window later does not inherit `nudged_at` and go unchased.
@@ -90,6 +93,9 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 43. The page is `noindex`, since the token is the only credential.
 44. An unknown token and a malformed token get the same answer, so live tokens cannot be enumerated.
 45. A token whose visit has been cancelled or closed out shows "no longer on the books" instead of a confirm button.
+87. A visit that could **not be read** gets its own answer - "We could not check this visit", with "do not assume it is cancelled" - and is never rendered as the cancelled one.
+    `lookupByToken` hands back a `visitRead` verdict rather than folding a failed read into a null the page cannot tell from an unbooked window.
+    This is the worst place in the feature to fail open: the admin screen showing `none` hides information, but this screen would actively tell the person who is supposed to drive to the house that the job is off - and they would then neither go nor confirm, leaving the 5pm chase to report "nobody has confirmed" for a visit we told them was cancelled.
 46. "Something is wrong" opens a note field rather than submitting immediately - what they type is the whole value of the button.
 47. A flag records the note; a confirm clears it.
 48. Both a confirm and a flag stamp `confirmed_at`, because both mean a human has *looked* at this - which is not the same as the visit being dealt with.
@@ -113,6 +119,9 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 56. A stage that has already stamped its column is skipped, making a cron retry a no-op.
 57. The stamp is claimed **before** the send, re-asserting `is.null`, so a concurrent run cannot double-send.
 58. A failed send releases its stamp, so a manual re-hit before the customer reminder can still get through.
+88. A claim that **threw** is not a claim somebody else won.
+    Zero rows and no error is the lost race, and skipping is right; a PATCH that failed is a visit nobody will be told about, so it is logged, pushed into `failed`, and turns the run's `ok` false.
+    Folding the two together answered `ok: true` with the visit counted under `already_chased` - silence from the last line of defence before the 7:30pm customer reminder, in the one cron nobody watches.
 59. A visit with no dispatch row at all is chased *harder*, not skipped - nobody was ever told - and a row is created so the stamp has somewhere to live.
 60. If that row cannot be created, the visit is skipped rather than messaged, so a failure cannot produce repeat sends.
 61. The message names the customer, the window, the address, the services and the customer's phone number.
@@ -132,7 +141,7 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 75. The alert states what the **rest of the crew** has actually said, read off the other assignments on the same dispatch: whoever has already confirmed is named, or it says plainly that nobody has.
     This matters more than it looks: the escalation skips any visit with a `confirmed` assignment, so when a colleague has already answered, this alert is the only message the owner will ever get about the problem.
     It cannot be the one that says something false.
-    A read that fails says so rather than guessing either way.
+    A read that fails says so rather than guessing either way - both of them: the sibling verdict, and the visit itself, which otherwise degraded quietly to "A customer" with no address and no services and no sign that anything had failed.
 
 ## Clearing a flag
 
@@ -150,6 +159,10 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 84. A dispatch read that FAILS reads as `unknown`, never as `none`, and the list says so on the visit.
     Both queries behind that state are best-effort so a lookup is still worth answering without them - but the screen renders nothing at all for a visit in state `none`, so failing open would make a flagged visit vanish from the only surface a flag reaches, taking its "Mark handled" button with it.
     Failing closed to "could not read what the crew has said" is safe; failing open to "never dispatched" is what hides a flag.
+    The screen fails closed the same way: the intake read is checked for `res.ok` before anything is replaced, a failed refresh **keeps the list it had** and says the refresh failed rather than emptying the panel.
+    The trap is the timing - a refresh runs straight after a cancel or a completion, where a shrinking list is what success looks like, so a blanked panel read as the write having worked.
+    So does the read of the visits themselves: it stays best-effort, because the scheduling columns are hand-applied and a lookup is worth answering without them, but it now hands back `bookingsRead: 'unavailable'` rather than an empty list wearing a 200.
+    A **lookup** replaces the list either way - those windows belong to a different customer, and leaving them would aim "Mark completed" at this homeowner - and says out loud that this is not "nothing booked".
 
 ## Retiring a visit
 

@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
 
 /** Who flagged it, which visit, and what they typed - verbatim. */
 async function notifyFlag(found: TokenLookup, note: string | null) {
-  const { assignment, dispatch, visit } = found;
+  const { assignment, dispatch, visit, visitRead } = found;
   const who = assignment.name || assignment.email;
   const when = visit
     ? `${visitDateLabel(visit.start)} ${visitTimeWindow(visit.start, visit.end)}`
@@ -142,6 +142,13 @@ async function notifyFlag(found: TokenLookup, note: string | null) {
     visit?.address ? `📍 ${escapeTelegram(visit.address)}` : '',
     visit?.services.length ? `🧰 ${escapeTelegram(visit.services.join(', '))}` : '',
     dispatch.sub_name ? `👷 ${escapeTelegram(dispatch.sub_name)}` : '',
+    // Said out loud, the same shape siblingVerdict uses. Degrading quietly to
+    // "A customer" with no address and no services reads like a thin alert
+    // rather than a failed read - and when a colleague has already confirmed,
+    // the escalation stays silent and this is the only message the owner gets.
+    visitRead === 'unavailable'
+      ? '⚠️ The visit itself could NOT be read - no customer, address or services here. Look it up.'
+      : '',
     '',
     note ? `💬 ${escapeTelegram(note)}` : '💬 No note - call them.',
     '',
