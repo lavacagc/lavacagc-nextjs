@@ -351,6 +351,16 @@ These were settled by the owner during review; the ACs assume them.
   one that every retry and every manual re-hit repeats - the exact failure the
   ledger exists to prevent. The recipient is counted `skipped` and logged.
 
+- **RM18** Only a **refusal** keeps the ledger claim. `sendTrackedEmail` answers
+  `skipped` both for a recipient who opted out and for an unconfigured
+  `RESEND_API_KEY` - a decision about the person, and an infrastructure fault
+  that says nothing about them. Treated alike, the second was the worst outcome
+  in the pipeline: the claim was taken before the send, so every visit that
+  night was recorded `sent`, no customer was told, the route answered `ok`, and
+  no later run revisits a closed row. The release narrows on
+  `reason === 'unsubscribed'`, as the repo's other three send sites already do,
+  and logs both the release and a release that could not be written - the claim
+  standing silently is how this hid in the first place.
 - **RM17** A cancel that cannot reach the queue reports `unavailable`; it is
   never reported as done. Both halves of `cancelPendingVisitReminders` used to
   `.catch()` into silence, so a failed cancel was indistinguishable from one with
@@ -369,8 +379,14 @@ These were settled by the owner during review; the ACs assume them.
 
 - **PT1** An upcoming visit renders on the checklist page above the task list,
   with date, time window and services.
-- **PT2** A visit tomorrow renders in the prominent state; one further out
-  renders in the quiet state.
+- **PT2** A visit today or tomorrow renders in the prominent state; one further
+  out renders in the quiet state.
+  The day OF the visit used to be the quietest of the three - a grey
+  "Scheduled" band and a bare date - on the one morning the member is most
+  likely to open the portal at all.
+  The comparison is in Eastern, so a member in another zone sees the day the
+  crew and the reminder email do: 11pm Eastern the night before is already
+  tomorrow's date in UTC, and read there the card would say "today" a day early.
 - **PT3** The card offers an `.ics` download - the customer variant, with no
   alarms - and reschedule links (`mailto:` and `tel:`).
 - **PT4** With no scheduled visit, no card renders and the page is unchanged.
@@ -387,6 +403,14 @@ These were settled by the owner during review; the ACs assume them.
 - **PT6** A booked task the member ticks stays on the page as a booked visit.
   See **SC11**: the card and the fetch behind it key on the window, not on the
   shared `status` column.
+- **PT7** The card stays up until the visit's window **ends**, not until it
+  opens. Filtered on `scheduled_start`, an 08:00-11:00 visit dropped off the
+  page at 08:00 sharp - while the crew was pulling up and the member was opening
+  the portal to re-check the address, the time and the "we'll text you when
+  we're on our way" line.
+  `scheduled_end` is nullable and the two-hour fallback was spelled out three
+  times - the page, the card and the reminder cron. One `visitEndsAt` now, so
+  the page cannot decide a visit is over while the email still says it is on.
 
 ## CP - completion
 
@@ -449,3 +473,18 @@ These were settled by the owner during review; the ACs assume them.
   `mso-line-height-rule:exactly`, and the mobile media query.
 - **CM6** No environment leaks: with a staging origin, every link in the built
   email points at that origin except the deliberately absolute hosted logo.
+- **CM7** An opt-out link is scoped to a stream the unsubscribe page actually
+  implements, and its footer says what the link takes away.
+  `/unsub` branches on ONE value, `follow_ups`; every other value falls through
+  to the marketing cascade and turns off `buy_remodel` and `announcements` too,
+  consent that only a fresh double opt-in restores. The quote carried
+  `stream=home_care`, which read as scoped and was inert - and claimed a scope
+  the recipient may not have, since a quote goes to someone who asked for a
+  price and need never have joined Home Care.
+  It carries `follow_ups` now: the opt-out that governs automated mail about an
+  inquiry (the nurture drip, the post-job review request), while estimates and
+  scheduling still come through - so it cannot silence a live negotiation. The
+  footer says exactly that, because beside a quote the safe reading of a bare
+  "Unsubscribe" is "this cancels my quote".
+  The visit reminder is unaffected: it goes to a homeowner row that exists by
+  then, so it keeps the correctly-scoped `/api/home-care/unsubscribe?token=`.

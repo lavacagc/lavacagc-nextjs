@@ -19,8 +19,8 @@
  * (lead_email, visit_start) so two visits on one day keep separate ledgers. It
  * is CLAIMED (pending -> sent) before the send, so a Vercel cron retry, a manual
  * GET or a concurrent run finds nothing left to claim instead of mailing the
- * batch twice. A genuine send failure releases the claim so the next run can
- * retry.
+ * batch twice. Only a REFUSAL - the recipient unsubscribed - keeps the claim;
+ * every other outcome releases it so the next run retries.
  *
  *   ?dryRun=1 - report who would be reminded, send nothing, claim nothing.
  *
@@ -32,7 +32,7 @@ import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { HOME_CARE_FROM } from '@/lib/notify/sendHomeCareEmails';
 import { buildVisitReminderEmail, SERVICE_REPLY_TO } from '@/lib/homecare/serviceEmails';
 import {
-  tomorrowEasternWindow, visitDateLabel, visitTimeWindow, visitKey, reminderSendAt,
+  tomorrowEasternWindow, visitDateLabel, visitTimeWindow, visitKey, visitEndsAt, reminderSendAt,
   ledgerKey, ledgerVerdict, VISIT_REMINDER_TYPE, type ReminderLedgerRow,
 } from '@/lib/homecare/visitSchedule';
 import { preferencesUrlFor } from '@/lib/preferences/preferences';
@@ -162,7 +162,7 @@ export async function GET(request: NextRequest) {
       if (!owner?.email) { skipped.push(rows[0].homeowner_id); continue; }
 
       const start = new Date(rows[0].scheduled_start);
-      const end = rows[0].scheduled_end ? new Date(rows[0].scheduled_end) : new Date(start.getTime() + 2 * 3600_000);
+      const end = new Date(visitEndsAt(rows[0].scheduled_start, rows[0].scheduled_end));
       const services = rows.map((r) => titleFor.get(r.task_key) ?? r.task_key);
       const address = rows[0].service_address ?? owner.address ?? '';
 
@@ -247,10 +247,27 @@ export async function GET(request: NextRequest) {
         sent += 1;
       } else {
         skipped.push(owner.email);
-        // A refused send (unsubscribed, suppressed) is final - the claim stands.
-        // A genuine failure releases it so the next run can try again.
-        if (claimId && res.status !== 'skipped') {
-          await supabaseRest('PATCH', `follow_up_queue?id=eq.${claimId}`, { status: 'failed' }).catch(() => {});
+        // Only a REFUSAL is final - a recipient who opted out is not owed this
+        // email and never will be. Everything else releases the claim so the
+        // next run retries. `skipped` alone is not that verdict: it is also what
+        // an unconfigured RESEND_API_KEY returns, an infrastructure fault that
+        // says nothing about this recipient. Held as final, it closed the ledger
+        // for every visit that night - the queue reads "sent", the customer was
+        // never told, and no run ever revisits it.
+        const refused = res.status === 'skipped' && res.reason === 'unsubscribed';
+        if (claimId && !refused) {
+          console.error(
+            `visit-reminders: send did not complete for ${owner.email} (${res.status}` +
+              `${res.reason ? `: ${res.reason}` : ''}) - releasing the ledger claim for retry`,
+          );
+          await supabaseRest('PATCH', `follow_up_queue?id=eq.${claimId}`, { status: 'failed', sent_at: null })
+            .catch((err) => {
+              // The claim stands and nothing retries it, so this cannot be silent.
+              console.error(
+                `visit-reminders: could not release the claim for ${owner.email} - that reminder will not be retried:`,
+                err instanceof Error ? err.message : err,
+              );
+            });
         }
       }
     }

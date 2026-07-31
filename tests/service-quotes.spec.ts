@@ -14,7 +14,7 @@ import { supersededBookings, orphanedVisitStarts, crossSeasonBookings } from '..
 import {
   tomorrowEasternWindow, visitDateLabel, visitTimeWindow, reminderSendAt, reminderRunAt,
   reminderIsStillUseful, visitKey, easternVisitInstant, ledgerKey, ledgerVerdict,
-  VISIT_REMINDER_TYPE,
+  visitEndsAt, easternDayOffset, VISIT_REMINDER_TYPE,
 } from '../src/lib/homecare/visitSchedule';
 import { BUSINESS_ADDRESS } from '../src/lib/homecare/emailShell';
 import { seasonForTaskVisit } from '../src/lib/homecare/season';
@@ -439,6 +439,33 @@ test('RM: helpers derive the labels and send time the emails use', () => {
   expect(reminderIsStillUseful(START, new Date(Date.UTC(2026, 7, 1)))).toBe(true);
   expect(reminderIsStillUseful(START, new Date(Date.UTC(2026, 7, 9)))).toBe(false);
   expect(VISIT_REMINDER_TYPE).toBe('visit_reminder_1d');
+});
+
+test('PT7: a visit is over when its window closes, not when it opens', () => {
+  const endMs = visitEndsAt(START.toISOString(), END.toISOString());
+  expect(endMs).toBe(END.getTime());
+  // Mid-window, the visit is still on: this is the hour the member is most
+  // likely to open the portal to check the address.
+  const midway = new Date(START.getTime() + 90 * 60_000);
+  expect(endMs, 'still live at 9:30am on an 8-11am job').toBeGreaterThan(midway.getTime());
+  expect(endMs).toBeLessThan(END.getTime() + 1);
+  // A null scheduled_end falls back to two hours, in ONE place.
+  expect(visitEndsAt(START.toISOString(), null)).toBe(START.getTime() + 2 * 3600_000);
+  expect(visitEndsAt(START.toISOString(), undefined)).toBe(START.getTime() + 2 * 3600_000);
+});
+
+test('PT2: the day of the visit reads as today, in Eastern', () => {
+  // 6am Eastern on the day of an 8am visit: same Eastern day, and the card
+  // must say so rather than falling to the quiet "Scheduled" state.
+  const morningOf = easternWallClock(new Date(Date.UTC(2026, 7, 5)), 6, 0);
+  expect(easternDayOffset(START, morningOf)).toBe(0);
+  expect(easternDayOffset(START, easternWallClock(new Date(Date.UTC(2026, 7, 4)), 20, 0))).toBe(1);
+  expect(easternDayOffset(START, easternWallClock(new Date(Date.UTC(2026, 7, 1)), 12, 0))).toBe(4);
+  // 11pm Eastern on 4 Aug is 03:00 UTC on 5 Aug - read in UTC this would call
+  // an 8am visit "today" a day early.
+  const lateNightBefore = easternWallClock(new Date(Date.UTC(2026, 7, 4)), 23, 0);
+  expect(lateNightBefore.getUTCDate(), 'already the 5th in UTC').toBe(5);
+  expect(easternDayOffset(START, lateNightBefore), 'still tomorrow in Eastern').toBe(1);
 });
 
 test('RM12: the reminder gate is the SEND time, not the visit', () => {

@@ -8,6 +8,7 @@ import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie'
 import { findHomeownerById, updateHomeowner } from '@/lib/homecare/homeowners';
 import { currentSeason, seasonStart, SEASON_LABEL } from '@/lib/homecare/season';
 import { isRowCurrent } from '@/lib/homecare/selection';
+import { visitEndsAt } from '@/lib/homecare/visitSchedule';
 import {
   catalogCarriesStages,
   filterTasksForProfile,
@@ -149,14 +150,19 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   // member who ticks a booked task to acknowledge it writes 'done' onto that
   // same row, and the visit must not vanish from the page because they did.
   // Cancelling and completing both clear the window.
+  //
+  // A visit stays on the page until its window ENDS, not until it opens. 8am on
+  // the day of an 8-11am visit is exactly when a member opens the portal to
+  // check the address and the time; filtered on the start, the card vanished
+  // while the crew was pulling up.
   const bookedRows = (doneRows ?? []).filter((r) => r.scheduled_start && r.status !== 'dismissed');
-  const nextStart = bookedRows
+  const liveRows = bookedRows.filter((r) => visitEndsAt(r.scheduled_start as string, r.scheduled_end) > nowMs);
+  const nextStart = liveRows
     .map((r) => r.scheduled_start as string)
-    .filter((iso) => new Date(iso).getTime() > nowMs)
-    .sort()[0];
+    .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
   const upcomingVisit: UpcomingVisit | null = nextStart
     ? (() => {
-        const rows = bookedRows.filter((r) => r.scheduled_start === nextStart);
+        const rows = liveRows.filter((r) => r.scheduled_start === nextStart);
         const titleFor = (k: string) => (allTasks ?? []).find((t) => t.key === k)?.title ?? k;
         return {
           start: nextStart,

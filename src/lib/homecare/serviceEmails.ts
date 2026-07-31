@@ -48,6 +48,18 @@ export const GOOGLE_RATING = '5.0';
 /** Service work replies go to both, not the shared info@ mailbox. */
 export const SERVICE_REPLY_TO = ['alex@lavacagc.com', 'veronica@lavacagc.com'];
 
+/**
+ * Why they got the quote, and what unsubscribing from it does.
+ *
+ * The second sentence is not decoration. The recipient asked for a price and
+ * may never have joined anything, so "Unsubscribe" beside a quote has to say
+ * what it takes away - the automated mail about their inquiry - and what it
+ * leaves, or the safe reading is "this cancels my quote".
+ */
+const QUOTE_FOOTER_REASON =
+  `You're getting this because you asked La Vaca for a quote. Unsubscribing stops our follow-up ` +
+  `emails about it; your quote and any scheduling still reach you.`;
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** "29 Aug 2026" - unambiguous for a US reader without being a bare date. */
@@ -116,7 +128,7 @@ export function buildServiceQuoteEmail(args: ServiceQuoteArgs): { subject: strin
     credibility(),
     callBlock('Questions before you decide?', `Call and we'll talk it through - no pressure either way.`),
     footer({
-      reason: `You're getting this because you asked La Vaca for a quote.`,
+      reason: QUOTE_FOOTER_REASON,
       unsubscribeUrl,
       preferencesUrl: preferencesUrl ?? undefined,
     }),
@@ -137,7 +149,7 @@ export function buildServiceQuoteEmail(args: ServiceQuoteArgs): { subject: strin
     `WHO'S DOING THE WORK\nLicensed, bonded & insured · NJ HIC# 13VH13373800\n1-year workmanship warranty on everything we touch\n${GOOGLE_RATING} on Google · same crew, start to finish\n\n` +
     `We aim for a 5-star finish on every visit, however small the job. When we're done we'll ask how we did - and if anything isn't right, we come back.\n\n` +
     `Questions before you decide? Call (201) 212-4917 - 24-hour response guaranteed.\n` +
-    textFooter(`You're getting this because you asked La Vaca for a quote.`, unsubscribeUrl, preferencesUrl ?? undefined);
+    textFooter(QUOTE_FOOTER_REASON, unsubscribeUrl, preferencesUrl ?? undefined);
 
   return { subject: `Your La Vaca quote - ${scopeSummary}`, html, text };
 }

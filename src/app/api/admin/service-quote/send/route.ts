@@ -16,7 +16,7 @@ import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { HOME_CARE_FROM } from '@/lib/notify/sendHomeCareEmails';
 import { buildServiceQuoteEmail, SERVICE_REPLY_TO } from '@/lib/homecare/serviceEmails';
-import { preferencesUrlFor } from '@/lib/preferences/preferences';
+import { preferencesUrlFor, normalizeEmail } from '@/lib/preferences/preferences';
 import { cleanEnv } from '@/lib/envClean';
 import { serviceQuoteSchema } from '../_schema';
 
@@ -78,7 +78,16 @@ export async function POST(request: NextRequest) {
   }
 
   const preferencesUrl = await preferencesUrlFor(SITE_URL, to).catch(() => undefined);
-  const unsubscribeUrl = `${SITE_URL}/unsub?stream=home_care&email=${encodeURIComponent(to)}`;
+  // A quote goes to someone who asked us for a price. They are not necessarily
+  // a Home Care member, so `stream=home_care` claimed a scope the recipient may
+  // not have - and /unsub honours only `follow_ups`, so every other value fell
+  // through to the marketing cascade and turned off buy_remodel and
+  // announcements as well, consent that only a fresh double opt-in can restore.
+  // `follow_ups` is the opt-out that actually governs automated mail about an
+  // inquiry (the nurture drip, the post-job review request); estimates and
+  // scheduling still come through, so it cannot silence a live negotiation.
+  const unsubscribeUrl =
+    `${SITE_URL}/unsub?stream=follow_ups&email=${encodeURIComponent(normalizeEmail(to))}`;
 
   const { subject, html, text } = buildServiceQuoteEmail({
     recipientName,

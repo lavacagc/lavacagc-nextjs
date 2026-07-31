@@ -154,6 +154,23 @@ test('RM15: a ledger row that cannot be written stops the send', () => {
   expect(branch.indexOf('continue;'), 'skip before the send, not after').toBeGreaterThan(-1);
 });
 
+test('RM18: only a refusal keeps the claim - an unconfigured key releases it', () => {
+  // sendTrackedEmail answers 'skipped' for BOTH an opt-out and a missing
+  // RESEND_API_KEY. Held as final, the second closed the ledger for every visit
+  // that night: the queue reads 'sent', the customer was never told, nothing
+  // retries. The release must narrow on the reason, like the repo's other three
+  // call sites do.
+  const release = cron.slice(cron.indexOf('const res = await sendTrackedEmail'));
+  expect(release).toContain("res.status === 'skipped' && res.reason === 'unsubscribed'");
+  expect(release, 'a bare status check cannot tell a refusal from a fault')
+    .not.toContain("res.status !== 'skipped'");
+  expect(release).toContain("{ status: 'failed', sent_at: null }");
+  // Silent here is how the first version hid: a released claim and a release
+  // that could not be written both have to be visible in the cron's log.
+  const releaseBlock = release.slice(release.indexOf('if (claimId && !refused)'));
+  expect(releaseBlock.match(/console\.error/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+});
+
 test('RM8: the cron reads its verdict from every row a visit holds', () => {
   // A visit can hold several rows and Postgres returns them in no defined
   // order, so the cron collects them all and hands the set to ledgerVerdict
@@ -332,10 +349,25 @@ test('PT6: a member ticking a booked task does not hide their own visit', () => 
   }
 });
 
-test('PT2: tomorrow and later render differently', () => {
+test('PT2: today, tomorrow and later each render differently', () => {
+  expect(visitCard).toContain("'Today'");
   expect(visitCard).toContain('Coming up');
   expect(visitCard).toContain('Scheduled');
-  expect(visitCard).toContain('isTomorrowEastern');
+  // Eastern, so a member in another zone sees the day the crew does.
+  expect(visitCard).toContain('easternDayOffset');
+});
+
+test('PT7: the card stays up until the window ENDS, not until it opens', () => {
+  // 8am on the day of an 8-11am visit is when the member checks the address.
+  expect(portal).toContain('visitEndsAt(r.scheduled_start as string, r.scheduled_end)');
+  expect(portal, 'the start must not be the cutoff').not.toContain('new Date(iso).getTime() > nowMs');
+  // One fallback for a null scheduled_end, shared by the page, the card and the
+  // cron - three copies is three chances for them to disagree about "over".
+  expect(visitCard).toContain('visitEndsAt(visit.start, visit.end)');
+  expect(cron).toContain('visitEndsAt(rows[0].scheduled_start, rows[0].scheduled_end)');
+  for (const [name, src] of Object.entries({ portal, visitCard, cron })) {
+    expect(src, `${name} must not re-spell the 2h fallback`).not.toContain('2 * 3600_000');
+  }
 });
 
 test('PT3: the card offers the calendar file and both reschedule routes', () => {
@@ -723,6 +755,35 @@ test('the send route audits as kind=service and keeps the QBO url', () => {
 
 test('the send route audits failures too', () => {
   expect(sendRoute).toContain("result.status === 'sent' ? (isTest ? 'test' : 'sent') : 'failed'");
+});
+
+test('CM7: the quote opt-out is scoped to a stream /unsub actually honours', () => {
+  // /unsub branches on ONE value. Every other stream falls through to the
+  // marketing cascade - buy_remodel and announcements off too, consent only a
+  // fresh double opt-in restores - so a scope the page does not implement is a
+  // link that quietly does far more than it says.
+  const unsubPage = read('src/app/unsub/UnsubClient.tsx');
+  const unsubApi = read('src/app/api/preferences/unsubscribe-by-email/route.ts');
+  const scoped = [...sendRoute.matchAll(/\/unsub\?stream=(\w+)/g)].map((m) => m[1]);
+  expect(scoped, 'the quote must carry exactly one scoped opt-out').toHaveLength(1);
+  expect(unsubPage, `/unsub does not implement stream=${scoped[0]}`).toContain(`'${scoped[0]}'`);
+  expect(unsubApi, `unsubscribe-by-email does not implement stream=${scoped[0]}`).toContain(`'${scoped[0]}'`);
+  // And never home_care: a quote goes to someone who asked for a price, who may
+  // never have joined Home Care at all.
+  expect(scoped[0]).not.toBe('home_care');
+  // Normalized like the other two callers, so the opt-out lands on the row the
+  // suppression lookups read.
+  expect(sendRoute).toContain('normalizeEmail(to)');
+});
+
+test('CM7: the quote footer says what unsubscribing takes away and what it leaves', () => {
+  const emails = read('src/lib/homecare/serviceEmails.ts');
+  const reason = emails.slice(emails.indexOf('const QUOTE_FOOTER_REASON'), emails.indexOf('const DAY_MS'));
+  expect(reason).toContain('asked La Vaca for a quote');
+  expect(reason).toMatch(/stops our follow-up/i);
+  expect(reason, 'a quote must not read as cancellable by unsubscribing').toMatch(/still reach you/i);
+  // One constant, so the HTML and text footers cannot drift apart.
+  expect((emails.match(/QUOTE_FOOTER_REASON/g) ?? []).length).toBe(3);
 });
 
 /* ── intake + admin page ─────────────────────────────────────────────────── */

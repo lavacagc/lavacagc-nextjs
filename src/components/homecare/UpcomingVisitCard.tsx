@@ -1,12 +1,16 @@
 import { CalendarCheck, Clock, MapPin } from 'lucide-react';
-import { visitDateLabel, visitTimeWindow, easternParts } from '@/lib/homecare/visitSchedule';
+import { visitDateLabel, visitTimeWindow, visitEndsAt, easternDayOffset } from '@/lib/homecare/visitSchedule';
 
 /**
  * The scheduled-visit card at the top of a member's checklist.
  *
- * Two states, because "tomorrow" and "three weeks out" deserve different
- * weight: tomorrow gets the gradient header, anything further out gets a quiet
- * one in the same position.
+ * Three states, because "today", "tomorrow" and "three weeks out" deserve
+ * different weight: today and tomorrow get the gradient header, anything
+ * further out gets a quiet one in the same position.
+ *
+ * The day of the visit used to read as the quietest of the three - a grey
+ * "Scheduled" band and a bare date - on the morning the member is most likely
+ * to open the portal at all.
  *
  * The calendar file is served here rather than attached to the reminder email.
  * That keeps it one tap away instead of buried in an email they have to find
@@ -20,17 +24,14 @@ export interface UpcomingVisit {
   services: string[];
 }
 
-function isTomorrowEastern(start: Date, now: Date): boolean {
-  const s = easternParts(start);
-  const n = easternParts(now);
-  const nextDay = new Date(Date.UTC(n.y, n.m, n.day + 1));
-  return s.y === nextDay.getUTCFullYear() && s.m === nextDay.getUTCMonth() && s.day === nextDay.getUTCDate();
-}
-
 export default function UpcomingVisitCard({ visit, now = new Date() }: { visit: UpcomingVisit; now?: Date }) {
   const start = new Date(visit.start);
-  const end = visit.end ? new Date(visit.end) : new Date(start.getTime() + 2 * 3600_000);
-  const soon = isTomorrowEastern(start, now);
+  const end = new Date(visitEndsAt(visit.start, visit.end));
+  // The page keeps the card up until the window closes, so a visit under way
+  // still counts as today (a window spanning midnight reads negative).
+  const daysAway = easternDayOffset(start, now);
+  const today = daysAway <= 0;
+  const soon = daysAway <= 1;
 
   const icsHref = `/api/home-care/visit.ics?${new URLSearchParams({
     start: start.toISOString(),
@@ -52,14 +53,14 @@ export default function UpcomingVisitCard({ visit, now = new Date() }: { visit: 
             : 'border-b border-border bg-muted/40 px-4 py-2.5 text-xs font-bold uppercase tracking-[0.11em] text-text-muted'
         }
       >
-        {soon ? 'Coming up - tomorrow' : 'Scheduled'}
+        {today ? 'Today' : soon ? 'Coming up - tomorrow' : 'Scheduled'}
       </div>
       <div className="px-4 py-4">
         <div className="flex items-start gap-2.5">
           <CalendarCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
           <div className="min-w-0">
             <div className="text-lg font-extrabold leading-tight text-text-primary">
-              {soon ? `Tomorrow, ${visitDateLabel(start)}` : visitDateLabel(start)}
+              {today ? `Today, ${visitDateLabel(start)}` : soon ? `Tomorrow, ${visitDateLabel(start)}` : visitDateLabel(start)}
             </div>
             <div className="mt-0.5 flex items-center gap-1.5 text-sm font-bold text-primary">
               <Clock className="h-3.5 w-3.5" /> {visitTimeWindow(start, end)}

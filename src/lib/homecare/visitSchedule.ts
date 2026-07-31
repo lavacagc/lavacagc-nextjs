@@ -65,6 +65,33 @@ export function visitTimeWindow(start: Date, end: Date): string {
   return `${fmt(start, !sameMeridiem)} - ${fmt(end, true)}`;
 }
 
+/** A visit with no `scheduled_end` runs this long. */
+const DEFAULT_VISIT_MS = 2 * 3600_000;
+
+/**
+ * When a visit's window closes, as an epoch millisecond value.
+ *
+ * `scheduled_end` is nullable, and the two-hour fallback was written out three
+ * times - the portal card, the portal query and the reminder cron - which is
+ * three chances for the page to decide a visit is over while the email still
+ * says it is on.
+ */
+export function visitEndsAt(startIso: string, endIso: string | null | undefined): number {
+  return endIso ? Date.parse(endIso) : Date.parse(startIso) + DEFAULT_VISIT_MS;
+}
+
+/**
+ * How many Eastern calendar days away a visit is: 0 today, 1 tomorrow.
+ *
+ * Eastern, not local: a member in another zone must see the same day the crew
+ * and the reminder email do.
+ */
+export function easternDayOffset(start: Date, now: Date): number {
+  const s = easternParts(start);
+  const n = easternParts(now);
+  return Math.round((Date.UTC(s.y, s.m, s.day) - Date.UTC(n.y, n.m, n.day)) / 86_400_000);
+}
+
 /**
  * When the reminder row should be sent: 7:30pm Eastern the evening before.
  *
