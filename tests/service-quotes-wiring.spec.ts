@@ -123,10 +123,14 @@ test('RM5: a cancel matches the address exactly, and DELETE validates it', () =>
   const fn = scheduling.slice(scheduling.indexOf('async function cancelPendingVisitReminders'));
   expect(fn.indexOf('.trim().toLowerCase() === wanted'), 'exact match before the patch')
     .toBeLessThan(fn.indexOf("'PATCH'"));
-  // The DELETE params go through zod, so `?email=*` never reaches the cancel.
+  // The DELETE params go through zod, and carry no address at all - the route
+  // reads it off the homeowner row, so no caller pattern reaches this query.
   expect(scheduleRoute).toContain('cancelVisitSchema.safeParse');
   expect(schema).toContain('export const cancelVisitSchema');
-  expect(schema).toContain("email: z.string().trim().email('Valid customer email required')");
+  const cancelShape = schema.slice(
+    schema.indexOf('export const cancelVisitSchema'), schema.indexOf('export type CancelVisitInput'),
+  );
+  expect(cancelShape, 'the cancel takes no caller-supplied address').not.toContain('email');
 });
 
 test('RM8: the queue row is the ledger, claimed BEFORE the send', () => {
@@ -659,6 +663,18 @@ test('CP1+CP2: mark-complete attributes to La Vaca; the checkbox does not', () =
   expect(taskRoute).not.toContain("completed_by: 'lavaca'");
 });
 
+test('CP10: an untick keeps the record that La Vaca did the work', () => {
+  const taskRoute = read('src/app/api/home-care/task/route.ts');
+  // The rule lives in one tested place rather than inline in the handler.
+  expect(taskRoute).toContain('checklistCompletionFields(done, now, current)');
+  // Read only on the untick path, and NOT swallowed: a read that failed does
+  // not mean "nobody has completed this", and acting on that guess is what
+  // erases an invoiced visit from the service history.
+  expect(taskRoute).toContain('const current = done ? null : await currentCompletion(');
+  const lookup = taskRoute.slice(taskRoute.indexOf('async function currentCompletion'));
+  expect(lookup.slice(0, lookup.indexOf('\n}')), 'the lookup must not degrade to null').not.toContain('catch');
+});
+
 test('CP3: existing rows default to homeowner', () => {
   expect(migration).toContain("DEFAULT 'homeowner'");
 });
@@ -671,6 +687,26 @@ test('CP4: mark-complete is idempotent - no second feedback email', () => {
 
 test('CP: completing a visit clears its pending reminder', () => {
   expect(completeRoute).toContain('cancelVisitReminder');
+});
+
+test('RM17: a cancel that could not be carried out is never reported as done', () => {
+  // Both halves used to `.catch()` into silence, so a failed cancel read as
+  // "nothing to cancel" - and the toast said the reminder was pulled while the
+  // "we're coming tomorrow" was still queued for a visit that was called off.
+  const fn = scheduling.slice(scheduling.indexOf('async function cancelPendingVisitReminders'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  expect(body, 'no silent catch').not.toContain('.catch(()');
+  expect(body).toContain("return 'unavailable'");
+  expect(body).toContain('console.error');
+  // A requeue whose cancel failed queues nothing on top of the stale row.
+  const requeue = scheduling.slice(scheduling.indexOf('export async function requeueVisitReminder'));
+  expect(requeue.indexOf("=== 'unavailable') return 'unavailable'"))
+    .toBeLessThan(requeue.indexOf("'follow_up_queue'"));
+  // Both admin actions hand the verdict back, and the page says so plainly.
+  expect(scheduleRoute).toContain("NextResponse.json({ status: 'cancelled', reminder })");
+  expect(completeRoute).toContain("reminder: 'cancelled' | 'unavailable'");
+  expect(adminPage).toContain("data.reminder === 'unavailable'");
+  expect(adminPage).toContain('could NOT be pulled');
 });
 
 /* ── send route ──────────────────────────────────────────────────────────── */
@@ -695,7 +731,12 @@ test('IN: intake returns catalog, past requests and service history', () => {
   expect(intakeRoute).toContain('bookableCatalog');
   expect(intakeRoute).toContain('parseTaskKeys');
   expect(intakeRoute).toContain('lastDoneFor');
-  expect(intakeRoute).toContain('status=eq.done');
+  // History is selected on the TIMESTAMP, not on status: a member unticking
+  // work La Vaca performed sets the row to 'todo' while the job still happened,
+  // and `status=eq.done` dropped it out of the panel entirely (IN4, CP10).
+  expect(intakeRoute).toContain('completed_at=not.is.null');
+  const history = intakeRoute.slice(intakeRoute.indexOf('supabaseRest<CompletionRow[]>'));
+  expect(history.slice(0, history.indexOf('),'))).not.toContain('&status=eq.done');
 });
 
 test('the admin page keeps the Send Estimate shape minus portal and cadence', () => {

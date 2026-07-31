@@ -18,6 +18,7 @@ import {
 } from '../src/lib/homecare/visitSchedule';
 import { BUSINESS_ADDRESS } from '../src/lib/homecare/emailShell';
 import { seasonForTaskVisit } from '../src/lib/homecare/season';
+import { checklistCompletionFields } from '../src/lib/homecare/selection';
 
 /**
  * Acceptance criteria for Home Care service quotes.
@@ -166,6 +167,40 @@ test('IN4: last-done ignores anything that is not a real completion', () => {
   expect(m.get('clean_gutters')?.by).toBe('lavaca');
   expect(m.has('clean_dryer_vent')).toBe(false);
   expect(m.has('test_smoke_co')).toBe(false);
+});
+
+test('IN4: last-done reads the timestamp, so an untick does not erase the job', () => {
+  // The row is current state AND history. A member unticking work La Vaca
+  // performed means "this needs doing again" - it is not a claim that we never
+  // came, and reading through status='done' turned one tap into "no record" for
+  // a visit that was performed and invoiced. See CP10.
+  const m = lastDoneFor([
+    { task_key: 'clean_gutters', status: 'todo', completed_at: '2025-10-04T00:00:00Z', completed_by: 'lavaca' },
+  ]);
+  expect(lastDoneLabel(m.get('clean_gutters'))).toBe('last done Oct 2025 by La Vaca');
+});
+
+test('CP10: an untick keeps La Vaca\'s record and retracts the member\'s own', () => {
+  const now = '2026-08-05T15:00:00.000Z';
+  const ours = { completed_by: 'lavaca', completed_at: '2025-10-04T00:00:00Z' };
+
+  // Unticking OUR work touches neither column: an empty object is what the
+  // merge-duplicates upsert needs to leave them exactly as they were.
+  expect(checklistCompletionFields(false, now, ours)).toEqual({});
+
+  // Their own is theirs to retract - that is what unticking means.
+  expect(checklistCompletionFields(false, now, { completed_by: 'homeowner', completed_at: now }))
+    .toEqual({ completed_at: null, completed_by: 'homeowner' });
+  // And a row with no completion at all has nothing to preserve.
+  expect(checklistCompletionFields(false, now, null))
+    .toEqual({ completed_at: null, completed_by: 'homeowner' });
+  // An attribution with no date is not a record of a job either.
+  expect(checklistCompletionFields(false, now, { completed_by: 'lavaca', completed_at: null }))
+    .toEqual({ completed_at: null, completed_by: 'homeowner' });
+
+  // A tick always reassigns the row to the member, whatever was there (CP2):
+  // last-done then reports their job, which is the most recent one.
+  expect(checklistCompletionFields(true, now, ours)).toEqual({ completed_at: now, completed_by: 'homeowner' });
 });
 
 test('IN5: last-done returns the newest completion for a multi-season task', () => {

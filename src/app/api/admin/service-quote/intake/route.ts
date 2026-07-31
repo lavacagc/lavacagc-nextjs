@@ -106,9 +106,15 @@ export async function GET(request: NextRequest) {
     let bookings: Booking[] = [];
     if (homeowner) {
       const [done, booked] = await Promise.all([
+        // Selected on the TIMESTAMP, not on `status`. The two answer different
+        // questions on one row: a member unticking a task La Vaca performed sets
+        // it back to 'todo' - "this needs doing again" - while the job itself
+        // still happened. Narrowed to `status=eq.done`, that tap took an
+        // invoiced visit out of the history and this panel read "no record".
         supabaseRest<CompletionRow[]>(
           'GET',
-          `homeowner_maintenance?select=task_key,status,completed_at,completed_by&homeowner_id=eq.${homeowner.id}&status=eq.done`,
+          `homeowner_maintenance?select=task_key,status,completed_at,completed_by` +
+            `&homeowner_id=eq.${homeowner.id}&completed_at=not.is.null`,
         ).catch(() => [] as CompletionRow[]),
         // The scheduling columns are hand-applied (20260815), as every migration
         // here is. A lookup is still worth answering without them.

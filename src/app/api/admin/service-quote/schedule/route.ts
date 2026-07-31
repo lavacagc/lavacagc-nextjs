@@ -239,8 +239,11 @@ export async function DELETE(request: NextRequest) {
     // still reading 'booked' goes back to 'todo' - their own completion stands.
     await supabaseRest('PATCH', `${filter}&status=eq.booked`, { status: 'todo' });
     await supabaseRest('PATCH', filter, { scheduled_start: null, scheduled_end: null });
-    await cancelVisitReminder(owner.email, startAt);
-    return NextResponse.json({ status: 'cancelled' });
+    // Reported, never assumed. A cancel that could not pull the reminder leaves
+    // a pending "we're coming tomorrow" for a visit that was called off, and
+    // answering a flat "cancelled" is what hid it.
+    const reminder = await cancelVisitReminder(owner.email, startAt);
+    return NextResponse.json({ status: 'cancelled', reminder });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('service-quote cancel failed:', message);

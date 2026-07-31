@@ -577,3 +577,42 @@ test('a cancel cannot reach another address through a wildcard', async () => {
   await cancelVisitReminder('BUSY@example.com', AFTERNOON);
   expect(pendingFor('busy@example.com')).toEqual([]);
 });
+
+/** Point the client at a dead port for one call, the way the booking read does. */
+const withQueueDown = async <T>(fn: () => Promise<T>): Promise<T> => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = `http://127.0.0.1:${STUB_PORT + 1}`;
+  try { return await fn(); } finally { process.env.NEXT_PUBLIC_SUPABASE_URL = url; }
+};
+
+test('RM17: a cancel that cannot reach the queue says so instead of claiming success', async () => {
+  // The one path in this pipeline that failed OPEN. Swallowed, a failed cancel
+  // is indistinguishable from "nothing to cancel" - so the route answered
+  // "cancelled", the toast read "the reminder is pulled", and the customer was
+  // told we were coming tomorrow for a visit that had been called off.
+  const start = new Date(Date.now() + 6 * 24 * 3600_000);
+  await requeueVisitReminder({
+    email: 'stranded@example.com', name: 'Stranded', start, subject: 'Gutters', html: '<p>x</p>',
+  });
+  expect(pendingFor('stranded@example.com').length).toBe(1);
+
+  expect(await withQueueDown(() => cancelVisitReminder('stranded@example.com', start)),
+    'reported, never swallowed').toBe('unavailable');
+  // And the row really is still live, which is exactly what the admin needs
+  // telling: nothing else is going to stop it going out.
+  expect(pendingFor('stranded@example.com').length).toBe(1);
+
+  expect(await cancelVisitReminder('stranded@example.com', start)).toBe('cancelled');
+  expect(pendingFor('stranded@example.com')).toEqual([]);
+});
+
+test('RM17: a requeue whose cancel failed queues nothing on top of it', async () => {
+  // The stale row would still be pending for a window the visit has left, so a
+  // second one announces both - the visit that moved and the one that is real.
+  const start = new Date(Date.now() + 7 * 24 * 3600_000);
+  const verdict = await withQueueDown(() => requeueVisitReminder({
+    email: 'nocancel@example.com', name: 'No Cancel', start, subject: 'S', html: '<p>x</p>',
+  }));
+  expect(verdict).toBe('unavailable');
+  expect(pendingFor('nocancel@example.com')).toEqual([]);
+});

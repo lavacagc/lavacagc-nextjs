@@ -67,7 +67,11 @@ These were settled by the owner during review; the ACs assume them.
 - **IN3** For a customer with no lead, the full bookable catalog is offered
   (`active=true`, `bookable=true`), sorted by priority.
 - **IN4** `lastDoneFor` returns the most recent `completed_at` per task key for a
-  homeowner, ignoring rows that are not `status='done'`.
+  homeowner, keyed on the **timestamp** and never on `status`.
+  One row carries both current state and history, and they answer different
+  questions - see **CP10**. A row with no `completed_at` is not history:
+  `booked` and `snoozed` stamp none, and a member retracting their own tick
+  clears theirs with it.
 - **IN5** Last-done is per `(homeowner, task_key)` and returns the newest row
   when a task has been done in several seasons.
 - **IN6** The lead lookup matches the address **case-insensitively**.
@@ -133,21 +137,24 @@ These were settled by the owner during review; the ACs assume them.
   guarantees. Rescheduling *within* a season is therefore a plain upsert in
   place, and the only thing left to work out is the window it vacated, so that
   window's reminder can be pulled.
-  Two seasons is a **legitimate** case, not a conflict to resolve: `clean_gutters`
-  is a fall and a spring task, and a customer with both halves of the year on the
-  books is normal. Matched on the task alone, booking the spring clean unbooked
-  the October one and cancelled its reminder while the toast still read "Visit
-  scheduled" - the visit gone from the member's portal and off the cron, with the
-  owner's calendar still holding it.
-  Which makes a visit that moves far enough to change its reconciled season a
-  **new booking** as far as this function is concerned: nothing infers a
-  cross-season move and nothing unbooks a window the caller did not name.
-  Guessing at that intent is what the `replaces` handshake was for, and it cost
-  three defects - a client that claimed a reschedule on every second click, a
-  completion that resolved to the wrong visit, and a timestamp comparison that
-  could never match - before a task-wide supersede reintroduced the loss from
-  the other direction.
-  Which is why the second booking is **refused** rather than written - see SC15.
+  *Which* window that is is matched on **(task, season)**, never on the task
+  alone. Reaching across seasons, this function could not tell a move from a
+  second booking: booking a spring gutter clean unbooked the October one and
+  cancelled its reminder while the toast still read "Visit scheduled" - the visit
+  gone from the member's portal and off the cron, with the owner's calendar still
+  holding it.
+  So nothing here infers a cross-season move, and nothing unbooks a window the
+  caller did not name. Guessing at that intent is what the `replaces` handshake
+  was for, and it cost three defects - a client that claimed a reschedule on
+  every second click, a completion that resolved to the wrong visit, and a
+  timestamp comparison that could never match - before a task-wide supersede
+  reintroduced the loss from the other direction. The model was collapsed back
+  onto the table's own natural key, where each of those is unrepresentable
+  rather than handled.
+  **Whether a customer may hold both halves of a two-season service at once is
+  SC15's question, not this one - and the answer there is no.** Left to this
+  function a cross-season booking would simply be written as a second row,
+  stranding the first one's reminder, so it is refused before it gets here.
   Windows compare as **instants**, never as strings: PostgREST renders
   `timestamptz` as `2026-09-05T12:00:00+00:00` and `Date#toISOString()` gives
   `2026-09-05T12:00:00.000Z`, the same moment spelled two ways, so a string
@@ -177,6 +184,10 @@ These were settled by the owner during review; the ACs assume them.
   for: left in place it labels whoever ticks the row next as work we did, and it
   makes "mark completed" treat the new visit as already handled, so that visit's
   window would never come off the books.
+  That is a *booking* retaking the row, and it is not the same act as CP10,
+  where the member's own untick leaves our completion alone: booking the service
+  again is us saying the job is due again, and the visit about to happen writes
+  the record that replaces it.
   An **expired** completion is retaken too. `isRowCurrent` is the seasonal reset
   the portal and the newsletter share; past it the task has already come back on
   both, and a booked row that kept its stale `completed_at` would expire straight
@@ -255,7 +266,8 @@ These were settled by the owner during review; the ACs assume them.
   The cancel matches the address EXACTLY: an ilike prefilter narrows the
   candidates and a JS equality check picks the rows, because PostgREST reads `*`
   as an alias for `%` with no way to escape it.
-  The DELETE route validates `email` for the same reason.
+  The DELETE route takes no `email` at all - it reads the address off the
+  homeowner row, so no caller-supplied pattern reaches this query. See **SC14**.
 - **RM6** The cron is `30 23 * * *` UTC, which is 7:30pm Eastern in summer and
   6:30pm in winter. Asserted against `vercel.json`.
 - **RM7** The cron selects visits for **tomorrow in Eastern time**, not UTC. A
@@ -339,6 +351,20 @@ These were settled by the owner during review; the ACs assume them.
   one that every retry and every manual re-hit repeats - the exact failure the
   ledger exists to prevent. The recipient is counted `skipped` and logged.
 
+- **RM17** A cancel that cannot reach the queue reports `unavailable`; it is
+  never reported as done. Both halves of `cancelPendingVisitReminders` used to
+  `.catch()` into silence, so a failed cancel was indistinguishable from one with
+  nothing to cancel: the DELETE route answered `cancelled` and the toast read
+  "Off the books, and the reminder is pulled" while the "we're coming tomorrow"
+  was still queued for a visit that had been called off. That is the worst thing
+  this feature can emit, and it was the one path in the reminder pipeline that
+  failed OPEN - the booking read throws (SC9), the cron sends nothing when its
+  ledger read 400s (RM13), an ambiguous slot counts as closed (RM8), and a
+  ledger row that cannot be written skips the recipient (RM15).
+  A requeue whose cancel failed queues **nothing**: the stale row is still
+  pending for a window the visit has left, so a second one would announce both.
+  Cancel and complete pass the outcome back to the admin page, which says
+  plainly that the reminder is still live and where to stop it.
 ## PT - the customer portal
 
 - **PT1** An upcoming visit renders on the checklist page above the task list,
@@ -397,6 +423,22 @@ These were settled by the owner during review; the ACs assume them.
   The completion **names the window** it closes, so it can never reach another
   visit the customer has on the books.
 
+- **CP10** A member unticking a task **keeps** the record that La Vaca did the
+  work. Current state and history live on one row and answer different
+  questions: unticking says "this needs doing again", which is a statement about
+  now, not a claim that we never came. The status goes back to `'todo'`;
+  `completed_at` and `completed_by='lavaca'` stand.
+  Otherwise one tap erased an invoiced visit from the service history this
+  branch exists to build - `lastDoneFor` read through `status='done'`, so the
+  next quote said "no record" for work that was performed and billed, and the
+  completion email invites exactly that tap ("if anything isn't right, tell us
+  and we'll come back"). The history is keyed on the timestamp instead (IN4), so
+  preserving it is what makes it count.
+  A completion of the member's **own** is still cleared: retracting it is what
+  unticking means. Nothing is preserved on a re-tick either - it is theirs now
+  (CP2), and last-done reports the most recent job, which is the true one.
+  The read that decides this fails closed: a lookup that errors refuses the
+  write rather than guessing that nobody has completed the task.
 ## CM - compliance (applies to every new email)
 
 - **CM1** Every new email carries the CAN-SPAM postal address in HTML and text.

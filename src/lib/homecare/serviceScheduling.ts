@@ -389,6 +389,9 @@ export function orphanedVisitStarts(args: {
  */
 export type ReminderOutcome = 'queued' | 'skipped' | 'unavailable';
 
+/** Whether a cancel actually reached the queue, or could not be carried out. */
+export type ReminderCancelOutcome = 'cancelled' | 'unavailable';
+
 export async function requeueVisitReminder(args: {
   email: string;
   name: string;
@@ -400,7 +403,11 @@ export async function requeueVisitReminder(args: {
 }): Promise<ReminderOutcome> {
   const { email, name, start, subject, html, supersedes = [], now = new Date() } = args;
 
-  await cancelPendingVisitReminders(email, [start, ...supersedes]);
+  // Nothing is queued on top of a cancel that did not land. The old row is
+  // still pending for a window this visit has left, so adding a second would
+  // announce both - the moved visit and the real one - and the admin would be
+  // told a reminder was on its way. `unavailable` tells them to text instead.
+  if (await cancelPendingVisitReminders(email, [start, ...supersedes]) === 'unavailable') return 'unavailable';
 
   if (!reminderIsStillUseful(start, now)) return 'skipped';
 
@@ -435,9 +442,13 @@ export async function requeueVisitReminder(args: {
  *
  * `visitStart` is required so a cancel can never reach past the visit it names -
  * completing this morning's job must leave this afternoon's reminder alone.
+ *
+ * The outcome is returned, not swallowed: the caller has just told the customer
+ * their visit is off, and whether the reminder went with it is the one thing
+ * they need to know.
  */
-export async function cancelVisitReminder(email: string, visitStart: Date): Promise<void> {
-  await cancelPendingVisitReminders(email, [visitStart]);
+export async function cancelVisitReminder(email: string, visitStart: Date): Promise<ReminderCancelOutcome> {
+  return cancelPendingVisitReminders(email, [visitStart]);
 }
 
 /**
@@ -449,26 +460,46 @@ export async function cancelVisitReminder(email: string, visitStart: Date): Prom
  * offers no way to escape it, so an ilike alone can reach a different customer.
  * The escaped prefilter narrows the candidates and a JS equality check keeps only
  * the exact case-insensitive matches, which no wildcard can slip past.
+ *
+ * Reports `unavailable` rather than swallowing a failure. Both halves used to
+ * `.catch()` into silence, so a cancel that pulled nothing was indistinguishable
+ * from one with nothing to pull - and the route answered "cancelled" and the
+ * toast read "the reminder is pulled" while the "we're coming tomorrow" was
+ * still queued. That is the worst thing this feature can emit, and every other
+ * step in the reminder pipeline already fails closed: the booking read throws,
+ * the cron sends nothing when its ledger read 400s, an ambiguous slot counts as
+ * closed, and a ledger row that cannot be written skips the recipient.
  */
-async function cancelPendingVisitReminders(email: string, visitStarts: Date[]): Promise<void> {
+async function cancelPendingVisitReminders(email: string, visitStarts: Date[]): Promise<ReminderCancelOutcome> {
   const keys = [...new Set(visitStarts.map(visitKey))];
-  if (keys.length === 0) return;
+  if (keys.length === 0) return 'cancelled';
 
-  const candidates = (await supabaseRest<{ id: string; lead_email: string }[]>(
-    'GET',
-    `follow_up_queue?select=id,lead_email&lead_email=ilike.${encodeURIComponent(escapeLikePattern(email))}` +
-      `&follow_up_type=eq.${VISIT_REMINDER_TYPE}&status=eq.pending` +
-      `&visit_start=in.(${keys.map((k) => `"${k}"`).join(',')})`,
-  ).catch(() => [])) ?? [];
+  let candidates: { id: string; lead_email: string }[];
+  try {
+    candidates = (await supabaseRest<{ id: string; lead_email: string }[]>(
+      'GET',
+      `follow_up_queue?select=id,lead_email&lead_email=ilike.${encodeURIComponent(escapeLikePattern(email))}` +
+        `&follow_up_type=eq.${VISIT_REMINDER_TYPE}&status=eq.pending` +
+        `&visit_start=in.(${keys.map((k) => `"${k}"`).join(',')})`,
+    )) ?? [];
+  } catch (err) {
+    console.error('visit reminder cancel could not read the queue:', err instanceof Error ? err.message : String(err));
+    return 'unavailable';
+  }
 
   const wanted = email.trim().toLowerCase();
   const ids = candidates
     .filter((row) => (row.lead_email ?? '').trim().toLowerCase() === wanted)
     .map((row) => row.id);
-  if (ids.length === 0) return;
+  if (ids.length === 0) return 'cancelled';
 
-  // Re-asserts 'pending' so a row the cron claimed between the select and the
-  // update is left as sent rather than clobbered back to cancelled.
-  await supabaseRest('PATCH', `follow_up_queue?id=in.(${ids.join(',')})&status=eq.pending`, { status: 'cancelled' })
-    .catch(() => {});
+  try {
+    // Re-asserts 'pending' so a row the cron claimed between the select and the
+    // update is left as sent rather than clobbered back to cancelled.
+    await supabaseRest('PATCH', `follow_up_queue?id=in.(${ids.join(',')})&status=eq.pending`, { status: 'cancelled' });
+  } catch (err) {
+    console.error('visit reminder could not be cancelled:', err instanceof Error ? err.message : String(err));
+    return 'unavailable';
+  }
+  return 'cancelled';
 }

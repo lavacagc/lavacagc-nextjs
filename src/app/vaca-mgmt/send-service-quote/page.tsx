@@ -227,9 +227,12 @@ export default function SendServiceQuotePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       await refreshBookings();
+      const stranded = data.reminder === 'unavailable';
       toast({
         title: 'Marked complete',
-        description: data.feedback === 'sent' ? 'Feedback request sent.' : `Feedback ${data.feedback}.`,
+        description: (data.feedback === 'sent' ? 'Feedback request sent.' : `Feedback ${data.feedback}.`)
+          + (stranded ? ' The night-before reminder could NOT be pulled - stop it on the Follow-Ups page.' : ''),
+        variant: stranded ? 'destructive' : undefined,
       });
     } catch (e) {
       toast({ title: 'Failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
@@ -265,7 +268,17 @@ export default function SendServiceQuotePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.issues?.[0]?.message || 'Failed');
       await refreshBookings();
-      toast({ title: 'Visit cancelled', description: 'Off the books, and the reminder is pulled.' });
+      // The reminder is the half that can fail on its own, and a cancel that
+      // could not pull it leaves the customer to be told we are coming for a
+      // visit that was called off. Never reported as done unless it was.
+      const stranded = data.reminder === 'unavailable';
+      toast({
+        title: 'Visit cancelled',
+        description: stranded
+          ? 'Off the books, but the night-before reminder could NOT be pulled - stop it on the Follow-Ups page.'
+          : 'Off the books, and the reminder is pulled.',
+        variant: stranded ? 'destructive' : undefined,
+      });
     } catch (e) {
       toast({ title: 'Cancel failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
     } finally {

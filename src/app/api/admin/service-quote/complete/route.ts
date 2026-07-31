@@ -138,13 +138,16 @@ export async function POST(request: NextRequest) {
     const completedVisitStarts = [...new Set(
       taskKeys.map((k) => bookedFor.get(k)?.scheduled_start).filter((s): s is string => !!s),
     )];
+    // Reported, never assumed: a cancel that could not reach the queue leaves a
+    // "we're coming tomorrow" pending for a visit already performed.
+    let reminder: 'cancelled' | 'unavailable' = 'cancelled';
     for (const iso of completedVisitStarts) {
-      await cancelVisitReminder(owner.email, new Date(iso));
+      if (await cancelVisitReminder(owner.email, new Date(iso)) === 'unavailable') reminder = 'unavailable';
     }
 
     if (skipFeedback || transitioning.length === 0) {
       return NextResponse.json({
-        status: 'completed', completed: transitioning.length, feedback: 'skipped',
+        status: 'completed', completed: transitioning.length, feedback: 'skipped', reminder,
         reason: transitioning.length === 0 ? 'already_completed_by_lavaca' : 'caller_requested',
       });
     }
@@ -177,6 +180,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       status: 'completed',
       completed: transitioning.length,
+      reminder,
       feedback: res.status === 'sent' ? 'sent' : 'failed',
       feedbackError: res.error ?? null,
     });

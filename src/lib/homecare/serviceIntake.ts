@@ -26,10 +26,14 @@ export interface ServiceCatalogRow {
   est_cost_high?: number | null;
 }
 
-/** A completion row, as selected for the last-done lookup. */
+/**
+ * A completion row, as selected for the last-done lookup.
+ *
+ * `completed_at` is the history; `status` is only where the row stands today.
+ */
 export interface CompletionRow {
   task_key: string;
-  status: string;
+  status?: string;
   completed_at?: string | null;
   completed_by?: string | null;
 }
@@ -71,14 +75,21 @@ export function bookableCatalog(catalog: ServiceCatalogRow[]): ServiceCatalogRow
 /**
  * Most recent completion per task key.
  *
- * Only `status='done'` rows count - `booked` and `snoozed` are intentions, not
- * history. A task done in several seasons returns the newest, and rows with no
- * timestamp are ignored rather than being treated as "done at the epoch".
+ * Keyed on `completed_at`, never on `status`. One row is both current state and
+ * history, and those answer different questions: a member who unticks a task La
+ * Vaca performed is saying "this needs doing again", which is a statement about
+ * now and not a claim that we never came. Read through `status='done'`, that one
+ * tap took an invoiced visit out of the service history and the next quote read
+ * "no record" for work that was done and billed.
+ *
+ * A missing timestamp is what says "not history": `booked` and `snoozed` are
+ * intentions and stamp none, and a member retracting their OWN tick clears
+ * theirs with it. A task done in several seasons returns the newest.
  */
 export function lastDoneFor(rows: CompletionRow[]): Map<string, { at: Date; by: string }> {
   const out = new Map<string, { at: Date; by: string }>();
   for (const r of rows) {
-    if (r.status !== 'done' || !r.completed_at) continue;
+    if (!r.completed_at) continue;
     const at = new Date(r.completed_at);
     if (Number.isNaN(at.getTime())) continue;
     const prev = out.get(r.task_key);

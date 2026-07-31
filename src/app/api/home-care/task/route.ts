@@ -3,7 +3,9 @@
  * or dismiss/restore a task via `dismiss: boolean` ("not relevant to my home",
  * stored as one season='all' row with status 'dismissed'; restore sets 'todo').
  * Cookie-gated by hc_access. Upserts homeowner_maintenance for the current season.
- * `completed_at` stamps each done-toggle and `updated_at` stamps every write
+ * `completed_at` stamps each done-toggle - except an untick of work La Vaca
+ * performed, which is a statement about now and leaves the record of the job
+ * standing - and `updated_at` stamps every write
  * (the expiry clock for statuses that stamp no `completed_at`). `isRowCurrent`
  * (src/lib/homecare/selection.ts) compares them to `completionCutoff(season)`
  * so seasonal completions expire when the season next comes around (see
@@ -14,10 +16,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById } from '@/lib/homecare/homeowners';
 import { currentSeason } from '@/lib/homecare/season';
+import { checklistCompletionFields, type RowCompletion } from '@/lib/homecare/selection';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+/**
+ * What completion this row already holds, so the write can tell whose it is.
+ *
+ * Never swallowed: a read that failed does not mean "nobody has completed this",
+ * and acting on that guess is what erases the record. The route answers 500 and
+ * the member can tap again.
+ */
+async function currentCompletion(homeownerId: string, taskKey: string, season: string): Promise<RowCompletion | null> {
+  const rows = await supabaseRest<RowCompletion[]>(
+    'GET',
+    `homeowner_maintenance?select=completed_by,completed_at&homeowner_id=eq.${homeownerId}` +
+      `&task_key=eq.${encodeURIComponent(taskKey)}&season=eq.${encodeURIComponent(season)}&limit=1`,
+  );
+  return rows?.[0] ?? null;
+}
 
 export async function POST(request: NextRequest) {
   const access = await verifyHomeAccess(request.cookies.get(HC_ACCESS_COOKIE)?.value);
@@ -61,6 +80,12 @@ export async function POST(request: NextRequest) {
     const validSeasons = ['spring', 'summer', 'fall', 'winter', 'starter'];
     const season = validSeasons.includes(body.season ?? '') ? (body.season as string) : currentSeason();
 
+    // An untick is a statement about NOW, not about the past, and this row is
+    // both. Only read on that path: a tick reassigns the row to the member
+    // whatever was there before, so there is nothing to preserve and nothing to
+    // look up. `checklistCompletionFields` holds the rule itself.
+    const current = done ? null : await currentCompletion(access.homeownerId, taskKey, season);
+
     // The member owns `status`, `completed_at` and `completed_by` and nothing
     // else. A La Vaca booking lives on this same (homeowner, task, season) row,
     // and `scheduled_start`/`scheduled_end`/`service_address` are deliberately
@@ -76,13 +101,12 @@ export async function POST(request: NextRequest) {
         task_key: taskKey,
         season,
         status: done ? 'done' : 'todo',
-        completed_at: done ? now : null,
-        // Attribution follows whoever set the CURRENT status. The column
-        // defaults to 'homeowner' on insert only, and a merge-duplicates upsert
-        // updates just the columns in the body - so without this a row La Vaca
-        // completed keeps 'lavaca' after the member unticks it and does the work
-        // themselves, and the portal credits us for their work.
-        completed_by: 'homeowner',
+        // Attribution follows whoever set the CURRENT status - except an untick
+        // of work LA VACA performed, which leaves both completion columns
+        // untouched so the record of the job survives. Same merge-duplicates
+        // rule in both directions: a column this body does not carry keeps
+        // whatever it had.
+        ...checklistCompletionFields(done, now, current),
         updated_at: now,
       },
       { prefer: 'resolution=merge-duplicates,return=minimal' },

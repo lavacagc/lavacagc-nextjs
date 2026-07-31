@@ -69,6 +69,44 @@ export function isRowCurrent(row: MaintenanceRow, now: Date = new Date()): boole
   return new Date(stamp).getTime() >= completionCutoff(row.season as Season, now).getTime();
 }
 
+/** A row's completion, as the checklist write reads it back before deciding. */
+export interface RowCompletion {
+  completed_by?: string | null;
+  completed_at?: string | null;
+}
+
+/**
+ * The completion columns a member's checkbox should write - and, on one path,
+ * the columns it must leave alone.
+ *
+ * One row carries both CURRENT STATE and HISTORY, and a checklist toggle only
+ * speaks for the first. Unticking a task La Vaca performed says "this needs
+ * doing again", which is a statement about now and not a claim that we never
+ * came - so `status` goes back to 'todo' while `completed_at` and
+ * `completed_by='lavaca'` stand. Returning `{}` is what preserves them: the
+ * merge-duplicates upsert writes only the columns its body carries, the same
+ * rule that keeps a booking alive when the member ticks a booked task.
+ *
+ * Cleared, that one tap took an invoiced visit out of the service history this
+ * whole feature exists to build - `lastDoneFor` keys on the timestamp, so the
+ * next quote read "no record" for work that was performed and billed. The
+ * completion email invites exactly that tap ("if anything isn't right, tell us
+ * and we'll come back").
+ *
+ * A completion of the member's OWN is still cleared: retracting it is what
+ * unticking means. And a re-tick reassigns the row to them whatever was there
+ * before (CP2) - last-done reports the most recent job, which is then theirs.
+ */
+export function checklistCompletionFields(
+  done: boolean,
+  now: string,
+  current: RowCompletion | null | undefined,
+): { completed_at?: string | null; completed_by?: string } {
+  const oursInForce = current?.completed_by === 'lavaca' && !!current.completed_at;
+  if (!done && oursInForce) return {};
+  return { completed_at: done ? now : null, completed_by: 'homeowner' };
+}
+
 /**
  * Does this row speak for the season being built? Dismissals are task-level
  * (one season='all' row) and apply everywhere; everything else is scoped to
