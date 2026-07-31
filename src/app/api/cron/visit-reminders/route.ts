@@ -219,6 +219,16 @@ export async function GET(request: NextRequest) {
           email_body: html,
         }]).catch(() => [] as LedgerRow[]);
         claimId = created?.[0]?.id ?? null;
+        // No ledger row, no send. An unrecorded send is one that every retry and
+        // every manual re-hit repeats, because nothing tells them it happened -
+        // the failure this whole ledger exists to prevent. Fails closed like the
+        // unavailable-ledger branch above and like ledgerVerdict.
+        if (!claimId) {
+          console.error('visit-reminders: could not record the send-once ledger row, skipping', owner.email);
+          skipped.push(owner.email);
+          wouldSend.pop();
+          continue;
+        }
       }
 
       const res = await sendTrackedEmail({

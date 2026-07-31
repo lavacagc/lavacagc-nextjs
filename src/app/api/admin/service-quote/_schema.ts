@@ -60,19 +60,13 @@ export const scheduleSchema = z.object({
    * which only the server reads - and it comes out per TASK, so there is no
    * single value a caller could send. The route returns what it filed each task
    * under, and "mark complete" passes that back.
+   *
+   * There is deliberately no `replaces` either. A service has ONE booking at a
+   * time, so whatever window these tasks are already holding is the one this
+   * call moves - the server does not need to be told, and cannot be misled.
    */
   start: z.string().datetime({ offset: true }),
   end: z.string().datetime({ offset: true }),
-  /**
-   * The window this booking is MOVING FROM, when it is a reschedule.
-   *
-   * Only the caller knows. Two bookings of the same task in different seasons -
-   * gutters in October and again in April - are two visits a customer asked
-   * for, and inferring a reschedule from them unbooks one nobody cancelled. So
-   * an unnamed window is never touched, and a booking with no `replaces` is
-   * simply a new booking.
-   */
-  replaces: z.string().datetime({ offset: true }).optional(),
   address: z.string().trim().min(1, 'A service address is required for the calendar invite').max(300),
   city: z.string().trim().max(120).optional().or(z.literal('').transform(() => undefined)),
   zip: z.string().trim().max(20).optional().or(z.literal('').transform(() => undefined)),
@@ -106,6 +100,15 @@ export type CancelVisitInput = z.infer<typeof cancelVisitSchema>;
 export const completeSchema = z.object({
   homeownerId: z.string().uuid(),
   taskKeys: z.array(z.string().regex(/^[a-z0-9_]+$/i).max(80)).min(1).max(20),
+  /**
+   * The window that was performed.
+   *
+   * Optional, because a task booked once has one window and the row says which.
+   * The admin picks a specific visit off the customer's booked list, so it can
+   * name it - and naming it is what keeps a completion from reaching any other
+   * booking the customer has.
+   */
+  start: z.string().datetime({ offset: true }).optional(),
   /**
    * Where each task was filed, as returned by /schedule. A fallback only: the
    * booked row is the source of truth, and this covers a task with no booking.

@@ -97,6 +97,58 @@ export function lastDoneLabel(entry: { at: Date; by: string } | undefined): stri
   return entry.by === 'lavaca' ? `last done ${stamp} by La Vaca` : `last done ${stamp}`;
 }
 
+/** A booked row as the intake lookup selects it. */
+export interface BookedRow {
+  task_key: string;
+  season: string;
+  scheduled_start: string;
+  scheduled_end: string | null;
+  service_address: string | null;
+}
+
+/** One visit on the books: a window, and every service booked into it. */
+export interface Booking {
+  start: string;
+  end: string | null;
+  address: string | null;
+  tasks: { key: string; title: string; season: string }[];
+}
+
+/**
+ * The customer's open bookings, one entry per VISIT rather than per task: a
+ * window with three services in it is one job the crew does and one thing the
+ * admin marks complete.
+ *
+ * This is what makes "mark completed" reachable at all. A visit is booked on
+ * Monday and performed on Thursday, in a different session, so a button gated
+ * on a schedule POST from the same page load meant re-booking a finished job to
+ * close it out - which wiped the member's own tick off the row and queued a
+ * reminder for a window that had already passed.
+ *
+ * Grouped by INSTANT, never by the string PostgREST returned: it renders
+ * `timestamptz` as "2026-08-05T12:00:00+00:00" where a `Date` gives
+ * "2026-08-05T12:00:00.000Z", so grouping on the text would split one visit into
+ * two the moment the two spellings met. The `start` handed back is normalised,
+ * because it is what /complete matches the visit on.
+ */
+export function groupBookings(rows: BookedRow[], catalog: Map<string, ServiceCatalogRow>): Booking[] {
+  const byStart = new Map<number, Booking>();
+  for (const r of rows) {
+    const at = new Date(r.scheduled_start).getTime();
+    if (!Number.isFinite(at)) continue;
+    const task = { key: r.task_key, title: catalog.get(r.task_key)?.title ?? r.task_key, season: r.season };
+    const held = byStart.get(at);
+    if (held) { held.tasks.push(task); continue; }
+    byStart.set(at, {
+      start: new Date(at).toISOString(),
+      end: r.scheduled_end ? new Date(r.scheduled_end).toISOString() : null,
+      address: r.service_address,
+      tasks: [task],
+    });
+  }
+  return [...byStart.entries()].sort(([a], [b]) => a - b).map(([, v]) => v);
+}
+
 /** Default scope sentence from the chosen services, for the quote email. */
 export function scopeSummaryFrom(services: { title: string }[]): string {
   const titles = services.map((s) => s.title);

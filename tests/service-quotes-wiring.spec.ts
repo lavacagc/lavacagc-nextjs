@@ -139,6 +139,16 @@ test('RM8: the queue row is the ledger, claimed BEFORE the send', () => {
   expect(migration).not.toContain('reminder_sent_at');
 });
 
+test('RM15: a ledger row that cannot be written stops the send', () => {
+  // The other branch claims an existing row and skips when the claim loses.
+  // This one WRITES the row - and sending anyway leaves no record at all, so
+  // every retry and every manual re-hit sends "we're coming tomorrow" again.
+  const branch = cron.slice(cron.indexOf('} else {'), cron.indexOf('const res = await sendTrackedEmail'));
+  expect(branch).toContain('if (!claimId) {');
+  expect(branch).toContain('skipped.push(owner.email)');
+  expect(branch.indexOf('continue;'), 'skip before the send, not after').toBeGreaterThan(-1);
+});
+
 test('RM8: the cron reads its verdict from every row a visit holds', () => {
   // A visit can hold several rows and Postgres returns them in no defined
   // order, so the cron collects them all and hands the set to ledgerVerdict
@@ -334,8 +344,9 @@ test('SC8: the season comes from the VISIT date, reconciled per task, server-sid
   expect(schema).not.toContain("season: z.enum(['spring', 'summer', 'fall', 'winter'])");
   expect(adminPage).not.toContain('function currentSeasonName');
   expect(adminPage).not.toContain('seasonOfVisit');
-  // Completing reuses the seasons the booking was filed under.
-  expect(adminPage).toContain('seasons: scheduled.seasons');
+  // Completing reuses the seasons the rows were filed under, read back off the
+  // booking rather than remembered from a schedule call in this page session.
+  expect(adminPage).toContain('Object.fromEntries(booking.tasks.map((t) => [t.key, t.season]))');
 });
 
 test('SC8: a task with no season to be filed under fails loudly', () => {
@@ -355,7 +366,7 @@ test('SC9: a reschedule across a season boundary clears the old booking', () => 
   expect(scheduling).toContain('export async function clearSupersededBookings');
   const fn = scheduling.slice(
     scheduling.indexOf('export async function bookedVisitRows'),
-    scheduling.indexOf('export function visitStartsOf'),
+    scheduling.indexOf('export function supersededBookings'),
   );
   expect(fn, 'read across every season, not just the new one').not.toContain('season=eq.');
   // A booking is a row with a WINDOW; `status` is shared with the member's
@@ -368,21 +379,52 @@ test('SC9: a reschedule across a season boundary clears the old booking', () => 
     .toBeLessThan(scheduleRoute.indexOf('await scheduleVisit'));
 });
 
-test('SC10: only the window the caller names is superseded', () => {
-  // `clean_gutters` is a two-season task, so an October booking and an April
-  // one are two visits the customer asked for. Treating every other-season
-  // booking of the task as superseded unbooked October and cancelled its
-  // reminder while the owner's calendar still held it.
+test('SC10: one booking per service, and windows compare as instants', () => {
+  // ONE active booking per service is the whole model, so a reschedule needs no
+  // handshake: whatever window these tasks hold is the one being moved. The
+  // `replaces` parameter that tried to tell a move from a second concurrent
+  // booking is gone from every layer.
   expect(scheduling).toContain('export function supersededBookings');
+  expect(schema).not.toContain('replaces:');
+  expect(scheduleRoute).not.toContain('replacesAt');
+  expect(adminPage).not.toContain('replaces:');
+  expect(scheduleRoute).toContain('supersededBookings({ previous, taskKeys, start: startAt })');
+  // PostgREST renders timestamptz as "...+00:00" and a Date as "....000Z", so a
+  // string compare here matches nothing in production while every stub passes.
   const fn = scheduling.slice(
     scheduling.indexOf('export function supersededBookings'),
-    scheduling.indexOf('export async function clearSupersededBookings'),
+    scheduling.indexOf('export function orphanedVisitStarts'),
   );
-  expect(fn, 'the rows the upsert lands on').toContain('overwritten.has(');
-  expect(fn, 'plus the one window the caller named').toContain('row.scheduled_start === replacedIso');
-  expect(scheduleRoute).toContain('supersededBookings({ previous, tasks, start: startAt, replaces: replacesAt })');
-  // The admin form names the window it booked, so editing the date is a move.
-  expect(adminPage).toContain("{ replaces: scheduled.start }");
+  expect(fn).toContain('new Date(row.scheduled_start).getTime()');
+  expect(fn).not.toContain('toISOString()');
+});
+
+test('SC12: a window another service still holds keeps its reminder', () => {
+  // Move the gutters off a 5 Aug visit that also carries a dryer vent and the
+  // 5 Aug visit is still happening - cancelling its reminder on the strength of
+  // the gutters row alone leaves the customer unannounced.
+  expect(scheduling).toContain('export function orphanedVisitStarts');
+  expect(scheduleRoute).toContain('orphanedVisitStarts({ previous, superseded })');
+  // Which needs every window the customer holds, not just this booking's tasks.
+  expect(scheduleRoute).toContain('bookedVisitRows(homeowner.id)');
+  expect(scheduling).not.toContain('task_key=in.(${taskKeys');
+});
+
+test('CP9: a booked visit can be completed without re-booking it first', () => {
+  // A visit is booked on Monday and performed on Thursday, in another session.
+  // Gating the button on a schedule POST from the same page load meant
+  // re-booking a finished job to close it out - which wiped the member's own
+  // tick off the row and queued a reminder for a window that had passed.
+  expect(intakeRoute).toContain('scheduled_start=not.is.null');
+  expect(intakeRoute).toContain('groupBookings');
+  expect(intakeRoute).toContain('bookings');
+  expect(adminPage).toContain('data-testid="sq-bookings"');
+  expect(adminPage).toContain('const complete = async (booking: Booking)');
+  // The completion names the window it closes, so it cannot reach another visit.
+  expect(adminPage).toContain('start: booking.start');
+  expect(schema).toContain('start: z.string().datetime({ offset: true }).optional()');
+  expect(completeRoute).toContain('performedAt');
+  expect(completeRoute).toContain('if (performedAt !== null && at !== performedAt) continue;');
 });
 
 test('CP: completing resolves the season from the BOOKED row, across seasons', () => {
@@ -481,7 +523,7 @@ test('the admin page keeps the Send Estimate shape minus portal and cadence', ()
   expect(adminPage).toContain('Scope summary');
   expect(adminPage).toContain('Quote valid until');
   expect(adminPage).toContain('QuickBooks estimate URL');
-  expect(adminPage).toContain('Mark service completed');
+  expect(adminPage).toContain('Mark completed');
   // The two fields that do not belong on a one-visit job. Asserted against the
   // rendered form (the file's own doc comment names them as deliberately absent).
   const form = adminPage.slice(adminPage.indexOf("'use client'"));

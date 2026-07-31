@@ -30,11 +30,19 @@ interface PastRequest {
   address: string | null; city: string | null; zip: string | null;
   taskKeys: string[]; services: { key: string; title: string }[];
 }
+/** A visit on the books: one window, every service booked into it. */
+interface Booking {
+  start: string;
+  end: string | null;
+  address: string | null;
+  tasks: { key: string; title: string; season: string }[];
+}
 interface Intake {
   services: Service[];
   requests: PastRequest[];
   history: Record<string, { at: string; by: string; label: string }>;
   homeowner: { id: string; first_name: string | null; phone: string | null; address: string | null; city: string | null; zip: string | null; status: string } | null;
+  bookings: Booking[];
 }
 
 const todayPlus = (days: number) => {
@@ -63,17 +71,30 @@ export default function SendServiceQuotePage() {
   const [from, setFrom] = useState('08:00');
   const [to, setTo] = useState('11:00');
   const [scheduling, setScheduling] = useState(false);
-  // What the server filed each task under, captured at booking time so "mark
-  // complete" hits the SAME rows even when the job is completed after the season
-  // has turned over. Per task: the season is reconciled against each task's own
-  // catalog seasons, so one window can span two of them.
-  // `start` is kept so a second click on Schedule is understood as a RESCHEDULE
-  // of that window rather than a second, distinct visit. The server never
-  // guesses: gutters are a two-season task, so an October booking and an April
-  // one are two real visits, and an unnamed window is left alone.
-  const [scheduled, setScheduled] = useState<
-    { icsUrl: string; homeownerId: string; seasons: Record<string, string>; start: string } | null
-  >(null);
+  // Only the calendar link, which is the one thing that exists solely for the
+  // booking just made. "Mark completed" is driven off the customer's booked
+  // visits instead: a job is booked on Monday and performed on Thursday, so a
+  // button that needed a schedule POST from this page load meant re-booking a
+  // finished job just to close it out.
+  const [scheduled, setScheduled] = useState<{ icsUrl: string } | null>(null);
+  // The visits this customer has on the books, refreshed after every write.
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [completing, setCompleting] = useState<string | null>(null);
+  // Kept apart from `intake`, because a walk-in has no homeowner record until
+  // the booking creates one - and completing that visit still needs the id.
+  const [homeownerId, setHomeownerId] = useState<string | null>(null);
+
+  const refreshBookings = useCallback(async () => {
+    if (!email.trim()) return;
+    try {
+      const res = await fetch(`/api/admin/service-quote/intake?email=${encodeURIComponent(email.trim())}`);
+      const data: Intake = await res.json();
+      setBookings(data.bookings ?? []);
+      if (data.homeowner?.id) setHomeownerId(data.homeowner.id);
+    } catch {
+      // A stale list is not worth a toast on top of whatever just succeeded.
+    }
+  }, [email]);
 
   const lookup = useCallback(async () => {
     if (!email.trim()) return;
@@ -82,6 +103,8 @@ export default function SendServiceQuotePage() {
       const res = await fetch(`/api/admin/service-quote/intake?email=${encodeURIComponent(email.trim())}`);
       const data: Intake = await res.json();
       setIntake(data);
+      setBookings(data.bookings ?? []);
+      setHomeownerId(data.homeowner?.id ?? null);
       const latest = data.requests[0];
       if (latest) {
         setName(latest.name || '');
@@ -156,16 +179,14 @@ export default function SendServiceQuotePage() {
           // laptop on Pacific would silently store an 11am window.
           start: startAt,
           end: easternVisitInstant(date, to).toISOString(),
-          // The window this replaces, when this is a reschedule of one booked
-          // in this session. Absent, the server books a new visit and touches
-          // nothing that already exists.
-          ...(scheduled && scheduled.start !== startAt ? { replaces: scheduled.start } : {}),
           address,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.issues?.[0]?.message || 'Scheduling failed');
-      setScheduled({ icsUrl: data.icsUrl, homeownerId: data.homeownerId, seasons: data.seasons ?? {}, start: startAt });
+      setScheduled({ icsUrl: data.icsUrl });
+      setHomeownerId(data.homeownerId);
+      await refreshBookings();
       toast({
         title: 'Visit scheduled',
         description: data.reminder === 'queued'
@@ -182,24 +203,45 @@ export default function SendServiceQuotePage() {
     }
   };
 
-  const complete = async () => {
-    if (!scheduled) return;
+  /**
+   * Close out ONE booked visit. The window is named, so the completion cannot
+   * reach another visit this customer has on the books, and the seasons come
+   * from the rows themselves rather than from a booking made in this session.
+   */
+  const complete = async (booking: Booking) => {
+    if (!homeownerId) return;
     if (!window.confirm('Mark this service completed? The customer gets an email asking how the team did.')) return;
+    setCompleting(booking.start);
     try {
       const res = await fetch('/api/admin/service-quote/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ homeownerId: scheduled.homeownerId, taskKeys: [...selected], seasons: scheduled.seasons }),
+        body: JSON.stringify({
+          homeownerId,
+          taskKeys: booking.tasks.map((t) => t.key),
+          seasons: Object.fromEntries(booking.tasks.map((t) => [t.key, t.season])),
+          start: booking.start,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
+      await refreshBookings();
       toast({
         title: 'Marked complete',
         description: data.feedback === 'sent' ? 'Feedback request sent.' : `Feedback ${data.feedback}.`,
       });
     } catch (e) {
       toast({ title: 'Failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setCompleting(null);
     }
+  };
+
+  const visitLabel = (b: Booking) => {
+    const fmt: Intl.DateTimeFormatOptions = { timeZone: 'America/New_York' };
+    const day = new Date(b.start).toLocaleDateString('en-US', { ...fmt, weekday: 'short', day: 'numeric', month: 'short' });
+    const time = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { ...fmt, hour: 'numeric', minute: '2-digit' });
+    return `${day}, ${time(b.start)}${b.end ? ` - ${time(b.end)}` : ''}`;
   };
 
   const canSend = name.trim() && email.trim() && scope.trim() && estimateUrl.trim();
@@ -327,14 +369,38 @@ export default function SendServiceQuotePage() {
               {scheduling ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CalendarPlus className="mr-1.5 h-4 w-4" /> Schedule visit</>}
             </Button>
             {scheduled && (
-              <>
-                <Button variant="outline" asChild><a href={scheduled.icsUrl}>Add to my calendar</a></Button>
-                <Button variant="outline" onClick={complete} data-testid="sq-complete">
-                  <CheckCircle2 className="mr-1.5 h-4 w-4" /> Mark service completed
-                </Button>
-              </>
+              <Button variant="outline" asChild><a href={scheduled.icsUrl}>Add to my calendar</a></Button>
             )}
           </div>
+
+          {bookings.length > 0 && (
+            <div className="rounded-lg border border-border p-3 md:col-span-2" data-testid="sq-bookings">
+              <div className="mb-2 text-xs font-bold uppercase tracking-wide text-text-muted">On the books</div>
+              <div className="space-y-1.5">
+                {bookings.map((b) => (
+                  <div
+                    key={b.start}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0">
+                      <span className="font-semibold">{visitLabel(b)}</span>
+                      <span className="block text-xs text-text-muted">
+                        {b.tasks.map((t) => t.title).join(', ')}
+                      </span>
+                    </span>
+                    <Button
+                      variant="outline" size="sm" onClick={() => complete(b)}
+                      disabled={completing !== null || !homeownerId} data-testid="sq-complete"
+                    >
+                      {completing === b.start
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> Mark completed</>}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

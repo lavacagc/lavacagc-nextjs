@@ -113,14 +113,25 @@ These were settled by the owner during review; the ACs assume them.
   and the cron would send "we're coming tomorrow" for it. Superseded rows are
   read across **every** season, unbooked before the new row is written, and
   their reminders cancelled.
-- **SC10** A booking supersedes only the rows the upsert lands on, plus the one
-  window the caller **names** (`replaces`). Nothing else is ever unbooked.
-  `clean_gutters` is `['fall','spring']`, so booking 10 Oct and then 15 Apr is
-  two visits the customer asked for, not a reschedule - and nothing in the data
-  tells the two apart. Guessing from the cross-season read unbooked the October
-  visit and cancelled its reminder while the owner's calendar still held it, with
-  nothing to surface the loss. The admin form names the window it booked, so
-  editing the date is understood as a move; an unnamed window is a new booking.
+- **SC10** A service has **one active booking at a time**, which is what
+  `homeowner_maintenance`'s unique key on (homeowner, task, season) already
+  guarantees - so a reschedule is a plain upsert in place, and whatever window
+  these tasks are holding is by definition the one being moved.
+  There is no `replaces` handshake and no attempt to tell a move from a second
+  concurrent booking of the same service: that is not a thing the business does
+  (there are not two scheduled visits to clean the same gutters), and asking the
+  caller to name the window it was moving from cost three defects - a client that
+  claimed a reschedule on every second click, a completion that resolved to the
+  wrong visit, and a timestamp comparison that could never match.
+  Windows compare as **instants**, never as strings: PostgREST renders
+  `timestamptz` as `2026-09-05T12:00:00+00:00` and `Date#toISOString()` gives
+  `2026-09-05T12:00:00.000Z`, the same moment spelled two ways, so a string
+  compare silently matches nothing in production while every stubbed test passes.
+- **SC12** A window another service still holds is **not** retired. Several
+  tasks share one visit, so moving the gutters off a 5 Aug window that also
+  carries a dryer vent leaves 5 Aug booked - and, the part that bites, leaves its
+  reminder standing. Only a window no booking holds any more has its reminder
+  cancelled.
 - **SC11** A visit is a row carrying a **window**, never a row whose `status`
   reads `'booked'`. `status` is shared with the member's own checklist checkbox,
   which writes `'done'`/`'todo'` onto the same (homeowner, task, season) row - so
@@ -212,6 +223,11 @@ These were settled by the owner during review; the ACs assume them.
   `unavailable` and logs. The cron has no send-once ledger without `visit_start`,
   so it sends **nothing** rather than mailing a batch it cannot guard, and
   reports `degraded` rather than 500ing where a cron failure is silent.
+- **RM15** A ledger row that cannot be **written** stops that send. The claim
+  branch already fails closed when another run got there first; the branch that
+  creates a missing row has to as well, because a send with no ledger entry is
+  one that every retry and every manual re-hit repeats - the exact failure the
+  ledger exists to prevent. The recipient is counted `skipped` and logged.
 
 ## PT - the customer portal
 
@@ -259,6 +275,15 @@ These were settled by the owner during review; the ACs assume them.
   project").
 - **CP8** Completion feeds the history: a task completed today is what IN4
   returns as last-done.
+- **CP9** A booked visit can be marked complete **without re-booking it first**.
+  A job is booked on Monday and performed on Thursday, in a different session, so
+  gating the button on a schedule POST from the same page load meant re-typing
+  the date and clicking "Schedule visit" again just to reveal it - which wiped
+  the member's own tick off the row and queued a reminder for a window that had
+  already passed. The lookup returns the customer's open bookings, one entry per
+  window with every service in it, and each carries its own "Mark completed".
+  The completion **names the window** it closes, so it can never reach another
+  visit the customer has on the books.
 
 ## CM - compliance (applies to every new email)
 

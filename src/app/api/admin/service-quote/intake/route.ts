@@ -5,7 +5,14 @@
  *   - the bookable catalog (the dropdown for a walk-in),
  *   - this customer's past requests, newest first, with the task keys parsed
  *     out of each lead message,
- *   - when they last had each service done.
+ *   - when they last had each service done,
+ *   - the visits they currently have on the books.
+ *
+ * That last one is what makes "mark completed" reachable. A visit is booked on
+ * Monday and performed on Thursday, in a different session - so gating the
+ * button on a schedule POST from the same page load meant re-booking a job
+ * already done just to close it out, which wiped the member's own tick off the
+ * row and queued a reminder for a window that had passed.
  *
  * That last one is the interesting part: `homeowner_maintenance.completed_at`
  * has been recorded every time someone ticks a task on the checklist since
@@ -17,8 +24,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import {
-  parseTaskKeys, bookableCatalog, lastDoneFor, lastDoneLabel,
-  type ServiceCatalogRow, type CompletionRow,
+  parseTaskKeys, bookableCatalog, lastDoneFor, lastDoneLabel, groupBookings,
+  type ServiceCatalogRow, type CompletionRow, type BookedRow, type Booking,
 } from '@/lib/homecare/serviceIntake';
 
 export const dynamic = 'force-dynamic';
@@ -40,7 +47,7 @@ export async function GET(request: NextRequest) {
     )) ?? [];
 
     const services = bookableCatalog(catalog);
-    if (!email) return NextResponse.json({ services, requests: [], history: {}, homeowner: null });
+    if (!email) return NextResponse.json({ services, requests: [], history: {}, homeowner: null, bookings: [] });
 
     const enc = encodeURIComponent(email);
 
@@ -77,19 +84,31 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Service history - only meaningful once they have a homeowner record.
+    // Service history and open bookings - only meaningful once they have a
+    // homeowner record.
     let history: Record<string, { at: string; by: string; label: string }> = {};
+    let bookings: Booking[] = [];
     if (homeowner) {
-      const rows = (await supabaseRest<CompletionRow[]>(
-        'GET',
-        `homeowner_maintenance?select=task_key,status,completed_at,completed_by&homeowner_id=eq.${homeowner.id}&status=eq.done`,
-      ).catch(() => [])) ?? [];
+      const [done, booked] = await Promise.all([
+        supabaseRest<CompletionRow[]>(
+          'GET',
+          `homeowner_maintenance?select=task_key,status,completed_at,completed_by&homeowner_id=eq.${homeowner.id}&status=eq.done`,
+        ).catch(() => [] as CompletionRow[]),
+        // The scheduling columns are hand-applied (20260815), as every migration
+        // here is. A lookup is still worth answering without them.
+        supabaseRest<BookedRow[]>(
+          'GET',
+          `homeowner_maintenance?select=task_key,season,scheduled_start,scheduled_end,service_address` +
+            `&homeowner_id=eq.${homeowner.id}&scheduled_start=not.is.null&order=scheduled_start.asc`,
+        ).catch(() => [] as BookedRow[]),
+      ]);
       history = Object.fromEntries(
-        [...lastDoneFor(rows).entries()].map(([k, v]) => [k, { at: v.at.toISOString(), by: v.by, label: lastDoneLabel(v) }]),
+        [...lastDoneFor(done ?? []).entries()].map(([k, v]) => [k, { at: v.at.toISOString(), by: v.by, label: lastDoneLabel(v) }]),
       );
+      bookings = groupBookings(booked ?? [], byKey);
     }
 
-    return NextResponse.json({ services, requests, history, homeowner });
+    return NextResponse.json({ services, requests, history, homeowner, bookings });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('service-quote intake failed:', message);

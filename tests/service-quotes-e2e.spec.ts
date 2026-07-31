@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import http from 'http';
 import {
-  ensureServiceHomeowner, scheduleVisit, bookedVisitRows, visitStartsOf, supersededBookings,
+  ensureServiceHomeowner, scheduleVisit, bookedVisitRows, orphanedVisitStarts, supersededBookings,
   clearSupersededBookings, requeueVisitReminder, cancelVisitReminder,
 } from '../src/lib/homecare/serviceScheduling';
 import { visitKey, reminderSendAt } from '../src/lib/homecare/visitSchedule';
@@ -86,7 +86,17 @@ test.beforeAll(async () => {
           if (['select', 'order', 'limit', 'on_conflict'].includes(k)) continue;
           const [op, ...rest] = v.split('.');
           const val = rest.join('.');
-          if (op === 'eq') out = out.filter((r) => String(r[k]) === val);
+          // Postgres compares a timestamp column by INSTANT, not by spelling, so
+          // `eq.2026-09-05T12:00:00.000Z` matches a row stored as
+          // "...+00:00". Only string equality in JS would not.
+          if (op === 'eq') {
+            const wantedAt = new Date(val).getTime();
+            out = out.filter((r) => {
+              if (String(r[k]) === val) return true;
+              if (Number.isNaN(wantedAt) || typeof r[k] !== 'string') return false;
+              return new Date(r[k] as string).getTime() === wantedAt;
+            });
+          }
           if (op === 'ilike') out = out.filter((r) => likeRegex(val).test(String(r[k])));
           // `col=not.is.null` - the one negation these queries use, and the
           // filter that says "this row carries a visit window".
@@ -99,7 +109,28 @@ test.beforeAll(async () => {
         return out;
       };
 
-      if (req.method === 'GET') return json(applyFilters(rows));
+      // PostgREST renders `timestamptz` the way Postgres does, NOT the way
+      // `Date#toISOString()` does: "2026-09-05T12:00:00+00:00", not
+      // "2026-09-05T12:00:00.000Z". Same instant, two spellings - and a stub
+      // that echoed back whatever JS wrote would hide every place the code
+      // compares one against the other as a string.
+      const TIMESTAMPS = ['scheduled_start', 'scheduled_end', 'scheduled_at', 'visit_start', 'created_at', 'sent_at'];
+      const asPostgrest = (row: Row): Row => {
+        const out: Row = { ...row };
+        for (const col of TIMESTAMPS) {
+          const v = out[col];
+          if (typeof v !== 'string') continue;
+          const at = new Date(v);
+          // Same instant, Postgres spelling: the offset written out, and a
+          // whole-second fraction dropped rather than rendered as ".000".
+          if (!Number.isNaN(at.getTime())) {
+            out[col] = at.toISOString().replace(/\.000Z$/, 'Z').replace(/Z$/, '+00:00');
+          }
+        }
+        return out;
+      };
+
+      if (req.method === 'GET') return json(applyFilters(rows).map(asPostgrest));
 
       if (req.method === 'POST') {
         // PostgREST takes a bare object or an array; the checklist toggle sends
@@ -206,51 +237,50 @@ test('CP2: booking clears a previous La Vaca completion off the row', async () =
   expect(gutters().completed_at).toBe(null);
 });
 
+/** Exactly what the schedule route does, in the order it does it. */
+const rebook = async (homeownerId: string, tasks: { taskKey: string; season: string }[], start: Date) => {
+  const previous = await bookedVisitRows(homeownerId);
+  const superseded = supersededBookings({ previous, taskKeys: tasks.map((t) => t.taskKey), start });
+  const supersedes = orphanedVisitStarts({ previous, superseded });
+  await clearSupersededBookings({ homeownerId, rows: superseded });
+  await scheduleVisit({
+    homeownerId, tasks, start, end: new Date(start.getTime() + 2 * 3600_000), address: '9 Elm St, Montclair, NJ',
+  });
+  return supersedes;
+};
+
 test('SC6: rescheduling updates in place rather than duplicating the booking', async () => {
   const start = new Date(Date.now() + 60 * 3600_000);
-  const end = new Date(start.getTime() + 2 * 3600_000);
-  // Read BEFORE the upsert overwrites it - this is what the schedule route
-  // hands to requeueVisitReminder so it pulls the right visit's reminder.
-  const previous = await bookedVisitRows({ homeownerId: 'member-1', taskKeys: ['clean_gutters'] });
-  const tasks = [{ taskKey: 'clean_gutters', season: 'fall' }];
-  // The upsert lands on this row, so its window is superseded whether or not
-  // the caller names it.
-  const superseded = supersededBookings({ previous, tasks, start });
-  expect(visitStartsOf(superseded).length, 'the window this booking replaces').toBe(1);
+  const supersedes = await rebook('member-1', [{ taskKey: 'clean_gutters', season: 'fall' }], start);
+  expect(supersedes.length, 'the window this booking replaces').toBe(1);
 
-  await clearSupersededBookings({ homeownerId: 'member-1', rows: superseded });
-  await scheduleVisit({ homeownerId: 'member-1', tasks, start, end, address: '9 Elm St, Montclair, NJ' });
   const rows = db.homeowner_maintenance.filter((m) => m.task_key === 'clean_gutters' && m.season === 'fall');
   expect(rows.length, 'one row, updated in place').toBe(1);
   expect(rows[0].scheduled_start).toBe(start.toISOString());
 });
 
 test('SC9: moving a visit across a season boundary leaves no phantom booking', async () => {
-  // The season comes from the visit date, so a reschedule can land the booking
-  // on a DIFFERENT row. The upsert alone would never touch the old one: it would
-  // keep its window, so the portal would show a visit that is not happening and
-  // the cron would remind the customer about it.
+  // The season comes from the visit date reconciled against the task's own
+  // catalog seasons, so a reschedule can land the booking on a DIFFERENT row.
+  // The upsert alone would never touch the old one: it would keep its window,
+  // so the portal would show a visit that is not happening and the cron would
+  // send "we're coming tomorrow" for a slot nobody attends.
+  //
+  // No handshake: ONE booking per service, so whatever window the task was
+  // already holding is by definition the one this call moves.
   const septStart = new Date(Date.now() + 30 * 24 * 3600_000);
   await scheduleVisit({
     homeownerId: 'member-1', tasks: [{ taskKey: 'chimney_inspect', season: 'fall' }],
     start: septStart, end: new Date(septStart.getTime() + 2 * 3600_000), address: '9 Elm St',
   });
 
-  const previous = await bookedVisitRows({ homeownerId: 'member-1', taskKeys: ['chimney_inspect'] });
-  expect(previous.map((r) => r.season)).toEqual(['fall']);
-
   const augStart = new Date(Date.now() + 20 * 24 * 3600_000);
-  const moved = [{ taskKey: 'chimney_inspect', season: 'summer' }];
-  // The caller names the window it is moving FROM - the admin is editing a
-  // visit it just booked, so it knows.
-  const superseded = supersededBookings({ previous, tasks: moved, start: augStart, replaces: septStart });
-  expect(visitStartsOf(superseded).map((d) => d.toISOString()), 'the reminder to pull')
+  const supersedes = await rebook('member-1', [{ taskKey: 'chimney_inspect', season: 'summer' }], augStart);
+  // The window compared as an INSTANT. PostgREST hands the row back spelled
+  // "+00:00" and the booking is a `Date`; string equality matches neither, which
+  // is how a supersede fix can pass every stub test and do nothing in prod.
+  expect(supersedes.map((d) => d.toISOString()), 'the reminder to pull')
     .toEqual([septStart.toISOString()]);
-  await clearSupersededBookings({ homeownerId: 'member-1', rows: superseded });
-  await scheduleVisit({
-    homeownerId: 'member-1', tasks: moved,
-    start: augStart, end: new Date(augStart.getTime() + 2 * 3600_000), address: '9 Elm St',
-  });
 
   const chimney = db.homeowner_maintenance.filter((m) => m.task_key === 'chimney_inspect');
   expect(chimney.map((m) => [m.season, m.status]).sort())
@@ -259,33 +289,29 @@ test('SC9: moving a visit across a season boundary leaves no phantom booking', a
   expect(stale.scheduled_start, 'the phantom window is cleared').toBe(null);
 });
 
-test('SC10: a second booking of a two-season task does not unbook the first', async () => {
-  // `clean_gutters` is ['fall','spring'], so October and April are two visits
-  // the customer asked for - not a reschedule. Nothing names the October
-  // window, so nothing may touch it: unbooking it would take the visit off the
-  // portal and cancel its reminder while the owner's calendar still holds it.
-  const octStart = new Date(Date.UTC(2026, 9, 10, 12));
-  const aprStart = new Date(Date.UTC(2027, 3, 15, 12));
+test('SC12: moving one service off a shared window leaves the rest of the visit booked', async () => {
+  // Gutters and a dryer vent booked into one 5 Aug window, then the gutters move
+  // to the 12th. The 5 Aug visit is still happening for the dryer vent, so its
+  // row keeps its window - and, the part that bites, its reminder is NOT pulled:
+  // a window is shared by every task booked into it.
+  const shared = new Date(Date.now() + 9 * 24 * 3600_000);
+  const movedTo = new Date(Date.now() + 16 * 24 * 3600_000);
   await scheduleVisit({
-    homeownerId: 'two-season', tasks: [{ taskKey: 'clean_gutters', season: 'fall' }],
-    start: octStart, end: new Date(octStart.getTime() + 2 * 3600_000), address: '3 Birch Rd',
+    homeownerId: 'shared',
+    tasks: [{ taskKey: 'clean_gutters', season: 'fall' }, { taskKey: 'clean_dryer_vent', season: 'fall' }],
+    start: shared, end: new Date(shared.getTime() + 3 * 3600_000), address: '3 Birch Rd',
   });
 
-  const previous = await bookedVisitRows({ homeownerId: 'two-season', taskKeys: ['clean_gutters'] });
-  const spring = [{ taskKey: 'clean_gutters', season: 'spring' }];
-  const superseded = supersededBookings({ previous, tasks: spring, start: aprStart });
-  expect(superseded, 'no window was named, so none is superseded').toEqual([]);
-
-  await clearSupersededBookings({ homeownerId: 'two-season', rows: superseded });
-  await scheduleVisit({
-    homeownerId: 'two-season', tasks: spring,
-    start: aprStart, end: new Date(aprStart.getTime() + 2 * 3600_000), address: '3 Birch Rd',
-  });
+  const supersedes = await rebook('shared', [{ taskKey: 'clean_gutters', season: 'fall' }], movedTo);
+  expect(supersedes, 'the shared window is still a visit, so no reminder is pulled').toEqual([]);
 
   expect(db.homeowner_maintenance
-    .filter((m) => m.homeowner_id === 'two-season')
-    .map((m) => [m.season, m.status, m.scheduled_start]).sort())
-    .toEqual([['fall', 'booked', octStart.toISOString()], ['spring', 'booked', aprStart.toISOString()]]);
+    .filter((m) => m.homeowner_id === 'shared')
+    .map((m) => [m.task_key, m.status, m.scheduled_start]).sort())
+    .toEqual([
+      ['clean_dryer_vent', 'booked', shared.toISOString()],
+      ['clean_gutters', 'booked', movedTo.toISOString()],
+    ]);
 });
 
 test('SC11: a member ticking a booked task leaves the visit on the books', async () => {
@@ -313,8 +339,8 @@ test('SC11: a member ticking a booked task leaves the visit on the books', async
   expect(row.completed_by).toBe('homeowner');
   expect(row.scheduled_start, 'and the booking is untouched').toBe(start.toISOString());
   // Still a visit as far as the reschedule read is concerned.
-  expect(visitStartsOf(await bookedVisitRows({ homeownerId: 'ticker', taskKeys: ['clean_gutters'] }))
-    .map((d) => d.toISOString())).toEqual([start.toISOString()]);
+  expect((await bookedVisitRows('ticker')).map((r) => new Date(r.scheduled_start!).toISOString()))
+    .toEqual([start.toISOString()]);
 });
 
 const MEMBER_VISIT = new Date(Date.now() + 48 * 3600_000);

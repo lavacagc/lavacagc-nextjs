@@ -151,10 +151,10 @@ export interface BookedVisitRow {
 }
 
 /**
- * Every visit currently on the books for these tasks, in ANY season.
+ * Every visit currently on the books for this customer, in any season.
  *
- * Read BEFORE the upsert overwrites them: these are the visits a new booking
- * may supersede, and the only way to pull exactly their reminders.
+ * Read BEFORE the upsert overwrites anything: these are the visits a new
+ * booking may supersede, and the only way to pull exactly their reminders.
  *
  * A visit is a row carrying a `scheduled_start`, NOT a row whose status happens
  * to read 'booked'. `status` is shared with the member's own checkbox, which
@@ -163,59 +163,80 @@ export interface BookedVisitRow {
  * booked, and the visit would neither move with a reschedule nor lose its
  * reminder.
  *
- * Deliberately NOT scoped to the season the new booking lands in either. The
- * season is derived from the visit date reconciled against the task's catalog
- * seasons, so moving a visit can move its row.
+ * Every task, not just the ones being booked: a window one task gives up may
+ * still be held by another, and that window's reminder has to survive.
  */
-export async function bookedVisitRows(args: {
-  homeownerId: string;
-  taskKeys: string[];
-}): Promise<BookedVisitRow[]> {
-  const { homeownerId, taskKeys } = args;
-  if (taskKeys.length === 0) return [];
+export async function bookedVisitRows(homeownerId: string): Promise<BookedVisitRow[]> {
   return (await supabaseRest<BookedVisitRow[]>(
     'GET',
     `homeowner_maintenance?select=task_key,season,scheduled_start&homeowner_id=eq.${homeownerId}` +
-      `&task_key=in.(${taskKeys.map((k) => `"${k}"`).join(',')})&scheduled_start=not.is.null`,
+      '&scheduled_start=not.is.null',
   ).catch(() => [])) ?? [];
 }
 
-/** The distinct windows a set of booked rows stands for. */
-export function visitStartsOf(rows: BookedVisitRow[]): Date[] {
-  return [...new Set(rows.map((r) => r.scheduled_start).filter((s): s is string => !!s))]
-    .map((iso) => new Date(iso));
-}
-
 /**
- * The visits this booking supersedes - the ones it overwrites, plus the one the
- * caller says it is replacing.
+ * The bookings this one replaces: every window these tasks are already holding
+ * that is not the window being booked.
  *
- * A row on a (task, season) this booking writes is superseded by definition:
- * the upsert lands on it, so its window is gone whatever we do and its reminder
- * has to go with it.
+ * ONE active booking per task is the whole model. `homeowner_maintenance` is
+ * keyed on (homeowner, task, season) so a same-season reschedule is a plain
+ * upsert in place, and this exists for the case the upsert cannot reach: the
+ * season is derived from the visit date reconciled against the task's catalog
+ * seasons, so moving a visit far enough lands it on a DIFFERENT row and the old
+ * one would keep its window forever - a phantom visit on the portal and a live
+ * "we're coming tomorrow" for a slot nobody attends.
  *
- * Any OTHER booked row is ambiguous, and guessing there loses a real visit.
- * `clean_gutters` is `['fall','spring']`, so booking 10 Oct and then 15 Apr is
- * two visits a customer asked for, not a reschedule - yet both are the same
- * task for the same homeowner. Treating every other-season booking as
- * superseded unbooks the October visit and cancels its reminder while the
- * owner's calendar still holds it. So the caller has to NAME the window it is
- * moving from (`replaces`), and anything it does not name is left alone.
+ * Two concurrently-booked visits of the same service are not a thing the
+ * business does, so nothing here has to tell a move from a second booking - the
+ * distinction that needed a caller-supplied handshake, and every bug that came
+ * with it.
+ *
+ * Compared as INSTANTS, never as strings. PostgREST renders `timestamptz` the
+ * way Postgres does - "2026-09-05T12:00:00+00:00" - and `Date#toISOString()`
+ * gives "2026-09-05T12:00:00.000Z"; the same moment, spelled two ways, so a
+ * string compare silently matches nothing in production.
  */
 export function supersededBookings(args: {
   previous: BookedVisitRow[];
-  tasks: VisitTask[];
+  taskKeys: string[];
   start: Date;
-  replaces?: Date | null;
 }): BookedVisitRow[] {
-  const { previous, tasks, start, replaces } = args;
-  const overwritten = new Set(tasks.map((t) => `${t.taskKey}|${t.season}`));
-  const startIso = start.toISOString();
-  const replacedIso = replaces ? replaces.toISOString() : null;
+  const { previous, taskKeys, start } = args;
+  const booking = new Set(taskKeys);
+  const startMs = start.getTime();
   return previous.filter((row) => {
-    if (!row.scheduled_start || row.scheduled_start === startIso) return false;
-    return overwritten.has(`${row.task_key}|${row.season}`) || row.scheduled_start === replacedIso;
+    if (!row.scheduled_start || !booking.has(row.task_key)) return false;
+    const ms = new Date(row.scheduled_start).getTime();
+    return Number.isFinite(ms) && ms !== startMs;
   });
+}
+
+/**
+ * The windows left with no booking at all once these rows are cleared - the
+ * only ones whose reminder should be pulled.
+ *
+ * A window is shared by every task booked into it. Move the gutters off a 5 Aug
+ * visit that also carries a dryer vent and the 5 Aug window is still happening,
+ * so cancelling its reminder on the strength of the gutters row alone would
+ * leave the customer with an unannounced visit.
+ */
+export function orphanedVisitStarts(args: {
+  previous: BookedVisitRow[];
+  superseded: BookedVisitRow[];
+}): Date[] {
+  const { previous, superseded } = args;
+  const cleared = new Set(superseded.map((r) => `${r.task_key}|${r.season}`));
+  const stillHeld = new Set<number>();
+  for (const row of previous) {
+    if (!row.scheduled_start || cleared.has(`${row.task_key}|${row.season}`)) continue;
+    stillHeld.add(new Date(row.scheduled_start).getTime());
+  }
+  const orphaned = new Map<number, Date>();
+  for (const row of superseded) {
+    const ms = new Date(row.scheduled_start!).getTime();
+    if (Number.isFinite(ms) && !stillHeld.has(ms)) orphaned.set(ms, new Date(ms));
+  }
+  return [...orphaned.values()];
 }
 
 /**

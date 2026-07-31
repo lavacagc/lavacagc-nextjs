@@ -45,7 +45,8 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Validation failed', issues: parsed.error.issues }, { status: 400 });
   }
-  const { homeownerId, taskKeys, seasons, skipFeedback } = parsed.data;
+  const { homeownerId, taskKeys, seasons, start, skipFeedback } = parsed.data;
+  const performedAt = start ? new Date(start).getTime() : null;
 
   try {
     const inList = taskKeys.map((k) => `"${k}"`).join(',');
@@ -64,11 +65,23 @@ export async function POST(request: NextRequest) {
         `&homeowner_id=eq.${homeownerId}&task_key=in.(${inList})&status=in.(booked,done,todo)`,
     )) ?? [];
 
+    // The visit being closed. When the caller names its window, only rows booked
+    // into that window count - completing this morning's job can then never
+    // reach into another visit and stamp it done. Windows are compared as
+    // INSTANTS: PostgREST renders `timestamptz` as "...+00:00" and the caller
+    // sends `Date#toISOString()`'s "....000Z", the same moment spelled two ways.
+    //
+    // Unnamed, the EARLIEST window wins. One booking per task means there is
+    // normally only one; taking the latest would close a future visit and null
+    // its window while leaving the job just performed still on the books.
     const bookedFor = new Map<string, MaintRow>();
     for (const r of existing) {
       if (!r.scheduled_start) continue;
+      const at = new Date(r.scheduled_start).getTime();
+      if (!Number.isFinite(at)) continue;
+      if (performedAt !== null && at !== performedAt) continue;
       const held = bookedFor.get(r.task_key);
-      if (!held || r.scheduled_start > (held.scheduled_start ?? '')) bookedFor.set(r.task_key, r);
+      if (!held || at < new Date(held.scheduled_start!).getTime()) bookedFor.set(r.task_key, r);
     }
 
     const targets: { taskKey: string; season: string }[] = [];

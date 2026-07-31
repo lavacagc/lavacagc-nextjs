@@ -8,8 +8,9 @@ import {
 import { buildIcs, escapeIcsText, easternWallClock, easternOffsetHours } from '../src/lib/homecare/ics';
 import {
   parseTaskKeys, resolveServices, bookableCatalog, lastDoneFor, lastDoneLabel, scopeSummaryFrom,
-  type ServiceCatalogRow,
+  groupBookings, type ServiceCatalogRow,
 } from '../src/lib/homecare/serviceIntake';
+import { supersededBookings, orphanedVisitStarts } from '../src/lib/homecare/serviceScheduling';
 import {
   tomorrowEasternWindow, visitDateLabel, visitTimeWindow, reminderSendAt, reminderRunAt,
   reminderIsStillUseful, visitKey, easternVisitInstant, ledgerKey, ledgerVerdict,
@@ -175,6 +176,58 @@ test('IN5: last-done returns the newest completion for a multi-season task', () 
   expect(m.get('clean_gutters')?.at.getUTCFullYear()).toBe(2026);
   expect(lastDoneLabel(m.get('clean_gutters'))).toBe('last done Apr 2026');
   expect(lastDoneLabel(undefined)).toBe('no record');
+});
+
+/* PostgREST renders `timestamptz` the way Postgres does; a Date does not. The
+   same instant, spelled two ways, and every window comparison in this feature
+   has to survive meeting both. */
+const PG = '2026-08-05T12:00:00+00:00';
+const JS = new Date(PG).toISOString(); // 2026-08-05T12:00:00.000Z
+
+test('CP9: open bookings group into one entry per VISIT, keyed on the instant', () => {
+  const byKey = new Map(CATALOG.map((c) => [c.key, c]));
+  const later = '2026-08-12T13:30:00+00:00';
+  const bookings = groupBookings([
+    // Same window, two spellings: one visit, two services - not two visits.
+    { task_key: 'clean_gutters', season: 'fall', scheduled_start: PG, scheduled_end: null, service_address: '9 Elm St' },
+    { task_key: 'clean_dryer_vent', season: 'fall', scheduled_start: JS, scheduled_end: null, service_address: '9 Elm St' },
+    { task_key: 'clean_gutters', season: 'spring', scheduled_start: later, scheduled_end: null, service_address: '9 Elm St' },
+  ], byKey);
+
+  expect(bookings.length, 'two visits, not three rows').toBe(2);
+  expect(bookings[0].tasks.map((t) => t.key)).toEqual(['clean_gutters', 'clean_dryer_vent']);
+  expect(bookings[0].tasks[0].title).toBe('Clean gutters & downspouts');
+  // Normalised, because /complete matches the visit on exactly this value.
+  expect(bookings[0].start).toBe(JS);
+  expect(bookings[1].start).toBe(new Date(later).toISOString());
+  // Earliest first: the next job the crew does is the one at the top.
+  expect(new Date(bookings[0].start).getTime()).toBeLessThan(new Date(bookings[1].start).getTime());
+});
+
+test('SC10+SC12: a supersede compares windows as instants, and spares a shared one', () => {
+  const previous = [
+    { task_key: 'clean_gutters', season: 'fall', scheduled_start: PG },
+    { task_key: 'clean_dryer_vent', season: 'fall', scheduled_start: PG },
+  ];
+  // Re-submitting the SAME window supersedes nothing, even though PostgREST
+  // spells it differently from the Date the caller holds.
+  expect(supersededBookings({ previous, taskKeys: ['clean_gutters'], start: new Date(JS) })).toEqual([]);
+
+  // Moving it does, and reads the row PostgREST actually returned.
+  const moved = new Date('2026-09-05T12:00:00.000Z');
+  const superseded = supersededBookings({ previous, taskKeys: ['clean_gutters'], start: moved });
+  expect(superseded.map((r) => r.task_key)).toEqual(['clean_gutters']);
+
+  // But the dryer vent is still booked into 5 Aug, so that visit is still
+  // happening and its reminder must not be pulled.
+  expect(orphanedVisitStarts({ previous, superseded })).toEqual([]);
+
+  // With nothing else holding it, the window is retired and so is its reminder.
+  const alone = [{ task_key: 'clean_gutters', season: 'fall', scheduled_start: PG }];
+  expect(orphanedVisitStarts({
+    previous: alone,
+    superseded: supersededBookings({ previous: alone, taskKeys: ['clean_gutters'], start: moved }),
+  }).map((d) => d.toISOString())).toEqual([JS]);
 });
 
 test('IN: scope summary reads naturally for 1, 2 and 3 services', () => {
