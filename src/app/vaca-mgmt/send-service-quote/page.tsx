@@ -67,8 +67,12 @@ export default function SendServiceQuotePage() {
   // complete" hits the SAME rows even when the job is completed after the season
   // has turned over. Per task: the season is reconciled against each task's own
   // catalog seasons, so one window can span two of them.
+  // `start` is kept so a second click on Schedule is understood as a RESCHEDULE
+  // of that window rather than a second, distinct visit. The server never
+  // guesses: gutters are a two-season task, so an October booking and an April
+  // one are two real visits, and an unnamed window is left alone.
   const [scheduled, setScheduled] = useState<
-    { icsUrl: string; homeownerId: string; seasons: Record<string, string> } | null
+    { icsUrl: string; homeownerId: string; seasons: Record<string, string>; start: string } | null
   >(null);
 
   const lookup = useCallback(async () => {
@@ -138,6 +142,7 @@ export default function SendServiceQuotePage() {
     if (!date) { toast({ title: 'Pick a date first', variant: 'destructive' }); return; }
     if (!from || !to) { toast({ title: 'Set the arrival window', variant: 'destructive' }); return; }
     setScheduling(true);
+    const startAt = easternVisitInstant(date, from).toISOString();
     try {
       const res = await fetch('/api/admin/service-quote/schedule', {
         method: 'POST',
@@ -149,14 +154,18 @@ export default function SendServiceQuotePage() {
           // stored instant as an Eastern wall-clock time, and a bare
           // `new Date('2026-08-05T08:00')` is parsed locally - so booking from a
           // laptop on Pacific would silently store an 11am window.
-          start: easternVisitInstant(date, from).toISOString(),
+          start: startAt,
           end: easternVisitInstant(date, to).toISOString(),
+          // The window this replaces, when this is a reschedule of one booked
+          // in this session. Absent, the server books a new visit and touches
+          // nothing that already exists.
+          ...(scheduled && scheduled.start !== startAt ? { replaces: scheduled.start } : {}),
           address,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.issues?.[0]?.message || 'Scheduling failed');
-      setScheduled({ icsUrl: data.icsUrl, homeownerId: data.homeownerId, seasons: data.seasons ?? {} });
+      setScheduled({ icsUrl: data.icsUrl, homeownerId: data.homeownerId, seasons: data.seasons ?? {}, start: startAt });
       toast({
         title: 'Visit scheduled',
         description: data.reminder === 'queued'

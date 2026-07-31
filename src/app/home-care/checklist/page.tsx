@@ -53,7 +53,12 @@ const MAINTENANCE_BASE = 'task_key,season,status,completed_at,updated_at';
  * columns exist. A transient failure still throws, because the retry fails too.
  */
 async function fetchMaintenanceRows(homeownerId: string): Promise<MaintenanceRow[]> {
-  const filter = `&homeowner_id=eq.${homeownerId}&status=in.(done,dismissed,booked)`;
+  // No status filter. A booked row's status is shared with the member's own
+  // checkbox, so a task they ticked or unticked reads 'done'/'todo' while its
+  // visit is still coming - a status list would drop the row and the visit card
+  // with it. One member's rows are bounded by (tasks x seasons); the reader
+  // below splits them by status anyway.
+  const filter = `&homeowner_id=eq.${homeownerId}`;
   try {
     return (await supabaseRest<MaintenanceRow[]>(
       'GET', `homeowner_maintenance?select=${MAINTENANCE_BASE},${SERVICE_COLUMNS}${filter}`,
@@ -139,7 +144,12 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   }
   // The next booked visit, if any. Several tasks can share one window, so they
   // collapse into a single card listing every service.
-  const bookedRows = (doneRows ?? []).filter((r) => r.status === 'booked' && r.scheduled_start);
+  //
+  // A visit is a row with a WINDOW, not one whose status reads 'booked': a
+  // member who ticks a booked task to acknowledge it writes 'done' onto that
+  // same row, and the visit must not vanish from the page because they did.
+  // Cancelling and completing both clear the window.
+  const bookedRows = (doneRows ?? []).filter((r) => r.scheduled_start && r.status !== 'dismissed');
   const nextStart = bookedRows
     .map((r) => r.scheduled_start as string)
     .filter((iso) => new Date(iso).getTime() > nowMs)

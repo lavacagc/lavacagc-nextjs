@@ -75,10 +75,17 @@ export async function GET(request: NextRequest) {
   const { startUtc, endUtc } = tomorrowEasternWindow(now);
 
   try {
+    // A visit is a row carrying a WINDOW, not one whose status reads 'booked'.
+    // `status` is shared with the member's own checkbox: a member who sees the
+    // visit card and ticks "Clean gutters" to acknowledge it writes 'done' onto
+    // the very row the booking lives on. Filtered on status, this query would
+    // then skip a visit that is still happening - no reminder, for a job the
+    // owner's calendar still holds. Cancelling and completing both clear the
+    // window, which is what actually takes a visit off the books.
     const visits = (await supabaseRest<VisitRow[]>(
       'GET',
       `homeowner_maintenance?select=id,homeowner_id,task_key,status,scheduled_start,scheduled_end,service_address` +
-        `&status=eq.booked&scheduled_start=gte.${startUtc.toISOString()}&scheduled_start=lt.${endUtc.toISOString()}` +
+        `&scheduled_start=gte.${startUtc.toISOString()}&scheduled_start=lt.${endUtc.toISOString()}` +
         `&order=scheduled_start.asc&limit=${MAX_PER_RUN}`,
     )) ?? [];
 

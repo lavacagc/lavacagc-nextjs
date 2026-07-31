@@ -54,17 +54,21 @@ export async function POST(request: NextRequest) {
     // from the visit date reconciled against that task's catalog seasons, so the
     // caller cannot re-derive it and one visit can span two of them. The BOOKED
     // row is the source of truth - completing means closing that booking.
+    //
+    // 'todo' is in the status list because a member can untick a task La Vaca
+    // has booked; the row still holds the window, and that window is what says
+    // a visit is on the books.
     const existing = (await supabaseRest<MaintRow[]>(
       'GET',
       `homeowner_maintenance?select=task_key,season,status,completed_by,scheduled_start` +
-        `&homeowner_id=eq.${homeownerId}&task_key=in.(${inList})&status=in.(booked,done)`,
+        `&homeowner_id=eq.${homeownerId}&task_key=in.(${inList})&status=in.(booked,done,todo)`,
     )) ?? [];
 
     const bookedFor = new Map<string, MaintRow>();
     for (const r of existing) {
-      if (r.status !== 'booked') continue;
+      if (!r.scheduled_start) continue;
       const held = bookedFor.get(r.task_key);
-      if (!held || (r.scheduled_start ?? '') > (held.scheduled_start ?? '')) bookedFor.set(r.task_key, r);
+      if (!held || r.scheduled_start > (held.scheduled_start ?? '')) bookedFor.set(r.task_key, r);
     }
 
     const targets: { taskKey: string; season: string }[] = [];
@@ -97,6 +101,12 @@ export async function POST(request: NextRequest) {
         status: 'done',
         completed_at: completedAt,
         completed_by: 'lavaca',
+        // The visit happened, so it comes off the books. A row carrying a
+        // window is what every reader treats as a visit still to come - the
+        // portal card, the reminder cron, the reschedule read - so leaving one
+        // behind would keep announcing a job that is already done.
+        scheduled_start: null,
+        scheduled_end: null,
         updated_at: completedAt,
       })), { onConflict: 'homeowner_id,task_key,season' });
     }

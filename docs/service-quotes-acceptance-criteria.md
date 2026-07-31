@@ -108,11 +108,28 @@ These were settled by the owner during review; the ACs assume them.
   under and "mark complete" resolves each task from the row it was booked into.
 - **SC9** Rescheduling a visit **across a season boundary** leaves no phantom
   booking. The upsert only reaches the (task, season) row it writes, so a visit
-  moved from 5 Sep to 28 Aug would otherwise leave the fall row `booked` at its
-  old window: the portal's next-visit card would show a visit that is not
-  happening, and the cron would send "we're coming tomorrow" for it. Superseded
-  rows are read across **every** season, unbooked before the new row is written,
-  and their reminders cancelled.
+  moved from 5 Sep to 28 Aug would otherwise leave the fall row holding its old
+  window: the portal's next-visit card would show a visit that is not happening,
+  and the cron would send "we're coming tomorrow" for it. Superseded rows are
+  read across **every** season, unbooked before the new row is written, and
+  their reminders cancelled.
+- **SC10** A booking supersedes only the rows the upsert lands on, plus the one
+  window the caller **names** (`replaces`). Nothing else is ever unbooked.
+  `clean_gutters` is `['fall','spring']`, so booking 10 Oct and then 15 Apr is
+  two visits the customer asked for, not a reschedule - and nothing in the data
+  tells the two apart. Guessing from the cross-season read unbooked the October
+  visit and cancelled its reminder while the owner's calendar still held it, with
+  nothing to surface the loss. The admin form names the window it booked, so
+  editing the date is understood as a move; an unnamed window is a new booking.
+- **SC11** A visit is a row carrying a **window**, never a row whose `status`
+  reads `'booked'`. `status` is shared with the member's own checklist checkbox,
+  which writes `'done'`/`'todo'` onto the same (homeowner, task, season) row - so
+  a member who sees the visit card and ticks "Clean gutters" to acknowledge it
+  used to take the visit off the portal and off the reminder cron for a job that
+  was still happening, with nothing warning either side. The member's write owns
+  `status`, `completed_at` and `completed_by` and carries none of the scheduling
+  columns, so their completion is recorded and the booking stands for the owner
+  to reconcile. Cancelling and completing are what clear the window.
 
 ## ICS - the calendar file
 
@@ -173,13 +190,21 @@ These were settled by the owner during review; the ACs assume them.
 - **RM10** `follow_up_queue.follow_up_type` carries a CHECK constraint listing
   the sequences that share the table, so `visit_reminder_1d` must be added to it
   or the queue insert fails and booking a visit 500s.
-- **RM12** A reminder is queued only while its **send time** is still ahead, not
-  merely while the visit is. The cron looks only at "tomorrow, Eastern", so a
-  visit booked at 11pm the night before - or any same-day booking - has a 7:30pm
-  slot that has already gone and a run that fired hours earlier. Queued anyway,
-  the row would sit `pending` forever while the admin was told a reminder was on
-  its way. It reports `skipped` instead, and the admin is told to text the
-  customer themselves.
+- **RM12** A reminder is queued only while the **run that would carry it** is
+  still ahead, not merely while the visit is. The cron looks only at "tomorrow,
+  Eastern", so a visit booked at 11pm the night before - or any same-day booking
+  - is covered by a run that already fired. Queued anyway, the row would sit
+  `pending` forever while the admin was told a reminder was on its way. It
+  reports `skipped` instead, and the admin is told to text the customer
+  themselves.
+- **RM14** That gate is the **covering run**, not the nominal 7:30pm send time.
+  The cron is one fixed UTC time with no DST logic (owner's call), so it fires
+  at 7:30pm Eastern only under EDT - under EST it fires at 6:30pm, an hour
+  *before* the send time the queue row carries. Gated on the send time, any
+  winter booking made in that hour passed and then never sent. The run covering
+  a visit on Eastern date D is 23:30 UTC on D-1, which is what
+  `reminderRunAt` returns and `reminderIsStillUseful` compares against. Tested
+  in December as well as August; an August-only test cannot see this.
 - **RM13** A migration that has not been hand-applied yet **degrades**; it never
   hard-fails. The queue insert needs both 20260816 (the `follow_up_type` CHECK)
   and 20260817 (`visit_start`), so until they land it 400s - and a booking that
@@ -203,6 +228,13 @@ These were settled by the owner during review; the ACs assume them.
   a completion still current under `isRowCurrent`. Keyed on the task alone it
   leaked: a fall gutter clean credited itself on the spring row the member
   ticked, and returned on next fall's re-tick with last year's date.
+  The client holds its own copy and drops the key when the member toggles the
+  task, because the write reassigns the row to them (`completed_by='homeowner'`)
+  - read straight off the prop, the open tab kept the old label over work they
+  had just done themselves, until a reload.
+- **PT6** A booked task the member ticks stays on the page as a booked visit.
+  See **SC11**: the card and the fetch behind it key on the window, not on the
+  shared `status` column.
 
 ## CP - completion
 

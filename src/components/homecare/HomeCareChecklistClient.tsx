@@ -103,7 +103,7 @@ export default function HomeCareChecklistClient({
   currentSeason,
   showCatchUp = false,
   autoAddKey,
-  lavacaCompleted,
+  lavacaCompleted: lavacaCompletedFromServer,
 }: {
   tasks: ChecklistTask[];
   doneItems: { task_key: string; season: string }[];
@@ -120,6 +120,12 @@ export default function HomeCareChecklistClient({
    */
   lavacaCompleted?: Record<string, string>;
 }) {
+  // Local, because re-ticking a task moves the attribution to the member and
+  // the server has already agreed: /api/home-care/task writes
+  // completed_by='homeowner'. Left as a plain prop, the open tab would keep
+  // reading "Completed by La Vaca" over work the member just did themselves -
+  // which is the exact case the attribution exists to distinguish.
+  const [lavacaCompleted, setLavacaCompleted] = useState<Record<string, string>>(lavacaCompletedFromServer ?? {});
   const [done, setDone] = useState<Set<string>>(new Set(doneItems.map((d) => id(d.task_key, d.season))));
   const [dismissed, setDismissed] = useState<Set<string>>(new Set(dismissedKeys));
   const [selected, setSelected] = useState<Set<string>>(() => new Set(autoAddKey ? [autoAddKey] : []));
@@ -302,6 +308,16 @@ export default function HomeCareChecklistClient({
       else next.delete(k);
       return next;
     });
+    // The write reassigns the row to the member, so its La Vaca attribution
+    // goes with it - kept here so it can be put back if the write fails.
+    const heldAttribution = lavacaCompleted[k];
+    if (heldAttribution) {
+      setLavacaCompleted((prev) => {
+        const next = { ...prev };
+        delete next[k];
+        return next;
+      });
+    }
     setBusy(k);
     try {
       const res = await fetch('/api/home-care/task', {
@@ -318,6 +334,7 @@ export default function HomeCareChecklistClient({
         else revert.add(k);
         return revert;
       });
+      if (heldAttribution) setLavacaCompleted((prev) => ({ ...prev, [k]: heldAttribution }));
     } finally {
       setBusy(null);
     }

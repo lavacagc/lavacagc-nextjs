@@ -63,6 +63,16 @@ export const scheduleSchema = z.object({
    */
   start: z.string().datetime({ offset: true }),
   end: z.string().datetime({ offset: true }),
+  /**
+   * The window this booking is MOVING FROM, when it is a reschedule.
+   *
+   * Only the caller knows. Two bookings of the same task in different seasons -
+   * gutters in October and again in April - are two visits a customer asked
+   * for, and inferring a reschedule from them unbooks one nobody cancelled. So
+   * an unnamed window is never touched, and a booking with no `replaces` is
+   * simply a new booking.
+   */
+  replaces: z.string().datetime({ offset: true }).optional(),
   address: z.string().trim().min(1, 'A service address is required for the calendar invite').max(300),
   city: z.string().trim().max(120).optional().or(z.literal('').transform(() => undefined)),
   zip: z.string().trim().max(20).optional().or(z.literal('').transform(() => undefined)),

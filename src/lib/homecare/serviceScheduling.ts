@@ -118,6 +118,11 @@ export interface ScheduleArgs {
  *
  * Upsert on the table's natural key (homeowner, task, season) so rescheduling
  * updates in place rather than accumulating rows.
+ *
+ * `status` is only the label the portal shows: it is shared with the member's
+ * own checkbox, so it can legitimately read 'done' or 'todo' on a row that
+ * still has a visit coming. The WINDOW is what says a visit is on the books -
+ * see `bookedVisitRows`.
  */
 export async function scheduleVisit(args: ScheduleArgs): Promise<void> {
   const { homeownerId, tasks, start, end, address } = args;
@@ -146,17 +151,21 @@ export interface BookedVisitRow {
 }
 
 /**
- * Every visit currently booked for these tasks, in ANY season.
+ * Every visit currently on the books for these tasks, in ANY season.
  *
  * Read BEFORE the upsert overwrites them: these are the visits a new booking
- * supersedes, and the only way to pull exactly their reminders.
+ * may supersede, and the only way to pull exactly their reminders.
  *
- * Deliberately NOT scoped to the season the new booking lands in. The season is
- * derived from the visit date reconciled against the task's catalog seasons, so
- * moving a visit can move its row - and a season-scoped read would come back
- * empty, leaving the old row `booked` at its old window. The portal's "next
- * visit" card would then show a visit that is not happening, and the cron would
- * remind the customer about it the evening before.
+ * A visit is a row carrying a `scheduled_start`, NOT a row whose status happens
+ * to read 'booked'. `status` is shared with the member's own checkbox, which
+ * writes 'done'/'todo' onto the same (homeowner, task, season) row - so a
+ * status-scoped read goes blind the moment a member ticks a task La Vaca has
+ * booked, and the visit would neither move with a reschedule nor lose its
+ * reminder.
+ *
+ * Deliberately NOT scoped to the season the new booking lands in either. The
+ * season is derived from the visit date reconciled against the task's catalog
+ * seasons, so moving a visit can move its row.
  */
 export async function bookedVisitRows(args: {
   homeownerId: string;
@@ -167,7 +176,7 @@ export async function bookedVisitRows(args: {
   return (await supabaseRest<BookedVisitRow[]>(
     'GET',
     `homeowner_maintenance?select=task_key,season,scheduled_start&homeowner_id=eq.${homeownerId}` +
-      `&task_key=in.(${taskKeys.map((k) => `"${k}"`).join(',')})&status=eq.booked`,
+      `&task_key=in.(${taskKeys.map((k) => `"${k}"`).join(',')})&scheduled_start=not.is.null`,
   ).catch(() => [])) ?? [];
 }
 
@@ -178,39 +187,73 @@ export function visitStartsOf(rows: BookedVisitRow[]): Date[] {
 }
 
 /**
- * Unbook the rows this booking supersedes but will not overwrite.
+ * The visits this booking supersedes - the ones it overwrites, plus the one the
+ * caller says it is replacing.
+ *
+ * A row on a (task, season) this booking writes is superseded by definition:
+ * the upsert lands on it, so its window is gone whatever we do and its reminder
+ * has to go with it.
+ *
+ * Any OTHER booked row is ambiguous, and guessing there loses a real visit.
+ * `clean_gutters` is `['fall','spring']`, so booking 10 Oct and then 15 Apr is
+ * two visits a customer asked for, not a reschedule - yet both are the same
+ * task for the same homeowner. Treating every other-season booking as
+ * superseded unbooks the October visit and cancels its reminder while the
+ * owner's calendar still holds it. So the caller has to NAME the window it is
+ * moving from (`replaces`), and anything it does not name is left alone.
+ */
+export function supersededBookings(args: {
+  previous: BookedVisitRow[];
+  tasks: VisitTask[];
+  start: Date;
+  replaces?: Date | null;
+}): BookedVisitRow[] {
+  const { previous, tasks, start, replaces } = args;
+  const overwritten = new Set(tasks.map((t) => `${t.taskKey}|${t.season}`));
+  const startIso = start.toISOString();
+  const replacedIso = replaces ? replaces.toISOString() : null;
+  return previous.filter((row) => {
+    if (!row.scheduled_start || row.scheduled_start === startIso) return false;
+    return overwritten.has(`${row.task_key}|${row.season}`) || row.scheduled_start === replacedIso;
+  });
+}
+
+/**
+ * Clear the windows this booking supersedes.
  *
  * The upsert only reaches the (task, season) rows it writes. A visit that moves
  * across a season boundary - 5 Sep to 28 Aug, or a task whose reconciled season
  * changes with the date - lands on a DIFFERENT row, so without this the old one
- * stays `booked` forever: a phantom visit on the portal and a live reminder for
- * a slot nobody is coming to.
+ * keeps its window forever: a phantom visit on the portal and a live reminder
+ * for a slot nobody is coming to.
  *
- * Runs BEFORE the upsert, so a failure leaves the previous booking intact rather
- * than half-moved.
+ * Scoped by window rather than by season, because one window's tasks can be
+ * filed under different seasons. Runs BEFORE the upsert, so a failure leaves the
+ * previous booking intact rather than half-moved.
  */
 export async function clearSupersededBookings(args: {
   homeownerId: string;
-  previous: BookedVisitRow[];
-  tasks: VisitTask[];
+  rows: BookedVisitRow[];
 }): Promise<void> {
-  const { homeownerId, previous, tasks } = args;
-  const keep = new Set(tasks.map((t) => `${t.taskKey}|${t.season}`));
-  const bySeason = new Map<string, Set<string>>();
-  for (const row of previous) {
-    if (keep.has(`${row.task_key}|${row.season}`)) continue;
-    const keys = bySeason.get(row.season) ?? new Set<string>();
+  const { homeownerId, rows } = args;
+  const byStart = new Map<string, Set<string>>();
+  for (const row of rows) {
+    if (!row.scheduled_start) continue;
+    const keys = byStart.get(row.scheduled_start) ?? new Set<string>();
     keys.add(row.task_key);
-    bySeason.set(row.season, keys);
+    byStart.set(row.scheduled_start, keys);
   }
 
-  for (const [season, keys] of bySeason) {
-    await supabaseRest(
-      'PATCH',
-      `homeowner_maintenance?homeowner_id=eq.${homeownerId}&season=eq.${encodeURIComponent(season)}` +
-        `&status=eq.booked&task_key=in.(${[...keys].map((k) => `"${k}"`).join(',')})`,
-      { status: 'todo', scheduled_start: null, scheduled_end: null, updated_at: new Date().toISOString() },
-    );
+  for (const [startIso, keys] of byStart) {
+    const updated_at = new Date().toISOString();
+    const filter = `homeowner_maintenance?homeowner_id=eq.${homeownerId}` +
+      `&scheduled_start=eq.${encodeURIComponent(startIso)}` +
+      `&task_key=in.(${[...keys].map((k) => `"${k}"`).join(',')})`;
+    // Only a row still sitting at 'booked' goes back to 'todo'. A member who
+    // ticked this task off recorded THEIR completion on the same row, and
+    // unbooking the visit is no reason to undo it.
+    await supabaseRest('PATCH', `${filter}&status=eq.booked`, { status: 'todo', updated_at });
+    await supabaseRest('PATCH', filter, { scheduled_start: null, scheduled_end: null, updated_at });
   }
 }
 

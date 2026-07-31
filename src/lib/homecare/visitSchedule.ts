@@ -116,17 +116,34 @@ export function easternVisitInstant(isoDate: string, time: string): Date {
 }
 
 /**
+ * The daily run that would carry this visit's reminder.
+ *
+ * Not the same instant as `reminderSendAt`. The cron is one fixed UTC time with
+ * no DST logic, so it fires at 7:30pm Eastern only under EDT - under EST it
+ * fires at 6:30pm, a full hour BEFORE the nominal send time. 23:30 UTC always
+ * lands on the same Eastern calendar date (18:30 or 19:30), so the run covering
+ * a visit on Eastern date D is 23:30 UTC on D-1.
+ */
+export function reminderRunAt(visitStart: Date): Date {
+  const p = easternParts(visitStart);
+  return new Date(Date.UTC(p.y, p.m, p.day - 1, 23, 30));
+}
+
+/**
  * Whether a night-before reminder for this visit can still be DELIVERED.
  *
- * The gate is the SEND time, not the visit. The cron only ever looks at
- * "tomorrow, Eastern", so a visit booked at 11pm on 4 Aug for 8am on 5 Aug -
- * or any same-day booking - has a 7:30pm send time that has already gone, and
- * the run that would have carried it fired hours earlier. The next run's window
- * is 6 Aug, so the row would never be claimed and never sent: pending forever,
- * while the admin was told a reminder was queued.
+ * The gate is the covering RUN, not the visit and not the nominal send time.
+ * The cron only ever looks at "tomorrow, Eastern", so a visit booked at 11pm on
+ * 4 Aug for 8am on 5 Aug - or any same-day booking - is carried by a run that
+ * already fired. The next run's window is 6 Aug, so the row would never be
+ * claimed and never sent: pending forever, while the admin was told a reminder
+ * was queued.
+ *
+ * Gating on `reminderSendAt` left an hour of that hole open for the five months
+ * of EST, where the run fires at 6:30pm and the send time reads 7:30pm.
  */
 export function reminderIsStillUseful(visitStart: Date, now: Date): boolean {
-  return reminderSendAt(visitStart).getTime() > now.getTime();
+  return reminderRunAt(visitStart).getTime() > now.getTime();
 }
 
 /** The part of a `follow_up_queue` reminder row the send-once ledger reads. */

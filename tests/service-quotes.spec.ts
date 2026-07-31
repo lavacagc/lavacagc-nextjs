@@ -11,7 +11,7 @@ import {
   type ServiceCatalogRow,
 } from '../src/lib/homecare/serviceIntake';
 import {
-  tomorrowEasternWindow, visitDateLabel, visitTimeWindow, reminderSendAt,
+  tomorrowEasternWindow, visitDateLabel, visitTimeWindow, reminderSendAt, reminderRunAt,
   reminderIsStillUseful, visitKey, easternVisitInstant, ledgerKey, ledgerVerdict,
   VISIT_REMINDER_TYPE,
 } from '../src/lib/homecare/visitSchedule';
@@ -314,6 +314,29 @@ test('RM12: the reminder gate is the SEND time, not the visit', () => {
   expect(reminderIsStillUseful(START, lateNightBefore)).toBe(false);
   // Same-day booking, likewise.
   expect(reminderIsStillUseful(START, easternWallClock(new Date(Date.UTC(2026, 7, 5)), 6, 0))).toBe(false);
+});
+
+test('RM14: the gate follows the cron under EST, not the nominal 7:30pm', () => {
+  // The cron is one fixed UTC time with no DST logic, so it fires at 7:30pm
+  // Eastern only under EDT - under EST it fires at 6:30pm, an HOUR before the
+  // send time the queue row carries. Gated on the send time, a booking made in
+  // that hour on any winter evening queued a row the covering run had already
+  // passed: pending forever, while the admin was told a reminder was on its way.
+  const winterVisit = easternWallClock(new Date(Date.UTC(2026, 11, 15)), 8, 0);
+  const coveringRun = reminderRunAt(winterVisit);
+  expect(coveringRun.toISOString(), 'the 23:30 UTC run the day before').toBe('2026-12-14T23:30:00.000Z');
+  expect(reminderSendAt(winterVisit).toISOString(), 'the nominal slot, an hour later')
+    .toBe('2026-12-15T00:30:00.000Z');
+
+  // 7pm Eastern on 14 Dec: before the slot, after the run.
+  const inTheGap = easternWallClock(new Date(Date.UTC(2026, 11, 14)), 19, 0);
+  expect(inTheGap.getTime()).toBeGreaterThan(coveringRun.getTime());
+  expect(inTheGap.getTime()).toBeLessThan(reminderSendAt(winterVisit).getTime());
+  expect(reminderIsStillUseful(winterVisit, inTheGap), 'the run has gone - do not promise a reminder').toBe(false);
+  expect(reminderIsStillUseful(winterVisit, new Date(coveringRun.getTime() - 60_000))).toBe(true);
+
+  // Under EDT the two agree, which is why an August-only test missed this.
+  expect(reminderRunAt(START).toISOString()).toBe(reminderSendAt(START).toISOString());
 });
 
 test('SC8: a booking is filed under a season the task actually renders in', () => {

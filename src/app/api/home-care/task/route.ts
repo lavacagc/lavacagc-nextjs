@@ -61,6 +61,13 @@ export async function POST(request: NextRequest) {
     const validSeasons = ['spring', 'summer', 'fall', 'winter', 'starter'];
     const season = validSeasons.includes(body.season ?? '') ? (body.season as string) : currentSeason();
 
+    // The member owns `status`, `completed_at` and `completed_by` and nothing
+    // else. A La Vaca booking lives on this same (homeowner, task, season) row,
+    // and `scheduled_start`/`scheduled_end`/`service_address` are deliberately
+    // absent from this body: a merge-duplicates upsert only writes the columns
+    // it carries, so the visit survives the member ticking the task. Every
+    // reader treats the window - not this status - as what says a visit is on
+    // the books, so the completion is recorded and the booking stands.
     await supabaseRest(
       'POST',
       'homeowner_maintenance?on_conflict=homeowner_id,task_key,season',

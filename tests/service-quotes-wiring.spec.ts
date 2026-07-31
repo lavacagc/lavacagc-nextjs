@@ -187,9 +187,20 @@ test('RM3: service email reply-to carries both addresses', () => {
 
 test('RM7: the cron windows on Eastern, never on UTC dates', () => {
   expect(cron).toContain('tomorrowEasternWindow');
-  expect(cron).toContain('status=eq.booked');
+  expect(cron).toContain('scheduled_start=gte.');
   // No naive UTC date arithmetic for "tomorrow".
   expect(cron).not.toMatch(/getUTCDate\(\)\s*\+\s*1/);
+});
+
+test('RM15: the cron selects visits by WINDOW, never by the shared status', () => {
+  // `status` is shared with the member's checklist checkbox, which writes
+  // 'done'/'todo' onto the very row the booking lives on. Filtered on
+  // status=eq.booked, a member ticking "Clean gutters" to acknowledge the visit
+  // silently cancelled its reminder for a job that was still happening.
+  const query = cron.slice(cron.indexOf('const visits = '), cron.indexOf('if (visits.length === 0)'));
+  expect(query).not.toContain('status=eq.booked');
+  expect(query).toContain('scheduled_start=gte.');
+  expect(query).toContain('scheduled_start=lt.');
 });
 
 test('RM8: one email per customer per window, not one per task', () => {
@@ -220,8 +231,27 @@ test('ICS: the owner endpoint is the only one that emits alarms', () => {
 
 test('PT1+PT4: the visit card renders only when a visit is booked', () => {
   expect(portal).toContain('{upcomingVisit && <UpcomingVisitCard');
-  expect(portal).toContain("status: 'booked'".replace("status: 'booked'", "r.status === 'booked'"));
+  expect(portal).toContain('const bookedRows');
   expect(portal).toContain('scheduled_start');
+});
+
+test('PT6: a member ticking a booked task does not hide their own visit', () => {
+  // The checkbox writes 'done' onto the row the booking lives on, so neither
+  // the fetch nor the card may be scoped by status - the visit would drop off
+  // the page for a job that is still happening.
+  const fetchFn = portal.slice(portal.indexOf('async function fetchMaintenanceRows'), portal.indexOf('interface CatalogRow'));
+  expect(fetchFn).not.toContain('status=in.');
+  expect(portal).toContain("(r) => r.scheduled_start && r.status !== 'dismissed'");
+  // And the write itself carries none of the scheduling columns, so a
+  // merge-duplicates upsert leaves the window intact.
+  const taskRoute = read('src/app/api/home-care/task/route.ts');
+  const upsertBody = taskRoute.slice(
+    taskRoute.indexOf("status: done ? 'done' : 'todo'"),
+    taskRoute.indexOf('return NextResponse.json({ ok: true, task_key: taskKey, done'),
+  );
+  for (const column of ['scheduled_start', 'scheduled_end', 'service_address']) {
+    expect(upsertBody, `the member's checkbox must not write ${column}`).not.toContain(column);
+  }
 });
 
 test('PT2: tomorrow and later render differently', () => {
@@ -246,6 +276,12 @@ test('PT5: only La Vaca work carries a completion label', () => {
   // in UTC and the browser locally, and a late-evening completion hydrates to a
   // different day on each.
   expect(client).toContain("timeZone: 'America/New_York'");
+  // Held in state, not read straight off the prop: re-ticking the task moves
+  // the attribution to the member server-side, and the open tab has to agree
+  // or it credits us for work they just did themselves.
+  expect(client).toContain('const [lavacaCompleted, setLavacaCompleted] = useState');
+  const toggle = client.slice(client.indexOf('const toggleDone ='), client.indexOf('const toggleSelect ='));
+  expect(toggle).toContain('setLavacaCompleted');
 });
 
 test('PT5: the label is keyed per season, and only while it is current', () => {
@@ -313,37 +349,68 @@ test('SC8: a task with no season to be filed under fails loudly', () => {
 
 test('SC9: a reschedule across a season boundary clears the old booking', () => {
   // The upsert only reaches the (task, season) row it writes, so a visit that
-  // moves to another season would leave the old row booked: a phantom visit on
-  // the portal and a live "we're coming tomorrow" for a slot nobody attends.
+  // moves to another season would leave the old row holding its window: a
+  // phantom visit on the portal and a live "we're coming tomorrow" for a slot
+  // nobody attends.
   expect(scheduling).toContain('export async function clearSupersededBookings');
   const fn = scheduling.slice(
     scheduling.indexOf('export async function bookedVisitRows'),
     scheduling.indexOf('export function visitStartsOf'),
   );
   expect(fn, 'read across every season, not just the new one').not.toContain('season=eq.');
+  // A booking is a row with a WINDOW; `status` is shared with the member's
+  // checkbox and says nothing about whether a visit is coming.
+  expect(fn).toContain('scheduled_start=not.is.null');
+  expect(fn).not.toContain('status=eq.booked');
   expect(scheduleRoute).toContain('clearSupersededBookings');
   // Unbook first, write second: a failure leaves the previous booking whole.
   expect(scheduleRoute.indexOf('await clearSupersededBookings'))
     .toBeLessThan(scheduleRoute.indexOf('await scheduleVisit'));
 });
 
+test('SC10: only the window the caller names is superseded', () => {
+  // `clean_gutters` is a two-season task, so an October booking and an April
+  // one are two visits the customer asked for. Treating every other-season
+  // booking of the task as superseded unbooked October and cancelled its
+  // reminder while the owner's calendar still held it.
+  expect(scheduling).toContain('export function supersededBookings');
+  const fn = scheduling.slice(
+    scheduling.indexOf('export function supersededBookings'),
+    scheduling.indexOf('export async function clearSupersededBookings'),
+  );
+  expect(fn, 'the rows the upsert lands on').toContain('overwritten.has(');
+  expect(fn, 'plus the one window the caller named').toContain('row.scheduled_start === replacedIso');
+  expect(scheduleRoute).toContain('supersededBookings({ previous, tasks, start: startAt, replaces: replacesAt })');
+  // The admin form names the window it booked, so editing the date is a move.
+  expect(adminPage).toContain("{ replaces: scheduled.start }");
+});
+
 test('CP: completing resolves the season from the BOOKED row, across seasons', () => {
-  expect(completeRoute).toContain('status=in.(booked,done)');
+  // 'todo' is in the list because a member can untick a task La Vaca booked;
+  // the row still holds the window, and the window is the booking.
+  expect(completeRoute).toContain('status=in.(booked,done,todo)');
   expect(completeRoute).not.toContain('season=eq.${encodeURIComponent(season)}');
   expect(completeRoute).toContain('bookedFor');
+  expect(completeRoute).toContain('if (!r.scheduled_start) continue;');
+  // The visit happened, so it comes off the books - otherwise every reader
+  // keeps announcing a job that is already done.
+  expect(completeRoute).toContain('scheduled_start: null');
   // Idempotency is per (task, season), so last year's completion of the same
   // task cannot swallow this one.
   expect(completeRoute).toContain('`${r.task_key}|${r.season}`');
 });
 
-test('RM12: the reminder gate is the SEND time, not the visit', () => {
+test('RM12+RM14: the reminder gate is the covering RUN, not the visit', () => {
   // The cron only ever looks at "tomorrow, Eastern". A visit booked at 11pm the
-  // night before is still in the future, but its 7:30pm slot has gone and the
-  // run that would have carried it fired hours ago - the row would sit pending
-  // forever while the admin was told a reminder was queued.
+  // night before is still in the future, but the run that would have carried
+  // its reminder fired hours ago - the row would sit pending forever while the
+  // admin was told a reminder was queued. And the run is not the nominal 7:30pm
+  // slot: with one fixed UTC time and no DST logic it fires at 6:30pm Eastern
+  // all winter, so gating on the slot left an hour of that hole open.
   const visit = read('src/lib/homecare/visitSchedule.ts');
   const fn = visit.slice(visit.indexOf('export function reminderIsStillUseful'));
-  expect(fn).toContain('reminderSendAt(visitStart).getTime() > now.getTime()');
+  expect(fn).toContain('reminderRunAt(visitStart).getTime() > now.getTime()');
+  expect(visit).toContain('export function reminderRunAt');
   expect(adminPage).toContain('text the customer yourself');
 });
 

@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test';
 import http from 'http';
 import {
-  ensureServiceHomeowner, scheduleVisit, bookedVisitRows, visitStartsOf, clearSupersededBookings,
-  requeueVisitReminder, cancelVisitReminder,
+  ensureServiceHomeowner, scheduleVisit, bookedVisitRows, visitStartsOf, supersededBookings,
+  clearSupersededBookings, requeueVisitReminder, cancelVisitReminder,
 } from '../src/lib/homecare/serviceScheduling';
 import { visitKey, reminderSendAt } from '../src/lib/homecare/visitSchedule';
 import { easternWallClock } from '../src/lib/homecare/ics';
+import { supabaseRest } from '../src/lib/notify/supabase-rest';
 
 /**
  * Integration test for the service-quote loop against a stubbed Supabase REST.
@@ -87,6 +88,9 @@ test.beforeAll(async () => {
           const val = rest.join('.');
           if (op === 'eq') out = out.filter((r) => String(r[k]) === val);
           if (op === 'ilike') out = out.filter((r) => likeRegex(val).test(String(r[k])));
+          // `col=not.is.null` - the one negation these queries use, and the
+          // filter that says "this row carries a visit window".
+          if (op === 'not' && val === 'is.null') out = out.filter((r) => r[k] !== null && r[k] !== undefined);
           if (op === 'in') {
             const wanted = new Set(val.replace(/^\(|\)$/g, '').split(',').map((s) => s.replace(/^"|"$/g, '')));
             out = out.filter((r) => wanted.has(String(r[k])));
@@ -98,7 +102,10 @@ test.beforeAll(async () => {
       if (req.method === 'GET') return json(applyFilters(rows));
 
       if (req.method === 'POST') {
-        const arr = JSON.parse(body || '[]') as Row[];
+        // PostgREST takes a bare object or an array; the checklist toggle sends
+        // one row, the scheduling writes send several.
+        const payload = JSON.parse(body || '[]') as Row | Row[];
+        const arr = Array.isArray(payload) ? payload : [payload];
         if (preMigrationQueue && table === 'follow_up_queue' && arr.some((r) => 'visit_start' in r)) {
           return json({ code: '42703', message: 'column "visit_start" of relation "follow_up_queue" does not exist' }, 400);
         }
@@ -205,10 +212,13 @@ test('SC6: rescheduling updates in place rather than duplicating the booking', a
   // Read BEFORE the upsert overwrites it - this is what the schedule route
   // hands to requeueVisitReminder so it pulls the right visit's reminder.
   const previous = await bookedVisitRows({ homeownerId: 'member-1', taskKeys: ['clean_gutters'] });
-  expect(visitStartsOf(previous).length, 'the window this booking replaces').toBe(1);
-
   const tasks = [{ taskKey: 'clean_gutters', season: 'fall' }];
-  await clearSupersededBookings({ homeownerId: 'member-1', previous, tasks });
+  // The upsert lands on this row, so its window is superseded whether or not
+  // the caller names it.
+  const superseded = supersededBookings({ previous, tasks, start });
+  expect(visitStartsOf(superseded).length, 'the window this booking replaces').toBe(1);
+
+  await clearSupersededBookings({ homeownerId: 'member-1', rows: superseded });
   await scheduleVisit({ homeownerId: 'member-1', tasks, start, end, address: '9 Elm St, Montclair, NJ' });
   const rows = db.homeowner_maintenance.filter((m) => m.task_key === 'clean_gutters' && m.season === 'fall');
   expect(rows.length, 'one row, updated in place').toBe(1);
@@ -218,8 +228,8 @@ test('SC6: rescheduling updates in place rather than duplicating the booking', a
 test('SC9: moving a visit across a season boundary leaves no phantom booking', async () => {
   // The season comes from the visit date, so a reschedule can land the booking
   // on a DIFFERENT row. The upsert alone would never touch the old one: it would
-  // stay `booked` at its old window, so the portal would show a visit that is
-  // not happening and the cron would remind the customer about it.
+  // keep its window, so the portal would show a visit that is not happening and
+  // the cron would remind the customer about it.
   const septStart = new Date(Date.now() + 30 * 24 * 3600_000);
   await scheduleVisit({
     homeownerId: 'member-1', tasks: [{ taskKey: 'chimney_inspect', season: 'fall' }],
@@ -228,12 +238,15 @@ test('SC9: moving a visit across a season boundary leaves no phantom booking', a
 
   const previous = await bookedVisitRows({ homeownerId: 'member-1', taskKeys: ['chimney_inspect'] });
   expect(previous.map((r) => r.season)).toEqual(['fall']);
-  expect(visitStartsOf(previous).map((d) => d.toISOString()), 'the reminder to pull')
-    .toEqual([septStart.toISOString()]);
 
   const augStart = new Date(Date.now() + 20 * 24 * 3600_000);
   const moved = [{ taskKey: 'chimney_inspect', season: 'summer' }];
-  await clearSupersededBookings({ homeownerId: 'member-1', previous, tasks: moved });
+  // The caller names the window it is moving FROM - the admin is editing a
+  // visit it just booked, so it knows.
+  const superseded = supersededBookings({ previous, tasks: moved, start: augStart, replaces: septStart });
+  expect(visitStartsOf(superseded).map((d) => d.toISOString()), 'the reminder to pull')
+    .toEqual([septStart.toISOString()]);
+  await clearSupersededBookings({ homeownerId: 'member-1', rows: superseded });
   await scheduleVisit({
     homeownerId: 'member-1', tasks: moved,
     start: augStart, end: new Date(augStart.getTime() + 2 * 3600_000), address: '9 Elm St',
@@ -244,6 +257,64 @@ test('SC9: moving a visit across a season boundary leaves no phantom booking', a
     .toEqual([['fall', 'todo'], ['summer', 'booked']]);
   const stale = chimney.find((m) => m.season === 'fall')!;
   expect(stale.scheduled_start, 'the phantom window is cleared').toBe(null);
+});
+
+test('SC10: a second booking of a two-season task does not unbook the first', async () => {
+  // `clean_gutters` is ['fall','spring'], so October and April are two visits
+  // the customer asked for - not a reschedule. Nothing names the October
+  // window, so nothing may touch it: unbooking it would take the visit off the
+  // portal and cancel its reminder while the owner's calendar still holds it.
+  const octStart = new Date(Date.UTC(2026, 9, 10, 12));
+  const aprStart = new Date(Date.UTC(2027, 3, 15, 12));
+  await scheduleVisit({
+    homeownerId: 'two-season', tasks: [{ taskKey: 'clean_gutters', season: 'fall' }],
+    start: octStart, end: new Date(octStart.getTime() + 2 * 3600_000), address: '3 Birch Rd',
+  });
+
+  const previous = await bookedVisitRows({ homeownerId: 'two-season', taskKeys: ['clean_gutters'] });
+  const spring = [{ taskKey: 'clean_gutters', season: 'spring' }];
+  const superseded = supersededBookings({ previous, tasks: spring, start: aprStart });
+  expect(superseded, 'no window was named, so none is superseded').toEqual([]);
+
+  await clearSupersededBookings({ homeownerId: 'two-season', rows: superseded });
+  await scheduleVisit({
+    homeownerId: 'two-season', tasks: spring,
+    start: aprStart, end: new Date(aprStart.getTime() + 2 * 3600_000), address: '3 Birch Rd',
+  });
+
+  expect(db.homeowner_maintenance
+    .filter((m) => m.homeowner_id === 'two-season')
+    .map((m) => [m.season, m.status, m.scheduled_start]).sort())
+    .toEqual([['fall', 'booked', octStart.toISOString()], ['spring', 'booked', aprStart.toISOString()]]);
+});
+
+test('SC11: a member ticking a booked task leaves the visit on the books', async () => {
+  // The checkbox and the booking share one row and one `status` column. The
+  // member's write owns status/completed_at/completed_by and nothing else, so
+  // the WINDOW - which is what every reader treats as "a visit is coming" -
+  // survives it. Filed under status, the visit card would vanish and the cron
+  // would skip a job the owner's calendar still holds.
+  const start = new Date(Date.now() + 3 * 24 * 3600_000);
+  await scheduleVisit({
+    homeownerId: 'ticker', tasks: [{ taskKey: 'clean_gutters', season: 'fall' }],
+    start, end: new Date(start.getTime() + 3 * 3600_000), address: '1 Oak Ln',
+  });
+
+  // Exactly the body /api/home-care/task writes, through the same
+  // merge-duplicates upsert.
+  const now = new Date().toISOString();
+  await supabaseRest('POST', 'homeowner_maintenance?on_conflict=homeowner_id,task_key,season', {
+    homeowner_id: 'ticker', task_key: 'clean_gutters', season: 'fall',
+    status: 'done', completed_at: now, completed_by: 'homeowner', updated_at: now,
+  }, { prefer: 'resolution=merge-duplicates,return=minimal' });
+
+  const row = db.homeowner_maintenance.find((m) => m.homeowner_id === 'ticker')!;
+  expect(row.status, 'their completion is recorded').toBe('done');
+  expect(row.completed_by).toBe('homeowner');
+  expect(row.scheduled_start, 'and the booking is untouched').toBe(start.toISOString());
+  // Still a visit as far as the reschedule read is concerned.
+  expect(visitStartsOf(await bookedVisitRows({ homeownerId: 'ticker', taskKeys: ['clean_gutters'] }))
+    .map((d) => d.toISOString())).toEqual([start.toISOString()]);
 });
 
 const MEMBER_VISIT = new Date(Date.now() + 48 * 3600_000);

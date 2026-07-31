@@ -14,8 +14,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import {
-  ensureServiceHomeowner, scheduleVisit, bookedVisitRows, visitStartsOf, clearSupersededBookings,
-  requeueVisitReminder, cancelVisitReminder, type VisitTask,
+  ensureServiceHomeowner, scheduleVisit, bookedVisitRows, visitStartsOf, supersededBookings,
+  clearSupersededBookings, requeueVisitReminder, cancelVisitReminder, type VisitTask,
 } from '@/lib/homecare/serviceScheduling';
 import { buildVisitReminderEmail } from '@/lib/homecare/serviceEmails';
 import { visitDateLabel, visitTimeWindow, easternParts } from '@/lib/homecare/visitSchedule';
@@ -39,9 +39,10 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Validation failed', issues: parsed.error.issues }, { status: 400 });
   }
-  const { email, name, phone, taskKeys, start, end, address, city, zip } = parsed.data;
+  const { email, name, phone, taskKeys, start, end, replaces, address, city, zip } = parsed.data;
   const startAt = new Date(start);
   const endAt = new Date(end);
+  const replacesAt = replaces ? new Date(replaces) : null;
 
   try {
     const catalog = (await supabaseRest<{ key: string; title: string; seasons: string[] | null }[]>(
@@ -88,14 +89,18 @@ export async function POST(request: NextRequest) {
 
     // Read the windows we are about to supersede, so the requeue can pull those
     // visits' reminders and only those. Across every season, because a moved
-    // visit can change the season its row lives in.
+    // visit can change the season its row lives in - but only the rows the
+    // upsert will overwrite, plus the window the caller named as the one it is
+    // moving from. A second booking of the same task in another season is a
+    // second visit, not a reschedule, and must survive this untouched.
     const previous = await bookedVisitRows({ homeownerId: homeowner.id, taskKeys });
-    const supersedes = visitStartsOf(previous);
+    const superseded = supersededBookings({ previous, tasks, start: startAt, replaces: replacesAt });
+    const supersedes = visitStartsOf(superseded);
 
     // Unbook first, write second: a booking that moves to a different row must
     // not leave the old one standing, and a failure here leaves the previous
     // booking whole rather than duplicated.
-    await clearSupersededBookings({ homeownerId: homeowner.id, previous, tasks });
+    await clearSupersededBookings({ homeownerId: homeowner.id, rows: superseded });
     await scheduleVisit({ homeownerId: homeowner.id, tasks, start: startAt, end: endAt, address });
 
     const services = taskKeys.map((k) => catalog.find((c) => c.key === k)?.title ?? k);
@@ -199,12 +204,13 @@ export async function DELETE(request: NextRequest) {
   const { homeownerId, email, start } = parsed.data;
   const startAt = new Date(start);
   try {
-    await supabaseRest(
-      'PATCH',
-      `homeowner_maintenance?homeowner_id=eq.${homeownerId}&status=eq.booked` +
-        `&scheduled_start=eq.${encodeURIComponent(startAt.toISOString())}`,
-      { status: 'todo', scheduled_start: null, scheduled_end: null },
-    );
+    const filter = `homeowner_maintenance?homeowner_id=eq.${homeownerId}` +
+      `&scheduled_start=eq.${encodeURIComponent(startAt.toISOString())}`;
+    // The window is what identifies the visit; `status` is shared with the
+    // member's checkbox, so a row they ticked is still this visit. Only a row
+    // still reading 'booked' goes back to 'todo' - their own completion stands.
+    await supabaseRest('PATCH', `${filter}&status=eq.booked`, { status: 'todo' });
+    await supabaseRest('PATCH', filter, { scheduled_start: null, scheduled_end: null });
     await cancelVisitReminder(email, startAt);
     return NextResponse.json({ status: 'cancelled' });
   } catch (err) {
