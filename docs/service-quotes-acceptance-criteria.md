@@ -460,7 +460,8 @@ These were settled by the owner during review; the ACs assume them.
 - **CP3** Existing rows default to `'homeowner'` - nothing has ever been
   completed by La Vaca before this change.
 - **CP4** Mark-complete is idempotent: a second call sends no second feedback
-  email.
+  email. It is also opt-out-governed: a recipient who unsubscribed from
+  `follow_ups` gets none at all, reported as `feedback: 'suppressed'` (**CM7**).
 - **CP5** It fires the feedback drip with **service** wording. The subject and
   headline are "Please let us know how our team did".
 - **CP6** The body puts "if anything isn't right we'll come back" **before** any
@@ -522,5 +523,17 @@ These were settled by the owner during review; the ACs assume them.
   scheduling still come through - so it cannot silence a live negotiation. The
   footer says exactly that, because beside a quote the safe reading of a bare
   "Unsubscribe" is "this cancels my quote".
-  The visit reminder is unaffected: it goes to a homeowner row that exists by
-  then, so it keeps the correctly-scoped `/api/home-care/unsubscribe?token=`.
+  The **completion email is the one that promise is about**, so it carries the
+  same `follow_ups` link AND is sent with `preferenceStream: 'follow_ups'`.
+  Gating it is what makes the sentence true: without it a recipient who took the
+  offer the quote made in writing still received "Please let us know how our team
+  did", and a link the tokenized Home Care opt-out cannot stop either - that one
+  governs the seasonal programme this customer may never have joined. An
+  opted-out customer getting no review request is the correct outcome; they asked
+  not to be emailed. The route reports that as `feedback: 'suppressed'`, distinct
+  from `'failed'`, so the admin does not chase a retry for a send we declined to
+  make.
+  The visit reminder is unaffected and stays **ungated**: it goes to a homeowner
+  row that exists by then, so it keeps the correctly-scoped
+  `/api/home-care/unsubscribe?token=`, and a visit the customer booked is
+  transactional - a follow-ups opt-out must not silently drop it (RM18).

@@ -31,7 +31,7 @@ test.describe('Privacy policy disclosures', () => {
     }
 
     // Version bumped.
-    expect(body).toContain('version: 2.3');
+    expect(body).toContain('version: 2.4');
     // Home Care disclosure present.
     expect(body).toContain('home care');
 
@@ -47,6 +47,10 @@ test.describe('Privacy policy disclosures', () => {
       // Corrected GPC section: real-time suppression of ad-tech partners
       'meta/facebook pixel',
       'immediately in your browser',
+      // 3.6 scheduled service visits: booking a one-visit job now stores a
+      // street address on a Home Care record without joining the program.
+      'scheduled service visits',
+      'street address, city and zip code',
     ]) {
       expect(body, `privacy policy should mention "${phrase}"`).toContain(phrase);
     }

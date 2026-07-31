@@ -10,6 +10,11 @@
  * already done by La Vaca are treated as already-handled, so the send only
  * fires on the transition.
  *
+ * The feedback email is governed by the `follow_ups` opt-out - the same one the
+ * quote's footer offers when it promises that unsubscribing "stops our
+ * follow-up emails about it". A recipient who took that offer is answered with
+ * `feedback: 'suppressed'`, which is the promise being kept, not a failure.
+ *
  * Admin auth is enforced by middleware on /api/admin/*.
  */
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,7 +23,7 @@ import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { HOME_CARE_FROM } from '@/lib/notify/sendHomeCareEmails';
 import { buildServiceCompletedEmail, SERVICE_REPLY_TO } from '@/lib/homecare/serviceEmails';
 import { cancelVisitReminder } from '@/lib/homecare/serviceScheduling';
-import { preferencesUrlFor } from '@/lib/preferences/preferences';
+import { preferencesUrlFor, normalizeEmail } from '@/lib/preferences/preferences';
 import { cleanEnv } from '@/lib/envClean';
 import { completeSchema } from '../_schema';
 
@@ -34,7 +39,7 @@ interface MaintRow {
   completed_by: string | null;
   scheduled_start: string | null;
 }
-interface OwnerRow { id: string; email: string; first_name: string | null; unsubscribe_token: string }
+interface OwnerRow { id: string; email: string; first_name: string | null }
 
 export async function POST(request: NextRequest) {
   let raw: unknown;
@@ -126,7 +131,7 @@ export async function POST(request: NextRequest) {
 
     const owners = (await supabaseRest<OwnerRow[]>(
       'GET',
-      `homeowners?select=id,email,first_name,unsubscribe_token&id=eq.${homeownerId}&limit=1`,
+      `homeowners?select=id,email,first_name&id=eq.${homeownerId}&limit=1`,
     )) ?? [];
     const owner = owners[0];
     if (!owner) return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
@@ -158,11 +163,18 @@ export async function POST(request: NextRequest) {
     const services = taskKeys.map((k) => catalog.find((c) => c.key === k)?.title ?? k);
 
     const preferencesUrl = await preferencesUrlFor(SITE_URL, owner.email).catch(() => undefined);
+    // The quote's footer told this recipient in writing that unsubscribing
+    // "stops our follow-up emails about it", and this IS that follow-up. So it
+    // carries the same opt-out the quote set - the scoped `follow_ups` link,
+    // not the tokenized Home Care one, which governs the seasonal programme the
+    // customer may never have joined and would leave this send unstoppable.
+    const unsubscribeUrl =
+      `${SITE_URL}/unsub?stream=follow_ups&email=${encodeURIComponent(normalizeEmail(owner.email))}`;
     const { subject, html, text } = buildServiceCompletedEmail({
       recipientName: owner.first_name || owner.email,
       services,
       feedbackUrl: `${SITE_URL}/home-care/checklist`,
-      unsubscribeUrl: `${SITE_URL}/api/home-care/unsubscribe?token=${encodeURIComponent(owner.unsubscribe_token)}`,
+      unsubscribeUrl,
       preferencesUrl,
     });
 
@@ -175,13 +187,26 @@ export async function POST(request: NextRequest) {
       toName: owner.first_name ?? null,
       homeownerId: owner.id,
       campaign: { follow_up_type: 'service_completed' },
+      // Gated on the stream the quote's opt-out sets, so that promise is kept.
+      // An opted-out customer getting no review request is the correct outcome:
+      // they asked not to be emailed. The visit reminder deliberately stays
+      // ungated - it is a job the customer booked, not a request for a favour.
+      preferenceStream: 'follow_ups',
     });
+
+    // A suppression is the opt-out working, not a fault: reported apart from a
+    // failure so the admin does not chase a retry for an email we chose not to
+    // send. `skipped` also covers a missing API key, which IS worth chasing.
+    const feedback =
+      res.status === 'sent' ? 'sent'
+        : res.status === 'skipped' && res.reason === 'unsubscribed' ? 'suppressed'
+          : 'failed';
 
     return NextResponse.json({
       status: 'completed',
       completed: transitioning.length,
       reminder,
-      feedback: res.status === 'sent' ? 'sent' : 'failed',
+      feedback,
       feedbackError: res.error ?? null,
     });
   } catch (err) {

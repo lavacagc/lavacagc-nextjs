@@ -228,9 +228,16 @@ export default function SendServiceQuotePage() {
       if (!res.ok) throw new Error(data.error || 'Failed');
       await refreshBookings();
       const stranded = data.reminder === 'unavailable';
+      // 'suppressed' is not a fault to chase: this customer used the opt-out the
+      // quote offered them, so no review request is the correct outcome.
+      const feedbackLine =
+        data.feedback === 'sent' ? 'Feedback request sent.'
+          : data.feedback === 'suppressed'
+            ? 'No feedback request - this customer opted out of follow-up emails.'
+            : `Feedback ${data.feedback}.`;
       toast({
         title: 'Marked complete',
-        description: (data.feedback === 'sent' ? 'Feedback request sent.' : `Feedback ${data.feedback}.`)
+        description: feedbackLine
           + (stranded ? ' The night-before reminder could NOT be pulled - stop it on the Follow-Ups page.' : ''),
         variant: stranded ? 'destructive' : undefined,
       });

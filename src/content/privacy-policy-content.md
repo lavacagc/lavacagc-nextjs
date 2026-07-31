@@ -1,7 +1,7 @@
 # Privacy Policy
 
-**Last Updated: July 9, 2026**
-**Version: 2.3**
+**Last Updated: July 31, 2026**
+**Version: 2.4**
 
 ---
 
@@ -100,7 +100,19 @@ If you join our free **"La Vaca Home Care"** program, you give us your **name, e
 
 When you verify your email, we place a cookie on your browser (`hc_access`, described in Section 6.6) that **recognizes you when you return** so you can view your checklist **without creating a password or logging in**. We store the date/time you last visited your checklist. If you request that we perform a maintenance task ("Book La Vaca"), we use the contact information you provide to **create a lead and follow up with you** as described elsewhere in this Policy.
 
-This is an optional program separate from our "Buy + Remodel" listings. You can leave at any time using the **unsubscribe link** in any Home Care email, which removes you from the program, stops the seasonal emails, and clears your Home Care access cookie. You may also exercise the rights in Section 8 (including access and deletion) with respect to this information.
+**Scheduled service visits.**
+You do not have to join the program for us to hold a Home Care record about you.
+When we quote and then schedule a one-visit service job for you (for example a gutter clearing, a dryer-vent clean, or a furnace tune-up), we create a Home Care record so the visit and the work history have somewhere to live.
+That record holds your **name, email address, phone number, and the street address, city and ZIP code of the home we are visiting**, together with the **date and time window of the scheduled visit, the services booked, and a record of which services were completed, when, and whether you or our crew performed them**.
+We use this to schedule and perform the work, to send you the appointment emails described below, to give you a calendar invitation for the visit, and to keep a service history for future quotes and warranty purposes.
+Your street address is used as the job location on that calendar invitation and on our crew's schedule.
+
+A record created this way is **not** enrolled in the program: it is held in a pending state and receives **no** seasonal or marketing emails.
+Home Care is double opt-in, and booking a service visit is not consent to a marketing list.
+You receive only emails about the job itself - the quote, an appointment reminder the evening before, and a request for feedback after the work is done - each of which carries an unsubscribe link.
+If you separately choose to join the program, your record becomes an active membership in the ordinary way, by verifying your email address.
+
+This is an optional program separate from our "Buy + Remodel" listings. You can leave at any time using the **unsubscribe link** in any Home Care email, which removes you from the program, stops the seasonal emails, and clears your Home Care access cookie. You may also exercise the rights in Section 8 (including access and deletion) with respect to this information, including the service-visit information described above.
 
 ### 3.7 Monthly Newsletter
 
@@ -739,8 +751,8 @@ If you would like to review a previous version of this Privacy Policy, please co
 If you are a California resident, you have additional rights under the California Consumer Privacy Act (CCPA) and California Privacy Rights Act (CPRA):
 
 **Categories of Personal Information Collected:**
-- **Identifiers:** Name, email address, phone number, mailing address, IP address, device identifiers
-- **Commercial Information:** Transaction history, service requests, payment records, project details
+- **Identifiers:** Name, email address, phone number, mailing address (including the street address of a home where we perform work), IP address, device identifiers
+- **Commercial Information:** Transaction history, service requests, scheduled service appointments (the date and time window of a booked visit and the services booked into it), service and maintenance history, payment records, project details
 - **Internet or Network Activity:** Browsing history, search history, interactions with our Website, pages visited, links clicked
 - **Geolocation Data:** General location based on IP address (not precise geolocation)
 - **Inferences:** Preferences, characteristics, trends, behavior patterns derived from your information
@@ -1058,7 +1070,7 @@ Before initiating any legal action, we encourage you to contact us using the inf
 
 This Privacy Policy is effective as of the "Last Updated" date indicated at the top of this document.
 
-**Last Updated:** July 9, 2026
-**Version:** 2.3
+**Last Updated:** July 31, 2026
+**Version:** 2.4
 **Original Effective Date:** November 12, 2025
 

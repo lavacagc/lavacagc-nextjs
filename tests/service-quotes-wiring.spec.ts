@@ -830,6 +830,30 @@ test('CM7: the quote footer says what unsubscribing takes away and what it leave
   expect((emails.match(/QUOTE_FOOTER_REASON/g) ?? []).length).toBe(3);
 });
 
+test('CM7: the completion email honours the opt-out the quote promised', () => {
+  // The quote's footer says unsubscribing "stops our follow-up emails about it".
+  // This IS that follow-up, so it must be droppable by the same flag - and by
+  // the SAME flag, not the tokenized Home Care one, which governs the seasonal
+  // programme a service customer may never have joined and so could never stop
+  // this send at all.
+  expect(completeRoute).toContain("preferenceStream: 'follow_ups'");
+  const scoped = [...completeRoute.matchAll(/\/unsub\?stream=(\w+)/g)].map((m) => m[1]);
+  expect(scoped, 'exactly one scoped opt-out on the completion email').toHaveLength(1);
+  expect(scoped[0]).toBe('follow_ups');
+  expect(completeRoute, 'the tokenized Home Care opt-out cannot govern this send')
+    .not.toContain('/api/home-care/unsubscribe?token=');
+  expect(completeRoute).toContain('normalizeEmail(owner.email)');
+
+  // A suppression is the opt-out working. Reported apart from a failure, or the
+  // owner chases a retry for an email we deliberately did not send.
+  expect(completeRoute).toContain("res.status === 'skipped' && res.reason === 'unsubscribed' ? 'suppressed'");
+  expect(adminPage).toContain("data.feedback === 'suppressed'");
+
+  // The reminder stays ungated on purpose: a visit the customer booked is
+  // transactional (RM18), so the two must not converge by accident.
+  expect(cron).not.toContain("preferenceStream: 'follow_ups'");
+});
+
 /* ── intake + admin page ─────────────────────────────────────────────────── */
 
 test('IN: intake returns catalog, past requests and service history', () => {
