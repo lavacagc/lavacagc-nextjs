@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import {
   ensureServiceHomeowner, scheduleVisit, bookedVisitRows, orphanedVisitStarts, supersededBookings,
-  clearSupersededBookings, requeueVisitReminder, cancelVisitReminder, type VisitTask,
+  requeueVisitReminder, cancelVisitReminder, type VisitTask,
 } from '@/lib/homecare/serviceScheduling';
 import { buildVisitReminderEmail } from '@/lib/homecare/serviceEmails';
 import { visitDateLabel, visitTimeWindow, easternParts } from '@/lib/homecare/visitSchedule';
@@ -86,19 +86,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Read every window this customer is holding before anything is written, so
-    // the requeue can pull exactly the reminders this booking retires. One
-    // active booking per task: whatever these tasks were booked into before is
-    // what this replaces. A window another task still holds is NOT retired -
-    // that visit is still happening and still needs its reminder.
+    // Read every window this customer is holding before the upsert overwrites
+    // anything, so the requeue can pull exactly the reminders this booking
+    // retires. One active booking per (task, season), which the table's unique
+    // key already guarantees - so the upsert moves the row in place and all
+    // that is left to work out is the window it vacated. A window another task
+    // still holds is NOT retired: that visit is still happening and still
+    // needs its reminder.
     const previous = await bookedVisitRows(homeowner.id);
-    const superseded = supersededBookings({ previous, taskKeys, start: startAt });
+    const superseded = supersededBookings({ previous, tasks, start: startAt });
     const supersedes = orphanedVisitStarts({ previous, superseded });
 
-    // Unbook first, write second: a booking that moves to a different row must
-    // not leave the old one standing, and a failure here leaves the previous
-    // booking whole rather than duplicated.
-    await clearSupersededBookings({ homeownerId: homeowner.id, rows: superseded });
     await scheduleVisit({ homeownerId: homeowner.id, tasks, start: startAt, end: endAt, address });
 
     const services = taskKeys.map((k) => catalog.find((c) => c.key === k)?.title ?? k);

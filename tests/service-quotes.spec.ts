@@ -205,17 +205,18 @@ test('CP9: open bookings group into one entry per VISIT, keyed on the instant', 
 });
 
 test('SC10+SC12: a supersede compares windows as instants, and spares a shared one', () => {
+  const fallGutters = [{ taskKey: 'clean_gutters', season: 'fall' }];
   const previous = [
     { task_key: 'clean_gutters', season: 'fall', scheduled_start: PG },
     { task_key: 'clean_dryer_vent', season: 'fall', scheduled_start: PG },
   ];
   // Re-submitting the SAME window supersedes nothing, even though PostgREST
   // spells it differently from the Date the caller holds.
-  expect(supersededBookings({ previous, taskKeys: ['clean_gutters'], start: new Date(JS) })).toEqual([]);
+  expect(supersededBookings({ previous, tasks: fallGutters, start: new Date(JS) })).toEqual([]);
 
   // Moving it does, and reads the row PostgREST actually returned.
   const moved = new Date('2026-09-05T12:00:00.000Z');
-  const superseded = supersededBookings({ previous, taskKeys: ['clean_gutters'], start: moved });
+  const superseded = supersededBookings({ previous, tasks: fallGutters, start: moved });
   expect(superseded.map((r) => r.task_key)).toEqual(['clean_gutters']);
 
   // But the dryer vent is still booked into 5 Aug, so that visit is still
@@ -226,8 +227,29 @@ test('SC10+SC12: a supersede compares windows as instants, and spares a shared o
   const alone = [{ task_key: 'clean_gutters', season: 'fall', scheduled_start: PG }];
   expect(orphanedVisitStarts({
     previous: alone,
-    superseded: supersededBookings({ previous: alone, taskKeys: ['clean_gutters'], start: moved }),
+    superseded: supersededBookings({ previous: alone, tasks: fallGutters, start: moved }),
   }).map((d) => d.toISOString())).toEqual([JS]);
+});
+
+test('SC10: the other half of a two-season service keeps its booking', () => {
+  // `clean_gutters` is a fall AND a spring task, and a customer with both halves
+  // of the year booked is normal - not a conflict to resolve. Matched on the
+  // task alone, booking the spring clean unbooked the October one and pulled its
+  // reminder while the toast still read "Visit scheduled".
+  const previous = [{ task_key: 'clean_gutters', season: 'fall', scheduled_start: '2026-10-10T12:00:00+00:00' }];
+  const spring = new Date('2027-04-15T12:00:00.000Z');
+  const superseded = supersededBookings({
+    previous, tasks: [{ taskKey: 'clean_gutters', season: 'spring' }], start: spring,
+  });
+  expect(superseded, 'a different season is a different booking, not a move').toEqual([]);
+  expect(orphanedVisitStarts({ previous, superseded }), 'so October keeps its reminder').toEqual([]);
+
+  // Within the season it still moves in place, and the vacated window retires.
+  const moved = supersededBookings({
+    previous, tasks: [{ taskKey: 'clean_gutters', season: 'fall' }], start: new Date('2026-10-17T12:00:00.000Z'),
+  });
+  expect(orphanedVisitStarts({ previous, superseded: moved }).map((d) => d.toISOString()))
+    .toEqual(['2026-10-10T12:00:00.000Z']);
 });
 
 test('IN: scope summary reads naturally for 1, 2 and 3 services', () => {

@@ -197,6 +197,39 @@ test('RM9: EVERY drain of the shared queue skips a visit reminder', () => {
   expect(scheduling).not.toContain("'visit_reminder_1d'");
 });
 
+test('RM16: a reader keyed on the person is scoped to the sequence it means', () => {
+  // The drains were guarded; two readers still spoke for the whole table.
+  const registry = read('src/lib/notify/cancelFollowUps.ts');
+  const leadFollowUp = read('src/lib/notify/leadFollowUp.ts');
+  const drips = read('src/lib/followups/activeDrips.ts');
+  const followUpsRoute = read('src/app/api/admin/follow-ups/route.ts');
+
+  // ONE registry, read in both directions, so a fourth sequence adds itself in
+  // one place instead of being rediscovered by each caller.
+  expect(registry).toContain('export const FOLLOW_UP_SEQUENCE_TYPES');
+  expect(registry).toContain('export function followUpTypesForSequence');
+  expect(registry).toContain('export function followUpSequenceOf');
+  expect(drips).toContain('followUpSequenceOf');
+
+  // "Has this lead been through the drip?" asked of the NURTURE types. Reminder
+  // rows stay 'sent' forever, so a service customer who later filled in the
+  // website form was skipped and their acknowledgement never went out.
+  const check = leadFollowUp.slice(
+    leadFollowUp.indexOf('const { data: existingFollowUps }'),
+    leadFollowUp.indexOf('const emails ='),
+  );
+  expect(check).toContain("in('follow_up_type', LEAD_NURTURE_FOLLOW_UP_TYPES)");
+
+  // Stop resolves through the registry: the `=== 'review' ? ... : nurture`
+  // ternary collapsed every sequence it did not name onto the nurture types, so
+  // the button cancelled nothing and said "Nothing left to stop".
+  expect(followUpsRoute).toContain('followUpTypesForSequence(sequence)');
+  expect(followUpsRoute, 'an unknown sequence is refused, not read as nurture')
+    .toContain('Unknown sequence');
+  // Resend cannot carry `visit_start`, so the copy would be a row no cron finds.
+  expect(followUpsRoute).toContain('DEDICATED_SENDER_FOLLOW_UP_TYPES');
+});
+
 test('RM10: the migration widens follow_up_type to admit the reminder', () => {
   expect(typeMigration).toContain('DROP CONSTRAINT IF EXISTS follow_up_queue_follow_up_type_check');
   expect(typeMigration).toContain("'visit_reminder_1d'");
@@ -375,12 +408,10 @@ test('SC8: a task with no season to be filed under fails loudly', () => {
   expect(post.indexOf('unfiled.length > 0')).toBeLessThan(post.indexOf('await scheduleVisit'));
 });
 
-test('SC9: a reschedule across a season boundary clears the old booking', () => {
-  // The upsert only reaches the (task, season) row it writes, so a visit that
-  // moves to another season would leave the old row holding its window: a
-  // phantom visit on the portal and a live "we're coming tomorrow" for a slot
-  // nobody attends.
-  expect(scheduling).toContain('export async function clearSupersededBookings');
+test('SC9: the pre-booking read sees every window, and fails closed', () => {
+  // The window a reschedule vacates is what tells the requeue which reminder to
+  // pull, and one window can hold tasks filed under different seasons - so this
+  // read is scoped to the customer, never to the season being booked.
   const fn = scheduling.slice(
     scheduling.indexOf('export async function bookedVisitRows'),
     scheduling.indexOf('export function supersededBookings'),
@@ -391,31 +422,36 @@ test('SC9: a reschedule across a season boundary clears the old booking', () => 
   expect(fn).toContain('scheduled_start=not.is.null');
   expect(fn).not.toContain('status=eq.booked');
   // And it fails CLOSED. Swallowed into [], a failed read reads as "this
-  // customer holds no bookings" - the one answer that clears nothing, cancels
-  // nothing, and still returns 200 over a phantom booking.
+  // customer holds no bookings" - the one answer that cancels nothing and still
+  // returns 200 over a reminder for a window the visit has left.
   expect(fn, 'a failed read must not degrade to "no bookings"').not.toContain('.catch(');
-  expect(scheduleRoute).toContain('clearSupersededBookings');
-  // Unbook first, write second: a failure leaves the previous booking whole.
-  expect(scheduleRoute.indexOf('await clearSupersededBookings'))
-    .toBeLessThan(scheduleRoute.indexOf('await scheduleVisit'));
+  expect(scheduleRoute).toContain('bookedVisitRows(homeowner.id)');
 });
 
-test('SC10: one booking per service, and windows compare as instants', () => {
-  // ONE active booking per service is the whole model, so a reschedule needs no
-  // handshake: whatever window these tasks hold is the one being moved. The
-  // `replaces` parameter that tried to tell a move from a second concurrent
+test('SC10: one booking per (service, season), and windows compare as instants', () => {
+  // ONE active booking per (homeowner, task, SEASON) - the table's own unique
+  // key - so a reschedule is a plain upsert in place and needs no handshake.
+  // The `replaces` parameter that tried to tell a move from a second concurrent
   // booking is gone from every layer.
   expect(scheduling).toContain('export function supersededBookings');
   expect(schema).not.toContain('replaces:');
   expect(scheduleRoute).not.toContain('replacesAt');
   expect(adminPage).not.toContain('replaces:');
-  expect(scheduleRoute).toContain('supersededBookings({ previous, taskKeys, start: startAt })');
-  // PostgREST renders timestamptz as "...+00:00" and a Date as "....000Z", so a
-  // string compare here matches nothing in production while every stub passes.
+  expect(scheduleRoute).toContain('supersededBookings({ previous, tasks, start: startAt })');
   const fn = scheduling.slice(
     scheduling.indexOf('export function supersededBookings'),
     scheduling.indexOf('export function orphanedVisitStarts'),
   );
+  // Matched on (task, SEASON). `clean_gutters` is a fall AND a spring task, and
+  // keyed on the task alone, booking the spring clean unbooked the October one.
+  expect(fn).toContain('`${t.taskKey}|${t.season}`');
+  expect(fn).toContain('`${row.task_key}|${row.season}`');
+  // Which also means a cross-season move is a NEW booking, not an inferred one:
+  // nothing unbooks a row the caller did not name. That was the round 3-5 spiral.
+  expect(scheduling, 'no cross-season supersede guessing').not.toContain('clearSupersededBookings');
+  expect(scheduleRoute).not.toContain('clearSupersededBookings');
+  // PostgREST renders timestamptz as "...+00:00" and a Date as "....000Z", so a
+  // string compare here matches nothing in production while every stub passes.
   expect(fn).toContain('new Date(row.scheduled_start).getTime()');
   expect(fn).not.toContain('toISOString()');
 });
@@ -435,7 +471,7 @@ test('SC13: a booking writes the window over a completion, never the status', ()
   // The mirror of SC11. Their checkbox leaves the window alone; the booking has
   // to leave their completion alone, or a reschedule two days after they ticked
   // the task erases the tick with nothing to warn either side - the same
-  // narrowing clearSupersededBookings already does with `status=eq.booked`.
+  // narrowing the cancel route makes with `status=eq.booked`.
   const fn = scheduling.slice(
     scheduling.indexOf('async function memberCompletionsInForce'),
     scheduling.indexOf('export interface BookedVisitRow'),

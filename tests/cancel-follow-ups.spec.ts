@@ -3,8 +3,12 @@ import {
   escapeLikePattern,
   cancelPendingFollowUps,
   followUpSequenceTypes,
+  followUpSequenceOf,
+  followUpTypesForSequence,
+  FOLLOW_UP_SEQUENCE_TYPES,
   LEAD_NURTURE_FOLLOW_UP_TYPES,
   REVIEW_REQUEST_FOLLOW_UP_TYPES,
+  VISIT_REMINDER_FOLLOW_UP_TYPES,
 } from '../src/lib/notify/cancelFollowUps';
 
 /**
@@ -269,5 +273,23 @@ test.describe('followUpSequenceTypes', () => {
     for (const t of [...LEAD_NURTURE_FOLLOW_UP_TYPES, 'something_else']) {
       expect(followUpSequenceTypes(t)).toEqual(LEAD_NURTURE_FOLLOW_UP_TYPES);
     }
+  });
+
+  // A third sequence now shares the queue. Falling through to the nurture set
+  // made "stop this person's follow-ups" cancel the wrong thing and leave the
+  // reminder standing.
+  test('maps a visit reminder to its own set, not to nurture', () => {
+    for (const t of VISIT_REMINDER_FOLLOW_UP_TYPES) {
+      expect(followUpSequenceTypes(t)).toEqual(VISIT_REMINDER_FOLLOW_UP_TYPES);
+      expect(followUpSequenceTypes(t)).not.toEqual(LEAD_NURTURE_FOLLOW_UP_TYPES);
+    }
+  });
+
+  test('every sequence in the registry is reachable by name, and nothing else is', () => {
+    for (const [sequence, types] of Object.entries(FOLLOW_UP_SEQUENCE_TYPES)) {
+      expect(followUpTypesForSequence(sequence)).toEqual(types);
+      for (const t of types) expect(followUpSequenceOf(t)).toBe(sequence);
+    }
+    expect(followUpTypesForSequence('made_up')).toBe(null);
   });
 });

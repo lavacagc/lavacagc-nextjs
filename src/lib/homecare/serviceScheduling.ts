@@ -177,9 +177,9 @@ async function memberCompletionsInForce(homeownerId: string, tasks: VisitTask[])
  * Which is why a booking writes the window onto every row and the status onto
  * only some. Stamping 'booked' over a member's own completion erased their tick
  * with no notice - a reschedule two days after they ticked the task, and it was
- * gone - two statements after `clearSupersededBookings` narrows its own PATCH
- * with `status=eq.booked` for exactly this reason. Whoever did the work keeps
- * the credit; the booking is separate state on the same row.
+ * gone - the same narrowing the DELETE handler makes with `status=eq.booked`
+ * when it unbooks a cancelled visit. Whoever did the work keeps the credit; the
+ * booking is separate state on the same row.
  */
 export async function scheduleVisit(args: ScheduleArgs): Promise<void> {
   const { homeownerId, tasks, start, end, address } = args;
@@ -249,9 +249,8 @@ export interface BookedVisitRow {
  * THROWS rather than degrading to `[]`. Everything the supersede path decides is
  * computed from this list, and an empty one does not mean "no read" - it means
  * "this customer holds no bookings", which is the one answer that makes the
- * caller clear nothing and cancel nothing. A failed read would then let a
- * cross-season move write the new row and leave the old one holding its window
- * forever, and answer 200: a phantom visit on the portal and a live "we're
+ * caller cancel nothing. A failed read would then move the visit and leave the
+ * window it vacated still holding a pending reminder, and answer 200: "we're
  * coming tomorrow" for a slot nobody attends, with no log line to find it by.
  * Refusing the booking is the only honest answer when the truth is unknown, and
  * it costs nothing pre-migration - `scheduleVisit` writes the same column two
@@ -266,21 +265,24 @@ export async function bookedVisitRows(homeownerId: string): Promise<BookedVisitR
 }
 
 /**
- * The bookings this one replaces: every window these tasks are already holding
- * that is not the window being booked.
+ * The windows this booking moves off: the ones these exact (task, season) rows
+ * are already holding, other than the window being booked.
  *
- * ONE active booking per task is the whole model. `homeowner_maintenance` is
- * keyed on (homeowner, task, season) so a same-season reschedule is a plain
- * upsert in place, and this exists for the case the upsert cannot reach: the
- * season is derived from the visit date reconciled against the task's catalog
- * seasons, so moving a visit far enough lands it on a DIFFERENT row and the old
- * one would keep its window forever - a phantom visit on the portal and a live
- * "we're coming tomorrow" for a slot nobody attends.
+ * ONE active booking per (homeowner, task, SEASON) is the model, which is
+ * precisely what the table's unique key already guarantees - so a reschedule is
+ * a plain upsert in place and the only thing left to work out is which window it
+ * vacated, so that window's reminder can be pulled.
  *
- * Two concurrently-booked visits of the same service are not a thing the
- * business does, so nothing here has to tell a move from a second booking - the
- * distinction that needed a caller-supplied handshake, and every bug that came
- * with it.
+ * Matched on (task, SEASON), never on the task alone. `clean_gutters` is a fall
+ * AND a spring task, and a customer holding both halves of the year is normal
+ * rather than a conflict to resolve; keyed on the task alone, booking the spring
+ * clean silently unbooked the October one and cancelled its reminder while the
+ * toast still read "Visit scheduled".
+ *
+ * Which makes a visit that moves far enough to change its reconciled season a
+ * NEW booking rather than an inferred move - deliberately. Guessing at that
+ * intent is unrepresentable here, and both bookings are visible on "On the
+ * books", so retiring the one left behind is the explicit Cancel visit action.
  *
  * Compared as INSTANTS, never as strings. PostgREST renders `timestamptz` the
  * way Postgres does - "2026-09-05T12:00:00+00:00" - and `Date#toISOString()`
@@ -289,14 +291,14 @@ export async function bookedVisitRows(homeownerId: string): Promise<BookedVisitR
  */
 export function supersededBookings(args: {
   previous: BookedVisitRow[];
-  taskKeys: string[];
+  tasks: VisitTask[];
   start: Date;
 }): BookedVisitRow[] {
-  const { previous, taskKeys, start } = args;
-  const booking = new Set(taskKeys);
+  const { previous, tasks, start } = args;
+  const booking = new Set(tasks.map((t) => `${t.taskKey}|${t.season}`));
   const startMs = start.getTime();
   return previous.filter((row) => {
-    if (!row.scheduled_start || !booking.has(row.task_key)) return false;
+    if (!row.scheduled_start || !booking.has(`${row.task_key}|${row.season}`)) return false;
     const ms = new Date(row.scheduled_start).getTime();
     return Number.isFinite(ms) && ms !== startMs;
   });
@@ -328,45 +330,6 @@ export function orphanedVisitStarts(args: {
     if (Number.isFinite(ms) && !stillHeld.has(ms)) orphaned.set(ms, new Date(ms));
   }
   return [...orphaned.values()];
-}
-
-/**
- * Clear the windows this booking supersedes.
- *
- * The upsert only reaches the (task, season) rows it writes. A visit that moves
- * across a season boundary - 5 Sep to 28 Aug, or a task whose reconciled season
- * changes with the date - lands on a DIFFERENT row, so without this the old one
- * keeps its window forever: a phantom visit on the portal and a live reminder
- * for a slot nobody is coming to.
- *
- * Scoped by window rather than by season, because one window's tasks can be
- * filed under different seasons. Runs BEFORE the upsert, so a failure leaves the
- * previous booking intact rather than half-moved.
- */
-export async function clearSupersededBookings(args: {
-  homeownerId: string;
-  rows: BookedVisitRow[];
-}): Promise<void> {
-  const { homeownerId, rows } = args;
-  const byStart = new Map<string, Set<string>>();
-  for (const row of rows) {
-    if (!row.scheduled_start) continue;
-    const keys = byStart.get(row.scheduled_start) ?? new Set<string>();
-    keys.add(row.task_key);
-    byStart.set(row.scheduled_start, keys);
-  }
-
-  for (const [startIso, keys] of byStart) {
-    const updated_at = new Date().toISOString();
-    const filter = `homeowner_maintenance?homeowner_id=eq.${homeownerId}` +
-      `&scheduled_start=eq.${encodeURIComponent(startIso)}` +
-      `&task_key=in.(${[...keys].map((k) => `"${k}"`).join(',')})`;
-    // Only a row still sitting at 'booked' goes back to 'todo'. A member who
-    // ticked this task off recorded THEIR completion on the same row, and
-    // unbooking the visit is no reason to undo it.
-    await supabaseRest('PATCH', `${filter}&status=eq.booked`, { status: 'todo', updated_at });
-    await supabaseRest('PATCH', filter, { scheduled_start: null, scheduled_end: null, updated_at });
-  }
 }
 
 /**

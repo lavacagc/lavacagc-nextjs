@@ -83,15 +83,46 @@ export function sharedFollowUpQueue(client: any, columns = '*'): any {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /**
+ * Every sequence sharing `follow_up_queue`, and the types each one owns.
+ *
+ * ONE mapping, read in both directions: the admin drip list inverts it to label
+ * a row's sequence, and "stop this person's drip" reads it forward to scope the
+ * cancel. Spelled out per call site instead, a sequence the newest one did not
+ * know about fell through to 'nurture' - so a pending visit reminder showed up
+ * as a lead drip whose Stop button cancelled nurture types and left it standing
+ * forever.
+ *
+ * A fourth sequence adds itself HERE and both directions follow.
+ */
+export const FOLLOW_UP_SEQUENCE_TYPES: Record<string, readonly string[]> = {
+  nurture: LEAD_NURTURE_FOLLOW_UP_TYPES,
+  review: REVIEW_REQUEST_FOLLOW_UP_TYPES,
+  visit: VISIT_REMINDER_FOLLOW_UP_TYPES,
+};
+
+/** The types a named sequence owns, or null if the name is not a sequence. */
+export function followUpTypesForSequence(sequence: string): readonly string[] | null {
+  return FOLLOW_UP_SEQUENCE_TYPES[sequence] ?? null;
+}
+
+/**
+ * The sequence a given follow_up_type belongs to. Unknown types fall back to
+ * 'nurture', which is what the queue held before it was shared.
+ */
+export function followUpSequenceOf(followUpType: string): string {
+  for (const [sequence, types] of Object.entries(FOLLOW_UP_SEQUENCE_TYPES)) {
+    if (types.includes(followUpType)) return sequence;
+  }
+  return 'nurture';
+}
+
+/**
  * The sibling sequence a given follow_up_type belongs to. Used so a "stop this
  * person's follow-ups" action cancels the SAME sequence the row is part of
- * (nurture vs review request) instead of blindly cancelling everything for the
- * email. Unknown types fall back to the nurture set.
+ * instead of blindly cancelling everything for the email.
  */
 export function followUpSequenceTypes(followUpType: string): readonly string[] {
-  return (REVIEW_REQUEST_FOLLOW_UP_TYPES as readonly string[]).includes(followUpType)
-    ? REVIEW_REQUEST_FOLLOW_UP_TYPES
-    : LEAD_NURTURE_FOLLOW_UP_TYPES;
+  return FOLLOW_UP_SEQUENCE_TYPES[followUpSequenceOf(followUpType)];
 }
 
 /** Escape Postgres LIKE/ILIKE wildcards so a value matches literally. */

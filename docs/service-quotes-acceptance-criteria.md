@@ -117,28 +117,37 @@ These were settled by the owner during review; the ACs assume them.
   comes out **per task** - one July window can file a gutter clean under 'fall'
   and a deck seal under 'summer'. `/schedule` returns what it filed each task
   under and "mark complete" resolves each task from the row it was booked into.
-- **SC9** Rescheduling a visit **across a season boundary** leaves no phantom
-  booking. The upsert only reaches the (task, season) row it writes, so a visit
-  moved from 5 Sep to 28 Aug would otherwise leave the fall row holding its old
-  window: the portal's next-visit card would show a visit that is not happening,
-  and the cron would send "we're coming tomorrow" for it. Superseded rows are
-  read across **every** season, unbooked before the new row is written, and
-  their reminders cancelled.
+- **SC9** The windows a customer is already holding are read **before** the
+  upsert overwrites anything, across every season, so the requeue can pull
+  exactly the reminder of the window the visit has just left. One window can hold
+  tasks filed under different seasons, so the read is scoped to the customer and
+  never to the season being booked.
   That read **fails closed**. Degraded to `[]`, a failed read does not mean "no
   read" - it means "this customer holds no bookings", the one answer that makes
-  the caller clear nothing and cancel nothing while the booking is still written
-  and the request still answers 200. It costs nothing pre-migration either: the
-  upsert writes the same column two statements later and would fail anyway.
-- **SC10** A service has **one active booking at a time**, which is what
+  the caller cancel nothing while the booking is still written and the request
+  still answers 200: "we're coming tomorrow" for a window the visit has left. It
+  costs nothing pre-migration either: the upsert writes the same column two
+  statements later and would fail anyway.
+- **SC10** A service has **one active booking per season** - exactly what
   `homeowner_maintenance`'s unique key on (homeowner, task, season) already
-  guarantees - so a reschedule is a plain upsert in place, and whatever window
-  these tasks are holding is by definition the one being moved.
-  There is no `replaces` handshake and no attempt to tell a move from a second
-  concurrent booking of the same service: that is not a thing the business does
-  (there are not two scheduled visits to clean the same gutters), and asking the
-  caller to name the window it was moving from cost three defects - a client that
-  claimed a reschedule on every second click, a completion that resolved to the
-  wrong visit, and a timestamp comparison that could never match.
+  guarantees. Rescheduling *within* a season is therefore a plain upsert in
+  place, and the only thing left to work out is the window it vacated, so that
+  window's reminder can be pulled.
+  Two seasons is a **legitimate** case, not a conflict to resolve: `clean_gutters`
+  is a fall and a spring task, and a customer with both halves of the year on the
+  books is normal. Matched on the task alone, booking the spring clean unbooked
+  the October one and cancelled its reminder while the toast still read "Visit
+  scheduled" - the visit gone from the member's portal and off the cron, with the
+  owner's calendar still holding it.
+  Which makes a visit that moves far enough to change its reconciled season a
+  **new booking**, deliberately: nothing infers a cross-season move and nothing
+  unbooks a window the caller did not name. Both bookings are visible on "On the
+  books", so retiring the one left behind is the explicit **Cancel visit** action
+  (SC14). Guessing at that intent is what the `replaces` handshake was for, and
+  it cost three defects - a client that claimed a reschedule on every second
+  click, a completion that resolved to the wrong visit, and a timestamp
+  comparison that could never match - before a task-wide supersede reintroduced
+  the loss from the other direction.
   Windows compare as **instants**, never as strings: PostgREST renders
   `timestamptz` as `2026-09-05T12:00:00+00:00` and `Date#toISOString()` gives
   `2026-09-05T12:00:00.000Z`, the same moment spelled two ways, so a string
@@ -161,10 +170,9 @@ These were settled by the owner during review; the ACs assume them.
   onto every row and the **status** onto only some.
   Stamping `'booked'` with `completed_at: null` over a member's own completion
   erased their tick with no notice - they ticked the task on Tuesday, the visit
-  moved on Thursday, and it was gone - two statements after
-  `clearSupersededBookings` narrows its own PATCH with `status=eq.booked` for
-  exactly this reason. Whoever did the work keeps the credit; the booking is
-  separate state on the same row.
+  moved on Thursday, and it was gone - the same narrowing the cancel route makes
+  with `status=eq.booked` when it unbooks a visit. Whoever did the work keeps the
+  credit; the booking is separate state on the same row.
   A completion **La Vaca** recorded is still retaken, which is what CP2 asks
   for: left in place it labels whoever ticks the row next as work we did, and it
   makes "mark completed" treat the new visit as already handled, so that visit's
@@ -274,6 +282,25 @@ These were settled by the owner during review; the ACs assume them.
   `unavailable` and logs. The cron has no send-once ledger without `visit_start`,
   so it sends **nothing** rather than mailing a batch it cannot guard, and
   reports `degraded` rather than 500ing where a cron failure is silent.
+- **RM16** A reader of `follow_up_queue` keyed on the **person** is scoped to the
+  sequence it means, not to the address alone. The drains were guarded (RM9), but
+  two readers still spoke for the whole table:
+  `createLeadFollowUpSequence` asks "has this lead already been through the
+  drip?" and answered it from any row for that address. Reminder rows stay
+  `'sent'` forever, so a walk-in service customer the admin booked by hand who
+  later submitted the website form was skipped: their acknowledgement never went
+  out, with `duplicate_email` in the log as the only trace. It reads the
+  **nurture types** now, which is what the question meant.
+  The admin Follow-Ups page bucketed anything it did not recognise as a lead
+  drip, so a pending reminder showed as "Lead nurture" and its Stop button - type
+  scoped, correctly - cancelled nothing and reported "Nothing left to stop"
+  forever. Visit reminders are their own sequence, with their own label, their
+  own pill and a Stop path that reaches them; the confirm says plainly that
+  stopping one means the customer is never told we are coming.
+  Both directions read ONE registry, `FOLLOW_UP_SEQUENCE_TYPES`, so a fourth
+  sequence adds itself in one place rather than being rediscovered by each
+  caller. **Resend** refuses a dedicated-sender type outright: the generic insert
+  cannot carry `visit_start`, so the copy would be a row no cron can ever find.
 - **RM15** A ledger row that cannot be **written** stops that send. The claim
   branch already fails closed when another run got there first; the branch that
   creates a missing row has to as well, because a send with no ledger entry is

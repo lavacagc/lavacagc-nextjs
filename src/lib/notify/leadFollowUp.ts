@@ -8,6 +8,7 @@ import {
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { cleanEnv } from '@/lib/envClean';
 import { normalizeEmail } from '@/lib/preferences/preferences';
+import { LEAD_NURTURE_FOLLOW_UP_TYPES } from '@/lib/notify/cancelFollowUps';
 
 const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lavacagc.com';
 
@@ -110,10 +111,18 @@ export async function createLeadFollowUpSequence(
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    // "Has this lead already been through the nurture drip?" - scoped to the
+    // drip's OWN types, because `follow_up_queue` is shared. Type-blind, this
+    // read also saw a post-job review request and a night-before visit reminder,
+    // and rows stay 'sent' forever: a service customer the admin booked by hand
+    // who later submitted the website form was silently skipped here, so their
+    // acknowledgement email never went out and `duplicate_email` in the log was
+    // the only trace.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: existingFollowUps } = await (supabase.from as any)('follow_up_queue')
       .select('id, status')
       .eq('lead_email', email)
+      .in('follow_up_type', LEAD_NURTURE_FOLLOW_UP_TYPES)
       .in('status', ['pending', 'sent'])
       .limit(1);
 
