@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { isActiveHomeCareSubscriber } from '@/lib/homecare/homeowners';
-import { DEDICATED_SENDER_FOLLOW_UP_TYPES } from '@/lib/notify/cancelFollowUps';
+import { sharedFollowUpQueue, withoutDedicatedSenders } from '@/lib/notify/cancelFollowUps';
 import { HC_PROMO_START, HC_PROMO_END } from '@/lib/emailTemplates';
 
 export const dynamic = 'force-dynamic';
@@ -75,15 +75,13 @@ export async function GET(request: NextRequest) {
 
     // Query pending follow-ups that are due.
     //
-    // Types with a dedicated cron are excluded: this drain runs at 09:00 UTC
-    // (~4am Eastern), which is fine for a nurture email nobody times and wrong
-    // for anything scheduled to land at a particular hour. Without the filter it
-    // would pick up those rows too and send a second copy.
-    const { data: pendingItems, error: queryError } = await supabase
-      .from('follow_up_queue')
-      .select('*')
+    // Through `sharedFollowUpQueue`, which excludes the types with a dedicated
+    // cron: this drain runs at 09:00 UTC (~4am Eastern), which is fine for a
+    // nurture email nobody times and wrong for anything scheduled to land at a
+    // particular hour. Without that exclusion it picks up those rows too and
+    // sends a second copy.
+    const { data: pendingItems, error: queryError } = await sharedFollowUpQueue(supabase)
       .eq('status', 'pending')
-      .not('follow_up_type', 'in', `(${DEDICATED_SENDER_FOLLOW_UP_TYPES.join(',')})`)
       .lte('scheduled_at', new Date().toISOString())
       .order('scheduled_at', { ascending: true })
       .limit(20); // Process in batches to avoid timeouts
@@ -173,17 +171,18 @@ export async function GET(request: NextRequest) {
           // Rows owned by a dedicated cron are left alone: opting out of the
           // follow-ups stream must not silently drop the transactional
           // "we're coming tomorrow" reminder for a visit they booked.
-          const { count, error: cancelMarkError } = await supabase
-            .from('follow_up_queue')
-            .update(
-              {
-                status: 'cancelled',
-                sent_at: new Date().toISOString(),
-              },
-              { count: 'exact' },
-            )
+          const { count, error: cancelMarkError } = await withoutDedicatedSenders(
+            supabase
+              .from('follow_up_queue')
+              .update(
+                {
+                  status: 'cancelled',
+                  sent_at: new Date().toISOString(),
+                },
+                { count: 'exact' },
+              ),
+          )
             .eq('lead_email', item.lead_email)
-            .not('follow_up_type', 'in', `(${DEDICATED_SENDER_FOLLOW_UP_TYPES.join(',')})`)
             .eq('status', 'pending');
           if (cancelMarkError) console.error(`Failed to cancel follow-ups for unsubscribed ${item.lead_email}:`, cancelMarkError);
           cancelled += count ?? 1;

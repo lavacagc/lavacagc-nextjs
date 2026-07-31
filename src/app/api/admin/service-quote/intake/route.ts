@@ -23,6 +23,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { escapeLikePattern } from '@/lib/notify/cancelFollowUps';
 import {
   parseTaskKeys, bookableCatalog, lastDoneFor, lastDoneLabel, groupBookings,
   type ServiceCatalogRow, type CompletionRow, type BookedRow, type Booking,
@@ -52,10 +53,22 @@ export async function GET(request: NextRequest) {
     const enc = encodeURIComponent(email);
 
     const [leads, owners] = await Promise.all([
+      // `leads.email` is stored exactly as the customer typed it - the booking
+      // form only trims - so a case-sensitive `eq.` against the lowercased
+      // lookup silently returns nothing for anyone whose address autofilled as
+      // `Jane.Smith@Gmail.com`. The past-requests panel, the pre-selected
+      // services and the scope summary all just fail to appear, which reads as
+      // "this customer has no history" rather than as a bug.
+      //
+      // Same shape as cancelPendingFollowUps, and for the same reason: an
+      // escaped ilike narrows the candidates, then a JS equality check picks the
+      // true matches, because PostgREST reads `*` as an alias for `%` with no
+      // way to escape it. The limit is raised because the prefilter is the wider
+      // net; the exact matches are cut back to ten below.
       supabaseRest<LeadRow[]>(
         'GET',
         `leads?select=id,first_name,last_name,email,phone,address,city,zip_code,source,message,created_at` +
-          `&email=eq.${enc}&order=created_at.desc&limit=10`,
+          `&email=ilike.${encodeURIComponent(escapeLikePattern(email))}&order=created_at.desc&limit=50`,
       ).catch(() => [] as LeadRow[]),
       supabaseRest<{ id: string; first_name: string | null; phone: string | null; address: string | null; city: string | null; zip: string | null; status: string }[]>(
         'GET',
@@ -66,8 +79,11 @@ export async function GET(request: NextRequest) {
     const homeowner = owners?.[0] ?? null;
 
     // Their request history, with the services each one asked for resolved.
+    // The ilike prefilter above can over-match (a stored `a*@example.com` is a
+    // wildcard to PostgREST), so the address is re-checked exactly here.
     const byKey = new Map(catalog.map((c) => [c.key, c]));
-    const requests = (leads ?? []).map((l) => {
+    const mine = (leads ?? []).filter((l) => (l.email ?? '').trim().toLowerCase() === email).slice(0, 10);
+    const requests = mine.map((l) => {
       const keys = parseTaskKeys(l.message);
       return {
         id: l.id,

@@ -1,5 +1,16 @@
+/**
+ * The admin "process follow-ups" drain, fired by hand from /vaca-mgmt/automation-test.
+ *
+ * The SECOND consumer of `follow_up_queue`, and the same rule applies to it as
+ * to the 09:00 UTC cron: every read goes through `sharedFollowUpQueue`, which
+ * hides the types delivered by their own sender. This route flips rows straight
+ * to 'sent' without mailing anything, so a visit reminder it swept up would be
+ * silently marked delivered and its customer would hear nothing - the mirror of
+ * the duplicate send the exclusion was added to the other drain to prevent.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { sharedFollowUpQueue } from '@/lib/notify/cancelFollowUps';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,9 +24,7 @@ export async function GET() {
   try {
     const now = new Date().toISOString();
 
-    const { data, error } = await supabase
-      .from('follow_up_queue')
-      .select('*')
+    const { data, error } = await sharedFollowUpQueue(supabase)
       .eq('status', 'pending')
       .lte('scheduled_at', now)
       .order('scheduled_at', { ascending: true })
@@ -45,9 +54,10 @@ export async function POST(request: NextRequest) {
 
     // Process a specific follow-up
     if (action === 'process' && followUpId) {
-      const { data: followUp, error } = await supabase
-        .from('follow_up_queue')
-        .select('*')
+      // The id comes straight off the request body, so the exclusion has to be
+      // on this read too: a visit reminder's id would otherwise be processed
+      // here by name.
+      const { data: followUp, error } = await sharedFollowUpQueue(supabase)
         .eq('id', followUpId)
         .eq('status', 'pending')
         .single();
@@ -57,9 +67,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Check if lead has responded (cancel remaining follow-ups)
-      const { data: respondedCheck } = await supabase
-        .from('follow_up_queue')
-        .select('id')
+      const { data: respondedCheck } = await sharedFollowUpQueue(supabase, 'id')
         .eq('lead_email', followUp.lead_email)
         .eq('status', 'responded')
         .limit(1);
@@ -93,9 +101,7 @@ export async function POST(request: NextRequest) {
     // Process all pending follow-ups
     if (action === 'process-all') {
       const now = new Date().toISOString();
-      const { data: pending, error } = await supabase
-        .from('follow_up_queue')
-        .select('*')
+      const { data: pending, error } = await sharedFollowUpQueue(supabase)
         .eq('status', 'pending')
         .lte('scheduled_at', now)
         .order('scheduled_at', { ascending: true })
@@ -109,9 +115,7 @@ export async function POST(request: NextRequest) {
 
       for (const followUp of pending || []) {
         // Check for responded leads
-        const { data: respondedCheck } = await supabase
-          .from('follow_up_queue')
-          .select('id')
+        const { data: respondedCheck } = await sharedFollowUpQueue(supabase, 'id')
           .eq('lead_email', followUp.lead_email)
           .eq('status', 'responded')
           .limit(1);
@@ -149,10 +153,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Email required' }, { status: 400 });
       }
 
-      // Mark the earliest pending as responded, cancel the rest
-      const { data: pendingForLead } = await supabase
-        .from('follow_up_queue')
-        .select('id')
+      // Mark the earliest pending as responded, cancel the rest. Both writes
+      // work off ids this filtered read returned, so a visit reminder is never
+      // among them: 'responded' and 'cancelled' both read as closed to the
+      // reminder cron's ledger, which would drop that customer's email.
+      const { data: pendingForLead } = await sharedFollowUpQueue(supabase, 'id')
         .eq('lead_email', email)
         .eq('status', 'pending')
         .order('scheduled_at', { ascending: true });

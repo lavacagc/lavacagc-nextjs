@@ -70,6 +70,17 @@ These were settled by the owner during review; the ACs assume them.
   homeowner, ignoring rows that are not `status='done'`.
 - **IN5** Last-done is per `(homeowner, task_key)` and returns the newest row
   when a task has been done in several seasons.
+- **IN6** The lead lookup matches the address **case-insensitively**.
+  `leads.email` is stored exactly as the customer typed it - the booking form
+  only trims it - so a case-sensitive `eq.` against the lowercased param returns
+  nothing for anyone whose address autofilled as `Jane.Smith@Gmail.com`. Their
+  past requests, the pre-selected services and the scope summary then all simply
+  fail to appear, which reads as "this customer has no history" rather than as a
+  bug. Matched the way `cancelPendingFollowUps` does it: an escaped `ilike`
+  prefilter narrows the candidates and a JS equality check picks the true
+  matches, because PostgREST reads `*` as an alias for `%` with no way to escape
+  it. `homeowners` keeps its exact match - `normalizeEmail` lowercases it on
+  write, so only `leads` is exposed.
 
 ## SC - scheduling
 
@@ -113,6 +124,11 @@ These were settled by the owner during review; the ACs assume them.
   and the cron would send "we're coming tomorrow" for it. Superseded rows are
   read across **every** season, unbooked before the new row is written, and
   their reminders cancelled.
+  That read **fails closed**. Degraded to `[]`, a failed read does not mean "no
+  read" - it means "this customer holds no bookings", the one answer that makes
+  the caller clear nothing and cancel nothing while the booking is still written
+  and the request still answers 200. It costs nothing pre-migration either: the
+  upsert writes the same column two statements later and would fail anyway.
 - **SC10** A service has **one active booking at a time**, which is what
   `homeowner_maintenance`'s unique key on (homeowner, task, season) already
   guarantees - so a reschedule is a plain upsert in place, and whatever window
@@ -141,6 +157,31 @@ These were settled by the owner during review; the ACs assume them.
   `status`, `completed_at` and `completed_by` and carries none of the scheduling
   columns, so their completion is recorded and the booking stands for the owner
   to reconcile. Cancelling and completing are what clear the window.
+- **SC13** And the same rule from the other side: a booking writes the **window**
+  onto every row and the **status** onto only some.
+  Stamping `'booked'` with `completed_at: null` over a member's own completion
+  erased their tick with no notice - they ticked the task on Tuesday, the visit
+  moved on Thursday, and it was gone - two statements after
+  `clearSupersededBookings` narrows its own PATCH with `status=eq.booked` for
+  exactly this reason. Whoever did the work keeps the credit; the booking is
+  separate state on the same row.
+  A completion **La Vaca** recorded is still retaken, which is what CP2 asks
+  for: left in place it labels whoever ticks the row next as work we did, and it
+  makes "mark completed" treat the new visit as already handled, so that visit's
+  window would never come off the books.
+  An **expired** completion is retaken too. `isRowCurrent` is the seasonal reset
+  the portal and the newsletter share; past it the task has already come back on
+  both, and a booked row that kept its stale `completed_at` would expire straight
+  back out of the newsletter's suppression set - so we would nag the member about
+  work we are booked to do.
+- **SC14** A booked visit can be **cancelled** from the admin page.
+  The DELETE route was fully built and unreachable, so a customer who phoned to
+  cancel kept their portal card and got "we're coming tomorrow" for a job nobody
+  was attending - the one email the owner does not know is going out. The two
+  workarounds both wrote something false: reschedule it to a fake future date, or
+  "Mark completed", which stamps the job into the service history and asks the
+  customer to rate work that was never performed. The control is confirm-gated,
+  names the window it cancels, and the booking list is re-read afterwards.
 
 ## ICS - the calendar file
 
@@ -194,10 +235,20 @@ These were settled by the owner during review; the ACs assume them.
   `20260817000000_follow_up_queue_visit_start.sql`, nullable so the other
   sequences sharing the table are unaffected.
 - **RM9** `/api/cron/visit-reminders` is the **only** sender. `follow_up_queue`
-  is shared, and its general drain (`/api/cron/send-follow-ups`, 09:00 UTC) has
-  no type filter of its own, so it explicitly skips every type with a dedicated
-  cron. Without that the customer would get the reminder twice, the second time
-  at ~4am Eastern on the day of the visit, saying "tomorrow".
+  is shared, and no general drain of it has a type filter of its own, so every
+  drain skips the types with a dedicated cron.
+  There are **two** such drains, and applying the registry to one was not
+  enough. `/api/cron/send-follow-ups` (09:00 UTC) would send the reminder a
+  second time, at ~4am Eastern on the day of the visit, saying "tomorrow".
+  `/api/follow-up` (the admin "process follow-ups" button) flips due rows
+  straight to `'sent'` without mailing anything, and `'sent'` and `'responded'`
+  both read as closed to the reminder cron's ledger - so it would silently
+  swallow the email instead of duplicating it.
+  The exclusion therefore lives in a shared query builder,
+  `sharedFollowUpQueue`, not in a constant each drain has to remember to spell.
+  A registry that relies on being remembered is how this recurred; a test
+  asserts neither drain reaches for `.from('follow_up_queue').select(...)`
+  itself.
 - **RM10** `follow_up_queue.follow_up_type` carries a CHECK constraint listing
   the sequences that share the table, so `visit_reminder_1d` must be added to it
   or the queue insert fails and booking a visit 500s.
@@ -257,12 +308,14 @@ These were settled by the owner during review; the ACs assume them.
 - **CP1** Mark-complete sets `status='done'`, stamps `completed_at`, and writes
   `completed_by='lavaca'`.
 - **CP2** The checklist checkbox writes `completed_by='homeowner'`, and so does
-  booking. Attribution follows whoever set the CURRENT status. The column
-  defaults to `'homeowner'` on insert only, and a merge-duplicates upsert updates
-  just the columns in the body - so a writer that omits it leaves whatever was
-  there. La Vaca cleans the gutters, the member unticks it and later does the
-  work themselves: without this the card credits us for their work, which is a
-  worse error than showing no label at all.
+  a booking on any row it retakes. Attribution follows whoever set the CURRENT
+  status. The column defaults to `'homeowner'` on insert only, and a
+  merge-duplicates upsert updates just the columns in the body - so a writer that
+  omits it leaves whatever was there. La Vaca cleans the gutters, the member
+  unticks it and later does the work themselves: without this the card credits us
+  for their work, which is a worse error than showing no label at all.
+  See **SC13** for which rows a booking retakes: a completion of the member's own
+  that is still in force is left exactly as they wrote it.
 - **CP3** Existing rows default to `'homeowner'` - nothing has ever been
   completed by La Vaca before this change.
 - **CP4** Mark-complete is idempotent: a second call sends no second feedback

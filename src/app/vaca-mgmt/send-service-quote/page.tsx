@@ -20,7 +20,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, CalendarPlus, CheckCircle2 } from 'lucide-react';
+import { Loader2, CalendarPlus, CheckCircle2, XCircle } from 'lucide-react';
 import { scopeSummaryFrom } from '@/lib/homecare/serviceIntake';
 import { easternVisitInstant } from '@/lib/homecare/visitSchedule';
 
@@ -80,6 +80,7 @@ export default function SendServiceQuotePage() {
   // The visits this customer has on the books, refreshed after every write.
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [completing, setCompleting] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState<string | null>(null);
   // Kept apart from `intake`, because a walk-in has no homeowner record until
   // the booking creates one - and completing that visit still needs the id.
   const [homeownerId, setHomeownerId] = useState<string | null>(null);
@@ -237,6 +238,36 @@ export default function SendServiceQuotePage() {
     }
   };
 
+  /**
+   * Call OFF one booked visit.
+   *
+   * The gap this fills was the worst outcome in the feature: a customer phones
+   * to cancel, the DELETE route exists but nothing reaches it, and the booking
+   * stays live - the member's portal keeps showing the visit and the cron sends
+   * "we're coming tomorrow" for a job nobody is attending. The two workarounds
+   * available were both wrong: reschedule it to a fake date, or "Mark completed",
+   * which writes the job into the service history and mails the customer asking
+   * how the team did on work never performed.
+   */
+  const cancel = async (booking: Booking) => {
+    if (!homeownerId) return;
+    if (!window.confirm('Cancel this visit? It comes off the customer\'s portal and the night-before reminder is pulled.')) return;
+    setCancelling(booking.start);
+    try {
+      const res = await fetch(`/api/admin/service-quote/schedule?${new URLSearchParams({
+        homeownerId, email: email.trim(), start: booking.start,
+      })}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || data.issues?.[0]?.message || 'Failed');
+      await refreshBookings();
+      toast({ title: 'Visit cancelled', description: 'Off the books, and the reminder is pulled.' });
+    } catch (e) {
+      toast({ title: 'Cancel failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setCancelling(null);
+    }
+  };
+
   const visitLabel = (b: Booking) => {
     const fmt: Intl.DateTimeFormatOptions = { timeZone: 'America/New_York' };
     const day = new Date(b.start).toLocaleDateString('en-US', { ...fmt, weekday: 'short', day: 'numeric', month: 'short' });
@@ -388,14 +419,25 @@ export default function SendServiceQuotePage() {
                         {b.tasks.map((t) => t.title).join(', ')}
                       </span>
                     </span>
-                    <Button
-                      variant="outline" size="sm" onClick={() => complete(b)}
-                      disabled={completing !== null || !homeownerId} data-testid="sq-complete"
-                    >
-                      {completing === b.start
-                        ? <Loader2 className="h-4 w-4 animate-spin" />
-                        : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> Mark completed</>}
-                    </Button>
+                    <span className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline" size="sm" onClick={() => complete(b)}
+                        disabled={completing !== null || cancelling !== null || !homeownerId} data-testid="sq-complete"
+                      >
+                        {completing === b.start
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> Mark completed</>}
+                      </Button>
+                      <Button
+                        variant="outline" size="sm" onClick={() => cancel(b)}
+                        disabled={completing !== null || cancelling !== null || !homeownerId}
+                        className="text-destructive hover:border-destructive" data-testid="sq-cancel"
+                      >
+                        {cancelling === b.start
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <><XCircle className="mr-1.5 h-4 w-4" /> Cancel visit</>}
+                      </Button>
+                    </span>
                   </div>
                 ))}
               </div>

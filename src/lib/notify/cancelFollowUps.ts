@@ -37,9 +37,9 @@ export const VISIT_REMINDER_FOLLOW_UP_TYPES = ['visit_reminder_1d'] as const;
 
 /**
  * Types that live in `follow_up_queue` but are delivered by their OWN cron, not
- * by the shared /api/cron/send-follow-ups drain.
+ * by a shared drain.
  *
- * That drain has no type filter of its own, so anything listed here MUST be
+ * A drain has no type filter of its own, so anything listed here MUST be
  * excluded from it or the recipient gets the email twice - once from its
  * dedicated sender at the right hour, once from the shared cron at 09:00 UTC.
  * Their rows still belong in the queue: they are the send-once ledger their
@@ -49,6 +49,38 @@ export const VISIT_REMINDER_FOLLOW_UP_TYPES = ['visit_reminder_1d'] as const;
  * rediscovering the duplicate the hard way.
  */
 export const DEDICATED_SENDER_FOLLOW_UP_TYPES = [...VISIT_REMINDER_FOLLOW_UP_TYPES] as const;
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+/**
+ * Hide the dedicated-sender rows from a `follow_up_queue` query.
+ *
+ * Composes onto any supabase-js builder - a select that reads rows to deliver,
+ * or an update that closes them out - so the exclusion is one call rather than a
+ * filter each site has to remember to spell correctly.
+ */
+export function withoutDedicatedSenders<Q>(query: Q): Q {
+  return (query as any).not('follow_up_type', 'in', `(${DEDICATED_SENDER_FOLLOW_UP_TYPES.join(',')})`);
+}
+
+/**
+ * The ONE way a generic drain may read `follow_up_queue`.
+ *
+ * There are two of them - the 09:00 UTC cron and the admin "process follow-ups"
+ * route - and the registry above only protected the first, so a visit reminder
+ * could still be picked up and closed (or sent) by the other. Neither the
+ * duplicate send nor the swallowed ledger row is visible from the drain's own
+ * code, which is exactly why the exclusion belongs in the query builder rather
+ * than in a constant each drain remembers to apply.
+ *
+ * A drain that reaches for `.from('follow_up_queue').select(...)` directly is
+ * the bug; a test asserts neither of them does.
+ */
+export function sharedFollowUpQueue(client: any, columns = '*'): any {
+  return withoutDedicatedSenders(client.from('follow_up_queue').select(columns));
+}
+
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /**
  * The sibling sequence a given follow_up_type belongs to. Used so a "stop this

@@ -12,6 +12,7 @@ const migration = read('supabase/migrations/20260815000000_home_care_service_quo
 const typeMigration = read('supabase/migrations/20260816000000_visit_reminder_follow_up_type.sql');
 const visitMigration = read('supabase/migrations/20260817000000_follow_up_queue_visit_start.sql');
 const sharedCron = read('src/app/api/cron/send-follow-ups/route.ts');
+const adminDrain = read('src/app/api/follow-up/route.ts');
 const sendRoute = read('src/app/api/admin/service-quote/send/route.ts');
 const scheduleRoute = read('src/app/api/admin/service-quote/schedule/route.ts');
 const completeRoute = read('src/app/api/admin/service-quote/complete/route.ts');
@@ -168,15 +169,31 @@ test('RM11: the ledger is keyed on the visit, and the migration adds the column'
   expect(visitMigration).not.toMatch(/visit_start timestamptz[^\n]*NOT NULL/);
 });
 
-test('RM9: the shared follow-up drain never sends a visit reminder', () => {
-  // follow_up_queue is shared and send-follow-ups has no type filter of its
-  // own, so without this exclusion every reminder goes out twice.
-  expect(sharedCron).toContain('DEDICATED_SENDER_FOLLOW_UP_TYPES');
-  expect(sharedCron).toMatch(/\.not\('follow_up_type', 'in'/);
+test('RM9: EVERY drain of the shared queue skips a visit reminder', () => {
+  // follow_up_queue is shared and neither drain has a type filter of its own.
+  // The 09:00 UTC cron would send the reminder a second time; /api/follow-up
+  // flips rows to 'sent' without mailing anything, which closes the ledger row
+  // and silences the reminder that was still to go out. Both failures are
+  // invisible from the drain's own code, so the exclusion lives in the query
+  // builder rather than in a constant each drain remembers to apply.
   const registry = read('src/lib/notify/cancelFollowUps.ts');
   expect(registry).toContain("VISIT_REMINDER_FOLLOW_UP_TYPES = ['visit_reminder_1d']");
   expect(registry).toContain('DEDICATED_SENDER_FOLLOW_UP_TYPES');
-  // One definition of the string, shared by both sides.
+  expect(registry).toContain('export function sharedFollowUpQueue');
+  expect(registry).toContain('export function withoutDedicatedSenders');
+  expect(registry).toMatch(/\.not\('follow_up_type', 'in'/);
+
+  for (const [name, src] of Object.entries({ sharedCron, adminDrain })) {
+    expect(src, `${name} must read the queue through the helper`).toContain('sharedFollowUpQueue');
+    // The bypass this test exists to catch: a drain that reaches for the table
+    // itself gets none of the exclusion.
+    expect(src, `${name} must not build a raw queue read`)
+      .not.toMatch(/from\('follow_up_queue'\)\s*\n?\s*\.select\(/);
+  }
+  // The one queue WRITE not already narrowed by ids the helper returned.
+  expect(sharedCron).toContain('withoutDedicatedSenders(');
+
+  // One definition of the string, shared by every side.
   expect(scheduling).not.toContain("'visit_reminder_1d'");
 });
 
@@ -373,6 +390,10 @@ test('SC9: a reschedule across a season boundary clears the old booking', () => 
   // checkbox and says nothing about whether a visit is coming.
   expect(fn).toContain('scheduled_start=not.is.null');
   expect(fn).not.toContain('status=eq.booked');
+  // And it fails CLOSED. Swallowed into [], a failed read reads as "this
+  // customer holds no bookings" - the one answer that clears nothing, cancels
+  // nothing, and still returns 200 over a phantom booking.
+  expect(fn, 'a failed read must not degrade to "no bookings"').not.toContain('.catch(');
   expect(scheduleRoute).toContain('clearSupersededBookings');
   // Unbook first, write second: a failure leaves the previous booking whole.
   expect(scheduleRoute.indexOf('await clearSupersededBookings'))
@@ -408,6 +429,64 @@ test('SC12: a window another service still holds keeps its reminder', () => {
   // Which needs every window the customer holds, not just this booking's tasks.
   expect(scheduleRoute).toContain('bookedVisitRows(homeowner.id)');
   expect(scheduling).not.toContain('task_key=in.(${taskKeys');
+});
+
+test('SC13: a booking writes the window over a completion, never the status', () => {
+  // The mirror of SC11. Their checkbox leaves the window alone; the booking has
+  // to leave their completion alone, or a reschedule two days after they ticked
+  // the task erases the tick with nothing to warn either side - the same
+  // narrowing clearSupersededBookings already does with `status=eq.booked`.
+  const fn = scheduling.slice(
+    scheduling.indexOf('async function memberCompletionsInForce'),
+    scheduling.indexOf('export interface BookedVisitRow'),
+  );
+  expect(fn).toContain('isRowCurrent');
+  // A completion LA VACA recorded is still retaken: left in place it credits us
+  // for whoever ticks the row next, and makes mark-complete treat the new visit
+  // as already handled, so its window never comes off the books.
+  expect(fn).toContain("r.completed_by !== 'lavaca'");
+  expect(fn, 'not knowing what the row holds is not the same as it holding nothing')
+    .not.toContain('.catch(');
+  // Two payloads: the window always, the status only where nothing of theirs is
+  // being overwritten.
+  expect(fn).toContain("status: 'booked'");
+  expect(fn).toContain('await upsert(held.map((t) => ({ ...identity(t), ...booking })))');
+});
+
+test('SC14: a booked visit can be cancelled from the admin page', () => {
+  // The DELETE route was fully built and unreachable. A customer who phones to
+  // cancel then keeps their portal card and gets "we're coming tomorrow" for a
+  // job nobody is attending - the one email the owner does not know is going
+  // out. The two workarounds were reschedule-to-a-fake-date, or "Mark
+  // completed", which writes the job into the history and asks the customer to
+  // rate work never performed.
+  expect(adminPage).toContain('data-testid="sq-cancel"');
+  expect(adminPage).toContain('Cancel visit');
+  expect(adminPage).toContain("method: 'DELETE'");
+  expect(adminPage).toContain('/api/admin/service-quote/schedule?');
+  const fn = adminPage.slice(adminPage.indexOf('const cancel = async (booking: Booking)'), adminPage.indexOf('const visitLabel'));
+  // Confirm-gated, names the window, and the list is re-read afterwards.
+  expect(fn).toContain('window.confirm');
+  expect(fn).toContain('start: booking.start');
+  expect(fn).toContain('await refreshBookings()');
+});
+
+test('IN6: the intake lookup finds a lead whose stored email has capitals', () => {
+  // `leads.email` is stored exactly as typed - the booking form only trims - so
+  // a case-sensitive `eq.` against the lowercased param silently returns nothing
+  // for `Jane.Smith@Gmail.com`, and the whole past-requests panel just fails to
+  // appear. Same shape as cancelPendingFollowUps: an escaped ilike prefilter,
+  // then an exact JS match, because PostgREST reads `*` as an alias for `%`.
+  const lookup = intakeRoute.slice(intakeRoute.indexOf('const [leads, owners]'), intakeRoute.indexOf('const homeowner ='));
+  expect(lookup).toContain('escapeLikePattern(email)');
+  expect(lookup).toContain('email=ilike.');
+  expect(lookup.slice(lookup.indexOf('leads?select='), lookup.indexOf('homeowners?select=')), 'the leads match is case-insensitive')
+    .not.toContain('email=eq.');
+  // homeowners IS normalised on write (normalizeEmail), so it keeps its exact
+  // match - only `leads` is exposed.
+  expect(lookup).toContain('homeowners?select=');
+  expect(intakeRoute, 'and the ilike prefilter is narrowed by an exact match')
+    .toContain(".trim().toLowerCase() === email");
 });
 
 test('CP9: a booked visit can be completed without re-booking it first', () => {

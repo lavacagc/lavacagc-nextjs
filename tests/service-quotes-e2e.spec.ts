@@ -343,6 +343,55 @@ test('SC11: a member ticking a booked task leaves the visit on the books', async
     .toEqual([start.toISOString()]);
 });
 
+test('SC13: rescheduling that visit leaves the member\'s own tick standing', async () => {
+  // The other half of SC11, and the direction that was still broken: their
+  // checkbox does not clear the window, but the booking cleared their
+  // completion - two statements after clearSupersededBookings narrows its own
+  // PATCH with status=eq.booked precisely so their 'done' survives it.
+  const moved = new Date(Date.now() + 5 * 24 * 3600_000);
+  await rebook('ticker', [{ taskKey: 'clean_gutters', season: 'fall' }], moved);
+
+  const row = db.homeowner_maintenance.find((m) => m.homeowner_id === 'ticker')!;
+  expect(row.status, 'their completion survives the move').toBe('done');
+  expect(row.completed_by).toBe('homeowner');
+  expect(row.completed_at, 'and keeps its date').toBeTruthy();
+  expect(row.scheduled_start, 'while the visit itself moves').toBe(moved.toISOString());
+});
+
+test('SC13: a booking still retakes a row La Vaca completed', async () => {
+  // The exception CP2 exists for, and the reason this is not "preserve every
+  // completion": left in place, `completed_by='lavaca'` labels whoever ticks
+  // the row next as work we did, AND makes mark-complete treat the new visit as
+  // already handled - which would leave its window on the books for good.
+  const start = new Date(Date.now() + 7 * 24 * 3600_000);
+  await scheduleVisit({
+    homeownerId: 'ours', tasks: [{ taskKey: 'clean_gutters', season: 'fall' }],
+    start, end: new Date(start.getTime() + 2 * 3600_000), address: '5 Cedar St',
+  });
+  const row = () => db.homeowner_maintenance.find((m) => m.homeowner_id === 'ours')!;
+  Object.assign(row(), { status: 'done', completed_by: 'lavaca', completed_at: new Date().toISOString() });
+
+  const again = new Date(Date.now() + 14 * 24 * 3600_000);
+  await rebook('ours', [{ taskKey: 'clean_gutters', season: 'fall' }], again);
+  expect(row().status).toBe('booked');
+  expect(row().completed_by).toBe('homeowner');
+  expect(row().completed_at).toBe(null);
+});
+
+test('a failed booking read refuses the booking instead of guessing', async () => {
+  // `[]` from this read does not mean "no read" - it means "this customer holds
+  // no bookings", the one answer that makes the caller clear nothing and cancel
+  // nothing. Swallowed, a cross-season move would write the new row, leave the
+  // old one holding its window forever and still answer 200.
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = `http://127.0.0.1:${STUB_PORT + 1}`;
+  try {
+    await expect(bookedVisitRows('member-1')).rejects.toThrow();
+  } finally {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = url;
+  }
+});
+
 const MEMBER_VISIT = new Date(Date.now() + 48 * 3600_000);
 const MEMBER_VISIT_MOVED = new Date(Date.now() + 96 * 3600_000);
 

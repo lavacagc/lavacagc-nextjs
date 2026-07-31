@@ -18,6 +18,7 @@
  */
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { newToken, normalizeEmail } from '@/lib/homecare/homeowners';
+import { isRowCurrent } from '@/lib/homecare/selection';
 import { escapeLikePattern } from '@/lib/notify/cancelFollowUps';
 import { VISIT_REMINDER_TYPE, reminderSendAt, visitKey, reminderIsStillUseful } from './visitSchedule';
 
@@ -113,6 +114,55 @@ export interface ScheduleArgs {
   address: string;
 }
 
+/** A row's completion state, as the pre-booking read selects it. */
+interface CompletionState {
+  task_key: string;
+  season: string;
+  status: string;
+  completed_by: string | null;
+  completed_at: string | null;
+  updated_at: string | null;
+}
+
+/**
+ * The (task, season) rows already carrying a completion the MEMBER recorded and
+ * that is still in force.
+ *
+ * These are the rows a booking must not write its status over. A member who
+ * sees the visit card and ticks "Clean gutters" owns that row's `status`,
+ * `completed_at` and `completed_by` - `/api/home-care/task` deliberately writes
+ * nothing else so the booking survives their tick, and this is the same rule
+ * from the other side.
+ *
+ * A completion LA VACA recorded is not preserved: booking the same service into
+ * the same season is a new job that supersedes it, and leaving 'lavaca' behind
+ * would both label whoever ticks the row next as work we did and make
+ * "mark completed" treat the new visit as already handled - leaving its window
+ * on the books forever.
+ *
+ * An EXPIRED completion is not preserved either. `isRowCurrent` is the seasonal
+ * reset the portal and the newsletter share: past it the task has already come
+ * back on both, and a booked row that kept its old `completed_at` would expire
+ * straight back out of the newsletter's suppression set, so we would nag the
+ * member about work we are booked to do.
+ *
+ * Read, never swallowed: if this fails we do not know what the row holds, and
+ * guessing "nothing" is what destroys the tick.
+ */
+async function memberCompletionsInForce(homeownerId: string, tasks: VisitTask[]): Promise<Set<string>> {
+  const keys = [...new Set(tasks.map((t) => t.taskKey))].map((k) => `"${k}"`).join(',');
+  const seasons = [...new Set(tasks.map((t) => t.season))].map((s) => `"${s}"`).join(',');
+  const rows = (await supabaseRest<CompletionState[]>(
+    'GET',
+    `homeowner_maintenance?select=task_key,season,status,completed_by,completed_at,updated_at` +
+      `&homeowner_id=eq.${homeownerId}&task_key=in.(${keys})&season=in.(${seasons})&status=eq.done`,
+  )) ?? [];
+  return new Set(
+    rows.filter((r) => r.completed_by !== 'lavaca' && isRowCurrent(r))
+      .map((r) => `${r.task_key}|${r.season}`),
+  );
+}
+
 /**
  * Write the schedule onto each task, marking them `booked`.
  *
@@ -123,25 +173,55 @@ export interface ScheduleArgs {
  * own checkbox, so it can legitimately read 'done' or 'todo' on a row that
  * still has a visit coming. The WINDOW is what says a visit is on the books -
  * see `bookedVisitRows`.
+ *
+ * Which is why a booking writes the window onto every row and the status onto
+ * only some. Stamping 'booked' over a member's own completion erased their tick
+ * with no notice - a reschedule two days after they ticked the task, and it was
+ * gone - two statements after `clearSupersededBookings` narrows its own PATCH
+ * with `status=eq.booked` for exactly this reason. Whoever did the work keeps
+ * the credit; the booking is separate state on the same row.
  */
 export async function scheduleVisit(args: ScheduleArgs): Promise<void> {
   const { homeownerId, tasks, start, end, address } = args;
   if (tasks.length === 0) return;
-  await supabaseRest('POST', 'homeowner_maintenance', tasks.map(({ taskKey, season }) => ({
-    homeowner_id: homeownerId,
-    task_key: taskKey,
-    season,
-    status: 'booked',
-    // A booking is not a completion, so it clears both halves of one. Left in
-    // place, a previous `completed_by='lavaca'` would label whoever ticks this
-    // row next as work we did - the exact distinction completed_by exists for.
-    completed_at: null,
-    completed_by: 'homeowner',
+
+  const booking = {
     scheduled_start: start.toISOString(),
     scheduled_end: end.toISOString(),
     service_address: address,
     updated_at: new Date().toISOString(),
-  })), { onConflict: 'homeowner_id,task_key,season' });
+  };
+  const identity = ({ taskKey, season }: VisitTask) => ({
+    homeowner_id: homeownerId,
+    task_key: taskKey,
+    season,
+  });
+
+  const theirs = await memberCompletionsInForce(homeownerId, tasks);
+  const held = tasks.filter((t) => theirs.has(`${t.taskKey}|${t.season}`));
+  const open = tasks.filter((t) => !theirs.has(`${t.taskKey}|${t.season}`));
+
+  const upsert = (rows: Record<string, unknown>[]) =>
+    supabaseRest('POST', 'homeowner_maintenance', rows, { onConflict: 'homeowner_id,task_key,season' });
+
+  // Two writes, not one: PostgREST rejects a bulk insert whose objects carry
+  // different keys, and the whole point is that these two carry different keys.
+  if (open.length > 0) {
+    await upsert(open.map((t) => ({
+      ...identity(t),
+      status: 'booked',
+      // A booking is not a completion, so it clears both halves of one. Clearing
+      // `completed_at` is also what lets `isRowCurrent` fall back to
+      // `updated_at` on a booked row - a stale one left behind would expire the
+      // booking out of the newsletter's suppression set.
+      completed_at: null,
+      completed_by: 'homeowner',
+      ...booking,
+    })));
+  }
+  if (held.length > 0) {
+    await upsert(held.map((t) => ({ ...identity(t), ...booking })));
+  }
 }
 
 export interface BookedVisitRow {
@@ -165,13 +245,24 @@ export interface BookedVisitRow {
  *
  * Every task, not just the ones being booked: a window one task gives up may
  * still be held by another, and that window's reminder has to survive.
+ *
+ * THROWS rather than degrading to `[]`. Everything the supersede path decides is
+ * computed from this list, and an empty one does not mean "no read" - it means
+ * "this customer holds no bookings", which is the one answer that makes the
+ * caller clear nothing and cancel nothing. A failed read would then let a
+ * cross-season move write the new row and leave the old one holding its window
+ * forever, and answer 200: a phantom visit on the portal and a live "we're
+ * coming tomorrow" for a slot nobody attends, with no log line to find it by.
+ * Refusing the booking is the only honest answer when the truth is unknown, and
+ * it costs nothing pre-migration - `scheduleVisit` writes the same column two
+ * statements later and would fail the request anyway.
  */
 export async function bookedVisitRows(homeownerId: string): Promise<BookedVisitRow[]> {
   return (await supabaseRest<BookedVisitRow[]>(
     'GET',
     `homeowner_maintenance?select=task_key,season,scheduled_start&homeowner_id=eq.${homeownerId}` +
       '&scheduled_start=not.is.null',
-  ).catch(() => [])) ?? [];
+  )) ?? [];
 }
 
 /**
