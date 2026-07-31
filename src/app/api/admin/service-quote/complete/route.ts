@@ -27,7 +27,13 @@ export const runtime = 'nodejs';
 
 const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lavacagc.com';
 
-interface MaintRow { task_key: string; status: string; completed_by: string | null; scheduled_start: string | null }
+interface MaintRow {
+  task_key: string;
+  season: string;
+  status: string;
+  completed_by: string | null;
+  scheduled_start: string | null;
+}
 interface OwnerRow { id: string; email: string; first_name: string | null; unsubscribe_token: string }
 
 export async function POST(request: NextRequest) {
@@ -39,27 +45,54 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Validation failed', issues: parsed.error.issues }, { status: 400 });
   }
-  const { homeownerId, taskKeys, season, skipFeedback } = parsed.data;
+  const { homeownerId, taskKeys, seasons, skipFeedback } = parsed.data;
 
   try {
     const inList = taskKeys.map((k) => `"${k}"`).join(',');
 
-    // Idempotency: anything already done BY LA VACA has had its email.
+    // Read across every season, not one: the season a task was filed under comes
+    // from the visit date reconciled against that task's catalog seasons, so the
+    // caller cannot re-derive it and one visit can span two of them. The BOOKED
+    // row is the source of truth - completing means closing that booking.
     const existing = (await supabaseRest<MaintRow[]>(
       'GET',
-      `homeowner_maintenance?select=task_key,status,completed_by,scheduled_start&homeowner_id=eq.${homeownerId}` +
-        `&season=eq.${encodeURIComponent(season)}&task_key=in.(${inList})`,
+      `homeowner_maintenance?select=task_key,season,status,completed_by,scheduled_start` +
+        `&homeowner_id=eq.${homeownerId}&task_key=in.(${inList})&status=in.(booked,done)`,
     )) ?? [];
+
+    const bookedFor = new Map<string, MaintRow>();
+    for (const r of existing) {
+      if (r.status !== 'booked') continue;
+      const held = bookedFor.get(r.task_key);
+      if (!held || (r.scheduled_start ?? '') > (held.scheduled_start ?? '')) bookedFor.set(r.task_key, r);
+    }
+
+    const targets: { taskKey: string; season: string }[] = [];
+    const unresolved: string[] = [];
+    for (const key of taskKeys) {
+      const resolved = bookedFor.get(key)?.season ?? seasons?.[key];
+      if (resolved) targets.push({ taskKey: key, season: resolved }); else unresolved.push(key);
+    }
+    if (unresolved.length > 0) {
+      return NextResponse.json({
+        error: `No booking to complete for: ${unresolved.join(', ')}. Schedule the visit first.`,
+      }, { status: 400 });
+    }
+
+    // Idempotency: anything already done BY LA VACA in that same row has had its
+    // email. Matched per (task, season), so last year's completion of the same
+    // task does not silently swallow this one.
     const alreadyOurs = new Set(
-      existing.filter((r) => r.status === 'done' && r.completed_by === 'lavaca').map((r) => r.task_key),
+      existing.filter((r) => r.status === 'done' && r.completed_by === 'lavaca')
+        .map((r) => `${r.task_key}|${r.season}`),
     );
-    const transitioning = taskKeys.filter((k) => !alreadyOurs.has(k));
+    const transitioning = targets.filter((t) => !alreadyOurs.has(`${t.taskKey}|${t.season}`));
 
     const completedAt = new Date().toISOString();
     if (transitioning.length > 0) {
-      await supabaseRest('POST', 'homeowner_maintenance', transitioning.map((task_key) => ({
+      await supabaseRest('POST', 'homeowner_maintenance', transitioning.map(({ taskKey, season }) => ({
         homeowner_id: homeownerId,
-        task_key,
+        task_key: taskKey,
         season,
         status: 'done',
         completed_at: completedAt,
@@ -76,10 +109,11 @@ export async function POST(request: NextRequest) {
     if (!owner) return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
 
     // The visit happened - its queued reminder is now noise. Scoped to the
-    // windows these tasks were booked into: a customer with another visit later
-    // in the season must keep that one's reminder.
+    // windows these tasks were BOOKED into: a customer with another visit later
+    // must keep that one's reminder, and a row completed on some earlier visit
+    // is not a window this call closes.
     const completedVisitStarts = [...new Set(
-      existing.filter((r) => r.scheduled_start).map((r) => r.scheduled_start as string),
+      taskKeys.map((k) => bookedFor.get(k)?.scheduled_start).filter((s): s is string => !!s),
     )];
     for (const iso of completedVisitStarts) {
       await cancelVisitReminder(owner.email, new Date(iso));

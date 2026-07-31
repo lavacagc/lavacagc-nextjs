@@ -90,8 +90,29 @@ These were settled by the owner during review; the ACs assume them.
   wall-clock, and a bare `new Date('2026-08-05T08:00')` is parsed in the
   browser's zone - so booking from a laptop on Pacific would silently store an
   11am window with nothing to surface the error.
-- **SC8** The season a booking is filed under comes from the **visit** date, and
-  "mark complete" reuses the season the booking was filed under.
+- **SC8** The season a booking is filed under comes from the **visit** date,
+  reconciled against that task's own catalog seasons, and "mark complete" reuses
+  the season the booking was filed under.
+  The portal renders a task only in the seasons its catalog row lists, so the
+  visit's own season is not always somewhere the row can be seen: gutters are
+  `['fall','spring']` and a furnace tune-up is `['fall']`, but both get booked in
+  July, which is 'summer'. Filed there the row matches no tab - no booked state,
+  no completion label - and the September newsletter still lists August's work as
+  outstanding, because suppression is per season too. The visit's own season wins
+  when the task applies to it; otherwise the nearest season it does, upcoming
+  first. A task with no season to be filed under is **rejected at schedule time**
+  rather than written where nobody will ever see it.
+  It is derived server-side, because it needs the task's catalog seasons and
+  comes out **per task** - one July window can file a gutter clean under 'fall'
+  and a deck seal under 'summer'. `/schedule` returns what it filed each task
+  under and "mark complete" resolves each task from the row it was booked into.
+- **SC9** Rescheduling a visit **across a season boundary** leaves no phantom
+  booking. The upsert only reaches the (task, season) row it writes, so a visit
+  moved from 5 Sep to 28 Aug would otherwise leave the fall row `booked` at its
+  old window: the portal's next-visit card would show a visit that is not
+  happening, and the cron would send "we're coming tomorrow" for it. Superseded
+  rows are read across **every** season, unbooked before the new row is written,
+  and their reminders cancelled.
 
 ## ICS - the calendar file
 
@@ -152,6 +173,20 @@ These were settled by the owner during review; the ACs assume them.
 - **RM10** `follow_up_queue.follow_up_type` carries a CHECK constraint listing
   the sequences that share the table, so `visit_reminder_1d` must be added to it
   or the queue insert fails and booking a visit 500s.
+- **RM12** A reminder is queued only while its **send time** is still ahead, not
+  merely while the visit is. The cron looks only at "tomorrow, Eastern", so a
+  visit booked at 11pm the night before - or any same-day booking - has a 7:30pm
+  slot that has already gone and a run that fired hours earlier. Queued anyway,
+  the row would sit `pending` forever while the admin was told a reminder was on
+  its way. It reports `skipped` instead, and the admin is told to text the
+  customer themselves.
+- **RM13** A migration that has not been hand-applied yet **degrades**; it never
+  hard-fails. The queue insert needs both 20260816 (the `follow_up_type` CHECK)
+  and 20260817 (`visit_start`), so until they land it 400s - and a booking that
+  in fact succeeded must not be reported to the admin as a failure. It returns
+  `unavailable` and logs. The cron has no send-once ledger without `visit_start`,
+  so it sends **nothing** rather than mailing a batch it cannot guard, and
+  reports `degraded` rather than 500ing where a cron failure is silent.
 
 ## PT - the customer portal
 
@@ -173,7 +208,13 @@ These were settled by the owner during review; the ACs assume them.
 
 - **CP1** Mark-complete sets `status='done'`, stamps `completed_at`, and writes
   `completed_by='lavaca'`.
-- **CP2** The checklist checkbox writes `completed_by='homeowner'`.
+- **CP2** The checklist checkbox writes `completed_by='homeowner'`, and so does
+  booking. Attribution follows whoever set the CURRENT status. The column
+  defaults to `'homeowner'` on insert only, and a merge-duplicates upsert updates
+  just the columns in the body - so a writer that omits it leaves whatever was
+  there. La Vaca cleans the gutters, the member unticks it and later does the
+  work themselves: without this the card credits us for their work, which is a
+  worse error than showing no label at all.
 - **CP3** Existing rows default to `'homeowner'` - nothing has ever been
   completed by La Vaca before this change.
 - **CP4** Mark-complete is idempotent: a second call sends no second feedback

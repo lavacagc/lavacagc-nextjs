@@ -112,11 +112,31 @@ export async function GET(request: NextRequest) {
 
     // The ledger for every visit in this window - one read over the same
     // Eastern day the visits themselves were selected for.
-    const ledger = (await supabaseRest<LedgerRow[]>(
-      'GET',
-      `follow_up_queue?select=id,lead_email,visit_start,status,created_at&follow_up_type=eq.${VISIT_REMINDER_TYPE}` +
-        `&visit_start=gte.${startUtc.toISOString()}&visit_start=lt.${endUtc.toISOString()}`,
-    )) ?? [];
+    //
+    // `visit_start` is hand-applied (20260817), as every migration in this repo
+    // is. Without it PostgREST 400s and there is no send-once ledger at all - so
+    // this run sends NOTHING rather than mailing a batch it could not guard,
+    // and says so out loud instead of 500ing where a cron failure is silent.
+    let ledger: LedgerRow[];
+    try {
+      ledger = (await supabaseRest<LedgerRow[]>(
+        'GET',
+        `follow_up_queue?select=id,lead_email,visit_start,status,created_at&follow_up_type=eq.${VISIT_REMINDER_TYPE}` +
+          `&visit_start=gte.${startUtc.toISOString()}&visit_start=lt.${endUtc.toISOString()}`,
+      )) ?? [];
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('visit-reminders: no send-once ledger, sending nothing:', message);
+      return NextResponse.json({
+        ok: false,
+        degraded: 'reminder_ledger_unavailable',
+        error: message,
+        window: { from: startUtc, to: endUtc },
+        visits: visits.length,
+        sent: 0,
+        dryRun,
+      });
+    }
     const ledgerBy = new Map<string, LedgerRow[]>();
     for (const row of ledger) {
       if (!row.visit_start) continue;

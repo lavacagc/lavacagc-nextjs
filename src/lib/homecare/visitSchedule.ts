@@ -115,9 +115,18 @@ export function easternVisitInstant(isoDate: string, time: string): Date {
   return easternWallClock(new Date(`${isoDate}T00:00:00Z`), hour, minute);
 }
 
-/** A visit in the past can never earn a reminder. */
+/**
+ * Whether a night-before reminder for this visit can still be DELIVERED.
+ *
+ * The gate is the SEND time, not the visit. The cron only ever looks at
+ * "tomorrow, Eastern", so a visit booked at 11pm on 4 Aug for 8am on 5 Aug -
+ * or any same-day booking - has a 7:30pm send time that has already gone, and
+ * the run that would have carried it fired hours earlier. The next run's window
+ * is 6 Aug, so the row would never be claimed and never sent: pending forever,
+ * while the admin was told a reminder was queued.
+ */
 export function reminderIsStillUseful(visitStart: Date, now: Date): boolean {
-  return visitStart.getTime() > now.getTime();
+  return reminderSendAt(visitStart).getTime() > now.getTime();
 }
 
 /** The part of a `follow_up_queue` reminder row the send-once ledger reads. */

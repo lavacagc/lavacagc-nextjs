@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
 import http from 'http';
 import {
-  ensureServiceHomeowner, scheduleVisit, bookedVisitStarts, requeueVisitReminder, cancelVisitReminder,
+  ensureServiceHomeowner, scheduleVisit, bookedVisitRows, visitStartsOf, clearSupersededBookings,
+  requeueVisitReminder, cancelVisitReminder,
 } from '../src/lib/homecare/serviceScheduling';
 import { visitKey, reminderSendAt } from '../src/lib/homecare/visitSchedule';
 import { easternWallClock } from '../src/lib/homecare/ics';
@@ -52,6 +53,13 @@ const db: Record<string, Row[]> = {
 
 let server: http.Server;
 
+/**
+ * Simulates a follow_up_queue whose hand-applied migrations have not landed:
+ * PostgREST answers an unknown column with a 400, which is what the queue insert
+ * must survive rather than turning a successful booking into a 500.
+ */
+let preMigrationQueue = false;
+
 test.beforeAll(async () => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = `http://127.0.0.1:${STUB_PORT}`;
   process.env.SUPABASE_SECRET_KEY = 'sb-stub-secret';
@@ -91,6 +99,9 @@ test.beforeAll(async () => {
 
       if (req.method === 'POST') {
         const arr = JSON.parse(body || '[]') as Row[];
+        if (preMigrationQueue && table === 'follow_up_queue' && arr.some((r) => 'visit_start' in r)) {
+          return json({ code: '42703', message: 'column "visit_start" of relation "follow_up_queue" does not exist' }, 400);
+        }
         const onConflict = url.searchParams.get('on_conflict');
         const written: Row[] = [];
         for (const r of arr) {
@@ -162,7 +173,7 @@ test('scheduling books the tasks with a window and an address', async () => {
   const start = new Date(Date.now() + 36 * 3600_000);
   const end = new Date(start.getTime() + 3 * 3600_000);
   await scheduleVisit({
-    homeownerId: 'member-1', taskKeys: ['clean_gutters'], season: 'fall',
+    homeownerId: 'member-1', tasks: [{ taskKey: 'clean_gutters', season: 'fall' }],
     start, end, address: '9 Elm St, Montclair, NJ',
   });
   const booked = db.homeowner_maintenance.filter((m) => m.status === 'booked');
@@ -172,23 +183,67 @@ test('scheduling books the tasks with a window and an address', async () => {
   expect(booked[0].service_address).toBe('9 Elm St, Montclair, NJ');
 });
 
-test('rescheduling updates in place rather than duplicating the booking', async () => {
+test('CP2: booking clears a previous La Vaca completion off the row', async () => {
+  // Otherwise the attribution is sticky: the member ticks the re-booked task
+  // themselves and the portal still reads "Completed by La Vaca".
+  const gutters = () => db.homeowner_maintenance.find((m) => m.task_key === 'clean_gutters')!;
+  Object.assign(gutters(), { status: 'done', completed_by: 'lavaca', completed_at: new Date().toISOString() });
+
+  const start = new Date(Date.now() + 40 * 3600_000);
+  await scheduleVisit({
+    homeownerId: 'member-1', tasks: [{ taskKey: 'clean_gutters', season: 'fall' }],
+    start, end: new Date(start.getTime() + 2 * 3600_000), address: '9 Elm St, Montclair, NJ',
+  });
+  expect(gutters().status).toBe('booked');
+  expect(gutters().completed_by, 'a booking is not a completion').toBe('homeowner');
+  expect(gutters().completed_at).toBe(null);
+});
+
+test('SC6: rescheduling updates in place rather than duplicating the booking', async () => {
   const start = new Date(Date.now() + 60 * 3600_000);
   const end = new Date(start.getTime() + 2 * 3600_000);
   // Read BEFORE the upsert overwrites it - this is what the schedule route
   // hands to requeueVisitReminder so it pulls the right visit's reminder.
-  const previous = await bookedVisitStarts({
-    homeownerId: 'member-1', taskKeys: ['clean_gutters'], season: 'fall',
-  });
-  expect(previous.length, 'the window this booking replaces').toBe(1);
+  const previous = await bookedVisitRows({ homeownerId: 'member-1', taskKeys: ['clean_gutters'] });
+  expect(visitStartsOf(previous).length, 'the window this booking replaces').toBe(1);
 
-  await scheduleVisit({
-    homeownerId: 'member-1', taskKeys: ['clean_gutters'], season: 'fall',
-    start, end, address: '9 Elm St, Montclair, NJ',
-  });
+  const tasks = [{ taskKey: 'clean_gutters', season: 'fall' }];
+  await clearSupersededBookings({ homeownerId: 'member-1', previous, tasks });
+  await scheduleVisit({ homeownerId: 'member-1', tasks, start, end, address: '9 Elm St, Montclair, NJ' });
   const rows = db.homeowner_maintenance.filter((m) => m.task_key === 'clean_gutters' && m.season === 'fall');
   expect(rows.length, 'one row, updated in place').toBe(1);
   expect(rows[0].scheduled_start).toBe(start.toISOString());
+});
+
+test('SC9: moving a visit across a season boundary leaves no phantom booking', async () => {
+  // The season comes from the visit date, so a reschedule can land the booking
+  // on a DIFFERENT row. The upsert alone would never touch the old one: it would
+  // stay `booked` at its old window, so the portal would show a visit that is
+  // not happening and the cron would remind the customer about it.
+  const septStart = new Date(Date.now() + 30 * 24 * 3600_000);
+  await scheduleVisit({
+    homeownerId: 'member-1', tasks: [{ taskKey: 'chimney_inspect', season: 'fall' }],
+    start: septStart, end: new Date(septStart.getTime() + 2 * 3600_000), address: '9 Elm St',
+  });
+
+  const previous = await bookedVisitRows({ homeownerId: 'member-1', taskKeys: ['chimney_inspect'] });
+  expect(previous.map((r) => r.season)).toEqual(['fall']);
+  expect(visitStartsOf(previous).map((d) => d.toISOString()), 'the reminder to pull')
+    .toEqual([septStart.toISOString()]);
+
+  const augStart = new Date(Date.now() + 20 * 24 * 3600_000);
+  const moved = [{ taskKey: 'chimney_inspect', season: 'summer' }];
+  await clearSupersededBookings({ homeownerId: 'member-1', previous, tasks: moved });
+  await scheduleVisit({
+    homeownerId: 'member-1', tasks: moved,
+    start: augStart, end: new Date(augStart.getTime() + 2 * 3600_000), address: '9 Elm St',
+  });
+
+  const chimney = db.homeowner_maintenance.filter((m) => m.task_key === 'chimney_inspect');
+  expect(chimney.map((m) => [m.season, m.status]).sort())
+    .toEqual([['fall', 'todo'], ['summer', 'booked']]);
+  const stale = chimney.find((m) => m.season === 'fall')!;
+  expect(stale.scheduled_start, 'the phantom window is cleared').toBe(null);
 });
 
 const MEMBER_VISIT = new Date(Date.now() + 48 * 3600_000);
@@ -242,6 +297,46 @@ test('a visit in the past never earns a reminder', async () => {
   });
   expect(result).toBe('skipped');
   expect(pendingFor('past@example.com').length).toBe(0);
+});
+
+test('RM12: a visit whose 7:30pm slot has gone is skipped, not queued', async () => {
+  // The visit is still hours away, but the run that would have carried its
+  // reminder fired before the booking existed. Queueing anyway leaves a row
+  // pending forever while the admin is told a reminder is on its way.
+  const visit = easternWallClock(new Date(Date.UTC(2026, 7, 5)), 8, 0);
+  const bookedLateTheNightBefore = easternWallClock(new Date(Date.UTC(2026, 7, 4)), 23, 0);
+  const result = await requeueVisitReminder({
+    email: 'latebooking@example.com', name: 'Late', start: visit,
+    subject: 'S', html: '<p>x</p>', now: bookedLateTheNightBefore,
+  });
+  expect(result).toBe('skipped');
+  expect(pendingFor('latebooking@example.com').length).toBe(0);
+
+  // Booked before the slot, it still queues.
+  const queued = await requeueVisitReminder({
+    email: 'latebooking@example.com', name: 'Late', start: visit,
+    subject: 'S', html: '<p>x</p>',
+    now: easternWallClock(new Date(Date.UTC(2026, 7, 4)), 15, 0),
+  });
+  expect(queued).toBe('queued');
+  expect(pendingFor('latebooking@example.com').length).toBe(1);
+});
+
+test('RM13: a queue schema behind the deploy fails the reminder, not the booking', async () => {
+  // 20260816/20260817 are hand-applied like every migration here. Until they
+  // land the insert 400s - and a booking that in fact succeeded must not be
+  // reported to the admin as a failure.
+  preMigrationQueue = true;
+  try {
+    const result = await requeueVisitReminder({
+      email: 'nomigration@example.com', name: 'No Migration',
+      start: new Date(Date.now() + 5 * 24 * 3600_000), subject: 'S', html: '<p>x</p>',
+    });
+    expect(result, 'reported, not thrown').toBe('unavailable');
+    expect(pendingFor('nomigration@example.com')).toEqual([]);
+  } finally {
+    preMigrationQueue = false;
+  }
 });
 
 test('cancelling a visit pulls its reminder and only its reminder', async () => {

@@ -14,10 +14,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import {
-  ensureServiceHomeowner, scheduleVisit, bookedVisitStarts, requeueVisitReminder, cancelVisitReminder,
+  ensureServiceHomeowner, scheduleVisit, bookedVisitRows, visitStartsOf, clearSupersededBookings,
+  requeueVisitReminder, cancelVisitReminder, type VisitTask,
 } from '@/lib/homecare/serviceScheduling';
 import { buildVisitReminderEmail } from '@/lib/homecare/serviceEmails';
-import { visitDateLabel, visitTimeWindow } from '@/lib/homecare/visitSchedule';
+import { visitDateLabel, visitTimeWindow, easternParts } from '@/lib/homecare/visitSchedule';
+import { seasonForTaskVisit } from '@/lib/homecare/season';
 import { buildIcs } from '@/lib/homecare/ics';
 import { preferencesUrlFor } from '@/lib/preferences/preferences';
 import { cleanEnv } from '@/lib/envClean';
@@ -37,11 +39,38 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Validation failed', issues: parsed.error.issues }, { status: 400 });
   }
-  const { email, name, phone, taskKeys, season, start, end, address, city, zip } = parsed.data;
+  const { email, name, phone, taskKeys, start, end, address, city, zip } = parsed.data;
   const startAt = new Date(start);
   const endAt = new Date(end);
 
   try {
+    const catalog = (await supabaseRest<{ key: string; title: string; seasons: string[] | null }[]>(
+      'GET',
+      `maintenance_catalog?select=key,title,seasons&key=in.(${taskKeys.map((k) => `"${k}"`).join(',')})`,
+    )) ?? [];
+
+    // The season is derived HERE, not by the caller: it needs the task's own
+    // catalog seasons, which only the server reads. Noon on the visit's EASTERN
+    // calendar date, so an evening window whose UTC date has already rolled over
+    // is not filed a month - and sometimes a season - late.
+    const p = easternParts(startAt);
+    const visitDay = new Date(Date.UTC(p.y, p.m, p.day, 12));
+    const tasks: VisitTask[] = [];
+    const unfiled: string[] = [];
+    for (const key of taskKeys) {
+      const row = catalog.find((c) => c.key === key);
+      const season = row ? seasonForTaskVisit(visitDay, row.seasons ?? []) : null;
+      if (season) tasks.push({ taskKey: key, season }); else unfiled.push(key);
+    }
+    // Fail loudly rather than writing a row the member can never see: the portal
+    // renders a task only in the seasons its catalog row lists.
+    if (unfiled.length > 0) {
+      return NextResponse.json({
+        error: `No season to file these services under: ${unfiled.join(', ')}. `
+          + 'Check the service exists in maintenance_catalog and lists at least one season.',
+      }, { status: 400 });
+    }
+
     const homeowner = await ensureServiceHomeowner({
       email, firstName: name.split(' ')[0] || name, phone, address, city, zip,
     });
@@ -57,18 +86,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Read the windows we are about to overwrite, so the requeue can pull those
-    // visits' reminders and only those.
-    const supersedes = await bookedVisitStarts({ homeownerId: homeowner.id, taskKeys, season });
+    // Read the windows we are about to supersede, so the requeue can pull those
+    // visits' reminders and only those. Across every season, because a moved
+    // visit can change the season its row lives in.
+    const previous = await bookedVisitRows({ homeownerId: homeowner.id, taskKeys });
+    const supersedes = visitStartsOf(previous);
 
-    await scheduleVisit({
-      homeownerId: homeowner.id, taskKeys, season, start: startAt, end: endAt, address,
-    });
+    // Unbook first, write second: a booking that moves to a different row must
+    // not leave the old one standing, and a failure here leaves the previous
+    // booking whole rather than duplicated.
+    await clearSupersededBookings({ homeownerId: homeowner.id, previous, tasks });
+    await scheduleVisit({ homeownerId: homeowner.id, tasks, start: startAt, end: endAt, address });
 
-    const catalog = (await supabaseRest<{ key: string; title: string }[]>(
-      'GET',
-      `maintenance_catalog?select=key,title&key=in.(${taskKeys.map((k) => `"${k}"`).join(',')})`,
-    )) ?? [];
     const services = taskKeys.map((k) => catalog.find((c) => c.key === k)?.title ?? k);
 
     const preferencesUrl = await preferencesUrlFor(SITE_URL, email).catch(() => undefined);
@@ -95,6 +124,9 @@ export async function POST(request: NextRequest) {
       homeownerId: homeowner.id,
       homeownerStatus: homeowner.status,
       services,
+      // What each task was actually filed under. "Mark complete" needs this:
+      // the season is per task and derived here, so the caller cannot guess it.
+      seasons: Object.fromEntries(tasks.map((t) => [t.taskKey, t.season])),
       reminder,
       icsUrl: `/api/admin/service-quote/schedule?${new URLSearchParams({
         uid: `${homeowner.id}-${startAt.getTime()}`,
@@ -151,6 +183,10 @@ export async function GET(request: NextRequest) {
  * A season-wide cancel would unbook every other visit the customer has booked in
  * the same season, which is never what "cancel this visit" means.
  *
+ * (homeowner, window) is the whole filter - no season. One window can file its
+ * tasks under different seasons, because each is reconciled against that task's
+ * own catalog seasons, so a season filter would leave part of the visit booked.
+ *
  * The params go through the same validation the POST body does - `email` is what
  * scopes the reminder cancel to one customer, so it must be a real address here
  * too and not whatever the query string carried.
@@ -160,12 +196,12 @@ export async function DELETE(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Validation failed', issues: parsed.error.issues }, { status: 400 });
   }
-  const { homeownerId, email, season, start } = parsed.data;
+  const { homeownerId, email, start } = parsed.data;
   const startAt = new Date(start);
   try {
     await supabaseRest(
       'PATCH',
-      `homeowner_maintenance?homeowner_id=eq.${homeownerId}&season=eq.${encodeURIComponent(season)}&status=eq.booked` +
+      `homeowner_maintenance?homeowner_id=eq.${homeownerId}&status=eq.booked` +
         `&scheduled_start=eq.${encodeURIComponent(startAt.toISOString())}`,
       { status: 'todo', scheduled_start: null, scheduled_end: null },
     );

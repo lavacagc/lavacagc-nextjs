@@ -18,6 +18,7 @@ const completeRoute = read('src/app/api/admin/service-quote/complete/route.ts');
 const intakeRoute = read('src/app/api/admin/service-quote/intake/route.ts');
 const cron = read('src/app/api/cron/visit-reminders/route.ts');
 const scheduling = read('src/lib/homecare/serviceScheduling.ts');
+const schema = read('src/app/api/admin/service-quote/_schema.ts');
 const portal = read('src/app/home-care/checklist/page.tsx');
 const visitCard = read('src/components/homecare/UpcomingVisitCard.tsx');
 const customerIcs = read('src/app/api/home-care/visit.ics/route.ts');
@@ -102,9 +103,9 @@ test('RM4+RM5+RM11: cancels are scoped to the visit, not the address or the day'
   expect(scheduling).toContain('visit_start=in.');
   expect(scheduling).toContain('visit_start: visitKey(start)');
   expect(scheduling).not.toContain('scheduled_at=eq.');
-  expect(scheduling).toContain('export async function bookedVisitStarts');
+  expect(scheduling).toContain('export async function bookedVisitRows');
   // The route reads the windows it is about to overwrite and supersedes those.
-  expect(scheduleRoute).toContain('bookedVisitStarts');
+  expect(scheduleRoute).toContain('bookedVisitRows');
   expect(scheduleRoute).toContain('supersedes');
   // Completing names the visits it completed rather than the customer.
   expect(completeRoute).toContain('completedVisitStarts');
@@ -123,7 +124,6 @@ test('RM5: a cancel matches the address exactly, and DELETE validates it', () =>
     .toBeLessThan(fn.indexOf("'PATCH'"));
   // The DELETE params go through zod, so `?email=*` never reaches the cancel.
   expect(scheduleRoute).toContain('cancelVisitSchema.safeParse');
-  const schema = read('src/app/api/admin/service-quote/_schema.ts');
   expect(schema).toContain('export const cancelVisitSchema');
   expect(schema).toContain("email: z.string().trim().email('Valid customer email required')");
 });
@@ -275,6 +275,9 @@ test('the visit cancel targets one window, not the whole season', () => {
   expect(del).toContain('scheduled_start=eq.');
   expect(del).toContain('cancelVisitSchema.safeParse');
   expect(del).toContain('cancelVisitReminder(email, startAt)');
+  // (homeowner, window) is the whole filter. One window can file its tasks under
+  // different seasons, so a season filter would leave part of the visit booked.
+  expect(del).not.toContain('season=eq.');
 });
 
 test('SC7: the admin form builds the visit instant in Eastern', () => {
@@ -285,16 +288,77 @@ test('SC7: the admin form builds the visit instant in Eastern', () => {
   expect(adminPage).not.toContain('new Date(`${date}T');
 });
 
-test('the season written onto a booking comes from the VISIT date', () => {
+test('SC8: the season comes from the VISIT date, reconciled per task, server-side', () => {
   // homeowner_maintenance is keyed on (homeowner, task, season): today's season
   // files a September visit under summer, where the portal never shows it.
-  expect(adminPage).toContain('seasonOfVisit');
-  expect(adminPage).toContain("currentSeason(new Date(`${isoDate}T12:00:00Z`))");
-  // The single source of truth for season boundaries, not a local copy.
-  expect(adminPage).toContain("from '@/lib/homecare/season'");
+  // Reconciling needs the task's own catalog seasons, which only the server
+  // reads - so the client sends no season at all and stores what came back.
+  expect(scheduleRoute).toContain('seasonForTaskVisit(visitDay');
+  expect(scheduleRoute).toContain('select=key,title,seasons');
+  expect(schema).not.toContain("season: z.enum(['spring', 'summer', 'fall', 'winter'])");
   expect(adminPage).not.toContain('function currentSeasonName');
-  // Completing reuses the season the booking was filed under.
-  expect(adminPage).toContain('season: scheduled.season');
+  expect(adminPage).not.toContain('seasonOfVisit');
+  // Completing reuses the seasons the booking was filed under.
+  expect(adminPage).toContain('seasons: scheduled.seasons');
+});
+
+test('SC8: a task with no season to be filed under fails loudly', () => {
+  // A row filed where the portal never renders the task is invisible to the
+  // member - worse than a rejected booking, because nothing surfaces it.
+  const post = scheduleRoute.slice(scheduleRoute.indexOf('export async function POST'));
+  expect(post).toContain('unfiled');
+  expect(post).toContain('No season to file these services under');
+  expect(post.indexOf('unfiled.length > 0')).toBeLessThan(post.indexOf('await scheduleVisit'));
+});
+
+test('SC9: a reschedule across a season boundary clears the old booking', () => {
+  // The upsert only reaches the (task, season) row it writes, so a visit that
+  // moves to another season would leave the old row booked: a phantom visit on
+  // the portal and a live "we're coming tomorrow" for a slot nobody attends.
+  expect(scheduling).toContain('export async function clearSupersededBookings');
+  const fn = scheduling.slice(
+    scheduling.indexOf('export async function bookedVisitRows'),
+    scheduling.indexOf('export function visitStartsOf'),
+  );
+  expect(fn, 'read across every season, not just the new one').not.toContain('season=eq.');
+  expect(scheduleRoute).toContain('clearSupersededBookings');
+  // Unbook first, write second: a failure leaves the previous booking whole.
+  expect(scheduleRoute.indexOf('await clearSupersededBookings'))
+    .toBeLessThan(scheduleRoute.indexOf('await scheduleVisit'));
+});
+
+test('CP: completing resolves the season from the BOOKED row, across seasons', () => {
+  expect(completeRoute).toContain('status=in.(booked,done)');
+  expect(completeRoute).not.toContain('season=eq.${encodeURIComponent(season)}');
+  expect(completeRoute).toContain('bookedFor');
+  // Idempotency is per (task, season), so last year's completion of the same
+  // task cannot swallow this one.
+  expect(completeRoute).toContain('`${r.task_key}|${r.season}`');
+});
+
+test('RM12: the reminder gate is the SEND time, not the visit', () => {
+  // The cron only ever looks at "tomorrow, Eastern". A visit booked at 11pm the
+  // night before is still in the future, but its 7:30pm slot has gone and the
+  // run that would have carried it fired hours ago - the row would sit pending
+  // forever while the admin was told a reminder was queued.
+  const visit = read('src/lib/homecare/visitSchedule.ts');
+  const fn = visit.slice(visit.indexOf('export function reminderIsStillUseful'));
+  expect(fn).toContain('reminderSendAt(visitStart).getTime() > now.getTime()');
+  expect(adminPage).toContain('text the customer yourself');
+});
+
+test('RM13: an unapplied migration degrades instead of hard-failing', () => {
+  // 20260816 (the follow_up_type CHECK) and 20260817 (visit_start) are
+  // hand-applied like every migration in this repo.
+  const queue = scheduling.slice(scheduling.indexOf('export async function requeueVisitReminder'));
+  expect(queue).toContain("return 'unavailable'");
+  expect(queue.indexOf('try {')).toBeLessThan(queue.indexOf("'follow_up_queue'"));
+  // The cron has no ledger without visit_start, so it sends NOTHING rather than
+  // mailing a batch it cannot guard - and says so instead of 500ing silently.
+  expect(cron).toContain('reminder_ledger_unavailable');
+  expect(cron).toContain('sending nothing');
+  const ledger = cron.slice(cron.indexOf('let ledger: LedgerRow[]'));
+  expect(ledger.indexOf('sent: 0')).toBeLessThan(ledger.indexOf('await sendTrackedEmail'));
 });
 
 /* ── CP: completion ──────────────────────────────────────────────────────── */

@@ -70,6 +70,12 @@ export async function POST(request: NextRequest) {
         season,
         status: done ? 'done' : 'todo',
         completed_at: done ? now : null,
+        // Attribution follows whoever set the CURRENT status. The column
+        // defaults to 'homeowner' on insert only, and a merge-duplicates upsert
+        // updates just the columns in the body - so without this a row La Vaca
+        // completed keeps 'lavaca' after the member unticks it and does the work
+        // themselves, and the portal credits us for their work.
+        completed_by: 'homeowner',
         updated_at: now,
       },
       { prefer: 'resolution=merge-duplicates,return=minimal' },

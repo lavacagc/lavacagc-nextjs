@@ -93,10 +93,21 @@ export async function ensureServiceHomeowner(args: {
   return created?.[0] ?? null;
 }
 
+/**
+ * One service on a visit, with the season its row is filed under.
+ *
+ * The season is per TASK, not per visit: it is reconciled against the task's own
+ * catalog seasons (see `seasonForTaskVisit`), so one July window can legitimately
+ * file a gutter clean under 'fall' and a deck seal under 'summer'.
+ */
+export interface VisitTask {
+  taskKey: string;
+  season: string;
+}
+
 export interface ScheduleArgs {
   homeownerId: string;
-  taskKeys: string[];
-  season: string;
+  tasks: VisitTask[];
   start: Date;
   end: Date;
   address: string;
@@ -109,13 +120,18 @@ export interface ScheduleArgs {
  * updates in place rather than accumulating rows.
  */
 export async function scheduleVisit(args: ScheduleArgs): Promise<void> {
-  const { homeownerId, taskKeys, season, start, end, address } = args;
-  if (taskKeys.length === 0) return;
-  await supabaseRest('POST', 'homeowner_maintenance', taskKeys.map((task_key) => ({
+  const { homeownerId, tasks, start, end, address } = args;
+  if (tasks.length === 0) return;
+  await supabaseRest('POST', 'homeowner_maintenance', tasks.map(({ taskKey, season }) => ({
     homeowner_id: homeownerId,
-    task_key,
+    task_key: taskKey,
     season,
     status: 'booked',
+    // A booking is not a completion, so it clears both halves of one. Left in
+    // place, a previous `completed_by='lavaca'` would label whoever ticks this
+    // row next as work we did - the exact distinction completed_by exists for.
+    completed_at: null,
+    completed_by: 'homeowner',
     scheduled_start: start.toISOString(),
     scheduled_end: end.toISOString(),
     service_address: address,
@@ -123,26 +139,79 @@ export async function scheduleVisit(args: ScheduleArgs): Promise<void> {
   })), { onConflict: 'homeowner_id,task_key,season' });
 }
 
+export interface BookedVisitRow {
+  task_key: string;
+  season: string;
+  scheduled_start: string | null;
+}
+
 /**
- * The distinct start times currently booked for these tasks.
+ * Every visit currently booked for these tasks, in ANY season.
  *
  * Read BEFORE the upsert overwrites them: these are the visits a new booking
  * supersedes, and the only way to pull exactly their reminders.
+ *
+ * Deliberately NOT scoped to the season the new booking lands in. The season is
+ * derived from the visit date reconciled against the task's catalog seasons, so
+ * moving a visit can move its row - and a season-scoped read would come back
+ * empty, leaving the old row `booked` at its old window. The portal's "next
+ * visit" card would then show a visit that is not happening, and the cron would
+ * remind the customer about it the evening before.
  */
-export async function bookedVisitStarts(args: {
+export async function bookedVisitRows(args: {
   homeownerId: string;
   taskKeys: string[];
-  season: string;
-}): Promise<Date[]> {
-  const { homeownerId, taskKeys, season } = args;
+}): Promise<BookedVisitRow[]> {
+  const { homeownerId, taskKeys } = args;
   if (taskKeys.length === 0) return [];
-  const rows = (await supabaseRest<{ scheduled_start: string | null }[]>(
+  return (await supabaseRest<BookedVisitRow[]>(
     'GET',
-    `homeowner_maintenance?select=scheduled_start&homeowner_id=eq.${homeownerId}&season=eq.${encodeURIComponent(season)}` +
+    `homeowner_maintenance?select=task_key,season,scheduled_start&homeowner_id=eq.${homeownerId}` +
       `&task_key=in.(${taskKeys.map((k) => `"${k}"`).join(',')})&status=eq.booked`,
   ).catch(() => [])) ?? [];
+}
+
+/** The distinct windows a set of booked rows stands for. */
+export function visitStartsOf(rows: BookedVisitRow[]): Date[] {
   return [...new Set(rows.map((r) => r.scheduled_start).filter((s): s is string => !!s))]
     .map((iso) => new Date(iso));
+}
+
+/**
+ * Unbook the rows this booking supersedes but will not overwrite.
+ *
+ * The upsert only reaches the (task, season) rows it writes. A visit that moves
+ * across a season boundary - 5 Sep to 28 Aug, or a task whose reconciled season
+ * changes with the date - lands on a DIFFERENT row, so without this the old one
+ * stays `booked` forever: a phantom visit on the portal and a live reminder for
+ * a slot nobody is coming to.
+ *
+ * Runs BEFORE the upsert, so a failure leaves the previous booking intact rather
+ * than half-moved.
+ */
+export async function clearSupersededBookings(args: {
+  homeownerId: string;
+  previous: BookedVisitRow[];
+  tasks: VisitTask[];
+}): Promise<void> {
+  const { homeownerId, previous, tasks } = args;
+  const keep = new Set(tasks.map((t) => `${t.taskKey}|${t.season}`));
+  const bySeason = new Map<string, Set<string>>();
+  for (const row of previous) {
+    if (keep.has(`${row.task_key}|${row.season}`)) continue;
+    const keys = bySeason.get(row.season) ?? new Set<string>();
+    keys.add(row.task_key);
+    bySeason.set(row.season, keys);
+  }
+
+  for (const [season, keys] of bySeason) {
+    await supabaseRest(
+      'PATCH',
+      `homeowner_maintenance?homeowner_id=eq.${homeownerId}&season=eq.${encodeURIComponent(season)}` +
+        `&status=eq.booked&task_key=in.(${[...keys].map((k) => `"${k}"`).join(',')})`,
+      { status: 'todo', scheduled_start: null, scheduled_end: null, updated_at: new Date().toISOString() },
+    );
+  }
 }
 
 /**
@@ -159,6 +228,8 @@ export async function bookedVisitStarts(args: {
  * the rows it is about to overwrite), and the new start is cleared too so
  * re-submitting the same window replaces its row rather than stacking a second.
  */
+export type ReminderOutcome = 'queued' | 'skipped' | 'unavailable';
+
 export async function requeueVisitReminder(args: {
   email: string;
   name: string;
@@ -167,25 +238,36 @@ export async function requeueVisitReminder(args: {
   html: string;
   supersedes?: Date[];
   now?: Date;
-}): Promise<'queued' | 'skipped'> {
+}): Promise<ReminderOutcome> {
   const { email, name, start, subject, html, supersedes = [], now = new Date() } = args;
 
   await cancelPendingVisitReminders(email, [start, ...supersedes]);
 
   if (!reminderIsStillUseful(start, now)) return 'skipped';
 
-  // follow_up_queue has no email_text column - the cron renders text from the
-  // stored HTML, same as the nurture and review sequences.
-  await supabaseRest('POST', 'follow_up_queue', [{
-    lead_email: email,
-    lead_name: name,
-    follow_up_type: VISIT_REMINDER_TYPE,
-    scheduled_at: reminderSendAt(start).toISOString(),
-    visit_start: visitKey(start),
-    status: 'pending',
-    email_subject: subject,
-    email_body: html,
-  }]);
+  try {
+    // follow_up_queue has no email_text column - the cron renders text from the
+    // stored HTML, same as the nurture and review sequences.
+    await supabaseRest('POST', 'follow_up_queue', [{
+      lead_email: email,
+      lead_name: name,
+      follow_up_type: VISIT_REMINDER_TYPE,
+      scheduled_at: reminderSendAt(start).toISOString(),
+      visit_start: visitKey(start),
+      status: 'pending',
+      email_subject: subject,
+      email_body: html,
+    }]);
+  } catch (err) {
+    // The booking itself is already written and correct - the reminder is a
+    // best-effort side effect on a shared table whose schema is hand-applied in
+    // this repo. Until `visit_reminder_1d` is in the follow_up_type CHECK
+    // (20260816) and `visit_start` exists (20260817), this insert 400s, and
+    // turning that into a 500 would tell the admin a booking failed that in fact
+    // succeeded. Report it instead, so they know to text the customer.
+    console.error('visit reminder could not be queued:', err instanceof Error ? err.message : String(err));
+    return 'unavailable';
+  }
   return 'queued';
 }
 

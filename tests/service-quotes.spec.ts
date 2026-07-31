@@ -16,6 +16,7 @@ import {
   VISIT_REMINDER_TYPE,
 } from '../src/lib/homecare/visitSchedule';
 import { BUSINESS_ADDRESS } from '../src/lib/homecare/emailShell';
+import { seasonForTaskVisit } from '../src/lib/homecare/season';
 
 /**
  * Acceptance criteria for Home Care service quotes.
@@ -298,6 +299,49 @@ test('RM: helpers derive the labels and send time the emails use', () => {
   expect(reminderIsStillUseful(START, new Date(Date.UTC(2026, 7, 1)))).toBe(true);
   expect(reminderIsStillUseful(START, new Date(Date.UTC(2026, 7, 9)))).toBe(false);
   expect(VISIT_REMINDER_TYPE).toBe('visit_reminder_1d');
+});
+
+test('RM12: the reminder gate is the SEND time, not the visit', () => {
+  // The cron only ever looks at "tomorrow, Eastern", so what decides whether a
+  // reminder can be DELIVERED is whether its 7:30pm slot is still ahead.
+  const slot = reminderSendAt(START); // 7:30pm ET on 4 Aug
+  expect(reminderIsStillUseful(START, new Date(slot.getTime() - 60_000)), 'just before the slot').toBe(true);
+  expect(reminderIsStillUseful(START, new Date(slot.getTime() + 60_000)), 'just after it').toBe(false);
+  // Booked at 11pm the night before: the visit is 9 hours out, but the run that
+  // would have carried its reminder fired hours ago.
+  const lateNightBefore = easternWallClock(new Date(Date.UTC(2026, 7, 4)), 23, 0);
+  expect(START.getTime(), 'the visit itself is still ahead').toBeGreaterThan(lateNightBefore.getTime());
+  expect(reminderIsStillUseful(START, lateNightBefore)).toBe(false);
+  // Same-day booking, likewise.
+  expect(reminderIsStillUseful(START, easternWallClock(new Date(Date.UTC(2026, 7, 5)), 6, 0))).toBe(false);
+});
+
+test('SC8: a booking is filed under a season the task actually renders in', () => {
+  const jul = new Date(Date.UTC(2026, 6, 15)); // summer
+  const sep = new Date(Date.UTC(2026, 8, 15)); // fall
+  const jun = new Date(Date.UTC(2026, 5, 20)); // summer
+
+  // The visit's own season wins when the task applies to it.
+  expect(seasonForTaskVisit(sep, ['fall', 'spring'])).toBe('fall');
+  expect(seasonForTaskVisit(jul, ['summer'])).toBe('summer');
+
+  // Otherwise the nearest season the task DOES apply to. Gutters booked in July
+  // are fall prep; filed under 'summer' the row matches no tab at all, because
+  // the portal renders a task only in its catalog seasons.
+  expect(seasonForTaskVisit(jul, ['fall', 'spring']), 'clean_gutters in July').toBe('fall');
+  expect(seasonForTaskVisit(jul, ['fall']), 'hvac_furnace_tuneup in July').toBe('fall');
+  // An A/C tune-up booked when it gets hot belongs to the spring row that is
+  // still current, not to next year's.
+  expect(seasonForTaskVisit(jun, ['spring']), 'hvac_ac_tuneup in June').toBe('spring');
+  // A deck seal booked in September belongs to the summer row.
+  expect(seasonForTaskVisit(sep, ['summer']), 'seal_deck in September').toBe('summer');
+  // Two steps away is still resolved rather than dropped.
+  expect(seasonForTaskVisit(jul, ['winter'])).toBe('winter');
+
+  // Nothing to file it under - the caller must reject the booking rather than
+  // write a row the member can never see.
+  expect(seasonForTaskVisit(jul, [])).toBe(null);
+  expect(seasonForTaskVisit(jul, ['new_construction'])).toBe(null);
 });
 
 test('RM11: two visits on ONE day are distinct rows, not one shared slot', () => {

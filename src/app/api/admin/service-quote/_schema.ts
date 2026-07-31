@@ -52,8 +52,15 @@ export const scheduleSchema = z.object({
   name: z.string().trim().min(1).max(120),
   phone: z.string().trim().max(40).optional().or(z.literal('').transform(() => undefined)),
   taskKeys: z.array(z.string().regex(/^[a-z0-9_]+$/i).max(80)).min(1, 'Pick at least one service').max(20),
-  season: z.enum(['spring', 'summer', 'fall', 'winter']),
-  /** Full ISO instants for the arrival window. */
+  /**
+   * Full ISO instants for the arrival window.
+   *
+   * There is deliberately no `season` alongside them: it is derived server-side
+   * from the visit date reconciled against each task's own catalog seasons,
+   * which only the server reads - and it comes out per TASK, so there is no
+   * single value a caller could send. The route returns what it filed each task
+   * under, and "mark complete" passes that back.
+   */
   start: z.string().datetime({ offset: true }),
   end: z.string().datetime({ offset: true }),
   address: z.string().trim().min(1, 'A service address is required for the calendar invite').max(300),
@@ -76,8 +83,11 @@ export type ScheduleInput = z.infer<typeof scheduleSchema>;
 export const cancelVisitSchema = z.object({
   homeownerId: z.string().uuid(),
   email: z.string().trim().email('Valid customer email required').max(255),
-  season: z.enum(['spring', 'summer', 'fall', 'winter']),
-  /** The window this cancel targets, so it can never clear the whole season. */
+  /**
+   * The window this cancel targets, so it can never clear the whole season.
+   * (homeowner, window) is the whole filter: one visit's tasks can be filed
+   * under different seasons, so a season would narrow it wrongly.
+   */
   start: z.string().datetime({ offset: true }),
 });
 
@@ -86,7 +96,11 @@ export type CancelVisitInput = z.infer<typeof cancelVisitSchema>;
 export const completeSchema = z.object({
   homeownerId: z.string().uuid(),
   taskKeys: z.array(z.string().regex(/^[a-z0-9_]+$/i).max(80)).min(1).max(20),
-  season: z.enum(['spring', 'summer', 'fall', 'winter']),
+  /**
+   * Where each task was filed, as returned by /schedule. A fallback only: the
+   * booked row is the source of truth, and this covers a task with no booking.
+   */
+  seasons: z.record(z.string(), z.enum(['spring', 'summer', 'fall', 'winter'])).optional(),
   /** Skip the feedback email (e.g. re-marking an old job). */
   skipFeedback: z.boolean().optional(),
 });

@@ -22,7 +22,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from '@/hooks/use-toast';
 import { Loader2, CalendarPlus, CheckCircle2 } from 'lucide-react';
 import { scopeSummaryFrom } from '@/lib/homecare/serviceIntake';
-import { currentSeason } from '@/lib/homecare/season';
 import { easternVisitInstant } from '@/lib/homecare/visitSchedule';
 
 interface Service { key: string; title: string; blurb: string; priority: number }
@@ -44,17 +43,6 @@ const todayPlus = (days: number) => {
   return d.toISOString().slice(0, 10);
 };
 
-/**
- * The season a visit belongs to, from the VISIT date rather than today's.
- *
- * homeowner_maintenance is keyed on (homeowner, task, season) and the portal
- * renders one season at a time, so booking a 5 Sep visit on 30 Aug under
- * 'summer' would file it where the member never looks - and completing it in
- * September would upsert a second row, leaving the first stuck at 'booked'.
- * Noon UTC keeps the calendar date away from the midnight boundary.
- */
-const seasonOfVisit = (isoDate: string) => currentSeason(new Date(`${isoDate}T12:00:00Z`));
-
 export default function SendServiceQuotePage() {
   const [email, setEmail] = useState('');
   const [intake, setIntake] = useState<Intake | null>(null);
@@ -75,9 +63,13 @@ export default function SendServiceQuotePage() {
   const [from, setFrom] = useState('08:00');
   const [to, setTo] = useState('11:00');
   const [scheduling, setScheduling] = useState(false);
-  // The season is captured at booking time so "mark complete" files against the
-  // SAME row, even when the job is completed after the season has turned over.
-  const [scheduled, setScheduled] = useState<{ icsUrl: string; homeownerId: string; season: string } | null>(null);
+  // What the server filed each task under, captured at booking time so "mark
+  // complete" hits the SAME rows even when the job is completed after the season
+  // has turned over. Per task: the season is reconciled against each task's own
+  // catalog seasons, so one window can span two of them.
+  const [scheduled, setScheduled] = useState<
+    { icsUrl: string; homeownerId: string; seasons: Record<string, string> } | null
+  >(null);
 
   const lookup = useCallback(async () => {
     if (!email.trim()) return;
@@ -146,14 +138,13 @@ export default function SendServiceQuotePage() {
     if (!date) { toast({ title: 'Pick a date first', variant: 'destructive' }); return; }
     if (!from || !to) { toast({ title: 'Set the arrival window', variant: 'destructive' }); return; }
     setScheduling(true);
-    const season = seasonOfVisit(date);
     try {
       const res = await fetch('/api/admin/service-quote/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email.trim(), name, phone: intake?.homeowner?.phone ?? intake?.requests[0]?.phone ?? '',
-          taskKeys: [...selected], season,
+          taskKeys: [...selected],
           // Eastern, not the browser's zone. Everything downstream reads the
           // stored instant as an Eastern wall-clock time, and a bare
           // `new Date('2026-08-05T08:00')` is parsed locally - so booking from a
@@ -165,12 +156,15 @@ export default function SendServiceQuotePage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.issues?.[0]?.message || 'Scheduling failed');
-      setScheduled({ icsUrl: data.icsUrl, homeownerId: data.homeownerId, season });
+      setScheduled({ icsUrl: data.icsUrl, homeownerId: data.homeownerId, seasons: data.seasons ?? {} });
       toast({
         title: 'Visit scheduled',
         description: data.reminder === 'queued'
-          ? "Reminder queued for 7:30pm the night before."
-          : 'Saved. The visit is too soon for a night-before reminder.',
+          ? 'Reminder queued for 7:30pm the night before.'
+          : data.reminder === 'unavailable'
+            ? 'Booked, but the reminder could not be queued - text the customer yourself.'
+            : 'Booked. Too late for the 7:30pm reminder - text the customer yourself.',
+        variant: data.reminder === 'unavailable' ? 'destructive' : undefined,
       });
     } catch (e) {
       toast({ title: 'Scheduling failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
@@ -186,7 +180,7 @@ export default function SendServiceQuotePage() {
       const res = await fetch('/api/admin/service-quote/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ homeownerId: scheduled.homeownerId, taskKeys: [...selected], season: scheduled.season }),
+        body: JSON.stringify({ homeownerId: scheduled.homeownerId, taskKeys: [...selected], seasons: scheduled.seasons }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
