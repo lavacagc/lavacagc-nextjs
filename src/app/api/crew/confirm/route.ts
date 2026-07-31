@@ -11,9 +11,19 @@
  * human has looked at, and the 5pm escalation would then never fire for exactly
  * the visits it exists to catch. The same rule the Home Care unsubscribe route
  * already follows.
+ *
+ * A FLAG TELLS SOMEBODY, IMMEDIATELY. The note is the whole value of that
+ * button - "sub cancelled" and "van is in the shop" are different problems - and
+ * writing it to a table nothing reads would make flagging strictly worse than
+ * ignoring the email. So it goes to the operations Telegram chat as it is
+ * tapped, and the 5pm/6pm stages still chase the visit until somebody confirms
+ * it or it is called off.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { sendTelegramMessage, escapeTelegram } from '@/lib/notify/telegramMessage';
+import { lookupByToken, type TokenLookup } from '@/lib/homecare/dispatch';
+import { visitDateLabel, visitTimeWindow } from '@/lib/homecare/visitSchedule';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -24,13 +34,6 @@ const bodySchema = z.object({
   action: z.enum(['confirm', 'flag']),
   note: z.string().trim().max(1000).optional(),
 });
-
-interface AssignmentRow {
-  id: string;
-  status: string;
-  confirmed_at: string | null;
-  name: string | null;
-}
 
 export async function POST(request: NextRequest) {
   let raw: unknown;
@@ -43,34 +46,84 @@ export async function POST(request: NextRequest) {
   }
   const { token, action, note } = parsed.data;
 
+  let found: TokenLookup | null;
   try {
-    const rows = (await supabaseRest<AssignmentRow[]>(
-      'GET',
-      `visit_dispatch_recipients?select=id,status,confirmed_at,name` +
-        `&confirm_token=eq.${encodeURIComponent(token)}&limit=1`,
-    )) ?? [];
-    const assignment = rows[0];
-    // Deliberately the same answer for an unknown token and a malformed one:
-    // this endpoint is public, and telling the difference would let anyone
-    // enumerate live tokens.
-    if (!assignment) return NextResponse.json({ error: 'This link is not valid.' }, { status: 404 });
+    // The whole visit, not just the assignment row: a flag has to name what is
+    // wrong AND which job, and the alert is worthless if the owner has to go
+    // looking up which customer this was.
+    found = await lookupByToken(token);
+  } catch (err) {
+    // The detail stays in the logs. This endpoint is public and the thrown
+    // message carries the table name, the token filter and PostgREST's own
+    // error body - schema detail nobody outside needs. Same answer the Home
+    // Care unsubscribe route gives.
+    console.error('crew confirm lookup failed:', err instanceof Error ? err.message : String(err));
+    return NextResponse.json({ error: 'server_error' }, { status: 500 });
+  }
 
-    const now = new Date().toISOString();
+  // Deliberately the same answer for an unknown token and a malformed one: this
+  // endpoint is public, and telling the difference would let anyone enumerate
+  // live tokens.
+  if (!found) return NextResponse.json({ error: 'This link is not valid.' }, { status: 404 });
+
+  const { assignment } = found;
+  const now = new Date().toISOString();
+  try {
     await supabaseRest('PATCH', `visit_dispatch_recipients?id=eq.${assignment.id}`, {
       status: action === 'confirm' ? 'confirmed' : 'flagged',
       // Stamped for a flag too. It is the record of when somebody actually
-      // looked at this, which is what the escalation is really asking about -
-      // a flagged visit has been dealt with by a human, so chasing it at 6pm
-      // would be nagging about something already reported.
+      // looked at this - which is not the same as the visit being dealt with,
+      // so the escalation keeps chasing a flag until it is confirmed or off.
       confirmed_at: now,
       note: action === 'flag' ? (note ?? null) : null,
       updated_at: now,
     });
-
-    return NextResponse.json({ status: action === 'confirm' ? 'confirmed' : 'flagged' });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('crew confirm failed:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error('crew confirm failed:', err instanceof Error ? err.message : String(err));
+    return NextResponse.json({ error: 'server_error' }, { status: 500 });
   }
+
+  if (action === 'confirm') return NextResponse.json({ status: 'confirmed' });
+
+  // The flag is already recorded, so a Telegram outage cannot cost the crew
+  // their tap - and it cannot leave the problem unreported either, because the
+  // 5pm and 6pm stages now carry this note too.
+  const notified = await notifyFlag(found, note ?? null);
+  if (notified !== 'sent') {
+    console.error(
+      `crew flag could not be Telegrammed (${notified}) for assignment ${assignment.id}. ` +
+        'The escalation still carries it.',
+    );
+  }
+
+  return NextResponse.json({ status: 'flagged', notified });
+}
+
+/** Who flagged it, which visit, and what they typed - verbatim. */
+async function notifyFlag(found: TokenLookup, note: string | null) {
+  const { assignment, dispatch, visit } = found;
+  const who = assignment.name || assignment.email;
+  const when = visit
+    ? `${visitDateLabel(visit.start)} ${visitTimeWindow(visit.start, visit.end)}`
+    : visitDateLabel(new Date(dispatch.visit_start));
+
+  const text = [
+    '🚩 <b>A visit has been flagged</b>',
+    '',
+    // Not "tomorrow's": a dispatch goes out when the visit is booked, which can
+    // be weeks ahead, so the flag can land at any point before the day.
+    `<b>${escapeTelegram(who)}</b> says something is wrong with this visit.`,
+    '',
+    `<b>${escapeTelegram(visit?.customerName ?? 'A customer')}</b> - ${escapeTelegram(when)}`,
+    visit?.address ? `📍 ${escapeTelegram(visit.address)}` : '',
+    visit?.services.length ? `🧰 ${escapeTelegram(visit.services.join(', '))}` : '',
+    dispatch.sub_name ? `👷 ${escapeTelegram(dispatch.sub_name)}` : '',
+    '',
+    note ? `💬 ${escapeTelegram(note)}` : '💬 No note - call them.',
+    '',
+    'The customer still gets their reminder the night before, so this needs '
+      + 'sorting or the visit calling off. Nobody has confirmed it.',
+  ].filter(Boolean).join('\n');
+
+  return sendTelegramMessage(text).catch(() => 'failed' as const);
 }

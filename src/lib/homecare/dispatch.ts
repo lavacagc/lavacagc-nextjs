@@ -19,8 +19,8 @@ import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { HOME_CARE_FROM } from '@/lib/notify/sendHomeCareEmails';
 import { SERVICE_REPLY_TO } from '@/lib/homecare/serviceEmails';
 import { buildIcs, googleCalendarUrl } from '@/lib/homecare/ics';
-import { buildDispatchEmail } from '@/lib/homecare/dispatchEmail';
-import { visitKey } from '@/lib/homecare/visitSchedule';
+import { buildDispatchEmail, buildDispatchCancelledEmail } from '@/lib/homecare/dispatchEmail';
+import { visitKey, visitDateLabel, visitTimeWindow } from '@/lib/homecare/visitSchedule';
 
 export interface DispatchRecipient {
   id: string;
@@ -49,6 +49,23 @@ export interface VisitDispatchRow {
   dispatched_at: string | null;
   nudged_at: string | null;
   escalated_at: string | null;
+  /** RFC 5545 SEQUENCE - how many calendar messages this visit has issued. */
+  ics_sequence: number;
+}
+
+/** Every column of a dispatch row, named once so no reader can select a stale set. */
+export const VISIT_DISPATCH_COLUMNS =
+  'id,homeowner_id,visit_start,sub_name,dispatched_at,nudged_at,escalated_at,ics_sequence';
+
+/**
+ * The calendar UID for one person's copy of one visit.
+ *
+ * Derived, never stored: a retraction has to carry the SAME UID as the invite
+ * it withdraws, and this is what makes that reconstructable from the dispatch
+ * row and the recipient - as long as the row is read before it is deleted.
+ */
+export function crewIcsUid(dispatchId: string, recipientId: string): string {
+  return `lavaca-crew-${dispatchId}-${recipientId}`;
 }
 
 /** 'sent' means the email went out; the rest are why it did not. */
@@ -93,7 +110,7 @@ export async function ensureVisitDispatch(args: {
   const key = visitKey(args.visitStart);
   const existing = (await supabaseRest<VisitDispatchRow[]>(
     'GET',
-    `visit_dispatch?select=id,homeowner_id,visit_start,sub_name,dispatched_at,nudged_at,escalated_at` +
+    `visit_dispatch?select=${VISIT_DISPATCH_COLUMNS}` +
       `&homeowner_id=eq.${args.homeownerId}&visit_start=eq.${encodeURIComponent(key)}&limit=1`,
   )) ?? [];
 
@@ -251,8 +268,7 @@ export async function lookupByToken(token: string): Promise<TokenLookup | null> 
 
   const dispatches = (await supabaseRest<VisitDispatchRow[]>(
     'GET',
-    `visit_dispatch?select=id,homeowner_id,visit_start,sub_name,dispatched_at,nudged_at,escalated_at` +
-      `&id=eq.${assignment.dispatch_id}&limit=1`,
+    `visit_dispatch?select=${VISIT_DISPATCH_COLUMNS}&id=eq.${assignment.dispatch_id}&limit=1`,
   )) ?? [];
   const dispatch = dispatches[0];
   if (!dispatch) return null;
@@ -262,29 +278,159 @@ export async function lookupByToken(token: string): Promise<TokenLookup | null> 
 }
 
 /**
- * Retire the dispatch record for a visit that is no longer happening.
+ * Retire the dispatch record for a visit that is no longer happening, and take
+ * the visit off the crew's calendar.
  *
- * Called when a visit is CANCELLED. The row is keyed on (homeowner, window), so
+ * Called when a visit is CANCELLED, COMPLETED, or moved off this window by a
+ * reschedule. The row always goes: it is keyed on (homeowner, window), so
  * leaving it behind means a later booking of that same window reuses it - and
  * inherits `nudged_at`/`escalated_at`, which is precisely what tells the 5pm
- * stage it has already run. A re-booked visit would then never be chased.
+ * stage it has already run. A re-booked visit would then never be chased, and
+ * its confirm link would open already answered.
  *
- * The assignments cascade with it. What was actually sent is recorded in
+ * `reason` decides whether the crew also gets a METHOD:CANCEL, and the two
+ * answers are not interchangeable:
+ *
+ *  - **cancelled** - the visit is off, including a window a reschedule moved
+ *    away from. Deleting the row does nothing to the event already sitting on
+ *    somebody's phone, and that event carries the 7:00am "text the customer when
+ *    the crew is on the way" alarm - the one thing in the system that produces
+ *    that text. Without the retraction it fires anyway and a customer is texted
+ *    about a job that is off; a reschedule leaves two events and two alarms.
+ *  - **completed** - the job HAPPENED. There is nothing to retract, and mailing
+ *    "this visit is off, you are not going" about work somebody just finished
+ *    would be a lie. The event stays on their calendar as the record it is.
+ *
+ * The recipients are read BEFORE the delete either way: the assignments cascade
+ * with the row, taking the addresses and the UIDs with them.
+ *
+ * `visit` describes what is being retracted, for the email and the .ics. Pass it
+ * from before the window was cleared where you can - once the tasks are unbooked
+ * the services are no longer readable. What was actually sent is recorded in
  * email_log, which this does not touch, so the audit trail survives.
  */
 export async function clearVisitDispatch(
   homeownerId: string,
   visitStart: Date,
+  opts: { reason: 'cancelled' | 'completed'; visit?: VisitContext | null },
 ): Promise<'cleared' | 'unavailable'> {
+  const { reason, visit } = opts;
+  let dispatch: VisitDispatchRow | null = null;
+  let assignments: DispatchAssignment[] = [];
   try {
+    const key = visitKey(visitStart);
+    const rows = (await supabaseRest<VisitDispatchRow[]>(
+      'GET',
+      `visit_dispatch?select=${VISIT_DISPATCH_COLUMNS}` +
+        `&homeowner_id=eq.${homeownerId}&visit_start=eq.${encodeURIComponent(key)}&limit=1`,
+    )) ?? [];
+    dispatch = rows[0] ?? null;
+
+    if (dispatch) {
+      assignments = (await supabaseRest<DispatchAssignment[]>(
+        'GET',
+        `visit_dispatch_recipients?select=id,dispatch_id,recipient_id,email,name,confirm_token,status,confirmed_at,note` +
+          `&dispatch_id=eq.${dispatch.id}`,
+      )) ?? [];
+    }
+
     await supabaseRest(
       'DELETE',
-      `visit_dispatch?homeowner_id=eq.${homeownerId}&visit_start=eq.${encodeURIComponent(visitKey(visitStart))}`,
+      `visit_dispatch?homeowner_id=eq.${homeownerId}&visit_start=eq.${encodeURIComponent(key)}`,
     );
-    return 'cleared';
   } catch (err) {
     console.error('crew dispatch could not be cleared:', err instanceof Error ? err.message : String(err));
     return 'unavailable';
+  }
+
+  // Only what actually went out is retracted. A dispatch that never sent left
+  // no event to remove, and a cancellation for an invite nobody received is
+  // noise on the one channel the crew has to keep trusting.
+  if (reason === 'cancelled' && dispatch?.dispatched_at && assignments.length > 0) {
+    await sendDispatchRetraction({ homeownerId, visitStart, dispatch, assignments, visit })
+      .catch((err) => console.error(
+        'crew dispatch retraction failed - the crew may still be holding the visit:',
+        err instanceof Error ? err.message : String(err),
+      ));
+  }
+
+  return 'cleared';
+}
+
+/**
+ * Tell everyone who was sent this visit that it is off.
+ *
+ * SEQUENCE counts up from the row's own value: a client applies a CANCEL to the
+ * event it holds only when the number is higher than the one it stored, so a
+ * retraction reusing the invite's number can be discarded as a duplicate and
+ * leave the event - and its 7:00am alarm - exactly where it was.
+ */
+async function sendDispatchRetraction(args: {
+  homeownerId: string;
+  visitStart: Date;
+  dispatch: VisitDispatchRow;
+  assignments: DispatchAssignment[];
+  visit?: VisitContext | null;
+}): Promise<void> {
+  const { homeownerId, visitStart, dispatch, assignments } = args;
+
+  // Read only as a fallback: by the time a cancel gets here the window is
+  // usually already cleared, so this recovers the customer and the address but
+  // not the services. Callers that still hold the visit pass it in.
+  const visit = args.visit
+    ?? await visitContextFor(homeownerId, visitStart).catch(() => null);
+
+  const end = visit?.end ?? new Date(visitStart.getTime() + 3600_000);
+  const customerName = visit?.customerName ?? 'the customer';
+  const address = visit?.address ?? '';
+  const services = visit?.services ?? [];
+  const sequence = (dispatch.ics_sequence ?? 0) + 1;
+
+  for (const assignment of assignments) {
+    const { subject, html, text } = buildDispatchCancelledEmail({
+      recipientName: assignment.name,
+      customerName,
+      address,
+      services,
+      visitDateLabel: visitDateLabel(visitStart),
+      timeWindow: visitTimeWindow(visitStart, end),
+    });
+
+    // Same UID as that person's invite, or a client files this as a second,
+    // cancelled event and leaves the live one alone.
+    const ics = buildIcs({
+      uid: crewIcsUid(dispatch.id, assignment.recipient_id),
+      start: visitStart,
+      end,
+      services,
+      address,
+      customerName,
+      variant: 'crew',
+      cancel: true,
+      sequence,
+      attendees: [{ name: assignment.name, email: assignment.email }],
+    });
+
+    const res = await sendTrackedEmail({
+      from: HOME_CARE_FROM,
+      to: assignment.email,
+      replyTo: SERVICE_REPLY_TO.join(', '),
+      subject,
+      html,
+      text,
+      category: 'crew_dispatch_cancelled',
+      toName: assignment.name,
+      homeownerId,
+      campaign: { visit_start: visitKey(visitStart), dispatch_id: dispatch.id },
+      attachments: [{ filename: 'visit.ics', content: ics }],
+    });
+
+    if (res.status !== 'sent') {
+      console.error(
+        `crew dispatch retraction FAILED for ${assignment.email} - ${visitDateLabel(visitStart)}: ` +
+          `${res.status}${res.error ? ` - ${res.error}` : ''}. They still have the visit on their calendar.`,
+      );
+    }
   }
 }
 
@@ -365,10 +511,17 @@ export async function sendVisitDispatch(args: SendDispatchArgs): Promise<SendDis
   const sentTo: string[] = [];
   let anyFailed = false;
 
+  // Counted up only when an invite has already gone out for this visit. A
+  // calendar applies a re-send to the event it holds only when SEQUENCE is
+  // HIGHER than the one it stored, so re-dispatching a moved or amended visit
+  // at the same number lands as a duplicate the client is entitled to discard.
+  // A row that never sent is still on its first message and stays where it is.
+  const sequence = dispatch.dispatched_at ? (dispatch.ics_sequence ?? 0) + 1 : (dispatch.ics_sequence ?? 0);
+
   for (const assignment of assignments) {
     // Per recipient, so the ATTENDEE line names the person who received it.
     const ics = buildIcs({
-      uid: `lavaca-crew-${dispatch.id}-${assignment.recipient_id}`,
+      uid: crewIcsUid(dispatch.id, assignment.recipient_id),
       start: visitStart,
       end: visitEnd,
       services,
@@ -376,6 +529,7 @@ export async function sendVisitDispatch(args: SendDispatchArgs): Promise<SendDis
       customerName,
       customerPhone,
       variant: 'crew',
+      sequence,
       attendees: [{ name: assignment.name, email: assignment.email }],
     });
 
@@ -422,8 +576,13 @@ export async function sendVisitDispatch(args: SendDispatchArgs): Promise<SendDis
   // what the escalation reads to tell "nobody has confirmed" from "nobody was
   // ever told", and those want different messages.
   if (sentTo.length > 0) {
+    // The sequence is persisted with the stamp, and only when something landed:
+    // a number stored for a send that never happened would let the next real
+    // invite tie with a copy nobody holds, or skip past one they do.
     await supabaseRest('PATCH', `visit_dispatch?id=eq.${dispatch.id}`, {
-      dispatched_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      dispatched_at: new Date().toISOString(),
+      ics_sequence: sequence,
+      updated_at: new Date().toISOString(),
     }).catch(() => {});
   }
 

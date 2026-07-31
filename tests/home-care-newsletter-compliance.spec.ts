@@ -88,7 +88,11 @@ test('bulk-sender: one-click List-Unsubscribe headers are attached per recipient
 });
 
 test('sender identity is accurate and replies reach a monitored mailbox', () => {
-  expect(sendHomeCare).toContain("HOME_CARE_FROM = 'La Vaca Home Care <alex@email.lavaca.link>'");
+  // The From lives in notify/senders.ts so the calendar builder can name the
+  // same address as its ORGANIZER without importing the send layer.
+  const senders = readFileSync(join(process.cwd(), 'src/lib/notify/senders.ts'), 'utf8');
+  expect(senders).toContain("HOME_CARE_FROM = 'La Vaca Home Care <alex@email.lavaca.link>'");
+  expect(sendHomeCare).toContain('export { HOME_CARE_FROM };');
   expect(sendHomeCare).toContain("DEFAULT_REPLY_TO = 'info@lavacagc.com'");
 });
 

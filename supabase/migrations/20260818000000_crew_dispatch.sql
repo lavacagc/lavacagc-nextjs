@@ -56,6 +56,15 @@ CREATE TABLE IF NOT EXISTS public.visit_dispatch (
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- How many calendar messages this visit has issued (RFC 5545 SEQUENCE). A
+-- client applies a re-send to the event it already holds only when the number
+-- is HIGHER than the one it stored - equal, it may treat the message as a
+-- duplicate and ignore it. So both a re-dispatch and the METHOD:CANCEL that
+-- retracts a cancelled visit have to count up from here, or the crew keeps an
+-- event (and its 7:00am "text the customer" alarm) for a job that is off.
+ALTER TABLE public.visit_dispatch
+  ADD COLUMN IF NOT EXISTS ics_sequence INTEGER NOT NULL DEFAULT 0;
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_visit_dispatch_visit
   ON public.visit_dispatch (homeowner_id, visit_start);
 
@@ -96,3 +105,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_visit_dispatch_recipients_token
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_visit_dispatch_recipients_pair
   ON public.visit_dispatch_recipients (dispatch_id, recipient_id);
+
+-- ─── RLS (service-role only; no public access) ───────────────────────────────
+-- Supabase's bootstrap GRANTs anon and authenticated full privileges on every
+-- table in `public`, so RLS with no policy is the only thing that closes these.
+-- It matters most for visit_dispatch_recipients: it holds every live
+-- confirm_token, and the publishable key ships to the browser - without this,
+-- anyone could read the tokens, confirm every visit, and silence the escalation
+-- that exists to catch exactly that. The routes reach these tables through
+-- SUPABASE_SECRET_KEY, which bypasses RLS, so nothing legitimate needs a policy.
+ALTER TABLE public.dispatch_recipients       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.visit_dispatch            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.visit_dispatch_recipients ENABLE ROW LEVEL SECURITY;

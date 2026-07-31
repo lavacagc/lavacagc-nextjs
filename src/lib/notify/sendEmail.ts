@@ -40,6 +40,8 @@ export type EmailCategory =
   | 'visit_reminder'
   /** Internal: the crew's "you are on this visit" email. Never customer-facing. */
   | 'crew_dispatch'
+  /** Internal: the METHOD:CANCEL that takes a retired visit off the crew's calendar. */
+  | 'crew_dispatch_cancelled'
   | 'other';
 
 interface TrackedEmailBase {

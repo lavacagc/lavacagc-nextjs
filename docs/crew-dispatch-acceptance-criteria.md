@@ -16,8 +16,11 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 1. `buildIcs({ variant: 'crew' })` emits `METHOD:REQUEST`, not `METHOD:PUBLISH`.
    This is what makes Gmail render its own "Add to calendar" control on the attachment rather than offering a file download.
 2. A crew file carries an `ORGANIZER` line, which RFC 5545 requires for a `REQUEST`.
+   The organizer is **derived from the address the dispatch is sent from** (`HOME_CARE_FROM`), never written out again.
+   Gmail and Outlook check that the sender is entitled to act as the organizer before rendering their own RSVP control; on a mismatch they fall back to offering the file as a plain download, which is exactly what `METHOD:REQUEST` was chosen to avoid.
 3. A crew file carries one `ATTENDEE` line per recipient, with `RSVP=TRUE`.
-4. A crew file carries `SEQUENCE:0`, so a later send supersedes it rather than landing as a second event.
+4. A crew file carries a `SEQUENCE`, and it **actually counts up**: `visit_dispatch.ics_sequence` is incremented whenever a visit that has already been dispatched issues another calendar message.
+   A client applies a re-send to the event it holds only when the number is higher than the one it stored, so a re-dispatch or a retraction at the same number can be discarded as a duplicate.
 5. A crew file carries **both** owner alarms: 7:30pm the night before to confirm, and 7:00am on the day to text the customer.
 6. The 7:00am alarm names the customer and includes their phone number when we have one.
 7. The customer variant still carries **no** `VALARM` at all, and still contains "We'll text you when we're on our way".
@@ -66,6 +69,7 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 38. Re-dispatching reuses each recipient's existing assignment row and token, so a re-send never silently un-confirms a visit the crew already signed off.
 39. `dispatched_at` is stamped only when at least one email actually landed.
 40. Cancelling a visit deletes its dispatch row, so re-booking that window later does not inherit `nudged_at` and go unchased.
+    So does **completing** one, and so does a **reschedule** for the window it moved off - all three retire the same way, because all three leave the same stale row behind.
 
 ## Confirming
 
@@ -76,8 +80,9 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 45. A token whose visit has been cancelled or closed out shows "no longer on the books" instead of a confirm button.
 46. "Something is wrong" opens a note field rather than submitting immediately - what they type is the whole value of the button.
 47. A flag records the note; a confirm clears it.
-48. Both a confirm and a flag stamp `confirmed_at`, because both mean a human has dealt with this.
+48. Both a confirm and a flag stamp `confirmed_at`, because both mean a human has *looked* at this - which is not the same as the visit being dealt with.
 49. `/api/crew/` is public in middleware, guarded by the token rather than a session.
+    A server error on this public route answers a flat `server_error`; the thrown detail - table names, the token filter, PostgREST's own error body - stays in the logs.
 
 ## Escalation
 
@@ -86,7 +91,9 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 52. Fixed UTC times with the DST drift accepted, matching the decision already made for the 7:30pm reminder rather than introducing a second convention.
 53. The query is driven off `homeowner_maintenance`, like the reminder cron - so a cancelled or completed visit, whose window is cleared, is structurally excluded rather than excluded by a rule someone has to remember.
 54. Tasks sharing a window are one visit, so a three-task booking produces one message.
-55. A visit with any assignment `confirmed` **or** `flagged` is skipped: a flag means a human already reported the problem.
+55. A visit is skipped **only** when an assignment reads `confirmed`.
+    A `flagged` assignment does **not** count as answered: a flag says this visit has a problem, and the customer is still told at 7:30pm that we are coming, so it is the one visit that most needs chasing.
+    Both stages carry the flag note in the message, so the owner sees *what* is wrong rather than only that something is.
 56. A stage that has already stamped its column is skipped, making a cron retry a no-op.
 57. The stamp is claimed **before** the send, re-asserting `is.null`, so a concurrent run cannot double-send.
 58. A failed send releases its stamp, so a manual re-hit before the customer reminder can still get through.
@@ -97,6 +104,28 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 63. Telegram HTML is escaped, so an address containing `&` or `<` cannot break the message.
 64. `?dryRun=1` reports who would be chased and stamps nothing.
 65. A run that could not deliver reports `ok: false` with `degraded: 'escalation_send_failed'`.
+
+## Flagging a problem reaches somebody
+
+66. `POST /api/crew/confirm` with `action=flag` Telegrams the operations chat **immediately**, naming who flagged it, the customer, the date and window, the address and the sub, and carrying the note verbatim.
+    Everything interpolated is escaped for Telegram's HTML mode.
+67. The flag is written **before** the Telegram is attempted, and a failed send is logged rather than returned as an error: the crew member's tap records either way, and the escalation still carries the flag, so a Telegram outage cannot bury the problem.
+
+## Retiring a visit
+
+68. Retiring a **cancelled** visit mails everyone who received the invite a `METHOD:CANCEL` `.ics` - on cancel, and for a window a reschedule moved off.
+    Deleting the row does nothing to the event already on somebody's phone, and that event carries the 7:00am "text the customer when the crew is on the way" alarm - the only thing in the system that produces that text.
+    A **completed** visit clears its row the same way but retracts nothing: the job happened, and telling the crew "this visit is off, you are not going" about work they have just finished would be a lie.
+69. The retraction carries the **same UID** as the invite it withdraws, reconstructed from the dispatch row and the recipient, with a **higher `SEQUENCE`**.
+    A different UID files a second, cancelled event and leaves the live one alone; an equal SEQUENCE can be discarded as a duplicate.
+70. A retraction carries **no `VALARM`**. Retracting a visit must never deliver the alarm that tells somebody to text the customer about it.
+71. The recipients are read **before** the dispatch row is deleted - the assignments cascade with it, taking the addresses and the UIDs - and the visit is described from a read taken **before** the window was cleared, because an unbooked window no longer knows its services.
+72. Only a dispatch that actually sent is retracted. A cancellation for an invite nobody received is noise on the one channel the crew has to keep trusting.
+
+## Row-level security
+
+73. `dispatch_recipients`, `visit_dispatch` and `visit_dispatch_recipients` all have RLS enabled with no policy, the same as every other table in this schema.
+    Supabase grants `anon` and `authenticated` full privileges on `public` tables at bootstrap, and the publishable key ships to the browser - so without RLS, `visit_dispatch_recipients` hands out every live confirm token to anyone who asks for it.
 
 ## What was deliberately not built
 

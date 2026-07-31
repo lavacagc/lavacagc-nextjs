@@ -20,7 +20,9 @@ import {
   crossSeasonBookings, requeueVisitReminder, cancelVisitReminder, type VisitTask,
 } from '@/lib/homecare/serviceScheduling';
 import { buildVisitReminderEmail } from '@/lib/homecare/serviceEmails';
-import { sendVisitDispatch, clearVisitDispatch, type SendDispatchResult } from '@/lib/homecare/dispatch';
+import {
+  sendVisitDispatch, clearVisitDispatch, visitContextFor, type SendDispatchResult,
+} from '@/lib/homecare/dispatch';
 import { visitDateLabel, visitTimeWindow, easternParts } from '@/lib/homecare/visitSchedule';
 import { seasonForTaskVisit } from '@/lib/homecare/season';
 import { buildIcs } from '@/lib/homecare/ics';
@@ -119,6 +121,15 @@ export async function POST(request: NextRequest) {
     const superseded = supersededBookings({ previous, tasks, start: startAt });
     const supersedes = orphanedVisitStarts({ previous, superseded });
 
+    // What each vacated window was, read BEFORE the upsert moves its rows: once
+    // the window is given up the services are no longer readable, and the
+    // calendar retraction that takes it off the crew's phones has to name the
+    // visit it is withdrawing.
+    const vacated = await Promise.all(supersedes.map(async (when) => ({
+      when,
+      visit: await visitContextFor(homeowner.id, when).catch(() => null),
+    })));
+
     await scheduleVisit({ homeownerId: homeowner.id, tasks, start: startAt, end: endAt, address });
 
     const services = taskKeys.map((k) => catalog.find((c) => c.key === k)?.title ?? k);
@@ -165,6 +176,19 @@ export async function POST(request: NextRequest) {
       console.error('crew dispatch threw after a successful booking:', message);
       return { outcome: 'unavailable', sentTo: [], error: message };
     });
+
+    // A window this booking moved off is as retired as a cancelled one: its
+    // dispatch row would otherwise be inherited by whatever is booked into that
+    // slot next, complete with the stamps that say it has already been chased,
+    // and the crew would be left holding two events - the moved visit's and the
+    // new one's - each with its own 7:00am "text the customer" alarm.
+    for (const { when, visit } of vacated) {
+      await clearVisitDispatch(homeowner.id, when, { reason: 'cancelled', visit })
+        .catch((err) => console.error(
+          'crew dispatch for a superseded window could not be retired:',
+          err instanceof Error ? err.message : String(err),
+        ));
+    }
 
     return NextResponse.json({
       status: 'scheduled',
@@ -261,6 +285,11 @@ export async function DELETE(request: NextRequest) {
     const owner = owners[0];
     if (!owner?.email) return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
 
+    // Read while the visit still exists. Clearing the window is what makes it a
+    // cancellation, and after that there is nothing left to describe to the
+    // crew in the calendar retraction below.
+    const visit = await visitContextFor(homeownerId, startAt).catch(() => null);
+
     const filter = `homeowner_maintenance?homeowner_id=eq.${homeownerId}` +
       `&scheduled_start=eq.${encodeURIComponent(startAt.toISOString())}`;
     // The window is what identifies the visit; `status` is shared with the
@@ -275,9 +304,12 @@ export async function DELETE(request: NextRequest) {
     // The dispatch record goes with the visit. It is keyed on (homeowner,
     // window), so leaving it behind means re-booking that same window later
     // inherits this visit's escalation stamps - and a `nudged_at` already set
-    // is what tells the 5pm stage it has nothing to do. The record of what was
-    // actually sent lives in email_log, which this does not touch.
-    const dispatch = await clearVisitDispatch(homeownerId, startAt);
+    // is what tells the 5pm stage it has nothing to do. This also mails the
+    // crew a METHOD:CANCEL, because deleting the row does nothing to the event
+    // already on their phone, and that event is what tells them to text the
+    // customer at 7:00am. The record of what was actually sent lives in
+    // email_log, which this does not touch.
+    const dispatch = await clearVisitDispatch(homeownerId, startAt, { reason: 'cancelled', visit });
     return NextResponse.json({ status: 'cancelled', reminder, dispatch });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

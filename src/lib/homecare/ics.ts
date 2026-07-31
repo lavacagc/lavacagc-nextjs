@@ -20,15 +20,29 @@
  *  - **customer**: no VALARM at all. The customer downloads their copy from the
  *    portal, and it must never contain "text the customer when on the way".
  *
+ * A crew invite can also be RETRACTED - see `cancel` on IcsArgs. The alarms are
+ * why that matters: the 7:00am one is an instruction to text a customer, and a
+ * cancelled visit that keeps its event fires it anyway.
+ *
  * The alarms use ABSOLUTE triggers, not relative offsets. A relative trigger
  * (say -PT13H) fires at a completely different clock time for an 8am job than
  * for a 2pm one, so "the evening before" would drift around the evening.
  */
+import { HOME_CARE_FROM, fromAddress } from '@/lib/notify/senders';
 
 export type IcsVariant = 'owner' | 'crew' | 'customer';
 
-/** The address a REQUEST is organized by. Real, so replies reach a human. */
-export const ICS_ORGANIZER = 'alex@lavacagc.com';
+/**
+ * The address a REQUEST is organized by.
+ *
+ * DERIVED from the address the dispatch is actually sent from, never written
+ * out again here. Gmail and Outlook check that the sender is entitled to act as
+ * the organizer before they render their own RSVP / "Add to calendar" control;
+ * on a mismatch they fall back to offering the .ics as a plain download, which
+ * is the exact outcome METHOD:REQUEST was chosen over METHOD:PUBLISH to avoid.
+ * Replies still reach a human through the dispatch's Reply-To.
+ */
+export const ICS_ORGANIZER = fromAddress(HOME_CARE_FROM);
 
 export interface IcsArgs {
   uid: string;
@@ -46,6 +60,27 @@ export interface IcsArgs {
    * visit.
    */
   attendees?: { name?: string | null; email: string }[];
+  /**
+   * RETRACT the invite this UID names, rather than issue one: METHOD:CANCEL,
+   * STATUS:CANCELLED, and no VALARM. `crew` only.
+   *
+   * Dropping the alarms is the whole point rather than a detail. The 7:00am one
+   * reads "text the customer when the crew is on the way", and it is the only
+   * thing in the system that produces that text - so a retraction carrying it
+   * would tell somebody to text a customer about a visit that is off.
+   *
+   * The UID must be the one the original invite used, or a client files this as
+   * a second, cancelled event and leaves the live one alone.
+   */
+  cancel?: boolean;
+  /**
+   * RFC 5545 §3.8.7.4. A client applies a re-send to the event it already holds
+   * only when this number is HIGHER than the one it stored; equal, it is
+   * entitled to treat the message as a duplicate and ignore it. So a retraction
+   * or an updated invite must carry a bigger value than the send it supersedes,
+   * which is why `visit_dispatch.ics_sequence` counts them.
+   */
+  sequence?: number;
   /** Stamped as DTSTAMP. Injected so output is deterministic in tests. */
   now?: Date;
 }
@@ -130,8 +165,12 @@ function alarm(trigger: Date, description: string): string[] {
 export function buildIcs(args: IcsArgs): string {
   const {
     uid, start, end, services, address, customerName, customerPhone, variant,
-    attendees = [], now = new Date(),
+    attendees = [], sequence = 0, now = new Date(),
   } = args;
+
+  // A retraction is a crew message: it names an ATTENDEE and an ORGANIZER, and
+  // the other two variants have neither to cancel.
+  const isCancel = args.cancel === true && variant === 'crew';
 
   // The two internal variants carry the ops alarms; the customer's copy never
   // does. Named rather than repeated so a fourth variant cannot accidentally
@@ -155,8 +194,9 @@ export function buildIcs(args: IcsArgs): string {
     'PRODID:-//La Vaca General Contractors//Home Care//EN',
     'CALSCALE:GREGORIAN',
     // REQUEST is what makes Gmail offer its native "Add to calendar" control on
-    // the attachment. PUBLISH renders as a plain file download instead.
-    variant === 'crew' ? 'METHOD:REQUEST' : 'METHOD:PUBLISH',
+    // the attachment. PUBLISH renders as a plain file download instead. CANCEL
+    // is the only shape a client will act on to REMOVE an event it holds.
+    isCancel ? 'METHOD:CANCEL' : variant === 'crew' ? 'METHOD:REQUEST' : 'METHOD:PUBLISH',
     'BEGIN:VEVENT',
     `UID:${escapeIcsText(uid)}`,
     `DTSTAMP:${toIcsUtc(now)}`,
@@ -165,22 +205,26 @@ export function buildIcs(args: IcsArgs): string {
     `SUMMARY:${escapeIcsText(summary)}`,
     `LOCATION:${escapeIcsText(address)}`,
     `DESCRIPTION:${escapeIcsText(descriptionLines.join('\n'))}`,
-    'STATUS:CONFIRMED',
+    isCancel ? 'STATUS:CANCELLED' : 'STATUS:CONFIRMED',
   ];
 
   if (variant === 'crew') {
-    // RFC 5545 §3.2: a REQUEST needs an ORGANIZER, and SEQUENCE lets a later
-    // send supersede this one rather than landing as a second event.
+    // RFC 5545 §3.2: a REQUEST needs an ORGANIZER, and SEQUENCE is what lets a
+    // later send supersede this one rather than land as a second event - see
+    // `sequence` on IcsArgs for why it has to actually go up.
     lines.push(
-      'SEQUENCE:0',
+      `SEQUENCE:${sequence}`,
       `ORGANIZER;CN=La Vaca General Contractors:mailto:${ICS_ORGANIZER}`,
+      // A CANCEL still names its attendees: that is how a client knows which
+      // invitation is being withdrawn, and from whom.
       ...attendees.map((a) =>
-        `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE` +
+        `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT` +
+        `${isCancel ? '' : ';PARTSTAT=NEEDS-ACTION;RSVP=TRUE'}` +
         `${a.name ? `;CN=${escapeIcsText(a.name)}` : ''}:mailto:${a.email}`),
     );
   }
 
-  if (isInternal) {
+  if (isInternal && !isCancel) {
     // Absolute triggers so "the evening before" is genuinely the evening,
     // whatever time of day the visit itself is. Both days resolve through
     // easternDay, exactly as reminderSendAt does - reading the raw UTC date

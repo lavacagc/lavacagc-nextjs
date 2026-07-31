@@ -27,6 +27,9 @@ import {
 /** The caps prefix the owner asked for, to make a dispatch unmissable. */
 export const ACTION_PREFIX = '[ACTION REQUIRED]';
 
+/** Same caps convention, so a retraction is as unmissable as the dispatch was. */
+export const CANCELLED_PREFIX = '[CANCELLED]';
+
 export interface DispatchEmailArgs {
   /** Who the email is addressed to, e.g. "Veronica". */
   recipientName?: string | null;
@@ -66,6 +69,16 @@ export function dispatchSubject(args: {
   // in a list, and the town is the same for nearly every job.
   const street = args.address.split(',')[0]?.trim() || args.address;
   return `${ACTION_PREFIX} ${args.visitDateLabel}, ${args.timeWindow} - ${street}`;
+}
+
+/** `[CANCELLED] Tue 5 Aug, 8-11am - 14 Maple Ave` - the dispatch subject's twin. */
+export function cancelledSubject(args: {
+  visitDateLabel: string;
+  timeWindow: string;
+  address: string;
+}): string {
+  const street = args.address.split(',')[0]?.trim() || args.address;
+  return `${CANCELLED_PREFIX} ${args.visitDateLabel}, ${args.timeWindow} - ${street}`;
 }
 
 function kv(label: string, value: string): string {
@@ -170,6 +183,97 @@ export function buildDispatchEmail(args: DispatchEmailArgs): {
     subject,
     html: homeCareEmailShell({
       preheader: `${esc(visitDateLabel)}, ${esc(timeWindow)} - ${esc(address)}. Confirm the sub.`,
+      rows,
+    }),
+    text,
+  };
+}
+
+export interface DispatchCancelledEmailArgs {
+  recipientName?: string | null;
+  customerName: string;
+  address: string;
+  services: string[];
+  visitDateLabel: string;
+  timeWindow: string;
+}
+
+/**
+ * The visit is off - take it out of your calendar.
+ *
+ * Carries the METHOD:CANCEL .ics (the caller attaches it), which is what
+ * actually removes the event on a client that honours it. The body is the
+ * fallback for a client that does not, and it leads with the thing that
+ * otherwise goes wrong: the invite carries a 7:00am alarm telling whoever holds
+ * it to text this customer, and nobody should be texting them now.
+ *
+ * Internal mail, exactly like the dispatch it retracts: no unsubscribe link, no
+ * postal address, and no preferenceStream on the send.
+ */
+export function buildDispatchCancelledEmail(args: DispatchCancelledEmailArgs): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const { recipientName, customerName, address, services, visitDateLabel, timeWindow } = args;
+
+  const subject = cancelledSubject({ visitDateLabel, timeWindow, address });
+  const greeting = recipientName ? `${esc(recipientName)}, this` : 'This';
+
+  const rows = [
+    brandRow('Dispatch'),
+    `  <tr><td class="px" style="padding:26px 40px 0 40px">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate">
+      <tr><td bgcolor="${PANEL_BG}" style="background:${PANEL_BG};border-radius:9999px;padding:8px 16px;font-family:${FF};font-size:11px;line-height:14px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.12em;color:${MUTED};text-transform:uppercase">Cancelled</td></tr>
+    </table>
+  </td></tr>`,
+    headline(esc(visitDateLabel), esc(timeWindow)),
+    `  <tr><td class="px" style="padding:18px 40px 0 40px">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%">
+      ${kv('Customer', esc(customerName))}
+      ${kv('Address', esc(address))}
+      ${services.length > 0 ? kv('Work', services.map(esc).join('<br />')) : ''}
+    </table>
+  </td></tr>`,
+    `  <tr><td class="px" style="padding:20px 40px 0 40px;font-family:${FF};font-size:15px;line-height:23px;mso-line-height-rule:exactly;color:${BODY}">${greeting} visit is <strong style="color:${INK}">off</strong> - you are not going. <strong style="color:${INK}">Do not text ${esc(customerName)} about it</strong>; the reminder attached to the original invite does not know the visit was cancelled.</td></tr>`,
+    `  <tr><td class="px" style="padding:22px 40px 0 40px">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;background:${PANEL_BG};border-radius:12px">
+      <tr><td style="padding:16px 18px;font-family:${FF};font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:${MUTED}">
+        <strong style="color:${INK}">Open the attached calendar file</strong> to take the visit off your calendar. Most phones remove it for you; if yours does not, delete the event by hand so its 7:00am reminder cannot fire.
+      </td></tr>
+    </table>
+  </td></tr>`,
+    `  <tr><td class="px" style="padding:26px 40px 32px 40px">
+    <div style="height:1px;background:${HAIRLINE};line-height:1px;font-size:1px">&nbsp;</div>
+    <div style="padding-top:16px;font-family:${FF};font-size:12px;line-height:19px;mso-line-height-rule:exactly;color:#8A8A8A">
+      Sent to you because you were on this visit. Reply to this email to reach Alex, or call <a href="tel:+12012124917" style="color:${ORANGE_DEEP};text-decoration:none">${PHONE}</a>.<br />
+      <span style="color:${NAVY}">La Vaca General Contractors</span>
+    </div>
+  </td></tr>`,
+  ].join('\n');
+
+  const text = [
+    `${CANCELLED_PREFIX} ${visitDateLabel}, ${timeWindow}`,
+    '',
+    `Customer: ${customerName}`,
+    `Address:  ${address}`,
+    ...(services.length > 0 ? [`Work:     ${services.join(', ')}`] : []),
+    '',
+    'This visit is off - you are not going. Do not text the customer about it:',
+    'the reminder on the original invite does not know the visit was cancelled.',
+    '',
+    'Open the attached calendar file to take it off your calendar. If your phone',
+    'does not remove it for you, delete the event by hand so the 7:00am reminder',
+    'cannot fire.',
+    '',
+    'Sent to you because you were on this visit. Reply to reach Alex.',
+    `La Vaca General Contractors · ${PHONE}`,
+  ].join('\n');
+
+  return {
+    subject,
+    html: homeCareEmailShell({
+      preheader: `${esc(visitDateLabel)}, ${esc(timeWindow)} - ${esc(address)} is cancelled. Do not go.`,
       rows,
     }),
     text,

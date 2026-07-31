@@ -2,9 +2,13 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { buildIcs, googleCalendarUrl, ICS_ORGANIZER } from '../src/lib/homecare/ics';
-import { buildDispatchEmail, dispatchSubject, ACTION_PREFIX } from '../src/lib/homecare/dispatchEmail';
+import {
+  buildDispatchEmail, buildDispatchCancelledEmail, dispatchSubject, ACTION_PREFIX, CANCELLED_PREFIX,
+} from '../src/lib/homecare/dispatchEmail';
 import { escapeTelegram } from '../src/lib/notify/telegramMessage';
 import { SERVICE_REPLY_TO } from '../src/lib/homecare/serviceEmails';
+import { HOME_CARE_FROM } from '../src/lib/notify/senders';
+import { crewIcsUid } from '../src/lib/homecare/dispatch';
 
 /**
  * Acceptance criteria for crew dispatch.
@@ -79,8 +83,29 @@ test('AC3 one ATTENDEE line per recipient, RSVP requested', () => {
   expect(lines[1]).toContain('CN=Veronica');
 });
 
+test('AC2 the ORGANIZER is the address the dispatch is actually sent from', () => {
+  // A mismatch is what makes Gmail and Outlook fall back to a plain attachment,
+  // which is the outcome METHOD:REQUEST was chosen to avoid. Derived, not
+  // written out twice, so the two cannot drift apart again.
+  expect(ICS_ORGANIZER).toBe('alex@email.lavaca.link');
+  expect(HOME_CARE_FROM).toContain(`<${ICS_ORGANIZER}>`);
+});
+
 test('AC4 a crew invite carries SEQUENCE so a re-send supersedes it', () => {
   expect(ics()).toContain('SEQUENCE:0');
+  expect(ics({ sequence: 3 })).toContain('SEQUENCE:3');
+});
+
+test('AC4 the sequence counts up only once an invite has actually gone out', () => {
+  const src = read('src/lib/homecare/dispatch.ts');
+  expect(src).toContain(
+    'const sequence = dispatch.dispatched_at ? (dispatch.ics_sequence ?? 0) + 1 : (dispatch.ics_sequence ?? 0);',
+  );
+  // ...and it is persisted with the stamp, so the next send counts on from it.
+  const stamp = src.slice(src.indexOf('if (sentTo.length > 0) {'));
+  expect(stamp).toContain('ics_sequence: sequence');
+  expect(read('supabase/migrations/20260818000000_crew_dispatch.sql'))
+    .toContain('ADD COLUMN IF NOT EXISTS ics_sequence INTEGER NOT NULL DEFAULT 0');
 });
 
 test('AC5+AC6 a crew invite carries both ops alarms, and the 7am one names the customer + phone', () => {
@@ -360,8 +385,29 @@ test('AC39 dispatched_at is stamped only when something actually sent', () => {
 test('AC40 cancelling a visit clears its dispatch so a re-book is still chased', () => {
   const route = read('src/app/api/admin/service-quote/schedule/route.ts');
   const del = route.slice(route.indexOf('export async function DELETE'));
-  expect(del).toContain('clearVisitDispatch(homeownerId, startAt)');
+  expect(del).toContain("clearVisitDispatch(homeownerId, startAt, { reason: 'cancelled', visit })");
   expect(read('src/lib/homecare/dispatch.ts')).toContain("'DELETE',\n      `visit_dispatch?homeowner_id=eq.");
+});
+
+test('AC40 completing a visit clears its dispatch too, but retracts nothing', () => {
+  // Same stale row as a cancel leaves: a re-booking of that window would find
+  // an already-'confirmed' assignment and a nudged_at that says it has been
+  // chased. The clear is scoped to the windows this call actually closed - and
+  // it is COMPLETED, not cancelled, because the job happened: mailing "you are
+  // not going" about work somebody just finished would be a lie.
+  const route = read('src/app/api/admin/service-quote/complete/route.ts');
+  expect(route).toContain("clearVisitDispatch(homeownerId, at, { reason: 'completed', visit })");
+  expect(route).toContain('for (const { at, visit } of completedVisits)');
+  expect(route).toContain('dispatch,');
+});
+
+test('AC40 a reschedule clears the dispatch for the window it moved off', () => {
+  const route = read('src/app/api/admin/service-quote/schedule/route.ts');
+  const post = route.slice(route.indexOf('export async function POST'), route.indexOf('/** The owner'));
+  expect(post).toContain("clearVisitDispatch(homeowner.id, when, { reason: 'cancelled', visit })");
+  // Read before the upsert vacates the window, or there is nothing left to
+  // describe in the retraction.
+  expect(post.indexOf('const vacated = await Promise.all')).toBeLessThan(post.indexOf('await scheduleVisit('));
 });
 
 /* ── confirming (AC 41-49) ───────────────────────────────────────────────── */
@@ -459,8 +505,20 @@ test('AC54 tasks sharing a window are grouped into one visit', () => {
   expect(cron()).toContain('const key = `${v.homeowner_id}|${v.scheduled_start}`;');
 });
 
-test('AC55 a flag counts as answered, exactly like a confirm', () => {
-  expect(cron()).toContain("mine.some((a) => a.status === 'confirmed' || a.status === 'flagged')");
+test('AC55 only a confirmation stops the chase - a flag does not', () => {
+  // A flag says this visit has a PROBLEM, and the customer is still told at
+  // 7:30pm that we are coming. Treating it as answered made flagging strictly
+  // worse than ignoring the email: both stages went quiet and nobody was told.
+  const src = cron();
+  expect(src).toContain("mine.some((a) => a.status === 'confirmed')");
+  expect(src).not.toContain("a.status === 'confirmed' || a.status === 'flagged'");
+});
+
+test('AC55 both stages carry the flag note, so the owner sees what is wrong', () => {
+  const src = cron();
+  expect(src).toContain("const flagged = mine.filter((a) => a.status === 'flagged');");
+  expect(src).toContain('flagged a problem');
+  expect(src).toContain('escapeTelegram(a.note)');
 });
 
 test('AC56 a stage already stamped is skipped, making a retry a no-op', () => {
@@ -513,6 +571,155 @@ test('AC65 a run that could not deliver reports itself failed', () => {
   const src = cron();
   expect(src).toContain('ok: failed.length === 0');
   expect(src).toContain("degraded: 'escalation_send_failed'");
+});
+
+/* ── flagging reaches somebody (AC 66-67) ────────────────────────────────── */
+
+const confirmRoute = () => read('src/app/api/crew/confirm/route.ts');
+
+test('AC66 a flag Telegrams the office at once, with who, which visit, and the note', () => {
+  const src = confirmRoute();
+  expect(src).toContain('sendTelegramMessage');
+  const alert = src.slice(src.indexOf('async function notifyFlag'));
+  expect(alert).toContain('A visit has been flagged');
+  // Who, the visit, and what they typed - all of it escaped.
+  for (const field of [
+    'escapeTelegram(who)',
+    'escapeTelegram(visit?.customerName',
+    'escapeTelegram(when)',
+    'escapeTelegram(visit.address)',
+    'escapeTelegram(note)',
+  ]) {
+    expect(alert).toContain(field);
+  }
+  for (const match of alert.matchAll(/\$\{(?!escapeTelegram)([a-zA-Z][\w.?]*)\}/g)) {
+    throw new Error(`unescaped interpolation in the flag alert: ${match[1]}`);
+  }
+});
+
+test('AC66 a confirm sends no Telegram - only a flag does', () => {
+  const src = confirmRoute();
+  expect(src).toContain("if (action === 'confirm') return NextResponse.json({ status: 'confirmed' });");
+  expect(src.indexOf("if (action === 'confirm') return")).toBeLessThan(src.indexOf('await notifyFlag('));
+});
+
+test('AC67 the flag is recorded before the Telegram, and a failed send is logged not returned', () => {
+  const src = confirmRoute();
+  expect(src.indexOf("status: action === 'confirm' ? 'confirmed' : 'flagged'"))
+    .toBeLessThan(src.indexOf('await notifyFlag('));
+  const after = src.slice(src.indexOf('const notified = await notifyFlag('));
+  expect(after).toContain('console.error');
+  expect(after).toContain("return NextResponse.json({ status: 'flagged', notified });");
+});
+
+test('AC49 a server error on this public route leaks no Supabase detail', () => {
+  const src = confirmRoute();
+  // The thrown message carries the table name, the token filter and PostgREST's
+  // own error body. It is logged, never returned.
+  expect(src).toContain("{ error: 'server_error' }");
+  expect(src).not.toContain('{ error: message }');
+  expect(src).toContain('console.error');
+});
+
+/* ── retiring a visit (AC 68-72) ─────────────────────────────────────────── */
+
+const cancelIcs = (over: Partial<Parameters<typeof buildIcs>[0]> = {}) =>
+  ics({ cancel: true, sequence: 1, ...over });
+
+test('AC68 a retraction is METHOD:CANCEL and STATUS:CANCELLED', () => {
+  const out = cancelIcs();
+  expect(out).toContain('METHOD:CANCEL');
+  expect(out).not.toContain('METHOD:REQUEST');
+  expect(out).toContain('STATUS:CANCELLED');
+  expect(out).not.toContain('STATUS:CONFIRMED');
+  // It still names who is being uninvited, and by whom.
+  expect(out).toContain(`ORGANIZER;CN=La Vaca General Contractors:mailto:${ICS_ORGANIZER}`);
+  expect(out).toContain('mailto:veronica@lavacagc.com');
+});
+
+test('AC69 a retraction carries the invite UID and a higher SEQUENCE', () => {
+  expect(crewIcsUid('DISPATCH', 'RECIPIENT')).toBe('lavaca-crew-DISPATCH-RECIPIENT');
+  // Same UID as the invite, so a client removes the event it holds rather than
+  // filing a second, cancelled one beside it.
+  const invite = ics({ uid: crewIcsUid('D', 'R'), sequence: 0 });
+  const retraction = cancelIcs({ uid: crewIcsUid('D', 'R'), sequence: 1 });
+  expect(invite).toContain('UID:lavaca-crew-D-R');
+  expect(retraction).toContain('UID:lavaca-crew-D-R');
+  expect(invite).toContain('SEQUENCE:0');
+  expect(retraction).toContain('SEQUENCE:1');
+
+  const src = read('src/lib/homecare/dispatch.ts');
+  expect(src).toContain('const sequence = (dispatch.ics_sequence ?? 0) + 1;');
+  expect(src).toContain('uid: crewIcsUid(dispatch.id, assignment.recipient_id)');
+});
+
+test('AC70 a retraction carries NO alarm - it must never say "text the customer"', () => {
+  const out = cancelIcs();
+  expect(out).not.toContain('BEGIN:VALARM');
+  expect(out).not.toContain('when the crew is on the way');
+  // ...while the invite it retracts still carries both.
+  expect(ics().split('BEGIN:VALARM').length - 1).toBe(2);
+});
+
+test('AC70 the cancelled email tells them not to text the customer', () => {
+  const { subject, html, text } = buildDispatchCancelledEmail({
+    recipientName: 'Veronica',
+    customerName: 'Jordan Caruso',
+    address: '14 Maple Ave, West Orange, NJ',
+    services: ['Clean gutters & downspouts'],
+    visitDateLabel: 'Wed 5 Aug',
+    timeWindow: '8:00 - 11:00am',
+  });
+  expect(subject).toBe(`${CANCELLED_PREFIX} Wed 5 Aug, 8:00 - 11:00am - 14 Maple Ave`);
+  expect(html).toContain('Do not text ');
+  expect(html).toContain('Jordan Caruso');
+  expect(text).toContain('Do not text the customer about it');
+  // Internal mail, exactly like the dispatch it retracts.
+  expect(html.toLowerCase()).not.toContain('unsubscribe');
+  expect(html).not.toContain('51 Crestmont Rd');
+});
+
+test('AC71 the recipients are read before the row is deleted, or they cascade away', () => {
+  const src = read('src/lib/homecare/dispatch.ts');
+  const fn = src.slice(src.indexOf('export async function clearVisitDispatch'));
+  expect(fn.indexOf('visit_dispatch_recipients?select=')).toBeLessThan(fn.indexOf("'DELETE',"));
+  expect(fn.indexOf("'DELETE',")).toBeLessThan(fn.indexOf('sendDispatchRetraction('));
+});
+
+test('AC72 only a cancelled visit whose dispatch actually sent is retracted', () => {
+  const src = read('src/lib/homecare/dispatch.ts');
+  expect(src).toContain("if (reason === 'cancelled' && dispatch?.dispatched_at && assignments.length > 0) {");
+});
+
+test('AC72 the retraction never carries a preferenceStream either', () => {
+  const src = code('src/lib/homecare/dispatch.ts');
+  expect(src).not.toContain('preferenceStream');
+  expect(src).toContain("category: 'crew_dispatch_cancelled'");
+});
+
+/* ── row-level security (AC 73) ──────────────────────────────────────────── */
+
+test('AC73 RLS is enabled on all three dispatch tables', () => {
+  const sql = read('supabase/migrations/20260818000000_crew_dispatch.sql');
+  for (const table of ['dispatch_recipients', 'visit_dispatch', 'visit_dispatch_recipients']) {
+    expect(sql).toMatch(new RegExp(`ALTER TABLE public\\.${table}\\s+ENABLE ROW LEVEL SECURITY;`));
+  }
+  // No policy: every reader reaches these through the secret key, which
+  // bypasses RLS. A policy would be the only way anon could see a token.
+  expect(sql).not.toContain('CREATE POLICY');
+});
+
+test('AC73 the migration stays idempotent - it is hand-applied to a live database', () => {
+  const sql = read('supabase/migrations/20260818000000_crew_dispatch.sql');
+  for (const create of sql.match(/CREATE TABLE[^(]*/g) ?? []) {
+    expect(create).toContain('IF NOT EXISTS');
+  }
+  for (const index of sql.match(/CREATE (UNIQUE )?INDEX[^(]*/g) ?? []) {
+    expect(index).toContain('IF NOT EXISTS');
+  }
+  for (const column of sql.match(/ADD COLUMN[^,\n]*/g) ?? []) {
+    expect(column).toContain('IF NOT EXISTS');
+  }
 });
 
 /* ── what was deliberately not built ─────────────────────────────────────── */

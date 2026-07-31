@@ -23,6 +23,7 @@ import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { HOME_CARE_FROM } from '@/lib/notify/sendHomeCareEmails';
 import { buildServiceCompletedEmail, SERVICE_REPLY_TO } from '@/lib/homecare/serviceEmails';
 import { cancelVisitReminder } from '@/lib/homecare/serviceScheduling';
+import { clearVisitDispatch, visitContextFor } from '@/lib/homecare/dispatch';
 import { preferencesUrlFor, normalizeEmail } from '@/lib/preferences/preferences';
 import { cleanEnv } from '@/lib/envClean';
 import { completeSchema } from '../_schema';
@@ -110,6 +111,22 @@ export async function POST(request: NextRequest) {
     );
     const transitioning = targets.filter((t) => !alreadyOurs.has(`${t.taskKey}|${t.season}`));
 
+    // The windows this call closes. Scoped to the ones these tasks were BOOKED
+    // into: a customer with another visit later must keep that one's reminder
+    // and that one's dispatch, and a row completed on some earlier visit is not
+    // a window this call closes.
+    //
+    // Read here, BEFORE the upsert nulls them: the calendar retraction sent
+    // below has to describe the visit it is withdrawing, and once the window is
+    // cleared the services are no longer readable.
+    const completedVisitStarts = [...new Set(
+      taskKeys.map((k) => bookedFor.get(k)?.scheduled_start).filter((s): s is string => !!s),
+    )];
+    const completedVisits = await Promise.all(completedVisitStarts.map(async (iso) => ({
+      at: new Date(iso),
+      visit: await visitContextFor(homeownerId, new Date(iso)).catch(() => null),
+    })));
+
     const completedAt = new Date().toISOString();
     if (transitioning.length > 0) {
       await supabaseRest('POST', 'homeowner_maintenance', transitioning.map(({ taskKey, season }) => ({
@@ -136,13 +153,7 @@ export async function POST(request: NextRequest) {
     const owner = owners[0];
     if (!owner) return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
 
-    // The visit happened - its queued reminder is now noise. Scoped to the
-    // windows these tasks were BOOKED into: a customer with another visit later
-    // must keep that one's reminder, and a row completed on some earlier visit
-    // is not a window this call closes.
-    const completedVisitStarts = [...new Set(
-      taskKeys.map((k) => bookedFor.get(k)?.scheduled_start).filter((s): s is string => !!s),
-    )];
+    // The visit happened - its queued reminder is now noise.
     // Reported, never assumed: a cancel that could not reach the queue leaves a
     // "we're coming tomorrow" pending for a visit already performed.
     let reminder: 'cancelled' | 'unavailable' = 'cancelled';
@@ -150,9 +161,23 @@ export async function POST(request: NextRequest) {
       if (await cancelVisitReminder(owner.email, new Date(iso)) === 'unavailable') reminder = 'unavailable';
     }
 
+    // And so is its dispatch. The row is keyed on (homeowner, window), so a
+    // closed-out visit that keeps it hands the next booking of that same slot
+    // an already-'confirmed' assignment and a `nudged_at` that tells the 5pm
+    // stage it has nothing to do - the same hazard the cancel path exists to
+    // avoid. Retired as COMPLETED, not cancelled: the job happened, so no
+    // calendar retraction goes out. Mailing the crew "this visit is off, you
+    // are not going" about work they have just finished would be a lie.
+    let dispatch: 'cleared' | 'unavailable' = 'cleared';
+    for (const { at, visit } of completedVisits) {
+      if (await clearVisitDispatch(homeownerId, at, { reason: 'completed', visit }) === 'unavailable') {
+        dispatch = 'unavailable';
+      }
+    }
+
     if (skipFeedback || transitioning.length === 0) {
       return NextResponse.json({
-        status: 'completed', completed: transitioning.length, feedback: 'skipped', reminder,
+        status: 'completed', completed: transitioning.length, feedback: 'skipped', reminder, dispatch,
         reason: transitioning.length === 0 ? 'already_completed_by_lavaca' : 'caller_requested',
       });
     }
@@ -206,6 +231,7 @@ export async function POST(request: NextRequest) {
       status: 'completed',
       completed: transitioning.length,
       reminder,
+      dispatch,
       feedback,
       feedbackError: res.error ?? null,
     });

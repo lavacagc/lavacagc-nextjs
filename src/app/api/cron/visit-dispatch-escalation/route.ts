@@ -32,7 +32,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTelegramMessage, escapeTelegram } from '@/lib/notify/telegramMessage';
-import { ensureVisitDispatch, type DispatchAssignment, type VisitDispatchRow } from '@/lib/homecare/dispatch';
+import {
+  ensureVisitDispatch, VISIT_DISPATCH_COLUMNS,
+  type DispatchAssignment, type VisitDispatchRow,
+} from '@/lib/homecare/dispatch';
 import {
   tomorrowEasternWindow, visitDateLabel, visitTimeWindow, visitEndsAt, visitKey,
 } from '@/lib/homecare/visitSchedule';
@@ -100,7 +103,7 @@ export async function GET(request: NextRequest) {
     // Every dispatch row covering this window, in one read.
     const dispatches = (await supabaseRest<VisitDispatchRow[]>(
       'GET',
-      `visit_dispatch?select=id,homeowner_id,visit_start,sub_name,dispatched_at,nudged_at,escalated_at` +
+      `visit_dispatch?select=${VISIT_DISPATCH_COLUMNS}` +
         `&visit_start=gte.${startUtc.toISOString()}&visit_start=lt.${endUtc.toISOString()}`,
     )) ?? [];
     const dispatchByVisit = new Map(dispatches.map((d) => [`${d.homeowner_id}|${visitKey(new Date(d.visit_start))}`, d]));
@@ -134,10 +137,13 @@ export async function GET(request: NextRequest) {
       let dispatch = dispatchByVisit.get(`${first.homeowner_id}|${visitKey(start)}`) ?? null;
       const mine = dispatch ? assignmentsByDispatch.get(dispatch.id) ?? [] : [];
 
-      // A flag counts as answered. Somebody looked at this and told us there is
-      // a problem; chasing them again at 6pm is nagging about a thing already
-      // reported, and it is the office's move now, not theirs.
-      if (mine.some((a) => a.status === 'confirmed' || a.status === 'flagged')) {
+      // ONLY a confirmation stops the chase. A flag is the opposite of an
+      // all-clear: somebody said this visit has a problem, and the customer is
+      // still told at 7:30pm that we are coming. The flag itself already
+      // Telegrams the office the moment it is tapped (see /api/crew/confirm),
+      // and these two stages carry the note along so the visit stays in front of
+      // the owner until it is either fixed and confirmed or called off.
+      if (mine.some((a) => a.status === 'confirmed')) {
         confirmed += 1;
         continue;
       }
@@ -186,6 +192,13 @@ export async function GET(request: NextRequest) {
       const customer = owner?.first_name || owner?.email || 'a customer';
       const neverDispatched = !dispatch.dispatched_at;
       const sentTo = mine.map((a) => a.name || a.email).join(', ');
+      // Carried into the message rather than left as a status: "somebody said
+      // something is wrong" and "the sub cancelled" call for different moves,
+      // and only one of them is written down anywhere.
+      const flagged = mine.filter((a) => a.status === 'flagged');
+      const flagLines = flagged.map((a) =>
+        `⚠️ <b>${escapeTelegram(a.name || a.email)} flagged a problem</b>` +
+        `${a.note ? `: ${escapeTelegram(a.note)}` : ' (no note).'}`);
 
       const text = [
         stage === 'escalate'
@@ -199,7 +212,9 @@ export async function GET(request: NextRequest) {
         '',
         neverDispatched
           ? '⚠️ <b>No dispatch was ever sent for this visit</b> - nobody has been told to go.'
-          : `Sent to ${escapeTelegram(sentTo || 'the crew')}, no answer yet.`,
+          : flagLines.length > 0
+            ? flagLines.join('\n')
+            : `Sent to ${escapeTelegram(sentTo || 'the crew')}, no answer yet.`,
         stage === 'escalate'
           ? 'The customer is told we are coming at 7:30pm - about 90 minutes from now.'
           : 'The customer is told we are coming at 7:30pm tonight.',
