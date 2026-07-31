@@ -254,8 +254,13 @@ export default function SendServiceQuotePage() {
     if (!window.confirm('Cancel this visit? It comes off the customer\'s portal and the night-before reminder is pulled.')) return;
     setCancelling(booking.start);
     try {
+      // No email: the route reads it off the homeowner row. This box is the
+      // LOOKUP field, not a value bound to the customer whose bookings are on
+      // screen, so sending it let the unbook and the reminder cancel name
+      // different people - the visit came off the books and the "we're coming
+      // tomorrow" stayed queued.
       const res = await fetch(`/api/admin/service-quote/schedule?${new URLSearchParams({
-        homeownerId, email: email.trim(), start: booking.start,
+        homeownerId, start: booking.start,
       })}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.issues?.[0]?.message || 'Failed');

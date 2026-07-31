@@ -10,7 +10,7 @@ import {
   parseTaskKeys, resolveServices, bookableCatalog, lastDoneFor, lastDoneLabel, scopeSummaryFrom,
   groupBookings, type ServiceCatalogRow,
 } from '../src/lib/homecare/serviceIntake';
-import { supersededBookings, orphanedVisitStarts } from '../src/lib/homecare/serviceScheduling';
+import { supersededBookings, orphanedVisitStarts, crossSeasonBookings } from '../src/lib/homecare/serviceScheduling';
 import {
   tomorrowEasternWindow, visitDateLabel, visitTimeWindow, reminderSendAt, reminderRunAt,
   reminderIsStillUseful, visitKey, easternVisitInstant, ledgerKey, ledgerVerdict,
@@ -229,6 +229,36 @@ test('SC10+SC12: a supersede compares windows as instants, and spares a shared o
     previous: alone,
     superseded: supersededBookings({ previous: alone, tasks: fallGutters, start: moved }),
   }).map((d) => d.toISOString())).toEqual([JS]);
+});
+
+test('SC15: a service already booked in another season is refused', () => {
+  // `seasonForTaskVisit` flips a fall+spring service on 1 Jun and 1 Dec, so a
+  // SEVEN-DAY slip crosses it: 25 Nov files under fall, 3 Dec under spring.
+  // Two rows, and the fall one keeps announcing 25 Nov.
+  expect(seasonForTaskVisit(new Date('2026-11-25T12:00:00Z'), ['fall', 'spring'])).toBe('fall');
+  expect(seasonForTaskVisit(new Date('2026-12-03T12:00:00Z'), ['fall', 'spring'])).toBe('spring');
+
+  const now = new Date('2026-11-18T12:00:00Z');
+  const previous = [{ task_key: 'clean_gutters', season: 'fall', scheduled_start: '2026-11-25T13:00:00+00:00' }];
+  const conflicts = crossSeasonBookings({
+    previous, tasks: [{ taskKey: 'clean_gutters', season: 'spring' }], now,
+  });
+  expect(conflicts.map((r) => r.season), 'the 25 Nov visit is named, not silently superseded').toEqual(['fall']);
+
+  // Same season is a plain reschedule and passes straight through.
+  expect(crossSeasonBookings({
+    previous, tasks: [{ taskKey: 'clean_gutters', season: 'fall' }], now,
+  })).toEqual([]);
+  // A different service is nothing to do with this booking.
+  expect(crossSeasonBookings({
+    previous, tasks: [{ taskKey: 'clean_dryer_vent', season: 'spring' }], now,
+  })).toEqual([]);
+  // And a window already PAST announces nothing - its reminder run has fired
+  // and the portal card filters to the future. Blocking on one would only mean
+  // a visit nobody closed out can never be re-booked.
+  expect(crossSeasonBookings({
+    previous, tasks: [{ taskKey: 'clean_gutters', season: 'spring' }], now: new Date('2026-11-26T12:00:00Z'),
+  })).toEqual([]);
 });
 
 test('SC10: the other half of a two-season service keeps its booking', () => {

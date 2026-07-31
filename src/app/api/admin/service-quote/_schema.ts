@@ -79,14 +79,16 @@ export type ScheduleInput = z.infer<typeof scheduleSchema>;
 /**
  * Query params for cancelling ONE visit (DELETE).
  *
- * `email` is validated here for the same reason the POST body validates it: it
- * is handed to the reminder cancel, and an address is the only thing scoping
- * that cancel to one customer. A raw query string would otherwise let a
- * wildcard through where the POST path rejects it.
+ * There is deliberately no `email`. The unbook filters on `homeowner_id` and
+ * the reminder cancel matches on the address, so taking the address from the
+ * caller let the two disagree: the admin page sent the lookup box, which is not
+ * tied to the customer whose bookings are on screen, and a stale one cleared
+ * the window while the "we're coming tomorrow" stayed queued and sent. The
+ * route reads the address off the homeowner row instead, exactly as /complete
+ * does, so both halves of the cancel name the same person by construction.
  */
 export const cancelVisitSchema = z.object({
   homeownerId: z.string().uuid(),
-  email: z.string().trim().email('Valid customer email required').max(255),
   /**
    * The window this cancel targets, so it can never clear the whole season.
    * (homeowner, window) is the whole filter: one visit's tasks can be filed

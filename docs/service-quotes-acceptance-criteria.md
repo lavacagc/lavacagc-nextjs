@@ -140,14 +140,14 @@ These were settled by the owner during review; the ACs assume them.
   scheduled" - the visit gone from the member's portal and off the cron, with the
   owner's calendar still holding it.
   Which makes a visit that moves far enough to change its reconciled season a
-  **new booking**, deliberately: nothing infers a cross-season move and nothing
-  unbooks a window the caller did not name. Both bookings are visible on "On the
-  books", so retiring the one left behind is the explicit **Cancel visit** action
-  (SC14). Guessing at that intent is what the `replaces` handshake was for, and
-  it cost three defects - a client that claimed a reschedule on every second
-  click, a completion that resolved to the wrong visit, and a timestamp
-  comparison that could never match - before a task-wide supersede reintroduced
-  the loss from the other direction.
+  **new booking** as far as this function is concerned: nothing infers a
+  cross-season move and nothing unbooks a window the caller did not name.
+  Guessing at that intent is what the `replaces` handshake was for, and it cost
+  three defects - a client that claimed a reschedule on every second click, a
+  completion that resolved to the wrong visit, and a timestamp comparison that
+  could never match - before a task-wide supersede reintroduced the loss from
+  the other direction.
+  Which is why the second booking is **refused** rather than written - see SC15.
   Windows compare as **instants**, never as strings: PostgREST renders
   `timestamptz` as `2026-09-05T12:00:00+00:00` and `Date#toISOString()` gives
   `2026-09-05T12:00:00.000Z`, the same moment spelled two ways, so a string
@@ -190,6 +190,38 @@ These were settled by the owner during review; the ACs assume them.
   "Mark completed", which stamps the job into the service history and asks the
   customer to rate work that was never performed. The control is confirm-gated,
   names the window it cancels, and the booking list is re-read afterwards.
+  The address the reminder cancel matches on is **read from the homeowner row**,
+  never taken from the caller. The unbook filters on `homeowner_id` and the
+  cancel on the address, so a caller-supplied one let the two name different
+  people: the page sent its *lookup* box, which is not bound to the customer
+  whose bookings are on screen, and a stale value cleared the window, matched no
+  queue row, and still answered "cancelled" - so the customer was told we were
+  coming tomorrow for a visit that had been called off. `/complete` already
+  resolved it this way; both actions now do.
+- **SC15** A service already booked into a **different season** is **refused**,
+  not quietly booked twice.
+  SC10 keys a booking on (task, season) so the two halves of a two-season service
+  cannot disturb each other - but the season is reconciled from the visit *date*,
+  and for the two-season services (`clean_gutters`, `roof_inspect`) it flips on
+  1 Jun and 1 Dec. A **seven-day** slip from 25 Nov to 3 Dec therefore crossed
+  it: a second row under spring while the fall row kept 25 Nov, so the cron sent
+  "we're coming tomorrow" on 24 Nov for a visit that had moved and the portal
+  showed it until it passed. Nothing distinguished that from a deliberate second
+  booking, and nothing marked the stale one.
+  Which one it was is not knowable here, and inferring it is the guessing that
+  cost three defects. The admin knows, so they decide: the request is refused
+  with a **409** that names the service and the visit already on the books, and
+  **Cancel visit** (SC14) is one click away on the same screen. Nothing is
+  written, so a refused booking leaves no trace.
+  The consequence, deliberately: both halves of a two-season service can no
+  longer be held at once - the spring clean is booked after the fall one is
+  closed out. A booking that cannot be silently duplicated cannot silently
+  strand a reminder, and a reminder for a visit nobody is attending is the worst
+  outcome in this feature.
+  Scoped to windows still **ahead**. A window already past announces nothing -
+  its reminder run has fired and the portal card filters to the future - so
+  blocking on one would only mean a visit nobody closed out can never be
+  re-booked.
 
 ## ICS - the calendar file
 

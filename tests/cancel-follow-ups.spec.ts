@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test';
 import {
   escapeLikePattern,
   cancelPendingFollowUps,
-  followUpSequenceTypes,
   followUpSequenceOf,
   followUpTypesForSequence,
   FOLLOW_UP_SEQUENCE_TYPES,
@@ -262,16 +261,16 @@ test.describe('cancelPendingFollowUps', () => {
   });
 });
 
-test.describe('followUpSequenceTypes', () => {
+test.describe('the follow_up_queue sequence registry', () => {
   test('maps each feedback_* type to the review-request set', () => {
     for (const t of REVIEW_REQUEST_FOLLOW_UP_TYPES) {
-      expect(followUpSequenceTypes(t)).toEqual(REVIEW_REQUEST_FOLLOW_UP_TYPES);
+      expect(followUpTypesForSequence(followUpSequenceOf(t))).toEqual(REVIEW_REQUEST_FOLLOW_UP_TYPES);
     }
   });
 
   test('maps nurture types (and unknown types) to the nurture set', () => {
     for (const t of [...LEAD_NURTURE_FOLLOW_UP_TYPES, 'something_else']) {
-      expect(followUpSequenceTypes(t)).toEqual(LEAD_NURTURE_FOLLOW_UP_TYPES);
+      expect(followUpTypesForSequence(followUpSequenceOf(t))).toEqual(LEAD_NURTURE_FOLLOW_UP_TYPES);
     }
   });
 
@@ -280,16 +279,27 @@ test.describe('followUpSequenceTypes', () => {
   // reminder standing.
   test('maps a visit reminder to its own set, not to nurture', () => {
     for (const t of VISIT_REMINDER_FOLLOW_UP_TYPES) {
-      expect(followUpSequenceTypes(t)).toEqual(VISIT_REMINDER_FOLLOW_UP_TYPES);
-      expect(followUpSequenceTypes(t)).not.toEqual(LEAD_NURTURE_FOLLOW_UP_TYPES);
+      expect(followUpSequenceOf(t)).toBe('visit');
+      expect(followUpTypesForSequence('visit')).toEqual(VISIT_REMINDER_FOLLOW_UP_TYPES);
+      expect(followUpTypesForSequence('visit')).not.toEqual(LEAD_NURTURE_FOLLOW_UP_TYPES);
     }
   });
 
   test('every sequence in the registry is reachable by name, and nothing else is', () => {
-    for (const [sequence, types] of Object.entries(FOLLOW_UP_SEQUENCE_TYPES)) {
+    for (const [sequence, types] of FOLLOW_UP_SEQUENCE_TYPES) {
       expect(followUpTypesForSequence(sequence)).toEqual(types);
       for (const t of types) expect(followUpSequenceOf(t)).toBe(sequence);
     }
     expect(followUpTypesForSequence('made_up')).toBe(null);
+  });
+
+  // The registry is looked up by a name that arrives in a request body, so it
+  // must have no inherited keys. As an object literal it answered 'constructor'
+  // with `Object` - truthy, so the route's "unknown sequence" guard passed it
+  // through and the query builder threw a 500 instead of refusing with a 400.
+  test('an inherited key is not a sequence', () => {
+    for (const name of ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__']) {
+      expect(followUpTypesForSequence(name), `${name} must not resolve`).toBe(null);
+    }
   });
 });

@@ -211,6 +211,20 @@ test('RM16: a reader keyed on the person is scoped to the sequence it means', ()
   expect(registry).toContain('export function followUpSequenceOf');
   expect(drips).toContain('followUpSequenceOf');
 
+  // A Map, because the name looked up in it comes off a request body: an object
+  // literal answers 'constructor' with something truthy off Object.prototype,
+  // so the unknown-name guard passed it through to the query builder.
+  expect(registry).toContain('new Map<string, readonly string[]>');
+  expect(registry, 'no object-literal lookup by a caller-supplied name')
+    .not.toContain('FOLLOW_UP_SEQUENCE_TYPES[');
+
+  // ONE spelling of each direction. A registry hoisted so there is exactly one
+  // mapping does not get to carry a third and fourth alias of it - the next
+  // reader cannot tell which is authoritative.
+  expect(registry, 'folded into followUpTypesForSequence').not.toContain('followUpSequenceTypes');
+  expect(read('src/lib/homecare/visitSchedule.ts'), 'VISIT_REMINDER_FOLLOW_UP_TYPES is the one name')
+    .not.toContain('VISIT_FOLLOW_UP_TYPES');
+
   // "Has this lead been through the drip?" asked of the NURTURE types. Reminder
   // rows stay 'sent' forever, so a service customer who later filled in the
   // website form was skipped and their acknowledgement never went out.
@@ -370,7 +384,7 @@ test('the visit cancel targets one window, not the whole season', () => {
   const del = scheduleRoute.slice(scheduleRoute.indexOf('export async function DELETE'));
   expect(del).toContain('scheduled_start=eq.');
   expect(del).toContain('cancelVisitSchema.safeParse');
-  expect(del).toContain('cancelVisitReminder(email, startAt)');
+  expect(del).toContain('cancelVisitReminder(owner.email, startAt)');
   // (homeowner, window) is the whole filter. One window can file its tasks under
   // different seasons, so a season filter would leave part of the visit booked.
   expect(del).not.toContain('season=eq.');
@@ -505,6 +519,58 @@ test('SC14: a booked visit can be cancelled from the admin page', () => {
   expect(fn).toContain('window.confirm');
   expect(fn).toContain('start: booking.start');
   expect(fn).toContain('await refreshBookings()');
+
+  // The address the reminder cancel matches on is READ from the homeowner row,
+  // never sent. The unbook filters on homeowner_id and the cancel on the
+  // address, so a caller-supplied one let them name different people: the page
+  // sent its LOOKUP box, and a stale value cleared the window, matched no queue
+  // row and still answered "cancelled" - so the customer was told we were
+  // coming tomorrow for a visit that was called off.
+  expect(fn, 'the lookup box is not bound to the loaded customer').not.toContain('email: email.trim()');
+  expect(schema.slice(schema.indexOf('export const cancelVisitSchema')), 'no caller-supplied address')
+    .not.toContain('email:');
+  const del = scheduleRoute.slice(scheduleRoute.indexOf('export async function DELETE'));
+  expect(del).toContain('homeowners?select=email&id=eq.${homeownerId}');
+  expect(del).toContain('cancelVisitReminder(owner.email, startAt)');
+  // Resolved BEFORE anything is written: a cancel that cannot pull the reminder
+  // is the failure this route exists to prevent, so it must not half-happen.
+  expect(del.indexOf('homeowners?select=email')).toBeLessThan(del.indexOf("supabaseRest('PATCH'"));
+});
+
+test('SC15: a service booked into another season is refused, not double-booked', () => {
+  // The season is reconciled from the visit date, and for a two-season service
+  // (clean_gutters, roof_inspect - both fall+spring) it flips on 1 Jun and
+  // 1 Dec. So a SEVEN-DAY slip from 25 Nov to 3 Dec filed a second row under
+  // spring while the fall row kept 25 Nov: "we're coming tomorrow" on 24 Nov
+  // for a visit that had moved, and a portal card for it until it passed.
+  //
+  // Telling that from a deliberate second booking is not knowable here, and
+  // guessing is what the `replaces` handshake cost three defects to learn. So
+  // the admin decides: refused, with the visit already on the books named, and
+  // Cancel visit one click away on the same screen.
+  expect(scheduling).toContain('export function crossSeasonBookings');
+  const fn = scheduling.slice(
+    scheduling.indexOf('export function crossSeasonBookings'),
+    scheduling.indexOf('export function orphanedVisitStarts'),
+  );
+  expect(fn).toContain('season === row.season');
+  // Only windows still AHEAD. A past one announces nothing - its reminder run
+  // has fired and the portal card filters to the future - so blocking on one
+  // would only mean a visit nobody closed out can never be re-booked.
+  expect(fn).toContain('ms > nowMs');
+
+  const post = scheduleRoute.slice(
+    scheduleRoute.indexOf('export async function POST'),
+    scheduleRoute.indexOf('export async function GET'),
+  );
+  expect(post).toContain('crossSeasonBookings({ previous, tasks })');
+  expect(post).toContain('status: 409');
+  // Actionable: which service, which visit, and what to do about it.
+  expect(post).toContain('Already on the books for a different season');
+  expect(post).toContain('cancel that one first');
+  expect(post).toContain('visitDateLabel(new Date(r.scheduled_start!))');
+  // Refused BEFORE anything is written, so a rejected booking leaves no trace.
+  expect(post.indexOf('conflicts.length > 0')).toBeLessThan(post.indexOf('await scheduleVisit'));
 });
 
 test('IN6: the intake lookup finds a lead whose stored email has capitals', () => {

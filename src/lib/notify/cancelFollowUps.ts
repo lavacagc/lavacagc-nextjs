@@ -93,16 +93,22 @@ export function sharedFollowUpQueue(client: any, columns = '*'): any {
  * forever.
  *
  * A fourth sequence adds itself HERE and both directions follow.
+ *
+ * A Map, not an object literal, because a caller-supplied name is looked up in
+ * it. `{}['constructor']` resolves off `Object.prototype` and comes back
+ * truthy, so an object literal answers "yes, that is a sequence" for
+ * 'constructor', 'toString' and '__proto__' and the unknown-name guard below
+ * hands `Object` itself to the query builder. A Map has no inherited keys.
  */
-export const FOLLOW_UP_SEQUENCE_TYPES: Record<string, readonly string[]> = {
-  nurture: LEAD_NURTURE_FOLLOW_UP_TYPES,
-  review: REVIEW_REQUEST_FOLLOW_UP_TYPES,
-  visit: VISIT_REMINDER_FOLLOW_UP_TYPES,
-};
+export const FOLLOW_UP_SEQUENCE_TYPES: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
+  ['nurture', LEAD_NURTURE_FOLLOW_UP_TYPES],
+  ['review', REVIEW_REQUEST_FOLLOW_UP_TYPES],
+  ['visit', VISIT_REMINDER_FOLLOW_UP_TYPES],
+]);
 
 /** The types a named sequence owns, or null if the name is not a sequence. */
 export function followUpTypesForSequence(sequence: string): readonly string[] | null {
-  return FOLLOW_UP_SEQUENCE_TYPES[sequence] ?? null;
+  return FOLLOW_UP_SEQUENCE_TYPES.get(sequence) ?? null;
 }
 
 /**
@@ -110,19 +116,10 @@ export function followUpTypesForSequence(sequence: string): readonly string[] | 
  * 'nurture', which is what the queue held before it was shared.
  */
 export function followUpSequenceOf(followUpType: string): string {
-  for (const [sequence, types] of Object.entries(FOLLOW_UP_SEQUENCE_TYPES)) {
+  for (const [sequence, types] of FOLLOW_UP_SEQUENCE_TYPES) {
     if (types.includes(followUpType)) return sequence;
   }
   return 'nurture';
-}
-
-/**
- * The sibling sequence a given follow_up_type belongs to. Used so a "stop this
- * person's follow-ups" action cancels the SAME sequence the row is part of
- * instead of blindly cancelling everything for the email.
- */
-export function followUpSequenceTypes(followUpType: string): readonly string[] {
-  return FOLLOW_UP_SEQUENCE_TYPES[followUpSequenceOf(followUpType)];
 }
 
 /** Escape Postgres LIKE/ILIKE wildcards so a value matches literally. */

@@ -305,6 +305,47 @@ export function supersededBookings(args: {
 }
 
 /**
+ * Bookings this customer STILL HAS COMING for one of these services, filed
+ * under a different season from the one this visit would file it under.
+ *
+ * A booking is keyed on (task, season), so two bookings of the same service in
+ * different seasons are two rows and the second never disturbs the first. That
+ * is right for the case it was written for - `clean_gutters` is a fall AND a
+ * spring task, and a customer holding both halves of the year is normal - but
+ * the season is reconciled from the visit date, and for a two-season service it
+ * flips on 1 Jun and 1 Dec. So a SEVEN-DAY slip from 25 Nov to 3 Dec files a
+ * second row under spring while the fall row keeps 25 Nov: the customer is told
+ * "we're coming tomorrow" on 24 Nov for a visit that moved, and the portal shows
+ * it until it passes. Nothing distinguished that from a deliberate second
+ * booking, and inferring which one it was is exactly the guessing the `replaces`
+ * handshake was removed for.
+ *
+ * So it is refused instead, and the admin decides: the message names the visit
+ * already on the books, and Cancel visit is one click away on the same screen.
+ * A booking that cannot be silently duplicated cannot silently strand a
+ * reminder.
+ *
+ * Scoped to windows still AHEAD. A window already past announces nothing - the
+ * reminder run for it has fired and the portal card filters to the future - so
+ * blocking on one only means a visit nobody closed out can never be re-booked.
+ */
+export function crossSeasonBookings(args: {
+  previous: BookedVisitRow[];
+  tasks: VisitTask[];
+  now?: Date;
+}): BookedVisitRow[] {
+  const { previous, tasks, now = new Date() } = args;
+  const seasonFor = new Map(tasks.map((t) => [t.taskKey, t.season]));
+  const nowMs = now.getTime();
+  return previous.filter((row) => {
+    const season = seasonFor.get(row.task_key);
+    if (!season || season === row.season || !row.scheduled_start) return false;
+    const ms = new Date(row.scheduled_start).getTime();
+    return Number.isFinite(ms) && ms > nowMs;
+  });
+}
+
+/**
  * The windows left with no booking at all once these rows are cleared - the
  * only ones whose reminder should be pulled.
  *

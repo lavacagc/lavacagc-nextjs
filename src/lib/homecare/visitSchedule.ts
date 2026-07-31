@@ -29,9 +29,6 @@ export { easternParts };
  */
 export const VISIT_REMINDER_TYPE = VISIT_REMINDER_FOLLOW_UP_TYPES[0];
 
-/** Types belonging to the visit sequence, for type-scoped cancelling. */
-export const VISIT_FOLLOW_UP_TYPES = VISIT_REMINDER_FOLLOW_UP_TYPES;
-
 /**
  * The window covering "tomorrow, Eastern" as UTC instants, for the cron's
  * `scheduled_start` range query.

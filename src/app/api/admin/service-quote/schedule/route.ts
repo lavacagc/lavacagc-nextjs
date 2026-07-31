@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import {
   ensureServiceHomeowner, scheduleVisit, bookedVisitRows, orphanedVisitStarts, supersededBookings,
-  requeueVisitReminder, cancelVisitReminder, type VisitTask,
+  crossSeasonBookings, requeueVisitReminder, cancelVisitReminder, type VisitTask,
 } from '@/lib/homecare/serviceScheduling';
 import { buildVisitReminderEmail } from '@/lib/homecare/serviceEmails';
 import { visitDateLabel, visitTimeWindow, easternParts } from '@/lib/homecare/visitSchedule';
@@ -94,6 +94,25 @@ export async function POST(request: NextRequest) {
     // still holds is NOT retired: that visit is still happening and still
     // needs its reminder.
     const previous = await bookedVisitRows(homeowner.id);
+
+    // A service already booked into a DIFFERENT season is refused, not
+    // reconciled. The season is derived from the visit date, and for a
+    // two-season service (gutters, roof) it flips on 1 Jun and 1 Dec - so a
+    // seven-day slip across that line would file a second row and leave the old
+    // window announcing itself. Telling a move from a deliberate second booking
+    // is unknowable here; the admin knows, and Cancel visit is on this screen.
+    const conflicts = crossSeasonBookings({ previous, tasks });
+    if (conflicts.length > 0) {
+      const held = conflicts.map((r) => {
+        const title = catalog.find((c) => c.key === r.task_key)?.title ?? r.task_key;
+        return `${title} on ${visitDateLabel(new Date(r.scheduled_start!))}`;
+      });
+      return NextResponse.json({
+        error: `Already on the books for a different season: ${held.join('; ')}. `
+          + 'If this visit replaces it, cancel that one first - then book this window.',
+      }, { status: 409 });
+    }
+
     const superseded = supersededBookings({ previous, tasks, start: startAt });
     const supersedes = orphanedVisitStarts({ previous, superseded });
 
@@ -188,18 +207,31 @@ export async function GET(request: NextRequest) {
  * tasks under different seasons, because each is reconciled against that task's
  * own catalog seasons, so a season filter would leave part of the visit booked.
  *
- * The params go through the same validation the POST body does - `email` is what
- * scopes the reminder cancel to one customer, so it must be a real address here
- * too and not whatever the query string carried.
+ * The address the reminder cancel matches on is READ HERE, never taken from the
+ * caller. The unbook filters on `homeowner_id` and the cancel on the address, so
+ * a caller-supplied one let the two name different people: the admin page sent
+ * its lookup box, which is not bound to the customer whose bookings are on
+ * screen, and a stale value cleared the window, matched no queue row, and
+ * answered "cancelled" - leaving the customer to be told we were coming
+ * tomorrow for a visit that was called off.
  */
 export async function DELETE(request: NextRequest) {
   const parsed = cancelVisitSchema.safeParse(Object.fromEntries(request.nextUrl.searchParams));
   if (!parsed.success) {
     return NextResponse.json({ error: 'Validation failed', issues: parsed.error.issues }, { status: 400 });
   }
-  const { homeownerId, email, start } = parsed.data;
+  const { homeownerId, start } = parsed.data;
   const startAt = new Date(start);
   try {
+    // Resolved before anything is written: a cancel that cannot pull the
+    // reminder is the failure this route exists to prevent, so it must not
+    // half-happen.
+    const owners = (await supabaseRest<{ email: string }[]>(
+      'GET', `homeowners?select=email&id=eq.${homeownerId}&limit=1`,
+    )) ?? [];
+    const owner = owners[0];
+    if (!owner?.email) return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
+
     const filter = `homeowner_maintenance?homeowner_id=eq.${homeownerId}` +
       `&scheduled_start=eq.${encodeURIComponent(startAt.toISOString())}`;
     // The window is what identifies the visit; `status` is shared with the
@@ -207,7 +239,7 @@ export async function DELETE(request: NextRequest) {
     // still reading 'booked' goes back to 'todo' - their own completion stands.
     await supabaseRest('PATCH', `${filter}&status=eq.booked`, { status: 'todo' });
     await supabaseRest('PATCH', filter, { scheduled_start: null, scheduled_end: null });
-    await cancelVisitReminder(email, startAt);
+    await cancelVisitReminder(owner.email, startAt);
     return NextResponse.json({ status: 'cancelled' });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

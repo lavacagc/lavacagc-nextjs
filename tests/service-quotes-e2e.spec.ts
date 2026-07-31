@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import http from 'http';
 import {
   ensureServiceHomeowner, scheduleVisit, bookedVisitRows, orphanedVisitStarts, supersededBookings,
-  requeueVisitReminder, cancelVisitReminder,
+  crossSeasonBookings, requeueVisitReminder, cancelVisitReminder,
 } from '../src/lib/homecare/serviceScheduling';
 import { visitKey, reminderSendAt } from '../src/lib/homecare/visitSchedule';
 import { easternWallClock } from '../src/lib/homecare/ics';
@@ -237,9 +237,16 @@ test('CP2: booking clears a previous La Vaca completion off the row', async () =
   expect(gutters().completed_at).toBe(null);
 });
 
-/** Exactly what the schedule route does, in the order it does it. */
+/**
+ * Exactly what the schedule route does, in the order it does it - including the
+ * cross-season refusal, which throws here the way the route answers 409.
+ */
 const rebook = async (homeownerId: string, tasks: { taskKey: string; season: string }[], start: Date) => {
   const previous = await bookedVisitRows(homeownerId);
+  const conflicts = crossSeasonBookings({ previous, tasks });
+  if (conflicts.length > 0) {
+    throw new Error(`Already on the books for a different season: ${conflicts.map((r) => r.task_key).join(', ')}`);
+  }
   const superseded = supersededBookings({ previous, tasks, start });
   const supersedes = orphanedVisitStarts({ previous, superseded });
   await scheduleVisit({
@@ -258,17 +265,18 @@ test('SC6: rescheduling updates in place rather than duplicating the booking', a
   expect(rows[0].scheduled_start).toBe(start.toISOString());
 });
 
-test('SC10: a booking in another season is a second booking, not a move', async () => {
-  // `clean_gutters` is a fall AND a spring task, and a customer with both halves
-  // of the year on the books is normal. Keyed on the task alone, booking the
-  // spring clean unbooked the October one and pulled its reminder while the
-  // toast still read "Visit scheduled" - the visit gone from the member's portal
-  // and off the cron, with the owner's calendar still holding it.
+test('SC15: booking a service into a second season is refused, and writes nothing', async () => {
+  // A booking is keyed on (task, season), so a second season is a second row and
+  // neither disturbs the other. That is right for the case it was written for -
+  // `clean_gutters` is a fall AND a spring task - but the season is reconciled
+  // from the visit DATE, and for a two-season service it flips on 1 Jun and
+  // 1 Dec. So a seven-day slip from 25 Nov to 3 Dec files a second row while the
+  // fall row keeps 25 Nov: "we're coming tomorrow" the night before a visit that
+  // moved, and a portal card for it until it passes.
   //
-  // A visit that moves far enough to change its reconciled season is therefore a
-  // NEW booking, deliberately: nothing infers a cross-season move, and nothing
-  // unbooks a window the caller did not name. Retiring the one left behind is
-  // the explicit Cancel visit action.
+  // Telling that from a deliberate second booking is not knowable from here, and
+  // guessing at it is what the `replaces` handshake cost three defects to learn.
+  // So it is refused and the admin decides: Cancel visit, then book.
   const octStart = new Date(Date.now() + 30 * 24 * 3600_000);
   await scheduleVisit({
     homeownerId: 'seasons', tasks: [{ taskKey: 'clean_gutters', season: 'fall' }],
@@ -276,15 +284,24 @@ test('SC10: a booking in another season is a second booking, not a move', async 
   });
 
   const aprStart = new Date(Date.now() + 250 * 24 * 3600_000);
-  const supersedes = await rebook('seasons', [{ taskKey: 'clean_gutters', season: 'spring' }], aprStart);
-  expect(supersedes, 'the fall visit is untouched, so its reminder stands').toEqual([]);
+  await expect(
+    rebook('seasons', [{ taskKey: 'clean_gutters', season: 'spring' }], aprStart),
+  ).rejects.toThrow(/different season/);
 
-  const gutters = db.homeowner_maintenance.filter((m) => m.homeowner_id === 'seasons');
-  expect(gutters.map((m) => [m.season, m.status, m.scheduled_start]).sort())
-    .toEqual([
-      ['fall', 'booked', octStart.toISOString()],
-      ['spring', 'booked', aprStart.toISOString()],
-    ]);
+  // Refused before anything is written: the fall visit stands untouched, and
+  // there is no spring row for the member's portal to show or the cron to read.
+  expect(db.homeowner_maintenance.filter((m) => m.homeowner_id === 'seasons')
+    .map((m) => [m.season, m.status, m.scheduled_start]))
+    .toEqual([['fall', 'booked', octStart.toISOString()]]);
+
+  // And once that visit is off the books, the same booking goes through.
+  db.homeowner_maintenance
+    .filter((m) => m.homeowner_id === 'seasons')
+    .forEach((m) => { m.scheduled_start = null; m.scheduled_end = null; m.status = 'todo'; });
+  const supersedes = await rebook('seasons', [{ taskKey: 'clean_gutters', season: 'spring' }], aprStart);
+  expect(supersedes, 'nothing to retire - the fall window was already cancelled').toEqual([]);
+  expect(db.homeowner_maintenance.find((m) => m.homeowner_id === 'seasons' && m.season === 'spring')?.scheduled_start)
+    .toBe(aprStart.toISOString());
 });
 
 test('SC10: rescheduling WITHIN the season moves the row and retires its window', async () => {
