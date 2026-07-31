@@ -124,11 +124,19 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   const dismissedKeys = (doneRows ?? []).filter((r) => r.status === 'dismissed').map((r) => r.task_key);
   // Work La Vaca performed gets a label; a task the member ticked themselves
   // does not - which is the whole point of completed_by.
-  const lavacaCompleted = Object.fromEntries(
-    (doneRows ?? [])
-      .filter((r) => r.status === 'done' && r.completed_by === 'lavaca' && r.completed_at)
-      .map((r) => [r.task_key, r.completed_at as string]),
-  );
+  //
+  // Keyed per (task, season) exactly like doneItems, and filtered through the
+  // same isRowCurrent reset. Keyed on task_key alone the label leaked: a gutter
+  // clean La Vaca did in fall would credit itself on the spring row the member
+  // ticked, and come back next fall on a re-tick carrying last year's date.
+  const lavacaCompleted: Record<string, string> = {};
+  for (const r of doneRows ?? []) {
+    const ourWork = r.status === 'done' && r.completed_by === 'lavaca' && !!r.completed_at && isRowCurrent(r);
+    if (!ourWork) continue;
+    const key = `${r.task_key}|${r.season}`;
+    const previous = lavacaCompleted[key];
+    if (!previous || Date.parse(r.completed_at) > Date.parse(previous)) lavacaCompleted[key] = r.completed_at;
+  }
   // The next booked visit, if any. Several tasks can share one window, so they
   // collapse into a single card listing every service.
   const bookedRows = (doneRows ?? []).filter((r) => r.status === 'booked' && r.scheduled_start);

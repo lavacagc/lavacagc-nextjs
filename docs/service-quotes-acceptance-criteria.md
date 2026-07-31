@@ -85,6 +85,13 @@ These were settled by the owner during review; the ACs assume them.
 - **SC5** Scheduling sends **no** verification email - the customer never asked
   for one.
 - **SC6** Rescheduling updates the existing row rather than creating a second.
+- **SC7** The admin form builds the visit instant in **Eastern**, via
+  `easternVisitInstant`. Everything downstream reads a stored instant as Eastern
+  wall-clock, and a bare `new Date('2026-08-05T08:00')` is parsed in the
+  browser's zone - so booking from a laptop on Pacific would silently store an
+  11am window with nothing to surface the error.
+- **SC8** The season a booking is filed under comes from the **visit** date, and
+  "mark complete" reuses the season the booking was filed under.
 
 ## ICS - the calendar file
 
@@ -110,10 +117,15 @@ These were settled by the owner during review; the ACs assume them.
 - **RM3** Its reply-to is `alex@lavacagc.com` **and** `veronica@lavacagc.com`.
 - **RM4** Rescheduling cancels the pending reminder and queues a new one; a
   reminder for a moved appointment is never sent.
-  Cancellation is scoped to the **visit**, never to the address: a customer with
-  two visits booked keeps the other visit's reminder.
+  Cancellation is scoped to the **visit**, never to the address and never to the
+  day: a customer with two visits booked keeps the other visit's reminder, and
+  that holds for two visits on the SAME date (gutters at 8am, dryer vent at 1pm).
 - **RM5** Cancelling or completing a visit cancels that visit's pending
   reminder, and only that one.
+  The cancel matches the address EXACTLY: an ilike prefilter narrows the
+  candidates and a JS equality check picks the rows, because PostgREST reads `*`
+  as an alias for `%` with no way to escape it.
+  The DELETE route validates `email` for the same reason.
 - **RM6** The cron is `30 23 * * *` UTC, which is 7:30pm Eastern in summer and
   6:30pm in winter. Asserted against `vercel.json`.
 - **RM7** The cron selects visits for **tomorrow in Eastern time**, not UTC. A
@@ -121,6 +133,17 @@ These were settled by the owner during review; the ACs assume them.
 - **RM8** A reminder is sent at most once per visit, even if the cron runs twice.
   The visit's `follow_up_queue` row is the ledger: the cron claims it
   (`pending` -> `sent`) **before** sending, so a retry finds nothing to claim.
+  When a visit holds several rows - rescheduling into the same window cancels one
+  and inserts another - the verdict is computed from the whole set rather than
+  from whichever row Postgres returned last, and it fails **closed**: a `sent`
+  row outranks everything, so a re-run can never produce a second reminder.
+- **RM11** A queue row is tied to its visit by `follow_up_queue.visit_start`, not
+  by `scheduled_at`. `scheduled_at` is 7:30pm Eastern the night before, the same
+  instant for every visit that day, so keying on it made two visits on one date
+  share a single row: booking the second pulled the first's reminder and the one
+  email that survived named only the earlier job. The column is added by
+  `20260817000000_follow_up_queue_visit_start.sql`, nullable so the other
+  sequences sharing the table are unaffected.
 - **RM9** `/api/cron/visit-reminders` is the **only** sender. `follow_up_queue`
   is shared, and its general drain (`/api/cron/send-follow-ups`, 09:00 UTC) has
   no type filter of its own, so it explicitly skips every type with a dedicated
@@ -141,6 +164,10 @@ These were settled by the owner during review; the ACs assume them.
 - **PT4** With no scheduled visit, no card renders and the page is unchanged.
 - **PT5** A task completed by La Vaca shows `Completed by La Vaca` with the
   date; one the homeowner ticked shows no such label.
+  The label is keyed per **(task, season)** like the done state is, and only for
+  a completion still current under `isRowCurrent`. Keyed on the task alone it
+  leaked: a fall gutter clean credited itself on the spring row the member
+  ticked, and returned on next fall's re-tick with last year's date.
 
 ## CP - completion
 

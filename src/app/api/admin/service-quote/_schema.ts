@@ -65,6 +65,24 @@ export const scheduleSchema = z.object({
 
 export type ScheduleInput = z.infer<typeof scheduleSchema>;
 
+/**
+ * Query params for cancelling ONE visit (DELETE).
+ *
+ * `email` is validated here for the same reason the POST body validates it: it
+ * is handed to the reminder cancel, and an address is the only thing scoping
+ * that cancel to one customer. A raw query string would otherwise let a
+ * wildcard through where the POST path rejects it.
+ */
+export const cancelVisitSchema = z.object({
+  homeownerId: z.string().uuid(),
+  email: z.string().trim().email('Valid customer email required').max(255),
+  season: z.enum(['spring', 'summer', 'fall', 'winter']),
+  /** The window this cancel targets, so it can never clear the whole season. */
+  start: z.string().datetime({ offset: true }),
+});
+
+export type CancelVisitInput = z.infer<typeof cancelVisitSchema>;
+
 export const completeSchema = z.object({
   homeownerId: z.string().uuid(),
   taskKeys: z.array(z.string().regex(/^[a-z0-9_]+$/i).max(80)).min(1).max(20),

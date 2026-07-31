@@ -80,17 +80,79 @@ export function reminderSendAt(visitStart: Date): Date {
 }
 
 /**
- * The queue slot a visit's reminder occupies, as an ISO instant.
+ * The visit a `follow_up_queue` reminder row belongs to, as an ISO instant.
  *
- * This is what ties a `follow_up_queue` row to ITS visit. Cancelling or marking
- * a reminder sent matches on the slot, so a customer with gutters on the 5th and
- * a furnace on the 20th never loses one visit's reminder by touching the other.
+ * Stored on the row as `visit_start`, and paired with the address it names
+ * exactly one visit - which is what cancelling and claiming both match on.
+ *
+ * It is deliberately the visit's OWN start and not `reminderSendAt`: every visit
+ * on a given day shares that 7:30pm send time, so keying on it would make
+ * gutters at 8am and a dryer vent at 1pm the same row. Booking the second would
+ * cancel the first's reminder, and the one email that survived would name only
+ * the earlier job.
  */
-export function reminderSlot(visitStart: Date): string {
-  return reminderSendAt(visitStart).toISOString();
+export function visitKey(visitStart: Date): string {
+  return visitStart.toISOString();
+}
+
+/**
+ * The instant for an Eastern wall-clock date and time - ('2026-08-05', '08:00').
+ *
+ * Everything downstream reads a stored visit instant as Eastern wall-clock:
+ * `tomorrowEasternWindow`, `reminderSendAt`, `visitTimeWindow` and the ICS
+ * alarms all assume it. A date-time string with no offset is parsed in the
+ * BROWSER's zone per the ES spec, so `new Date('2026-08-05T08:00')` on a laptop
+ * set to Pacific stores an 11am Eastern window and nothing downstream can tell.
+ * Admin scheduling builds its instants here instead.
+ */
+export function easternVisitInstant(isoDate: string, time: string): Date {
+  const [rawHour, rawMinute] = time.split(':');
+  const hour = Number(rawHour);
+  const minute = Number(rawMinute);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate) || !Number.isFinite(hour) || !Number.isFinite(minute)) {
+    throw new Error(`Not a date and time: "${isoDate}" "${time}"`);
+  }
+  return easternWallClock(new Date(`${isoDate}T00:00:00Z`), hour, minute);
 }
 
 /** A visit in the past can never earn a reminder. */
 export function reminderIsStillUseful(visitStart: Date, now: Date): boolean {
   return visitStart.getTime() > now.getTime();
+}
+
+/** The part of a `follow_up_queue` reminder row the send-once ledger reads. */
+export interface ReminderLedgerRow {
+  id: string;
+  status: string;
+  created_at: string | null;
+}
+
+/** Ledger rows are keyed on (address, visit start), the pair that names one visit. */
+export function ledgerKey(email: string, visitStartIso: string): string {
+  return `${email.trim().toLowerCase()}|${new Date(visitStartIso).toISOString()}`;
+}
+
+/**
+ * The ledger's verdict for one visit, read off every row it holds.
+ *
+ * A visit can legitimately hold more than one row - rescheduling into the same
+ * window cancels its pending row and inserts a fresh one - and Postgres returns
+ * them in no defined order, so taking whichever came back last would flip
+ * between sending and skipping at random.
+ *
+ * The verdict is computed from the whole set instead, and it fails CLOSED: a
+ * delivered reminder outranks everything, so a retry can never produce a second
+ * "we're coming tomorrow". A visit left holding only cancelled rows is closed
+ * too - someone pulled that reminder deliberately.
+ */
+export function ledgerVerdict<T extends ReminderLedgerRow>(
+  rows: T[] | undefined,
+): { claim: T | null; closed: boolean } {
+  if (!rows || rows.length === 0) return { claim: null, closed: false };
+  if (rows.some((r) => r.status === 'sent' || r.status === 'responded')) return { claim: null, closed: true };
+  const open = rows
+    .filter((r) => r.status === 'pending' || r.status === 'failed')
+    .sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
+  if (open.length === 0) return { claim: null, closed: true };
+  return { claim: open[open.length - 1], closed: false };
 }

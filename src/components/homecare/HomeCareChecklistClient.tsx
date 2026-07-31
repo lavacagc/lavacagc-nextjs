@@ -113,9 +113,10 @@ export default function HomeCareChecklistClient({
   showCatchUp?: boolean;
   autoAddKey?: string;
   /**
-   * task_key -> ISO date, for work LA VACA performed. A task the member ticked
-   * themselves is absent here and renders no label - that distinction is the
-   * whole point of completed_by.
+   * `task_key|season` -> ISO date, for work LA VACA performed. Keyed per season
+   * like `done` is, so a completion never labels the same task in another
+   * season. A task the member ticked themselves is absent here and renders no
+   * label - that distinction is the whole point of completed_by.
    */
   lavacaCompleted?: Record<string, string>;
 }) {
@@ -401,10 +402,10 @@ export default function HomeCareChecklistClient({
             because this component is server-rendered too: without it the server
             formats in UTC and the browser in the member's zone, so a late-evening
             completion renders a different day on each and hydration mismatches. */}
-        {isDone && lavacaCompleted?.[t.key] && (
+        {isDone && lavacaCompleted?.[id(t.key, season)] && (
           <div className="mt-1 text-xs font-bold text-primary" data-testid="completed-by-lavaca">
             Completed by La Vaca &middot;{' '}
-            {new Date(lavacaCompleted[t.key]).toLocaleDateString('en-US', {
+            {new Date(lavacaCompleted[id(t.key, season)]).toLocaleDateString('en-US', {
               day: 'numeric', month: 'short', year: 'numeric', timeZone: 'America/New_York',
             })}
           </div>

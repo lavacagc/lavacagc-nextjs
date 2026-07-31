@@ -12,7 +12,8 @@ import {
 } from '../src/lib/homecare/serviceIntake';
 import {
   tomorrowEasternWindow, visitDateLabel, visitTimeWindow, reminderSendAt,
-  reminderIsStillUseful, VISIT_REMINDER_TYPE,
+  reminderIsStillUseful, visitKey, easternVisitInstant, ledgerKey, ledgerVerdict,
+  VISIT_REMINDER_TYPE,
 } from '../src/lib/homecare/visitSchedule';
 import { BUSINESS_ADDRESS } from '../src/lib/homecare/emailShell';
 
@@ -297,6 +298,77 @@ test('RM: helpers derive the labels and send time the emails use', () => {
   expect(reminderIsStillUseful(START, new Date(Date.UTC(2026, 7, 1)))).toBe(true);
   expect(reminderIsStillUseful(START, new Date(Date.UTC(2026, 7, 9)))).toBe(false);
   expect(VISIT_REMINDER_TYPE).toBe('visit_reminder_1d');
+});
+
+test('RM11: two visits on ONE day are distinct rows, not one shared slot', () => {
+  // Gutters at 8am and a dryer vent at 1pm on 5 Aug. Both reminders go out the
+  // same evening, so the SEND TIME cannot tell them apart - which is exactly why
+  // the queue row is keyed on the visit instead.
+  const gutters = easternWallClock(new Date(Date.UTC(2026, 7, 5)), 8, 0);
+  const dryerVent = easternWallClock(new Date(Date.UTC(2026, 7, 5)), 13, 0);
+  expect(reminderSendAt(gutters).toISOString(), 'one send time for both')
+    .toBe(reminderSendAt(dryerVent).toISOString());
+  expect(visitKey(gutters)).not.toBe(visitKey(dryerVent));
+  expect(visitKey(gutters)).toBe(gutters.toISOString());
+});
+
+test('RM8: the ledger verdict is order-independent and fails closed', () => {
+  const row = (id: string, status: string, created_at: string) => ({ id, status, created_at });
+  const pending = row('a', 'pending', '2026-08-04T10:00:00Z');
+  const cancelled = row('b', 'cancelled', '2026-08-04T11:00:00Z');
+  const sent = row('c', 'sent', '2026-08-04T12:00:00Z');
+  const requeued = row('d', 'pending', '2026-08-04T13:00:00Z');
+
+  // No row at all: nothing has happened, so the cron writes one and sends.
+  expect(ledgerVerdict([])).toEqual({ claim: null, closed: false });
+  expect(ledgerVerdict(undefined)).toEqual({ claim: null, closed: false });
+
+  // One open row: claim it.
+  expect(ledgerVerdict([pending]).claim).toBe(pending);
+  expect(ledgerVerdict([row('a', 'failed', '2026-08-04T10:00:00Z')]).closed).toBe(false);
+
+  // Rescheduled within the same day - one cancelled, one fresh. The customer's
+  // visit is still on, so it must still send, whichever order Postgres returns.
+  for (const rows of [[cancelled, requeued], [requeued, cancelled]]) {
+    expect(ledgerVerdict(rows).claim, 'a live reminder survives a stale cancel').toBe(requeued);
+  }
+
+  // Already delivered, then rescheduled: a 'sent' row outranks the new pending
+  // one in BOTH orders. This is the guarantee that stops a second reminder.
+  for (const rows of [[sent, requeued], [requeued, sent]]) {
+    expect(ledgerVerdict(rows)).toEqual({ claim: null, closed: true });
+  }
+
+  // Deliberately cancelled and never requeued: closed, not resurrected.
+  expect(ledgerVerdict([cancelled])).toEqual({ claim: null, closed: true });
+
+  // Several open rows: the newest wins, by a stable sort rather than row order.
+  expect(ledgerVerdict([requeued, pending]).claim).toBe(requeued);
+  expect(ledgerVerdict([pending, requeued]).claim).toBe(requeued);
+});
+
+test('RM11: the ledger key names one visit, not one send slot', () => {
+  const gutters = easternWallClock(new Date(Date.UTC(2026, 7, 5)), 8, 0);
+  const dryerVent = easternWallClock(new Date(Date.UTC(2026, 7, 5)), 13, 0);
+  expect(ledgerKey('Busy@Example.com ', visitKey(gutters))).toBe(ledgerKey('busy@example.com', visitKey(gutters)));
+  expect(ledgerKey('busy@example.com', visitKey(gutters)))
+    .not.toBe(ledgerKey('busy@example.com', visitKey(dryerVent)));
+});
+
+test('SC7: the visit instant is built in Eastern, never in the local zone', () => {
+  // 8am on 5 Aug in New Jersey is 12:00Z (EDT), whatever the admin's laptop is
+  // set to. `new Date('2026-08-05T08:00')` would answer with the local zone.
+  expect(easternVisitInstant('2026-08-05', '08:00').toISOString()).toBe('2026-08-05T12:00:00.000Z');
+  expect(easternVisitInstant('2026-08-05', '11:00').toISOString()).toBe('2026-08-05T15:00:00.000Z');
+  // EST, five hours back, and a half-hour window start.
+  expect(easternVisitInstant('2026-01-05', '08:30').toISOString()).toBe('2026-01-05T13:30:00.000Z');
+  // A window built here reads back as the same wall clock the admin typed.
+  const start = easternVisitInstant('2026-08-05', '08:00');
+  expect(visitTimeWindow(start, easternVisitInstant('2026-08-05', '11:00'))).toBe('8:00 - 11:00am');
+  expect(visitDateLabel(start)).toBe('Wed 5 Aug');
+  // Garbage in is loud, not silently midnight.
+  expect(() => easternVisitInstant('2026-08-05', '')).toThrow();
+  expect(() => easternVisitInstant('', '08:00')).toThrow();
 });
 
 /* ── CP: completion ──────────────────────────────────────────────────────── */

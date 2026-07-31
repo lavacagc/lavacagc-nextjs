@@ -10,6 +10,7 @@ import { join } from 'path';
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
 const migration = read('supabase/migrations/20260815000000_home_care_service_quotes.sql');
 const typeMigration = read('supabase/migrations/20260816000000_visit_reminder_follow_up_type.sql');
+const visitMigration = read('supabase/migrations/20260817000000_follow_up_queue_visit_start.sql');
 const sharedCron = read('src/app/api/cron/send-follow-ups/route.ts');
 const sendRoute = read('src/app/api/admin/service-quote/send/route.ts');
 const scheduleRoute = read('src/app/api/admin/service-quote/schedule/route.ts');
@@ -90,15 +91,17 @@ test('RM1+RM4+RM5: a reminder is queued, and cancelled before any requeue', () =
   // Cancel-then-queue, in that order: a reminder for a moved visit is worse
   // than none.
   const fn = scheduling.slice(scheduling.indexOf('export async function requeueVisitReminder'));
-  expect(fn.indexOf("status: 'cancelled'")).toBeLessThan(fn.indexOf("status: 'pending'"));
+  expect(fn.indexOf('await cancelPendingVisitReminders')).toBeLessThan(fn.indexOf("'follow_up_queue'"));
   expect(scheduling).toContain('export async function cancelVisitReminder');
   expect(scheduleRoute).toContain('cancelVisitReminder'); // DELETE path
 });
 
-test('RM4+RM5: reminder cancels are scoped to the visit, never to the address', () => {
-  // The slot (7:30pm Eastern the night before) is what names one visit. Every
-  // cancel filters on it, so a customer with two visits keeps the other one.
-  expect(scheduling).toContain('scheduled_at=eq.');
+test('RM4+RM5+RM11: cancels are scoped to the visit, not the address or the day', () => {
+  // visit_start is what names one visit. Keying on the 7:30pm send slot made
+  // two visits on one date share a row, so every cancel filters on the visit.
+  expect(scheduling).toContain('visit_start=in.');
+  expect(scheduling).toContain('visit_start: visitKey(start)');
+  expect(scheduling).not.toContain('scheduled_at=eq.');
   expect(scheduling).toContain('export async function bookedVisitStarts');
   // The route reads the windows it is about to overwrite and supersedes those.
   expect(scheduleRoute).toContain('bookedVisitStarts');
@@ -106,6 +109,23 @@ test('RM4+RM5: reminder cancels are scoped to the visit, never to the address', 
   // Completing names the visits it completed rather than the customer.
   expect(completeRoute).toContain('completedVisitStarts');
   expect(completeRoute).toContain('cancelVisitReminder(owner.email, new Date(iso))');
+});
+
+test('RM5: a cancel matches the address exactly, and DELETE validates it', () => {
+  // PostgREST reads `*` as an alias for `%` and gives no way to escape it, so
+  // an ilike prefilter is narrowed by a JS equality check before anything is
+  // patched - the same guard cancelPendingFollowUps documents.
+  expect(scheduling).toContain("from '@/lib/notify/cancelFollowUps'");
+  expect(scheduling).toContain('escapeLikePattern');
+  expect(scheduling).not.toContain('function escapeLike('); // no second private copy
+  const fn = scheduling.slice(scheduling.indexOf('async function cancelPendingVisitReminders'));
+  expect(fn.indexOf('.trim().toLowerCase() === wanted'), 'exact match before the patch')
+    .toBeLessThan(fn.indexOf("'PATCH'"));
+  // The DELETE params go through zod, so `?email=*` never reaches the cancel.
+  expect(scheduleRoute).toContain('cancelVisitSchema.safeParse');
+  const schema = read('src/app/api/admin/service-quote/_schema.ts');
+  expect(schema).toContain('export const cancelVisitSchema');
+  expect(schema).toContain("email: z.string().trim().email('Valid customer email required')");
 });
 
 test('RM8: the queue row is the ledger, claimed BEFORE the send', () => {
@@ -117,6 +137,25 @@ test('RM8: the queue row is the ledger, claimed BEFORE the send', () => {
   // Dead intent removed: there is no reminder_sent_at column anywhere.
   expect(cron).not.toContain('reminder_sent_at');
   expect(migration).not.toContain('reminder_sent_at');
+});
+
+test('RM8: the cron reads its verdict from every row a visit holds', () => {
+  // A visit can hold several rows and Postgres returns them in no defined
+  // order, so the cron collects them all and hands the set to ledgerVerdict
+  // (unit-tested in service-quotes.spec.ts) rather than keeping the last one.
+  expect(cron).toContain('new Map<string, LedgerRow[]>');
+  expect(cron).toContain('ledgerVerdict(ledgerBy.get(');
+  expect(cron).toContain('created_at');
+});
+
+test('RM11: the ledger is keyed on the visit, and the migration adds the column', () => {
+  expect(cron).toContain('visit_start=gte.');
+  expect(cron).toContain('ledgerKey(owner.email, visitStart)');
+  expect(cron).not.toContain('reminderSlot');
+  expect(visitMigration).toContain('ADD COLUMN IF NOT EXISTS visit_start timestamptz');
+  expect(visitMigration).toContain('CREATE INDEX IF NOT EXISTS idx_follow_up_queue_visit');
+  // Nullable: every other sequence sharing follow_up_queue has no visit.
+  expect(visitMigration).not.toMatch(/visit_start timestamptz[^\n]*NOT NULL/);
 });
 
 test('RM9: the shared follow-up drain never sends a visit reminder', () => {
@@ -202,11 +241,22 @@ test('PT5: only La Vaca work carries a completion label', () => {
   const client = read('src/components/homecare/HomeCareChecklistClient.tsx');
   expect(client).toContain('Completed by La Vaca');
   // Absent from lavacaCompleted -> no label at all.
-  expect(client).toContain('lavacaCompleted?.[t.key]');
+  expect(client).toContain('lavacaCompleted?.[id(t.key, season)]');
   // Server-rendered too, so the zone is pinned: without it the server formats
   // in UTC and the browser locally, and a late-evening completion hydrates to a
   // different day on each.
   expect(client).toContain("timeZone: 'America/New_York'");
+});
+
+test('PT5: the label is keyed per season, and only while it is current', () => {
+  // Keyed on task_key alone it leaked: La Vaca's fall gutter clean credited
+  // itself on the spring row the member ticked, and came back on next fall's
+  // re-tick carrying last year's date. Same key shape as doneItems.
+  expect(portal).toContain('`${r.task_key}|${r.season}`');
+  const block = portal.slice(portal.indexOf('const lavacaCompleted'), portal.indexOf('const bookedRows'));
+  expect(block).toContain('isRowCurrent(r)');
+  // Several seasons' rows for one key: keep the newest, not whichever came last.
+  expect(block).toContain('Date.parse(r.completed_at) > Date.parse(previous)');
 });
 
 test('PT: the portal survives a deploy that lands before the migration', () => {
@@ -223,8 +273,16 @@ test('PT: the portal survives a deploy that lands before the migration', () => {
 test('the visit cancel targets one window, not the whole season', () => {
   const del = scheduleRoute.slice(scheduleRoute.indexOf('export async function DELETE'));
   expect(del).toContain('scheduled_start=eq.');
-  expect(del).toContain("q.get('start')");
+  expect(del).toContain('cancelVisitSchema.safeParse');
   expect(del).toContain('cancelVisitReminder(email, startAt)');
+});
+
+test('SC7: the admin form builds the visit instant in Eastern', () => {
+  // A date-time string with no offset is parsed in the BROWSER's zone, so this
+  // is the one place a visit could be booked against the wrong clock.
+  expect(adminPage).toContain('easternVisitInstant(date, from).toISOString()');
+  expect(adminPage).toContain('easternVisitInstant(date, to).toISOString()');
+  expect(adminPage).not.toContain('new Date(`${date}T');
 });
 
 test('the season written onto a booking comes from the VISIT date', () => {

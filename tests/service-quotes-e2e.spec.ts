@@ -3,7 +3,8 @@ import http from 'http';
 import {
   ensureServiceHomeowner, scheduleVisit, bookedVisitStarts, requeueVisitReminder, cancelVisitReminder,
 } from '../src/lib/homecare/serviceScheduling';
-import { reminderSlot } from '../src/lib/homecare/visitSchedule';
+import { visitKey, reminderSendAt } from '../src/lib/homecare/visitSchedule';
+import { easternWallClock } from '../src/lib/homecare/ics';
 
 /**
  * Integration test for the service-quote loop against a stubbed Supabase REST.
@@ -25,6 +26,24 @@ import { reminderSlot } from '../src/lib/homecare/visitSchedule';
 const STUB_PORT = 9414;
 
 test.describe.configure({ mode: 'serial' });
+
+/**
+ * PostgREST `ilike` semantics, faithfully enough to be worth testing against:
+ * `%` and `*` are both wildcards, `_` matches one character, and a backslash
+ * escapes the next character - except `*`, which has no escape at all. That last
+ * detail is the whole reason the cancel path re-checks the address in JS, so a
+ * stub that treated the pattern as a literal would test nothing.
+ */
+const likeRegex = (pattern: string) => {
+  const literal = (c: string) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let rx = '';
+  for (let i = 0; i < pattern.length; i += 1) {
+    const c = pattern[i];
+    if (c === '\\') { rx += literal(pattern[++i] ?? ''); continue; }
+    rx += c === '%' || c === '*' ? '.*' : c === '_' ? '.' : literal(c);
+  }
+  return new RegExp(`^${rx}$`, 'i');
+};
 
 interface Row { [k: string]: unknown }
 const db: Record<string, Row[]> = {
@@ -59,7 +78,7 @@ test.beforeAll(async () => {
           const [op, ...rest] = v.split('.');
           const val = rest.join('.');
           if (op === 'eq') out = out.filter((r) => String(r[k]) === val);
-          if (op === 'ilike') out = out.filter((r) => String(r[k]).toLowerCase() === val.toLowerCase().replace(/\\/g, ''));
+          if (op === 'ilike') out = out.filter((r) => likeRegex(val).test(String(r[k])));
           if (op === 'in') {
             const wanted = new Set(val.replace(/^\(|\)$/g, '').split(',').map((s) => s.replace(/^"|"$/g, '')));
             out = out.filter((r) => wanted.has(String(r[k])));
@@ -234,8 +253,50 @@ test('cancelling a visit pulls its reminder and only its reminder', async () => 
   expect(pendingFor('member@example.com').length).toBe(0);
 });
 
-test('the reminder row is keyed on the slot the cron claims against', async () => {
+test('the reminder row is keyed on the visit the cron claims against', async () => {
   const row = db.follow_up_queue.find((q) => q.email_subject === 'Furnace')!;
   expect(row.follow_up_type).toBe('visit_reminder_1d');
-  expect(row.scheduled_at).toBe(reminderSlot(FURNACE));
+  // The visit it belongs to...
+  expect(row.visit_start).toBe(visitKey(FURNACE));
+  // ...and, separately, when it goes out.
+  expect(row.scheduled_at).toBe(reminderSendAt(FURNACE).toISOString());
+});
+
+/* Two visits on the SAME Eastern date - the case a day-granular slot could not
+   tell apart. Both reminders go out the same evening, so the send time is
+   identical and only the visit distinguishes them. */
+const nextWeek = new Date(Date.now() + 8 * 24 * 3600_000);
+const sameDay = (hour: number) =>
+  easternWallClock(new Date(Date.UTC(nextWeek.getUTCFullYear(), nextWeek.getUTCMonth(), nextWeek.getUTCDate())), hour, 0);
+const MORNING = sameDay(8);
+const AFTERNOON = sameDay(13);
+
+test('two visits on one day keep separate reminders', async () => {
+  expect(reminderSendAt(MORNING).toISOString(), 'one send time for both')
+    .toBe(reminderSendAt(AFTERNOON).toISOString());
+
+  for (const [start, subject] of [[MORNING, 'Gutters 8am'], [AFTERNOON, 'Dryer vent 1pm']] as const) {
+    await requeueVisitReminder({ email: 'busy@example.com', name: 'Busy', start, subject, html: `<p>${subject}</p>` });
+  }
+  // Booking the second must not have pulled the first: this is the bug a slot
+  // keyed on the shared 7:30pm send time produced.
+  expect(pendingFor('busy@example.com').map((q) => q.email_subject).sort())
+    .toEqual(['Dryer vent 1pm', 'Gutters 8am']);
+  expect(pendingFor('busy@example.com').map((q) => q.visit_start).sort())
+    .toEqual([visitKey(MORNING), visitKey(AFTERNOON)].sort());
+});
+
+test('completing the morning visit leaves the afternoon one reminded', async () => {
+  await cancelVisitReminder('busy@example.com', MORNING);
+  expect(pendingFor('busy@example.com').map((q) => q.email_subject)).toEqual(['Dryer vent 1pm']);
+});
+
+test('a cancel cannot reach another address through a wildcard', async () => {
+  // PostgREST reads `*` as an alias for `%` with no way to escape it, so the
+  // ilike prefilter alone would match every address at this visit.
+  await cancelVisitReminder('*', AFTERNOON);
+  expect(pendingFor('busy@example.com').map((q) => q.email_subject)).toEqual(['Dryer vent 1pm']);
+  // The real address still cancels its own.
+  await cancelVisitReminder('BUSY@example.com', AFTERNOON);
+  expect(pendingFor('busy@example.com')).toEqual([]);
 });

@@ -21,7 +21,7 @@ import { visitDateLabel, visitTimeWindow } from '@/lib/homecare/visitSchedule';
 import { buildIcs } from '@/lib/homecare/ics';
 import { preferencesUrlFor } from '@/lib/preferences/preferences';
 import { cleanEnv } from '@/lib/envClean';
-import { scheduleSchema } from '../_schema';
+import { cancelVisitSchema, scheduleSchema } from '../_schema';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -150,20 +150,18 @@ export async function GET(request: NextRequest) {
  * `start` is required and both the unbook and the reminder cancel filter on it.
  * A season-wide cancel would unbook every other visit the customer has booked in
  * the same season, which is never what "cancel this visit" means.
+ *
+ * The params go through the same validation the POST body does - `email` is what
+ * scopes the reminder cancel to one customer, so it must be a real address here
+ * too and not whatever the query string carried.
  */
 export async function DELETE(request: NextRequest) {
-  const q = request.nextUrl.searchParams;
-  const homeownerId = q.get('homeownerId');
-  const email = q.get('email');
-  const season = q.get('season');
-  const start = q.get('start');
-  if (!homeownerId || !email || !season || !start) {
-    return NextResponse.json({ error: 'homeownerId, email, season and start are required' }, { status: 400 });
+  const parsed = cancelVisitSchema.safeParse(Object.fromEntries(request.nextUrl.searchParams));
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Validation failed', issues: parsed.error.issues }, { status: 400 });
   }
+  const { homeownerId, email, season, start } = parsed.data;
   const startAt = new Date(start);
-  if (Number.isNaN(startAt.getTime())) {
-    return NextResponse.json({ error: 'start must be an ISO date-time' }, { status: 400 });
-  }
   try {
     await supabaseRest(
       'PATCH',

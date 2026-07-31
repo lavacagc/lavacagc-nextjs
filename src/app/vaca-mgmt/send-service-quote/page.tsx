@@ -23,6 +23,7 @@ import { toast } from '@/hooks/use-toast';
 import { Loader2, CalendarPlus, CheckCircle2 } from 'lucide-react';
 import { scopeSummaryFrom } from '@/lib/homecare/serviceIntake';
 import { currentSeason } from '@/lib/homecare/season';
+import { easternVisitInstant } from '@/lib/homecare/visitSchedule';
 
 interface Service { key: string; title: string; blurb: string; priority: number }
 interface PastRequest {
@@ -143,6 +144,7 @@ export default function SendServiceQuotePage() {
 
   const schedule = async () => {
     if (!date) { toast({ title: 'Pick a date first', variant: 'destructive' }); return; }
+    if (!from || !to) { toast({ title: 'Set the arrival window', variant: 'destructive' }); return; }
     setScheduling(true);
     const season = seasonOfVisit(date);
     try {
@@ -152,8 +154,12 @@ export default function SendServiceQuotePage() {
         body: JSON.stringify({
           email: email.trim(), name, phone: intake?.homeowner?.phone ?? intake?.requests[0]?.phone ?? '',
           taskKeys: [...selected], season,
-          start: new Date(`${date}T${from}:00`).toISOString(),
-          end: new Date(`${date}T${to}:00`).toISOString(),
+          // Eastern, not the browser's zone. Everything downstream reads the
+          // stored instant as an Eastern wall-clock time, and a bare
+          // `new Date('2026-08-05T08:00')` is parsed locally - so booking from a
+          // laptop on Pacific would silently store an 11am window.
+          start: easternVisitInstant(date, from).toISOString(),
+          end: easternVisitInstant(date, to).toISOString(),
           address,
         }),
       });

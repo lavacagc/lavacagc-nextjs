@@ -15,10 +15,12 @@
  * coming today". That cron skips this type outright
  * (DEDICATED_SENDER_FOLLOW_UP_TYPES), so this route is the only sender.
  *
- * SEND-ONCE: the visit's `follow_up_queue` row is the ledger. It is CLAIMED
- * (pending -> sent) before the send, so a Vercel cron retry, a manual GET or a
- * concurrent run finds nothing left to claim instead of mailing the batch twice.
- * A genuine send failure releases the claim so the next run can retry.
+ * SEND-ONCE: the visit's `follow_up_queue` row is the ledger, found by
+ * (lead_email, visit_start) so two visits on one day keep separate ledgers. It
+ * is CLAIMED (pending -> sent) before the send, so a Vercel cron retry, a manual
+ * GET or a concurrent run finds nothing left to claim instead of mailing the
+ * batch twice. A genuine send failure releases the claim so the next run can
+ * retry.
  *
  *   ?dryRun=1 - report who would be reminded, send nothing, claim nothing.
  *
@@ -30,7 +32,8 @@ import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { HOME_CARE_FROM } from '@/lib/notify/sendHomeCareEmails';
 import { buildVisitReminderEmail, SERVICE_REPLY_TO } from '@/lib/homecare/serviceEmails';
 import {
-  tomorrowEasternWindow, visitDateLabel, visitTimeWindow, reminderSlot, VISIT_REMINDER_TYPE,
+  tomorrowEasternWindow, visitDateLabel, visitTimeWindow, visitKey, reminderSendAt,
+  ledgerKey, ledgerVerdict, VISIT_REMINDER_TYPE, type ReminderLedgerRow,
 } from '@/lib/homecare/visitSchedule';
 import { preferencesUrlFor } from '@/lib/preferences/preferences';
 import { cleanEnv } from '@/lib/envClean';
@@ -61,16 +64,10 @@ interface OwnerRow {
 }
 
 /** A visit's reminder row in follow_up_queue - the send-once ledger. */
-interface LedgerRow {
-  id: string;
+interface LedgerRow extends ReminderLedgerRow {
   lead_email: string;
-  scheduled_at: string;
-  status: string;
+  visit_start: string | null;
 }
-
-/** Ledger rows are keyed on (address, slot), the pair that names one visit. */
-const ledgerKey = (email: string, slotIso: string) =>
-  `${email.trim().toLowerCase()}|${new Date(slotIso).toISOString()}`;
 
 export async function GET(request: NextRequest) {
   const dryRun = request.nextUrl.searchParams.get('dryRun') === '1';
@@ -113,15 +110,20 @@ export async function GET(request: NextRequest) {
     )) ?? [];
     const titleFor = new Map(catalog.map((c) => [c.key, c.title]));
 
-    // The ledger for every visit in this window. All of tomorrow's visits share
-    // one slot (7:30pm Eastern tonight), so this is a single narrow read.
-    const slots = [...new Set([...byOwner.values()].map((rows) => reminderSlot(new Date(rows[0].scheduled_start))))].sort();
+    // The ledger for every visit in this window - one read over the same
+    // Eastern day the visits themselves were selected for.
     const ledger = (await supabaseRest<LedgerRow[]>(
       'GET',
-      `follow_up_queue?select=id,lead_email,scheduled_at,status&follow_up_type=eq.${VISIT_REMINDER_TYPE}` +
-        `&scheduled_at=gte.${encodeURIComponent(slots[0])}&scheduled_at=lte.${encodeURIComponent(slots[slots.length - 1])}`,
+      `follow_up_queue?select=id,lead_email,visit_start,status,created_at&follow_up_type=eq.${VISIT_REMINDER_TYPE}` +
+        `&visit_start=gte.${startUtc.toISOString()}&visit_start=lt.${endUtc.toISOString()}`,
     )) ?? [];
-    const ledgerBy = new Map(ledger.map((r) => [ledgerKey(r.lead_email, r.scheduled_at), r]));
+    const ledgerBy = new Map<string, LedgerRow[]>();
+    for (const row of ledger) {
+      if (!row.visit_start) continue;
+      const key = ledgerKey(row.lead_email, row.visit_start);
+      const bucket = ledgerBy.get(key);
+      if (bucket) bucket.push(row); else ledgerBy.set(key, [row]);
+    }
 
     let sent = 0;
     let alreadySent = 0;
@@ -139,9 +141,9 @@ export async function GET(request: NextRequest) {
 
       // Anything not still open (already sent, or deliberately cancelled when
       // the visit moved) is done with. This is what makes a retry a no-op.
-      const slot = reminderSlot(start);
-      const existing = ledgerBy.get(ledgerKey(owner.email, slot));
-      if (existing && existing.status !== 'pending' && existing.status !== 'failed') {
+      const visitStart = visitKey(start);
+      const { claim: existing, closed } = ledgerVerdict(ledgerBy.get(ledgerKey(owner.email, visitStart)));
+      if (closed) {
         alreadySent += 1;
         continue;
       }
@@ -182,7 +184,8 @@ export async function GET(request: NextRequest) {
           lead_email: owner.email,
           lead_name: owner.first_name || owner.email,
           follow_up_type: VISIT_REMINDER_TYPE,
-          scheduled_at: slot,
+          scheduled_at: reminderSendAt(start).toISOString(),
+          visit_start: visitStart,
           status: 'sent',
           sent_at: claimedAt,
           email_subject: subject,

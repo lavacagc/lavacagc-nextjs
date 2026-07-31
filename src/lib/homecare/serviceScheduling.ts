@@ -18,7 +18,8 @@
  */
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { newToken, normalizeEmail } from '@/lib/homecare/homeowners';
-import { VISIT_REMINDER_TYPE, reminderSendAt, reminderSlot, reminderIsStillUseful } from './visitSchedule';
+import { escapeLikePattern } from '@/lib/notify/cancelFollowUps';
+import { VISIT_REMINDER_TYPE, reminderSendAt, visitKey, reminderIsStillUseful } from './visitSchedule';
 
 export interface HomeownerLite {
   id: string;
@@ -151,12 +152,12 @@ export async function bookedVisitStarts(args: {
  * Rescheduling MUST cancel first: a reminder announcing a visit that moved is
  * worse than no reminder at all.
  *
- * Cancellation is scoped to the VISIT, never to the address. A customer with
- * gutters on the 5th and a furnace on the 20th has two pending reminders; moving
- * one must not pull the other. `supersedes` carries the start times this booking
- * is replacing (the caller reads them off the rows it is about to overwrite),
- * and the new start is cleared too so re-submitting the same window replaces its
- * row rather than stacking a second one.
+ * Cancellation is scoped to the VISIT, never to the address and never to the
+ * day. A customer with gutters at 8am and a dryer vent at 1pm on the same date
+ * has two pending reminders; moving one must not pull the other. `supersedes`
+ * carries the start times this booking is replacing (the caller reads them off
+ * the rows it is about to overwrite), and the new start is cleared too so
+ * re-submitting the same window replaces its row rather than stacking a second.
  */
 export async function requeueVisitReminder(args: {
   email: string;
@@ -169,9 +170,7 @@ export async function requeueVisitReminder(args: {
 }): Promise<'queued' | 'skipped'> {
   const { email, name, start, subject, html, supersedes = [], now = new Date() } = args;
 
-  for (const slot of new Set([start, ...supersedes].map(reminderSlot))) {
-    await supabaseRest('PATCH', pendingReminderQuery(email, slot), { status: 'cancelled' }).catch(() => {});
-  }
+  await cancelPendingVisitReminders(email, [start, ...supersedes]);
 
   if (!reminderIsStillUseful(start, now)) return 'skipped';
 
@@ -182,6 +181,7 @@ export async function requeueVisitReminder(args: {
     lead_name: name,
     follow_up_type: VISIT_REMINDER_TYPE,
     scheduled_at: reminderSendAt(start).toISOString(),
+    visit_start: visitKey(start),
     status: 'pending',
     email_subject: subject,
     email_body: html,
@@ -193,24 +193,41 @@ export async function requeueVisitReminder(args: {
  * Cancel ONE visit's pending reminder without queueing a replacement.
  *
  * `visitStart` is required so a cancel can never reach past the visit it names -
- * completing today's job must leave next month's reminder alone.
+ * completing this morning's job must leave this afternoon's reminder alone.
  */
 export async function cancelVisitReminder(email: string, visitStart: Date): Promise<void> {
-  await supabaseRest(
-    'PATCH',
-    pendingReminderQuery(email, reminderSlot(visitStart)),
-    { status: 'cancelled' },
-  ).catch(() => {});
+  await cancelPendingVisitReminders(email, [visitStart]);
 }
 
-/** The still-pending reminder row for one visit: this address, this slot, nothing else. */
-function pendingReminderQuery(email: string, slot: string): string {
-  return `follow_up_queue?lead_email=ilike.${encodeURIComponent(escapeLike(email))}` +
-    `&follow_up_type=eq.${VISIT_REMINDER_TYPE}&status=eq.pending` +
-    `&scheduled_at=eq.${encodeURIComponent(slot)}`;
-}
+/**
+ * Cancel the still-pending reminders for exactly these visits, at exactly this
+ * address.
+ *
+ * Select-then-patch-by-id rather than a PATCH straight off the pattern, for the
+ * reason cancelFollowUps spells out: PostgREST reads `*` as an alias for `%` and
+ * offers no way to escape it, so an ilike alone can reach a different customer.
+ * The escaped prefilter narrows the candidates and a JS equality check keeps only
+ * the exact case-insensitive matches, which no wildcard can slip past.
+ */
+async function cancelPendingVisitReminders(email: string, visitStarts: Date[]): Promise<void> {
+  const keys = [...new Set(visitStarts.map(visitKey))];
+  if (keys.length === 0) return;
 
-/** The queue stores raw addresses, so match case-insensitively with LIKE metacharacters neutralised. */
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
+  const candidates = (await supabaseRest<{ id: string; lead_email: string }[]>(
+    'GET',
+    `follow_up_queue?select=id,lead_email&lead_email=ilike.${encodeURIComponent(escapeLikePattern(email))}` +
+      `&follow_up_type=eq.${VISIT_REMINDER_TYPE}&status=eq.pending` +
+      `&visit_start=in.(${keys.map((k) => `"${k}"`).join(',')})`,
+  ).catch(() => [])) ?? [];
+
+  const wanted = email.trim().toLowerCase();
+  const ids = candidates
+    .filter((row) => (row.lead_email ?? '').trim().toLowerCase() === wanted)
+    .map((row) => row.id);
+  if (ids.length === 0) return;
+
+  // Re-asserts 'pending' so a row the cron claimed between the select and the
+  // update is left as sent rather than clobbered back to cancelled.
+  await supabaseRest('PATCH', `follow_up_queue?id=in.(${ids.join(',')})&status=eq.pending`, { status: 'cancelled' })
+    .catch(() => {});
 }
