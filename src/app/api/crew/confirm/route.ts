@@ -48,26 +48,27 @@ export async function POST(request: NextRequest) {
   }
   const { token, action, note } = parsed.data;
 
-  let found: TokenLookup | null;
-  try {
-    // The whole visit, not just the assignment row: a flag has to name what is
-    // wrong AND which job, and the alert is worthless if the owner has to go
-    // looking up which customer this was.
-    found = await lookupByToken(token);
-  } catch (err) {
-    // The detail stays in the logs. This endpoint is public and the thrown
-    // message carries the table name, the token filter and PostgREST's own
-    // error body - schema detail nobody outside needs. Same answer the Home
-    // Care unsubscribe route gives.
-    console.error('crew confirm lookup failed:', err instanceof Error ? err.message : String(err));
+  // The whole visit, not just the assignment row: a flag has to name what is
+  // wrong AND which job, and the alert is worthless if the owner has to go
+  // looking up which customer this was.
+  const lookup = await lookupByToken(token);
+
+  // A READ that failed, never an answer about the token. The detail stays in
+  // the logs: this endpoint is public and the thrown message carries the table
+  // name, the token filter and PostgREST's own error body - schema detail
+  // nobody outside needs. Same answer the Home Care unsubscribe route gives.
+  if (lookup.status === 'unavailable') {
     return NextResponse.json({ error: 'server_error' }, { status: 500 });
   }
 
   // Deliberately the same answer for an unknown token and a malformed one: this
   // endpoint is public, and telling the difference would let anyone enumerate
   // live tokens.
-  if (!found) return NextResponse.json({ error: 'This link is not valid.' }, { status: 404 });
+  if (lookup.status === 'not_found') {
+    return NextResponse.json({ error: 'This link is not valid.' }, { status: 404 });
+  }
 
+  const found: TokenLookup = lookup.found;
   const { assignment } = found;
 
   // Taken OFF this visit - un-ticked on the picker and the window re-dispatched.

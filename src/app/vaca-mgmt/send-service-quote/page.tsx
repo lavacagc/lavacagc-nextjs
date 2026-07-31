@@ -96,6 +96,11 @@ export default function SendServiceQuotePage() {
   // so the default behaviour of the screen is "the crew is told".
   const [crew, setCrew] = useState<CrewMember[]>([]);
   const [crewPicked, setCrewPicked] = useState<Set<string>>(new Set());
+  // A read that FAILED, which is the opposite of an empty list here: with no
+  // list the booking omits `recipientIds` and the server dispatches to EVERY
+  // active recipient, where a genuinely empty list dispatches to nobody. The
+  // two cannot share a rendering.
+  const [crewRead, setCrewRead] = useState<'ok' | 'unavailable'>('ok');
   const [date, setDate] = useState('');
   const [from, setFrom] = useState('08:00');
   const [to, setTo] = useState('11:00');
@@ -115,19 +120,34 @@ export default function SendServiceQuotePage() {
   // the booking creates one - and completing that visit still needs the id.
   const [homeownerId, setHomeownerId] = useState<string | null>(null);
 
+  /**
+   * Load the crew picker, and NEVER let a failed read pass for an empty list.
+   *
+   * `/api/admin/crew` answers a failure with a 500 whose body still parses, so
+   * an unchecked `data.recipients ?? []` left `crew` empty - and the panel says
+   * of an empty list "nobody is told about this visit". That is the INVERSE of
+   * what happens: with no list the schedule POST omits `recipientIds` and the
+   * server falls back to every active recipient, so the screen warned that
+   * nobody would be dispatched at the exact moment everybody was.
+   */
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const res = await fetch('/api/admin/crew');
-        const data: { recipients?: CrewMember[] } = await res.json();
+        const data: { recipients?: CrewMember[]; error?: string } = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not read the crew list');
         const active = (data.recipients ?? []).filter((r) => r.active);
         if (cancelled) return;
         setCrew(active);
         setCrewPicked(new Set(active.map((r) => r.id)));
-      } catch {
-        // The picker is a convenience: with no list the schedule POST omits
-        // recipientIds entirely, and the server falls back to everyone active.
+      } catch (e) {
+        if (cancelled) return;
+        // Said out loud on the panel below rather than swallowed. Booking still
+        // works and still reaches the crew - what is lost is the ability to
+        // choose WHO, and that has to be the message.
+        console.error('crew list could not be read:', e);
+        setCrewRead('unavailable');
       }
     })();
     return () => { cancelled = true; };
@@ -330,6 +350,12 @@ export default function SendServiceQuotePage() {
       const recordLine = data.dispatchRecorded === 'unavailable'
         ? ' The dispatch is NOT recorded on the visit - 5pm will chase it as never sent, and cancelling it will not take it off their calendars.'
         : '';
+      // What was mailed and what was stored have diverged. The crew's email
+      // names the sub; nothing else does - not their confirm page, not a flag
+      // alert about this visit - and only this line ever says so.
+      const subLine = data.dispatchSubRecorded === 'unavailable'
+        ? ` The sub (${subName.trim()}) is NOT stored on the visit - the crew email names them, but their confirm page and any flag alert will not. Re-save the visit.`
+        : '';
       const movedLine = stillHolding.length > 0
         ? ` The OLD window could not be taken off ${stillHolding.join(', ')}'s calendar - call them, or they will text the customer about it at 7:00am.`
         : '';
@@ -344,7 +370,7 @@ export default function SendServiceQuotePage() {
       toast({
         title: 'Visit scheduled',
         description: reminderLine + dispatchLine + stillLiveLine + notMailedLine
-          + recordLine + movedLine + staleLine,
+          + recordLine + subLine + movedLine + staleLine,
         variant: bad ? 'destructive' : undefined,
       });
     } catch (e) {
@@ -657,7 +683,16 @@ export default function SendServiceQuotePage() {
           */}
           <div className="md:col-span-2" data-testid="sq-crew">
             <Label>Dispatch to</Label>
-            {crew.length === 0 ? (
+            {crewRead === 'unavailable' ? (
+              // Not "there is nobody" - the opposite of it. No selection is sent
+              // when the list did not load, and the server reads that as "no
+              // selection" and dispatches to everyone active.
+              <p className="mt-1 text-xs font-medium text-destructive" data-testid="sq-crew-unread">
+                The crew list could NOT be read, so this is not &quot;nobody to dispatch&quot;. Booking now
+                still emails EVERY active crew member, including anyone you meant to leave off -
+                reload the page if you need to pick.
+              </p>
+            ) : crew.length === 0 ? (
               <p className="mt-1 text-xs text-text-muted">
                 No active crew members. Add them on the Crew page - without one, nobody is told about this visit.
               </p>

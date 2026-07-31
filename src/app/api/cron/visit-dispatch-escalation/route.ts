@@ -165,6 +165,7 @@ export async function GET(request: NextRequest) {
       // nobody was ever told - so it is chased, and needs a row to stamp.
       if (!dispatch) {
         dispatch = await ensureVisitDispatch({ homeownerId: first.homeowner_id, visitStart: start })
+          .then((r) => r.row)
           .catch(() => null);
         if (!dispatch) {
           console.error(`visit-dispatch-escalation: no dispatch row to stamp for ${label}, skipping to avoid repeat sends`);

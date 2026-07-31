@@ -29,6 +29,11 @@ export default function CrewPage() {
   const [email, setEmail] = useState('');
   const [adding, setAdding] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
+  // A read that FAILED, kept apart from an empty list. Both leave `crew` empty,
+  // but "Nobody is active - scheduling a visit will tell no one" is a statement
+  // about the business, and a toast that has faded is not enough to stop
+  // somebody acting on it by adding people who are already there.
+  const [read, setRead] = useState<'ok' | 'unavailable'>('ok');
 
   const load = useCallback(async () => {
     try {
@@ -36,7 +41,9 @@ export default function CrewPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not load the crew');
       setCrew(data.recipients ?? []);
+      setRead('ok');
     } catch (e) {
+      setRead('unavailable');
       toast({
         title: 'Could not load the crew',
         description: e instanceof Error ? e.message : 'Unknown error',
@@ -130,14 +137,20 @@ export default function CrewPage() {
         <CardHeader>
           <CardTitle className="text-lg">On the list</CardTitle>
           <CardDescription>
-            {activeCount === 0
-              ? 'Nobody is active - scheduling a visit will tell no one.'
-              : `${activeCount} active. Everyone active is pre-ticked when you schedule a visit.`}
+            {read === 'unavailable'
+              ? 'The list could not be read, so this is not "nobody is on it". Reload before you add anyone.'
+              : activeCount === 0
+                ? 'Nobody is active - scheduling a visit will tell no one.'
+                : `${activeCount} active. Everyone active is pre-ticked when you schedule a visit.`}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
+          ) : read === 'unavailable' ? (
+            <p className="text-sm font-medium text-destructive" data-testid="crew-unread">
+              The crew list could NOT be read - this is not an empty list. Reload the page.
+            </p>
           ) : crew.length === 0 ? (
             <p className="text-sm text-text-muted">Nobody yet.</p>
           ) : (

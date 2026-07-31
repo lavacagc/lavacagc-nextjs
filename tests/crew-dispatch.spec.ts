@@ -336,6 +336,37 @@ test('AC31+AC32 the admin pre-ticks everyone active and blocks an empty pick', (
   expect(page).toContain('Nobody selected - nobody will be told to go');
 });
 
+test('AC92 a crew list that could not be READ is never shown as an empty one', () => {
+  // These lead to OPPOSITE outcomes, so they cannot share a rendering. A read
+  // that failed leaves no selection to send, and no selection means the server
+  // dispatches to every active recipient - while the empty-list copy says
+  // "nobody is told about this visit". The screen warned that nobody would be
+  // dispatched at the precise moment everybody was.
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  const effect = page.slice(page.indexOf('useEffect(() => {'), page.indexOf('const toggleCrew ='));
+  expect(effect).toContain('if (!res.ok) throw new Error(');
+  expect(effect).toContain("setCrewRead('unavailable');");
+  // Nothing is replaced before res.ok is checked, so a failed read cannot empty
+  // a list that had loaded.
+  expect(effect.indexOf('if (!res.ok)')).toBeLessThan(effect.indexOf('setCrew(active)'));
+
+  expect(page).toContain("{crewRead === 'unavailable' ? (");
+  expect(page).toContain('The crew list could NOT be read');
+  expect(page).toContain('still emails EVERY active crew member');
+  // The genuinely-empty copy survives, because for an empty list it is true.
+  expect(page).toContain('without one, nobody is told about this visit');
+  // ...and it is only reachable once the read succeeded.
+  expect(page.indexOf("crewRead === 'unavailable' ? (")).toBeLessThan(page.indexOf(') : crew.length === 0 ? ('));
+
+  // The Crew page itself is the same shape: its toast fades, and what stays on
+  // screen would otherwise say nobody is on the list.
+  const crewPage = read('src/app/vaca-mgmt/crew/page.tsx');
+  expect(crewPage).toContain("setRead('unavailable');");
+  expect(crewPage).toContain('The crew list could NOT be read - this is not an empty list');
+  expect(crewPage).toContain("read === 'unavailable'\n              ? 'The list could not be read");
+  expect(crewPage.indexOf("read === 'unavailable' ? (")).toBeLessThan(crewPage.indexOf('crew.length === 0 ? ('));
+});
+
 /* ── booking (AC 33-40) ──────────────────────────────────────────────────── */
 
 test('AC33 a dispatch failure never fails a booking that succeeded', () => {
@@ -366,8 +397,37 @@ test('AC37 re-dispatching reuses the visit row rather than resetting its stamps'
   const fn = src.slice(src.indexOf('export async function ensureVisitDispatch'), src.indexOf('export async function ensureAssignments'));
   expect(fn).toContain('const existing = await dispatchForVisit(args.homeownerId, args.visitStart);');
   expect(fn).toContain('if (existing) {');
-  expect(fn).toContain('return existing;');
+  expect(fn).toContain("return { row: existing, subRecorded: 'ok' };");
   expect(fn).not.toContain('nudged_at: null');
+});
+
+test('AC90 a sub the row would not store is reported, not just logged', () => {
+  // The email is right - it is built from the value handed back - so the
+  // divergence is invisible from everywhere else: the confirm page drops its
+  // "Sub" row and its "sub is booked" wording, and a flag alert about this
+  // visit cannot name who was booked for it.
+  const src = read('src/lib/homecare/dispatch.ts');
+  const fn = src.slice(src.indexOf('export async function ensureVisitDispatch'), src.indexOf('export interface EnsureAssignmentsResult'));
+  expect(fn).toContain("}).then(() => 'ok' as const).catch((err) => {");
+  expect(fn).toContain("return 'unavailable' as const;");
+  // What the admin typed still goes in the email either way.
+  expect(fn).toContain('return { row: { ...existing, sub_name: args.subName }, subRecorded };');
+
+  // Carried through the send's verdict, so a stored-nowhere sub cannot report
+  // a clean 'sent'...
+  expect(src).toContain("|| recorded === 'unavailable' || subRecorded === 'unavailable';");
+  expect(src).toContain('return { outcome, sentTo, stillLive, notMailed, recorded, subRecorded };');
+
+  // ...through the response...
+  const route = read('src/app/api/admin/service-quote/schedule/route.ts');
+  expect(route).toContain('dispatchSubRecorded: dispatch.subRecorded,');
+
+  // ...and into the toast, which is the only place the divergence is ever said.
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain("data.dispatchSubRecorded === 'unavailable'");
+  expect(page).toContain('is NOT stored on the visit');
+  expect(page).toContain('any flag alert will not');
+  expect(page).toContain('+ recordLine + subLine + movedLine + staleLine');
 });
 
 test('AC38 re-dispatching reuses each assignment, so a re-send cannot un-confirm', () => {
@@ -415,7 +475,8 @@ test('AC85 a retirement that did not land is reported, never rendered as a clean
   // Carried through the send's own verdict: a partial retirement never reports
   // 'sent'.
   expect(src).toContain(
-    "const degraded = stillLive.length > 0 || notMailed.length > 0 || recorded === 'unavailable';",
+    'const degraded = stillLive.length > 0 || notMailed.length > 0\n'
+      + "    || recorded === 'unavailable' || subRecorded === 'unavailable';",
   );
   expect(src).toContain(
     "const outcome: DispatchOutcome = sentTo.length === 0 || anyFailed\n"
@@ -423,7 +484,9 @@ test('AC85 a retirement that did not land is reported, never rendered as a clean
       + "    : degraded ? 'sent_degraded' : 'sent';",
   );
   // A verdict reached before a later throw still comes back.
-  expect(src).toContain("return { outcome: 'unavailable', sentTo: [], stillLive, notMailed, recorded: 'ok', error };");
+  expect(src).toContain(
+    "return { outcome: 'unavailable', sentTo: [], stillLive, notMailed, recorded: 'ok', subRecorded, error };",
+  );
   // ...and no write in the function throws out of it in the first place. The
   // insert and the retire PATCH hit the SAME table, so whatever breaks one
   // breaks both - which makes a combined failure the likeliest way to reach
@@ -611,7 +674,7 @@ test('AC87 a visit that could not be READ is never rendered as a cancelled one',
   // confirmed" for a visit we told them was cancelled.
   const src = read('src/lib/homecare/dispatch.ts');
   const fn = src.slice(src.indexOf('export async function lookupByToken'), src.indexOf('export type RetractionOutcome'));
-  expect(fn).toContain("return { assignment, dispatch, visit, visitRead: visit ? 'ok' : 'unavailable' };");
+  expect(fn).toContain("found: { assignment, dispatch: row, visit, visitRead: visit ? 'ok' : 'unavailable' },");
   expect(fn).toContain('console.error');
 
   const page = read('src/app/crew/confirm/[token]/page.tsx');
@@ -620,6 +683,40 @@ test('AC87 a visit that could not be READ is never rendered as a cancelled one',
   expect(page).toContain('Do not assume it is cancelled');
   // Checked BEFORE the "no longer on the books" answer, or that one swallows it.
   expect(page.indexOf("visitRead === 'unavailable'")).toBeLessThan(page.indexOf('no longer on the books'));
+});
+
+test('AC91 a token read that FAILED is never rendered as an invalid link', () => {
+  // The outer half of AC87. Both reads in the lookup can throw, and a catch
+  // folding that into the null a missing token produces told a crew member
+  // holding a perfectly good link that it was dead - sending them through their
+  // inbox for a newer email that does not exist.
+  const src = read('src/lib/homecare/dispatch.ts');
+  const fn = src.slice(src.indexOf('export async function lookupByToken'), src.indexOf('export type RetractionOutcome'));
+  expect(fn).toContain("return { status: 'unavailable' };");
+  expect(fn).toContain("return { status: 'not_found' };");
+  // Both reads are inside the try, so neither can escape as a throw the caller
+  // has to remember to catch.
+  expect(fn.indexOf('try {')).toBeLessThan(fn.indexOf('visit_dispatch_recipients?select='));
+  expect(fn.indexOf('visit_dispatch?select=')).toBeLessThan(fn.indexOf('} catch (err) {'));
+
+  const page = read('src/app/crew/confirm/[token]/page.tsx');
+  expect(page).toContain("if (lookup.status === 'unavailable') {");
+  expect(page).toContain('We could not check your link');
+  expect(page).toContain('Your link is probably fine');
+  // The generic answer stays for a token that really is unknown, so live tokens
+  // still cannot be enumerated.
+  expect(page).toContain("if (lookup.status === 'not_found') {");
+  expect(page).toContain('This link is not valid');
+  expect(page).not.toContain('lookupByToken(token).catch');
+
+  // The route answered this correctly already, and still does - now off the
+  // same verdict rather than a catch of its own, so the page and its API cannot
+  // disagree about the same event again.
+  const route = read('src/app/api/crew/confirm/route.ts');
+  expect(route).toContain("if (lookup.status === 'unavailable') {");
+  expect(route).toContain("error: 'server_error' }, { status: 500 }");
+  expect(route).toContain("if (lookup.status === 'not_found') {");
+  expect(route).toContain("error: 'This link is not valid.' }, { status: 404 }");
 });
 
 test('AC46 "Something is wrong" opens a note field rather than submitting', () => {

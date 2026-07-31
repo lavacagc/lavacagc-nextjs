@@ -58,6 +58,11 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 30. An inactive recipient is dropped even when explicitly named, so deactivating someone actually stops their mail.
 31. The admin page pre-ticks everyone active on load.
 32. Deselecting everyone disables the Schedule button and shows "nobody will be told to go".
+92. A crew list that could **not be read** is never shown as an empty one, because the two lead to *opposite* outcomes.
+    An empty list dispatches to nobody, and the panel says so; a failed read leaves no selection to send, and no selection means AC28 - the server dispatches to **every** active recipient, including anyone the admin meant to un-tick.
+    Showing the same copy for both warned that nobody would be told at the precise moment everybody was, on the one thing this feature exists to do.
+    So the read is checked for `res.ok` before anything is replaced, and a failure says the list could not be read and describes what booking now will actually do.
+    The Crew page holds to the same rule: it already toasted the failure, but the toast fades and what stayed on screen was "Nobody yet" under "Nobody is active - scheduling a visit will tell no one", which is a statement about the business rather than about a read.
 81. Un-ticking somebody and re-dispatching the **same** window **retires** their assignment: their confirm token stops working, and the escalation neither waits on them nor counts their answer.
     Deselecting on the picker is the only way to take somebody off a visit, and re-booking the same window is a re-dispatch rather than a supersede, so nothing else would ever clean the row up.
     Left live, a tap from somebody no longer on the visit satisfies "somebody confirmed" and silences the 5pm and 6pm chases for a visit the people actually going have never answered - and they would still show as having confirmed it on the admin list.
@@ -79,6 +84,10 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 35. The admin toast reports the reminder and the dispatch as two separate outcomes, and is destructive if either failed.
 36. `no_recipients` is reported distinctly, because "nobody is configured" and "the send failed" need different fixes.
 37. Re-dispatching a visit reuses its `visit_dispatch` row, so escalation stamps and existing confirmations survive.
+90. A sub the row would **not store** is reported, not just logged, and the send reports `sent_degraded` rather than a clean `sent`.
+    The email is right either way - it is built from the value handed back, never re-read - so the divergence between what was mailed and what is stored is invisible from everywhere else: the confirm page silently drops its "Sub" row and its button reverts from "Confirm - sub is booked" to "Confirm - I am on this", and a later flag alert about the visit cannot name who was booked for it.
+    The admin toast is the only place that is ever said, so it names the sub and tells them to re-save.
+    The write stays best-effort - a sub that could not be stored is no reason to fail a booking the customer has already been given - which is exactly why it has to be *reported* instead.
 89. Every reader that resolves a visit's dispatch row goes through **one** `dispatchForVisit(homeownerId, visitStart)`, the rule `assignmentsForDispatch` and `DISPATCH_ASSIGNMENT_COLUMNS` already hold the sibling read to.
     The (homeowner, window) key is exactly the value that must not drift: the `visitKey` normalisation and the URL encoding both have to be right in every copy, and a reader that got either wrong would quietly find no row and report a dispatched visit as never dispatched.
 38. Re-dispatching reuses each recipient's existing assignment row and token, so a re-send never silently un-confirms a visit the crew already signed off.
@@ -92,6 +101,10 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 42. The mutation is `POST /api/crew/confirm` only.
 43. The page is `noindex`, since the token is the only credential.
 44. An unknown token and a malformed token get the same answer, so live tokens cannot be enumerated.
+91. A token that could **not be read** gets its own answer - "We could not check your link", with "your link is probably fine" - and is never rendered as the invalid one.
+    This is the outer half of AC87: `lookupByToken` reports `not_found` and `unavailable` as separate verdicts rather than throwing, because either Supabase read behind it can fail - a 5xx, a revoked grant, RLS reached without the service key - and a caller folding that into the null a missing token produces states flatly that a perfectly good link is dead, sending somebody through their inbox for a newer email that does not exist.
+    The page and its own API had disagreed about the same event: the route already caught the throw and answered `500 server_error`, and now reads that verdict instead of catching for itself, so the two cannot drift apart again.
+    The deliberately generic answer stays reserved for a token that really is unknown, so AC44 still holds.
 45. A token whose visit has been cancelled or closed out shows "no longer on the books" instead of a confirm button.
 87. A visit that could **not be read** gets its own answer - "We could not check this visit", with "do not assume it is cancelled" - and is never rendered as the cancelled one.
     `lookupByToken` hands back a `visitRead` verdict rather than folding a failed read into a null the page cannot tell from an unbooked window.

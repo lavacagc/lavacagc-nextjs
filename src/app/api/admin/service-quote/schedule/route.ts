@@ -175,7 +175,10 @@ export async function POST(request: NextRequest) {
     }).catch((err): SendDispatchResult => {
       const message = err instanceof Error ? err.message : String(err);
       console.error('crew dispatch threw after a successful booking:', message);
-      return { outcome: 'unavailable', sentTo: [], stillLive: [], notMailed: [], recorded: 'ok', error: message };
+      return {
+        outcome: 'unavailable', sentTo: [], stillLive: [], notMailed: [],
+        recorded: 'ok', subRecorded: 'ok', error: message,
+      };
     });
 
     // A window this booking moved off is as retired as a cancelled one: its
@@ -226,6 +229,10 @@ export async function POST(request: NextRequest) {
       // The send itself is not on the dispatch row: the escalation will read
       // this visit as never dispatched, and cancelling it will retract nothing.
       dispatchRecorded: dispatch.recorded,
+      // The sub is in the email that went out and NOT on the visit, so the
+      // confirm page and any later flag alert cannot name them. The only two
+      // places that divergence is visible are here and the log.
+      dispatchSubRecorded: dispatch.subRecorded,
       // Who was NOT told the old window is off, when this booking moved one.
       // Empty is the normal answer; anything in it is a phone call.
       stillHolding,

@@ -163,9 +163,10 @@ export function crewIcsUid(dispatchId: string, recipientId: string): string {
  *
  * `sent_degraded` is the one that needs saying out loud: the crew were mailed,
  * but part of the record did not land - somebody dropped from the visit whose
- * link is still live, somebody ticked who was never written to, or a send that
- * is not on the dispatch row. Each of those is something the admin has to act
- * on, so none of them may be handed back as a clean 'sent'.
+ * link is still live, somebody ticked who was never written to, a send that is
+ * not on the dispatch row, or a sub the email names and the row does not. Each
+ * of those is something the admin has to act on, so none of them may be handed
+ * back as a clean 'sent'.
  */
 export type DispatchOutcome =
   'sent' | 'sent_degraded' | 'no_recipients' | 'unavailable' | 'send_failed';
@@ -193,6 +194,18 @@ export async function resolveRecipients(ids?: string[] | null): Promise<Dispatch
   return all.filter((r) => wanted.has(r.id));
 }
 
+/** The dispatch row for a visit, and whether everything about it was stored. */
+export interface EnsureDispatchResult {
+  row: VisitDispatchRow | null;
+  /**
+   * Whether the sub the admin typed reached the row. `unavailable` means the
+   * email names them and the record does NOT - the confirm page loses its "Sub"
+   * line and its "sub is booked" wording, and a later flag alert cannot name
+   * them either.
+   */
+  subRecorded: 'ok' | 'unavailable';
+}
+
 /**
  * The dispatch row for this visit, created if it does not exist.
  *
@@ -200,12 +213,17 @@ export async function resolveRecipients(ids?: string[] | null): Promise<Dispatch
  * reschedule, or an admin adding a second person - reuses the row and keeps the
  * escalation stamps that already fired. Creating a second row would reset them
  * and re-nudge for a visit somebody already confirmed.
+ *
+ * The sub write is best-effort but REPORTED, like every other write here. What
+ * was mailed and what was stored diverging is the whole of the harm, and it is
+ * invisible from anywhere else: the email is right because it is built from the
+ * value handed back, so nothing downstream can tell that the row is not.
  */
 export async function ensureVisitDispatch(args: {
   homeownerId: string;
   visitStart: Date;
   subName?: string | null;
-}): Promise<VisitDispatchRow | null> {
+}): Promise<EnsureDispatchResult> {
   const key = visitKey(args.visitStart);
   const existing = await dispatchForVisit(args.homeownerId, args.visitStart);
 
@@ -213,19 +231,22 @@ export async function ensureVisitDispatch(args: {
     // Only fill the sub in - never blank one an admin already typed by
     // re-booking without it.
     if (args.subName && args.subName !== existing.sub_name) {
-      await supabaseRest('PATCH', `visit_dispatch?id=eq.${existing.id}`, {
+      const subRecorded = await supabaseRest('PATCH', `visit_dispatch?id=eq.${existing.id}`, {
         sub_name: args.subName, updated_at: new Date().toISOString(),
-      }).catch((err) => console.error(
-        `crew dispatch could not store the sub "${args.subName}" - this send still names them, ` +
-          'but a later flag alert will not:',
-        err instanceof Error ? err.message : String(err),
-      ));
+      }).then(() => 'ok' as const).catch((err) => {
+        console.error(
+          `crew dispatch could not store the sub "${args.subName}" - this send still names them, ` +
+            'but the confirm page and a later flag alert will not:',
+          err instanceof Error ? err.message : String(err),
+        );
+        return 'unavailable' as const;
+      });
       // What the admin typed, whether or not it was stored: this value is what
-      // goes in the email, and a failed write is a reason to log, not a reason
-      // to tell the crew a different sub's name.
-      return { ...existing, sub_name: args.subName };
+      // goes in the email, and a failed write is a reason to report, not a
+      // reason to tell the crew a different sub's name.
+      return { row: { ...existing, sub_name: args.subName }, subRecorded };
     }
-    return existing;
+    return { row: existing, subRecorded: 'ok' };
   }
 
   const created = await supabaseRest<VisitDispatchRow[]>('POST', 'visit_dispatch', [{
@@ -233,7 +254,10 @@ export async function ensureVisitDispatch(args: {
     visit_start: key,
     sub_name: args.subName ?? null,
   }]);
-  return created?.[0] ?? null;
+  // A row that could not be created carries no sub either, but that is the row
+  // failing rather than the sub - reported as `unavailable` below, where it
+  // stops the send outright.
+  return { row: created?.[0] ?? null, subRecorded: 'ok' };
 }
 
 /** Who this dispatch can go to, and what could not be done to the rest. */
@@ -464,42 +488,78 @@ export interface TokenLookup {
 }
 
 /**
+ * What a token resolved to.
+ *
+ * `not_found` is a deliberate dead end - the token names nobody, and every
+ * caller answers that generically so live tokens cannot be enumerated.
+ * `unavailable` is a READ that FAILED, and is a different thing entirely: the
+ * link may be perfectly good. Folding the two together told a crew member
+ * holding a live link that it was dead, which is why they are separate values
+ * rather than a null both callers have to remember to interpret.
+ */
+export type TokenLookupResult =
+  | { status: 'ok'; found: TokenLookup }
+  | { status: 'not_found' }
+  | { status: 'unavailable' };
+
+/**
  * Resolve a confirm token to the person and the visit it names.
  *
  * READ ONLY, always. It backs the confirm page, which is a GET - and a GET that
  * changed anything would be tripped by every mail scanner and link-preview bot
  * that fetches URLs out of an inbox. The mutation lives behind POST
  * /api/crew/confirm.
+ *
+ * REPORTS rather than throws, like everything else in this module. Both reads
+ * below can fail - a 5xx, a revoked grant, RLS reached without the service key -
+ * and a caller that caught that into the same null a missing token produces
+ * would state, flatly, that somebody's working link is not valid.
  */
-export async function lookupByToken(token: string): Promise<TokenLookup | null> {
-  const assignments = (await supabaseRest<DispatchAssignment[]>(
-    'GET',
-    `visit_dispatch_recipients?select=${DISPATCH_ASSIGNMENT_COLUMNS}` +
-      `&confirm_token=eq.${encodeURIComponent(token)}&limit=1`,
-  )) ?? [];
-  const assignment = assignments[0];
-  if (!assignment) return null;
+export async function lookupByToken(token: string): Promise<TokenLookupResult> {
+  let assignment: DispatchAssignment | undefined;
+  let dispatch: VisitDispatchRow | undefined;
+  try {
+    const assignments = (await supabaseRest<DispatchAssignment[]>(
+      'GET',
+      `visit_dispatch_recipients?select=${DISPATCH_ASSIGNMENT_COLUMNS}` +
+        `&confirm_token=eq.${encodeURIComponent(token)}&limit=1`,
+    )) ?? [];
+    assignment = assignments[0];
+    if (!assignment) return { status: 'not_found' };
 
-  const dispatches = (await supabaseRest<VisitDispatchRow[]>(
-    'GET',
-    `visit_dispatch?select=${VISIT_DISPATCH_COLUMNS}&id=eq.${assignment.dispatch_id}&limit=1`,
-  )) ?? [];
-  const dispatch = dispatches[0];
-  if (!dispatch) return null;
+    const dispatches = (await supabaseRest<VisitDispatchRow[]>(
+      'GET',
+      `visit_dispatch?select=${VISIT_DISPATCH_COLUMNS}&id=eq.${assignment.dispatch_id}&limit=1`,
+    )) ?? [];
+    dispatch = dispatches[0];
+  } catch (err) {
+    console.error(
+      'crew confirm could not read the token - the link may be perfectly good:',
+      err instanceof Error ? err.message : String(err),
+    );
+    return { status: 'unavailable' };
+  }
+  // An assignment whose dispatch row is gone. Nothing to answer about, and the
+  // same generic dead end an unknown token gets.
+  if (!dispatch) return { status: 'not_found' };
 
   // The visit read is the one part of this that is allowed to fail without
   // losing the lookup - but the failure is HANDED BACK rather than folded into
   // a null that reads like an answer. A caller that could not tell the two
   // apart tells a crew member their live, booked visit is cancelled.
-  const visit = await visitContextFor(dispatch.homeowner_id, new Date(dispatch.visit_start))
+  const row = dispatch;
+  const visit = await visitContextFor(row.homeowner_id, new Date(row.visit_start))
     .catch((err) => {
       console.error(
-        `crew confirm could not read the visit behind dispatch ${dispatch.id}:`,
+        `crew confirm could not read the visit behind dispatch ${row.id}:`,
         err instanceof Error ? err.message : String(err),
       );
       return null;
     });
-  return { assignment, dispatch, visit, visitRead: visit ? 'ok' : 'unavailable' };
+  return {
+    status: 'ok',
+    found: { assignment, dispatch: row, visit, visitRead: visit ? 'ok' : 'unavailable' },
+  };
 }
 
 /** Whether the crew was actually told the visit is off. */
@@ -723,6 +783,12 @@ export interface SendDispatchResult {
    * to take the visit off anybody's calendar.
    */
   recorded: 'ok' | 'unavailable';
+  /**
+   * Whether the sub reached the dispatch row. `unavailable` means the email
+   * names them and the record does not - the confirm page shows no sub, and a
+   * flag alert about this visit cannot say who was booked for it.
+   */
+  subRecorded: 'ok' | 'unavailable';
   error?: string;
 }
 
@@ -754,26 +820,33 @@ export async function sendVisitDispatch(args: SendDispatchArgs): Promise<SendDis
   // falling over afterwards.
   let stillLive: string[] = [];
   let notMailed: string[] = [];
-  const nothing = { sentTo: [], stillLive: [], notMailed: [], recorded: 'ok' as const };
+  let subRecorded: 'ok' | 'unavailable' = 'ok';
+  const nothing = {
+    sentTo: [], stillLive: [], notMailed: [], recorded: 'ok' as const, subRecorded: 'ok' as const,
+  };
   try {
     recipients = await resolveRecipients(recipientIds);
     if (recipients.length === 0) return { outcome: 'no_recipients', ...nothing };
 
-    dispatch = await ensureVisitDispatch({ homeownerId, visitStart, subName });
-    if (!dispatch) return { outcome: 'unavailable', ...nothing, error: 'could not create the dispatch row' };
+    const ensured = await ensureVisitDispatch({ homeownerId, visitStart, subName });
+    dispatch = ensured.row;
+    subRecorded = ensured.subRecorded;
+    if (!dispatch) {
+      return { outcome: 'unavailable', ...nothing, error: 'could not create the dispatch row' };
+    }
 
-    const ensured = await ensureAssignments(dispatch.id, recipients);
-    ({ assignments, stillLive, notMailed } = ensured);
+    const rows = await ensureAssignments(dispatch.id, recipients);
+    ({ assignments, stillLive, notMailed } = rows);
     if (assignments.length === 0) {
       return {
-        outcome: 'unavailable', sentTo: [], stillLive, notMailed, recorded: 'ok',
+        outcome: 'unavailable', sentTo: [], stillLive, notMailed, recorded: 'ok', subRecorded,
         error: 'could not create the assignment rows',
       };
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.error('crew dispatch could not be recorded:', error);
-    return { outcome: 'unavailable', sentTo: [], stillLive, notMailed, recorded: 'ok', error };
+    return { outcome: 'unavailable', sentTo: [], stillLive, notMailed, recorded: 'ok', subRecorded, error };
   }
 
   const calendarUrl = googleCalendarUrl({
@@ -881,10 +954,12 @@ export async function sendVisitDispatch(args: SendDispatchArgs): Promise<SendDis
   // A send is only 'sent' when the record around it landed too. Anything else
   // here is something the admin has to act on - a live link on somebody who is
   // off the visit, a ticked person nobody wrote to, a send the row does not
-  // know about - and reporting those as clean is what would bury them.
-  const degraded = stillLive.length > 0 || notMailed.length > 0 || recorded === 'unavailable';
+  // know about, a sub the email names and the record does not - and reporting
+  // those as clean is what would bury them.
+  const degraded = stillLive.length > 0 || notMailed.length > 0
+    || recorded === 'unavailable' || subRecorded === 'unavailable';
   const outcome: DispatchOutcome = sentTo.length === 0 || anyFailed
     ? 'send_failed'
     : degraded ? 'sent_degraded' : 'sent';
-  return { outcome, sentTo, stillLive, notMailed, recorded };
+  return { outcome, sentTo, stillLive, notMailed, recorded, subRecorded };
 }

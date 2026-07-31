@@ -29,9 +29,30 @@ export default async function CrewConfirmPage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const found = await lookupByToken(token).catch(() => null);
+  const lookup = await lookupByToken(token);
 
-  if (!found) {
+  // The LINK could not be read. Kept apart from the answer below, which states
+  // flatly that the link is dead: a 5xx or a lost grant is not a verdict about
+  // anybody's token, and telling somebody holding a good one that it is not
+  // valid sends them looking through their inbox for a newer email that does
+  // not exist.
+  if (lookup.status === 'unavailable') {
+    return (
+      <Shell>
+        <h1 className="text-xl font-bold text-[#1A1A1A]">We could not check your link</h1>
+        <p className="mt-2 text-sm text-[#666]">
+          Something on our end is not answering, so this page cannot tell you anything about the
+          visit. <strong>Your link is probably fine.</strong> Try again in a minute, or call the
+          office on (201) 212-4917.
+        </p>
+      </Shell>
+    );
+  }
+
+  // Deliberately generic, and reserved for a token that really is unknown: this
+  // page is public, and an answer that told a live token from a dead one would
+  // let anyone enumerate them.
+  if (lookup.status === 'not_found') {
     return (
       <Shell>
         <h1 className="text-xl font-bold text-[#1A1A1A]">This link is not valid</h1>
@@ -43,7 +64,7 @@ export default async function CrewConfirmPage({
     );
   }
 
-  const { assignment, dispatch, visit, visitRead } = found;
+  const { assignment, dispatch, visit, visitRead } = lookup.found;
 
   // Taken off this visit - un-ticked on the picker and the window re-dispatched
   // to somebody else. Deliberately NOT the generic answer above: their calendar
