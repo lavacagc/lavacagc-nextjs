@@ -6,6 +6,7 @@ import {
 } from '../src/lib/homecare/serviceScheduling';
 import { lastDoneFor, lastDoneLabel, type CompletionRow } from '../src/lib/homecare/serviceIntake';
 import { visitKey, reminderSendAt } from '../src/lib/homecare/visitSchedule';
+import { clearVisitDispatch, dispatchStateOf, assignmentsForDispatch } from '../src/lib/homecare/dispatch';
 import { easternWallClock } from '../src/lib/homecare/ics';
 import { supabaseRest } from '../src/lib/notify/supabase-rest';
 
@@ -51,6 +52,7 @@ const likeRegex = (pattern: string) => {
 interface Row { [k: string]: unknown }
 const db: Record<string, Row[]> = {
   homeowners: [], homeowner_maintenance: [], follow_up_queue: [], maintenance_catalog: [],
+  visit_dispatch: [], visit_dispatch_recipients: [],
 };
 
 let server: http.Server;
@@ -161,6 +163,20 @@ test.beforeAll(async () => {
         const targets = applyFilters(rows);
         for (const t of targets) Object.assign(t, patch);
         return json(targets);
+      }
+
+      // Filtered delete, as PostgREST does it - and the cascade with it, which
+      // is the whole reason the dispatch's recipients have to be read first.
+      if (req.method === 'DELETE') {
+        const doomed = new Set(applyFilters(rows));
+        const removed = rows.filter((r) => doomed.has(r));
+        db[table] = rows.filter((r) => !doomed.has(r));
+        if (table === 'visit_dispatch') {
+          const ids = new Set(removed.map((r) => String(r.id)));
+          db.visit_dispatch_recipients = (db.visit_dispatch_recipients ?? [])
+            .filter((r) => !ids.has(String(r.dispatch_id)));
+        }
+        return json(removed.map(asPostgrest));
       }
       json([]);
     });
@@ -656,4 +672,125 @@ test('RM17: a requeue whose cancel failed queues nothing on top of it', async ()
   }));
   expect(verdict).toBe('unavailable');
   expect(pendingFor('nocancel@example.com')).toEqual([]);
+});
+
+/* ── retiring a visit's dispatch (crew dispatch AC 72, 79) ───────────────── */
+
+/**
+ * Seed one visit that has already been dispatched to one person.
+ *
+ * `dispatched_at` is what says an invite actually landed on somebody's phone,
+ * which is the only case a retraction is owed for.
+ */
+const seedDispatch = (visitStart: Date, over: Record<string, unknown> = {}) => {
+  db.visit_dispatch = db.visit_dispatch ?? [];
+  db.visit_dispatch_recipients = db.visit_dispatch_recipients ?? [];
+  const id = `vd-${db.visit_dispatch.length + 1}`;
+  db.visit_dispatch.push({
+    id, homeowner_id: 'member-1', visit_start: visitKey(visitStart), sub_name: null,
+    dispatched_at: new Date().toISOString(), nudged_at: null, escalated_at: null, ics_sequence: 0,
+    ...over,
+  });
+  db.visit_dispatch_recipients.push({
+    id: `${id}-a`, dispatch_id: id, recipient_id: 'rec-1', email: 'veronica@lavacagc.com',
+    name: 'Veronica', confirm_token: `tok-${id}`, status: 'sent', confirmed_at: null, note: null,
+  });
+  return id;
+};
+
+test('a cancelled visit still ahead is cleared, and the failed retraction is reported', async () => {
+  const start = new Date(Date.now() + 4 * 24 * 3600_000);
+  const id = seedDispatch(start);
+
+  const result = await clearVisitDispatch('member-1', start, { reason: 'cancelled' });
+
+  // The row goes whatever happens to the email: left behind, the next booking
+  // of that window inherits the stamps saying it has already been chased.
+  expect(db.visit_dispatch.some((r) => r.id === id)).toBe(false);
+  expect(db.visit_dispatch_recipients.some((r) => r.dispatch_id === id), 'assignments cascade').toBe(false);
+  expect(result.status).toBe('cleared');
+  // No RESEND_API_KEY here, so nothing went out - and that is reported as
+  // exactly what it is. Answering 'sent' would tell the admin the crew had been
+  // told, while they still hold the visit and its 7:00am "text the customer"
+  // alarm.
+  expect(result.retraction).toBe('send_failed');
+  expect(result.unretracted).toEqual(['veronica@lavacagc.com']);
+});
+
+test('a window already past is cleared but never mailed about', async () => {
+  // Re-booking a service into a later window in the same season puts the old
+  // one through here. It has no 7:00am alarm left to fire, so "[CANCELLED] you
+  // are not going" for it is pure noise on the channel that must stay read.
+  const start = new Date(Date.now() - 2 * 24 * 3600_000);
+  const id = seedDispatch(start);
+
+  const result = await clearVisitDispatch('member-1', start, { reason: 'cancelled' });
+
+  expect(db.visit_dispatch.some((r) => r.id === id)).toBe(false);
+  expect(result).toEqual({ status: 'cleared', retraction: 'not_needed', unretracted: [] });
+});
+
+test('the cutoff is injectable, so a window ahead of a given now is still retracted', async () => {
+  const start = new Date(Date.now() + 2 * 24 * 3600_000);
+  seedDispatch(start);
+
+  const past = await clearVisitDispatch('member-1', start, {
+    reason: 'cancelled', now: new Date(start.getTime() + 3600_000),
+  });
+  expect(past.retraction, 'now after the window: nothing to take back').toBe('not_needed');
+
+  const ahead = seedDispatch(start);
+  const live = await clearVisitDispatch('member-1', start, {
+    reason: 'cancelled', now: new Date(start.getTime() - 3600_000),
+  });
+  expect(live.retraction, 'now before the window: it is owed a retraction').toBe('send_failed');
+  expect(db.visit_dispatch.some((r) => r.id === ahead)).toBe(false);
+});
+
+test('a completed visit clears its row and retracts nothing', async () => {
+  // The job HAPPENED. Mailing "this visit is off, you are not going" about work
+  // somebody just finished would be a lie.
+  const start = new Date(Date.now() + 3 * 24 * 3600_000);
+  const id = seedDispatch(start);
+
+  const result = await clearVisitDispatch('member-1', start, { reason: 'completed' });
+
+  expect(db.visit_dispatch.some((r) => r.id === id)).toBe(false);
+  expect(result).toEqual({ status: 'cleared', retraction: 'not_needed', unretracted: [] });
+});
+
+test('a dispatch that never sent leaves nothing to retract', async () => {
+  const start = new Date(Date.now() + 5 * 24 * 3600_000);
+  seedDispatch(start, { dispatched_at: null });
+
+  const result = await clearVisitDispatch('member-1', start, { reason: 'cancelled' });
+  expect(result.retraction).toBe('not_needed');
+});
+
+test('the crew state a visit reads at is what the admin list shows', async () => {
+  const start = new Date(Date.now() + 6 * 24 * 3600_000);
+  const id = seedDispatch(start);
+  db.visit_dispatch_recipients.push({
+    id: `${id}-b`, dispatch_id: id, recipient_id: 'rec-2', email: 'alex@lavacagc.com',
+    name: 'Alex', confirm_token: `tok-${id}-b`, status: 'flagged', confirmed_at: null,
+    note: 'sub cancelled',
+  });
+
+  const before = dispatchStateOf(await assignmentsForDispatch(id));
+  expect(before.state).toBe('flagged');
+  expect(before.flags).toEqual([{ by: 'Alex', note: 'sub cancelled' }]);
+
+  // What "Mark handled" does: the flagged rows become confirmed, which is what
+  // the escalation reads, and the note stays as the record of what was wrong.
+  await supabaseRest('PATCH', `visit_dispatch_recipients?dispatch_id=eq.${id}&status=eq.flagged`, {
+    status: 'confirmed', confirmed_at: new Date().toISOString(),
+  });
+
+  const after = dispatchStateOf(await assignmentsForDispatch(id));
+  expect(after.state).toBe('confirmed');
+  expect(after.confirmedBy).toEqual(['Alex']);
+  expect(db.visit_dispatch_recipients.find((r) => r.id === `${id}-b`)!.note).toBe('sub cancelled');
+  // The person who never answered is untouched - their silence is not a
+  // confirmation, and the chase has to keep saying so.
+  expect(db.visit_dispatch_recipients.find((r) => r.id === `${id}-a`)!.status).toBe('sent');
 });

@@ -20,7 +20,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, CalendarPlus, CheckCircle2, XCircle } from 'lucide-react';
+import { Loader2, CalendarPlus, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
 import { scopeSummaryFrom } from '@/lib/homecare/serviceIntake';
 import { easternVisitInstant } from '@/lib/homecare/visitSchedule';
 
@@ -32,12 +32,25 @@ interface PastRequest {
   address: string | null; city: string | null; zip: string | null;
   taskKeys: string[]; services: { key: string; title: string }[];
 }
+/**
+ * What the crew has said about a visit.
+ *
+ * A flag OUTRANKS a confirmation here, exactly as it does on the server: a
+ * colleague having confirmed silences the 5pm and 6pm chases, which is precisely
+ * why the problem somebody raised has to stay visible on this screen.
+ */
+interface BookingDispatch {
+  state: 'none' | 'awaiting' | 'confirmed' | 'flagged';
+  confirmedBy: string[];
+  flags: { by: string; note: string | null }[];
+}
 /** A visit on the books: one window, every service booked into it. */
 interface Booking {
   start: string;
   end: string | null;
   address: string | null;
   tasks: { key: string; title: string; season: string }[];
+  dispatch?: BookingDispatch;
 }
 interface Intake {
   services: Service[];
@@ -88,6 +101,7 @@ export default function SendServiceQuotePage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [completing, setCompleting] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [handling, setHandling] = useState<string | null>(null);
   // Kept apart from `intake`, because a walk-in has no homeowner record until
   // the booking creates one - and completing that visit still needs the id.
   const [homeownerId, setHomeownerId] = useState<string | null>(null);
@@ -227,6 +241,10 @@ export default function SendServiceQuotePage() {
       setScheduled({ icsUrl: data.icsUrl });
       setHomeownerId(data.homeownerId);
       await refreshBookings();
+      // A reschedule takes the old window off the crew's calendars. When that
+      // could not be delivered they are still holding it - and its 7:00am "text
+      // the customer" alarm - so it is named here rather than logged.
+      const stillHolding: string[] = data.stillHolding ?? [];
       // Two independent outcomes, both reported. The booking succeeded either
       // way; what the admin needs to know is which of the two people who were
       // supposed to be told actually were.
@@ -242,10 +260,13 @@ export default function SendServiceQuotePage() {
           : data.dispatch === 'send_failed'
             ? ' The crew dispatch FAILED to send - call them.'
             : ' The crew dispatch could not be recorded - call them.';
-      const bad = data.reminder === 'unavailable' || data.dispatch !== 'sent';
+      const movedLine = stillHolding.length > 0
+        ? ` The OLD window could not be taken off ${stillHolding.join(', ')}'s calendar - call them, or they will text the customer about it at 7:00am.`
+        : '';
+      const bad = data.reminder === 'unavailable' || data.dispatch !== 'sent' || stillHolding.length > 0;
       toast({
         title: 'Visit scheduled',
-        description: reminderLine + dispatchLine,
+        description: reminderLine + dispatchLine + movedLine,
         variant: bad ? 'destructive' : undefined,
       });
     } catch (e) {
@@ -330,17 +351,60 @@ export default function SendServiceQuotePage() {
       // could not pull it leaves the customer to be told we are coming for a
       // visit that was called off. Never reported as done unless it was.
       const stranded = data.reminder === 'unavailable';
+      // So is the crew's calendar. A retraction that did not land leaves them
+      // holding the visit and the 7:00am alarm telling them to text the
+      // customer about it - the exact thing the retraction exists to stop - so
+      // it is never reported as clean.
+      const stillHolding: string[] = data.dispatch?.unretracted ?? [];
+      const crewLine = stillHolding.length > 0
+        ? ` The crew could NOT be told it is off (${stillHolding.join(', ')}) - call them.`
+        : data.dispatch?.retraction === 'sent'
+          ? ' The crew has been sent a calendar cancellation.'
+          : '';
       toast({
         title: 'Visit cancelled',
-        description: stranded
+        description: (stranded
           ? 'Off the books, but the night-before reminder could NOT be pulled - stop it on the Follow-Ups page.'
-          : 'Off the books, and the reminder is pulled.',
-        variant: stranded ? 'destructive' : undefined,
+          : 'Off the books, and the reminder is pulled.') + crewLine,
+        variant: stranded || stillHolding.length > 0 ? 'destructive' : undefined,
       });
     } catch (e) {
       toast({ title: 'Cancel failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
     } finally {
       setCancelling(null);
+    }
+  };
+
+  /**
+   * Clear a crew flag once the office has dealt with it.
+   *
+   * The crew screen cannot do this: it is terminal by design, and the person who
+   * spotted the problem is not necessarily the person who fixes it. But a flag
+   * no longer counts as an answer, so without this the visit is chased at 5pm
+   * and 6pm until its window passes - three alerts for one problem already
+   * sorted, and no way to stop them short of calling the visit off.
+   */
+  const markHandled = async (booking: Booking) => {
+    if (!homeownerId) return;
+    if (!window.confirm('Mark this flag handled? The 5pm and 6pm chases stop for this visit.')) return;
+    setHandling(booking.start);
+    try {
+      const res = await fetch('/api/admin/service-quote/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ homeownerId, start: booking.start }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      await refreshBookings();
+      toast({
+        title: 'Flag cleared',
+        description: 'This visit reads as confirmed now, so it will not be chased again.',
+      });
+    } catch (e) {
+      toast({ title: 'Failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setHandling(null);
     }
   };
 
@@ -548,11 +612,46 @@ export default function SendServiceQuotePage() {
                       <span className="block text-xs text-text-muted">
                         {b.tasks.map((t) => t.title).join(', ')}
                       </span>
+                      {/*
+                        Whether the people doing the work have answered. This is
+                        the only screen a flag ever reaches - the crew's own page
+                        is terminal - and a flagged visit is chased at 5pm and
+                        6pm until somebody here clears it.
+                      */}
+                      {b.dispatch && b.dispatch.state !== 'none' && (
+                        <span className="mt-1 block text-xs" data-testid="sq-dispatch-state">
+                          {b.dispatch.state === 'flagged' ? (
+                            <span className="font-semibold text-destructive">
+                              Flagged by {b.dispatch.flags.map((f) => f.by).join(', ')}
+                              {b.dispatch.flags.some((f) => f.note)
+                                ? `: ${b.dispatch.flags.map((f) => f.note).filter(Boolean).join(' / ')}`
+                                : ' (no note)'}
+                            </span>
+                          ) : b.dispatch.state === 'confirmed' ? (
+                            <span className="font-medium text-text-muted">
+                              Crew confirmed - {b.dispatch.confirmedBy.join(', ')}
+                            </span>
+                          ) : (
+                            <span className="font-medium text-text-muted">Crew has not answered yet</span>
+                          )}
+                        </span>
+                      )}
                     </span>
                     <span className="flex flex-wrap gap-2">
+                      {b.dispatch?.state === 'flagged' && (
+                        <Button
+                          variant="outline" size="sm" onClick={() => markHandled(b)}
+                          disabled={completing !== null || cancelling !== null || handling !== null || !homeownerId}
+                          data-testid="sq-handled"
+                        >
+                          {handling === b.start
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <><ShieldCheck className="mr-1.5 h-4 w-4" /> Mark handled</>}
+                        </Button>
+                      )}
                       <Button
                         variant="outline" size="sm" onClick={() => complete(b)}
-                        disabled={completing !== null || cancelling !== null || !homeownerId} data-testid="sq-complete"
+                        disabled={completing !== null || cancelling !== null || handling !== null || !homeownerId} data-testid="sq-complete"
                       >
                         {completing === b.start
                           ? <Loader2 className="h-4 w-4 animate-spin" />
@@ -560,7 +659,7 @@ export default function SendServiceQuotePage() {
                       </Button>
                       <Button
                         variant="outline" size="sm" onClick={() => cancel(b)}
-                        disabled={completing !== null || cancelling !== null || !homeownerId}
+                        disabled={completing !== null || cancelling !== null || handling !== null || !homeownerId}
                         className="text-destructive hover:border-destructive" data-testid="sq-cancel"
                       >
                         {cancelling === b.start

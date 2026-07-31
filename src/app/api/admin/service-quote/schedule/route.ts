@@ -21,7 +21,8 @@ import {
 } from '@/lib/homecare/serviceScheduling';
 import { buildVisitReminderEmail } from '@/lib/homecare/serviceEmails';
 import {
-  sendVisitDispatch, clearVisitDispatch, visitContextFor, type SendDispatchResult,
+  sendVisitDispatch, clearVisitDispatch, visitContextFor,
+  type SendDispatchResult, type ClearDispatchResult,
 } from '@/lib/homecare/dispatch';
 import { visitDateLabel, visitTimeWindow, easternParts } from '@/lib/homecare/visitSchedule';
 import { seasonForTaskVisit } from '@/lib/homecare/season';
@@ -182,13 +183,24 @@ export async function POST(request: NextRequest) {
     // slot next, complete with the stamps that say it has already been chased,
     // and the crew would be left holding two events - the moved visit's and the
     // new one's - each with its own 7:00am "text the customer" alarm.
+    //
+    // The verdict is kept, not discarded: a retraction that never landed leaves
+    // somebody holding the OLD window and its alarm, and the admin who moved
+    // the visit is the only person in a position to call them.
+    const retired: ClearDispatchResult[] = [];
     for (const { when, visit } of vacated) {
-      await clearVisitDispatch(homeowner.id, when, { reason: 'cancelled', visit })
-        .catch((err) => console.error(
-          'crew dispatch for a superseded window could not be retired:',
-          err instanceof Error ? err.message : String(err),
-        ));
+      retired.push(
+        await clearVisitDispatch(homeowner.id, when, { reason: 'cancelled', visit })
+          .catch((err): ClearDispatchResult => {
+            console.error(
+              'crew dispatch for a superseded window could not be retired:',
+              err instanceof Error ? err.message : String(err),
+            );
+            return { status: 'unavailable', retraction: 'not_needed', unretracted: [] };
+          }),
+      );
     }
+    const stillHolding = [...new Set(retired.flatMap((r) => r.unretracted))];
 
     return NextResponse.json({
       status: 'scheduled',
@@ -197,6 +209,9 @@ export async function POST(request: NextRequest) {
       services,
       dispatch: dispatch.outcome,
       dispatchedTo: dispatch.sentTo,
+      // Who was NOT told the old window is off, when this booking moved one.
+      // Empty is the normal answer; anything in it is a phone call.
+      stillHolding,
       // What each task was actually filed under. "Mark complete" needs this:
       // the season is per task and derived here, so the caller cannot guess it.
       seasons: Object.fromEntries(tasks.map((t) => [t.taskKey, t.season])),
@@ -309,6 +324,11 @@ export async function DELETE(request: NextRequest) {
     // already on their phone, and that event is what tells them to text the
     // customer at 7:00am. The record of what was actually sent lives in
     // email_log, which this does not touch.
+    //
+    // Reported, never assumed - the same rule the reminder follows. A cancel
+    // whose retraction did not land leaves the crew holding the visit and its
+    // 7:00am "text the customer" alarm, and answering a flat "cancelled" is
+    // what would hide it.
     const dispatch = await clearVisitDispatch(homeownerId, startAt, { reason: 'cancelled', visit });
     return NextResponse.json({ status: 'cancelled', reminder, dispatch });
   } catch (err) {

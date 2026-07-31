@@ -94,6 +94,7 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 55. A visit is skipped **only** when an assignment reads `confirmed`.
     A `flagged` assignment does **not** count as answered: a flag says this visit has a problem, and the customer is still told at 7:30pm that we are coming, so it is the one visit that most needs chasing.
     Both stages carry the flag note in the message, so the owner sees *what* is wrong rather than only that something is.
+    The chase stops when the office clears the flag from the admin list (76-78), not when the crew taps something.
 56. A stage that has already stamped its column is skipped, making a cron retry a no-op.
 57. The stamp is claimed **before** the send, re-asserting `is.null`, so a concurrent run cannot double-send.
 58. A failed send releases its stamp, so a manual re-hit before the customer reminder can still get through.
@@ -110,6 +111,24 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 66. `POST /api/crew/confirm` with `action=flag` Telegrams the operations chat **immediately**, naming who flagged it, the customer, the date and window, the address and the sub, and carrying the note verbatim.
     Everything interpolated is escaped for Telegram's HTML mode.
 67. The flag is written **before** the Telegram is attempted, and a failed send is logged rather than returned as an error: the crew member's tap records either way, and the escalation still carries the flag, so a Telegram outage cannot bury the problem.
+74. Only the **transition into** a flag alerts, judged against the row as it was before the write.
+    This route is public and unthrottled and the token rides in an email that can be forwarded, so alerting on every POST would let one link drive unlimited messages into the operations chat - and an honest double-tap would tell the owner the same thing twice.
+    A changed note is a new thing to say, and does alert.
+75. The alert states what the **rest of the crew** has actually said, read off the other assignments on the same dispatch: whoever has already confirmed is named, or it says plainly that nobody has.
+    This matters more than it looks: the escalation skips any visit with a `confirmed` assignment, so when a colleague has already answered, this alert is the only message the owner will ever get about the problem.
+    It cannot be the one that says something false.
+    A read that fails says so rather than guessing either way.
+
+## Clearing a flag
+
+76. Clearing a flag is an **admin** action on `POST /api/admin/service-quote/dispatch`, gated by the admin session like every other `/api/admin/*` route - never the public token endpoint, which is guarded by a link in somebody's inbox.
+    It marks that visit's **flagged** assignments confirmed, which is what the escalation reads, and touches nothing else: somebody who never answered still has not answered.
+    The note is kept - it is the record of what was wrong, and the visit having been sorted does not make it untrue.
+77. The "On the books" list on `/vaca-mgmt/send-service-quote` shows each visit's dispatch state - awaiting, confirmed, or flagged with the note - read alongside the bookings themselves.
+    This is the only surface a flag ever reaches: the crew screen is terminal by design, and without it a flagged visit is chased at 5pm and 6pm until its window passes with no way to stop it.
+    "Mark handled" is offered only where there is a flag to clear, and is confirm-gated exactly as "Mark completed" is.
+78. A flag **outranks** a confirmation in that state.
+    A colleague having confirmed silences both chases, which is precisely why the problem somebody raised has to stay visible somewhere else.
 
 ## Retiring a visit
 
@@ -120,7 +139,16 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     A different UID files a second, cancelled event and leaves the live one alone; an equal SEQUENCE can be discarded as a duplicate.
 70. A retraction carries **no `VALARM`**. Retracting a visit must never deliver the alarm that tells somebody to text the customer about it.
 71. The recipients are read **before** the dispatch row is deleted - the assignments cascade with it, taking the addresses and the UIDs - and the visit is described from a read taken **before** the window was cleared, because an unbooked window no longer knows its services.
-72. Only a dispatch that actually sent is retracted. A cancellation for an invite nobody received is noise on the one channel the crew has to keep trusting.
+72. Only a dispatch that actually sent, for a window **still ahead**, is retracted.
+    A cancellation for an invite nobody received is noise on the one channel the crew has to keep trusting, and so is one for a window already past - it has no 7:00am alarm left to fire.
+    Re-booking a service into a later window in the same season puts exactly such a window through here, so the cutoff is the same one `crossSeasonBookings` applies, and it is injectable so it can be tested rather than only observed in production.
+    The row still comes off either way: a stale row is what makes the next booking of that window inherit the stamps saying it has already been chased.
+    What did go out is auditable: the retraction logs under its own `crew_dispatch_cancelled` category, which the admin email log can filter for and labels in full.
+79. Whether the retraction actually **reached each recipient** is reported, never assumed.
+    A per-recipient failure is collected rather than only logged, a throw is treated as nobody having been told, and both callers surface it - the cancel in its response and the admin toast, the reschedule in `stillHolding` on the schedule response.
+    A retraction that silently failed leaves the crew holding the visit and its 7:00am "text the customer" alarm, which is the precise outcome the retraction exists to prevent, so it must never be reported as clean.
+80. A visit with no stored `scheduled_end` resolves through `visitEndsAt`, never a fallback spelled out again.
+    That helper says two hours; an hour written out here made the 5pm Telegram and the crew's confirm page describe one visit as "8:00 - 10:00am" and "8:00 - 9:00am", and the CANCEL `.ics` inherited the shorter one.
 
 ## Row-level security
 

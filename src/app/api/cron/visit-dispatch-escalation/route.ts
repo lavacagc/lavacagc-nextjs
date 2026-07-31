@@ -33,7 +33,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTelegramMessage, escapeTelegram } from '@/lib/notify/telegramMessage';
 import {
-  ensureVisitDispatch, VISIT_DISPATCH_COLUMNS,
+  ensureVisitDispatch, VISIT_DISPATCH_COLUMNS, DISPATCH_ASSIGNMENT_COLUMNS,
   type DispatchAssignment, type VisitDispatchRow,
 } from '@/lib/homecare/dispatch';
 import {
@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
     const assignments = dispatches.length > 0
       ? (await supabaseRest<DispatchAssignment[]>(
           'GET',
-          `visit_dispatch_recipients?select=id,dispatch_id,recipient_id,email,name,confirm_token,status,confirmed_at,note` +
+          `visit_dispatch_recipients?select=${DISPATCH_ASSIGNMENT_COLUMNS}` +
             `&dispatch_id=in.(${dispatches.map((d) => d.id).join(',')})`,
         )) ?? []
       : [];

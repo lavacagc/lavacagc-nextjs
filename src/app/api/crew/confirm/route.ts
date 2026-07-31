@@ -22,7 +22,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTelegramMessage, escapeTelegram } from '@/lib/notify/telegramMessage';
-import { lookupByToken, type TokenLookup } from '@/lib/homecare/dispatch';
+import { lookupByToken, assignmentsForDispatch, type TokenLookup } from '@/lib/homecare/dispatch';
 import { visitDateLabel, visitTimeWindow } from '@/lib/homecare/visitSchedule';
 import { z } from 'zod';
 
@@ -85,11 +85,19 @@ export async function POST(request: NextRequest) {
 
   if (action === 'confirm') return NextResponse.json({ status: 'confirmed' });
 
+  // Only the TRANSITION into a flag alerts, judged against the row as it was
+  // before the PATCH above. This route is public and unthrottled - the token
+  // travels in an email that can be forwarded - so alerting on every POST lets
+  // one link drive unlimited messages into the operations chat, and an honest
+  // double-tap tells the owner the same thing twice. A changed note is a new
+  // thing to say and does alert.
+  const repeat = assignment.status === 'flagged' && (assignment.note ?? null) === (note ?? null);
+
   // The flag is already recorded, so a Telegram outage cannot cost the crew
   // their tap - and it cannot leave the problem unreported either, because the
   // 5pm and 6pm stages now carry this note too.
-  const notified = await notifyFlag(found, note ?? null);
-  if (notified !== 'sent') {
+  const notified = repeat ? 'duplicate' as const : await notifyFlag(found, note ?? null);
+  if (notified !== 'sent' && notified !== 'duplicate') {
     console.error(
       `crew flag could not be Telegrammed (${notified}) for assignment ${assignment.id}. ` +
         'The escalation still carries it.',
@@ -122,8 +130,34 @@ async function notifyFlag(found: TokenLookup, note: string | null) {
     note ? `💬 ${escapeTelegram(note)}` : '💬 No note - call them.',
     '',
     'The customer still gets their reminder the night before, so this needs '
-      + 'sorting or the visit calling off. Nobody has confirmed it.',
+      + 'sorting or the visit calling off.',
+    await siblingVerdict(found),
   ].filter(Boolean).join('\n');
 
   return sendTelegramMessage(text).catch(() => 'failed' as const);
+}
+
+/**
+ * What the REST of the crew has said about this visit - read, never assumed.
+ *
+ * The escalation skips any visit somebody has confirmed, so when a colleague
+ * already answered, this alert is the only message the owner will ever get
+ * about the problem. It cannot be the one that says something false.
+ */
+async function siblingVerdict(found: TokenLookup): Promise<string> {
+  const { assignment, dispatch } = found;
+  const others = await assignmentsForDispatch(dispatch.id)
+    .then((rows) => rows.filter((a) => a.id !== assignment.id))
+    .catch(() => null);
+
+  if (!others) return '⚠️ Whether anybody else has confirmed could not be read - check the visit.';
+
+  const confirmed = others.filter((a) => a.status === 'confirmed').map((a) => a.name || a.email);
+  if (confirmed.length > 0) {
+    return `${escapeTelegram(confirmed.join(', '))} ${confirmed.length > 1 ? 'have' : 'has'} `
+      + 'already confirmed this visit, so the 5pm and 6pm chases stay quiet. This is the only alert you get.';
+  }
+  return others.length === 0
+    ? 'Nobody else was sent this visit. It stays unconfirmed, so 5pm and 6pm will chase it.'
+    : 'Nobody has confirmed it, so 5pm and 6pm will chase it until somebody does.';
 }

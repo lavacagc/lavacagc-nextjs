@@ -6,7 +6,8 @@
  *   - this customer's past requests, newest first, with the task keys parsed
  *     out of each lead message,
  *   - when they last had each service done,
- *   - the visits they currently have on the books.
+ *   - the visits they currently have on the books, each with what the crew has
+ *     said about it - awaiting, confirmed, or flagged with the note.
  *
  * That last one is what makes "mark completed" reachable. A visit is booked on
  * Monday and performed on Thursday, in a different session - so gating the
@@ -28,6 +29,10 @@ import {
   parseTaskKeys, bookableCatalog, lastDoneFor, lastDoneLabel, groupBookings,
   type ServiceCatalogRow, type CompletionRow, type BookedRow, type Booking,
 } from '@/lib/homecare/serviceIntake';
+import {
+  dispatchStateOf, VISIT_DISPATCH_COLUMNS, DISPATCH_ASSIGNMENT_COLUMNS,
+  type DispatchAssignment, type VisitDispatchRow, type VisitDispatchState,
+} from '@/lib/homecare/dispatch';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -36,6 +41,61 @@ interface LeadRow {
   id: string; first_name: string | null; last_name: string | null;
   email: string; phone: string | null; address: string | null; city: string | null;
   zip_code: string | null; source: string | null; message: string | null; created_at: string;
+}
+
+/** A booking with what the crew has said about it, for the "On the books" list. */
+type BookedVisit = Booking & { dispatch: VisitDispatchState };
+
+/**
+ * Attach each visit's dispatch state - awaiting, confirmed, or flagged.
+ *
+ * This is the ONLY admin surface a flag reaches. The crew screen is terminal by
+ * design, and a flag no longer counts as an answer, so a visit somebody raised
+ * a problem on is chased at 5pm and 6pm until it is confirmed or called off -
+ * and nothing else in the product shows it, or offers a way to close it.
+ *
+ * Every dispatch row this customer holds is read in one go rather than filtered
+ * by window: cancelling or completing a visit deletes its row, so the set is at
+ * most the visits they have on the books.
+ *
+ * Best-effort. The lookup is worth answering without it - as it already is
+ * without the scheduling columns - so a failure leaves the state unknown rather
+ * than failing the whole read.
+ */
+async function withDispatchState(homeownerId: string, bookings: Booking[]): Promise<BookedVisit[]> {
+  const blank: VisitDispatchState = { state: 'none', confirmedBy: [], flags: [] };
+  if (bookings.length === 0) return [];
+
+  const dispatches = (await supabaseRest<VisitDispatchRow[]>(
+    'GET',
+    `visit_dispatch?select=${VISIT_DISPATCH_COLUMNS}&homeowner_id=eq.${homeownerId}`,
+  ).catch(() => [] as VisitDispatchRow[])) ?? [];
+  if (dispatches.length === 0) return bookings.map((b) => ({ ...b, dispatch: blank }));
+
+  const assignments = (await supabaseRest<DispatchAssignment[]>(
+    'GET',
+    `visit_dispatch_recipients?select=${DISPATCH_ASSIGNMENT_COLUMNS}` +
+      `&dispatch_id=in.(${dispatches.map((d) => d.id).join(',')})`,
+  ).catch(() => [] as DispatchAssignment[])) ?? [];
+
+  const byDispatch = new Map<string, DispatchAssignment[]>();
+  for (const a of assignments) {
+    const bucket = byDispatch.get(a.dispatch_id);
+    if (bucket) bucket.push(a); else byDispatch.set(a.dispatch_id, [a]);
+  }
+  // Matched on the INSTANT, never the string: PostgREST renders `timestamptz`
+  // as "+00:00" where the booking carries a `Date`'s "Z", and the same moment
+  // spelled two ways would leave every visit reading "not dispatched".
+  const stateByStart = new Map<number, VisitDispatchState>();
+  for (const d of dispatches) {
+    const at = new Date(d.visit_start).getTime();
+    if (Number.isFinite(at)) stateByStart.set(at, dispatchStateOf(byDispatch.get(d.id) ?? []));
+  }
+
+  return bookings.map((b) => ({
+    ...b,
+    dispatch: stateByStart.get(new Date(b.start).getTime()) ?? blank,
+  }));
 }
 
 export async function GET(request: NextRequest) {
@@ -103,7 +163,7 @@ export async function GET(request: NextRequest) {
     // Service history and open bookings - only meaningful once they have a
     // homeowner record.
     let history: Record<string, { at: string; by: string; label: string }> = {};
-    let bookings: Booking[] = [];
+    let bookings: BookedVisit[] = [];
     if (homeowner) {
       const [done, booked] = await Promise.all([
         // Selected on the TIMESTAMP, not on `status`. The two answer different
@@ -127,7 +187,7 @@ export async function GET(request: NextRequest) {
       history = Object.fromEntries(
         [...lastDoneFor(done ?? []).entries()].map(([k, v]) => [k, { at: v.at.toISOString(), by: v.by, label: lastDoneLabel(v) }]),
       );
-      bookings = groupBookings(booked ?? [], byKey);
+      bookings = await withDispatchState(homeowner.id, groupBookings(booked ?? [], byKey));
     }
 
     return NextResponse.json({ services, requests, history, homeowner, bookings });

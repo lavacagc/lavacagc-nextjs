@@ -8,7 +8,7 @@ import {
 import { escapeTelegram } from '../src/lib/notify/telegramMessage';
 import { SERVICE_REPLY_TO } from '../src/lib/homecare/serviceEmails';
 import { HOME_CARE_FROM } from '../src/lib/notify/senders';
-import { crewIcsUid } from '../src/lib/homecare/dispatch';
+import { crewIcsUid, dispatchStateOf, type DispatchAssignment } from '../src/lib/homecare/dispatch';
 
 /**
  * Acceptance criteria for crew dispatch.
@@ -396,9 +396,13 @@ test('AC40 completing a visit clears its dispatch too, but retracts nothing', ()
   // it is COMPLETED, not cancelled, because the job happened: mailing "you are
   // not going" about work somebody just finished would be a lie.
   const route = read('src/app/api/admin/service-quote/complete/route.ts');
-  expect(route).toContain("clearVisitDispatch(homeownerId, at, { reason: 'completed', visit })");
-  expect(route).toContain('for (const { at, visit } of completedVisits)');
+  expect(route).toContain("clearVisitDispatch(homeownerId, new Date(iso), { reason: 'completed' })");
+  expect(route).toContain('for (const iso of completedVisitStarts)');
   expect(route).toContain('dispatch,');
+  // And it resolves no visit context on the way: `visit` is read only by the
+  // retraction, which a completion never sends, so doing it anyway would be
+  // three Supabase round trips per window for a value nobody looks at.
+  expect(route).not.toContain('visitContextFor');
 });
 
 test('AC40 a reschedule clears the dispatch for the window it moved off', () => {
@@ -607,9 +611,36 @@ test('AC67 the flag is recorded before the Telegram, and a failed send is logged
   const src = confirmRoute();
   expect(src.indexOf("status: action === 'confirm' ? 'confirmed' : 'flagged'"))
     .toBeLessThan(src.indexOf('await notifyFlag('));
-  const after = src.slice(src.indexOf('const notified = await notifyFlag('));
+  const after = src.slice(src.indexOf('const notified = '));
   expect(after).toContain('console.error');
   expect(after).toContain("return NextResponse.json({ status: 'flagged', notified });");
+});
+
+test('AC74 only the transition into a flag alerts, so one token cannot flood the chat', () => {
+  // This route is public and unthrottled, and the token rides in an email that
+  // can be forwarded. Judged against the row as it was BEFORE the PATCH, or the
+  // status just written would make every flag look like a repeat.
+  const src = confirmRoute();
+  expect(src).toContain(
+    "const repeat = assignment.status === 'flagged' && (assignment.note ?? null) === (note ?? null);",
+  );
+  expect(src).toContain("const notified = repeat ? 'duplicate' as const : await notifyFlag(");
+  expect(src.indexOf('const repeat =')).toBeGreaterThan(src.indexOf("supabaseRest('PATCH'"));
+});
+
+test('AC75 the flag alert reads the other assignments rather than asserting nobody confirmed', () => {
+  const src = confirmRoute();
+  // The escalation skips any visit somebody has confirmed, so when a colleague
+  // already answered this alert is the ONLY message the owner gets about the
+  // problem. It cannot be the one that says something false.
+  expect(src).not.toContain('Nobody has confirmed it.');
+  const verdict = src.slice(src.indexOf('async function siblingVerdict'));
+  expect(verdict).toContain('assignmentsForDispatch(dispatch.id)');
+  expect(verdict).toContain('rows.filter((a) => a.id !== assignment.id)');
+  expect(verdict).toContain("a.status === 'confirmed'");
+  expect(verdict).toContain('escapeTelegram(confirmed.join');
+  // A read that failed says so rather than guessing either way.
+  expect(verdict).toContain('could not be read');
 });
 
 test('AC49 a server error on this public route leaks no Supabase detail', () => {
@@ -682,19 +713,141 @@ test('AC70 the cancelled email tells them not to text the customer', () => {
 test('AC71 the recipients are read before the row is deleted, or they cascade away', () => {
   const src = read('src/lib/homecare/dispatch.ts');
   const fn = src.slice(src.indexOf('export async function clearVisitDispatch'));
-  expect(fn.indexOf('visit_dispatch_recipients?select=')).toBeLessThan(fn.indexOf("'DELETE',"));
+  expect(fn.indexOf('assignmentsForDispatch(dispatch.id)')).toBeLessThan(fn.indexOf("'DELETE',"));
   expect(fn.indexOf("'DELETE',")).toBeLessThan(fn.indexOf('sendDispatchRetraction('));
 });
 
-test('AC72 only a cancelled visit whose dispatch actually sent is retracted', () => {
+test('AC72 only a cancelled visit whose dispatch actually sent, and is still ahead, is retracted', () => {
   const src = read('src/lib/homecare/dispatch.ts');
-  expect(src).toContain("if (reason === 'cancelled' && dispatch?.dispatched_at && assignments.length > 0) {");
+  expect(src).toContain(
+    "if (reason === 'cancelled' && dispatch?.dispatched_at && assignments.length > 0\n"
+      + '      && visitStart.getTime() > now.getTime()) {',
+  );
+  // Injectable, so the cutoff is testable rather than only observable in
+  // production - the same shape crossSeasonBookings uses.
+  expect(src).toContain("opts: { reason: 'cancelled' | 'completed'; visit?: VisitContext | null; now?: Date },");
+});
+
+test('AC72 a window already past is cleared but never mailed about', () => {
+  // A visit that has already started has no 7:00am alarm left to fire, so
+  // "[CANCELLED] ... you are not going" about it is pure noise on the one
+  // channel that has to stay worth reading - and re-booking a service into a
+  // later window in the same season puts exactly such a window through here.
+  const src = read('src/lib/homecare/dispatch.ts');
+  const fn = src.slice(src.indexOf('export async function clearVisitDispatch'));
+  // The row still goes, whatever the answer: a stale row is what makes the next
+  // booking of that window inherit the stamps that say it has been chased.
+  expect(fn.indexOf("'DELETE',")).toBeLessThan(fn.indexOf('visitStart.getTime() > now.getTime()'));
+  expect(fn).toContain("return { status: 'cleared', retraction, unretracted };");
+});
+
+test('AC79 a retraction that did not land is reported, never assumed', () => {
+  const src = read('src/lib/homecare/dispatch.ts');
+  // The per-recipient failure is collected rather than only logged...
+  const send = src.slice(src.indexOf('async function sendDispatchRetraction'));
+  expect(send).toContain('unretracted.push(assignment.email)');
+  expect(send).toContain('return unretracted;');
+  // ...and a throw is treated as nobody having been told, not as success.
+  expect(src).toContain('return assignments.map((a) => a.email);');
+  expect(src).toContain("retraction = unretracted.length > 0 ? 'send_failed' : 'sent';");
+});
+
+test('AC79 both callers surface it - the cancel response and the reschedule', () => {
+  const route = read('src/app/api/admin/service-quote/schedule/route.ts');
+  // A cancel hands the whole verdict back, next to the reminder's.
+  expect(route).toContain("return NextResponse.json({ status: 'cancelled', reminder, dispatch });");
+  // A reschedule used to discard it entirely, which made a failed retraction on
+  // a moved visit invisible even in the response.
+  expect(route).toContain('const retired: ClearDispatchResult[] = [];');
+  expect(route).toContain('const stillHolding = [...new Set(retired.flatMap((r) => r.unretracted))];');
+  expect(route).toContain('stillHolding,');
+
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain('data.dispatch?.unretracted ?? []');
+  expect(page).toContain('The crew could NOT be told it is off');
+  expect(page).toContain('data.stillHolding ?? []');
+  expect(page).toContain('will text the customer about it at 7:00am');
+});
+
+test('AC80 a missing scheduled_end resolves through visitEndsAt, never a second literal', () => {
+  // visitEndsAt says two hours. Spelling an hour here made the 5pm Telegram and
+  // the crew confirm page describe one visit as "8:00 - 10:00am" and
+  // "8:00 - 9:00am", and the CANCEL .ics inherited the shorter one.
+  const src = read('src/lib/homecare/dispatch.ts');
+  expect(src).toContain('end: new Date(visitEndsAt(key, endIso))');
+  expect(src).toContain('visit?.end ?? new Date(visitEndsAt(visitKey(visitStart), null))');
+  expect(src, 'no third copy of the fallback').not.toContain('3600_000');
 });
 
 test('AC72 the retraction never carries a preferenceStream either', () => {
   const src = code('src/lib/homecare/dispatch.ts');
   expect(src).not.toContain('preferenceStream');
   expect(src).toContain("category: 'crew_dispatch_cancelled'");
+});
+
+test('AC72 the retraction is auditable - its own category, filterable in the admin', () => {
+  const page = read('src/app/vaca-mgmt/emails/page.tsx');
+  expect(page).toContain("'crew_dispatch_cancelled'");
+  expect(page).toContain("if (c === 'crew_dispatch_cancelled') return 'Crew dispatch cancelled';");
+});
+
+/* ── clearing a flag (AC 76-78) ──────────────────────────────────────────── */
+
+test('AC78 a flag outranks a confirmation when the state is summarised', () => {
+  const a = (over: Partial<DispatchAssignment>): DispatchAssignment => ({
+    id: 'a1', dispatch_id: 'd1', recipient_id: 'r1', email: 'alex@lavacagc.com',
+    name: 'Alex', confirm_token: 't', status: 'sent', confirmed_at: null, note: null, ...over,
+  });
+
+  expect(dispatchStateOf([]).state).toBe('none');
+  expect(dispatchStateOf([a({})]).state).toBe('awaiting');
+  expect(dispatchStateOf([a({ status: 'confirmed' })]).state).toBe('confirmed');
+  // A colleague having confirmed silences the 5pm and 6pm chases, which is
+  // exactly why the problem somebody raised has to stay visible here.
+  const mixed = dispatchStateOf([
+    a({ status: 'confirmed' }),
+    a({ id: 'a2', recipient_id: 'r2', name: 'Veronica', status: 'flagged', note: 'sub cancelled' }),
+  ]);
+  expect(mixed.state).toBe('flagged');
+  expect(mixed.confirmedBy).toEqual(['Alex']);
+  expect(mixed.flags).toEqual([{ by: 'Veronica', note: 'sub cancelled' }]);
+});
+
+test('AC77 the admin list shows each visit\'s dispatch state, read with the bookings', () => {
+  const intake = read('src/app/api/admin/service-quote/intake/route.ts');
+  expect(intake).toContain('withDispatchState(homeowner.id, groupBookings(');
+  expect(intake).toContain('dispatchStateOf(byDispatch.get(d.id) ?? [])');
+  // Matched on the instant: PostgREST's "+00:00" and a Date's "Z" are the same
+  // moment spelled two ways, and matching the text would read every visit as
+  // never dispatched.
+  expect(intake).toContain('stateByStart.get(new Date(b.start).getTime())');
+
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain('data-testid="sq-dispatch-state"');
+  expect(page).toContain('Crew has not answered yet');
+  expect(page).toContain('Flagged by ');
+});
+
+test('AC76 clearing a flag is an admin action, and only the flagged rows move', () => {
+  const route = read('src/app/api/admin/service-quote/dispatch/route.ts');
+  // Under /api/admin/, so middleware gates it on the admin session - NOT the
+  // public token endpoint, which is guarded by a link in somebody's inbox.
+  expect(route).toContain('handleFlagSchema');
+  expect(route).toContain('&status=eq.flagged');
+  expect(route).toContain("{ status: 'confirmed', confirmed_at: now, updated_at: now }");
+  // Somebody who never answered still has not answered.
+  expect(route).not.toContain("status=eq.sent");
+  // The note stays: it is the record of what was wrong, and the visit being
+  // sorted does not make it untrue.
+  expect(route).not.toContain('note: null');
+
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain("fetch('/api/admin/service-quote/dispatch'");
+  expect(page).toContain('data-testid="sq-handled"');
+  // Confirm-gated, the same as "Mark completed".
+  expect(page).toContain('window.confirm(\'Mark this flag handled?');
+  // And offered only where there is a flag to clear.
+  expect(page).toContain("b.dispatch?.state === 'flagged' && (");
 });
 
 /* ── row-level security (AC 73) ──────────────────────────────────────────── */

@@ -23,7 +23,7 @@ import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { HOME_CARE_FROM } from '@/lib/notify/sendHomeCareEmails';
 import { buildServiceCompletedEmail, SERVICE_REPLY_TO } from '@/lib/homecare/serviceEmails';
 import { cancelVisitReminder } from '@/lib/homecare/serviceScheduling';
-import { clearVisitDispatch, visitContextFor } from '@/lib/homecare/dispatch';
+import { clearVisitDispatch } from '@/lib/homecare/dispatch';
 import { preferencesUrlFor, normalizeEmail } from '@/lib/preferences/preferences';
 import { cleanEnv } from '@/lib/envClean';
 import { completeSchema } from '../_schema';
@@ -116,16 +116,14 @@ export async function POST(request: NextRequest) {
     // and that one's dispatch, and a row completed on some earlier visit is not
     // a window this call closes.
     //
-    // Read here, BEFORE the upsert nulls them: the calendar retraction sent
-    // below has to describe the visit it is withdrawing, and once the window is
-    // cleared the services are no longer readable.
+    // Taken from the rows read above, BEFORE the upsert nulls them - after it
+    // there is nothing left to say which windows this call retired. The visit
+    // itself is deliberately NOT resolved: a completion retracts nothing, so
+    // reading the customer, the address and the services for it would be three
+    // Supabase round trips per window for a value nobody looks at.
     const completedVisitStarts = [...new Set(
       taskKeys.map((k) => bookedFor.get(k)?.scheduled_start).filter((s): s is string => !!s),
     )];
-    const completedVisits = await Promise.all(completedVisitStarts.map(async (iso) => ({
-      at: new Date(iso),
-      visit: await visitContextFor(homeownerId, new Date(iso)).catch(() => null),
-    })));
 
     const completedAt = new Date().toISOString();
     if (transitioning.length > 0) {
@@ -169,10 +167,9 @@ export async function POST(request: NextRequest) {
     // calendar retraction goes out. Mailing the crew "this visit is off, you
     // are not going" about work they have just finished would be a lie.
     let dispatch: 'cleared' | 'unavailable' = 'cleared';
-    for (const { at, visit } of completedVisits) {
-      if (await clearVisitDispatch(homeownerId, at, { reason: 'completed', visit }) === 'unavailable') {
-        dispatch = 'unavailable';
-      }
+    for (const iso of completedVisitStarts) {
+      const cleared = await clearVisitDispatch(homeownerId, new Date(iso), { reason: 'completed' });
+      if (cleared.status === 'unavailable') dispatch = 'unavailable';
     }
 
     if (skipFeedback || transitioning.length === 0) {

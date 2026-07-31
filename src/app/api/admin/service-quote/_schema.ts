@@ -111,6 +111,20 @@ export const cancelVisitSchema = z.object({
 
 export type CancelVisitInput = z.infer<typeof cancelVisitSchema>;
 
+/**
+ * Payload for clearing a crew flag on ONE visit.
+ *
+ * Same (homeowner, window) pair every other visit-scoped action takes, and for
+ * the same reason: it is what names a visit, and a flag cleared without one
+ * would reach every visit this customer has on the books.
+ */
+export const handleFlagSchema = z.object({
+  homeownerId: z.string().uuid(),
+  start: z.string().datetime({ offset: true }),
+});
+
+export type HandleFlagInput = z.infer<typeof handleFlagSchema>;
+
 export const completeSchema = z.object({
   homeownerId: z.string().uuid(),
   taskKeys: z.array(z.string().regex(/^[a-z0-9_]+$/i).max(80)).min(1).max(20),

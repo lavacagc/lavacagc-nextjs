@@ -20,7 +20,7 @@ import { HOME_CARE_FROM } from '@/lib/notify/sendHomeCareEmails';
 import { SERVICE_REPLY_TO } from '@/lib/homecare/serviceEmails';
 import { buildIcs, googleCalendarUrl } from '@/lib/homecare/ics';
 import { buildDispatchEmail, buildDispatchCancelledEmail } from '@/lib/homecare/dispatchEmail';
-import { visitKey, visitDateLabel, visitTimeWindow } from '@/lib/homecare/visitSchedule';
+import { visitKey, visitDateLabel, visitTimeWindow, visitEndsAt } from '@/lib/homecare/visitSchedule';
 
 export interface DispatchRecipient {
   id: string;
@@ -56,6 +56,47 @@ export interface VisitDispatchRow {
 /** Every column of a dispatch row, named once so no reader can select a stale set. */
 export const VISIT_DISPATCH_COLUMNS =
   'id,homeowner_id,visit_start,sub_name,dispatched_at,nudged_at,escalated_at,ics_sequence';
+
+/** The same, for an assignment. Four readers select these; one spelling. */
+export const DISPATCH_ASSIGNMENT_COLUMNS =
+  'id,dispatch_id,recipient_id,email,name,confirm_token,status,confirmed_at,note';
+
+/** Everyone this visit was sent to, whatever each of them has answered. */
+export async function assignmentsForDispatch(dispatchId: string): Promise<DispatchAssignment[]> {
+  return (await supabaseRest<DispatchAssignment[]>(
+    'GET',
+    `visit_dispatch_recipients?select=${DISPATCH_ASSIGNMENT_COLUMNS}&dispatch_id=eq.${dispatchId}`,
+  )) ?? [];
+}
+
+/** What the admin needs to see about one visit: has anybody answered, and how. */
+export interface VisitDispatchState {
+  state: 'none' | 'awaiting' | 'confirmed' | 'flagged';
+  confirmedBy: string[];
+  flags: { by: string; note: string | null }[];
+}
+
+/**
+ * The state of one visit's dispatch, read off its assignments.
+ *
+ * A FLAG OUTRANKS A CONFIRMATION. Somebody saying this visit has a problem is
+ * the only state that needs a person to do something, and a colleague having
+ * confirmed does not make the problem go away - it only silences the 5pm and 6pm
+ * stages, which is exactly why the flag has to stay visible somewhere else.
+ */
+export function dispatchStateOf(assignments: DispatchAssignment[]): VisitDispatchState {
+  const named = (a: DispatchAssignment) => a.name || a.email;
+  const confirmedBy = assignments.filter((a) => a.status === 'confirmed').map(named);
+  const flags = assignments
+    .filter((a) => a.status === 'flagged')
+    .map((a) => ({ by: named(a), note: a.note }));
+  const state = assignments.length === 0
+    ? 'none'
+    : flags.length > 0
+      ? 'flagged'
+      : confirmedBy.length > 0 ? 'confirmed' : 'awaiting';
+  return { state, confirmedBy, flags };
+}
 
 /**
  * The calendar UID for one person's copy of one visit.
@@ -151,11 +192,7 @@ export async function ensureAssignments(
   dispatchId: string,
   recipients: DispatchRecipient[],
 ): Promise<DispatchAssignment[]> {
-  const existing = (await supabaseRest<DispatchAssignment[]>(
-    'GET',
-    `visit_dispatch_recipients?select=id,dispatch_id,recipient_id,email,name,confirm_token,status,confirmed_at,note` +
-      `&dispatch_id=eq.${dispatchId}`,
-  )) ?? [];
+  const existing = await assignmentsForDispatch(dispatchId);
   const byRecipient = new Map(existing.map((a) => [a.recipient_id, a]));
 
   const missing = recipients.filter((r) => !byRecipient.has(r.id));
@@ -236,8 +273,11 @@ export async function visitContextFor(
     address: booked[0]?.service_address ?? owner.address ?? '',
     services: booked.map((r) => titleFor.get(r.task_key) ?? r.task_key),
     start,
-    // A visit with no stored end is an hour long, matching visitEndsAt.
-    end: endIso ? new Date(endIso) : new Date(start.getTime() + 3600_000),
+    // Through visitEndsAt, never a fallback written out here: the escalation
+    // reads the same missing end through that helper, and the two describing
+    // one visit as "8:00 - 10:00am" and "8:00 - 9:00am" is what it exists to
+    // stop.
+    end: new Date(visitEndsAt(key, endIso)),
     stillBooked: booked.length > 0,
   };
 }
@@ -260,7 +300,7 @@ export interface TokenLookup {
 export async function lookupByToken(token: string): Promise<TokenLookup | null> {
   const assignments = (await supabaseRest<DispatchAssignment[]>(
     'GET',
-    `visit_dispatch_recipients?select=id,dispatch_id,recipient_id,email,name,confirm_token,status,confirmed_at,note` +
+    `visit_dispatch_recipients?select=${DISPATCH_ASSIGNMENT_COLUMNS}` +
       `&confirm_token=eq.${encodeURIComponent(token)}&limit=1`,
   )) ?? [];
   const assignment = assignments[0];
@@ -275,6 +315,17 @@ export async function lookupByToken(token: string): Promise<TokenLookup | null> 
 
   const visit = await visitContextFor(dispatch.homeowner_id, new Date(dispatch.visit_start)).catch(() => null);
   return { assignment, dispatch, visit };
+}
+
+/** Whether the crew was actually told the visit is off. */
+export type RetractionOutcome = 'sent' | 'not_needed' | 'send_failed';
+
+export interface ClearDispatchResult {
+  /** Whether the dispatch row itself came off. */
+  status: 'cleared' | 'unavailable';
+  retraction: RetractionOutcome;
+  /** Who is still holding the visit on their calendar. Empty unless it failed. */
+  unretracted: string[];
 }
 
 /**
@@ -297,6 +348,8 @@ export async function lookupByToken(token: string): Promise<TokenLookup | null> 
  *    the crew is on the way" alarm - the one thing in the system that produces
  *    that text. Without the retraction it fires anyway and a customer is texted
  *    about a job that is off; a reschedule leaves two events and two alarms.
+ *    Only for a window STILL AHEAD, on the reasoning `crossSeasonBookings`
+ *    already documents: a window already past has no alarm left to fire.
  *  - **completed** - the job HAPPENED. There is nothing to retract, and mailing
  *    "this visit is off, you are not going" about work somebody just finished
  *    would be a lie. The event stays on their calendar as the record it is.
@@ -308,13 +361,18 @@ export async function lookupByToken(token: string): Promise<TokenLookup | null> 
  * from before the window was cleared where you can - once the tasks are unbooked
  * the services are no longer readable. What was actually sent is recorded in
  * email_log, which this does not touch, so the audit trail survives.
+ *
+ * Both halves are REPORTED, never assumed. A retraction that did not reach
+ * somebody leaves them holding the visit and its 7:00am alarm - the precise
+ * outcome the retraction exists to prevent - so it must never be handed back as
+ * a clean cancel.
  */
 export async function clearVisitDispatch(
   homeownerId: string,
   visitStart: Date,
-  opts: { reason: 'cancelled' | 'completed'; visit?: VisitContext | null },
-): Promise<'cleared' | 'unavailable'> {
-  const { reason, visit } = opts;
+  opts: { reason: 'cancelled' | 'completed'; visit?: VisitContext | null; now?: Date },
+): Promise<ClearDispatchResult> {
+  const { reason, visit, now = new Date() } = opts;
   let dispatch: VisitDispatchRow | null = null;
   let assignments: DispatchAssignment[] = [];
   try {
@@ -326,13 +384,7 @@ export async function clearVisitDispatch(
     )) ?? [];
     dispatch = rows[0] ?? null;
 
-    if (dispatch) {
-      assignments = (await supabaseRest<DispatchAssignment[]>(
-        'GET',
-        `visit_dispatch_recipients?select=id,dispatch_id,recipient_id,email,name,confirm_token,status,confirmed_at,note` +
-          `&dispatch_id=eq.${dispatch.id}`,
-      )) ?? [];
-    }
+    if (dispatch) assignments = await assignmentsForDispatch(dispatch.id);
 
     await supabaseRest(
       'DELETE',
@@ -340,25 +392,35 @@ export async function clearVisitDispatch(
     );
   } catch (err) {
     console.error('crew dispatch could not be cleared:', err instanceof Error ? err.message : String(err));
-    return 'unavailable';
+    return { status: 'unavailable', retraction: 'not_needed', unretracted: [] };
   }
 
-  // Only what actually went out is retracted. A dispatch that never sent left
-  // no event to remove, and a cancellation for an invite nobody received is
-  // noise on the one channel the crew has to keep trusting.
-  if (reason === 'cancelled' && dispatch?.dispatched_at && assignments.length > 0) {
-    await sendDispatchRetraction({ homeownerId, visitStart, dispatch, assignments, visit })
-      .catch((err) => console.error(
-        'crew dispatch retraction failed - the crew may still be holding the visit:',
-        err instanceof Error ? err.message : String(err),
-      ));
+  // Only what actually went out is retracted, and only while there is still
+  // something to take back. A dispatch that never sent left no event to remove;
+  // a window ALREADY PAST announces nothing either - its 7:00am alarm has
+  // fired or never will - so mailing "you are not going" about it is pure noise
+  // on the one channel the crew has to keep trusting.
+  let retraction: RetractionOutcome = 'not_needed';
+  let unretracted: string[] = [];
+  if (reason === 'cancelled' && dispatch?.dispatched_at && assignments.length > 0
+      && visitStart.getTime() > now.getTime()) {
+    unretracted = await sendDispatchRetraction({ homeownerId, visitStart, dispatch, assignments, visit })
+      .catch((err) => {
+        console.error(
+          'crew dispatch retraction failed - the crew may still be holding the visit:',
+          err instanceof Error ? err.message : String(err),
+        );
+        return assignments.map((a) => a.email);
+      });
+    retraction = unretracted.length > 0 ? 'send_failed' : 'sent';
   }
 
-  return 'cleared';
+  return { status: 'cleared', retraction, unretracted };
 }
 
 /**
- * Tell everyone who was sent this visit that it is off.
+ * Tell everyone who was sent this visit that it is off, and answer with the
+ * addresses that could NOT be told.
  *
  * SEQUENCE counts up from the row's own value: a client applies a CANCEL to the
  * event it holds only when the number is higher than the one it stored, so a
@@ -371,7 +433,7 @@ async function sendDispatchRetraction(args: {
   dispatch: VisitDispatchRow;
   assignments: DispatchAssignment[];
   visit?: VisitContext | null;
-}): Promise<void> {
+}): Promise<string[]> {
   const { homeownerId, visitStart, dispatch, assignments } = args;
 
   // Read only as a fallback: by the time a cancel gets here the window is
@@ -380,11 +442,14 @@ async function sendDispatchRetraction(args: {
   const visit = args.visit
     ?? await visitContextFor(homeownerId, visitStart).catch(() => null);
 
-  const end = visit?.end ?? new Date(visitStart.getTime() + 3600_000);
+  // Same helper the escalation and the confirm page read a missing end through,
+  // so a retraction cannot describe a different window than the chase did.
+  const end = visit?.end ?? new Date(visitEndsAt(visitKey(visitStart), null));
   const customerName = visit?.customerName ?? 'the customer';
   const address = visit?.address ?? '';
   const services = visit?.services ?? [];
   const sequence = (dispatch.ics_sequence ?? 0) + 1;
+  const unretracted: string[] = [];
 
   for (const assignment of assignments) {
     const { subject, html, text } = buildDispatchCancelledEmail({
@@ -426,12 +491,15 @@ async function sendDispatchRetraction(args: {
     });
 
     if (res.status !== 'sent') {
+      unretracted.push(assignment.email);
       console.error(
         `crew dispatch retraction FAILED for ${assignment.email} - ${visitDateLabel(visitStart)}: ` +
           `${res.status}${res.error ? ` - ${res.error}` : ''}. They still have the visit on their calendar.`,
       );
     }
   }
+
+  return unretracted;
 }
 
 export interface SendDispatchArgs {
