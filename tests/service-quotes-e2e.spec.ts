@@ -4,6 +4,7 @@ import {
   ensureServiceHomeowner, scheduleVisit, bookedVisitRows, orphanedVisitStarts, supersededBookings,
   crossSeasonBookings, requeueVisitReminder, cancelVisitReminder,
 } from '../src/lib/homecare/serviceScheduling';
+import { lastDoneFor, lastDoneLabel, type CompletionRow } from '../src/lib/homecare/serviceIntake';
 import { visitKey, reminderSendAt } from '../src/lib/homecare/visitSchedule';
 import { easternWallClock } from '../src/lib/homecare/ics';
 import { supabaseRest } from '../src/lib/notify/supabase-rest';
@@ -221,11 +222,16 @@ test('scheduling books the tasks with a window and an address', async () => {
   expect(booked[0].service_address).toBe('9 Elm St, Montclair, NJ');
 });
 
-test('CP2: booking clears a previous La Vaca completion off the row', async () => {
-  // Otherwise the attribution is sticky: the member ticks the re-booked task
-  // themselves and the portal still reads "Completed by La Vaca".
+test('CP2+SC16: booking retakes the status of a La Vaca completion, and the tick retakes the label', async () => {
+  // The attribution must not be sticky - the member ticks the re-booked task
+  // themselves and the portal must stop reading "Completed by La Vaca" - but it
+  // is the TICK that owns that, not the booking. A booking clearing the record
+  // took an invoiced visit out of the service history (SC16); what actually
+  // keeps the label honest is the status going to 'booked' (no label renders on
+  // a row that is not done) and the member's own write reassigning the row.
   const gutters = () => db.homeowner_maintenance.find((m) => m.task_key === 'clean_gutters')!;
-  Object.assign(gutters(), { status: 'done', completed_by: 'lavaca', completed_at: new Date().toISOString() });
+  const performed = new Date().toISOString();
+  Object.assign(gutters(), { status: 'done', completed_by: 'lavaca', completed_at: performed });
 
   const start = new Date(Date.now() + 40 * 3600_000);
   await scheduleVisit({
@@ -233,8 +239,16 @@ test('CP2: booking clears a previous La Vaca completion off the row', async () =
     start, end: new Date(start.getTime() + 2 * 3600_000), address: '9 Elm St, Montclair, NJ',
   });
   expect(gutters().status).toBe('booked');
-  expect(gutters().completed_by, 'a booking is not a completion').toBe('homeowner');
-  expect(gutters().completed_at).toBe(null);
+  expect(gutters().completed_by, 'the record of the last job stands').toBe('lavaca');
+  expect(gutters().completed_at).toBe(performed);
+
+  // Exactly the body /api/home-care/task writes on a tick.
+  const now = new Date().toISOString();
+  await supabaseRest('POST', 'homeowner_maintenance?on_conflict=homeowner_id,task_key,season', {
+    homeowner_id: 'member-1', task_key: 'clean_gutters', season: 'fall',
+    status: 'done', completed_at: now, completed_by: 'homeowner', updated_at: now,
+  }, { prefer: 'resolution=merge-duplicates,return=minimal' });
+  expect(gutters().completed_by, 'and their own tick is theirs').toBe('homeowner');
 });
 
 /**
@@ -394,24 +408,51 @@ test('SC13: rescheduling that visit leaves the member\'s own tick standing', asy
   expect(row.scheduled_start, 'while the visit itself moves').toBe(moved.toISOString());
 });
 
-test('SC13: a booking still retakes a row La Vaca completed', async () => {
-  // The exception CP2 exists for, and the reason this is not "preserve every
-  // completion": left in place, `completed_by='lavaca'` labels whoever ticks
-  // the row next as work we did, AND makes mark-complete treat the new visit as
-  // already handled - which would leave its window on the books for good.
+test('SC13+SC16: a booking retakes the STATUS of a row La Vaca completed, not the record', async () => {
+  // The status has to be retaken: left reading 'done' by us it labels whoever
+  // ticks the row next as our work, and mark-complete treats the new visit as
+  // already handled, so its window never comes off the books.
+  // The record must NOT be, and that is the whole of SC16 - `completed_at` is
+  // what IN4 reads to tell the next quote "last done Oct 2026 by La Vaca", and
+  // booking the job again is not us saying it never happened.
   const start = new Date(Date.now() + 7 * 24 * 3600_000);
   await scheduleVisit({
     homeownerId: 'ours', tasks: [{ taskKey: 'clean_gutters', season: 'fall' }],
     start, end: new Date(start.getTime() + 2 * 3600_000), address: '5 Cedar St',
   });
   const row = () => db.homeowner_maintenance.find((m) => m.homeowner_id === 'ours')!;
-  Object.assign(row(), { status: 'done', completed_by: 'lavaca', completed_at: new Date().toISOString() });
+  const performed = new Date().toISOString();
+  Object.assign(row(), { status: 'done', completed_by: 'lavaca', completed_at: performed });
 
   const again = new Date(Date.now() + 14 * 24 * 3600_000);
   await rebook('ours', [{ taskKey: 'clean_gutters', season: 'fall' }], again);
   expect(row().status).toBe('booked');
-  expect(row().completed_by).toBe('homeowner');
-  expect(row().completed_at).toBe(null);
+  expect(row().completed_by, 'the record of who did it stands').toBe('lavaca');
+  expect(row().completed_at, 'and so does when').toBe(performed);
+  expect(lastDoneFor([row() as unknown as CompletionRow]).get('clean_gutters')?.by).toBe('lavaca');
+});
+
+test('SC16: booking the redo a member asked for keeps the invoiced visit in the history', async () => {
+  // The reachable flow, and the one the completion email invites: La Vaca does
+  // the gutters, the member unticks them ("this needs doing again"), the admin
+  // books the redo. CP10 leaves our completion standing on a row now reading
+  // 'todo', which no `status=eq.done` read can see - so the redo was exactly
+  // what erased the job, and cancelling it restored nothing.
+  const performed = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
+  db.homeowner_maintenance.push({
+    homeowner_id: 'redo', task_key: 'clean_gutters', season: 'fall',
+    status: 'todo', completed_by: 'lavaca', completed_at: performed,
+    updated_at: new Date().toISOString(), scheduled_start: null, scheduled_end: null, service_address: null,
+  });
+
+  const start = new Date(Date.now() + 3 * 24 * 3600_000);
+  await rebook('redo', [{ taskKey: 'clean_gutters', season: 'fall' }], start);
+
+  const row = db.homeowner_maintenance.find((m) => m.homeowner_id === 'redo')!;
+  expect(row.status, 'the redo is on the books').toBe('booked');
+  expect(row.scheduled_start).toBe(start.toISOString());
+  expect(row.completed_at, 'and the invoiced visit is still history').toBe(performed);
+  expect(lastDoneLabel(lastDoneFor([row as unknown as CompletionRow]).get('clean_gutters'))).toContain('by La Vaca');
 });
 
 test('a failed booking read refuses the booking instead of guessing', async () => {

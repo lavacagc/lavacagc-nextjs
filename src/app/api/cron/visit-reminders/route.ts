@@ -19,8 +19,15 @@
  * (lead_email, visit_start) so two visits on one day keep separate ledgers. It
  * is CLAIMED (pending -> sent) before the send, so a Vercel cron retry, a manual
  * GET or a concurrent run finds nothing left to claim instead of mailing the
- * batch twice. Only a REFUSAL - the recipient unsubscribed - keeps the claim;
- * every other outcome releases it so the next run retries.
+ * batch twice.
+ *
+ * A send that does not complete releases its claim, and the run answers
+ * `ok:false`. The release is NOT a retry: every run covers exactly one Eastern
+ * day, so tomorrow's run looks at tomorrow's visits and this row is outside its
+ * window and every later one. It only reopens the row to a manual re-hit before
+ * Eastern midnight - which is why the failure is logged per recipient and the
+ * response says the run failed, rather than being quietly deferred to a run that
+ * will never come.
  *
  *   ?dryRun=1 - report who would be reminded, send nothing, claim nothing.
  *
@@ -155,6 +162,8 @@ export async function GET(request: NextRequest) {
     let sent = 0;
     let alreadySent = 0;
     const skipped: string[] = [];
+    /** Recipients whose send did not complete - the run reports itself failed. */
+    const failed: string[] = [];
     const wouldSend: string[] = [];
 
     for (const [, rows] of byOwner) {
@@ -246,25 +255,33 @@ export async function GET(request: NextRequest) {
       if (res.status === 'sent') {
         sent += 1;
       } else {
-        skipped.push(owner.email);
-        // Only a REFUSAL is final - a recipient who opted out is not owed this
-        // email and never will be. Everything else releases the claim so the
-        // next run retries. `skipped` alone is not that verdict: it is also what
-        // an unconfigured RESEND_API_KEY returns, an infrastructure fault that
-        // says nothing about this recipient. Held as final, it closed the ledger
-        // for every visit that night - the queue reads "sent", the customer was
-        // never told, and no run ever revisits it.
-        const refused = res.status === 'skipped' && res.reason === 'unsubscribed';
-        if (claimId && !refused) {
-          console.error(
-            `visit-reminders: send did not complete for ${owner.email} (${res.status}` +
-              `${res.reason ? `: ${res.reason}` : ''}) - releasing the ledger claim for retry`,
-          );
+        // Nothing here is a decision about the recipient, so every outcome is a
+        // fault. This send passes no `preferenceStream` and no `knownSuppressed`
+        // - a night-before reminder for a visit the customer booked is
+        // transactional and must not be droppable by a marketing opt-out - and
+        // those are the only two routes to `sendTrackedEmail`'s 'unsubscribed'.
+        // A branch narrowing on that reason here would read as an opt-out being
+        // honoured somewhere in this route, which is protection that does not
+        // exist. `no_api_key` comes back as 'skipped' too, and held as final it
+        // closed the ledger for every visit that night.
+        failed.push(owner.email);
+        console.error(
+          `visit-reminders: send FAILED for ${owner.email} - ${visitDateLabel(start)} ` +
+            `${visitTimeWindow(start, end)} (visit ${visitStart}): ${res.status}` +
+            `${res.reason ? ` (${res.reason})` : ''}${res.error ? ` - ${res.error}` : ''}. ` +
+            'No later run covers this visit; re-run the cron before Eastern midnight or text the customer.',
+        );
+        // Released so a re-hit tonight can still take the row - `ledgerVerdict`
+        // counts 'failed' as open. It is not a deferral: the window moves on
+        // with the calendar, so no scheduled run ever looks at this visit again.
+        if (claimId) {
           await supabaseRest('PATCH', `follow_up_queue?id=eq.${claimId}`, { status: 'failed', sent_at: null })
             .catch((err) => {
-              // The claim stands and nothing retries it, so this cannot be silent.
+              // Now the claim stands as 'sent' on a reminder nobody received,
+              // and even the manual re-hit finds nothing to take.
               console.error(
-                `visit-reminders: could not release the claim for ${owner.email} - that reminder will not be retried:`,
+                `visit-reminders: could not release the claim for ${owner.email} - the ledger now reads sent ` +
+                  'for a reminder that was never delivered:',
                 err instanceof Error ? err.message : err,
               );
             });
@@ -272,8 +289,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // A run that could not tell someone about tomorrow's visit is a failed run,
+    // and it has to say so. Nothing revisits these: the released claims are
+    // outside every later run's window, and the only trace otherwise would be a
+    // console line in a cron nobody watches - which is the same silence the
+    // unavailable-ledger branch answers `ok:false` to avoid. Counts only in the
+    // body; the addresses are in the log.
     return NextResponse.json({
-      ok: true,
+      ok: failed.length === 0,
+      ...(failed.length > 0 ? { degraded: 'reminder_send_failed' } : {}),
       window: { from: startUtc, to: endUtc },
       visits: visits.length,
       recipients: byOwner.size,
@@ -281,6 +305,7 @@ export async function GET(request: NextRequest) {
       sent,
       already_sent: alreadySent,
       skipped: skipped.length,
+      failed: failed.length,
       dryRun,
     });
   } catch (err) {

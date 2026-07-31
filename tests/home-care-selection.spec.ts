@@ -95,6 +95,29 @@ test('booked and snoozed suppress for their season only, not forever', () => {
   expect(keys(r.outstanding)).not.toContain('clean_gutters');
 });
 
+test('SC16: a re-booked row expires off the BOOKING, not the job it repeats', () => {
+  // A booking preserves the completion of the job it is repeating, so state and
+  // history no longer move together. Read as `completed_at ?? updated_at`, a
+  // visit booked today aged off last year's completion and expired straight out
+  // of the suppression set - so the newsletter would nag the member about work
+  // La Vaca is booked to do next week.
+  const now = new Date(Date.UTC(2026, 9, 15)); // mid-fall 2026
+  const rebooked: MaintenanceRow = {
+    task_key: 'clean_gutters',
+    season: 'fall',
+    status: 'booked',
+    completed_at: '2025-10-01T00:00:00.000Z', // last year's visit, deliberately kept
+    updated_at: '2026-10-10T00:00:00.000Z', // booked five days ago
+  };
+  expect(isRowCurrent(rebooked, now)).toBe(true);
+  const r = resolveMemberTasks({ catalog: CATALOG, systems: { pool: false }, stage: 'established', rows: [rebooked], now, season: 'fall' });
+  expect(keys(r.outstanding)).not.toContain('clean_gutters');
+
+  // And the clock still follows the status: back to 'done', last year's stamp
+  // is the one that counts and the task has come around again.
+  expect(isRowCurrent({ ...rebooked, status: 'done' }, now)).toBe(false);
+});
+
 test('MULTI-SEASON: a completion in one season does not suppress the task in another', () => {
   // replace_hvac_filter is quarterly - it appears in all four seasons. Keyed on
   // task_key alone, a winter check-off silently dropped it from the summer

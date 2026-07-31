@@ -128,23 +128,25 @@ interface CompletionState {
  * The (task, season) rows already carrying a completion the MEMBER recorded and
  * that is still in force.
  *
- * These are the rows a booking must not write its status over. A member who
+ * These are the rows a booking must not write its STATUS over. A member who
  * sees the visit card and ticks "Clean gutters" owns that row's `status`,
  * `completed_at` and `completed_by` - `/api/home-care/task` deliberately writes
  * nothing else so the booking survives their tick, and this is the same rule
  * from the other side.
  *
- * A completion LA VACA recorded is not preserved: booking the same service into
- * the same season is a new job that supersedes it, and leaving 'lavaca' behind
- * would both label whoever ticks the row next as work we did and make
- * "mark completed" treat the new visit as already handled - leaving its window
- * on the books forever.
+ * Only the status is at stake here. A booking never writes either completion
+ * column on any row, so nothing this misses can cost a member their record -
+ * see `scheduleVisit`.
  *
- * An EXPIRED completion is not preserved either. `isRowCurrent` is the seasonal
- * reset the portal and the newsletter share: past it the task has already come
- * back on both, and a booked row that kept its old `completed_at` would expire
- * straight back out of the newsletter's suppression set, so we would nag the
- * member about work we are booked to do.
+ * A status LA VACA set is retaken: booking the same service into the same season
+ * is a new job, and a row left reading 'done' by us would label whoever ticks it
+ * next as our work and make "mark completed" treat the new visit as already
+ * handled, leaving its window on the books forever.
+ *
+ * An EXPIRED completion is retaken too. `isRowCurrent` is the seasonal reset the
+ * portal and the newsletter share: past it the task has already come back on
+ * both, so the row is showing as outstanding anyway and 'booked' is the truer
+ * label.
  *
  * Read, never swallowed: if this fails we do not know what the row holds, and
  * guessing "nothing" is what destroys the tick.
@@ -180,6 +182,18 @@ async function memberCompletionsInForce(homeownerId: string, tasks: VisitTask[])
  * gone - the same narrowing the DELETE handler makes with `status=eq.booked`
  * when it unbooks a cancelled visit. Whoever did the work keeps the credit; the
  * booking is separate state on the same row.
+ *
+ * And it writes NEITHER completion column, on any row. A booking is a statement
+ * about the future; `completed_at` and `completed_by` are the record of a job
+ * that already happened, which is the service history this whole feature exists
+ * to accumulate and what the next quote reads to say "last done Oct 2026 by La
+ * Vaca" (IN4). Clearing them here retired an invoiced visit the moment a return
+ * one was booked - and worse on the path CP10 opened: a member who unticks our
+ * work leaves the row 'todo' with our completion standing, which no
+ * `status=eq.done` read can see, so the redo they asked for was exactly what
+ * erased the job. Cancel that redo and the DELETE handler restores no
+ * timestamp, so it was gone for good. `/complete` writes the record for the new
+ * visit when the new visit happens; until then the old one stands.
  */
 export async function scheduleVisit(args: ScheduleArgs): Promise<void> {
   const { homeownerId, tasks, start, end, address } = args;
@@ -206,18 +220,10 @@ export async function scheduleVisit(args: ScheduleArgs): Promise<void> {
 
   // Two writes, not one: PostgREST rejects a bulk insert whose objects carry
   // different keys, and the whole point is that these two carry different keys.
+  // Neither carries a completion column, so the merge-duplicates upsert leaves
+  // whatever record the row already held exactly as it was.
   if (open.length > 0) {
-    await upsert(open.map((t) => ({
-      ...identity(t),
-      status: 'booked',
-      // A booking is not a completion, so it clears both halves of one. Clearing
-      // `completed_at` is also what lets `isRowCurrent` fall back to
-      // `updated_at` on a booked row - a stale one left behind would expire the
-      // booking out of the newsletter's suppression set.
-      completed_at: null,
-      completed_by: 'homeowner',
-      ...booking,
-    })));
+    await upsert(open.map((t) => ({ ...identity(t), status: 'booked', ...booking })));
   }
   if (held.length > 0) {
     await upsert(held.map((t) => ({ ...identity(t), ...booking })));

@@ -59,12 +59,22 @@ const SUPPRESSING = new Set(['done', 'booked', 'snoozed', 'dismissed']);
  * handled. `booked` and `snoozed` stamp no `completed_at`, so they expire off
  * `updated_at`: both mean "not now", which is a statement about this season,
  * not a standing one.
+ *
+ * Which clock applies is decided by the CURRENT status, not by which columns
+ * happen to be populated. One row carries both state and history, and they no
+ * longer move together: a booking preserves the `completed_at` of the job it is
+ * repeating (SC13/CP10), so `completed_at ?? updated_at` would age a visit
+ * booked today off last year's completion - and expire it straight out of the
+ * newsletter's suppression set, which is how we would nag a member about work
+ * we are booked to do.
  */
 export function isRowCurrent(row: MaintenanceRow, now: Date = new Date()): boolean {
   // Dismissals are a standing preference, not a seasonal completion: "not
   // relevant to my home" stays true next year too.
   if (row.status === 'dismissed') return true;
-  const stamp = row.completed_at ?? row.updated_at;
+  const stamp = row.status === 'done'
+    ? row.completed_at ?? row.updated_at
+    : row.updated_at ?? row.completed_at;
   if (!SEASONS.includes(row.season as Season) || !stamp) return true;
   return new Date(stamp).getTime() >= completionCutoff(row.season as Season, now).getTime();
 }

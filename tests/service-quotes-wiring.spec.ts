@@ -154,21 +154,33 @@ test('RM15: a ledger row that cannot be written stops the send', () => {
   expect(branch.indexOf('continue;'), 'skip before the send, not after').toBeGreaterThan(-1);
 });
 
-test('RM18: only a refusal keeps the claim - an unconfigured key releases it', () => {
-  // sendTrackedEmail answers 'skipped' for BOTH an opt-out and a missing
-  // RESEND_API_KEY. Held as final, the second closed the ledger for every visit
-  // that night: the queue reads 'sent', the customer was never told, nothing
-  // retries. The release must narrow on the reason, like the repo's other three
-  // call sites do.
+test('RM18: a send that did not complete releases its claim AND fails the run', () => {
+  // The claim is taken before the send, so a fault after it leaves the queue
+  // reading 'sent' for an email nobody received - which is how a missing
+  // RESEND_API_KEY recorded every visit that night as delivered.
   const release = cron.slice(cron.indexOf('const res = await sendTrackedEmail'));
-  expect(release).toContain("res.status === 'skipped' && res.reason === 'unsubscribed'");
-  expect(release, 'a bare status check cannot tell a refusal from a fault')
-    .not.toContain("res.status !== 'skipped'");
   expect(release).toContain("{ status: 'failed', sent_at: null }");
-  // Silent here is how the first version hid: a released claim and a release
-  // that could not be written both have to be visible in the cron's log.
-  const releaseBlock = release.slice(release.indexOf('if (claimId && !refused)'));
+
+  // No refusal branch. sendTrackedEmail answers 'unsubscribed' only from
+  // knownSuppressed or a preferenceStream opt-out, and this send passes neither
+  // - a reminder for a visit the customer booked is transactional. A guard on
+  // that reason reads as an opt-out being honoured where none can be.
+  expect(release, 'the refusal branch is unreachable here').not.toContain("res.reason === 'unsubscribed'");
+  const send = cron.slice(cron.indexOf('const res = await sendTrackedEmail'), cron.indexOf('if (res.status ==='));
+  expect(send).not.toContain('preferenceStream');
+  expect(send).not.toContain('knownSuppressed');
+
+  // And the release is NOT a retry: every run covers one Eastern day, so no
+  // later scheduled run looks at this visit again. Silence is what hid the
+  // original bug, so the recipient and the visit are logged, a release that
+  // could not be written is logged, and the RUN reports itself failed - the
+  // same treatment the unavailable-ledger branch gets.
+  const releaseBlock = release.slice(release.indexOf('failed.push(owner.email)'));
   expect(releaseBlock.match(/console\.error/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  expect(release).toContain('ok: failed.length === 0');
+  expect(release).toContain("degraded: 'reminder_send_failed'");
+  // The promise the route used to make, in the header comment and here.
+  expect(cron, 'nothing may claim the next run retries it').not.toContain('so the next run retries');
 });
 
 test('RM8: the cron reads its verdict from every row a visit holds', () => {
@@ -527,9 +539,9 @@ test('SC13: a booking writes the window over a completion, never the status', ()
     scheduling.indexOf('export interface BookedVisitRow'),
   );
   expect(fn).toContain('isRowCurrent');
-  // A completion LA VACA recorded is still retaken: left in place it credits us
-  // for whoever ticks the row next, and makes mark-complete treat the new visit
-  // as already handled, so its window never comes off the books.
+  // A STATUS La Vaca set is still retaken: left reading 'done' by us it credits
+  // us for whoever ticks the row next, and makes mark-complete treat the new
+  // visit as already handled, so its window never comes off the books.
   expect(fn).toContain("r.completed_by !== 'lavaca'");
   expect(fn, 'not knowing what the row holds is not the same as it holding nothing')
     .not.toContain('.catch(');
@@ -537,6 +549,38 @@ test('SC13: a booking writes the window over a completion, never the status', ()
   // being overwritten.
   expect(fn).toContain("status: 'booked'");
   expect(fn).toContain('await upsert(held.map((t) => ({ ...identity(t), ...booking })))');
+});
+
+test('SC16: a booking writes no completion column at all', () => {
+  // `completed_at`/`completed_by` are the record of a job that happened - what
+  // IN4 reads for "last done Oct 2026 by La Vaca". A booking is about the
+  // future, and clearing them retired an invoiced visit the moment a return one
+  // was booked. Worst on the CP10 path: the member unticks our work, so the row
+  // is 'todo' with our completion standing, which `status=eq.done` cannot see -
+  // the redo they asked for was what erased the job, and cancelling it restored
+  // nothing.
+  const fn = scheduling.slice(
+    scheduling.indexOf('export async function scheduleVisit'),
+    scheduling.indexOf('export interface BookedVisitRow'),
+  );
+  expect(fn, 'the booking payload names neither completion column').not.toContain('completed_at');
+  expect(fn).not.toContain('completed_by');
+  // The upsert is merge-duplicates, which is what makes an absent column a
+  // preserved one rather than a null.
+  expect(fn).toContain("{ onConflict: 'homeowner_id,task_key,season' }");
+  // State and history no longer move together, so the expiry clock follows the
+  // STATUS: a row booked today must not age off last year's completion and drop
+  // out of the newsletter's suppression set.
+  const selection = read('src/lib/homecare/selection.ts');
+  const current = selection.slice(
+    selection.indexOf('export function isRowCurrent'), selection.indexOf('export interface RowCompletion'),
+  );
+  expect(current).toContain("row.status === 'done'");
+  expect(current).toContain('row.updated_at ?? row.completed_at');
+  // The portal label reads the current status for the same reason - a re-booked
+  // row carries our old record and is not something to announce as done.
+  expect(read('src/app/home-care/checklist/page.tsx'))
+    .toContain("r.status === 'done' && r.completed_by === 'lavaca'");
 });
 
 test('SC14: a booked visit can be cancelled from the admin page', () => {

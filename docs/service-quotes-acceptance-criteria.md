@@ -174,25 +174,38 @@ These were settled by the owner during review; the ACs assume them.
   columns, so their completion is recorded and the booking stands for the owner
   to reconcile. Cancelling and completing are what clear the window.
 - **SC13** And the same rule from the other side: a booking writes the **window**
-  onto every row and the **status** onto only some.
-  Stamping `'booked'` with `completed_at: null` over a member's own completion
-  erased their tick with no notice - they ticked the task on Tuesday, the visit
-  moved on Thursday, and it was gone - the same narrowing the cancel route makes
-  with `status=eq.booked` when it unbooks a visit. Whoever did the work keeps the
-  credit; the booking is separate state on the same row.
-  A completion **La Vaca** recorded is still retaken, which is what CP2 asks
-  for: left in place it labels whoever ticks the row next as work we did, and it
-  makes "mark completed" treat the new visit as already handled, so that visit's
-  window would never come off the books.
-  That is a *booking* retaking the row, and it is not the same act as CP10,
-  where the member's own untick leaves our completion alone: booking the service
-  again is us saying the job is due again, and the visit about to happen writes
-  the record that replaces it.
-  An **expired** completion is retaken too. `isRowCurrent` is the seasonal reset
-  the portal and the newsletter share; past it the task has already come back on
-  both, and a booked row that kept its stale `completed_at` would expire straight
-  back out of the newsletter's suppression set - so we would nag the member about
-  work we are booked to do.
+  onto every row, the **status** onto only some, and a completion column onto
+  none.
+  Stamping `'booked'` over a member's own completion erased their tick with no
+  notice - they ticked the task on Tuesday, the visit moved on Thursday, and it
+  was gone - the same narrowing the cancel route makes with `status=eq.booked`
+  when it unbooks a visit. Whoever did the work keeps the credit; the booking is
+  separate state on the same row.
+  A **status** La Vaca set is still retaken: a row left reading `'done'` by us
+  labels whoever ticks it next as our work (CP2) and makes "mark completed" treat
+  the new visit as already handled, so that visit's window would never come off
+  the books. An **expired** completion's status is retaken too - past
+  `isRowCurrent` the task has already come back on the portal and in the
+  newsletter, so `'booked'` is the truer label.
+- **SC16** A booking never clears `completed_at` or `completed_by`, on any row.
+  A booking is a statement about the **future**; those two columns are the record
+  of a job that already happened - the service history this branch exists to
+  accumulate, and what the next quote reads to say "last done Oct 2026 by La
+  Vaca" (IN4). Cleared here, booking the gutters again retired last year's
+  invoiced visit the moment the return visit was booked.
+  Worse on the path CP10 opened, which is the flow the completion email invites
+  ("if anything isn't right, tell us and we'll come back"): a member unticks our
+  work, so the row is `'todo'` with our completion standing - invisible to any
+  `status=eq.done` read - and the redo they asked for was exactly what erased the
+  job. Cancel that redo and the DELETE handler restores no timestamp, so it was
+  gone for good. `/complete` writes the record for the new visit when the new
+  visit happens; until then the old one stands.
+  `isRowCurrent` reads the clock matching the row's **current status** because of
+  this: `completed_at` for `'done'`, `updated_at` otherwise. State and history no
+  longer move together, so `completed_at ?? updated_at` would age a visit booked
+  today off last year's completion and expire it straight out of the newsletter's
+  suppression set - which is how we would nag a member about work we are booked
+  to do.
 - **SC14** A booked visit can be **cancelled** from the admin page.
   The DELETE route was fully built and unreachable, so a customer who phoned to
   cancel kept their portal card and got "we're coming tomorrow" for a job nobody
@@ -351,16 +364,27 @@ These were settled by the owner during review; the ACs assume them.
   one that every retry and every manual re-hit repeats - the exact failure the
   ledger exists to prevent. The recipient is counted `skipped` and logged.
 
-- **RM18** Only a **refusal** keeps the ledger claim. `sendTrackedEmail` answers
-  `skipped` both for a recipient who opted out and for an unconfigured
-  `RESEND_API_KEY` - a decision about the person, and an infrastructure fault
-  that says nothing about them. Treated alike, the second was the worst outcome
-  in the pipeline: the claim was taken before the send, so every visit that
-  night was recorded `sent`, no customer was told, the route answered `ok`, and
-  no later run revisits a closed row. The release narrows on
-  `reason === 'unsubscribed'`, as the repo's other three send sites already do,
-  and logs both the release and a release that could not be written - the claim
-  standing silently is how this hid in the first place.
+- **RM18** A send that does not complete **releases its claim and fails the run**.
+  The claim is taken before the send (RM8), so a fault after it would otherwise
+  leave the queue reading `sent` for an email nobody received: that is how an
+  unconfigured `RESEND_API_KEY` recorded every visit that night as delivered
+  while the route answered `ok`.
+  The release is **not** a retry, and the route no longer says it is. Every run
+  covers exactly one Eastern day (RM7), so the run after this one looks at the
+  *next* day's visits - a row released tonight is outside its window and every
+  later one, and `/api/cron/send-follow-ups` skips the type outright (RM9).
+  What the release actually buys is a manual re-hit before Eastern midnight:
+  `ledgerVerdict` counts `failed` as open, so an authenticated GET can still take
+  the row. Nothing schedules that, so the failure is made **loud** instead:
+  `console.error` per recipient naming the visit and the reason, and the run
+  answers `ok:false` with `degraded: 'reminder_send_failed'` - the same treatment
+  the unavailable-ledger branch gets (RM13), and for the same reason: a cron
+  failure is silent. A release that could not itself be written is logged too.
+  There is **no refusal branch**. `sendTrackedEmail` answers `'unsubscribed'`
+  only from `knownSuppressed` or a `preferenceStream` opt-out, and this sender
+  passes neither - a night-before reminder for a visit the customer booked is
+  transactional and must not be droppable by a marketing opt-out. A guard
+  narrowing on that reason reads as an opt-out being honoured here when none is.
 - **RM17** A cancel that cannot reach the queue reports `unavailable`; it is
   never reported as done. Both halves of `cancelPendingVisitReminders` used to
   `.catch()` into silence, so a failed cancel was indistinguishable from one with
@@ -392,6 +416,10 @@ These were settled by the owner during review; the ACs assume them.
 - **PT4** With no scheduled visit, no card renders and the page is unchanged.
 - **PT5** A task completed by La Vaca shows `Completed by La Vaca` with the
   date; one the homeowner ticked shows no such label.
+  The label needs the row's **current status** to be `'done'`, not just a
+  `completed_by` of ours: a row re-booked for a return visit keeps the record of
+  the previous job (**SC16**), and that is history rather than something to
+  announce on a task that is due again.
   The label is keyed per **(task, season)** like the done state is, and only for
   a completion still current under `isRowCurrent`. Keyed on the task alone it
   leaked: a fall gutter clean credited itself on the spring row the member
@@ -416,15 +444,16 @@ These were settled by the owner during review; the ACs assume them.
 
 - **CP1** Mark-complete sets `status='done'`, stamps `completed_at`, and writes
   `completed_by='lavaca'`.
-- **CP2** The checklist checkbox writes `completed_by='homeowner'`, and so does
-  a booking on any row it retakes. Attribution follows whoever set the CURRENT
-  status. The column defaults to `'homeowner'` on insert only, and a
-  merge-duplicates upsert updates just the columns in the body - so a writer that
-  omits it leaves whatever was there. La Vaca cleans the gutters, the member
-  unticks it and later does the work themselves: without this the card credits us
-  for their work, which is a worse error than showing no label at all.
-  See **SC13** for which rows a booking retakes: a completion of the member's own
-  that is still in force is left exactly as they wrote it.
+- **CP2** The checklist checkbox writes `completed_by='homeowner'`. Attribution
+  follows whoever recorded the completion the row is currently showing. The
+  column defaults to `'homeowner'` on insert only, and a merge-duplicates upsert
+  updates just the columns in the body - so a writer that omits it leaves
+  whatever was there. La Vaca cleans the gutters, the member unticks it and later
+  does the work themselves: without this the card credits us for their work,
+  which is a worse error than showing no label at all.
+  A booking writes neither column (**SC16**), so it is the *status* that decides
+  what the portal shows - a re-booked row reads `'booked'` and carries no label
+  while still holding the record of the job it repeats.
 - **CP3** Existing rows default to `'homeowner'` - nothing has ever been
   completed by La Vaca before this change.
 - **CP4** Mark-complete is idempotent: a second call sends no second feedback
