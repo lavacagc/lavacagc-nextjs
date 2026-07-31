@@ -65,6 +65,11 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     Their row is never deleted: it is the record that they were sent it.
     **Accepted gap, deliberate (owner decision, 31 July 2026):** a dropped recipient is *not* sent a `METHOD:CANCEL`, so the visit stays on their calendar with its 7:00am "text the customer when the crew is on the way" alarm.
     The mitigation is AC82, not a retraction - do not "fix" this by mailing one.
+85. Everything `ensureAssignments` could **not** do is handed back rather than logged, and a send carrying any of it reports `sent_degraded` - never a clean `sent`.
+    A retirement that did not land is the worst failure in this feature, because it does not lose information, it *disables the safety net*: the dropped person keeps a live token, and one tap from them satisfies "somebody confirmed" for a visit the people actually going have never answered.
+    A revival that did not land is the milder twin - that person is skipped rather than mailed a link that is still dead - and is named too, because the only other clue would be a "dispatched to" list shorter than what the admin ticked.
+    A send that could not be stamped onto its dispatch row is the third: the row now says it never went, so the 5pm stage chases it as "nobody was ever told" *and* cancelling the visit retracts nothing, since a retraction only goes out for a dispatch that sent.
+    All three reach the admin toast by name, and the toast still says who *was* mailed rather than telling the admin to call people who received it.
 
 ## Booking
 
@@ -139,6 +144,9 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     "Mark handled" is offered only where there is a flag to clear, and is confirm-gated exactly as "Mark completed" is.
 78. A flag **outranks** a confirmation in that state.
     A colleague having confirmed silences both chases, which is precisely why the problem somebody raised has to stay visible somewhere else.
+86. Clearing a flag reports what actually **moved**, not what the click intended.
+    The route answers `nothing_to_handle` when the PATCH matched no row - the flag went in another tab, or the assignment was retired between the list being read and the button being pressed - and the toast is written from the state re-read **after** the write.
+    Only a visit that now reads `confirmed` is described as one that will not be chased again: a flag cleared off a visit nobody has confirmed is still chased at 5pm and 6pm, so saying otherwise would be a promise the escalation does not keep.
 84. A dispatch read that FAILS reads as `unknown`, never as `none`, and the list says so on the visit.
     Both queries behind that state are best-effort so a lookup is still worth answering without them - but the screen renders nothing at all for a visit in state `none`, so failing open would make a flagged visit vanish from the only surface a flag reaches, taking its "Mark handled" button with it.
     Failing closed to "could not read what the crew has said" is safe; failing open to "never dispatched" is what hides a flag.
@@ -152,6 +160,7 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     A different UID files a second, cancelled event and leaves the live one alone; an equal SEQUENCE can be discarded as a duplicate.
 70. A retraction carries **no `VALARM`**. Retracting a visit must never deliver the alarm that tells somebody to text the customer about it.
 71. The recipients are read **before** the dispatch row is deleted - the assignments cascade with it, taking the addresses and the UIDs - and the visit is described from a read taken **before** the window was cleared, because an unbooked window no longer knows its services.
+    They are read **only when a retraction is owed**: a completion retracts nothing, and neither does a dispatch that never sent or a window already past, so reading their recipients would be a round trip per window for a value that is then discarded.
 72. Only a dispatch that actually sent, for a window **still ahead**, is retracted.
     A cancellation for an invite nobody received is noise on the one channel the crew has to keep trusting, and so is one for a window already past - it has no 7:00am alarm left to fire.
     Re-booking a service into a later window in the same season puts exactly such a window through here, so the cutoff is the same one `crossSeasonBookings` applies, and it is injectable so it can be tested rather than only observed in production.

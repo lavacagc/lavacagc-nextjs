@@ -102,7 +102,7 @@ test('AC4 the sequence counts up only once an invite has actually gone out', () 
     'const sequence = dispatch.dispatched_at ? (dispatch.ics_sequence ?? 0) + 1 : (dispatch.ics_sequence ?? 0);',
   );
   // ...and it is persisted with the stamp, so the next send counts on from it.
-  const stamp = src.slice(src.indexOf('if (sentTo.length > 0) {'));
+  const stamp = src.slice(src.indexOf("const recorded: 'ok' | 'unavailable' ="));
   expect(stamp).toContain('ics_sequence: sequence');
   expect(read('supabase/migrations/20260818000000_crew_dispatch.sql'))
     .toContain('ADD COLUMN IF NOT EXISTS ics_sequence INTEGER NOT NULL DEFAULT 0');
@@ -392,12 +392,53 @@ test('AC81 a recipient dropped from the selection is retired, not left with a li
   // The row is kept: it is the record that they were sent it.
   expect(fn).not.toContain("supabaseRest('DELETE'");
   // A revival that did not land skips the send rather than mailing a link that
-  // is still dead.
-  expect(fn).toContain("a!.status !== 'retired'");
+  // is still dead - and names them, rather than dropping them silently.
+  expect(fn).toContain("if (row && row.status !== 'retired') assignments.push(row);");
+  expect(fn).toContain('else notMailed.push(r.email);');
 
   // Owner decision: their calendar event is deliberately NOT retracted, so no
   // METHOD:CANCEL is sent from here. AC82 is the mitigation.
   expect(fn).not.toContain('sendDispatchRetraction');
+});
+
+test('AC85 a retirement that did not land is reported, never rendered as a clean send', () => {
+  // The worst failure in this module: it does not lose information, it disables
+  // the safety net. The dropped person keeps a live token, and one tap from
+  // them satisfies "somebody confirmed" for a visit the people actually going
+  // have never answered - silencing both the 5pm and the 6pm chase.
+  const src = read('src/lib/homecare/dispatch.ts');
+  const fn = src.slice(src.indexOf('export async function ensureAssignments'), src.indexOf('export interface VisitContext'));
+  expect(fn).toContain('stillLive.push(...dropped.map((a) => a.email));');
+  expect(fn).toContain('return { assignments, stillLive, notMailed };');
+  // Carried through the send's own verdict: a partial retirement never reports
+  // 'sent'.
+  expect(src).toContain(
+    "const degraded = stillLive.length > 0 || notMailed.length > 0 || recorded === 'unavailable';",
+  );
+  expect(src).toContain(
+    "const outcome: DispatchOutcome = sentTo.length === 0 || anyFailed\n"
+      + "    ? 'send_failed'\n"
+      + "    : degraded ? 'sent_degraded' : 'sent';",
+  );
+  // A verdict reached before a later throw still comes back.
+  expect(src).toContain("return { outcome: 'unavailable', sentTo: [], stillLive, notMailed, recorded: 'ok', error };");
+
+  const route = read('src/app/api/admin/service-quote/schedule/route.ts');
+  expect(route).toContain('crewStillLive: dispatch.stillLive,');
+  expect(route).toContain('crewNotMailed: dispatch.notMailed,');
+
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  // Destructive and specific about what is still live - `bad` already fires on
+  // any outcome that is not a clean 'sent'.
+  expect(page).toContain('const crewStillLive: string[] = data.crewStillLive ?? [];');
+  expect(page).toContain('could NOT be taken off this visit');
+  expect(page).toContain('would stop the 5pm and 6pm chases');
+  expect(page).toContain('const crewNotMailed: string[] = data.crewNotMailed ?? [];');
+  expect(page).toContain('got NOTHING - their crew record could not be written');
+  expect(page).toContain("const bad = data.reminder === 'unavailable' || data.dispatch !== 'sent'");
+  // ...and a degraded send still says who was mailed, rather than telling the
+  // admin to call people who did receive it.
+  expect(page).toContain("data.dispatch === 'sent' || data.dispatch === 'sent_degraded'");
 });
 
 test('AC81 a retired assignment counts for nothing, wherever the crew is read', () => {
@@ -455,9 +496,28 @@ test('AC81 the status CHECK allows retired, and the migration stays re-runnable'
 
 test('AC39 dispatched_at is stamped only when something actually sent', () => {
   const src = read('src/lib/homecare/dispatch.ts');
-  expect(src).toContain('if (sentTo.length > 0) {');
-  const stamp = src.slice(src.indexOf('if (sentTo.length > 0) {'));
+  const stamp = src.slice(src.indexOf("const recorded: 'ok' | 'unavailable' ="));
+  expect(stamp).toContain("sentTo.length === 0 ? 'ok' : await supabaseRest(");
   expect(stamp).toContain('dispatched_at:');
+});
+
+test('AC85 a send the dispatch row does not know about is reported, not swallowed', () => {
+  // The email is out and cannot be unsent, but a row that does not know it went
+  // says two wrong things: the 5pm stage chases it as "nobody was ever told",
+  // and cancelling the visit retracts NOTHING, because a retraction only goes
+  // out for a dispatch that sent - leaving the crew the 7:00am alarm.
+  const src = read('src/lib/homecare/dispatch.ts');
+  const stamp = src.slice(src.indexOf("const recorded: 'ok' | 'unavailable' ="));
+  expect(stamp).toContain("return 'unavailable' as const;");
+  expect(stamp).toContain('so cancelling it will not take it off their calendars');
+  expect(stamp, 'never swallowed into an empty catch').not.toContain('.catch(() => {})');
+  // And it reaches the admin rather than only the log.
+  expect(src).toContain("recorded === 'unavailable'");
+  const route = read('src/app/api/admin/service-quote/schedule/route.ts');
+  expect(route).toContain('dispatchRecorded: dispatch.recorded,');
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain("data.dispatchRecorded === 'unavailable'");
+  expect(page).toContain('The dispatch is NOT recorded on the visit');
 });
 
 test('AC40 cancelling a visit clears its dispatch so a re-book is still chased', () => {
@@ -795,14 +855,19 @@ test('AC71 the recipients are read before the row is deleted, or they cascade aw
   const fn = src.slice(src.indexOf('export async function clearVisitDispatch'));
   expect(fn.indexOf('assignmentsForDispatch(dispatch.id)')).toBeLessThan(fn.indexOf("'DELETE',"));
   expect(fn.indexOf("'DELETE',")).toBeLessThan(fn.indexOf('sendDispatchRetraction('));
+  // And only when there IS a retraction to address. A completion retracts
+  // nothing, so reading its recipients is a round trip per window for a value
+  // that is then discarded.
+  expect(fn).toContain('if (dispatch && retracting) assignments = await assignmentsForDispatch(dispatch.id);');
 });
 
 test('AC72 only a cancelled visit whose dispatch actually sent, and is still ahead, is retracted', () => {
   const src = read('src/lib/homecare/dispatch.ts');
   expect(src).toContain(
-    "if (reason === 'cancelled' && dispatch?.dispatched_at && assignments.length > 0\n"
-      + '      && visitStart.getTime() > now.getTime()) {',
+    "retracting = reason === 'cancelled' && Boolean(dispatch?.dispatched_at)\n"
+      + '      && visitStart.getTime() > now.getTime();',
   );
+  expect(src).toContain('if (retracting && dispatch && assignments.length > 0) {');
   // Injectable, so the cutoff is testable rather than only observable in
   // production - the same shape crossSeasonBookings uses.
   expect(src).toContain("opts: { reason: 'cancelled' | 'completed'; visit?: VisitContext | null; now?: Date },");
@@ -816,8 +881,11 @@ test('AC72 a window already past is cleared but never mailed about', () => {
   const src = read('src/lib/homecare/dispatch.ts');
   const fn = src.slice(src.indexOf('export async function clearVisitDispatch'));
   // The row still goes, whatever the answer: a stale row is what makes the next
-  // booking of that window inherit the stamps that say it has been chased.
-  expect(fn.indexOf("'DELETE',")).toBeLessThan(fn.indexOf('visitStart.getTime() > now.getTime()'));
+  // booking of that window inherit the stamps that say it has been chased. The
+  // cutoff is worked out before the delete because it reads the row that is
+  // about to go, and it gates the SEND alone - never the delete.
+  expect(fn.indexOf('visitStart.getTime() > now.getTime()')).toBeLessThan(fn.indexOf("'DELETE',"));
+  expect(fn.indexOf("'DELETE',")).toBeLessThan(fn.indexOf('if (retracting && dispatch'));
   expect(fn).toContain("return { status: 'cleared', retraction, unretracted };");
 });
 
@@ -979,6 +1047,31 @@ test('AC76 clearing a flag is an admin action, and only the flagged rows move', 
   expect(page).toContain('window.confirm(\'Mark this flag handled?');
   // And offered only where there is a flag to clear.
   expect(page).toContain("b.dispatch?.state === 'flagged' && (");
+});
+
+test('AC86 clearing a flag reports what actually moved, not what was intended', () => {
+  // On a stale list - the flag cleared in another tab, or the assignment
+  // retired between the read and the click - the PATCH matches nothing. Saying
+  // "it will not be chased again" there is a promise the escalation does not
+  // keep: a visit nobody has confirmed is still chased at 5pm and 6pm.
+  const route = read('src/app/api/admin/service-quote/dispatch/route.ts');
+  expect(route).toContain("status: handled.length > 0 ? 'handled' : 'nothing_to_handle',");
+  expect(route).toContain('handled: handled.length,');
+  // The state is re-read AFTER the write, so it is the visit's, not this
+  // route's intention.
+  expect(route.indexOf("supabaseRest<DispatchAssignment[]>(\n      'PATCH'"))
+    .toBeLessThan(route.indexOf('dispatchStateOf(await assignmentsForDispatch(dispatch.id))'));
+
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain('const cleared: number = data.handled ?? 0;');
+  expect(page).toContain('const state: string | undefined = data.dispatch?.state;');
+  // What the admin is told about the chase comes from that state, all three ways.
+  expect(page).toContain('This visit reads as confirmed now, so it will not be chased again.');
+  expect(page).toContain('Another flag is still open on it, so 5pm and 6pm will keep chasing it.');
+  expect(page).toContain('Nobody on this visit has confirmed, so 5pm and 6pm will still chase it.');
+  expect(page).toContain("title: cleared > 0 ? 'Flag cleared' : 'Nothing to clear',");
+  expect(page).toContain('No flag was open on this visit - the list was out of date. ');
+  expect(page).toContain("variant: state === 'confirmed' ? undefined : 'destructive',");
 });
 
 /* ── row-level security (AC 73) ──────────────────────────────────────────── */

@@ -254,13 +254,32 @@ export default function SendServiceQuotePage() {
         : data.reminder === 'unavailable'
           ? 'The reminder could NOT be queued - text the customer yourself.'
           : 'Too late for the 7:30pm reminder - text the customer yourself.';
-      const dispatchLine = data.dispatch === 'sent'
+      // 'sent_degraded' still went out - what failed is the record around it, and
+      // each of those has its own line below. Reading it as "could not be
+      // recorded" would tell the admin to call people who were in fact emailed.
+      const dispatchLine = data.dispatch === 'sent' || data.dispatch === 'sent_degraded'
         ? ` Crew dispatched to ${data.dispatchedTo?.join(', ') || 'the crew'}.`
         : data.dispatch === 'no_recipients'
           ? ' NOBODY was dispatched - there are no active crew members. Add one on the Crew page.'
           : data.dispatch === 'send_failed'
             ? ' The crew dispatch FAILED to send - call them.'
             : ' The crew dispatch could not be recorded - call them.';
+      // Un-ticking somebody is how a mis-addressed visit is corrected, and a
+      // retirement that did not land leaves them able to answer for a visit
+      // they are not on - which stops both chases for everybody else.
+      const crewStillLive: string[] = data.crewStillLive ?? [];
+      const stillLiveLine = crewStillLive.length > 0
+        ? ` ${crewStillLive.join(', ')} could NOT be taken off this visit - their confirm link still works, and one tap from them would stop the 5pm and 6pm chases. Re-save the visit without them.`
+        : '';
+      // Ticked, never written to: their assignment row could not be prepared, so
+      // the only other clue would be a shorter "dispatched to" list.
+      const crewNotMailed: string[] = data.crewNotMailed ?? [];
+      const notMailedLine = crewNotMailed.length > 0
+        ? ` ${crewNotMailed.join(', ')} got NOTHING - their crew record could not be written. Call them.`
+        : '';
+      const recordLine = data.dispatchRecorded === 'unavailable'
+        ? ' The dispatch is NOT recorded on the visit - 5pm will chase it as never sent, and cancelling it will not take it off their calendars.'
+        : '';
       const movedLine = stillHolding.length > 0
         ? ` The OLD window could not be taken off ${stillHolding.join(', ')}'s calendar - call them, or they will text the customer about it at 7:00am.`
         : '';
@@ -274,7 +293,8 @@ export default function SendServiceQuotePage() {
         || stillHolding.length > 0 || unretiredWindows.length > 0;
       toast({
         title: 'Visit scheduled',
-        description: reminderLine + dispatchLine + movedLine + staleLine,
+        description: reminderLine + dispatchLine + stillLiveLine + notMailedLine
+          + recordLine + movedLine + staleLine,
         variant: bad ? 'destructive' : undefined,
       });
     } catch (e) {
@@ -418,9 +438,24 @@ export default function SendServiceQuotePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       await refreshBookings();
+      // Both halves of the route's answer, neither assumed: how many flags
+      // actually moved, and what the visit reads as NOW. Zero rows means the
+      // list was stale - the flag was cleared elsewhere, or the assignment
+      // retired - and only the re-read state can say whether the chase has
+      // really stopped, because a visit nobody has confirmed is still chased.
+      const cleared: number = data.handled ?? 0;
+      const state: string | undefined = data.dispatch?.state;
+      const chaseLine = state === 'confirmed'
+        ? 'This visit reads as confirmed now, so it will not be chased again.'
+        : state === 'flagged'
+          ? 'Another flag is still open on it, so 5pm and 6pm will keep chasing it.'
+          : 'Nobody on this visit has confirmed, so 5pm and 6pm will still chase it.';
       toast({
-        title: 'Flag cleared',
-        description: 'This visit reads as confirmed now, so it will not be chased again.',
+        title: cleared > 0 ? 'Flag cleared' : 'Nothing to clear',
+        description: (cleared > 0
+          ? `${cleared} flag${cleared === 1 ? '' : 's'} cleared. `
+          : 'No flag was open on this visit - the list was out of date. ') + chaseLine,
+        variant: state === 'confirmed' ? undefined : 'destructive',
       });
     } catch (e) {
       toast({ title: 'Failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });

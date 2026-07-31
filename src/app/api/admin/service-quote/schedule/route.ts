@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
     }).catch((err): SendDispatchResult => {
       const message = err instanceof Error ? err.message : String(err);
       console.error('crew dispatch threw after a successful booking:', message);
-      return { outcome: 'unavailable', sentTo: [], error: message };
+      return { outcome: 'unavailable', sentTo: [], stillLive: [], notMailed: [], recorded: 'ok', error: message };
     });
 
     // A window this booking moved off is as retired as a cancelled one: its
@@ -214,6 +214,18 @@ export async function POST(request: NextRequest) {
       services,
       dispatch: dispatch.outcome,
       dispatchedTo: dispatch.sentTo,
+      // Somebody un-ticked from this visit whose row would NOT retire. Their
+      // confirm link still works, and one tap from them reads as "the crew
+      // answered" - silencing the 5pm and 6pm chases for a visit the people
+      // actually going have never confirmed. Only the admin can undo that, so
+      // it is named here rather than left in a log.
+      crewStillLive: dispatch.stillLive,
+      // Ticked, and not written to at all. Their assignment row could not be
+      // prepared, so no email was even attempted.
+      crewNotMailed: dispatch.notMailed,
+      // The send itself is not on the dispatch row: the escalation will read
+      // this visit as never dispatched, and cancelling it will retract nothing.
+      dispatchRecorded: dispatch.recorded,
       // Who was NOT told the old window is off, when this booking moved one.
       // Empty is the normal answer; anything in it is a phone call.
       stillHolding,

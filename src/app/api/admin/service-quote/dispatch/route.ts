@@ -64,9 +64,15 @@ export async function POST(request: NextRequest) {
       { status: 'confirmed', confirmed_at: now, updated_at: now },
     )) ?? [];
 
+    // Reported, never assumed. Zero rows means there was no open flag to clear
+    // - it went in another tab, or the assignment was retired between the list
+    // being read and the button being pressed - and answering a flat 'handled'
+    // would tell the admin the chase has stopped when nothing moved.
     return NextResponse.json({
-      status: 'handled',
+      status: handled.length > 0 ? 'handled' : 'nothing_to_handle',
       handled: handled.length,
+      // Re-read AFTER the write, so what the admin is told about the chase is
+      // the visit's actual state rather than the one this route intended.
       dispatch: dispatchStateOf(await assignmentsForDispatch(dispatch.id)),
     });
   } catch (err) {

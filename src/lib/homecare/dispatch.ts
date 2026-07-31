@@ -134,8 +134,18 @@ export function crewIcsUid(dispatchId: string, recipientId: string): string {
   return `lavaca-crew-${dispatchId}-${recipientId}`;
 }
 
-/** 'sent' means the email went out; the rest are why it did not. */
-export type DispatchOutcome = 'sent' | 'no_recipients' | 'unavailable' | 'send_failed';
+/**
+ * 'sent' means the email went out AND everything around it was recorded; the
+ * rest are why it did not.
+ *
+ * `sent_degraded` is the one that needs saying out loud: the crew were mailed,
+ * but part of the record did not land - somebody dropped from the visit whose
+ * link is still live, somebody ticked who was never written to, or a send that
+ * is not on the dispatch row. Each of those is something the admin has to act
+ * on, so none of them may be handed back as a clean 'sent'.
+ */
+export type DispatchOutcome =
+  'sent' | 'sent_degraded' | 'no_recipients' | 'unavailable' | 'send_failed';
 
 /**
  * The recipients this visit should go to.
@@ -186,7 +196,14 @@ export async function ensureVisitDispatch(args: {
     if (args.subName && args.subName !== existing[0].sub_name) {
       await supabaseRest('PATCH', `visit_dispatch?id=eq.${existing[0].id}`, {
         sub_name: args.subName, updated_at: new Date().toISOString(),
-      }).catch(() => {});
+      }).catch((err) => console.error(
+        `crew dispatch could not store the sub "${args.subName}" - this send still names them, ` +
+          'but a later flag alert will not:',
+        err instanceof Error ? err.message : String(err),
+      ));
+      // What the admin typed, whether or not it was stored: this value is what
+      // goes in the email, and a failed write is a reason to log, not a reason
+      // to tell the crew a different sub's name.
       return { ...existing[0], sub_name: args.subName };
     }
     return existing[0];
@@ -198,6 +215,21 @@ export async function ensureVisitDispatch(args: {
     sub_name: args.subName ?? null,
   }]);
   return created?.[0] ?? null;
+}
+
+/** Who this dispatch can go to, and what could not be done to the rest. */
+export interface EnsureAssignmentsResult {
+  /** The people this send should actually reach. */
+  assignments: DispatchAssignment[];
+  /**
+   * Dropped recipients whose retirement did NOT land. Their confirm link still
+   * works, so a tap from them still answers for a visit they are not on.
+   */
+  stillLive: string[];
+  /**
+   * Ticked recipients left without a usable row, so nothing was mailed to them.
+   */
+  notMailed: string[];
 }
 
 /**
@@ -222,26 +254,39 @@ export async function ensureVisitDispatch(args: {
  * people actually going have never answered. Their calendar event is
  * deliberately NOT retracted (owner decision): the confirm page tells them they
  * are off it, which is where anybody acting on the stale 7:00am alarm lands.
+ *
+ * BOTH FAILURES ARE REPORTED, never swallowed. A retirement that did not land
+ * is the worst failure in this module: it does not lose information, it disables
+ * the safety net - the dropped person keeps a live token, and one tap from them
+ * satisfies the escalation's "somebody confirmed" for a visit the people
+ * actually going have never answered. A revival that did not land is the milder
+ * twin, and silently drops somebody the admin ticked out of the send.
  */
 export async function ensureAssignments(
   dispatchId: string,
   recipients: DispatchRecipient[],
-): Promise<DispatchAssignment[]> {
+): Promise<EnsureAssignmentsResult> {
   const existing = await assignmentsForDispatch(dispatchId);
   const byRecipient = new Map(existing.map((a) => [a.recipient_id, a]));
   const wanted = new Set(recipients.map((r) => r.id));
   const stamp = new Date().toISOString();
+  const stillLive: string[] = [];
 
   const dropped = existing.filter((a) => !wanted.has(a.recipient_id) && a.status !== 'retired');
   if (dropped.length > 0) {
     await supabaseRest('PATCH',
       `visit_dispatch_recipients?id=in.(${dropped.map((a) => a.id).join(',')})`,
       { status: 'retired', updated_at: stamp },
-    ).catch((err) => console.error(
-      `crew dispatch could not retire ${dropped.map((a) => a.email).join(', ')} - ` +
-        'their confirm link still works and can silence the escalation:',
-      err instanceof Error ? err.message : String(err),
-    ));
+    ).catch((err) => {
+      // Handed back, not just logged. This failure DISABLES the safety net
+      // rather than losing information, and only the admin can undo it.
+      stillLive.push(...dropped.map((a) => a.email));
+      console.error(
+        `crew dispatch could not retire ${dropped.map((a) => a.email).join(', ')} - ` +
+          'their confirm link still works and can silence the escalation:',
+        err instanceof Error ? err.message : String(err),
+      );
+    });
   }
 
   // Back on the visit after being dropped. Their answer went with the
@@ -278,12 +323,21 @@ export async function ensureAssignments(
     for (const row of created ?? []) byRecipient.set(row.recipient_id, row);
   }
 
-  // Still retired here means the revive above did not land. Skipped rather than
-  // mailed: the confirm link in that email would open "you are no longer on
-  // this visit", which is worse than not writing to them at all.
-  return recipients
-    .map((r) => byRecipient.get(r.id))
-    .filter((a): a is DispatchAssignment => Boolean(a) && a!.status !== 'retired');
+  // Still retired here means the revive above did not land, and no row at all
+  // means the insert answered with nothing. Either way that person is SKIPPED
+  // rather than mailed - the confirm link in their email would open "you are no
+  // longer on this visit", which is worse than not writing to them - and named
+  // rather than silently dropped, because the only other clue the admin would
+  // get is a `dispatchedTo` listing fewer people than they ticked.
+  const assignments: DispatchAssignment[] = [];
+  const notMailed: string[] = [];
+  for (const r of recipients) {
+    const row = byRecipient.get(r.id);
+    if (row && row.status !== 'retired') assignments.push(row);
+    else notMailed.push(r.email);
+  }
+
+  return { assignments, stillLive, notMailed };
 }
 
 export interface VisitContext {
@@ -429,8 +483,9 @@ export interface ClearDispatchResult {
  *    "this visit is off, you are not going" about work somebody just finished
  *    would be a lie. The event stays on their calendar as the record it is.
  *
- * The recipients are read BEFORE the delete either way: the assignments cascade
- * with the row, taking the addresses and the UIDs with them.
+ * The recipients are read only when there is a retraction to address - and then
+ * always BEFORE the delete, because the assignments cascade with the row and
+ * take the addresses and the UIDs with them.
  *
  * `visit` describes what is being retracted, for the email and the .ics. Pass it
  * from before the window was cleared where you can - once the tasks are unbooked
@@ -450,6 +505,7 @@ export async function clearVisitDispatch(
   const { reason, visit, now = new Date() } = opts;
   let dispatch: VisitDispatchRow | null = null;
   let assignments: DispatchAssignment[] = [];
+  let retracting = false;
   try {
     const key = visitKey(visitStart);
     const rows = (await supabaseRest<VisitDispatchRow[]>(
@@ -459,7 +515,14 @@ export async function clearVisitDispatch(
     )) ?? [];
     dispatch = rows[0] ?? null;
 
-    if (dispatch) assignments = await assignmentsForDispatch(dispatch.id);
+    // Read ONLY when there is a retraction to address, and always BEFORE the
+    // delete - the assignments cascade with the row, taking the addresses and
+    // the UIDs with them. A completion retracts nothing, and neither does a
+    // dispatch that never sent or a window already past, so reading their
+    // recipients is a round trip per window for a value nobody looks at.
+    retracting = reason === 'cancelled' && Boolean(dispatch?.dispatched_at)
+      && visitStart.getTime() > now.getTime();
+    if (dispatch && retracting) assignments = await assignmentsForDispatch(dispatch.id);
 
     await supabaseRest(
       'DELETE',
@@ -477,8 +540,7 @@ export async function clearVisitDispatch(
   // on the one channel the crew has to keep trusting.
   let retraction: RetractionOutcome = 'not_needed';
   let unretracted: string[] = [];
-  if (reason === 'cancelled' && dispatch?.dispatched_at && assignments.length > 0
-      && visitStart.getTime() > now.getTime()) {
+  if (retracting && dispatch && assignments.length > 0) {
     unretracted = await sendDispatchRetraction({ homeownerId, visitStart, dispatch, assignments, visit })
       .catch((err) => {
         console.error(
@@ -596,6 +658,20 @@ export interface SendDispatchResult {
   outcome: DispatchOutcome;
   /** Addresses the dispatch actually reached, for the admin's toast. */
   sentTo: string[];
+  /**
+   * Dropped recipients still holding a working confirm link. Empty is the
+   * normal answer; anything in it can silence both chases.
+   */
+  stillLive: string[];
+  /** Ticked recipients no dispatch was even attempted for. Empty is normal. */
+  notMailed: string[];
+  /**
+   * Whether the send was written back onto the dispatch row. `unavailable`
+   * leaves the escalation reading it as never sent - and, because a retraction
+   * only goes out for a dispatch that sent, leaves a later cancellation unable
+   * to take the visit off anybody's calendar.
+   */
+  recorded: 'ok' | 'unavailable';
   error?: string;
 }
 
@@ -622,21 +698,31 @@ export async function sendVisitDispatch(args: SendDispatchArgs): Promise<SendDis
   let recipients: DispatchRecipient[];
   let dispatch: VisitDispatchRow | null;
   let assignments: DispatchAssignment[];
+  // Carried out of the try so a verdict reached before a later throw is still
+  // reported: somebody left with a live link is not made safe by the send
+  // falling over afterwards.
+  let stillLive: string[] = [];
+  let notMailed: string[] = [];
+  const nothing = { sentTo: [], stillLive: [], notMailed: [], recorded: 'ok' as const };
   try {
     recipients = await resolveRecipients(recipientIds);
-    if (recipients.length === 0) return { outcome: 'no_recipients', sentTo: [] };
+    if (recipients.length === 0) return { outcome: 'no_recipients', ...nothing };
 
     dispatch = await ensureVisitDispatch({ homeownerId, visitStart, subName });
-    if (!dispatch) return { outcome: 'unavailable', sentTo: [], error: 'could not create the dispatch row' };
+    if (!dispatch) return { outcome: 'unavailable', ...nothing, error: 'could not create the dispatch row' };
 
-    assignments = await ensureAssignments(dispatch.id, recipients);
+    const ensured = await ensureAssignments(dispatch.id, recipients);
+    ({ assignments, stillLive, notMailed } = ensured);
     if (assignments.length === 0) {
-      return { outcome: 'unavailable', sentTo: [], error: 'could not create the assignment rows' };
+      return {
+        outcome: 'unavailable', sentTo: [], stillLive, notMailed, recorded: 'ok',
+        error: 'could not create the assignment rows',
+      };
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.error('crew dispatch could not be recorded:', error);
-    return { outcome: 'unavailable', sentTo: [], error };
+    return { outcome: 'unavailable', sentTo: [], stillLive, notMailed, recorded: 'ok', error };
   }
 
   const calendarUrl = googleCalendarUrl({
@@ -718,17 +804,36 @@ export async function sendVisitDispatch(args: SendDispatchArgs): Promise<SendDis
   // Stamped only when at least one dispatch actually landed. `dispatched_at` is
   // what the escalation reads to tell "nobody has confirmed" from "nobody was
   // ever told", and those want different messages.
-  if (sentTo.length > 0) {
-    // The sequence is persisted with the stamp, and only when something landed:
-    // a number stored for a send that never happened would let the next real
-    // invite tie with a copy nobody holds, or skip past one they do.
-    await supabaseRest('PATCH', `visit_dispatch?id=eq.${dispatch.id}`, {
+  // The sequence is persisted with the stamp, and only when something landed: a
+  // number stored for a send that never happened would let the next real invite
+  // tie with a copy nobody holds, or skip past one they do.
+  //
+  // Reported rather than swallowed. The email is out and cannot be unsent, but
+  // a row that does not know it went says two wrong things: the 5pm stage
+  // chases this as "nobody was ever told", and cancelling the visit retracts
+  // NOTHING, because a retraction only goes out for a dispatch that sent.
+  const recorded: 'ok' | 'unavailable' = sentTo.length === 0 ? 'ok' : await supabaseRest(
+    'PATCH', `visit_dispatch?id=eq.${dispatch.id}`, {
       dispatched_at: new Date().toISOString(),
       ics_sequence: sequence,
       updated_at: new Date().toISOString(),
-    }).catch(() => {});
-  }
+    },
+  ).then(() => 'ok' as const).catch((err) => {
+    console.error(
+      'crew dispatch went out but could not be recorded on the visit - it reads as never sent, ' +
+        'so cancelling it will not take it off their calendars:',
+      err instanceof Error ? err.message : String(err),
+    );
+    return 'unavailable' as const;
+  });
 
-  if (sentTo.length === 0) return { outcome: 'send_failed', sentTo: [] };
-  return { outcome: anyFailed ? 'send_failed' : 'sent', sentTo };
+  // A send is only 'sent' when the record around it landed too. Anything else
+  // here is something the admin has to act on - a live link on somebody who is
+  // off the visit, a ticked person nobody wrote to, a send the row does not
+  // know about - and reporting those as clean is what would bury them.
+  const degraded = stillLive.length > 0 || notMailed.length > 0 || recorded === 'unavailable';
+  const outcome: DispatchOutcome = sentTo.length === 0 || anyFailed
+    ? 'send_failed'
+    : degraded ? 'sent_degraded' : 'sent';
+  return { outcome, sentTo, stillLive, notMailed, recorded };
 }

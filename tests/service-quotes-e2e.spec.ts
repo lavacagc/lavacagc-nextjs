@@ -6,7 +6,10 @@ import {
 } from '../src/lib/homecare/serviceScheduling';
 import { lastDoneFor, lastDoneLabel, type CompletionRow } from '../src/lib/homecare/serviceIntake';
 import { visitKey, reminderSendAt } from '../src/lib/homecare/visitSchedule';
-import { clearVisitDispatch, dispatchStateOf, assignmentsForDispatch } from '../src/lib/homecare/dispatch';
+import {
+  clearVisitDispatch, dispatchStateOf, assignmentsForDispatch, ensureAssignments,
+  type DispatchRecipient,
+} from '../src/lib/homecare/dispatch';
 import { easternWallClock } from '../src/lib/homecare/ics';
 import { supabaseRest } from '../src/lib/notify/supabase-rest';
 
@@ -63,6 +66,15 @@ let server: http.Server;
  * must survive rather than turning a successful booking into a 500.
  */
 let preMigrationQueue = false;
+
+/**
+ * Makes every PATCH against one table fail the way a real one can - a revoked
+ * grant, a CHECK the hand-applied migration has not widened yet.
+ *
+ * Without it, "the caller reports success even though the write failed" is a
+ * bug that can only be reasoned about. With it, it fails a test.
+ */
+let failPatchOn: string | null = null;
 
 test.beforeAll(async () => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = `http://127.0.0.1:${STUB_PORT}`;
@@ -159,6 +171,9 @@ test.beforeAll(async () => {
       }
 
       if (req.method === 'PATCH') {
+        if (failPatchOn === table) {
+          return json({ code: '42501', message: `permission denied for table ${table}` }, 403);
+        }
         const patch = JSON.parse(body || '{}') as Row;
         const targets = applyFilters(rows);
         for (const t of targets) Object.assign(t, patch);
@@ -765,6 +780,64 @@ test('a dispatch that never sent leaves nothing to retract', async () => {
 
   const result = await clearVisitDispatch('member-1', start, { reason: 'cancelled' });
   expect(result.retraction).toBe('not_needed');
+});
+
+/* ── taking somebody off a visit (crew dispatch AC 81, 85) ───────────────── */
+
+const crew = (id: string, name: string, email: string): DispatchRecipient =>
+  ({ id, name, email, active: true });
+
+test('un-ticking somebody retires their row, and the send names only who is on it', async () => {
+  // Veronica was dispatched this visit; the admin realises she is not on it and
+  // re-submits the same window with only Alex ticked. That is a re-dispatch,
+  // not a supersede, so nothing else would ever clean her row up.
+  const id = seedDispatch(new Date(Date.now() + 7 * 24 * 3600_000));
+
+  const result = await ensureAssignments(id, [crew('rec-2', 'Alex', 'alex@lavacagc.com')]);
+
+  expect(result.assignments.map((a) => a.email)).toEqual(['alex@lavacagc.com']);
+  expect(result.stillLive, 'the retirement landed').toEqual([]);
+  expect(result.notMailed).toEqual([]);
+  const dropped = db.visit_dispatch_recipients.find((r) => r.id === `${id}-a`)!;
+  expect(dropped.status, 'her confirm token stops working').toBe('retired');
+  // The row is never deleted: it is the record that she was sent it.
+  expect(dropped.confirm_token).toBe(`tok-${id}`);
+});
+
+test('a retirement the database refuses is reported, never rendered as a clean send', async () => {
+  const id = seedDispatch(new Date(Date.now() + 8 * 24 * 3600_000));
+  failPatchOn = 'visit_dispatch_recipients';
+  try {
+    const result = await ensureAssignments(id, [crew('rec-2', 'Alex', 'alex@lavacagc.com')]);
+
+    // Alex is still dispatched - the booking already happened, and a failed
+    // retirement is no reason to leave the person going uninformed.
+    expect(result.assignments.map((a) => a.email)).toEqual(['alex@lavacagc.com']);
+    // But Veronica's row never retired. Her confirm link still works, and one
+    // tap from her satisfies the escalation's "somebody confirmed" - silencing
+    // the 5pm and 6pm chases for a visit Alex has never answered. Handed back,
+    // not logged: only the admin can undo it.
+    expect(result.stillLive).toEqual(['veronica@lavacagc.com']);
+    expect(db.visit_dispatch_recipients.find((r) => r.id === `${id}-a`)!.status).toBe('sent');
+  } finally { failPatchOn = null; }
+});
+
+test('somebody who could not be put back on the visit is named, not silently dropped', async () => {
+  const id = seedDispatch(new Date(Date.now() + 9 * 24 * 3600_000));
+  // Taken off this visit earlier, and now ticked again.
+  db.visit_dispatch_recipients.find((r) => r.id === `${id}-a`)!.status = 'retired';
+  failPatchOn = 'visit_dispatch_recipients';
+  try {
+    const result = await ensureAssignments(id, [crew('rec-1', 'Veronica', 'veronica@lavacagc.com')]);
+
+    // Her link is still dead, so mailing her would open "you are no longer on
+    // this visit" - worse than not writing to her at all. The only other clue
+    // the admin would get is a "dispatched to" list shorter than what they
+    // ticked, which is not a clue anybody reads.
+    expect(result.assignments).toEqual([]);
+    expect(result.notMailed).toEqual(['veronica@lavacagc.com']);
+    expect(result.stillLive, 'nobody was dropped from this one').toEqual([]);
+  } finally { failPatchOn = null; }
 });
 
 test('the crew state a visit reads at is what the admin list shows', async () => {
