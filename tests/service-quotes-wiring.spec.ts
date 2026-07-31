@@ -9,6 +9,8 @@ import { join } from 'path';
  */
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
 const migration = read('supabase/migrations/20260815000000_home_care_service_quotes.sql');
+const typeMigration = read('supabase/migrations/20260816000000_visit_reminder_follow_up_type.sql');
+const sharedCron = read('src/app/api/cron/send-follow-ups/route.ts');
 const sendRoute = read('src/app/api/admin/service-quote/send/route.ts');
 const scheduleRoute = read('src/app/api/admin/service-quote/schedule/route.ts');
 const completeRoute = read('src/app/api/admin/service-quote/complete/route.ts');
@@ -93,6 +95,51 @@ test('RM1+RM4+RM5: a reminder is queued, and cancelled before any requeue', () =
   expect(scheduleRoute).toContain('cancelVisitReminder'); // DELETE path
 });
 
+test('RM4+RM5: reminder cancels are scoped to the visit, never to the address', () => {
+  // The slot (7:30pm Eastern the night before) is what names one visit. Every
+  // cancel filters on it, so a customer with two visits keeps the other one.
+  expect(scheduling).toContain('scheduled_at=eq.');
+  expect(scheduling).toContain('export async function bookedVisitStarts');
+  // The route reads the windows it is about to overwrite and supersedes those.
+  expect(scheduleRoute).toContain('bookedVisitStarts');
+  expect(scheduleRoute).toContain('supersedes');
+  // Completing names the visits it completed rather than the customer.
+  expect(completeRoute).toContain('completedVisitStarts');
+  expect(completeRoute).toContain('cancelVisitReminder(owner.email, new Date(iso))');
+});
+
+test('RM8: the queue row is the ledger, claimed BEFORE the send', () => {
+  // Claiming after the send would leave a crashed run's batch re-sendable.
+  const claim = cron.indexOf('status=in.(pending,failed)');
+  const send = cron.indexOf('await sendTrackedEmail');
+  expect(claim, 'the cron must claim the ledger row').toBeGreaterThan(-1);
+  expect(claim).toBeLessThan(send);
+  // Dead intent removed: there is no reminder_sent_at column anywhere.
+  expect(cron).not.toContain('reminder_sent_at');
+  expect(migration).not.toContain('reminder_sent_at');
+});
+
+test('RM9: the shared follow-up drain never sends a visit reminder', () => {
+  // follow_up_queue is shared and send-follow-ups has no type filter of its
+  // own, so without this exclusion every reminder goes out twice.
+  expect(sharedCron).toContain('DEDICATED_SENDER_FOLLOW_UP_TYPES');
+  expect(sharedCron).toMatch(/\.not\('follow_up_type', 'in'/);
+  const registry = read('src/lib/notify/cancelFollowUps.ts');
+  expect(registry).toContain("VISIT_REMINDER_FOLLOW_UP_TYPES = ['visit_reminder_1d']");
+  expect(registry).toContain('DEDICATED_SENDER_FOLLOW_UP_TYPES');
+  // One definition of the string, shared by both sides.
+  expect(scheduling).not.toContain("'visit_reminder_1d'");
+});
+
+test('RM10: the migration widens follow_up_type to admit the reminder', () => {
+  expect(typeMigration).toContain('DROP CONSTRAINT IF EXISTS follow_up_queue_follow_up_type_check');
+  expect(typeMigration).toContain("'visit_reminder_1d'");
+  // The widened list must keep every sequence already sharing the table.
+  for (const t of ['instant_ack', '24h', '48h', '7d', 'feedback_day0', 'feedback_day3', 'feedback_day7']) {
+    expect(typeMigration, t).toContain(`'${t}'`);
+  }
+});
+
 test('RM3: service email reply-to carries both addresses', () => {
   for (const src of [sendRoute, cron, completeRoute]) {
     expect(src).toContain('SERVICE_REPLY_TO');
@@ -156,6 +203,40 @@ test('PT5: only La Vaca work carries a completion label', () => {
   expect(client).toContain('Completed by La Vaca');
   // Absent from lavacaCompleted -> no label at all.
   expect(client).toContain('lavacaCompleted?.[t.key]');
+  // Server-rendered too, so the zone is pinned: without it the server formats
+  // in UTC and the browser locally, and a late-evening completion hydrates to a
+  // different day on each.
+  expect(client).toContain("timeZone: 'America/New_York'");
+});
+
+test('PT: the portal survives a deploy that lands before the migration', () => {
+  // This select is unconditional on a page every member loads, and PostgREST
+  // answers an unknown column with a 400 that supabaseRest throws on.
+  expect(portal).toContain('async function fetchMaintenanceRows');
+  expect(portal).toContain('SERVICE_COLUMNS');
+  expect(portal).toContain('MAINTENANCE_BASE');
+  // The narrow retry is what keeps a pre-migration environment on its feet.
+  const fn = portal.slice(portal.indexOf('async function fetchMaintenanceRows'));
+  expect(fn.indexOf('catch')).toBeLessThan(fn.indexOf('interface CatalogRow'));
+});
+
+test('the visit cancel targets one window, not the whole season', () => {
+  const del = scheduleRoute.slice(scheduleRoute.indexOf('export async function DELETE'));
+  expect(del).toContain('scheduled_start=eq.');
+  expect(del).toContain("q.get('start')");
+  expect(del).toContain('cancelVisitReminder(email, startAt)');
+});
+
+test('the season written onto a booking comes from the VISIT date', () => {
+  // homeowner_maintenance is keyed on (homeowner, task, season): today's season
+  // files a September visit under summer, where the portal never shows it.
+  expect(adminPage).toContain('seasonOfVisit');
+  expect(adminPage).toContain("currentSeason(new Date(`${isoDate}T12:00:00Z`))");
+  // The single source of truth for season boundaries, not a local copy.
+  expect(adminPage).toContain("from '@/lib/homecare/season'");
+  expect(adminPage).not.toContain('function currentSeasonName');
+  // Completing reuses the season the booking was filed under.
+  expect(adminPage).toContain('season: scheduled.season');
 });
 
 /* ── CP: completion ──────────────────────────────────────────────────────── */

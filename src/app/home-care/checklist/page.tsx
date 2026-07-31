@@ -25,6 +25,49 @@ import { CheckCircle2, ChevronDown, Phone, ShieldCheck, SlidersHorizontal } from
 
 export const dynamic = 'force-dynamic';
 
+interface MaintenanceRow {
+  task_key: string;
+  season: string;
+  status: string;
+  completed_at: string | null;
+  updated_at: string | null;
+  completed_by: string | null;
+  scheduled_start: string | null;
+  scheduled_end: string | null;
+  service_address: string | null;
+}
+
+/** Columns that only exist once 20260815000000 has been applied. */
+const SERVICE_COLUMNS = 'completed_by,scheduled_start,scheduled_end,service_address';
+const MAINTENANCE_BASE = 'task_key,season,status,completed_at,updated_at';
+
+/**
+ * The member's maintenance rows, degrading to the pre-migration column set.
+ *
+ * This query is unconditional on a page every member loads, and PostgREST
+ * answers an unknown column with a 400 that supabaseRest turns into a throw -
+ * so on an environment where the migration has not been hand-applied yet (a
+ * Supabase Preview branch, say) the whole portal would 500. Retrying narrow
+ * costs one extra round trip only in that case: the member keeps their
+ * checklist, and just loses the completion label and the visit card until the
+ * columns exist. A transient failure still throws, because the retry fails too.
+ */
+async function fetchMaintenanceRows(homeownerId: string): Promise<MaintenanceRow[]> {
+  const filter = `&homeowner_id=eq.${homeownerId}&status=in.(done,dismissed,booked)`;
+  try {
+    return (await supabaseRest<MaintenanceRow[]>(
+      'GET', `homeowner_maintenance?select=${MAINTENANCE_BASE},${SERVICE_COLUMNS}${filter}`,
+    )) ?? [];
+  } catch {
+    const rows = (await supabaseRest<Omit<MaintenanceRow, 'completed_by' | 'scheduled_start' | 'scheduled_end' | 'service_address'>[]>(
+      'GET', `homeowner_maintenance?select=${MAINTENANCE_BASE}${filter}`,
+    )) ?? [];
+    return rows.map((r) => ({
+      ...r, completed_by: null, scheduled_start: null, scheduled_end: null, service_address: null,
+    }));
+  }
+}
+
 interface CatalogRow extends ChecklistTask {
   applies_to: string[];
   priority: number;
@@ -57,7 +100,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   const [allTasks, profileRows, doneRows] = await Promise.all([
     supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title,blurb,applies_to,stages,seasons,frequency,starter,diy_or_pro,bookable,est_cost_low,est_cost_high,priority&active=eq.true&order=priority.desc`),
     supabaseRest<{ systems: HomeSystems; stage: Stage | null; homeowner_type: string | null }[]>('GET', `home_profiles?select=systems,stage,homeowner_type&homeowner_id=eq.${homeowner.id}&limit=1`),
-    supabaseRest<{ task_key: string; season: string; status: string; completed_at: string | null; updated_at: string | null; completed_by: string | null; scheduled_start: string | null; scheduled_end: string | null; service_address: string | null }[]>('GET', `homeowner_maintenance?select=task_key,season,status,completed_at,updated_at,completed_by,scheduled_start,scheduled_end,service_address&homeowner_id=eq.${homeowner.id}&status=in.(done,dismissed,booked)`),
+    fetchMaintenanceRows(homeowner.id),
   ]);
 
   // Same exposure as the newsletter cron, so the same guard: the select above

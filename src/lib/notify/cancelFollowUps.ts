@@ -32,6 +32,24 @@ export const LEAD_NURTURE_FOLLOW_UP_TYPES = ['instant_ack', '24h', '48h', '7d'] 
 /** Post-job review-request types created by feedback/create, sharing the queue. */
 export const REVIEW_REQUEST_FOLLOW_UP_TYPES = ['feedback_day0', 'feedback_day3', 'feedback_day7'] as const;
 
+/** Night-before service-visit reminders, queued by the service-quote scheduler. */
+export const VISIT_REMINDER_FOLLOW_UP_TYPES = ['visit_reminder_1d'] as const;
+
+/**
+ * Types that live in `follow_up_queue` but are delivered by their OWN cron, not
+ * by the shared /api/cron/send-follow-ups drain.
+ *
+ * That drain has no type filter of its own, so anything listed here MUST be
+ * excluded from it or the recipient gets the email twice - once from its
+ * dedicated sender at the right hour, once from the shared cron at 09:00 UTC.
+ * Their rows still belong in the queue: they are the send-once ledger their
+ * dedicated cron claims against.
+ *
+ * A fourth sequence with its own sender adds itself here rather than
+ * rediscovering the duplicate the hard way.
+ */
+export const DEDICATED_SENDER_FOLLOW_UP_TYPES = [...VISIT_REMINDER_FOLLOW_UP_TYPES] as const;
+
 /**
  * The sibling sequence a given follow_up_type belongs to. Used so a "stop this
  * person's follow-ups" action cancels the SAME sequence the row is part of

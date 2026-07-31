@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
 import http from 'http';
 import {
-  ensureServiceHomeowner, scheduleVisit, requeueVisitReminder, cancelVisitReminder,
+  ensureServiceHomeowner, scheduleVisit, bookedVisitStarts, requeueVisitReminder, cancelVisitReminder,
 } from '../src/lib/homecare/serviceScheduling';
+import { reminderSlot } from '../src/lib/homecare/visitSchedule';
 
 /**
  * Integration test for the service-quote loop against a stubbed Supabase REST.
@@ -13,14 +14,17 @@ import {
  * covered by tests/service-quotes-wiring.spec.ts; this covers what actually
  * happens to the data.
  *
- * supabase-rest reads its URL at module scope, so the env must be set by the
- * RUN COMMAND, not inside the test. Skipped unless SQ_E2E=1:
+ * Runs unattended in the `node` Playwright project. It stands up its own stub
+ * and points the env at it here rather than relying on a run command - a suite
+ * that only runs when someone remembers a flag protects nothing. supabase-rest
+ * reads its env per call, which is what makes that possible.
  *
- *   SQ_E2E=1 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:9414 \
- *   SUPABASE_SECRET_KEY=sb-stub-secret \
- *   npx playwright test tests/service-quotes-e2e.spec.ts --workers=1
+ * The tests share one in-memory db and build on each other, so the project runs
+ * them serially in a single worker.
  */
 const STUB_PORT = 9414;
+
+test.describe.configure({ mode: 'serial' });
 
 interface Row { [k: string]: unknown }
 const db: Record<string, Row[]> = {
@@ -29,9 +33,10 @@ const db: Record<string, Row[]> = {
 
 let server: http.Server;
 
-test.skip(!process.env.SQ_E2E, 'set SQ_E2E=1 with NEXT_PUBLIC_SUPABASE_URL pointed at the stub');
-
 test.beforeAll(async () => {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = `http://127.0.0.1:${STUB_PORT}`;
+  process.env.SUPABASE_SECRET_KEY = 'sb-stub-secret';
+
   db.maintenance_catalog = [
     { key: 'clean_gutters', title: 'Clean gutters & downspouts', bookable: true, active: true, priority: 10 },
   ];
@@ -55,6 +60,10 @@ test.beforeAll(async () => {
           const val = rest.join('.');
           if (op === 'eq') out = out.filter((r) => String(r[k]) === val);
           if (op === 'ilike') out = out.filter((r) => String(r[k]).toLowerCase() === val.toLowerCase().replace(/\\/g, ''));
+          if (op === 'in') {
+            const wanted = new Set(val.replace(/^\(|\)$/g, '').split(',').map((s) => s.replace(/^"|"$/g, '')));
+            out = out.filter((r) => wanted.has(String(r[k])));
+          }
         }
         return out;
       };
@@ -102,6 +111,7 @@ test('scheduling creates a PENDING homeowner the newsletter can never mail', asy
   expect(owner!.status).toBe('pending');
   expect(owner!.source).toBe('service_quote');
   expect(owner!.email).toBe('walkin@example.com'); // normalised
+  expect(owner!.unsubscribe_token, 'every emailed record needs a working opt-out').toBeTruthy();
   expect(db.homeowners.length).toBe(1);
 });
 
@@ -109,6 +119,7 @@ test('an existing ACTIVE member is reused and never downgraded', async () => {
   db.homeowners.push({
     id: 'member-1', email: 'member@example.com', first_name: 'Real', phone: null,
     status: 'active', source: 'home-care', address: null, city: null, zip: '07050',
+    unsubscribe_token: 'member-token',
   });
   const owner = await ensureServiceHomeowner({
     email: 'member@example.com', firstName: 'Ignored', address: '9 Elm St', zip: '07999',
@@ -116,6 +127,9 @@ test('an existing ACTIVE member is reused and never downgraded', async () => {
   expect(owner!.id).toBe('member-1');
   expect(owner!.status, 'scheduling must not downgrade a real member').toBe('active');
   expect(owner!.source).toBe('home-care');
+  // The reminder email's unsubscribe link is built from this. Before it was in
+  // the select it came back undefined and the footer linked to token=.
+  expect(owner!.unsubscribe_token).toBe('member-token');
   // Blanks are filled...
   expect(owner!.address).toBe('9 Elm St');
   // ...but what they told us themselves is never overwritten.
@@ -142,6 +156,13 @@ test('scheduling books the tasks with a window and an address', async () => {
 test('rescheduling updates in place rather than duplicating the booking', async () => {
   const start = new Date(Date.now() + 60 * 3600_000);
   const end = new Date(start.getTime() + 2 * 3600_000);
+  // Read BEFORE the upsert overwrites it - this is what the schedule route
+  // hands to requeueVisitReminder so it pulls the right visit's reminder.
+  const previous = await bookedVisitStarts({
+    homeownerId: 'member-1', taskKeys: ['clean_gutters'], season: 'fall',
+  });
+  expect(previous.length, 'the window this booking replaces').toBe(1);
+
   await scheduleVisit({
     homeownerId: 'member-1', taskKeys: ['clean_gutters'], season: 'fall',
     start, end, address: '9 Elm St, Montclair, NJ',
@@ -151,17 +172,19 @@ test('rescheduling updates in place rather than duplicating the booking', async 
   expect(rows[0].scheduled_start).toBe(start.toISOString());
 });
 
+const MEMBER_VISIT = new Date(Date.now() + 48 * 3600_000);
+const MEMBER_VISIT_MOVED = new Date(Date.now() + 96 * 3600_000);
+
 test('a requeued reminder cancels the superseded one first', async () => {
-  const start = new Date(Date.now() + 48 * 3600_000);
   const first = await requeueVisitReminder({
-    email: 'member@example.com', name: 'Real', start, subject: 'S1', html: '<p>1</p>',
+    email: 'member@example.com', name: 'Real', start: MEMBER_VISIT, subject: 'S1', html: '<p>1</p>',
   });
   expect(first).toBe('queued');
   expect(db.follow_up_queue.filter((q) => q.status === 'pending').length).toBe(1);
 
-  const moved = new Date(Date.now() + 96 * 3600_000);
   const second = await requeueVisitReminder({
-    email: 'member@example.com', name: 'Real', start: moved, subject: 'S2', html: '<p>2</p>',
+    email: 'member@example.com', name: 'Real', start: MEMBER_VISIT_MOVED,
+    subject: 'S2', html: '<p>2</p>', supersedes: [MEMBER_VISIT],
   });
   expect(second).toBe('queued');
   const pending = db.follow_up_queue.filter((q) => q.status === 'pending');
@@ -170,16 +193,49 @@ test('a requeued reminder cancels the superseded one first', async () => {
   expect(db.follow_up_queue.filter((q) => q.status === 'cancelled').length).toBe(1);
 });
 
+/* Two visits for one customer: the case that made an address-scoped cancel wrong. */
+const GUTTERS = new Date(Date.now() + 5 * 24 * 3600_000);
+const GUTTERS_MOVED = new Date(Date.now() + 6 * 24 * 3600_000);
+const FURNACE = new Date(Date.now() + 20 * 24 * 3600_000);
+const pendingFor = (email: string) =>
+  db.follow_up_queue.filter((q) => q.lead_email === email && q.status === 'pending');
+
+test('moving one visit leaves another visit\'s reminder standing', async () => {
+  for (const [start, subject] of [[GUTTERS, 'Gutters'], [FURNACE, 'Furnace']] as const) {
+    await requeueVisitReminder({ email: 'two@example.com', name: 'Two', start, subject, html: `<p>${subject}</p>` });
+  }
+  expect(pendingFor('two@example.com').length, 'one reminder per visit').toBe(2);
+
+  await requeueVisitReminder({
+    email: 'two@example.com', name: 'Two', start: GUTTERS_MOVED,
+    subject: 'Gutters moved', html: '<p>moved</p>', supersedes: [GUTTERS],
+  });
+  expect(pendingFor('two@example.com').map((q) => q.email_subject).sort())
+    .toEqual(['Furnace', 'Gutters moved']);
+  // And the superseded one is the only casualty.
+  expect(db.follow_up_queue.filter((q) => q.lead_email === 'two@example.com' && q.status === 'cancelled').length).toBe(1);
+});
+
 test('a visit in the past never earns a reminder', async () => {
   const result = await requeueVisitReminder({
     email: 'past@example.com', name: 'Past', start: new Date(Date.now() - 3600_000),
     subject: 'S', html: '<p>x</p>',
   });
   expect(result).toBe('skipped');
-  expect(db.follow_up_queue.filter((q) => q.lead_email === 'past@example.com' && q.status === 'pending').length).toBe(0);
+  expect(pendingFor('past@example.com').length).toBe(0);
 });
 
-test('cancelling a visit pulls its pending reminder', async () => {
-  await cancelVisitReminder('member@example.com');
-  expect(db.follow_up_queue.filter((q) => q.lead_email === 'member@example.com' && q.status === 'pending').length).toBe(0);
+test('cancelling a visit pulls its reminder and only its reminder', async () => {
+  // Completing the moved gutters job must not silently drop the furnace visit.
+  await cancelVisitReminder('two@example.com', GUTTERS_MOVED);
+  expect(pendingFor('two@example.com').map((q) => q.email_subject)).toEqual(['Furnace']);
+
+  await cancelVisitReminder('member@example.com', MEMBER_VISIT_MOVED);
+  expect(pendingFor('member@example.com').length).toBe(0);
+});
+
+test('the reminder row is keyed on the slot the cron claims against', async () => {
+  const row = db.follow_up_queue.find((q) => q.email_subject === 'Furnace')!;
+  expect(row.follow_up_type).toBe('visit_reminder_1d');
+  expect(row.scheduled_at).toBe(reminderSlot(FURNACE));
 });

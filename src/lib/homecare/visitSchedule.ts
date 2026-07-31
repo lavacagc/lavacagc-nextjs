@@ -13,24 +13,24 @@
  *
  * Everything here works in Eastern wall-clock terms for that reason.
  */
-import { easternOffsetHours, easternWallClock } from './ics';
+import { easternOffsetHours, easternWallClock, easternParts, easternDay } from './ics';
+import { VISIT_REMINDER_FOLLOW_UP_TYPES } from '@/lib/notify/cancelFollowUps';
 
-export const VISIT_REMINDER_TYPE = 'visit_reminder_1d';
+/** Eastern calendar date parts for an instant. Defined in ics.ts so the ICS
+ *  alarms and the reminder send time read a day the same way. */
+export { easternParts };
+
+/**
+ * The queue type carrying visit reminders.
+ *
+ * Sourced from the shared follow_up_queue registry rather than spelled out
+ * again here: that registry is what tells the shared send-follow-ups cron to
+ * leave these rows alone, and a second copy of the string is how the two drift.
+ */
+export const VISIT_REMINDER_TYPE = VISIT_REMINDER_FOLLOW_UP_TYPES[0];
 
 /** Types belonging to the visit sequence, for type-scoped cancelling. */
-export const VISIT_FOLLOW_UP_TYPES = [VISIT_REMINDER_TYPE] as const;
-
-/** Eastern calendar date parts for an instant. */
-export function easternParts(d: Date): { y: number; m: number; day: number; hour: number; minute: number } {
-  const shifted = new Date(d.getTime() - easternOffsetHours(d) * 3600_000);
-  return {
-    y: shifted.getUTCFullYear(),
-    m: shifted.getUTCMonth(),
-    day: shifted.getUTCDate(),
-    hour: shifted.getUTCHours(),
-    minute: shifted.getUTCMinutes(),
-  };
-}
+export const VISIT_FOLLOW_UP_TYPES = VISIT_REMINDER_FOLLOW_UP_TYPES;
 
 /**
  * The window covering "tomorrow, Eastern" as UTC instants, for the cron's
@@ -76,9 +76,18 @@ export function visitTimeWindow(start: Date, end: Date): string {
  * lets a missed run catch up rather than silently skipping.
  */
 export function reminderSendAt(visitStart: Date): Date {
-  const dayBefore = new Date(visitStart.getTime() - 24 * 3600_000);
-  const p = easternParts(dayBefore);
-  return easternWallClock(new Date(Date.UTC(p.y, p.m, p.day)), 19, 30);
+  return easternWallClock(easternDay(new Date(visitStart.getTime() - 24 * 3600_000)), 19, 30);
+}
+
+/**
+ * The queue slot a visit's reminder occupies, as an ISO instant.
+ *
+ * This is what ties a `follow_up_queue` row to ITS visit. Cancelling or marking
+ * a reminder sent matches on the slot, so a customer with gutters on the 5th and
+ * a furnace on the 20th never loses one visit's reminder by touching the other.
+ */
+export function reminderSlot(visitStart: Date): string {
+  return reminderSendAt(visitStart).toISOString();
 }
 
 /** A visit in the past can never earn a reminder. */

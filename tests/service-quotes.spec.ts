@@ -214,6 +214,24 @@ test('ICS3: two absolute alarms, never relative offsets', () => {
   expect(s).toContain('TRIGGER;VALUE=DATE-TIME:20260804T233000Z');
 });
 
+test('ICS3: an evening visit puts its alarms on the visit\'s Eastern days', () => {
+  // 8pm ET on 5 Aug is already 6 Aug in UTC. Reading the raw UTC date would put
+  // the "crew is on the way" alarm at 7am the day AFTER the job, and the
+  // confirm alarm 30 minutes before it - so both resolve through Eastern.
+  const evening = easternWallClock(new Date(Date.UTC(2026, 7, 5)), 20, 0);
+  expect(evening.toISOString(), 'the UTC date has rolled over').toBe('2026-08-06T00:00:00.000Z');
+  const s = buildIcs({
+    uid: 'visit-evening', start: evening, end: new Date(evening.getTime() + 2 * 3600_000),
+    services: ['Clean gutters & downspouts'], address: '14 Maple Ave, West Orange, NJ',
+    customerName: 'Jordan Caruso', customerPhone: null, variant: 'owner', now: NOW,
+  });
+  // Confirm: 7:30pm ET on 4 Aug. Same instant the reminder email is queued for.
+  expect(s).toContain('TRIGGER;VALUE=DATE-TIME:20260804T233000Z');
+  expect(reminderSendAt(evening).toISOString()).toBe('2026-08-04T23:30:00.000Z');
+  // On the way: 7am ET on 5 Aug, the morning OF the visit.
+  expect(s).toContain('TRIGGER;VALUE=DATE-TIME:20260805T110000Z');
+});
+
 test('ICS4: alarms name the ops action', () => {
   const s = ics('owner');
   expect(s).toContain("Confirm tomorrow's visit");

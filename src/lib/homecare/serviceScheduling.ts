@@ -18,7 +18,7 @@
  */
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { newToken, normalizeEmail } from '@/lib/homecare/homeowners';
-import { VISIT_REMINDER_TYPE, reminderSendAt, reminderIsStillUseful } from './visitSchedule';
+import { VISIT_REMINDER_TYPE, reminderSendAt, reminderSlot, reminderIsStillUseful } from './visitSchedule';
 
 export interface HomeownerLite {
   id: string;
@@ -27,6 +27,13 @@ export interface HomeownerLite {
   phone: string | null;
   status: string;
   source: string | null;
+  /**
+   * Every Home Care email footer is built from this. It is NOT NULL on the
+   * table, so it is always there to be read - but only if the select asks for
+   * it, and a missing one renders an unsubscribe link that the unsubscribe
+   * route rejects. Required here so no caller can forget.
+   */
+  unsubscribe_token: string;
   address?: string | null;
   city?: string | null;
   zip?: string | null;
@@ -50,7 +57,7 @@ export async function ensureServiceHomeowner(args: {
   const email = normalizeEmail(args.email);
   const existing = await supabaseRest<HomeownerLite[]>(
     'GET',
-    `homeowners?select=id,email,first_name,phone,status,source,address,city,zip&email=eq.${encodeURIComponent(email)}&limit=1`,
+    `homeowners?select=id,email,first_name,phone,status,source,address,city,zip,unsubscribe_token&email=eq.${encodeURIComponent(email)}&limit=1`,
   );
 
   if (existing && existing.length > 0) {
@@ -116,10 +123,40 @@ export async function scheduleVisit(args: ScheduleArgs): Promise<void> {
 }
 
 /**
- * Cancel any pending reminder for this homeowner, then queue a fresh one.
+ * The distinct start times currently booked for these tasks.
+ *
+ * Read BEFORE the upsert overwrites them: these are the visits a new booking
+ * supersedes, and the only way to pull exactly their reminders.
+ */
+export async function bookedVisitStarts(args: {
+  homeownerId: string;
+  taskKeys: string[];
+  season: string;
+}): Promise<Date[]> {
+  const { homeownerId, taskKeys, season } = args;
+  if (taskKeys.length === 0) return [];
+  const rows = (await supabaseRest<{ scheduled_start: string | null }[]>(
+    'GET',
+    `homeowner_maintenance?select=scheduled_start&homeowner_id=eq.${homeownerId}&season=eq.${encodeURIComponent(season)}` +
+      `&task_key=in.(${taskKeys.map((k) => `"${k}"`).join(',')})&status=eq.booked`,
+  ).catch(() => [])) ?? [];
+  return [...new Set(rows.map((r) => r.scheduled_start).filter((s): s is string => !!s))]
+    .map((iso) => new Date(iso));
+}
+
+/**
+ * Cancel the pending reminder for the visit(s) this booking replaces, then
+ * queue a fresh one.
  *
  * Rescheduling MUST cancel first: a reminder announcing a visit that moved is
  * worse than no reminder at all.
+ *
+ * Cancellation is scoped to the VISIT, never to the address. A customer with
+ * gutters on the 5th and a furnace on the 20th has two pending reminders; moving
+ * one must not pull the other. `supersedes` carries the start times this booking
+ * is replacing (the caller reads them off the rows it is about to overwrite),
+ * and the new start is cleared too so re-submitting the same window replaces its
+ * row rather than stacking a second one.
  */
 export async function requeueVisitReminder(args: {
   email: string;
@@ -127,15 +164,14 @@ export async function requeueVisitReminder(args: {
   start: Date;
   subject: string;
   html: string;
+  supersedes?: Date[];
   now?: Date;
 }): Promise<'queued' | 'skipped'> {
-  const { email, name, start, subject, html, now = new Date() } = args;
+  const { email, name, start, subject, html, supersedes = [], now = new Date() } = args;
 
-  await supabaseRest(
-    'PATCH',
-    `follow_up_queue?lead_email=ilike.${encodeURIComponent(escapeLike(email))}&follow_up_type=eq.${VISIT_REMINDER_TYPE}&status=eq.pending`,
-    { status: 'cancelled' },
-  ).catch(() => {});
+  for (const slot of new Set([start, ...supersedes].map(reminderSlot))) {
+    await supabaseRest('PATCH', pendingReminderQuery(email, slot), { status: 'cancelled' }).catch(() => {});
+  }
 
   if (!reminderIsStillUseful(start, now)) return 'skipped';
 
@@ -153,13 +189,25 @@ export async function requeueVisitReminder(args: {
   return 'queued';
 }
 
-/** Cancel a visit's pending reminder without queueing a replacement. */
-export async function cancelVisitReminder(email: string): Promise<void> {
+/**
+ * Cancel ONE visit's pending reminder without queueing a replacement.
+ *
+ * `visitStart` is required so a cancel can never reach past the visit it names -
+ * completing today's job must leave next month's reminder alone.
+ */
+export async function cancelVisitReminder(email: string, visitStart: Date): Promise<void> {
   await supabaseRest(
     'PATCH',
-    `follow_up_queue?lead_email=ilike.${encodeURIComponent(escapeLike(email))}&follow_up_type=eq.${VISIT_REMINDER_TYPE}&status=eq.pending`,
+    pendingReminderQuery(email, reminderSlot(visitStart)),
     { status: 'cancelled' },
   ).catch(() => {});
+}
+
+/** The still-pending reminder row for one visit: this address, this slot, nothing else. */
+function pendingReminderQuery(email: string, slot: string): string {
+  return `follow_up_queue?lead_email=ilike.${encodeURIComponent(escapeLike(email))}` +
+    `&follow_up_type=eq.${VISIT_REMINDER_TYPE}&status=eq.pending` +
+    `&scheduled_at=eq.${encodeURIComponent(slot)}`;
 }
 
 /** The queue stores raw addresses, so match case-insensitively with LIKE metacharacters neutralised. */

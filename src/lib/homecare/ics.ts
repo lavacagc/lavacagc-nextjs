@@ -75,6 +75,31 @@ export function easternWallClock(day: Date, hour: number, minute = 0): Date {
   return new Date(guess.getTime() + easternOffsetHours(guess) * 3600_000);
 }
 
+/**
+ * Eastern calendar date parts for an instant.
+ *
+ * Lives here rather than in visitSchedule so both modules read an instant's day
+ * the same way. Anything that pairs a date with an Eastern wall-clock hour must
+ * go through this first: for an Eastern-evening instant the UTC calendar date
+ * has already rolled over, so `getUTCDate()` would name tomorrow.
+ */
+export function easternParts(d: Date): { y: number; m: number; day: number; hour: number; minute: number } {
+  const shifted = new Date(d.getTime() - easternOffsetHours(d) * 3600_000);
+  return {
+    y: shifted.getUTCFullYear(),
+    m: shifted.getUTCMonth(),
+    day: shifted.getUTCDate(),
+    hour: shifted.getUTCHours(),
+    minute: shifted.getUTCMinutes(),
+  };
+}
+
+/** Midnight UTC on the Eastern calendar date containing `d` - the day `easternWallClock` keys off. */
+export function easternDay(d: Date): Date {
+  const p = easternParts(d);
+  return new Date(Date.UTC(p.y, p.m, p.day));
+}
+
 function alarm(trigger: Date, description: string): string[] {
   return [
     'BEGIN:VALARM',
@@ -118,15 +143,17 @@ export function buildIcs(args: IcsArgs): string {
 
   if (variant === 'owner') {
     // Absolute triggers so "the evening before" is genuinely the evening,
-    // whatever time of day the visit itself is.
-    const dayBefore = new Date(start.getTime() - 24 * 3600_000);
+    // whatever time of day the visit itself is. Both days resolve through
+    // easternDay, exactly as reminderSendAt does - reading the raw UTC date
+    // would put an evening visit's alarms on the wrong side of midnight.
+    const dayBefore = easternDay(new Date(start.getTime() - 24 * 3600_000));
     lines.push(
       ...alarm(
         easternWallClock(dayBefore, 19, 30),
         `Confirm tomorrow's visit for ${customerName}. The customer reminder email has gone out.`,
       ),
       ...alarm(
-        easternWallClock(start, 7, 0),
+        easternWallClock(easternDay(start), 7, 0),
         `Text ${customerName} when the crew is on the way${customerPhone ? ` - ${customerPhone}` : ''}.`,
       ),
     );

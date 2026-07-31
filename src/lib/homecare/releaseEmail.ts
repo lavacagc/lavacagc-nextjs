@@ -75,7 +75,7 @@ export function buildReleaseEmail(args: ReleaseEmailArgs): { subject: string; ht
 
   const html = homeCareEmailShell({
     preheader: n === 1
-      ? `New in your Home Care portal: ${features[0].headline}`
+      ? `New in your Home Care portal: ${esc(features[0].headline)}`
       : `${n} new things just landed in your Home Care portal.`,
     rows,
   });

@@ -2,8 +2,6 @@
  * Thin Supabase REST helper for server-side admin/notify routes.
  * Uses SUPABASE_SECRET_KEY (server-only, bypasses RLS).
  */
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-
 interface RestOpts {
   /** Comma-separated column list for ON CONFLICT (upsert). */
   onConflict?: string;
@@ -17,11 +15,15 @@ export async function supabaseRest<T = unknown>(
   body?: unknown,
   opts: RestOpts = {},
 ): Promise<T> {
+  // Read per call, not at module scope: a module-scope read freezes whichever
+  // value happened to be present when the module first loaded, which makes the
+  // helper untestable against a stub and hides a late-arriving env var.
   const secretKey = process.env.SUPABASE_SECRET_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!secretKey) throw new Error('SUPABASE_SECRET_KEY not configured');
-  if (!SUPABASE_URL) throw new Error('NEXT_PUBLIC_SUPABASE_URL not configured');
+  if (!supabaseUrl) throw new Error('NEXT_PUBLIC_SUPABASE_URL not configured');
 
-  const url = new URL(`${SUPABASE_URL}/rest/v1/${path}`);
+  const url = new URL(`${supabaseUrl}/rest/v1/${path}`);
   if (opts.onConflict) url.searchParams.set('on_conflict', opts.onConflict);
 
   const headers: Record<string, string> = {

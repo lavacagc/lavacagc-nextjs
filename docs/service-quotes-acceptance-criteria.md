@@ -110,12 +110,25 @@ These were settled by the owner during review; the ACs assume them.
 - **RM3** Its reply-to is `alex@lavacagc.com` **and** `veronica@lavacagc.com`.
 - **RM4** Rescheduling cancels the pending reminder and queues a new one; a
   reminder for a moved appointment is never sent.
-- **RM5** Cancelling a visit cancels the pending reminder.
+  Cancellation is scoped to the **visit**, never to the address: a customer with
+  two visits booked keeps the other visit's reminder.
+- **RM5** Cancelling or completing a visit cancels that visit's pending
+  reminder, and only that one.
 - **RM6** The cron is `30 23 * * *` UTC, which is 7:30pm Eastern in summer and
   6:30pm in winter. Asserted against `vercel.json`.
 - **RM7** The cron selects visits for **tomorrow in Eastern time**, not UTC. A
   visit late tomorrow Eastern is still included.
 - **RM8** A reminder is sent at most once per visit, even if the cron runs twice.
+  The visit's `follow_up_queue` row is the ledger: the cron claims it
+  (`pending` -> `sent`) **before** sending, so a retry finds nothing to claim.
+- **RM9** `/api/cron/visit-reminders` is the **only** sender. `follow_up_queue`
+  is shared, and its general drain (`/api/cron/send-follow-ups`, 09:00 UTC) has
+  no type filter of its own, so it explicitly skips every type with a dedicated
+  cron. Without that the customer would get the reminder twice, the second time
+  at ~4am Eastern on the day of the visit, saying "tomorrow".
+- **RM10** `follow_up_queue.follow_up_type` carries a CHECK constraint listing
+  the sequences that share the table, so `visit_reminder_1d` must be added to it
+  or the queue insert fails and booking a visit 500s.
 
 ## PT - the customer portal
 

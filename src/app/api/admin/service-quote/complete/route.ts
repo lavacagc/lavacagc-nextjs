@@ -27,7 +27,7 @@ export const runtime = 'nodejs';
 
 const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lavacagc.com';
 
-interface MaintRow { task_key: string; status: string; completed_by: string | null }
+interface MaintRow { task_key: string; status: string; completed_by: string | null; scheduled_start: string | null }
 interface OwnerRow { id: string; email: string; first_name: string | null; unsubscribe_token: string }
 
 export async function POST(request: NextRequest) {
@@ -47,8 +47,8 @@ export async function POST(request: NextRequest) {
     // Idempotency: anything already done BY LA VACA has had its email.
     const existing = (await supabaseRest<MaintRow[]>(
       'GET',
-      `homeowner_maintenance?select=task_key,status,completed_by&homeowner_id=eq.${homeownerId}` +
-        `&season=eq.${season}&task_key=in.(${inList})`,
+      `homeowner_maintenance?select=task_key,status,completed_by,scheduled_start&homeowner_id=eq.${homeownerId}` +
+        `&season=eq.${encodeURIComponent(season)}&task_key=in.(${inList})`,
     )) ?? [];
     const alreadyOurs = new Set(
       existing.filter((r) => r.status === 'done' && r.completed_by === 'lavaca').map((r) => r.task_key),
@@ -75,8 +75,15 @@ export async function POST(request: NextRequest) {
     const owner = owners[0];
     if (!owner) return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
 
-    // The visit happened - any queued reminder for it is now noise.
-    await cancelVisitReminder(owner.email);
+    // The visit happened - its queued reminder is now noise. Scoped to the
+    // windows these tasks were booked into: a customer with another visit later
+    // in the season must keep that one's reminder.
+    const completedVisitStarts = [...new Set(
+      existing.filter((r) => r.scheduled_start).map((r) => r.scheduled_start as string),
+    )];
+    for (const iso of completedVisitStarts) {
+      await cancelVisitReminder(owner.email, new Date(iso));
+    }
 
     if (skipFeedback || transitioning.length === 0) {
       return NextResponse.json({

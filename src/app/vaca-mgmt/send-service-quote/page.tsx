@@ -22,6 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from '@/hooks/use-toast';
 import { Loader2, CalendarPlus, CheckCircle2 } from 'lucide-react';
 import { scopeSummaryFrom } from '@/lib/homecare/serviceIntake';
+import { currentSeason } from '@/lib/homecare/season';
 
 interface Service { key: string; title: string; blurb: string; priority: number }
 interface PastRequest {
@@ -41,6 +42,17 @@ const todayPlus = (days: number) => {
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
 };
+
+/**
+ * The season a visit belongs to, from the VISIT date rather than today's.
+ *
+ * homeowner_maintenance is keyed on (homeowner, task, season) and the portal
+ * renders one season at a time, so booking a 5 Sep visit on 30 Aug under
+ * 'summer' would file it where the member never looks - and completing it in
+ * September would upsert a second row, leaving the first stuck at 'booked'.
+ * Noon UTC keeps the calendar date away from the midnight boundary.
+ */
+const seasonOfVisit = (isoDate: string) => currentSeason(new Date(`${isoDate}T12:00:00Z`));
 
 export default function SendServiceQuotePage() {
   const [email, setEmail] = useState('');
@@ -62,7 +74,9 @@ export default function SendServiceQuotePage() {
   const [from, setFrom] = useState('08:00');
   const [to, setTo] = useState('11:00');
   const [scheduling, setScheduling] = useState(false);
-  const [scheduled, setScheduled] = useState<{ icsUrl: string; homeownerId: string } | null>(null);
+  // The season is captured at booking time so "mark complete" files against the
+  // SAME row, even when the job is completed after the season has turned over.
+  const [scheduled, setScheduled] = useState<{ icsUrl: string; homeownerId: string; season: string } | null>(null);
 
   const lookup = useCallback(async () => {
     if (!email.trim()) return;
@@ -130,13 +144,14 @@ export default function SendServiceQuotePage() {
   const schedule = async () => {
     if (!date) { toast({ title: 'Pick a date first', variant: 'destructive' }); return; }
     setScheduling(true);
+    const season = seasonOfVisit(date);
     try {
       const res = await fetch('/api/admin/service-quote/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email.trim(), name, phone: intake?.homeowner?.phone ?? intake?.requests[0]?.phone ?? '',
-          taskKeys: [...selected], season: currentSeasonName(),
+          taskKeys: [...selected], season,
           start: new Date(`${date}T${from}:00`).toISOString(),
           end: new Date(`${date}T${to}:00`).toISOString(),
           address,
@@ -144,7 +159,7 @@ export default function SendServiceQuotePage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.issues?.[0]?.message || 'Scheduling failed');
-      setScheduled({ icsUrl: data.icsUrl, homeownerId: data.homeownerId });
+      setScheduled({ icsUrl: data.icsUrl, homeownerId: data.homeownerId, season });
       toast({
         title: 'Visit scheduled',
         description: data.reminder === 'queued'
@@ -165,7 +180,7 @@ export default function SendServiceQuotePage() {
       const res = await fetch('/api/admin/service-quote/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ homeownerId: scheduled.homeownerId, taskKeys: [...selected], season: currentSeasonName() }),
+        body: JSON.stringify({ homeownerId: scheduled.homeownerId, taskKeys: [...selected], season: scheduled.season }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
@@ -315,13 +330,4 @@ export default function SendServiceQuotePage() {
       </Card>
     </div>
   );
-}
-
-/** Northern-NJ season for the current date, matching lib/homecare/season. */
-function currentSeasonName(): 'spring' | 'summer' | 'fall' | 'winter' {
-  const m = new Date().getUTCMonth();
-  if (m >= 2 && m <= 4) return 'spring';
-  if (m >= 5 && m <= 7) return 'summer';
-  if (m >= 8 && m <= 10) return 'fall';
-  return 'winter';
 }

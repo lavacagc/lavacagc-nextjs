@@ -373,12 +373,6 @@ export default function HomeCareChecklistClient({
           </button>
           <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <h3 className={`text-base font-bold text-text-primary ${isDone ? 'line-through' : ''}`}>{t.title}</h3>
-            {isDone && lavacaCompleted?.[t.key] && (
-              <div className="mt-0.5 text-xs font-bold text-primary" data-testid="completed-by-lavaca">
-                Completed by La Vaca &middot;{' '}
-                {new Date(lavacaCompleted[t.key]).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
-              </div>
-            )}
             <span className={`text-[11px] font-extrabold ${t.diy_or_pro === 'pro' ? 'text-amber-700' : t.diy_or_pro === 'diy' ? 'text-emerald-700' : 'text-slate-500'}`}>
               {t.diy_or_pro === 'pro' ? 'PRO' : t.diy_or_pro === 'diy' ? 'DIY' : 'DIY / PRO'}
             </span>
@@ -402,6 +396,19 @@ export default function HomeCareChecklistClient({
             </button>
           )}
         </div>
+        {/* Attribution sits on its own line under the title, not wedged into
+            the badge row between the title and PRO/DIY. The timezone is pinned
+            because this component is server-rendered too: without it the server
+            formats in UTC and the browser in the member's zone, so a late-evening
+            completion renders a different day on each and hydration mismatches. */}
+        {isDone && lavacaCompleted?.[t.key] && (
+          <div className="mt-1 text-xs font-bold text-primary" data-testid="completed-by-lavaca">
+            Completed by La Vaca &middot;{' '}
+            {new Date(lavacaCompleted[t.key]).toLocaleDateString('en-US', {
+              day: 'numeric', month: 'short', year: 'numeric', timeZone: 'America/New_York',
+            })}
+          </div>
+        )}
         {/* Description + actions run the full card width below the title line */}
         <ClampedBlurb text={t.blurb} expanded={expandedBlurbs.has(id(t.key, season))} onToggle={() => toggleBlurb(id(t.key, season))} />
         <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">

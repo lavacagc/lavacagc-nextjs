@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import {
-  ensureServiceHomeowner, scheduleVisit, requeueVisitReminder, cancelVisitReminder,
+  ensureServiceHomeowner, scheduleVisit, bookedVisitStarts, requeueVisitReminder, cancelVisitReminder,
 } from '@/lib/homecare/serviceScheduling';
 import { buildVisitReminderEmail } from '@/lib/homecare/serviceEmails';
 import { visitDateLabel, visitTimeWindow } from '@/lib/homecare/visitSchedule';
@@ -48,6 +48,18 @@ export async function POST(request: NextRequest) {
     if (!homeowner) {
       return NextResponse.json({ error: 'Could not create or find the customer record' }, { status: 500 });
     }
+    // The reminder we are about to queue carries an unsubscribe link. Refuse to
+    // build one we know is dead rather than mail a footer whose opt-out 400s.
+    if (!homeowner.unsubscribe_token) {
+      return NextResponse.json(
+        { error: 'Customer record has no unsubscribe token - refusing to queue an email without a working opt-out' },
+        { status: 500 },
+      );
+    }
+
+    // Read the windows we are about to overwrite, so the requeue can pull those
+    // visits' reminders and only those.
+    const supersedes = await bookedVisitStarts({ homeownerId: homeowner.id, taskKeys, season });
 
     await scheduleVisit({
       homeownerId: homeowner.id, taskKeys, season, start: startAt, end: endAt, address,
@@ -67,16 +79,15 @@ export async function POST(request: NextRequest) {
       timeWindow: visitTimeWindow(startAt, endAt),
       visitDateLabel: visitDateLabel(startAt),
       portalUrl: `${SITE_URL}/home-care/checklist`,
-      unsubscribeUrl: `${SITE_URL}/api/home-care/unsubscribe?token=${encodeURIComponent(
-        (homeowner as { unsubscribe_token?: string }).unsubscribe_token ?? '',
-      )}`,
+      unsubscribeUrl: `${SITE_URL}/api/home-care/unsubscribe?token=${encodeURIComponent(homeowner.unsubscribe_token)}`,
       preferencesUrl,
     });
 
-    // Cancels any stale reminder first: a reminder for a visit that moved is
-    // worse than no reminder at all.
+    // Cancels the superseded reminder first: a reminder for a visit that moved
+    // is worse than no reminder at all. Scoped to the windows this booking
+    // replaces, so an unrelated visit's reminder survives.
     const reminder = await requeueVisitReminder({
-      email, name, start: startAt, subject, html,
+      email, name, start: startAt, subject, html, supersedes,
     });
 
     return NextResponse.json({
@@ -133,22 +144,34 @@ export async function GET(request: NextRequest) {
   });
 }
 
-/** Cancel a visit: clear the schedule and pull the pending reminder. */
+/**
+ * Cancel ONE visit: clear that window's schedule and pull its pending reminder.
+ *
+ * `start` is required and both the unbook and the reminder cancel filter on it.
+ * A season-wide cancel would unbook every other visit the customer has booked in
+ * the same season, which is never what "cancel this visit" means.
+ */
 export async function DELETE(request: NextRequest) {
   const q = request.nextUrl.searchParams;
   const homeownerId = q.get('homeownerId');
   const email = q.get('email');
   const season = q.get('season');
-  if (!homeownerId || !email || !season) {
-    return NextResponse.json({ error: 'homeownerId, email and season are required' }, { status: 400 });
+  const start = q.get('start');
+  if (!homeownerId || !email || !season || !start) {
+    return NextResponse.json({ error: 'homeownerId, email, season and start are required' }, { status: 400 });
+  }
+  const startAt = new Date(start);
+  if (Number.isNaN(startAt.getTime())) {
+    return NextResponse.json({ error: 'start must be an ISO date-time' }, { status: 400 });
   }
   try {
     await supabaseRest(
       'PATCH',
-      `homeowner_maintenance?homeowner_id=eq.${homeownerId}&season=eq.${season}&status=eq.booked`,
+      `homeowner_maintenance?homeowner_id=eq.${homeownerId}&season=eq.${encodeURIComponent(season)}&status=eq.booked` +
+        `&scheduled_start=eq.${encodeURIComponent(startAt.toISOString())}`,
       { status: 'todo', scheduled_start: null, scheduled_end: null },
     );
-    await cancelVisitReminder(email);
+    await cancelVisitReminder(email, startAt);
     return NextResponse.json({ status: 'cancelled' });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
