@@ -4,11 +4,19 @@
  * Dependency-free by design: RFC 5545 is simple enough that a library would be
  * more surface than it saves.
  *
- * Two variants, and the difference matters:
+ * Three variants, and the differences matter:
  *
  *  - **owner**: carries two VALARM blocks that remind the team to confirm the
  *    visit the evening before and to text the customer when the crew is on the
  *    way. These are internal ops reminders.
+ *  - **crew**: the same two alarms, attached to the dispatch email so they land
+ *    on the phone of whoever is actually driving to the house. The 7:00am one
+ *    IS the "text the customer we're on our way" instruction - the owner chose
+ *    a real text sent by a person over an automated email, so nothing else in
+ *    the system sends that message and this alarm is what makes it happen.
+ *    METHOD:REQUEST with an ATTENDEE, because that is the shape Gmail renders
+ *    its own "Add to calendar" control for; a PUBLISH file is offered as a
+ *    plain download instead, which is the one route that is not one tap.
  *  - **customer**: no VALARM at all. The customer downloads their copy from the
  *    portal, and it must never contain "text the customer when on the way".
  *
@@ -17,7 +25,10 @@
  * for a 2pm one, so "the evening before" would drift around the evening.
  */
 
-export type IcsVariant = 'owner' | 'customer';
+export type IcsVariant = 'owner' | 'crew' | 'customer';
+
+/** The address a REQUEST is organized by. Real, so replies reach a human. */
+export const ICS_ORGANIZER = 'alex@lavacagc.com';
 
 export interface IcsArgs {
   uid: string;
@@ -29,6 +40,12 @@ export interface IcsArgs {
   customerName: string;
   customerPhone?: string | null;
   variant: IcsVariant;
+  /**
+   * Who the invite is addressed to. `crew` only - a PUBLISH file has no
+   * attendees, and putting the customer on one would invite them to their own
+   * visit.
+   */
+  attendees?: { name?: string | null; email: string }[];
   /** Stamped as DTSTAMP. Injected so output is deterministic in tests. */
   now?: Date;
 }
@@ -111,16 +128,24 @@ function alarm(trigger: Date, description: string): string[] {
 }
 
 export function buildIcs(args: IcsArgs): string {
-  const { uid, start, end, services, address, customerName, customerPhone, variant, now = new Date() } = args;
+  const {
+    uid, start, end, services, address, customerName, customerPhone, variant,
+    attendees = [], now = new Date(),
+  } = args;
 
-  const summary = variant === 'owner'
+  // The two internal variants carry the ops alarms; the customer's copy never
+  // does. Named rather than repeated so a fourth variant cannot accidentally
+  // inherit "text the customer when the crew is on the way".
+  const isInternal = variant === 'owner' || variant === 'crew';
+
+  const summary = isInternal
     ? `La Vaca: ${services.join(', ')} - ${customerName}`
     : `La Vaca Home Care visit - ${services.join(', ')}`;
 
   const descriptionLines = [
     `Services: ${services.join(', ')}`,
     `Address: ${address}`,
-    ...(variant === 'owner' && customerPhone ? [`Customer: ${customerName} - ${customerPhone}`] : []),
+    ...(isInternal && customerPhone ? [`Customer: ${customerName} - ${customerPhone}`] : []),
     ...(variant === 'customer' ? ["We'll text you when we're on our way. You don't need to be home."] : []),
   ];
 
@@ -129,7 +154,9 @@ export function buildIcs(args: IcsArgs): string {
     'VERSION:2.0',
     'PRODID:-//La Vaca General Contractors//Home Care//EN',
     'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
+    // REQUEST is what makes Gmail offer its native "Add to calendar" control on
+    // the attachment. PUBLISH renders as a plain file download instead.
+    variant === 'crew' ? 'METHOD:REQUEST' : 'METHOD:PUBLISH',
     'BEGIN:VEVENT',
     `UID:${escapeIcsText(uid)}`,
     `DTSTAMP:${toIcsUtc(now)}`,
@@ -141,7 +168,19 @@ export function buildIcs(args: IcsArgs): string {
     'STATUS:CONFIRMED',
   ];
 
-  if (variant === 'owner') {
+  if (variant === 'crew') {
+    // RFC 5545 §3.2: a REQUEST needs an ORGANIZER, and SEQUENCE lets a later
+    // send supersede this one rather than landing as a second event.
+    lines.push(
+      'SEQUENCE:0',
+      `ORGANIZER;CN=La Vaca General Contractors:mailto:${ICS_ORGANIZER}`,
+      ...attendees.map((a) =>
+        `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE` +
+        `${a.name ? `;CN=${escapeIcsText(a.name)}` : ''}:mailto:${a.email}`),
+    );
+  }
+
+  if (isInternal) {
     // Absolute triggers so "the evening before" is genuinely the evening,
     // whatever time of day the visit itself is. Both days resolve through
     // easternDay, exactly as reminderSendAt does - reading the raw UTC date
@@ -162,4 +201,38 @@ export function buildIcs(args: IcsArgs): string {
   lines.push('END:VEVENT', 'END:VCALENDAR');
   // RFC 5545 requires CRLF.
   return lines.join('\r\n') + '\r\n';
+}
+
+/**
+ * A one-tap "Add to Google Calendar" link.
+ *
+ * Pure string building - no API, no auth, no Google integration of any kind.
+ * It opens Google Calendar with the event pre-filled and a Save button, which
+ * is the second of the two genuinely one-tap routes (the first is the attached
+ * REQUEST above). It exists because the third route - a bare link to a hosted
+ * .ics - only *looks* like one tap: on a phone it opens the calendar app, but
+ * in Gmail on a desktop browser it downloads a file the recipient then has to
+ * find and import. Both are offered so neither desktop nor mobile is the one
+ * that gets the awkward path.
+ *
+ * Carries no alarms; Google's template URL has no parameter for them. The
+ * attachment is the copy that brings the 7:00am "text the customer" reminder,
+ * so this link is the fallback rather than the primary.
+ */
+export function googleCalendarUrl(args: {
+  title: string;
+  start: Date;
+  end: Date;
+  details: string;
+  location: string;
+}): string {
+  const stamp = (d: Date) => toIcsUtc(d);
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: args.title,
+    dates: `${stamp(args.start)}/${stamp(args.end)}`,
+    details: args.details,
+    location: args.location,
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }

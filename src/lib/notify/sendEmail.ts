@@ -38,6 +38,8 @@ export type EmailCategory =
   | 'release'
   | 'service_quote'
   | 'visit_reminder'
+  /** Internal: the crew's "you are on this visit" email. Never customer-facing. */
+  | 'crew_dispatch'
   | 'other';
 
 interface TrackedEmailBase {
@@ -60,6 +62,18 @@ interface TrackedEmailBase {
   sentBy?: string | null;
   /** Recipient display name, for the admin list. */
   toName?: string | null;
+
+  /**
+   * Files to attach. `content` is the raw body; it is base64-encoded here
+   * because that is the only shape Resend's JSON API accepts.
+   *
+   * The bytes are NEVER written to email_log. The audit row exists so the admin
+   * can see what went out, and a base64 blob in a TEXT column is not that - it
+   * is a way to make the table unreadable and unbounded. The filenames are
+   * recorded on the campaign field instead, which is enough to answer "did this
+   * email carry the calendar file".
+   */
+  attachments?: { filename: string; content: string | Buffer }[];
 
   /**
    * Set false to skip the audit-log row (rare — e.g. a caller that logs the
@@ -140,7 +154,12 @@ async function writeEmailLog(
       homeowner_id: input.homeownerId ?? null,
       subscriber_id: input.subscriberId ?? null,
       lead_id: input.leadId ?? null,
-      campaign: input.campaign ?? null,
+      // Attachment NAMES only - see the note on `attachments`. Folded into the
+      // campaign blob rather than given a column, because "what rode along with
+      // this email" is metadata about the send, not a new first-class field.
+      campaign: input.attachments?.length
+        ? { ...(input.campaign ?? {}), attachments: input.attachments.map((a) => a.filename) }
+        : input.campaign ?? null,
       sent_by: input.sentBy ?? 'system',
       resend_message_id: result.emailId ?? null,
       status: result.status,
@@ -244,6 +263,18 @@ export async function sendTrackedEmail(input: TrackedEmailInput): Promise<Tracke
       ...(input.replyTo ? { replyTo: input.replyTo } : {}),
       subject: input.subject,
       ...(unsubHeaders ? { headers: unsubHeaders } : {}),
+      // Base64 is the only encoding Resend's JSON API takes for attachment
+      // content. A Buffer would serialize to `{"type":"Buffer","data":[...]}`
+      // and silently arrive as a corrupt file, so the conversion happens here
+      // rather than being left to each caller to remember.
+      ...(input.attachments?.length
+        ? {
+            attachments: input.attachments.map((a) => ({
+              filename: a.filename,
+              content: Buffer.from(a.content).toString('base64'),
+            })),
+          }
+        : {}),
       // Resend requires at least one of html/text; senders always pass one.
       ...(input.html !== undefined ? { html: input.html } : {}),
       ...(input.text !== undefined ? { text: input.text } : {}),

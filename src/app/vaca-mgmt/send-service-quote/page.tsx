@@ -13,7 +13,7 @@
  * catalog titles. Their service history ("last done Oct 2025") comes from
  * completions the checklist has been recording since launch.
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,6 +25,8 @@ import { scopeSummaryFrom } from '@/lib/homecare/serviceIntake';
 import { easternVisitInstant } from '@/lib/homecare/visitSchedule';
 
 interface Service { key: string; title: string; blurb: string; priority: number }
+/** Someone a visit dispatch can be sent to. Managed on /vaca-mgmt/crew. */
+interface CrewMember { id: string; name: string; email: string; active: boolean }
 interface PastRequest {
   id: string; createdAt: string; source: string | null; name: string; phone: string | null;
   address: string | null; city: string | null; zip: string | null;
@@ -67,6 +69,11 @@ export default function SendServiceQuotePage() {
   const [busy, setBusy] = useState<null | 'test' | 'send'>(null);
 
   const [address, setAddress] = useState('');
+  const [subName, setSubName] = useState('');
+  // Who the dispatch goes to. Loaded once and pre-ticked to everyone active,
+  // so the default behaviour of the screen is "the crew is told".
+  const [crew, setCrew] = useState<CrewMember[]>([]);
+  const [crewPicked, setCrewPicked] = useState<Set<string>>(new Set());
   const [date, setDate] = useState('');
   const [from, setFrom] = useState('08:00');
   const [to, setTo] = useState('11:00');
@@ -84,6 +91,32 @@ export default function SendServiceQuotePage() {
   // Kept apart from `intake`, because a walk-in has no homeowner record until
   // the booking creates one - and completing that visit still needs the id.
   const [homeownerId, setHomeownerId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/crew');
+        const data: { recipients?: CrewMember[] } = await res.json();
+        const active = (data.recipients ?? []).filter((r) => r.active);
+        if (cancelled) return;
+        setCrew(active);
+        setCrewPicked(new Set(active.map((r) => r.id)));
+      } catch {
+        // The picker is a convenience: with no list the schedule POST omits
+        // recipientIds entirely, and the server falls back to everyone active.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleCrew = (id: string) => {
+    setCrewPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const refreshBookings = useCallback(async () => {
     if (!email.trim()) return;
@@ -181,6 +214,12 @@ export default function SendServiceQuotePage() {
           start: startAt,
           end: easternVisitInstant(date, to).toISOString(),
           address,
+          // Only when the list actually loaded. Sending [] would be read as
+          // "no selection" and fall back to everyone active - which is right
+          // for a failed load, and wrong for a deliberate empty pick. The
+          // button is disabled in that second case, so it cannot arise.
+          ...(crew.length > 0 ? { recipientIds: [...crewPicked] } : {}),
+          ...(subName.trim() ? { subName: subName.trim() } : {}),
         }),
       });
       const data = await res.json();
@@ -188,14 +227,26 @@ export default function SendServiceQuotePage() {
       setScheduled({ icsUrl: data.icsUrl });
       setHomeownerId(data.homeownerId);
       await refreshBookings();
+      // Two independent outcomes, both reported. The booking succeeded either
+      // way; what the admin needs to know is which of the two people who were
+      // supposed to be told actually were.
+      const reminderLine = data.reminder === 'queued'
+        ? 'Reminder queued for 7:30pm the night before.'
+        : data.reminder === 'unavailable'
+          ? 'The reminder could NOT be queued - text the customer yourself.'
+          : 'Too late for the 7:30pm reminder - text the customer yourself.';
+      const dispatchLine = data.dispatch === 'sent'
+        ? ` Crew dispatched to ${data.dispatchedTo?.join(', ') || 'the crew'}.`
+        : data.dispatch === 'no_recipients'
+          ? ' NOBODY was dispatched - there are no active crew members. Add one on the Crew page.'
+          : data.dispatch === 'send_failed'
+            ? ' The crew dispatch FAILED to send - call them.'
+            : ' The crew dispatch could not be recorded - call them.';
+      const bad = data.reminder === 'unavailable' || data.dispatch !== 'sent';
       toast({
         title: 'Visit scheduled',
-        description: data.reminder === 'queued'
-          ? 'Reminder queued for 7:30pm the night before.'
-          : data.reminder === 'unavailable'
-            ? 'Booked, but the reminder could not be queued - text the customer yourself.'
-            : 'Booked. Too late for the 7:30pm reminder - text the customer yourself.',
-        variant: data.reminder === 'unavailable' ? 'destructive' : undefined,
+        description: reminderLine + dispatchLine,
+        variant: bad ? 'destructive' : undefined,
       });
     } catch (e) {
       toast({ title: 'Scheduling failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
@@ -408,7 +459,7 @@ export default function SendServiceQuotePage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">3. Schedule the visit</CardTitle>
-          <CardDescription>Queues the 7:30pm night-before reminder and gives you a calendar invite with confirm/text alarms.</CardDescription>
+          <CardDescription>Emails the crew with the calendar invite and a confirm link, queues the customer&apos;s 7:30pm night-before reminder, and gives you your own calendar invite.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
@@ -420,8 +471,62 @@ export default function SendServiceQuotePage() {
             <div><Label htmlFor="sq-from">From</Label><Input id="sq-from" type="time" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
             <div><Label htmlFor="sq-to">To</Label><Input id="sq-to" type="time" value={to} onChange={(e) => setTo(e.target.value)} /></div>
           </div>
+
+          <div className="md:col-span-2">
+            <Label htmlFor="sq-sub">Sub (optional)</Label>
+            <Input
+              id="sq-sub" value={subName} onChange={(e) => setSubName(e.target.value)}
+              placeholder="Ramirez Exteriors" data-testid="sq-sub"
+            />
+          </div>
+
+          {/*
+            Who gets told. Untouched means everyone active - a booking made
+            without opening this must still reach the crew, because a dispatch
+            nobody receives is the gap this whole feature closes.
+          */}
+          <div className="md:col-span-2" data-testid="sq-crew">
+            <Label>Dispatch to</Label>
+            {crew.length === 0 ? (
+              <p className="mt-1 text-xs text-text-muted">
+                No active crew members. Add them on the Crew page - without one, nobody is told about this visit.
+              </p>
+            ) : (
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                {crew.map((c) => {
+                  const on = crewPicked.has(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => toggleCrew(c.id)}
+                      data-testid={`sq-crew-${c.id}`}
+                      aria-pressed={on}
+                      className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                        on
+                          ? 'border-primary bg-primary/10 font-semibold text-primary'
+                          : 'border-border text-text-muted'
+                      }`}
+                    >
+                      {c.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {crew.length > 0 && crewPicked.size === 0 && (
+              <p className="mt-1.5 text-xs font-medium text-destructive" data-testid="sq-crew-none">
+                Nobody selected - nobody will be told to go. Pick at least one.
+              </p>
+            )}
+          </div>
+
           <div className="flex flex-wrap gap-2 md:col-span-2">
-            <Button onClick={schedule} disabled={scheduling || selected.size === 0 || !address.trim()} data-testid="sq-schedule">
+            <Button
+              onClick={schedule}
+              disabled={scheduling || selected.size === 0 || !address.trim() || (crew.length > 0 && crewPicked.size === 0)}
+              data-testid="sq-schedule"
+            >
               {scheduling ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CalendarPlus className="mr-1.5 h-4 w-4" /> Schedule visit</>}
             </Button>
             {scheduled && (

@@ -2,12 +2,14 @@
  * POST /api/admin/service-quote/schedule  - book a visit
  * GET  /api/admin/service-quote/schedule?... - download the owner's .ics
  *
- * Booking does four things:
+ * Booking does five things:
  *   1. upserts a lightweight homeowners record (pending + service_quote, so it
  *      can never receive marketing - see serviceScheduling.ts),
  *   2. writes the window onto each task as status='booked',
  *   3. cancels any stale reminder and queues the night-before one,
- *   4. returns the owner's .ics, alarms included.
+ *   4. dispatches the crew - the email with the calendar invite attached and a
+ *      per-person confirm link (see lib/homecare/dispatch.ts),
+ *   5. returns the owner's .ics, alarms included.
  *
  * Admin auth is enforced by middleware on /api/admin/*.
  */
@@ -18,6 +20,7 @@ import {
   crossSeasonBookings, requeueVisitReminder, cancelVisitReminder, type VisitTask,
 } from '@/lib/homecare/serviceScheduling';
 import { buildVisitReminderEmail } from '@/lib/homecare/serviceEmails';
+import { sendVisitDispatch, clearVisitDispatch, type SendDispatchResult } from '@/lib/homecare/dispatch';
 import { visitDateLabel, visitTimeWindow, easternParts } from '@/lib/homecare/visitSchedule';
 import { seasonForTaskVisit } from '@/lib/homecare/season';
 import { buildIcs } from '@/lib/homecare/ics';
@@ -39,7 +42,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Validation failed', issues: parsed.error.issues }, { status: 400 });
   }
-  const { email, name, phone, taskKeys, start, end, address, city, zip } = parsed.data;
+  const { email, name, phone, taskKeys, start, end, address, city, zip, recipientIds, subName } = parsed.data;
   const startAt = new Date(start);
   const endAt = new Date(end);
 
@@ -139,11 +142,37 @@ export async function POST(request: NextRequest) {
       email, name, start: startAt, subject, html, supersedes,
     });
 
+    // Tell the crew. Runs AFTER the booking is written and never throws: the
+    // booking is the customer's commitment and it already succeeded, so a
+    // dispatch that cannot go out is something the admin needs to be told
+    // about - not a reason to report a booking failed that in fact happened.
+    // Which is why the outcome is in the response and surfaced in the toast.
+    const dispatch = await sendVisitDispatch({
+      siteUrl: SITE_URL,
+      homeownerId: homeowner.id,
+      visitStart: startAt,
+      visitEnd: endAt,
+      customerName: name,
+      customerPhone: phone,
+      address,
+      services,
+      visitDateLabel: visitDateLabel(startAt),
+      timeWindow: visitTimeWindow(startAt, endAt),
+      subName,
+      recipientIds,
+    }).catch((err): SendDispatchResult => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('crew dispatch threw after a successful booking:', message);
+      return { outcome: 'unavailable', sentTo: [], error: message };
+    });
+
     return NextResponse.json({
       status: 'scheduled',
       homeownerId: homeowner.id,
       homeownerStatus: homeowner.status,
       services,
+      dispatch: dispatch.outcome,
+      dispatchedTo: dispatch.sentTo,
       // What each task was actually filed under. "Mark complete" needs this:
       // the season is per task and derived here, so the caller cannot guess it.
       seasons: Object.fromEntries(tasks.map((t) => [t.taskKey, t.season])),
@@ -243,7 +272,13 @@ export async function DELETE(request: NextRequest) {
     // a pending "we're coming tomorrow" for a visit that was called off, and
     // answering a flat "cancelled" is what hid it.
     const reminder = await cancelVisitReminder(owner.email, startAt);
-    return NextResponse.json({ status: 'cancelled', reminder });
+    // The dispatch record goes with the visit. It is keyed on (homeowner,
+    // window), so leaving it behind means re-booking that same window later
+    // inherits this visit's escalation stamps - and a `nudged_at` already set
+    // is what tells the 5pm stage it has nothing to do. The record of what was
+    // actually sent lives in email_log, which this does not touch.
+    const dispatch = await clearVisitDispatch(homeownerId, startAt);
+    return NextResponse.json({ status: 'cancelled', reminder, dispatch });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('service-quote cancel failed:', message);

@@ -70,6 +70,18 @@ export const scheduleSchema = z.object({
   address: z.string().trim().min(1, 'A service address is required for the calendar invite').max(300),
   city: z.string().trim().max(120).optional().or(z.literal('').transform(() => undefined)),
   zip: z.string().trim().max(20).optional().or(z.literal('').transform(() => undefined)),
+
+  /**
+   * Who the crew dispatch goes to.
+   *
+   * OMITTED means every active recipient, not none: a booking made without
+   * touching the picker must still reach the crew, because a dispatch nobody
+   * receives is the exact gap this closes. An empty array is treated the same
+   * way for the same reason - see `resolveRecipients`.
+   */
+  recipientIds: z.array(z.string().uuid()).max(20).optional(),
+  /** Free text, by design - the sub is named in the dispatch, not modelled. */
+  subName: z.string().trim().max(160).optional().or(z.literal('').transform(() => undefined)),
 }).refine((d) => new Date(d.end).getTime() > new Date(d.start).getTime(), {
   message: 'The end of the window must be after the start', path: ['end'],
 });

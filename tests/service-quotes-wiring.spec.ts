@@ -779,7 +779,10 @@ test('RM17: a cancel that could not be carried out is never reported as done', (
   expect(requeue.indexOf("=== 'unavailable') return 'unavailable'"))
     .toBeLessThan(requeue.indexOf("'follow_up_queue'"));
   // Both admin actions hand the verdict back, and the page says so plainly.
-  expect(scheduleRoute).toContain("NextResponse.json({ status: 'cancelled', reminder })");
+  // Asserted on the field rather than the whole literal: crew dispatch added a
+  // `dispatch` outcome alongside it, and what this guards is that the REMINDER
+  // verdict is returned rather than swallowed - not the shape of its neighbours.
+  expect(scheduleRoute).toMatch(/NextResponse\.json\(\{ status: 'cancelled',[^}]*\breminder\b/);
   expect(completeRoute).toContain("reminder: 'cancelled' | 'unavailable'");
   expect(adminPage).toContain("data.reminder === 'unavailable'");
   expect(adminPage).toContain('could NOT be pulled');
