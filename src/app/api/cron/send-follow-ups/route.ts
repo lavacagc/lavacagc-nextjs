@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { isActiveHomeCareSubscriber } from '@/lib/homecare/homeowners';
+import { sharedFollowUpQueue, withoutDedicatedSenders } from '@/lib/notify/cancelFollowUps';
 import { HC_PROMO_START, HC_PROMO_END } from '@/lib/emailTemplates';
 
 export const dynamic = 'force-dynamic';
@@ -72,10 +73,14 @@ export async function GET(request: NextRequest) {
 
     const supabase = createClient(SUPABASE_URL, secretKey);
 
-    // Query pending follow-ups that are due
-    const { data: pendingItems, error: queryError } = await supabase
-      .from('follow_up_queue')
-      .select('*')
+    // Query pending follow-ups that are due.
+    //
+    // Through `sharedFollowUpQueue`, which excludes the types with a dedicated
+    // cron: this drain runs at 09:00 UTC (~4am Eastern), which is fine for a
+    // nurture email nobody times and wrong for anything scheduled to land at a
+    // particular hour. Without that exclusion it picks up those rows too and
+    // sends a second copy.
+    const { data: pendingItems, error: queryError } = await sharedFollowUpQueue(supabase)
       .eq('status', 'pending')
       .lte('scheduled_at', new Date().toISOString())
       .order('scheduled_at', { ascending: true })
@@ -163,15 +168,20 @@ export async function GET(request: NextRequest) {
         if (sendResult.status === 'skipped' && sendResult.reason === 'unsubscribed') {
           // Recipient opted out of follow-ups — cancel this AND every other
           // still-pending item for the same email so we never email them again.
-          const { count, error: cancelMarkError } = await supabase
-            .from('follow_up_queue')
-            .update(
-              {
-                status: 'cancelled',
-                sent_at: new Date().toISOString(),
-              },
-              { count: 'exact' },
-            )
+          // Rows owned by a dedicated cron are left alone: opting out of the
+          // follow-ups stream must not silently drop the transactional
+          // "we're coming tomorrow" reminder for a visit they booked.
+          const { count, error: cancelMarkError } = await withoutDedicatedSenders(
+            supabase
+              .from('follow_up_queue')
+              .update(
+                {
+                  status: 'cancelled',
+                  sent_at: new Date().toISOString(),
+                },
+                { count: 'exact' },
+              ),
+          )
             .eq('lead_email', item.lead_email)
             .eq('status', 'pending');
           if (cancelMarkError) console.error(`Failed to cancel follow-ups for unsubscribed ${item.lead_email}:`, cancelMarkError);

@@ -235,6 +235,16 @@ test('rendered email: first Wave 1 edition looks right in a mail-width viewport'
   await page.route('**/__release-email-preview', (route) =>
     route.fulfill({ contentType: 'text/html', body: html }),
   );
+  // The brand logo is pinned to the production host by the shared email shell,
+  // on purpose: a mail client fetches it itself, so a staging origin would 404
+  // in the recipient's inbox. Production serves it with
+  // `cross-origin-resource-policy: same-origin`, so it cannot decode in a
+  // document on this origin - served from this checkout instead, which is what
+  // the recipient sees anyway. Same treatment as the newsletter capture in
+  // tests/home-care-wave1-growth.spec.ts.
+  await page.route('https://www.lavacagc.com/**', (route) =>
+    route.fulfill({ path: path.join(process.cwd(), 'public', new URL(route.request().url()).pathname) }),
+  );
   await page.goto('/__release-email-preview', { waitUntil: 'networkidle' });
   // Every feature screenshot must have decoded (naturalWidth > 0).
   const imgs = await page.$$eval('img', (els: HTMLImageElement[]) =>

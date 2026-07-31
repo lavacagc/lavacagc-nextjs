@@ -63,10 +63,16 @@ export default function FollowUpsPage() {
     [followUps, activeFilter],
   );
 
-  // Stop an entire drip for one person — only the clicked sequence (nurture vs
-  // review), only still-pending rows, via the shared type-scoped helper.
+  // Stop an entire drip for one person - only the clicked sequence, only
+  // still-pending rows, via the shared type-scoped helper.
   const handleStopDrip = async (drip: ActiveDrip) => {
-    if (!window.confirm(`Stop the ${sequenceLabel(drip.sequence).toLowerCase()} drip for ${drip.name}? This cancels ${drip.pendingCount} pending email${drip.pendingCount === 1 ? '' : 's'}.`)) return;
+    const n = `${drip.pendingCount} pending email${drip.pendingCount === 1 ? '' : 's'}`;
+    // Visit reminders are transactional, not marketing: stopping one means the
+    // customer is never told we are coming, so say that rather than "drip".
+    const warning = drip.sequence === 'visit'
+      ? `Stop ${sequenceLabel(drip.sequence).toLowerCase()} for ${drip.name}? This cancels ${n} - they will NOT be told we're coming. Cancel the visit itself if the job is off.`
+      : `Stop the ${sequenceLabel(drip.sequence).toLowerCase()} drip for ${drip.name}? This cancels ${n}.`;
+    if (!window.confirm(warning)) return;
     try {
       const stopped = await stopDrip(drip.email, drip.sequence);
       toast({

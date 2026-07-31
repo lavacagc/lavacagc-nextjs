@@ -8,6 +8,7 @@ import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie'
 import { findHomeownerById, updateHomeowner } from '@/lib/homecare/homeowners';
 import { currentSeason, seasonStart, SEASON_LABEL } from '@/lib/homecare/season';
 import { isRowCurrent } from '@/lib/homecare/selection';
+import { visitEndsAt } from '@/lib/homecare/visitSchedule';
 import {
   catalogCarriesStages,
   filterTasksForProfile,
@@ -19,10 +20,59 @@ import {
   type Stage,
 } from '@/lib/homecare/profile';
 import HomeCareChecklistClient, { type ChecklistTask } from '@/components/homecare/HomeCareChecklistClient';
+import UpcomingVisitCard, { type UpcomingVisit } from '@/components/homecare/UpcomingVisitCard';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { CheckCircle2, ChevronDown, Phone, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
+
+interface MaintenanceRow {
+  task_key: string;
+  season: string;
+  status: string;
+  completed_at: string | null;
+  updated_at: string | null;
+  completed_by: string | null;
+  scheduled_start: string | null;
+  scheduled_end: string | null;
+  service_address: string | null;
+}
+
+/** Columns that only exist once 20260815000000 has been applied. */
+const SERVICE_COLUMNS = 'completed_by,scheduled_start,scheduled_end,service_address';
+const MAINTENANCE_BASE = 'task_key,season,status,completed_at,updated_at';
+
+/**
+ * The member's maintenance rows, degrading to the pre-migration column set.
+ *
+ * This query is unconditional on a page every member loads, and PostgREST
+ * answers an unknown column with a 400 that supabaseRest turns into a throw -
+ * so on an environment where the migration has not been hand-applied yet (a
+ * Supabase Preview branch, say) the whole portal would 500. Retrying narrow
+ * costs one extra round trip only in that case: the member keeps their
+ * checklist, and just loses the completion label and the visit card until the
+ * columns exist. A transient failure still throws, because the retry fails too.
+ */
+async function fetchMaintenanceRows(homeownerId: string): Promise<MaintenanceRow[]> {
+  // No status filter. A booked row's status is shared with the member's own
+  // checkbox, so a task they ticked or unticked reads 'done'/'todo' while its
+  // visit is still coming - a status list would drop the row and the visit card
+  // with it. One member's rows are bounded by (tasks x seasons); the reader
+  // below splits them by status anyway.
+  const filter = `&homeowner_id=eq.${homeownerId}`;
+  try {
+    return (await supabaseRest<MaintenanceRow[]>(
+      'GET', `homeowner_maintenance?select=${MAINTENANCE_BASE},${SERVICE_COLUMNS}${filter}`,
+    )) ?? [];
+  } catch {
+    const rows = (await supabaseRest<Omit<MaintenanceRow, 'completed_by' | 'scheduled_start' | 'scheduled_end' | 'service_address'>[]>(
+      'GET', `homeowner_maintenance?select=${MAINTENANCE_BASE}${filter}`,
+    )) ?? [];
+    return rows.map((r) => ({
+      ...r, completed_by: null, scheduled_start: null, scheduled_end: null, service_address: null,
+    }));
+  }
+}
 
 interface CatalogRow extends ChecklistTask {
   applies_to: string[];
@@ -48,11 +98,15 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
 
   updateHomeowner(homeowner.id, { last_seen_at: new Date().toISOString() }).catch(() => {});
 
+  // Captured once per request. This is a server component rendered fresh on
+  // every load (force-dynamic), so there is no memoised-render concern.
+  // eslint-disable-next-line react-hooks/purity
+  const nowMs = Date.now();
   const season = currentSeason();
   const [allTasks, profileRows, doneRows] = await Promise.all([
     supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title,blurb,applies_to,stages,seasons,frequency,starter,diy_or_pro,bookable,est_cost_low,est_cost_high,priority&active=eq.true&order=priority.desc`),
     supabaseRest<{ systems: HomeSystems; stage: Stage | null; homeowner_type: string | null }[]>('GET', `home_profiles?select=systems,stage,homeowner_type&homeowner_id=eq.${homeowner.id}&limit=1`),
-    supabaseRest<{ task_key: string; season: string; status: string; completed_at: string | null; updated_at: string | null }[]>('GET', `homeowner_maintenance?select=task_key,season,status,completed_at,updated_at&homeowner_id=eq.${homeowner.id}&status=in.(done,dismissed)`),
+    fetchMaintenanceRows(homeowner.id),
   ]);
 
   // Same exposure as the newsletter cron, so the same guard: the select above
@@ -74,6 +128,50 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
     .filter((r) => r.status === 'done' && isRowCurrent(r))
     .map(({ task_key, season }) => ({ task_key, season }));
   const dismissedKeys = (doneRows ?? []).filter((r) => r.status === 'dismissed').map((r) => r.task_key);
+  // Work La Vaca performed gets a label; a task the member ticked themselves
+  // does not - which is the whole point of completed_by.
+  //
+  // Keyed per (task, season) exactly like doneItems, and filtered through the
+  // same isRowCurrent reset. Keyed on task_key alone the label leaked: a gutter
+  // clean La Vaca did in fall would credit itself on the spring row the member
+  // ticked, and come back next fall on a re-tick carrying last year's date.
+  const lavacaCompleted: Record<string, string> = {};
+  for (const r of doneRows ?? []) {
+    const ourWork = r.status === 'done' && r.completed_by === 'lavaca' && !!r.completed_at && isRowCurrent(r);
+    if (!ourWork) continue;
+    const key = `${r.task_key}|${r.season}`;
+    const previous = lavacaCompleted[key];
+    if (!previous || Date.parse(r.completed_at) > Date.parse(previous)) lavacaCompleted[key] = r.completed_at;
+  }
+  // The next booked visit, if any. Several tasks can share one window, so they
+  // collapse into a single card listing every service.
+  //
+  // A visit is a row with a WINDOW, not one whose status reads 'booked': a
+  // member who ticks a booked task to acknowledge it writes 'done' onto that
+  // same row, and the visit must not vanish from the page because they did.
+  // Cancelling and completing both clear the window.
+  //
+  // A visit stays on the page until its window ENDS, not until it opens. 8am on
+  // the day of an 8-11am visit is exactly when a member opens the portal to
+  // check the address and the time; filtered on the start, the card vanished
+  // while the crew was pulling up.
+  const bookedRows = (doneRows ?? []).filter((r) => r.scheduled_start && r.status !== 'dismissed');
+  const liveRows = bookedRows.filter((r) => visitEndsAt(r.scheduled_start as string, r.scheduled_end) > nowMs);
+  const nextStart = liveRows
+    .map((r) => r.scheduled_start as string)
+    .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
+  const upcomingVisit: UpcomingVisit | null = nextStart
+    ? (() => {
+        const rows = liveRows.filter((r) => r.scheduled_start === nextStart);
+        const titleFor = (k: string) => (allTasks ?? []).find((t) => t.key === k)?.title ?? k;
+        return {
+          start: nextStart,
+          end: rows[0].scheduled_end,
+          address: rows[0].service_address,
+          services: rows.map((r) => titleFor(r.task_key)),
+        };
+      })()
+    : null;
   const autoAddKey = addKey && tasks.some((t) => t.key === addKey && t.bookable && !t.starter && !dismissedKeys.includes(addKey)) ? addKey : undefined;
   const ownedSystems = SYSTEM_QUESTIONS.filter((q) => systems?.[q.key] === true);
   const greeting = homeowner.first_name ? `Welcome back, ${homeowner.first_name}` : 'Your home checklist';
@@ -148,10 +246,13 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
                 <Link href="/home-care/setup" className="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-primary to-accent-tangerine px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-button hover:-translate-y-px transition-all">Set up my program →</Link>
               </div>
             )}
+            {/* A booked visit shows even when the task list is empty - it is
+                the most time-sensitive thing on the page. */}
+            {upcomingVisit && <UpcomingVisitCard visit={upcomingVisit} />}
             {(tasks?.length ?? 0) === 0 ? (
               <p className="text-text-secondary">Your checklist is being prepared — check back soon.</p>
             ) : (
-              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} dismissedKeys={dismissedKeys} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} autoAddKey={autoAddKey} />
+              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} dismissedKeys={dismissedKeys} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} autoAddKey={autoAddKey} lavacaCompleted={lavacaCompleted} />
             )}
           </div>
         </section>

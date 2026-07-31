@@ -2,7 +2,12 @@
   "redirects": [
     {
       "source": "/:path(.*)",
-      "has": [{ "type": "host", "value": "lavacagc.com" }],
+      "has": [
+        {
+          "type": "host",
+          "value": "lavacagc.com"
+        }
+      ],
       "destination": "https://www.lavacagc.com/:path",
       "permanent": true
     }
@@ -47,6 +52,10 @@
     {
       "path": "/api/cron/seo-maintain",
       "schedule": "0 8 2 * *"
+    },
+    {
+      "path": "/api/cron/visit-reminders",
+      "schedule": "30 23 * * *"
     }
   ]
 }

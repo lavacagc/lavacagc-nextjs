@@ -16,10 +16,13 @@
  * so a literal `*`, `%`, `_`, or `\` in the address can never over-match.
  *
  * `follow_up_queue` is shared: it also holds post-job review-request emails
- * (`feedback_day0`/`feedback_day3`/`feedback_day7`) for the same address. We
- * therefore scope the cancel to the lead-nurture drip types only
- * (`instant_ack`/`24h`/`48h`/`7d`) so converting an estimate lead never silently
- * kills a repeat customer's pending review solicitations.
+ * (`feedback_day0`/`feedback_day3`/`feedback_day7`) and night-before service-visit
+ * reminders (`visit_reminder_1d`) for the same address. We therefore scope the
+ * cancel to the lead-nurture drip types only (`instant_ack`/`24h`/`48h`/`7d`) so
+ * converting an estimate lead never silently kills a repeat customer's pending
+ * review solicitations, or the transactional "we're coming tomorrow" for a visit
+ * they booked. Every sequence and the types it owns live in ONE registry below,
+ * `FOLLOW_UP_SEQUENCE_TYPES`.
  *
  * Takes any Supabase-like client so it works from the admin browser client today
  * and is unit-testable with a stub.
@@ -32,16 +35,94 @@ export const LEAD_NURTURE_FOLLOW_UP_TYPES = ['instant_ack', '24h', '48h', '7d'] 
 /** Post-job review-request types created by feedback/create, sharing the queue. */
 export const REVIEW_REQUEST_FOLLOW_UP_TYPES = ['feedback_day0', 'feedback_day3', 'feedback_day7'] as const;
 
+/** Night-before service-visit reminders, queued by the service-quote scheduler. */
+export const VISIT_REMINDER_FOLLOW_UP_TYPES = ['visit_reminder_1d'] as const;
+
 /**
- * The sibling sequence a given follow_up_type belongs to. Used so a "stop this
- * person's follow-ups" action cancels the SAME sequence the row is part of
- * (nurture vs review request) instead of blindly cancelling everything for the
- * email. Unknown types fall back to the nurture set.
+ * Types that live in `follow_up_queue` but are delivered by their OWN cron, not
+ * by a shared drain.
+ *
+ * A drain has no type filter of its own, so anything listed here MUST be
+ * excluded from it or the recipient gets the email twice - once from its
+ * dedicated sender at the right hour, once from the shared cron at 09:00 UTC.
+ * Their rows still belong in the queue: they are the send-once ledger their
+ * dedicated cron claims against.
+ *
+ * A fourth sequence with its own sender adds itself here rather than
+ * rediscovering the duplicate the hard way.
  */
-export function followUpSequenceTypes(followUpType: string): readonly string[] {
-  return (REVIEW_REQUEST_FOLLOW_UP_TYPES as readonly string[]).includes(followUpType)
-    ? REVIEW_REQUEST_FOLLOW_UP_TYPES
-    : LEAD_NURTURE_FOLLOW_UP_TYPES;
+export const DEDICATED_SENDER_FOLLOW_UP_TYPES = [...VISIT_REMINDER_FOLLOW_UP_TYPES] as const;
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+/**
+ * Hide the dedicated-sender rows from a `follow_up_queue` query.
+ *
+ * Composes onto any supabase-js builder - a select that reads rows to deliver,
+ * or an update that closes them out - so the exclusion is one call rather than a
+ * filter each site has to remember to spell correctly.
+ */
+export function withoutDedicatedSenders<Q>(query: Q): Q {
+  return (query as any).not('follow_up_type', 'in', `(${DEDICATED_SENDER_FOLLOW_UP_TYPES.join(',')})`);
+}
+
+/**
+ * The ONE way a generic drain may read `follow_up_queue`.
+ *
+ * There are two of them - the 09:00 UTC cron and the admin "process follow-ups"
+ * route - and the registry above only protected the first, so a visit reminder
+ * could still be picked up and closed (or sent) by the other. Neither the
+ * duplicate send nor the swallowed ledger row is visible from the drain's own
+ * code, which is exactly why the exclusion belongs in the query builder rather
+ * than in a constant each drain remembers to apply.
+ *
+ * A drain that reaches for `.from('follow_up_queue').select(...)` directly is
+ * the bug; a test asserts neither of them does.
+ */
+export function sharedFollowUpQueue(client: any, columns = '*'): any {
+  return withoutDedicatedSenders(client.from('follow_up_queue').select(columns));
+}
+
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+/**
+ * Every sequence sharing `follow_up_queue`, and the types each one owns.
+ *
+ * ONE mapping, read in both directions: the admin drip list inverts it to label
+ * a row's sequence, and "stop this person's drip" reads it forward to scope the
+ * cancel. Spelled out per call site instead, a sequence the newest one did not
+ * know about fell through to 'nurture' - so a pending visit reminder showed up
+ * as a lead drip whose Stop button cancelled nurture types and left it standing
+ * forever.
+ *
+ * A fourth sequence adds itself HERE and both directions follow.
+ *
+ * A Map, not an object literal, because a caller-supplied name is looked up in
+ * it. `{}['constructor']` resolves off `Object.prototype` and comes back
+ * truthy, so an object literal answers "yes, that is a sequence" for
+ * 'constructor', 'toString' and '__proto__' and the unknown-name guard below
+ * hands `Object` itself to the query builder. A Map has no inherited keys.
+ */
+export const FOLLOW_UP_SEQUENCE_TYPES: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
+  ['nurture', LEAD_NURTURE_FOLLOW_UP_TYPES],
+  ['review', REVIEW_REQUEST_FOLLOW_UP_TYPES],
+  ['visit', VISIT_REMINDER_FOLLOW_UP_TYPES],
+]);
+
+/** The types a named sequence owns, or null if the name is not a sequence. */
+export function followUpTypesForSequence(sequence: string): readonly string[] | null {
+  return FOLLOW_UP_SEQUENCE_TYPES.get(sequence) ?? null;
+}
+
+/**
+ * The sequence a given follow_up_type belongs to. Unknown types fall back to
+ * 'nurture', which is what the queue held before it was shared.
+ */
+export function followUpSequenceOf(followUpType: string): string {
+  for (const [sequence, types] of FOLLOW_UP_SEQUENCE_TYPES) {
+    if (types.includes(followUpType)) return sequence;
+  }
+  return 'nurture';
 }
 
 /** Escape Postgres LIKE/ILIKE wildcards so a value matches literally. */

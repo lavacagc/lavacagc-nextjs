@@ -6,6 +6,7 @@ import { createHmac } from 'crypto';
 import { currentSeason, nextSeason, seasonStart, SEASON_LABEL } from '@/lib/homecare/season';
 import { buildNewsletter, homeCareHeroUrl, type NewsletterTask } from '@/lib/homecare/newsletter';
 import { catalogCarriesStages } from '@/lib/homecare/profile';
+import { buildWelcomeEmail } from '@/lib/homecare/lifecycleEmails';
 
 const root = process.cwd();
 const read = (rel: string) => readFileSync(join(root, rel), 'utf8');
@@ -279,9 +280,17 @@ test('the newsletter hero is pinned to the production host, like the logo above 
 });
 
 test('welcome email carries the forward-to-a-friend line with email UTM tags', () => {
-  const src = read('src/lib/notify/sendHomeCareEmails.ts');
-  expect(src).toContain('utm_source=member_share&utm_medium=email&utm_campaign=home_care_share');
-  expect(src).toContain("Know someone who'd want this? They can get their own free plan: https://www.lavacagc.com/home-care");
+  // Asserted against the BUILT email rather than the source string: the builder
+  // moved to lib/homecare/lifecycleEmails when the Home Care emails were put on
+  // one shared shell, and the rendered output is what actually has to be right.
+  const n = buildWelcomeEmail({
+    firstName: 'Dana',
+    checklistUrl: 'https://www.lavacagc.com/home-care/checklist',
+    unsubscribeUrl: 'https://www.lavacagc.com/u?token=abc',
+  });
+  expect(n.html).toContain('utm_source=member_share&utm_medium=email&utm_campaign=home_care_share');
+  expect(n.text).toContain("Know someone who'd want this? They can get their own free plan: https://www.lavacagc.com/home-care");
+  expect(n.html).not.toMatch(/\p{Extended_Pictographic}/u);
 });
 
 test('wave-1 portal UI uses lucide icons only — no emoji', () => {

@@ -30,6 +30,9 @@ const FeedbackPage = dynamic(() => import('@/app/vaca-mgmt/feedback/page'), { ss
 // routes at /vaca-mgmt/send-estimate{,/log} continue to work for direct links.
 const SendEstimatePage = dynamic(() => import('@/app/vaca-mgmt/send-estimate/page'), { ssr: false });
 const EstimateLogPage = dynamic(() => import('@/app/vaca-mgmt/send-estimate/log/page'), { ssr: false });
+// Send-service-quote is the one-visit sibling of send-estimate and sits beside
+// it, so the owner finds it without knowing the URL.
+const SendServiceQuotePage = dynamic(() => import('@/app/vaca-mgmt/send-service-quote/page'), { ssr: false });
 const EmailsLogPage = dynamic(() => import('@/app/vaca-mgmt/emails/page'), { ssr: false });
 const PreferencesAdminPage = dynamic(() => import('@/app/vaca-mgmt/preferences/page'), { ssr: false });
 const ReleasesAdminPage = dynamic(() => import('@/app/vaca-mgmt/releases/page'), { ssr: false });
@@ -272,6 +275,10 @@ export default function AdminContent() {
 
           <TabsContent value="send-estimate">
             <SendEstimatePage />
+          </TabsContent>
+
+          <TabsContent value="send-service-quote">
+            <SendServiceQuotePage />
           </TabsContent>
 
           <TabsContent value="estimate-log">

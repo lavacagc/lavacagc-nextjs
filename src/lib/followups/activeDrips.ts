@@ -3,13 +3,12 @@
  * entry per (person, sequence) that still has a pending email. Pure + testable —
  * the Follow-Ups admin passes fetched rows, tests pass fixtures.
  *
- * `follow_up_queue` is shared between the lead-nurture drip and post-job review
- * requests (see cancelFollowUps.ts), so each person can appear on up to two
- * distinct drips; we keep them separate so stopping one never touches the other.
+ * `follow_up_queue` is shared between the lead-nurture drip, post-job review
+ * requests and night-before visit reminders (see cancelFollowUps.ts), so each
+ * person can appear on several distinct drips; we keep them separate so stopping
+ * one never touches the other.
  */
-import {
-  REVIEW_REQUEST_FOLLOW_UP_TYPES,
-} from '@/lib/notify/cancelFollowUps';
+import { followUpSequenceOf } from '@/lib/notify/cancelFollowUps';
 
 export interface FollowUpRow {
   id: string;
@@ -20,7 +19,7 @@ export interface FollowUpRow {
   status: string;
 }
 
-export type DripSequence = 'nurture' | 'review';
+export type DripSequence = 'nurture' | 'review' | 'visit';
 
 export interface ActiveDrip {
   key: string; // `${email}|${sequence}` — stable list key
@@ -32,10 +31,14 @@ export interface ActiveDrip {
   pendingCount: number;
 }
 
-const REVIEW = new Set<string>(REVIEW_REQUEST_FOLLOW_UP_TYPES);
-
+/**
+ * Which sequence a queued email belongs to, read off the shared registry rather
+ * than a local guess. Falling back to 'nurture' for anything unrecognised is
+ * what put a visit reminder in the lead-drip bucket, where the Stop button
+ * cancels nurture types and can never reach it.
+ */
 export function sequenceOf(followUpType: string): DripSequence {
-  return REVIEW.has(followUpType) ? 'review' : 'nurture';
+  return followUpSequenceOf(followUpType) as DripSequence;
 }
 
 /** Group PENDING rows into per-person, per-sequence drips, soonest-next first. */
@@ -75,14 +78,21 @@ const TYPE_LABELS: Record<string, string> = {
   feedback_day0: 'Review ask · day 0',
   feedback_day3: 'Review ask · day 3',
   feedback_day7: 'Review ask · day 7',
+  visit_reminder_1d: 'Visit reminder · night before',
 };
 
 export function followUpTypeLabel(type: string): string {
   return TYPE_LABELS[type] || type;
 }
 
+const SEQUENCE_LABELS: Record<DripSequence, string> = {
+  nurture: 'Lead nurture',
+  review: 'Review requests',
+  visit: 'Visit reminders',
+};
+
 export function sequenceLabel(seq: DripSequence): string {
-  return seq === 'review' ? 'Review requests' : 'Lead nurture';
+  return SEQUENCE_LABELS[seq] ?? SEQUENCE_LABELS.nurture;
 }
 
 /** Human "when" for a scheduled time, relative to `nowMs`. Pure for testing. */

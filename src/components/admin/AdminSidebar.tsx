@@ -87,6 +87,7 @@ const NAVIGATION: NavItem[] = [
       { id: 'subscribers', icon: Users, label: 'Subscribers' },
       { id: 'follow-ups', icon: Mail, label: 'Follow-Ups' },
       { id: 'send-estimate', icon: Send, label: 'Send Estimate' },
+      { id: 'send-service-quote', icon: Wrench, label: 'Send Service Quote' },
       { id: 'estimate-log', icon: History, label: 'Estimate Log' },
       { id: 'emails', icon: Mail, label: 'Email Tracking' },
       { id: 'preferences', icon: Users, label: 'Subscriptions' },

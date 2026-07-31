@@ -9,9 +9,17 @@ import { Button } from '@/components/ui/button';
 import { MailX } from 'lucide-react';
 import { sequenceLabel, followUpTypeLabel, whenRelative, type ActiveDrip } from '@/lib/followups/activeDrips';
 
+/** One colour per sequence: sharing purple with the nurture drip is how a
+ *  transactional visit reminder read as marketing at a glance. */
+const SEQ_PILL: Record<ActiveDrip['sequence'], string> = {
+  nurture: 'bg-purple-100 text-purple-800',
+  review: 'bg-sky-100 text-sky-800',
+  visit: 'bg-amber-100 text-amber-900',
+};
+
 function SeqPill({ seq }: { seq: ActiveDrip['sequence'] }) {
   return (
-    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${seq === 'review' ? 'bg-sky-100 text-sky-800' : 'bg-purple-100 text-purple-800'}`}>
+    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${SEQ_PILL[seq] ?? SEQ_PILL.nurture}`}>
       {sequenceLabel(seq)}
     </span>
   );

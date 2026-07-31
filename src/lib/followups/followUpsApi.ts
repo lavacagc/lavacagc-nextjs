@@ -4,7 +4,7 @@
  * not the logged-in authenticated role), so all access goes through the server
  * route, which uses the secret key. Keeps the admin UI honest about failures.
  */
-import type { FollowUpRow } from '@/lib/followups/activeDrips';
+import type { DripSequence, FollowUpRow } from '@/lib/followups/activeDrips';
 
 export interface FollowUpQueueRow extends FollowUpRow {
   sent_at: string | null;
@@ -21,7 +21,7 @@ export async function fetchFollowUpQueue(): Promise<FollowUpQueueRow[]> {
 }
 
 /** Stop a person's drip for one sequence; returns the number cancelled. */
-export async function stopDrip(email: string, sequence: 'nurture' | 'review'): Promise<number> {
+export async function stopDrip(email: string, sequence: DripSequence): Promise<number> {
   const res = await fetch('/api/admin/follow-ups', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -2,9 +2,12 @@ import { test, expect } from '@playwright/test';
 import {
   buildActiveDrips,
   sequenceOf,
+  sequenceLabel,
+  followUpTypeLabel,
   whenRelative,
   type FollowUpRow,
 } from '../src/lib/followups/activeDrips';
+import { followUpTypesForSequence, VISIT_REMINDER_FOLLOW_UP_TYPES } from '../src/lib/notify/cancelFollowUps';
 
 /**
  * Unit tests for the person-centric "active drips" view. Pure logic — no
@@ -108,6 +111,35 @@ test.describe('sequenceOf', () => {
     expect(sequenceOf('48h')).toBe('nurture');
     expect(sequenceOf('7d')).toBe('nurture');
     expect(sequenceOf('something_new')).toBe('nurture');
+  });
+
+  /**
+   * RM16. A visit reminder is transactional, not a drip, and falling through to
+   * 'nurture' put it in a bucket whose Stop button cancels nurture types: the
+   * page reported "Nothing left to stop" and the row stayed listed forever.
+   */
+  test('RM16: visit reminders are their own sequence, with a Stop that reaches them', () => {
+    for (const type of VISIT_REMINDER_FOLLOW_UP_TYPES) {
+      expect(sequenceOf(type)).toBe('visit');
+      // Labelled, so an admin is not reading a "we're coming tomorrow" as a lead
+      // drip, and not left with the raw column value either.
+      expect(followUpTypeLabel(type)).not.toBe(type);
+      // And the Stop path resolves to the types that row actually belongs to.
+      expect(followUpTypesForSequence(sequenceOf(type))).toContain(type);
+    }
+    expect(sequenceLabel('visit')).toBe('Visit reminders');
+    // An unknown sequence name is refused rather than silently meaning nurture.
+    expect(followUpTypesForSequence('made_up')).toBe(null);
+  });
+
+  test('RM16: a reminder and a nurture drip for one person stay separate', () => {
+    const drips = buildActiveDrips([
+      row({ id: '1', lead_email: 'both@example.com', follow_up_type: '24h', scheduled_at: '2026-03-02T00:00:00.000Z' }),
+      row({ id: '2', lead_email: 'both@example.com', follow_up_type: 'visit_reminder_1d', scheduled_at: '2026-03-01T00:00:00.000Z' }),
+    ]);
+    expect(drips.map((d) => d.sequence)).toEqual(['visit', 'nurture']);
+    // Each counts only its own rows, so the confirm dialog does not overstate.
+    expect(drips.map((d) => d.pendingCount)).toEqual([1, 1]);
   });
 });
 

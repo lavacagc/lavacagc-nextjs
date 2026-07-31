@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import {
   cancelPendingFollowUps,
-  LEAD_NURTURE_FOLLOW_UP_TYPES,
-  REVIEW_REQUEST_FOLLOW_UP_TYPES,
+  followUpTypesForSequence,
+  DEDICATED_SENDER_FOLLOW_UP_TYPES,
 } from '@/lib/notify/cancelFollowUps';
 
 export const dynamic = 'force-dynamic';
@@ -54,12 +54,20 @@ export async function POST(request: NextRequest) {
   const action = body.action as string | undefined;
 
   try {
-    // Stop a person's drip: cancel pending rows for one sequence (nurture|review).
+    // Stop a person's drip: cancel pending rows for one sequence.
+    //
+    // The sequence is resolved through the shared registry rather than a local
+    // `=== 'review' ? ... : nurture` ternary. Spelled that way, every sequence
+    // it did not name collapsed to the nurture types, so the Stop button on a
+    // visit-reminder drip cancelled nothing and reported "Nothing left to stop"
+    // while the drip stayed in the list. An unknown name is now refused instead
+    // of quietly cancelling somebody's nurture drip.
     if (action === 'stop') {
       const email = (body.email as string | undefined)?.trim();
-      const sequence = body.sequence === 'review' ? 'review' : 'nurture';
       if (!email) return NextResponse.json({ error: 'Email required' }, { status: 400 });
-      const types = sequence === 'review' ? REVIEW_REQUEST_FOLLOW_UP_TYPES : LEAD_NURTURE_FOLLOW_UP_TYPES;
+      const sequence = typeof body.sequence === 'string' ? body.sequence : 'nurture';
+      const types = followUpTypesForSequence(sequence);
+      if (!types) return NextResponse.json({ error: `Unknown sequence: ${sequence}` }, { status: 400 });
       const stopped = await cancelPendingFollowUps(supabase, email, types);
       return NextResponse.json({ stopped });
     }
@@ -74,7 +82,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Re-queue an email to send now.
+    //
+    // Not for a type with its own sender: those rows are the send-once ledger
+    // their cron claims against, and each carries columns this generic insert
+    // knows nothing about (a reminder needs `visit_start` to be found at all).
+    // A copy without them is a row no cron will ever pick up - pending forever,
+    // and back on this page tomorrow.
     if (action === 'resend') {
+      const type = String(body.follow_up_type ?? '');
+      if ((DEDICATED_SENDER_FOLLOW_UP_TYPES as readonly string[]).includes(type)) {
+        return NextResponse.json(
+          { error: `${type} is sent by its own cron and cannot be re-queued here - re-book the visit instead` },
+          { status: 400 },
+        );
+      }
       const { error } = await supabase.from('follow_up_queue').insert({
         lead_email: body.lead_email,
         lead_name: body.lead_name,

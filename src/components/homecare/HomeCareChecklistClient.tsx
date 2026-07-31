@@ -103,6 +103,7 @@ export default function HomeCareChecklistClient({
   currentSeason,
   showCatchUp = false,
   autoAddKey,
+  lavacaCompleted: lavacaCompletedFromServer,
 }: {
   tasks: ChecklistTask[];
   doneItems: { task_key: string; season: string }[];
@@ -111,7 +112,20 @@ export default function HomeCareChecklistClient({
   currentSeason: string;
   showCatchUp?: boolean;
   autoAddKey?: string;
+  /**
+   * `task_key|season` -> ISO date, for work LA VACA performed. Keyed per season
+   * like `done` is, so a completion never labels the same task in another
+   * season. A task the member ticked themselves is absent here and renders no
+   * label - that distinction is the whole point of completed_by.
+   */
+  lavacaCompleted?: Record<string, string>;
 }) {
+  // Local, because re-ticking a task moves the attribution to the member and
+  // the server has already agreed: /api/home-care/task writes
+  // completed_by='homeowner'. Left as a plain prop, the open tab would keep
+  // reading "Completed by La Vaca" over work the member just did themselves -
+  // which is the exact case the attribution exists to distinguish.
+  const [lavacaCompleted, setLavacaCompleted] = useState<Record<string, string>>(lavacaCompletedFromServer ?? {});
   const [done, setDone] = useState<Set<string>>(new Set(doneItems.map((d) => id(d.task_key, d.season))));
   const [dismissed, setDismissed] = useState<Set<string>>(new Set(dismissedKeys));
   const [selected, setSelected] = useState<Set<string>>(() => new Set(autoAddKey ? [autoAddKey] : []));
@@ -294,6 +308,16 @@ export default function HomeCareChecklistClient({
       else next.delete(k);
       return next;
     });
+    // The write reassigns the row to the member, so its La Vaca attribution
+    // goes with it - kept here so it can be put back if the write fails.
+    const heldAttribution = lavacaCompleted[k];
+    if (heldAttribution) {
+      setLavacaCompleted((prev) => {
+        const next = { ...prev };
+        delete next[k];
+        return next;
+      });
+    }
     setBusy(k);
     try {
       const res = await fetch('/api/home-care/task', {
@@ -310,6 +334,7 @@ export default function HomeCareChecklistClient({
         else revert.add(k);
         return revert;
       });
+      if (heldAttribution) setLavacaCompleted((prev) => ({ ...prev, [k]: heldAttribution }));
     } finally {
       setBusy(null);
     }
@@ -389,6 +414,19 @@ export default function HomeCareChecklistClient({
             </button>
           )}
         </div>
+        {/* Attribution sits on its own line under the title, not wedged into
+            the badge row between the title and PRO/DIY. The timezone is pinned
+            because this component is server-rendered too: without it the server
+            formats in UTC and the browser in the member's zone, so a late-evening
+            completion renders a different day on each and hydration mismatches. */}
+        {isDone && lavacaCompleted?.[id(t.key, season)] && (
+          <div className="mt-1 text-xs font-bold text-primary" data-testid="completed-by-lavaca">
+            Completed by La Vaca &middot;{' '}
+            {new Date(lavacaCompleted[id(t.key, season)]).toLocaleDateString('en-US', {
+              day: 'numeric', month: 'short', year: 'numeric', timeZone: 'America/New_York',
+            })}
+          </div>
+        )}
         {/* Description + actions run the full card width below the title line */}
         <ClampedBlurb text={t.blurb} expanded={expandedBlurbs.has(id(t.key, season))} onToggle={() => toggleBlurb(id(t.key, season))} />
         <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">

@@ -20,6 +20,44 @@ export function currentSeason(date: Date = new Date()): Season {
   return SEASONS.find((s) => (m - SEASON_START_MONTH[s] + 12) % 12 < 3) ?? 'winter';
 }
 
+/**
+ * The season a visit for this task should be FILED under, or null when the
+ * task's catalog row names no real season.
+ *
+ * `homeowner_maintenance` is keyed on (homeowner, task, season) and the portal
+ * renders a task only in the seasons its catalog row lists, so the visit's own
+ * season is not always somewhere the row can be SEEN. Gutters are
+ * `['fall','spring']` and a furnace tune-up is `['fall']`, but both get booked
+ * in July, which is 'summer'. Filed there the row matches no tab - no booked
+ * state, no completion label - and because suppression is per season too, the
+ * September newsletter still lists work La Vaca did in August as outstanding.
+ *
+ * So: the visit's own season wins whenever the task applies to it, and
+ * otherwise the nearest season the task DOES apply to, preferring the upcoming
+ * one on a tie. A gutter clean booked in July is fall prep; an A/C tune-up
+ * booked in June belongs to the spring row that is still current.
+ */
+export function seasonForTaskVisit(visitDate: Date, taskSeasons: readonly string[]): Season | null {
+  const applicable = SEASONS.filter((s) => taskSeasons.includes(s));
+  if (applicable.length === 0) return null;
+  const visit = currentSeason(visitDate);
+  if (applicable.includes(visit)) return visit;
+
+  const from = SEASONS.indexOf(visit);
+  // [distance, 0 if upcoming / 1 if past] - lowest wins, so a season one step
+  // ahead beats one step behind, and both beat the season two steps away.
+  const rank = (s: Season): [number, number] => {
+    const ahead = (SEASONS.indexOf(s) - from + SEASONS.length) % SEASONS.length;
+    const behind = SEASONS.length - ahead;
+    return [Math.min(ahead, behind), ahead <= behind ? 0 : 1];
+  };
+  return applicable.reduce((best, s) => {
+    const [d, dir] = rank(s);
+    const [bd, bdir] = rank(best);
+    return d < bd || (d === bd && dir < bdir) ? s : best;
+  });
+}
+
 export const SEASON_LABEL: Record<Season, string> = {
   spring: 'Spring',
   summer: 'Summer',
