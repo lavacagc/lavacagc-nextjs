@@ -160,6 +160,13 @@ export async function GET(request: NextRequest) {
     // PostgREST rejected the logic tree (PGRST100). Here the blast radius would
     // be worse: this runs once a month with no retry, so a mangled query means
     // nobody gets an email and nobody knows to complain.
+    //
+    // `status=eq.active` is also load-bearing beyond double opt-in: booking a
+    // service visit creates a lightweight homeowners row as status='pending',
+    // source='service_quote' (see lib/homecare/serviceScheduling.ts), and a
+    // customer who booked a gutter clean did not opt in to a monthly marketing
+    // email. This filter is what STRUCTURALLY excludes them, so widening it to
+    // take pending rows would silently enrol every service customer.
     const due = (await supabaseRest<HomeownerRow[]>(
       'GET',
       `homeowners?select=id,first_name,email,unsubscribe_token,last_newsletter_at&status=eq.active&order=last_newsletter_at.asc.nullsfirst,id.asc&limit=${MAX_PER_RUN}`,

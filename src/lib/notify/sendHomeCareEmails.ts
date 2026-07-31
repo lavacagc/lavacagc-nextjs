@@ -9,6 +9,13 @@ import { buildVerificationEmail, buildWelcomeEmail } from '@/lib/homecare/lifecy
  * program's name, not the personal warm identity used elsewhere). Runs
  * in-process (do NOT self-fetch). All sends funnel through sendTrackedEmail
  * so they land in email_log.
+ *
+ * This module is the SEND side only: the verification and welcome bodies are
+ * pure builders in lib/homecare/lifecycleEmails.ts (on the shared emailShell),
+ * so they can be rendered and asserted without sending anything. `HOME_CARE_FROM`
+ * is the shared sender for the service-work emails too, which send through
+ * sendTrackedEmail directly with their own reply-to (SERVICE_REPLY_TO) rather
+ * than the DEFAULT_REPLY_TO here.
  */
 
 export const HOME_CARE_FROM = 'La Vaca Home Care <alex@email.lavaca.link>';

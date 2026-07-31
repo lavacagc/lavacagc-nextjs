@@ -16,10 +16,13 @@
  * so a literal `*`, `%`, `_`, or `\` in the address can never over-match.
  *
  * `follow_up_queue` is shared: it also holds post-job review-request emails
- * (`feedback_day0`/`feedback_day3`/`feedback_day7`) for the same address. We
- * therefore scope the cancel to the lead-nurture drip types only
- * (`instant_ack`/`24h`/`48h`/`7d`) so converting an estimate lead never silently
- * kills a repeat customer's pending review solicitations.
+ * (`feedback_day0`/`feedback_day3`/`feedback_day7`) and night-before service-visit
+ * reminders (`visit_reminder_1d`) for the same address. We therefore scope the
+ * cancel to the lead-nurture drip types only (`instant_ack`/`24h`/`48h`/`7d`) so
+ * converting an estimate lead never silently kills a repeat customer's pending
+ * review solicitations, or the transactional "we're coming tomorrow" for a visit
+ * they booked. Every sequence and the types it owns live in ONE registry below,
+ * `FOLLOW_UP_SEQUENCE_TYPES`.
  *
  * Takes any Supabase-like client so it works from the admin browser client today
  * and is unit-testable with a stub.

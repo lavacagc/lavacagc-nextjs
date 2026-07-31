@@ -1,13 +1,15 @@
 # Home Care service quotes - acceptance criteria
 
 Owner-approved scope from the Lavish plan review on 2026-07-30
-(`.lavish/service-quote-plan.html`).
+(`.lavish/service-quote-plan.html` - a local review artifact, gitignored, so this
+file is the tracked record of what was agreed).
 A lighter sibling to Send Estimate for one-visit service work, plus the
 scheduling, reminder, portal and completion loop around it.
 
-Every AC below is verified by a named test.
-`SQ` = send quote, `IN` = intake, `SC` = scheduling, `RM` = reminder,
-`PT` = portal, `CP` = completion, `CM` = compliance.
+Every AC below is verified by a test that names it in its title - CP8 excepted,
+which is covered across two others (see its note).
+`SQ` = send quote, `IN` = intake, `SC` = scheduling, `ICS` = calendar file,
+`RM` = reminder, `PT` = portal, `CP` = completion, `CM` = compliance.
 
 ## Decisions this encodes
 
@@ -399,6 +401,7 @@ These were settled by the owner during review; the ACs assume them.
   pending for a window the visit has left, so a second one would announce both.
   Cancel and complete pass the outcome back to the admin page, which says
   plainly that the reminder is still live and where to stop it.
+
 ## PT - the customer portal
 
 - **PT1** An upcoming visit renders on the checklist page above the task list,
@@ -465,7 +468,10 @@ These were settled by the owner during review; the ACs assume them.
 - **CP7** The service variant never uses the project copy ("your recent
   project").
 - **CP8** Completion feeds the history: a task completed today is what IN4
-  returns as last-done.
+  returns as last-done. The only criterion here without a test carrying its own
+  name: the chain is covered across two, the mark-complete write (CP1) and the
+  last-done reads that assert `by: 'lavaca'` off a completed row (**SC13+SC16**,
+  **SC16**).
 - **CP9** A booked visit can be marked complete **without re-booking it first**.
   A job is booked on Monday and performed on Thursday, in a different session, so
   gating the button on a schedule POST from the same page load meant re-typing
@@ -492,6 +498,7 @@ These were settled by the owner during review; the ACs assume them.
   (CP2), and last-done reports the most recent job, which is the true one.
   The read that decides this fails closed: a lookup that errors refuses the
   write rather than guessing that nobody has completed the task.
+
 ## CM - compliance (applies to every new email)
 
 - **CM1** Every new email carries the CAN-SPAM postal address in HTML and text.
