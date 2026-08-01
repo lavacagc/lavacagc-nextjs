@@ -44,10 +44,29 @@ export default defineConfig({
       },
     },
   ],
-  webServer: process.env.TEST_URL ? undefined : {
-    command: 'npm run start',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
+  /**
+   * Two servers, and the GoTrue stub is started even against a TEST_URL.
+   *
+   * The admin specs need something answering on the port
+   * NEXT_PUBLIC_SUPABASE_URL was baked to, because middleware's
+   * `supabase.auth.getUser()` is a server call no `page.route` can intercept.
+   * Each of those specs used to start the stub itself in `beforeAll`, on this
+   * one fixed port, while Playwright runs spec files in parallel workers - so
+   * whoever lost the race either failed to bind or had the port closed
+   * underneath it by another file's `afterAll`. Once, here, for the whole run.
+   */
+  webServer: [
+    {
+      command: 'node tests/helpers/gotrue-stub.mjs',
+      url: 'http://127.0.0.1:9099/auth/v1/user',
+      reuseExistingServer: !process.env.CI,
+      timeout: 30 * 1000,
+    },
+    ...(process.env.TEST_URL ? [] : [{
+      command: 'npm run start',
+      url: 'http://localhost:3000',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120 * 1000,
+    }]),
+  ],
 });

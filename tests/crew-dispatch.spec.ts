@@ -468,7 +468,7 @@ test('AC90 a sub the row would not store is reported, not just logged', () => {
   expect(page).toContain('The sub could NOT be cleared from the visit');
   expect(page).toContain('any flag alert will not');
   expect(page).toContain('still name them');
-  expect(page).toContain('+ recordLine + subLine + movedLine + staleLine');
+  expect(page).toContain('+ recordLine + subLine + subUnseenLine + movedLine + staleLine');
 });
 
 test('AC93 whatever is in the sub box wins - an empty one clears it', () => {
@@ -490,9 +490,10 @@ test('AC93 whatever is in the sub box wins - an empty one clears it', () => {
   // The boundary has to keep them apart or the clear silently no-ops...
   const schema = read('src/app/api/admin/service-quote/_schema.ts');
   expect(schema).toContain("subName: z.string().trim().max(160).optional().transform((v) => (v === '' ? null : v)),");
-  // ...and the page has to actually send the empty box.
+  // ...and the page has to actually send the empty box. Omitted ONLY when the
+  // box could not be filled from the row (AC100) - never when it is empty.
   const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
-  expect(page).toContain('subName: subName.trim(),');
+  expect(page).toContain('...(subUnseen ? {} : { subName: subName.trim() }),');
   expect(page).not.toContain('...(subName.trim() ? { subName: subName.trim() } : {})');
 
   // A caller that omits the field leaves the stored sub alone - which is why
@@ -523,10 +524,20 @@ test('AC98 the sub box shows the sub stored on the visit it is aimed at', () => 
   expect(page).toContain('const targetStart = date && from ? easternVisitInstant(date, from).getTime() : NaN;');
   expect(page).toContain("const storedSub = targetVisit?.sub?.read === 'ok' ? targetVisit.sub.name ?? '' : '';");
   expect(page).toContain('const subName = subEdit ?? storedSub;');
-  // Aiming the form at a different window drops the edit, so a sub typed for
-  // one visit cannot overwrite another's.
-  expect(page).toContain('onChange={(e) => { setDate(e.target.value); setSubEdit(null); }}');
-  expect(page).toContain('onChange={(e) => { setFrom(e.target.value); setSubEdit(null); }}');
+  // Aiming the form at a different window hands the box back to that window,
+  // so a sub typed for one visit cannot overwrite another's - but an ordinary
+  // correction to the time keeps what was typed, which is why the decision runs
+  // through `retarget` rather than blanking the edit on every keystroke.
+  expect(page).toContain('onChange={(e) => { setDate(e.target.value); retarget(e.target.value, from); }}');
+  expect(page).toContain('onChange={(e) => { setFrom(e.target.value); retarget(date, e.target.value); }}');
+  const retargetFn = page.slice(page.indexOf('const retarget = ('), page.indexOf('useEffect(() => {'));
+  // Only a window we can see has NO sub of its own leaves the typed one alone.
+  // One whose sub could not be READ counts as carrying one, or the box would
+  // hand this visit a sub typed for another.
+  expect(retargetFn).toContain(
+    "const subless = visit === undefined || (visit.sub?.read === 'ok' && visit.sub.name === null);",
+  );
+  expect(retargetFn).toContain('if (!subless) setSubEdit(null);');
   // As does looking up a different customer - the box used to keep the last
   // one's sub - and saving, after which the box shows what the row now holds.
   const lookupFn = page.slice(page.indexOf('const lookup = useCallback'), page.indexOf('const toggle = (key: string)'));
@@ -539,15 +550,99 @@ test('AC98 the sub box shows the sub stored on the visit it is aimed at', () => 
   expect(page).toContain('could NOT be read, so this box is not showing it');
   expect(page).toContain('Stored on this visit: ${storedSub}');
 
-  // The sub is the only field here whose DEFAULT is destructive. The address is
-  // the one other value written onto the window - everything else that reaches
+  // The address is written onto the window too - everything else that reaches
   // the customer record fills blanks only - and it cannot go blank, because the
   // button is disabled without one. It can still be silently replaced, so a
-  // window holding a different address says which one.
+  // window holding a different address says which one. (The claim this test
+  // used to make, that the sub was the ONLY field with a destructive default,
+  // was wrong: AC99 covers the third one.)
   expect(read('src/lib/homecare/serviceScheduling.ts')).toContain('if (args.address && !row.address) patch.address = args.address;');
   expect(page).toContain('targetVisit?.address && targetVisit.address !== address.trim()');
   expect(page).toContain('This visit is on the books at {targetVisit.address}');
   expect(page).toContain("disabled={scheduling || selected.size === 0 || !address.trim()");
+});
+
+test('AC99 the ticked services show what the visit the form is aimed at holds', () => {
+  // The third field written onto the window, and the sharpest: these keys pick
+  // which (task, season) rows get the window at all, and they are the service
+  // list BOTH the crew dispatch and the customer's reminder name. Left to the
+  // customer's last request, re-saving a booked window to add a crew member
+  // mailed everybody a list drawn from what they once asked for.
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain('const storedTasks = targetVisit ? new Set(targetVisit.tasks.map((t) => t.key)) : null;');
+  expect(page).toContain('const selected = taskEdit ?? storedTasks ?? requestTasks;');
+  // Ticking is an edit, so it takes the boxes off whatever they were following
+  // rather than being folded back into the request's own selection.
+  const toggleFn = page.slice(page.indexOf('const toggle = (key: string)'), page.indexOf('const send = async'));
+  expect(toggleFn).toContain('setTaskEdit(next);');
+  expect(page, 'the selection is derived now - a setter would let the two disagree').not.toContain('setSelected(');
+  // A window on the books hands the ticks back to it; a save hands them back to
+  // the row just written; a different customer drops them.
+  const retargetFn = page.slice(page.indexOf('const retarget = ('), page.indexOf('useEffect(() => {'));
+  expect(retargetFn).toContain('if (visit) setTaskEdit(null);');
+  const scheduleFn = page.slice(page.indexOf('const schedule = async ()'), page.indexOf('const complete = async'));
+  expect(scheduleFn).toContain('setTaskEdit(null);');
+  const lookupFn = page.slice(page.indexOf('const lookup = useCallback'), page.indexOf('const toggle = (key: string)'));
+  expect(lookupFn).toContain('setTaskEdit(null);');
+
+  // The ticks live in the card ABOVE the date, so a date landing on a booked
+  // visit changes them out of sight. The window says what it holds where the
+  // window is named - and says what un-ticking does NOT do, because
+  // `scheduleVisit` upserts and never unbooks.
+  expect(page).toContain('data-testid="sq-tasks-stored"');
+  expect(page).toContain('This visit is on the books for ${targetVisit.tasks.map((t) => t.title).join(\', \')}.');
+  expect(page).toContain('un-ticking one does NOT take it off the visit');
+  // And a visit list that could not be READ is not the absence of a window: the
+  // ticks fall back to the customer's request, and only this says so.
+  expect(page).toContain("const tasksUnknown = Number.isFinite(targetStart) && bookingsRead === 'unavailable';");
+  expect(page).toContain('data-testid="sq-tasks-unread"');
+  expect(page).toContain('what it holds, could NOT be read');
+  const scheduling = read('src/lib/homecare/serviceScheduling.ts');
+  const upsert = scheduling.slice(scheduling.indexOf('export async function scheduleVisit'), scheduling.indexOf('export interface BookedVisitRow'));
+  expect(upsert, 'if this ever unbooks, the copy above has to change with it').not.toContain('scheduled_start: null');
+});
+
+test('AC100 a sub the box could not show is left alone, never cleared', () => {
+  // The last hole in "whatever is in the box wins": on a failed dispatch-row
+  // read the box resolves to '', and sending that is an explicit clear - a read
+  // that FAILED turned into a destructive instruction. The write succeeds, so
+  // AC90 never fires and the toast reads clean.
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain('const subUnseen = subUnknown && subEdit === null;');
+  expect(page).toContain('...(subUnseen ? {} : { subName: subName.trim() }),');
+  // Absent is what leaves the stored value alone - the same path the escalation
+  // cron relies on (AC93).
+  const dispatch = read('src/lib/homecare/dispatch.ts');
+  expect(dispatch).toContain('const sub = args.subName === undefined ? undefined : args.subName || null;');
+  // Reported, never assumed: the crew email that just went out names a value
+  // nobody on this screen has seen.
+  expect(page).toContain('The sub was left as it is - what is stored could NOT be read');
+  expect(page).toContain('+ recordLine + subLine + subUnseenLine + movedLine + staleLine');
+  // A DELIBERATE clear still works, because typing - including emptying the box
+  // - makes the edit non-null.
+  expect(page).toContain('const subName = subEdit ?? storedSub;');
+});
+
+test('AC101 a customer lookup clears every per-customer field before it fills any', () => {
+  // The resets used to sit inside branches - services and scope behind "this
+  // lead named some tasks", name and address behind "there is a homeowner
+  // record" - so a walk-in with neither kept the LAST customer's on screen, and
+  // both buttons accept that state: the quote mails one customer a sentence
+  // written for another, and the booking writes their window onto another
+  // customer's services at another customer's address.
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  const lookupFn = page.slice(page.indexOf('const lookup = useCallback'), page.indexOf('const toggle = (key: string)'));
+  const cleared = lookupFn.indexOf("setName('');");
+  const filled = lookupFn.indexOf('const latest = data.requests[0];');
+  expect(cleared, 'the name is cleared').toBeGreaterThan(-1);
+  expect(lookupFn).toContain("setAddress('');");
+  expect(lookupFn).toContain("setScope('');");
+  expect(lookupFn).toContain('setRequestTasks(new Set());');
+  expect(lookupFn).toContain('setTaskEdit(null);');
+  expect(lookupFn).toContain('setSubEdit(null);');
+  // Cleared FIRST, then filled from whatever this lookup returned - the order
+  // is the whole guarantee, because the fill is what is conditional.
+  expect(cleared, 'cleared before anything is filled back in').toBeLessThan(filled);
 });
 
 test('AC38 re-dispatching reuses each assignment, so a re-send cannot un-confirm', () => {

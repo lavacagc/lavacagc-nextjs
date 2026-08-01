@@ -1,5 +1,4 @@
 import { test, expect, type Page } from '@playwright/test';
-import http from 'http';
 import path from 'path';
 
 /**
@@ -175,41 +174,6 @@ test.describe('public /preferences page', () => {
 });
 
 test.describe('admin /vaca-mgmt/preferences page', () => {
-  const STUB_PORT = 9099;
-  let stub: http.Server;
-
-  test.beforeAll(async () => {
-    // Minimal GoTrue stand-in: middleware's supabase.auth.getUser() hits
-    // GET /auth/v1/user with the access token from our fabricated cookie.
-    stub = http.createServer((req, res) => {
-      if (req.url?.startsWith('/auth/v1/user')) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            id: '00000000-0000-0000-0000-000000000001',
-            aud: 'authenticated',
-            role: 'authenticated',
-            email: 'admin@lavacagc.com',
-            created_at: '2026-01-01T00:00:00Z',
-            app_metadata: {},
-            user_metadata: {},
-          }),
-        );
-        return;
-      }
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end('{}');
-    });
-    await new Promise<void>((resolve, reject) => {
-      stub.once('error', reject);
-      stub.listen(STUB_PORT, '127.0.0.1', resolve);
-    });
-  });
-
-  test.afterAll(async () => {
-    await new Promise((resolve) => stub.close(resolve));
-  });
-
   test('toggles stay pinned to the looked-up contact even after retyping the input', async ({
     page,
     context,

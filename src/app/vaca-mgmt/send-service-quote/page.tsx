@@ -88,7 +88,15 @@ export default function SendServiceQuotePage() {
   const [email, setEmail] = useState('');
   const [intake, setIntake] = useState<Intake | null>(null);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // What the customer's own REQUEST asked for. The default selection for a
+  // window that is not yet on the books, and nothing more.
+  const [requestTasks, setRequestTasks] = useState<Set<string>>(new Set());
+  // What the admin has TICKED, or null while the boxes are still following the
+  // visit the form is aimed at. Same shape as `subEdit` below, for a sharper
+  // reason: these keys decide which (task, season) rows the save writes the
+  // window onto, and they are what the crew dispatch and the customer's
+  // reminder both list.
+  const [taskEdit, setTaskEdit] = useState<Set<string> | null>(null);
 
   const [name, setName] = useState('');
   const [cc, setCc] = useState('');
@@ -166,6 +174,50 @@ export default function SendServiceQuotePage() {
   // case where we cannot even tell whether that window is already booked.
   const subUnknown = Number.isFinite(targetStart)
     && (bookingsRead === 'unavailable' || (targetVisit !== undefined && targetVisit.sub?.read !== 'ok'));
+  /**
+   * The services this save writes the window onto: what the visit already holds,
+   * until the admin ticks something.
+   *
+   * The same rule as the Sub box, because the field has the same shape - written
+   * onto the window on every save, and previously never filled from it. Left to
+   * the customer's last REQUEST, re-saving a booked window to add a crew member
+   * or fix the address mailed the crew and re-queued the customer a service list
+   * taken from what they once asked for rather than from what is booked, while
+   * the rest of the visit stayed in the window unmentioned.
+   */
+  const storedTasks = targetVisit ? new Set(targetVisit.tasks.map((t) => t.key)) : null;
+  const selected = taskEdit ?? storedTasks ?? requestTasks;
+  // The visits could NOT be read, so what this window holds - or whether it is
+  // booked at all - is unknown, and the ticks have quietly fallen back to the
+  // customer's request. Nothing is deleted by that, but the crew and the
+  // customer would be told a list nobody has checked against the visit.
+  const tasksUnknown = Number.isFinite(targetStart) && bookingsRead === 'unavailable';
+
+  /**
+   * Aim the form at another window.
+   *
+   * What the admin has typed or ticked SURVIVES an ordinary correction - noticing
+   * the From time reads 08:00 rather than 09:00 after filling the form is
+   * ordinary, and dropping the edit on every keystroke threw away their input to
+   * defend against something else. What it defends is still defended: a window
+   * that carries its own stored value takes the box back, so a sub typed for one
+   * visit can never overwrite another's.
+   *
+   * A window whose sub could NOT be read counts as carrying one. Treating an
+   * unreadable value as an absent one is the mistake this screen closed
+   * everywhere else, and here it would hand another visit's sub to this one.
+   */
+  const retarget = (nextDate: string, nextFrom: string) => {
+    const at = nextDate && nextFrom ? easternVisitInstant(nextDate, nextFrom).getTime() : NaN;
+    const visit = Number.isFinite(at)
+      ? bookings.find((b) => new Date(b.start).getTime() === at)
+      : undefined;
+    const subless = visit === undefined || (visit.sub?.read === 'ok' && visit.sub.name === null);
+    if (!subless) setSubEdit(null);
+    // A window on the books always holds a definite set of services, and those
+    // are the ones it should be showing.
+    if (visit) setTaskEdit(null);
+  };
 
   /**
    * Load the crew picker, and NEVER let a failed read pass for an empty list.
@@ -257,15 +309,28 @@ export default function SendServiceQuotePage() {
       // report nothing.
       if (!res.ok) throw new Error(data.error || 'Could not load this customer.');
       setIntake(data);
+      // CLEARED FIRST, then filled back in from whatever this lookup returned.
+      // These resets used to sit inside branches - the services and the scope
+      // behind "this lead named some tasks", the name and address behind "there
+      // is a homeowner record" - so a walk-in with neither kept the LAST
+      // customer's on screen. "Send quote" then mailed them a scope sentence
+      // written for somebody else, and "Schedule visit" booked their window
+      // onto somebody else's services at somebody else's address, both of which
+      // the crew dispatch and the night-before reminder are built from.
+      setName('');
+      setAddress('');
+      setScope('');
+      setRequestTasks(new Set());
+      // Ticks and a sub typed for the last customer are not this one's. Both go
+      // back to following whatever this customer's visits carry.
+      setTaskEdit(null);
+      setSubEdit(null);
       // This IS a different customer, so the old list cannot stay on screen -
       // its windows belong to somebody else, and "Mark completed" would aim
       // them at this homeowner. It goes, and the gap is said out loud instead.
       setBookings(data.bookings ?? []);
       setBookingsRead(data.bookingsRead === 'unavailable' ? 'unavailable' : 'ok');
       setHomeownerId(data.homeowner?.id ?? null);
-      // A sub typed for the last customer is not this one's. The box goes back
-      // to following whatever this customer's visits carry.
-      setSubEdit(null);
       if (data.bookingsRead === 'unavailable') {
         toast({
           title: 'Their visits could not be read',
@@ -279,7 +344,7 @@ export default function SendServiceQuotePage() {
         setName(latest.name || '');
         setAddress([latest.address, latest.city, latest.zip].filter(Boolean).join(', '));
         if (latest.taskKeys.length) {
-          setSelected(new Set(latest.taskKeys));
+          setRequestTasks(new Set(latest.taskKeys));
           setScope(scopeSummaryFrom(latest.services));
         }
       } else if (data.homeowner) {
@@ -303,13 +368,13 @@ export default function SendServiceQuotePage() {
   }, [email]);
 
   const toggle = (key: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      const titles = (intake?.services ?? []).filter((s) => next.has(s.key));
-      setScope(scopeSummaryFrom(titles));
-      return next;
-    });
+    // Ticking is the admin taking the boxes off whatever they were following -
+    // the visit on the books, or the customer's last request - so it is recorded
+    // as an edit rather than folded back into either.
+    const next = new Set(selected);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    setTaskEdit(next);
+    setScope(scopeSummaryFrom((intake?.services ?? []).filter((s) => next.has(s.key))));
   };
 
   const send = async (isTest: boolean) => {
@@ -344,6 +409,14 @@ export default function SendServiceQuotePage() {
     if (!from || !to) { toast({ title: 'Set the arrival window', variant: 'destructive' }); return; }
     setScheduling(true);
     const startAt = easternVisitInstant(date, from).toISOString();
+    // The box is authoritative only when it is actually SHOWING the row. Left
+    // untouched over a sub that could not be read it holds '', and sending that
+    // is an explicit clear - a failed read turned into a destructive
+    // instruction, which succeeds, so nothing downstream could report it. So the
+    // field is left OUT instead and `ensureVisitDispatch` leaves the stored
+    // value alone. A deliberate clear still works: typing in the box, including
+    // emptying it, makes `subEdit` non-null.
+    const subUnseen = subUnknown && subEdit === null;
     try {
       const res = await fetch('/api/admin/service-quote/schedule', {
         method: 'POST',
@@ -363,11 +436,12 @@ export default function SendServiceQuotePage() {
           // for a failed load, and wrong for a deliberate empty pick. The
           // button is disabled in that second case, so it cannot arise.
           ...(crew.length > 0 ? { recipientIds: [...crewPicked] } : {}),
-          // ALWAYS sent, empty included. The box is authoritative on every
-          // save, so an empty one is a clear - omitting the field would mean
-          // "leave whatever is stored alone", which is what made a sub
-          // write-once per window and re-mailed a sub who had fallen through.
-          subName: subName.trim(),
+          // Sent whenever the box is showing the row, empty included: it is
+          // authoritative on every save, so an empty one is a clear - omitting
+          // the field means "leave whatever is stored alone", which is what made
+          // a sub write-once per window and re-mailed a sub who had fallen
+          // through. Omitted only when the box could not be filled from the row.
+          ...(subUnseen ? {} : { subName: subName.trim() }),
         }),
       });
       const data = await res.json();
@@ -375,11 +449,12 @@ export default function SendServiceQuotePage() {
       setScheduled({ icsUrl: data.icsUrl });
       setHomeownerId(data.homeownerId);
       await refreshBookings();
-      // Back to following the visit. The box now shows what the row actually
-      // holds - which is the point when the write did NOT land the sub: the
-      // toast below says so, and the box agrees with the row rather than with
+      // Back to following the visit. The box and the ticks now show what the
+      // row actually holds - which is the point when a write did NOT land: the
+      // toast below says so, and the screen agrees with the row rather than with
       // the email that has already gone out.
       setSubEdit(null);
+      setTaskEdit(null);
       // A reschedule takes the old window off the crew's calendars. When that
       // could not be delivered they are still holding it - and its 7:00am "text
       // the customer" alarm - so it is named here rather than logged.
@@ -427,6 +502,13 @@ export default function SendServiceQuotePage() {
         : subName.trim()
           ? ` The sub (${subName.trim()}) is NOT stored on the visit - the crew email names them, but their confirm page and any flag alert will not. Re-save the visit.`
           : ' The sub could NOT be cleared from the visit - the crew email leaves them off, but their confirm page and any flag alert still name them. Re-save the visit.';
+      // The save deliberately did not touch the sub, because the box was not
+      // showing it. Said out loud: the crew email that just went out names
+      // whatever is stored, which is a value nobody on this screen has seen.
+      const subUnseenLine = subUnseen
+        ? ' The sub was left as it is - what is stored could NOT be read, so this save did not '
+          + 'touch it. The crew email names whatever is on the visit. Look the customer up again to see it.'
+        : '';
       const movedLine = stillHolding.length > 0
         ? ` The OLD window could not be taken off ${stillHolding.join(', ')}'s calendar - call them, or they will text the customer about it at 7:00am.`
         : '';
@@ -441,7 +523,7 @@ export default function SendServiceQuotePage() {
       toast({
         title: 'Visit scheduled',
         description: reminderLine + dispatchLine + stillLiveLine + notMailedLine
-          + recordLine + subLine + movedLine + staleLine,
+          + recordLine + subLine + subUnseenLine + movedLine + staleLine,
         variant: bad ? 'destructive' : undefined,
       });
     } catch (e) {
@@ -664,7 +746,7 @@ export default function SendServiceQuotePage() {
                   <button
                     key={r.id} type="button"
                     onClick={() => {
-                      setName(r.name); setSelected(new Set(r.taskKeys));
+                      setName(r.name); setTaskEdit(new Set(r.taskKeys));
                       setScope(scopeSummaryFrom(r.services));
                       setAddress([r.address, r.city, r.zip].filter(Boolean).join(', '));
                     }}
@@ -758,16 +840,42 @@ export default function SendServiceQuotePage() {
           </div>
           {/*
             The date and the From time name the visit. Changing either aims the
-            form at a different one, so the Sub box stops showing the old
-            visit's sub and follows the new one - it is authoritative on save,
-            and a name carried over from another window would overwrite this
-            one's.
+            form at a different one, and `retarget` decides what the Sub box and
+            the ticks should be showing for it - keeping what was typed on an
+            ordinary correction, handing the boxes back to a window that carries
+            its own.
           */}
-          <div><Label htmlFor="sq-date">Date</Label><Input id="sq-date" type="date" value={date} onChange={(e) => { setDate(e.target.value); setSubEdit(null); }} data-testid="sq-date" /></div>
+          <div><Label htmlFor="sq-date">Date</Label><Input id="sq-date" type="date" value={date} onChange={(e) => { setDate(e.target.value); retarget(e.target.value, from); }} data-testid="sq-date" /></div>
           <div className="grid grid-cols-2 gap-2">
-            <div><Label htmlFor="sq-from">From</Label><Input id="sq-from" type="time" value={from} onChange={(e) => { setFrom(e.target.value); setSubEdit(null); }} /></div>
+            <div><Label htmlFor="sq-from">From</Label><Input id="sq-from" type="time" value={from} onChange={(e) => { setFrom(e.target.value); retarget(date, e.target.value); }} /></div>
             <div><Label htmlFor="sq-to">To</Label><Input id="sq-to" type="time" value={to} onChange={(e) => setTo(e.target.value)} /></div>
           </div>
+
+          {tasksUnknown ? (
+            // Not "this window holds nothing". The ticks have fallen back to the
+            // customer's request, and only this line says the visit was never
+            // checked against them.
+            <p className="text-xs font-medium text-destructive md:col-span-2" data-testid="sq-tasks-unread">
+              Whether this window is on the books, and what it holds, could NOT be read. The services
+              ticked above come from what this customer asked for, not from the visit - look them up
+              again, or the crew and the customer get a list nothing has checked.
+            </p>
+          ) : targetVisit ? (
+            // Which services this window actually holds, said where the window
+            // is named. The ticks are in the card above, so a date that lands on
+            // a booked visit changes them out of sight otherwise - and they are
+            // what the save writes the window onto.
+            <p
+              className={`text-xs md:col-span-2 ${taskEdit === null ? 'text-text-muted' : 'font-medium text-destructive'}`}
+              data-testid="sq-tasks-stored"
+            >
+              {`This visit is on the books for ${targetVisit.tasks.map((t) => t.title).join(', ')}.`}
+              {taskEdit === null
+                ? ' Those are the services ticked above, and they are what the crew and the customer are told.'
+                : ' Ticking adds a service to it; un-ticking one does NOT take it off the visit - it only'
+                  + ' leaves it out of what the crew and the customer are told. Cancel the visit to drop a service.'}
+            </p>
+          ) : null}
 
           <div className="md:col-span-2">
             <Label htmlFor="sq-sub">Sub (optional)</Label>
