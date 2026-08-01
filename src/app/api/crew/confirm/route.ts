@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
   // 5pm and 6pm stages now carry this note too.
   const notified = alreadyTold ? 'duplicate' as const : await notifyFlag(found, note ?? null);
   if (notified === 'sent') {
-    await recordNotified(assignment.id);
+    await recordNotified(assignment.id, now);
   } else if (notified !== 'duplicate') {
     console.error(
       `crew flag could not be Telegrammed (${notified}) for assignment ${assignment.id}. ` +
@@ -167,15 +167,31 @@ export async function POST(request: NextRequest) {
  * over-cautious "call the office" on a re-open, which is the direction this
  * whole feature errs in on purpose.
  *
- * Re-asserts `status=eq.flagged` so a row the admin cleared, or a re-dispatch
- * retired, in the gap does not collect a delivery record for a flag it no
- * longer carries.
+ * Stamps the row THIS request wrote, or nothing: `updated_at=eq.<wroteAt>` is a
+ * compare-and-swap against the value the PATCH above set, so any write that
+ * landed in between - a note corrected on a second tap, an admin clearing the
+ * flag, a re-dispatch retiring the row - takes the stamp off the table rather
+ * than letting it settle onto a flag it does not describe.
+ *
+ * The corrected-note case is the one that bites, and it is the same phone at the
+ * same job site: tap one types "sub cancelled" and its response is lost on a bad
+ * signal, so the note field is still open and still populated; they change it to
+ * "van broken" and tap again, and that send fails, so the screen correctly says
+ * nobody was told. Tap one's Telegram - six seconds of timeout behind it - then
+ * returns 'sent'. Keyed on the id and the status alone, its stamp lands on a row
+ * now reading "van broken", and the next tap of that note is answered
+ * 'duplicate': the note that actually describes the problem never reaches
+ * anybody, and the screen says the office has it. A changed note is new
+ * information and must always get through.
+ *
+ * `status=eq.flagged` stays alongside it: an admin who cleared the flag without
+ * touching `updated_at` must not collect a delivery record either.
  */
-async function recordNotified(assignmentId: string) {
+async function recordNotified(assignmentId: string, wroteAt: string) {
   const stamp = new Date().toISOString();
   await supabaseRest(
     'PATCH',
-    `visit_dispatch_recipients?id=eq.${assignmentId}&status=eq.flagged`,
+    `visit_dispatch_recipients?id=eq.${assignmentId}&status=eq.flagged&updated_at=eq.${wroteAt}`,
     { notified_at: stamp, updated_at: stamp },
   ).catch((err) => console.error(
     `crew flag was Telegrammed but could not be recorded for assignment ${assignmentId} - ` +

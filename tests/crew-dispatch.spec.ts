@@ -1334,9 +1334,17 @@ test('AC74 the guard dedupes DELIVERED alerts, not attempts', () => {
   // Stamped only for a Telegram that genuinely sent - never for an attempt,
   // and never for the 'duplicate' that a stamp already explains.
   expect(src).toContain("if (notified === 'sent') {");
-  expect(src).toContain('await recordNotified(assignment.id);');
+  // ...and onto the row THIS request wrote, which is why the call carries the
+  // timestamp its own PATCH set. Re-asserting the status alone let tap one's
+  // late 'sent' stamp a row a second tap had since corrected to a DIFFERENT
+  // note, so that corrected note read as already delivered and never reached
+  // anybody - the same phone at the same job site, one tap later.
+  expect(src).toContain('await recordNotified(assignment.id, now);');
+  expect(src).toContain('updated_at: now,');
   const stamp = src.slice(src.indexOf('async function recordNotified'));
+  expect(stamp).toContain('async function recordNotified(assignmentId: string, wroteAt: string)');
   expect(stamp).toContain('status=eq.flagged');
+  expect(stamp).toContain('&updated_at=eq.${wroteAt}');
   expect(stamp).toContain('notified_at: stamp');
   // The stamp belongs to the flag as it now reads: any tap about to attempt a
   // fresh alert clears it first, so a send that fails cannot inherit an older
@@ -1359,6 +1367,20 @@ test('AC74 the delivery stamp is a column on the assignment, in the one migratio
   expect(read('src/lib/homecare/dispatch.ts')).toContain(
     "'id,dispatch_id,recipient_id,email,name,confirm_token,status,confirmed_at,note,notified_at'",
   );
+});
+
+test('the unguarded public confirm route is recorded as a decision, not left as a gap', () => {
+  // /api/crew/confirm is the one PUBLIC_ROUTES entry that does not self-guard
+  // with checkRateLimit, and that was an explicit owner decision. Written down
+  // so a future reader can tell a deliberate exception from an oversight and
+  // does not "fix" it by accident - the whole reason this belongs in the doc.
+  const doc = read('docs/crew-dispatch-acceptance-criteria.md');
+  const notBuilt = doc.slice(doc.indexOf('## What was deliberately not built'));
+  expect(notBuilt).toContain('No rate limit on `POST /api/crew/confirm`');
+  expect(notBuilt).toContain('deliberate owner decision');
+  expect(notBuilt).toContain('checkRateLimit');
+  // The route really is the entry the note describes.
+  expect(read('src/middleware.ts')).toContain("'/api/crew/',");
 });
 
 test('AC75 the flag alert reads the other assignments rather than asserting nobody confirmed', () => {

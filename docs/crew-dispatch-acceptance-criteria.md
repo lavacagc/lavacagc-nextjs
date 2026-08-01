@@ -231,6 +231,10 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     Keyed on the flag's existence alone it short-circuited the send whether or not anybody was ever told, and the sequence that exposes it is a phone at a job site - tap one writes the flag, Telegram fails, the response is lost on a bad signal, they tap again and are told the office has it.
     Both properties hold together, which is the point: no spam from repeated taps, and no silent "the office has it" for an alert that never sent.
     The stamp belongs to the flag as it currently reads, so any tap about to attempt a fresh alert clears it first - otherwise a failed send for a changed note would inherit the old note's delivery - and a recipient put back on the visit starts with none.
+    The stamp is also written back **only onto the row this request wrote**: `recordNotified` re-asserts `updated_at=eq.<the value its own PATCH set>` alongside the status, a compare-and-swap that drops the stamp rather than letting it settle on a flag it does not describe.
+    Re-asserting the status alone is not enough, and the sequence that exposes it is the same phone at the same job site: tap one types "sub cancelled" and its response is lost on a bad signal, so the note field is still open and still populated; they correct it to "van broken" and tap again, that send fails, and the screen rightly says nobody was told.
+    Tap one's Telegram - six seconds of timeout behind it - then returns `sent` and stamps a row now reading "van broken", so the next tap of that note is answered `duplicate` and told the office has it, for a note nobody was ever told.
+    A changed note is new information and must always get through.
     The flag itself is still written before the Telegram is attempted: the notification failing must never cost us the record.
 75. The alert states what the **rest of the crew** has actually said, read off the other assignments on the same dispatch: whoever has already confirmed is named, or it says plainly that nobody has.
     This matters more than it looks: the escalation skips any visit with a `confirmed` assignment, so when a colleague has already answered, this alert is the only message the owner will ever get about the problem.
@@ -303,4 +307,9 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 - **No automated "on our way" customer email.** The 7:00am alarm prompts a person to send the text we promised in writing.
 - **No SMS.** Unchanged from the service-quote slice.
 - **No subcontractor table.** The sub is free text on the visit until it earns more.
+- **No rate limit on `POST /api/crew/confirm`.** This is a deliberate owner decision taken on 1 August 2026, not an oversight, and it is the one place this feature departs from a repo-wide convention - so do not "fix" it by accident.
+  Every other entry in `PUBLIC_ROUTES` self-guards with `checkRateLimit`/`getClientIp` from `src/lib/rateLimit.ts`, and the middleware annotates them as "rate-limited, self-guarded"; this route does not.
+  Rate limiting was not part of the requested design, and the confirm token is 32 random bytes, so guessing one is not a realistic attack.
+  The accepted consequence is that an unauthenticated caller who repeats a POST makes the route do a few Supabase reads - `lookupByToken` plus `readVisitContext` - before the token can be rejected.
+  What that decision does **not** cover is the alert volume, and that is guarded separately: AC74's transition guard means only a genuine change of state Telegrams the chat at all.
 - **No per-person Telegram.** A bot cannot message someone who has never messaged it first, so per-person alerts would silently reach nobody. Both stages go to the existing owner chat. The recipient row is where a `chat_id` would go if that changes.
