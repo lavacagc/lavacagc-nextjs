@@ -67,6 +67,18 @@ interface Intake {
   requests: PastRequest[];
   history: Record<string, { at: string; by: string; label: string }>;
   homeowner: { id: string; first_name: string | null; phone: string | null; address: string | null; city: string | null; zip: string | null; status: string } | null;
+  /**
+   * Whether the customer RECORD could be read. `homeowner: null` is the same
+   * answer for a walk-in nobody has booked before and for a read that failed,
+   * and the two could not be more different here: the second one is an existing
+   * customer whose name and address arrive blank and whose every visit action
+   * is switched off, with nothing on screen saying why.
+   */
+  homeownerRead?: 'ok' | 'unavailable';
+  /** Same rule for their past requests: empty is not "they have never asked". */
+  requestsRead?: 'ok' | 'unavailable';
+  /** And for what they last had done: empty renders "no record" on every service. */
+  historyRead?: 'ok' | 'unavailable';
   bookings: Booking[];
   /**
    * `unavailable` is a read that FAILED, answered 200 alongside everything that
@@ -139,6 +151,11 @@ export default function SendServiceQuotePage() {
   // not "nothing on the books", and here it also means the Sub box has nothing
   // to fill itself from - which is a save away from clearing a stored sub.
   const [bookingsRead, setBookingsRead] = useState<'ok' | 'unavailable'>('ok');
+  // And whether the customer record underneath it could be read. Kept in state
+  // beside `bookingsRead` rather than read off `intake`, because a booking made
+  // from a lookup that failed to read it does produce the id - so the warning
+  // has to be able to come back down.
+  const [homeownerRead, setHomeownerRead] = useState<'ok' | 'unavailable'>('ok');
   const [completing, setCompleting] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [handling, setHandling] = useState<string | null>(null);
@@ -284,6 +301,10 @@ export default function SendServiceQuotePage() {
       if (data.bookingsRead === 'unavailable') throw new Error('Their visits could not be read');
       setBookings(data.bookings ?? []);
       setBookingsRead('ok');
+      // The customer record came back with them - a failure on it is what makes
+      // `bookingsRead` unavailable above - so a refresh that got this far is
+      // also the answer that takes the record warning back off.
+      setHomeownerRead('ok');
       if (data.homeowner?.id) setHomeownerId(data.homeowner.id);
     } catch (e) {
       // The list kept on screen is now of unknown age, and the Sub box fills
@@ -330,8 +351,12 @@ export default function SendServiceQuotePage() {
       // them at this homeowner. It goes, and the gap is said out loud instead.
       setBookings(data.bookings ?? []);
       setBookingsRead(data.bookingsRead === 'unavailable' ? 'unavailable' : 'ok');
+      setHomeownerRead(data.homeownerRead === 'unavailable' ? 'unavailable' : 'ok');
       setHomeownerId(data.homeowner?.id ?? null);
       if (data.bookingsRead === 'unavailable') {
+        // The toast is the alert; the panel below is the record of it. A toast
+        // that has faded is not enough to stop somebody acting on an empty
+        // list, which is the whole reason this state is carried at all.
         toast({
           title: 'Their visits could not be read',
           description: 'Everything else loaded, but the visits on the books did not - so this is NOT '
@@ -353,9 +378,10 @@ export default function SendServiceQuotePage() {
       }
     } catch (e) {
       // Whatever is still listed belongs to whoever was loaded last, not to the
-      // address in the box - so this customer's visits, and the sub on them,
-      // are unread until somebody looks again.
+      // address in the box - so this customer's visits, their record, and the
+      // sub on them are all unread until somebody looks again.
       setBookingsRead('unavailable');
+      setHomeownerRead('unavailable');
       toast({
         title: 'Lookup failed',
         description: `${e instanceof Error ? e.message : 'Could not load this customer.'} `
@@ -738,6 +764,29 @@ export default function SendServiceQuotePage() {
             </Button>
           </div>
 
+          {homeownerRead === 'unavailable' && (
+            // Their record read as `null`, which is also what a walk-in reads
+            // as - so without this the screen shows a blank name, a blank
+            // address and three greyed-out buttons for a customer we have on
+            // file, and gives no reason for any of it.
+            <p className="text-xs font-medium text-destructive" data-testid="sq-homeowner-unread">
+              Their customer record could NOT be read, so this is not a new customer. Their name and
+              address are not filled in from it, nothing below can be marked completed, cancelled or
+              handled, and the visits they have on the books are unknown. Look them up again.
+            </p>
+          )}
+
+          {intake?.requestsRead === 'unavailable' && (
+            // Not "they have never asked us for anything". The scope sentence
+            // the quote mails and the services it is ticked for are both
+            // pre-filled from this, so an empty answer is a blank form.
+            <p className="text-xs font-medium text-destructive" data-testid="sq-requests-unread">
+              Their past requests could NOT be read, so this is not &quot;they have never asked for
+              anything&quot;. The scope summary and the ticked services below are NOT filled in from
+              what they asked for - check them before you send anything.
+            </p>
+          )}
+
           {intake?.requests?.length ? (
             <div className="rounded-lg border border-border p-3">
               <div className="mb-2 text-xs font-bold uppercase tracking-wide text-text-muted">Their past requests</div>
@@ -763,6 +812,16 @@ export default function SendServiceQuotePage() {
           {intake?.services?.length ? (
             <div className="rounded-lg border border-border p-3">
               <div className="mb-2 text-xs font-bold uppercase tracking-wide text-text-muted">Services</div>
+              {intake.historyRead === 'unavailable' && (
+                // Otherwise every row underneath reads "no record", which is a
+                // definite claim about a customer whose completions were never
+                // read - and "you last had this done 14 months ago" is the line
+                // the quote is argued from.
+                <p className="mb-2 text-xs font-medium text-destructive" data-testid="sq-history-unread">
+                  What they have had done could NOT be read, so &quot;not read&quot; below is not
+                  &quot;never done&quot;.
+                </p>
+              )}
               <div className="grid gap-1.5 sm:grid-cols-2">
                 {intake.services.map((s) => {
                   const hist = intake.history[s.key];
@@ -774,7 +833,9 @@ export default function SendServiceQuotePage() {
                       />
                       <span className="min-w-0">
                         <span className="font-semibold">{s.title}</span>
-                        <span className="block text-xs text-text-muted">{hist ? hist.label : 'no record'}</span>
+                        <span className="block text-xs text-text-muted">
+                          {hist ? hist.label : intake.historyRead === 'unavailable' ? 'not read' : 'no record'}
+                        </span>
                       </span>
                     </label>
                   );
@@ -964,9 +1025,34 @@ export default function SendServiceQuotePage() {
             )}
           </div>
 
-          {bookings.length > 0 && (
+          {/*
+            Rendered on the LENGTH of the list, or on the list being unreadable -
+            never on the length alone. A read that failed answers an empty list,
+            and gated on length that empty list took the whole panel with it, so
+            a visit the crew has flagged looked exactly like a customer with
+            nothing booked. This is the only surface a flag ever reaches and the
+            only place "Mark handled" exists, and the crew member who raised it
+            has already been told the office has it.
+          */}
+          {(bookings.length > 0 || bookingsRead === 'unavailable') && (
             <div className="rounded-lg border border-border p-3 md:col-span-2" data-testid="sq-bookings">
               <div className="mb-2 text-xs font-bold uppercase tracking-wide text-text-muted">On the books</div>
+              {bookingsRead === 'unavailable' && (
+                // Persistent, and gated on nothing but the state it describes.
+                // The toast that fires alongside it fades; the two warnings
+                // about the ticks and the Sub box only speak once a window is
+                // named, which a fresh lookup has not done - so this is what
+                // stops somebody reading an empty panel as an answer.
+                <p className="mb-2 text-xs font-medium text-destructive" data-testid="sq-bookings-unread">
+                  {bookings.length > 0
+                    ? 'These visits could NOT be re-read, so this list is of unknown age. A visit '
+                      + 'cancelled, completed or flagged since is not shown here as one - look the '
+                      + 'customer up again before you act on it.'
+                    : 'Their visits could NOT be read. This is NOT "nothing on the books" - a visit '
+                      + 'the crew has flagged looks exactly like this, and the crew member who '
+                      + 'flagged it has been told the office has it. Look the customer up again.'}
+                </p>
+              )}
               <div className="space-y-1.5">
                 {bookings.map((b) => (
                   <div

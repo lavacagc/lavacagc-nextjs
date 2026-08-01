@@ -45,6 +45,9 @@ interface StubIntake {
   };
   bookings: StubBooking[];
   bookingsRead: 'ok' | 'unavailable';
+  homeownerRead?: 'ok' | 'unavailable';
+  requestsRead?: 'ok' | 'unavailable';
+  historyRead?: 'ok' | 'unavailable';
 }
 
 const CATALOG = [
@@ -265,5 +268,106 @@ test.describe('send-service-quote form state', () => {
     await page.locator('#sq-from').fill('09:00');
     await expect(page.getByTestId('sq-sub')).toHaveValue('Ramirez Exteriors');
     await expect(page.getByTestId('sq-sub-stored')).toContainText('Stored on this visit: Ramirez Exteriors');
+  });
+
+  test('AC102 a visits read that failed renders the panel, not "nothing booked"', async ({ page, context, baseURL }) => {
+    // The panel was gated on `bookings.length > 0` alone, so an unreadable list
+    // - which arrives EMPTY, wearing a 200 - took the whole thing with it,
+    // "Mark handled" included. This is the only surface a flag reaches, and the
+    // crew member who raised it has already been told the office has it.
+    const intake: StubIntake = {
+      ...blankIntake(),
+      homeowner: { id: '22222222-2222-2222-2222-222222222222', first_name: 'Fay', phone: null, address: '9 Oak St', city: 'Montclair', zip: '07042', status: 'active' },
+      bookings: [],
+      bookingsRead: 'unavailable',
+    };
+    await mockAdminApis(page, () => intake);
+    await open(page, context, baseURL!);
+
+    await page.getByTestId('sq-email').fill('fay@example.com');
+    await page.getByTestId('sq-lookup').click();
+
+    await expect(page.getByTestId('sq-bookings')).toBeVisible();
+    await expect(page.getByTestId('sq-bookings-unread'))
+      .toContainText('This is NOT "nothing on the books"');
+    // And it says so with no window named - which is exactly the state the two
+    // warnings written for this failure cannot speak in, because both are about
+    // the visit a date and a From time pick out.
+    await expect(page.getByTestId('sq-date')).toHaveValue('');
+    await expect(page.getByTestId('sq-tasks-unread')).toHaveCount(0);
+    await expect(page.getByTestId('sq-sub-unread')).toHaveCount(0);
+  });
+
+  test('AC102 a list kept through a failed refresh is marked as of unknown age', async ({ page, context, baseURL }) => {
+    // The mirror problem: the refresh correctly KEEPS the list it had, but a
+    // cancel or a completion has just run against it, so an unmarked list reads
+    // as the write having landed.
+    const win = easternWindow('2026-08-05', 8, 11);
+    const intake: StubIntake = {
+      ...blankIntake(),
+      homeowner: { id: '22222222-2222-2222-2222-222222222222', first_name: 'Gil', phone: null, address: '9 Oak St', city: 'Montclair', zip: '07042', status: 'active' },
+      bookings: [{
+        ...win, address: '9 Oak St, Montclair, 07042',
+        tasks: [{ key: 'gutters', title: 'Clean gutters', season: 'fall' }],
+        dispatch: { state: 'flagged', confirmedBy: [], flags: [{ by: 'Alex', note: 'gate is locked' }] },
+        sub: { read: 'ok', name: null },
+      }],
+    };
+    let lookups = 0;
+    await page.route('**/api/admin/crew', (route) => route.fulfill({
+      json: { recipients: [{ id: '11111111-1111-1111-1111-111111111111', name: 'Alex', email: 'alex@lavacagc.com', active: true }] },
+    }));
+    // The first read is the lookup; the refresh that follows the cancel fails.
+    await page.route('**/api/admin/service-quote/intake**', (route) => (
+      (lookups += 1) === 1
+        ? route.fulfill({ json: intake })
+        : route.fulfill({ status: 500, json: { error: 'read failed' } })
+    ));
+    await page.route('**/api/admin/service-quote/schedule**', (route) => route.fulfill({
+      json: { status: 'cancelled', reminder: 'cancelled', dispatch: { status: 'ok', retraction: 'sent', unretracted: [] } },
+    }));
+    page.on('dialog', (d) => d.accept());
+    await open(page, context, baseURL!);
+
+    await page.getByTestId('sq-email').fill('gil@example.com');
+    await page.getByTestId('sq-lookup').click();
+    await expect(page.getByTestId('sq-bookings')).toBeVisible();
+    await expect(page.getByTestId('sq-bookings-unread')).toHaveCount(0);
+
+    await page.getByTestId('sq-cancel').click();
+    // The visit is still listed - a shrinking list is what success looks like
+    // here, so it must not be emptied - and it is now marked as unread. The
+    // longer wait is for the blocking `window.confirm` this click opens, which
+    // Playwright dismisses out of band and which stalls under a loaded run.
+    await expect(page.getByTestId('sq-bookings-unread')).toContainText('unknown age', { timeout: 15_000 });
+    await expect(page.getByTestId('sq-dispatch-state')).toContainText('Flagged by Alex');
+  });
+
+  test('AC103 a customer record, requests and history that failed to read each say so', async ({ page, context, baseURL }) => {
+    // Three more panels on this screen that answer an empty value for a failed
+    // read: `homeowner: null` is also a walk-in, no requests is also "they have
+    // never asked", and no history prints "no record" on every service.
+    const intake: StubIntake = {
+      ...blankIntake(),
+      homeowner: null,
+      homeownerRead: 'unavailable',
+      requestsRead: 'unavailable',
+      historyRead: 'unavailable',
+      bookingsRead: 'unavailable',
+    };
+    await mockAdminApis(page, () => intake);
+    await open(page, context, baseURL!);
+
+    await page.getByTestId('sq-email').fill('hal@example.com');
+    await page.getByTestId('sq-lookup').click();
+
+    await expect(page.getByTestId('sq-homeowner-unread'))
+      .toContainText('could NOT be read, so this is not a new customer');
+    await expect(page.getByTestId('sq-requests-unread'))
+      .toContainText('Their past requests could NOT be read');
+    await expect(page.getByTestId('sq-history-unread')).toBeVisible();
+    // "no record" is a definite claim; these completions were never read.
+    await expect(page.getByText('no record', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('not read', { exact: true })).toHaveCount(CATALOG.length);
   });
 });

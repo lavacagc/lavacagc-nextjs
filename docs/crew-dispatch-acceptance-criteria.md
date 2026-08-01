@@ -265,6 +265,15 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     So does the read of the visits themselves: it stays best-effort, because the scheduling columns are hand-applied and a lookup is worth answering without them, but it now hands back `bookingsRead: 'unavailable'` rather than an empty list wearing a 200.
     And so does the **customer record** the whole panel hangs off - the visits, the crew state on them, and the buttons that complete, cancel or clear a flag all need it - so a failed read of that answers `unavailable` too rather than rendering as a customer with no record.
     A **lookup** replaces the list either way - those windows belong to a different customer, and leaving them would aim "Mark completed" at this homeowner - and says out loud that this is not "nothing booked".
+102. That state is carried all the way to the screen: the "On the books" panel renders on the list having contents **or** on the list being unreadable, never on its length alone.
+    Gated on length, `bookingsRead: 'unavailable'` rendered identically to a customer with nothing booked - the panel and its "Mark handled" button simply were not there - and the only signal was a toast that fades.
+    The panel therefore says, persistently, that the visits could NOT be read and that this is not "nothing on the books", and marks a list kept through a failed refresh as being of unknown age rather than showing it as current.
+    That line is gated on nothing but the state it describes. The two warnings written for the same failure - `sq-tasks-unread` and `sq-sub-unread` - are about a named window and only speak once a date and a From time pick one out, which a fresh lookup has not done; a third warning with a gate of its own would have left the same hole.
+103. Every other panel on that screen follows the same rule, because a panel gated purely on the length of a list that can also fail to load has exactly this shape.
+    The **customer record** answers `homeownerRead`, because `homeowner: null` is also what a walk-in reads as: a failed read draws a blank name and address for a customer we have on file and greys out completing, cancelling and clearing a flag, with nothing on screen saying why.
+    Their **past requests** answer `requestsRead`, because an empty list reads as "they have never asked us for anything" - and the scope sentence the quote mails and the services it is ticked for are both pre-filled from it.
+    What they have had **done** answers `historyRead`, because an empty history prints "no record" against every service on the page, which is a definite claim about completions nobody read, and "you last had this done 14 months ago" is the line the quote is argued from. Those rows read "not read" instead.
+    Each is reported by the intake route as its own verdict rather than folded into a neighbour's, and each is stated on the screen where it is acted on.
 
 ## Retiring a visit
 

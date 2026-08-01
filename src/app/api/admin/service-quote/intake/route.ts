@@ -149,7 +149,9 @@ export async function GET(request: NextRequest) {
     const services = bookableCatalog(catalog);
     if (!email) {
       return NextResponse.json({
-        services, requests: [], history: {}, homeowner: null, bookings: [], bookingsRead: 'ok',
+        services, requests: [], history: {}, homeowner: null,
+        homeownerRead: 'ok', requestsRead: 'ok', historyRead: 'ok',
+        bookings: [], bookingsRead: 'ok',
       });
     }
 
@@ -168,11 +170,23 @@ export async function GET(request: NextRequest) {
       // true matches, because PostgREST reads `*` as an alias for `%` with no
       // way to escape it. The limit is raised because the prefilter is the wider
       // net; the exact matches are cut back to ten below.
+      //
+      // Null, never an empty list, when it FAILS. An empty answer renders as
+      // "this customer has never asked us for anything" - no past-requests
+      // panel at all - and the scope sentence and the pre-ticked services are
+      // both drawn from it, so a failed read quietly becomes a blank form for a
+      // customer with history.
       supabaseRest<LeadRow[]>(
         'GET',
         `leads?select=id,first_name,last_name,email,phone,address,city,zip_code,source,message,created_at` +
           `&email=ilike.${encodeURIComponent(escapeLikePattern(email))}&order=created_at.desc&limit=50`,
-      ).catch(() => [] as LeadRow[]),
+      ).catch((err) => {
+        console.error(
+          'service-quote intake could not read their past requests:',
+          err instanceof Error ? err.message : String(err),
+        );
+        return null;
+      }),
       // Null, never an empty list, when this one FAILS. Everything the admin
       // acts on hangs off the customer record - the visits, the crew state on
       // them, and the buttons that complete, cancel or clear a flag - so
@@ -192,6 +206,14 @@ export async function GET(request: NextRequest) {
     ]);
 
     const homeowner = owners?.[0] ?? null;
+    // Whether the customer RECORD could be read, said in its own right. A
+    // failed read answers `homeowner: null`, which is indistinguishable from a
+    // walk-in nobody has booked before - and the screen fills the name and the
+    // address from it, and hangs every visit action off its id. Reported as a
+    // read that failed, so the screen can say so rather than draw a blank form
+    // for a customer we have on file.
+    const homeownerRead: 'ok' | 'unavailable' = owners === null ? 'unavailable' : 'ok';
+    const requestsRead: 'ok' | 'unavailable' = leads === null ? 'unavailable' : 'ok';
 
     // Their request history, with the services each one asked for resolved.
     // The ilike prefilter above can over-match (a stored `a*@example.com` is a
@@ -231,6 +253,11 @@ export async function GET(request: NextRequest) {
     // homeowner there is nothing to read visits against, so answering 'ok'
     // would say "nothing on the books" about a customer we never looked up.
     let bookingsRead: 'ok' | 'unavailable' = owners === null ? 'unavailable' : 'ok';
+    // The same rule for what they last had done. Every service the catalog
+    // offers reads "no record" against an empty history, which is a definite
+    // claim about a customer whose completions were never read - and it is the
+    // line the quote is argued from.
+    let historyRead: 'ok' | 'unavailable' = owners === null ? 'unavailable' : 'ok';
     if (homeowner) {
       const [done, booked] = await Promise.all([
         // Selected on the TIMESTAMP, not on `status`. The two answer different
@@ -242,7 +269,13 @@ export async function GET(request: NextRequest) {
           'GET',
           `homeowner_maintenance?select=task_key,status,completed_at,completed_by` +
             `&homeowner_id=eq.${homeowner.id}&completed_at=not.is.null`,
-        ).catch(() => [] as CompletionRow[]),
+        ).catch((err) => {
+          console.error(
+            'service-quote intake could not read their service history:',
+            err instanceof Error ? err.message : String(err),
+          );
+          return null;
+        }),
         // The scheduling columns are hand-applied (20260815), as every migration
         // here is. A lookup is still worth answering without them.
         supabaseRest<BookedRow[]>(
@@ -258,13 +291,16 @@ export async function GET(request: NextRequest) {
           return [] as BookedRow[];
         }),
       ]);
+      if (done === null) historyRead = 'unavailable';
       history = Object.fromEntries(
         [...lastDoneFor(done ?? []).entries()].map(([k, v]) => [k, { at: v.at.toISOString(), by: v.by, label: lastDoneLabel(v) }]),
       );
       bookings = await withDispatchState(homeowner.id, groupBookings(booked ?? [], byKey));
     }
 
-    return NextResponse.json({ services, requests, history, homeowner, bookings, bookingsRead });
+    return NextResponse.json({
+      services, requests, history, homeowner,
+      homeownerRead, requestsRead, historyRead, bookings, bookingsRead });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('service-quote intake failed:', message);

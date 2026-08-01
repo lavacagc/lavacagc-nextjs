@@ -1654,6 +1654,59 @@ test('AC84 a dispatch read that failed reads as unknown, never as never-dispatch
   expect(lookupFn).toContain('is NOT ');
 });
 
+test('AC102 the "On the books" panel renders on an unreadable list, not on length alone', () => {
+  // The last place this feature collapsed a failed read into an empty answer,
+  // and the sharpest: an unreadable list arrives EMPTY wearing a 200, and gated
+  // on `bookings.length > 0` the panel - flag, note and "Mark handled" - simply
+  // was not rendered. The only other signal was a toast that fades.
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain("{(bookings.length > 0 || bookingsRead === 'unavailable') && (");
+  expect(page).toContain('data-testid="sq-bookings-unread"');
+  expect(page).toContain('This is NOT "nothing on the books"');
+  // The kept-but-unrefreshed list is the mirror case: a refresh runs straight
+  // after a cancel or a completion, so an unmarked list reads as the write
+  // having landed.
+  expect(page).toContain('this list is of unknown age');
+  // Gated on the state it describes and nothing else. The two warnings written
+  // for this same failure are about a NAMED window, so neither can speak on a
+  // fresh lookup - a third warning with a gate of its own would repeat the bug.
+  expect(page).toContain("const tasksUnknown = Number.isFinite(targetStart) && bookingsRead === 'unavailable';");
+  const panel = page.slice(page.indexOf("{(bookings.length > 0 || bookingsRead === 'unavailable') && ("));
+  expect(panel).toContain("{bookingsRead === 'unavailable' && (");
+  expect(panel, 'the persistent line cannot depend on a window being named').not.toContain('targetStart');
+});
+
+test('AC103 every read behind this screen answers its own verdict, never a neighbour\'s empty value', () => {
+  // Same shape, three more panels: `homeowner: null` is also what a walk-in
+  // reads as, no requests is also "they have never asked us for anything", and
+  // an empty history prints "no record" against every service on the page.
+  const intake = read('src/app/api/admin/service-quote/intake/route.ts');
+  expect(intake).toContain("const homeownerRead: 'ok' | 'unavailable' = owners === null ? 'unavailable' : 'ok';");
+  expect(intake).toContain("const requestsRead: 'ok' | 'unavailable' = leads === null ? 'unavailable' : 'ok';");
+  expect(intake).toContain("let historyRead: 'ok' | 'unavailable' = owners === null ? 'unavailable' : 'ok';");
+  expect(intake).toContain('if (done === null) historyRead = ');
+  expect(intake).toContain('homeownerRead, requestsRead, historyRead, bookings, bookingsRead });');
+  // Each read that used to swallow itself to an empty list now says so out loud
+  // on the way past, the same as the customer record already did.
+  expect(intake).toContain("'service-quote intake could not read their past requests:',");
+  expect(intake).toContain("'service-quote intake could not read their service history:',");
+
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain('data-testid="sq-homeowner-unread"');
+  expect(page).toContain('so this is not a new customer');
+  expect(page).toContain('data-testid="sq-requests-unread"');
+  expect(page).toContain('data-testid="sq-history-unread"');
+  // "no record" is a claim about completions somebody read. These were not.
+  expect(page).toContain("{hist ? hist.label : intake.historyRead === 'unavailable' ? 'not read' : 'no record'}");
+  // The record warning comes back DOWN when a later read gets it - a booking
+  // made from a lookup that could not read the record still yields the id.
+  const refresh = page.slice(page.indexOf('const refreshBookings ='), page.indexOf('const lookup ='));
+  expect(refresh).toContain("setHomeownerRead('ok');");
+  const lookupFn = page.slice(page.indexOf('const lookup ='), page.indexOf('const toggle ='));
+  expect(lookupFn).toContain("setHomeownerRead(data.homeownerRead === 'unavailable' ? 'unavailable' : 'ok');");
+  expect(lookupFn).toContain("setHomeownerRead('unavailable');");
+});
+
 test('AC89 one spelling of the (homeowner, window) dispatch read', () => {
   // The key that must not drift: visitKey normalisation and the URL encoding
   // both have to be right in every copy, and a reader that got either wrong

@@ -204,7 +204,13 @@ test.describe('admin /vaca-mgmt/follow-ups', () => {
     await sarahRow.getByRole('button', { name: /Stop drip/ }).click();
 
     // Toast confirms the persisted cancel count coming back from the API.
-    await expect(page.getByText(/Cancelled 2 pending emails for Sarah Chen/)).toBeVisible();
+    // Matched EXACTLY, on the toast's own description: the same sentence is also
+    // concatenated into the `role="status"` live region the toaster announces
+    // through, so a substring match resolves to two elements and trips strict
+    // mode - intermittently, because it depends on catching both mounted.
+    await expect(
+      page.getByText('Cancelled 2 pending emails for Sarah Chen.', { exact: true }),
+    ).toBeVisible();
     // After the refetch, Sarah is gone and the pending total dropped 7 -> 5.
     await expect(page.getByText('sarah.chen@example.com')).toHaveCount(0);
     await expect(page.locator('p.text-2xl', { hasText: /^5$/ })).toBeVisible();
