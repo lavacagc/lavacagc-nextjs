@@ -638,7 +638,7 @@ test('AC98 the sub box shows the sub stored on the visit it is aimed at', () => 
   expect(read('src/lib/homecare/serviceScheduling.ts')).toContain('if (args.address && !row.address) patch.address = args.address;');
   expect(page).toContain('targetVisit?.address && targetVisit.address !== address.trim()');
   expect(page).toContain('This visit is on the books at {targetVisit.address}');
-  expect(page).toContain("disabled={scheduling || selected.size === 0 || !address.trim()");
+  expect(page).toContain('|| selected.size === 0 || !address.trim()');
 });
 
 test('AC99 the ticked services show what the visit the form is aimed at holds', () => {
@@ -1322,6 +1322,47 @@ test('AC67 a link re-opened after a flag repeats what the tap was told, never th
   expect(page).toContain("initialFlagAlert={assignment.notified_at ? 'reached' : 'unreached'}");
 });
 
+test('AC108 a confirmed crew member can still raise a problem', () => {
+  // The confirmed screen was terminal, and the only terminal state with neither
+  // a way to say something is wrong nor a phone number. The crew member's own
+  // confirmation is what silences the 5pm and 6pm chases, so a sub cancelling
+  // overnight left the one person who knows with no route back into the system
+  // at all - every automatic check already switched off by their own answer.
+  const actions = read('src/app/crew/confirm/[token]/CrewConfirmActions.tsx');
+  const confirmed = actions.slice(
+    actions.indexOf("if (status === 'confirmed') {"), actions.indexOf("if (status === 'flagged') {"),
+  );
+  expect(confirmed).toContain('data-testid="crew-confirmed"');
+  expect(confirmed, 'a way to raise it').toContain('data-testid="crew-flag-open"');
+  expect(confirmed).toContain('onClick={() => setShowNote(true)}');
+  expect(confirmed, 'and a human to call').toContain('href="tel:2012124917"');
+
+  // One note form, above both screens that open it, so the two entrances
+  // cannot drift into different forms.
+  expect(actions.indexOf('if (showNote) {')).toBeLessThan(actions.indexOf("if (status === 'confirmed') {"));
+  expect((actions.match(/data-testid="crew-note"/g) ?? [])).toHaveLength(1);
+  expect((actions.match(/data-testid="crew-flag"\n/g) ?? [])).toHaveLength(1);
+
+  // Nothing on the server side gates a flag on the row being unanswered, so
+  // this really does reopen the visit rather than only recording a note: the
+  // PATCH filters on the id and `neq.retired` alone, the alert fires because
+  // the transition guard sees a status that is not 'flagged', and a flag
+  // outranks a confirmation in both the escalation and the admin list.
+  const route = confirmRoute();
+  expect(route).toContain('&status=neq.retired');
+  expect(route).not.toContain('status=eq.sent');
+  expect(route).toContain("assignment.status === 'flagged'");
+  const cron = read('src/app/api/cron/visit-dispatch-escalation/route.ts');
+  expect(cron).toContain("if (mine.some((a) => a.status === 'confirmed')) {");
+
+  // Clearing one is still the admin's, so a flagged screen stays terminal.
+  const flagged = actions.slice(
+    actions.indexOf("if (status === 'flagged') {"), actions.indexOf('data-testid="crew-confirm"'),
+  );
+  expect(flagged).toContain('data-testid="crew-flagged"');
+  expect(flagged).not.toContain('setShowNote(true)');
+});
+
 test('AC74 only the transition into a flag alerts, so one token cannot flood the chat', () => {
   // This route is public and unthrottled, and the token rides in an email that
   // can be forwarded. Judged against the row as it was BEFORE the PATCH, or the
@@ -1786,10 +1827,88 @@ test('AC106 the refresh re-reads the customer on screen, not the lookup box', ()
   // handler, where a setter's value would not be visible to the call it makes.
   const lookupFn = page.slice(page.indexOf('const lookup ='), page.indexOf('const toggle ='));
   expect(lookupFn).toContain('loadedEmail.current = email.trim();');
-  const scheduleFn = page.slice(page.indexOf('const schedule = async ()'), page.indexOf('const complete = async'));
-  expect(scheduleFn.indexOf('loadedEmail.current = email.trim();')).toBeLessThan(scheduleFn.indexOf('await refreshBookings();'));
+  const scheduleFn = page.slice(page.indexOf('const schedule = async ()'), page.indexOf('const runRowAction ='));
+  expect(scheduleFn).toContain('await refreshBookings();');
+  // The person just BOOKED, which the guard in AC107 has already established is
+  // the one in the box. Recorded before the await, not through a setter, whose
+  // value the call it makes would not see.
+  expect(scheduleFn.indexOf('loadedEmail.current = who.email;')).toBeGreaterThan(-1);
+  expect(scheduleFn.indexOf('loadedEmail.current = who.email;')).toBeLessThan(scheduleFn.indexOf('await refreshBookings();'));
   const reset = page.slice(page.indexOf('const clearCustomer = useCallback'), page.indexOf('const refreshBookings ='));
   expect(reset).toContain("loadedEmail.current = '';");
+});
+
+test('AC107 sending and booking act on the customer LOADED, never the lookup box', () => {
+  // The last door left open on AC101: no second lookup is needed, only a box
+  // retyped and left. Every other field on the card - the name, the address,
+  // the phone, the ticked services - belongs to whoever was loaded, so taking
+  // the IDENTITY from the box split one action between two people. It corrupts
+  // rather than merely displaying: `ensureServiceHomeowner` writes the loaded
+  // customer's phone and address onto the TYPED customer's record, the visit is
+  // booked onto the loaded customer's services under them, the crew are mailed
+  // one name for the other's homeowner, and their 7:30pm reminder names
+  // services they never asked for.
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+
+  // One answer to "who is this for?", for both buttons that write.
+  expect(page).toContain('const actionCustomer = (): ');
+  expect(page).toContain('? { email: loaded }\n        : { refusal: SPLIT_IDENTITY };');
+  // A walk-in is not this state: with nobody loaded every field was typed here,
+  // so the box is the only identity there is and it can be trusted. Its own
+  // refusal, because a message about a customer nobody loaded would be a
+  // banner asserting something the screen contradicts.
+  expect(page).toContain('? { email: typed }');
+  expect(page).toContain('There is nobody on this card yet');
+
+  for (const [fn, next] of [
+    ['const send = async (isTest: boolean)', 'const schedule = async ()'],
+    ['const schedule = async ()', 'const runRowAction ='],
+  ] as const) {
+    const body = page.slice(page.indexOf(fn), page.indexOf(next));
+    expect(body, `${fn} resolves the customer first`).toContain('const who = actionCustomer();');
+    expect(body, `${fn} refuses rather than guessing`).toContain('description: who.refusal');
+    // The refusal comes BEFORE the write, and before the busy flag that would
+    // otherwise be left set.
+    expect(body.indexOf('if (who.email === undefined) {')).toBeLessThan(body.indexOf('await fetch('));
+    // ...and nothing in either handler reaches for the box again.
+    expect(body, 'the box never names the customer').not.toContain('email.trim()');
+  }
+  expect(page).toContain('recipientName: name, recipientEmail: who.email, ccEmails: cc,');
+  expect(page).toContain('email: who.email, name, phone:');
+
+  // Switched off on screen as well as refused in the handler, and the line says
+  // which two people the screen is holding rather than only that something is
+  // wrong. A banner is not enough on its own - the handlers are what send.
+  expect(page).toContain("const splitIdentity = loadedEmail.current !== ''\n    && email.trim().toLowerCase() !== loadedEmail.current.toLowerCase();");
+  expect(page).toContain('data-testid="sq-identity-split"');
+  expect(page).toContain('&& !splitIdentity;');
+  expect(page).toContain('disabled={scheduling || splitIdentity ||');
+});
+
+test('AC109 one row-busy state, so a fourth row action cannot leave a button live', () => {
+  // Three `useState<string | null>` held the same fact - which row is mid-write
+  // - and were mutually exclusive by construction, with the disabled condition
+  // spelled out identically at all three buttons.
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain('const [rowBusy, setRowBusy] = useState<{ action: RowAction; start: string } | null>(null);');
+  for (const gone of ['setCompleting', 'setCancelling', 'setHandling']) {
+    expect(page, `${gone} is no longer a separate state`).not.toContain(gone);
+  }
+  // One lock, one spelling, read by all three buttons.
+  expect(page).toContain('const rowLocked = rowBusy !== null || !homeownerId;');
+  expect((page.match(/disabled=\{rowLocked\}/g) ?? [])).toHaveLength(3);
+  expect(page).not.toContain('completing !== null || cancelling !== null');
+
+  // And the prelude and epilogue every row action shares are spelled once: the
+  // customer this page holds, the question, the lock, and the failure toast.
+  const runner = page.slice(page.indexOf('const runRowAction = async ('), page.indexOf('const complete ='));
+  expect(runner).toContain('if (!homeownerId) return;');
+  expect(runner).toContain('if (!window.confirm(copy.ask)) return;');
+  expect(runner).toContain('setRowBusy({ action, start: booking.start });');
+  expect(runner).toContain('setRowBusy(null);');
+  for (const handler of ['const complete =', 'const cancel =', 'const markHandled =']) {
+    expect(page.slice(page.indexOf(handler), page.indexOf(handler) + 200)).toContain('runRowAction(');
+  }
 });
 
 test('AC89 one spelling of the (homeowner, window) dispatch read', () => {
@@ -1894,8 +2013,12 @@ test('AC76 clearing a flag is an admin action, and only the flagged rows move', 
   const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
   expect(page).toContain("fetch('/api/admin/service-quote/dispatch'");
   expect(page).toContain('data-testid="sq-handled"');
-  // Confirm-gated, the same as "Mark completed".
-  expect(page).toContain('window.confirm(\'Mark this flag handled?');
+  // Confirm-gated, the same as "Mark completed" - through the one gate all
+  // three row actions now share, so the question is asked by construction
+  // rather than by each handler remembering to ask it.
+  expect(page).toContain("ask: 'Mark this flag handled? The 5pm and 6pm chases stop for this visit.',");
+  expect(page).toContain('if (!window.confirm(copy.ask)) return;');
+  expect(page).toContain("const markHandled = (booking: Booking) => runRowAction(\n    'handle',");
   // And offered only where there is a flag to clear.
   expect(page).toContain("b.dispatch?.state === 'flagged' && (");
 });

@@ -96,6 +96,19 @@ const todayPlus = (days: number) => {
   return d.toISOString().slice(0, 10);
 };
 
+/**
+ * Said - and refused - when the lookup box names somebody other than the
+ * customer the card was filled in for. Spelled once, because it is the answer
+ * to the same question in three places: the warning on screen, "Send quote" and
+ * "Schedule visit".
+ */
+const SPLIT_IDENTITY = 'The email box names somebody other than the customer loaded below, so this '
+  + 'would have used one person\'s name, address, phone and services for another. Press "Look up" '
+  + 'to load whoever is in the box.';
+
+/** One booked visit, one write. */
+type RowAction = 'complete' | 'cancel' | 'handle';
+
 export default function SendServiceQuotePage() {
   const [email, setEmail] = useState('');
   const [intake, setIntake] = useState<Intake | null>(null);
@@ -156,9 +169,12 @@ export default function SendServiceQuotePage() {
   // from a lookup that failed to read it does produce the id - so the warning
   // has to be able to come back down.
   const [homeownerRead, setHomeownerRead] = useState<'ok' | 'unavailable'>('ok');
-  const [completing, setCompleting] = useState<string | null>(null);
-  const [cancelling, setCancelling] = useState<string | null>(null);
-  const [handling, setHandling] = useState<string | null>(null);
+  // Which booked row is mid-write, and what is being done to it. ONE state, not
+  // one per action: they are mutually exclusive by construction - each button
+  // is disabled while any of them is running - and spelled as three, that rule
+  // was written out at every button, so a fourth action meant remembering four
+  // places and forgetting one left a button live during another action's write.
+  const [rowBusy, setRowBusy] = useState<{ action: RowAction; start: string } | null>(null);
   // Kept apart from `intake`, because a walk-in has no homeowner record until
   // the booking creates one - and completing that visit still needs the id.
   const [homeownerId, setHomeownerId] = useState<string | null>(null);
@@ -178,6 +194,27 @@ export default function SendServiceQuotePage() {
    * called.
    */
   const loadedEmail = useRef('');
+
+  /**
+   * The box and the card have come apart: they name two different people.
+   *
+   * Reached without a lookup at all - load A, start typing B into the box, stop
+   * short of pressing "Look up" - and every action on this card was split
+   * between them, because only the IDENTITY came from the box while the name,
+   * the address, the phone and the ticked services all belonged to A. Booking
+   * there wrote A's phone and address onto B's customer record through
+   * `ensureServiceHomeowner`, booked A's services at A's address under B, mailed
+   * the crew "Customer: A" for a visit filed under B, and left B's night-before
+   * reminder naming A's services. "Send quote" mailed B a scope sentence written
+   * for A.
+   *
+   * So it is a state to resolve, never one to split: both buttons are switched
+   * off, both handlers refuse, and the line below says which two people the
+   * screen is holding. A walk-in is not this state - with nobody loaded, every
+   * field on the card was typed here and the box is the only identity there is.
+   */
+  const splitIdentity = loadedEmail.current !== ''
+    && email.trim().toLowerCase() !== loadedEmail.current.toLowerCase();
 
   /**
    * The visit this form is aimed at: the one already on the books for the
@@ -476,14 +513,47 @@ export default function SendServiceQuotePage() {
     setScope(scopeSummaryFrom((intake?.services ?? []).filter((s) => next.has(s.key))));
   };
 
+  /**
+   * Who "Send quote" and "Schedule visit" act on, or why the screen cannot say
+   * - the one place that question is answered.
+   *
+   * The customer who was LOADED, never the free-text box beside them: the box is
+   * bound to nothing on this card, which is the same reason `cancel` refuses to
+   * send it as the customer's address and the reason `refreshBookings` stopped
+   * reading by it. With nobody loaded there is nothing to disagree with, so the
+   * box IS the identity - that is the walk-in the admin has typed in front of
+   * them, and it is the one shape where the box can be trusted.
+   *
+   * Two refusals, not one, because they are two different states and a refusal
+   * that describes the wrong one is a banner asserting something the screen
+   * contradicts.
+   */
+  const actionCustomer = (): { email: string; refusal?: undefined } | { email?: undefined; refusal: string } => {
+    const typed = email.trim();
+    const loaded = loadedEmail.current;
+    if (loaded) {
+      return typed.toLowerCase() === loaded.toLowerCase()
+        ? { email: loaded }
+        : { refusal: SPLIT_IDENTITY };
+    }
+    return typed
+      ? { email: typed }
+      : { refusal: 'There is nobody on this card yet - put the customer\'s email address in the box at the top.' };
+  };
+
   const send = async (isTest: boolean) => {
+    const who = actionCustomer();
+    if (who.email === undefined) {
+      toast({ title: 'Nothing was sent', description: who.refusal, variant: 'destructive' });
+      return;
+    }
     setBusy(isTest ? 'test' : 'send');
     try {
       const res = await fetch('/api/admin/service-quote/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          recipientName: name, recipientEmail: email.trim(), ccEmails: cc,
+          recipientName: name, recipientEmail: who.email, ccEmails: cc,
           scopeSummary: scope, taskKeys: [...selected], visitLength,
           estimateUrl, validUntil, personalNote: note, isTest,
         }),
@@ -494,7 +564,7 @@ export default function SendServiceQuotePage() {
         title: data.status === 'idempotent' ? 'Already sent' : isTest ? 'Test sent' : 'Quote sent',
         description: data.status === 'idempotent'
           ? 'An identical quote went out in the last 30 seconds.'
-          : isTest ? 'Check alex@lavacagc.com.' : `Sent to ${email}.`,
+          : isTest ? 'Check alex@lavacagc.com.' : `Sent to ${who.email}.`,
       });
     } catch (e) {
       toast({ title: 'Send failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
@@ -504,6 +574,15 @@ export default function SendServiceQuotePage() {
   };
 
   const schedule = async () => {
+    // Asked first, because it is the question the rest of the booking is built
+    // on: the window, the services, the address and the sub all describe a
+    // visit for one particular person, and this is the only thing that says
+    // which one.
+    const who = actionCustomer();
+    if (who.email === undefined) {
+      toast({ title: 'Nothing was booked', description: who.refusal, variant: 'destructive' });
+      return;
+    }
     if (!date) { toast({ title: 'Pick a date first', variant: 'destructive' }); return; }
     if (!from || !to) { toast({ title: 'Set the arrival window', variant: 'destructive' }); return; }
     setScheduling(true);
@@ -521,7 +600,7 @@ export default function SendServiceQuotePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: email.trim(), name, phone: intake?.homeowner?.phone ?? intake?.requests[0]?.phone ?? '',
+          email: who.email, name, phone: intake?.homeowner?.phone ?? intake?.requests[0]?.phone ?? '',
           taskKeys: [...selected],
           // Eastern, not the browser's zone. Everything downstream reads the
           // stored instant as an Eastern wall-clock time, and a bare
@@ -550,8 +629,9 @@ export default function SendServiceQuotePage() {
       // A booking loads a customer too - a walk-in booked without a lookup has
       // no other way of becoming the one on screen - so the refresh below has
       // somebody to re-read. Set before the await, not through a setter, which
-      // this call would not see.
-      loadedEmail.current = email.trim();
+      // this call would not see. The person just booked, never the box: those
+      // are the same value here only because the guard above said so.
+      loadedEmail.current = who.email;
       await refreshBookings();
       // Back to following the visit. The box and the ticks now show what the
       // row actually holds - which is the point when a write did NOT land: the
@@ -638,15 +718,46 @@ export default function SendServiceQuotePage() {
   };
 
   /**
+   * Everything the three row actions do the same way, spelled once: they all
+   * need the customer this page is holding, they all ask before they write,
+   * they all lock every row for the duration, and they all report a throw the
+   * same way. Only what happens in between differs, and that is what each
+   * handler below is.
+   *
+   * The question and the failure title stay at the call site, where the reader
+   * looking at "Cancel visit" can see what it asks.
+   */
+  const runRowAction = async (
+    action: RowAction,
+    booking: Booking,
+    copy: { ask: string; failed: string },
+    run: (homeownerId: string) => Promise<void>,
+  ) => {
+    if (!homeownerId) return;
+    if (!window.confirm(copy.ask)) return;
+    setRowBusy({ action, start: booking.start });
+    try {
+      await run(homeownerId);
+    } catch (e) {
+      toast({ title: copy.failed, description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setRowBusy(null);
+    }
+  };
+
+  /**
    * Close out ONE booked visit. The window is named, so the completion cannot
    * reach another visit this customer has on the books, and the seasons come
    * from the rows themselves rather than from a booking made in this session.
    */
-  const complete = async (booking: Booking) => {
-    if (!homeownerId) return;
-    if (!window.confirm('Mark this service completed? The customer gets an email asking how the team did.')) return;
-    setCompleting(booking.start);
-    try {
+  const complete = (booking: Booking) => runRowAction(
+    'complete',
+    booking,
+    {
+      ask: 'Mark this service completed? The customer gets an email asking how the team did.',
+      failed: 'Failed',
+    },
+    async (homeownerId) => {
       const res = await fetch('/api/admin/service-quote/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -680,12 +791,8 @@ export default function SendServiceQuotePage() {
           + (dispatchStale ? ' The crew record could NOT be cleared - re-booking this slot may go unchased.' : ''),
         variant: stranded || dispatchStale ? 'destructive' : undefined,
       });
-    } catch (e) {
-      toast({ title: 'Failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
-    } finally {
-      setCompleting(null);
-    }
-  };
+    },
+  );
 
   /**
    * Call OFF one booked visit.
@@ -698,11 +805,14 @@ export default function SendServiceQuotePage() {
    * which writes the job into the service history and mails the customer asking
    * how the team did on work never performed.
    */
-  const cancel = async (booking: Booking) => {
-    if (!homeownerId) return;
-    if (!window.confirm('Cancel this visit? It comes off the customer\'s portal and the night-before reminder is pulled.')) return;
-    setCancelling(booking.start);
-    try {
+  const cancel = (booking: Booking) => runRowAction(
+    'cancel',
+    booking,
+    {
+      ask: 'Cancel this visit? It comes off the customer\'s portal and the night-before reminder is pulled.',
+      failed: 'Cancel failed',
+    },
+    async (homeownerId) => {
       // No email: the route reads it off the homeowner row. This box is the
       // LOOKUP field, not a value bound to the customer whose bookings are on
       // screen, so sending it let the unbook and the reminder cancel name
@@ -748,27 +858,27 @@ export default function SendServiceQuotePage() {
           : 'Off the books, and the reminder is pulled.') + crewLine,
         variant: stranded || dispatchStale || stillHolding.length > 0 ? 'destructive' : undefined,
       });
-    } catch (e) {
-      toast({ title: 'Cancel failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
-    } finally {
-      setCancelling(null);
-    }
-  };
+    },
+  );
 
   /**
    * Clear a crew flag once the office has dealt with it.
    *
-   * The crew screen cannot do this: it is terminal by design, and the person who
-   * spotted the problem is not necessarily the person who fixes it. But a flag
-   * no longer counts as an answer, so without this the visit is chased at 5pm
-   * and 6pm until its window passes - three alerts for one problem already
-   * sorted, and no way to stop them short of calling the visit off.
+   * Clearing is an admin action: the crew screen can raise a problem and raise
+   * it again, but it cannot decide one is sorted, and the person who spotted it
+   * is not necessarily the person who fixes it. A flag no longer counts as an
+   * answer, so without this the visit is chased at 5pm and 6pm until its window
+   * passes - three alerts for one problem already sorted, and no way to stop
+   * them short of calling the visit off.
    */
-  const markHandled = async (booking: Booking) => {
-    if (!homeownerId) return;
-    if (!window.confirm('Mark this flag handled? The 5pm and 6pm chases stop for this visit.')) return;
-    setHandling(booking.start);
-    try {
+  const markHandled = (booking: Booking) => runRowAction(
+    'handle',
+    booking,
+    {
+      ask: 'Mark this flag handled? The 5pm and 6pm chases stop for this visit.',
+      failed: 'Failed',
+    },
+    async (homeownerId) => {
       const res = await fetch('/api/admin/service-quote/dispatch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -801,12 +911,8 @@ export default function SendServiceQuotePage() {
           : 'No flag was open on this visit - the list was out of date. ') + chaseLine,
         variant: state === 'confirmed' ? undefined : 'destructive',
       });
-    } catch (e) {
-      toast({ title: 'Failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
-    } finally {
-      setHandling(null);
-    }
-  };
+    },
+  );
 
   const visitLabel = (b: Booking) => {
     const fmt: Intl.DateTimeFormatOptions = { timeZone: 'America/New_York' };
@@ -815,7 +921,17 @@ export default function SendServiceQuotePage() {
     return `${day}, ${time(b.start)}${b.end ? ` - ${time(b.end)}` : ''}`;
   };
 
-  const canSend = name.trim() && email.trim() && scope.trim() && estimateUrl.trim();
+  // Every row action locks every row, because all three write to the same visit
+  // list and each awaits a refresh that re-reads all of it. Spelled once, so
+  // adding a fourth cannot leave a button live during another action's write.
+  const rowLocked = rowBusy !== null || !homeownerId;
+  const spinning = (action: RowAction, b: Booking) => rowBusy?.action === action && rowBusy.start === b.start;
+
+  // Switched off across a split identity, on both buttons that write: this is
+  // the only card where the customer's own details and the box that names them
+  // can disagree, and neither a quote nor a booking may be split between two
+  // people.
+  const canSend = name.trim() && email.trim() && scope.trim() && estimateUrl.trim() && !splitIdentity;
 
   return (
     <div className="space-y-6">
@@ -841,6 +957,23 @@ export default function SendServiceQuotePage() {
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Look up'}
             </Button>
           </div>
+
+          {splitIdentity && (
+            // The box is free text and nothing binds it to the card below it,
+            // so it can be retyped at any point after a customer is loaded -
+            // half of a second lookup, abandoned. Everything else here belongs
+            // to whoever WAS loaded, so acting on this state split one action
+            // between two people: it wrote the loaded customer's phone and
+            // address onto the typed customer's record and booked the loaded
+            // customer's services under them.
+            <p className="text-xs font-medium text-destructive" data-testid="sq-identity-split">
+              The box says <strong>{email.trim() || 'nothing'}</strong>, but the name, address,
+              phone and services below were loaded for <strong>{loadedEmail.current}</strong>.
+              Sending and booking are switched off until the two agree - press &quot;Look up&quot; to
+              load whoever is in the box. The visits listed below still belong to{' '}
+              {loadedEmail.current} and still act on them.
+            </p>
+          )}
 
           {homeownerRead === 'unavailable' && (
             // Their record read as `null`, which is also what a walk-in reads
@@ -1103,7 +1236,7 @@ export default function SendServiceQuotePage() {
           <div className="flex flex-wrap gap-2 md:col-span-2">
             <Button
               onClick={schedule}
-              disabled={scheduling || selected.size === 0 || !address.trim() || (crew.length > 0 && crewPicked.size === 0)}
+              disabled={scheduling || splitIdentity || selected.size === 0 || !address.trim() || (crew.length > 0 && crewPicked.size === 0)}
               data-testid="sq-schedule"
             >
               {scheduling ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CalendarPlus className="mr-1.5 h-4 w-4" /> Schedule visit</>}
@@ -1188,28 +1321,28 @@ export default function SendServiceQuotePage() {
                       {b.dispatch?.state === 'flagged' && (
                         <Button
                           variant="outline" size="sm" onClick={() => markHandled(b)}
-                          disabled={completing !== null || cancelling !== null || handling !== null || !homeownerId}
+                          disabled={rowLocked}
                           data-testid="sq-handled"
                         >
-                          {handling === b.start
+                          {spinning('handle', b)
                             ? <Loader2 className="h-4 w-4 animate-spin" />
                             : <><ShieldCheck className="mr-1.5 h-4 w-4" /> Mark handled</>}
                         </Button>
                       )}
                       <Button
                         variant="outline" size="sm" onClick={() => complete(b)}
-                        disabled={completing !== null || cancelling !== null || handling !== null || !homeownerId} data-testid="sq-complete"
+                        disabled={rowLocked} data-testid="sq-complete"
                       >
-                        {completing === b.start
+                        {spinning('complete', b)
                           ? <Loader2 className="h-4 w-4 animate-spin" />
                           : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> Mark completed</>}
                       </Button>
                       <Button
                         variant="outline" size="sm" onClick={() => cancel(b)}
-                        disabled={completing !== null || cancelling !== null || handling !== null || !homeownerId}
+                        disabled={rowLocked}
                         className="text-destructive hover:border-destructive" data-testid="sq-cancel"
                       >
-                        {cancelling === b.start
+                        {spinning('cancel', b)
                           ? <Loader2 className="h-4 w-4 animate-spin" />
                           : <><XCircle className="mr-1.5 h-4 w-4" /> Cancel visit</>}
                       </Button>

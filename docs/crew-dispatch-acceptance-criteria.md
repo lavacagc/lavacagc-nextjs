@@ -137,6 +137,7 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     The resets used to sit inside branches - the services and the scope sentence behind "this lead named some tasks", the name and address behind "there is a homeowner record" - so a walk-in with neither kept the previous customer's on screen, and both buttons accept that state.
     "Send quote" then mailed one customer a scope sentence written for another, and "Schedule visit" booked their window onto another customer's services at another customer's address, which is what the crew dispatch and the night-before reminder are both built from.
     Pre-dates crew dispatch and fixed here: it is the same defect as a sub surviving into the next customer, on four fields that fix did not cover.
+    The reset alone is not the whole guarantee, because it only runs on a lookup: AC104 covers the one that failed, and AC107 the retyped box that never reached one at all.
 90. A sub the row would **not store** - or would not **clear** - is reported, not just logged, and the send reports `sent_degraded` rather than a clean `sent`.
     The email is right either way - it is built from the value handed back, never re-read - so the divergence between what was mailed and what is stored is invisible from everywhere else: the confirm page silently drops its "Sub" row and its button reverts from "Confirm - sub is booked" to "Confirm - I am on this", and a later flag alert about the visit cannot name who was booked for it. A clear that did not land is the mirror image, and just as quiet: the email leaves the sub off while the row still names them.
     The admin toast is the only place that is ever said, so it names the sub - or says it could not be cleared, which has no name to give - and tells them to re-save.
@@ -165,6 +166,13 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 46. "Something is wrong" opens a note field rather than submitting immediately - what they type is the whole value of the button.
 47. A flag records the note; a confirm clears it.
 48. Both a confirm and a flag stamp `confirmed_at`, because both mean a human has *looked* at this - which is not the same as the visit being dealt with.
+108. **A confirmation does not close the door.** "Something is wrong" survives it, and so does the office number.
+    The confirmed screen was terminal and was the only terminal state with neither a way to raise a problem nor a phone number on it.
+    Their own confirmation is what silences the 5pm and 6pm chases (AC55), so a sub cancelling overnight left the one person who knows with no route back into the system at all: every automatic check had already been switched off by their earlier answer, and the flag alert - the thing that Telegrams the owner the moment it is tapped - was unreachable.
+    This was a UI gate only. `POST /api/crew/confirm` already accepts `action=flag` on a confirmed row: `alreadyTold` is false, the PATCH filters on the id and `neq.retired` alone, and `notifyFlag` fires normally.
+    So re-flagging genuinely **reopens** the visit rather than merely recording a note - a flag outranks a confirmation in `dispatchStateOf` (AC78) and the escalation skips only on a *live* `confirmed` (AC55), so both chases resume.
+    The note form is spelled once above both screens that open it, so the two entrances cannot drift into different forms.
+    A **flagged** screen stays terminal, because clearing a flag is the admin's (AC76) - raising one again is not the same act as deciding one is sorted.
 49. `/api/crew/` is public in middleware, guarded by the token rather than a session.
     A server error on this public route answers a flat `server_error`; the thrown detail - table names, the token filter, PostgREST's own error body - stays in the logs.
 82. A **retired** token gets its own answer - "You are no longer on this visit", with "please don't text the customer about it" - never the generic "this link is not valid", and `POST /api/crew/confirm` refuses it with `410`.
@@ -247,7 +255,7 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     It marks that visit's **flagged** assignments confirmed, which is what the escalation reads, and touches nothing else: somebody who never answered still has not answered.
     The note is kept - it is the record of what was wrong, and the visit having been sorted does not make it untrue.
 77. The "On the books" list on `/vaca-mgmt/send-service-quote` shows each visit's dispatch state - awaiting, confirmed, or flagged with the note - read alongside the bookings themselves.
-    This is the only surface a flag ever reaches: the crew screen is terminal by design, and without it a flagged visit is chased at 5pm and 6pm until its window passes with no way to stop it.
+    This is the only surface a flag ever reaches: *clearing* one is the admin's alone (AC76), so a flagged crew screen is terminal, and without this list a flagged visit is chased at 5pm and 6pm until its window passes with no way to stop it.
     "Mark handled" is offered only where there is a flag to clear, and is confirm-gated exactly as "Mark completed" is.
 78. A flag **outranks** a confirmation in that state.
     A colleague having confirmed silences both chases, which is precisely why the problem somebody raised has to stay visible somewhere else.
@@ -291,6 +299,19 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     So the address the customer was loaded with is recorded when they are loaded - by a lookup, or by the booking that creates a walk-in - and cleared with them, and the refresh reads by that.
     It is a ref rather than state because `schedule` books and refreshes inside one handler, where a setter's value would not be visible to the call it makes.
     With nobody loaded there is nobody to re-read, and that fails down the same path as any other unreadable answer: one exit, so a path added later cannot skip the verdict.
+107. **"Send quote" and "Schedule visit" act on the customer who was loaded**, never on the free-text lookup box beside them.
+    The last door left open on AC101, and it needs no second lookup to walk through - only a box retyped and left, which is what a half-finished second lookup looks like.
+    Only the *identity* came from the box; the name, the address, the phone and the ticked services all belonged to whoever was loaded, so acting there split one action between two people.
+    This one corrupts rather than merely displays: `ensureServiceHomeowner` writes the loaded customer's phone and address onto the **typed** customer's record, `scheduleVisit` books the loaded customer's services at their address under the typed one, the crew are mailed one name for the other's homeowner, and the typed customer's 7:30pm reminder lists services they never asked for. "Send quote" mails them a scope sentence written for somebody else.
+    So one `actionCustomer()` answers "who is this for?" for both handlers, and a disagreement is a state to **resolve**, never to split: both buttons are switched off, both handlers refuse before they write, and a line on screen names the two people the screen is holding rather than only saying something is wrong.
+    A walk-in is not that state - with nobody loaded, every field on the card was typed here and the box is the only identity there is - and the comparison is case-insensitive, because an address is.
+    There are two refusals rather than one, because "the box names somebody else" and "there is nobody here yet" are different states, and a refusal describing the wrong one is the same defect as a banner asserting a safety the screen does not have (AC105).
+    `cancel`, `complete` and `markHandled` already fire against `homeownerId` and are unaffected; the line says so, because those visits do still belong to the loaded customer.
+109. The three row actions share **one** busy state and **one** disabled condition.
+    `completing`, `cancelling` and `handling` were three `useState<string | null>` holding the same fact - which row is mid-write - mutually exclusive by construction, with `completing !== null || cancelling !== null || handling !== null || !homeownerId` written out at all three buttons.
+    A fourth action meant four edits, and forgetting one leaves a button live during another action's write.
+    So `rowBusy: { action, start } | null` holds it, `rowLocked` is spelled once, and `runRowAction` spells the prelude and epilogue all three share: the customer this page holds, the question asked before the write, the lock, and the failure toast.
+    The per-action success toasts stay where they are - they are deliberate, and each says something different.
 
 ## Retiring a visit
 

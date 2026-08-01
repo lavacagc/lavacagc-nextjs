@@ -10,6 +10,14 @@
  * The whole value of that button is what they type into it: "sub cancelled",
  * "customer moved it", "van is in the shop" are three different problems and
  * "flagged" alone tells the office none of them.
+ *
+ * That button survives a CONFIRMATION. Confirming is what stops the 5pm and 6pm
+ * chases, so a confirmed screen with no way to raise a problem left the one
+ * person who knows the sub cancelled overnight with no route back in and every
+ * automatic check already switched off by their own earlier answer. A flag
+ * outranks a confirmation everywhere downstream, so re-flagging reopens the
+ * visit rather than merely recording a note. Clearing a flag stays an admin
+ * action - a flagged screen is still terminal here.
  */
 import { useState } from 'react';
 
@@ -76,15 +84,78 @@ export default function CrewConfirmActions({
     }
   };
 
+  // The note field, spelled once above both screens that open it.
+  //
+  // A confirmation is not the end of the story: the sub falls through at 6am,
+  // the van does not start, and the person who knows is the one who already
+  // answered. Their own confirmation is what silences the 5pm and 6pm chases,
+  // so a terminal "nothing else to do" left them with no route back into the
+  // system at all - and a flag outranks a confirmation everywhere downstream,
+  // so this genuinely reopens the visit rather than just recording a note.
+  if (showNote) {
+    return (
+      <div className="mt-6">
+        <label htmlFor="crew-note" className="text-sm font-bold text-[#1A1A1A]">
+          What is wrong?
+        </label>
+        <textarea
+          id="crew-note"
+          data-testid="crew-note"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={3}
+          maxLength={1000}
+          placeholder="Sub cancelled, customer wants to move it, ..."
+          className="mt-2 w-full rounded-xl border border-[#E2E8F0] p-3 text-sm text-[#1A1A1A]"
+        />
+        <button
+          type="button"
+          data-testid="crew-flag"
+          onClick={() => submit('flag')}
+          disabled={busy !== null}
+          className="mt-2 w-full rounded-xl bg-[#002855] px-6 py-4 text-base font-bold text-white disabled:opacity-60"
+        >
+          {busy === 'flag' ? 'Sending...' : 'Send to the office'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowNote(false)}
+          disabled={busy !== null}
+          className="mt-2 w-full px-6 py-2 text-sm font-medium text-[#666] underline"
+        >
+          Back
+        </button>
+        {error ? <p className="mt-3 text-sm font-medium text-[#B42318]">{error}</p> : null}
+      </div>
+    );
+  }
+
   if (status === 'confirmed') {
     return (
-      <p
-        data-testid="crew-confirmed"
-        className="mt-6 rounded-xl bg-[#F0FDF4] px-4 py-3 text-sm font-medium text-[#166534]"
-      >
-        Confirmed. Nothing else to do - you will get a reminder at 7:00am to text the customer
-        when you are on the way.
-      </p>
+      <div className="mt-6">
+        <p
+          data-testid="crew-confirmed"
+          className="rounded-xl bg-[#F0FDF4] px-4 py-3 text-sm font-medium text-[#166534]"
+        >
+          Confirmed. You will get a reminder at 7:00am to text the customer when you are on the
+          way.
+        </p>
+        <button
+          type="button"
+          data-testid="crew-flag-open"
+          onClick={() => setShowNote(true)}
+          disabled={busy !== null}
+          className="mt-3 w-full rounded-xl border border-[#E2E8F0] px-6 py-3.5 text-base font-bold text-[#1A1A1A] disabled:opacity-60"
+        >
+          Something is wrong
+        </button>
+        <p className="mt-2 text-xs leading-relaxed text-[#666]">
+          If anything changes - the sub falls through, you cannot make it - say so here. Confirming
+          is what stops us chasing this visit, so nothing else will ask again. Or call{' '}
+          <a className="font-bold underline" href="tel:2012124917">(201) 212-4917</a>.
+        </p>
+        {error ? <p className="mt-3 text-sm font-medium text-[#B42318]">{error}</p> : null}
+      </div>
     );
   }
 
@@ -112,61 +183,24 @@ export default function CrewConfirmActions({
 
   return (
     <div className="mt-6">
-      {!showNote ? (
-        <>
-          <button
-            type="button"
-            data-testid="crew-confirm"
-            onClick={() => submit('confirm')}
-            disabled={busy !== null}
-            className="w-full rounded-xl bg-[#EE9639] px-6 py-4 text-base font-bold text-white disabled:opacity-60"
-          >
-            {busy === 'confirm' ? 'Saving...' : subName ? 'Confirm - sub is booked' : 'Confirm - I am on this'}
-          </button>
-          <button
-            type="button"
-            data-testid="crew-flag-open"
-            onClick={() => setShowNote(true)}
-            disabled={busy !== null}
-            className="mt-2 w-full rounded-xl border border-[#E2E8F0] px-6 py-3.5 text-base font-bold text-[#1A1A1A] disabled:opacity-60"
-          >
-            Something is wrong
-          </button>
-        </>
-      ) : (
-        <>
-          <label htmlFor="crew-note" className="text-sm font-bold text-[#1A1A1A]">
-            What is wrong?
-          </label>
-          <textarea
-            id="crew-note"
-            data-testid="crew-note"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={3}
-            maxLength={1000}
-            placeholder="Sub cancelled, customer wants to move it, ..."
-            className="mt-2 w-full rounded-xl border border-[#E2E8F0] p-3 text-sm text-[#1A1A1A]"
-          />
-          <button
-            type="button"
-            data-testid="crew-flag"
-            onClick={() => submit('flag')}
-            disabled={busy !== null}
-            className="mt-2 w-full rounded-xl bg-[#002855] px-6 py-4 text-base font-bold text-white disabled:opacity-60"
-          >
-            {busy === 'flag' ? 'Sending...' : 'Send to the office'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowNote(false)}
-            disabled={busy !== null}
-            className="mt-2 w-full px-6 py-2 text-sm font-medium text-[#666] underline"
-          >
-            Back
-          </button>
-        </>
-      )}
+      <button
+        type="button"
+        data-testid="crew-confirm"
+        onClick={() => submit('confirm')}
+        disabled={busy !== null}
+        className="w-full rounded-xl bg-[#EE9639] px-6 py-4 text-base font-bold text-white disabled:opacity-60"
+      >
+        {busy === 'confirm' ? 'Saving...' : subName ? 'Confirm - sub is booked' : 'Confirm - I am on this'}
+      </button>
+      <button
+        type="button"
+        data-testid="crew-flag-open"
+        onClick={() => setShowNote(true)}
+        disabled={busy !== null}
+        className="mt-2 w-full rounded-xl border border-[#E2E8F0] px-6 py-3.5 text-base font-bold text-[#1A1A1A] disabled:opacity-60"
+      >
+        Something is wrong
+      </button>
       {error ? <p className="mt-3 text-sm font-medium text-[#B42318]">{error}</p> : null}
     </div>
   );

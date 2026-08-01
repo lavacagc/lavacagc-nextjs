@@ -146,6 +146,58 @@ test.describe('send-service-quote form state', () => {
     await expect(page.getByTestId('sq-schedule')).toBeDisabled();
   });
 
+  test('AC107 a retyped lookup box cannot book one customer onto another\'s details', async ({ page, context, baseURL }) => {
+    // No second lookup is needed to reach this - only a box retyped and left,
+    // which is a half-finished second lookup. The IDENTITY came from the box
+    // while the name, address, phone and ticked services all still belonged to
+    // whoever was loaded, so booking wrote Alice's phone and address onto Bob's
+    // customer record and booked Alice's services at Alice's address under him.
+    const alice: StubIntake = {
+      ...blankIntake(),
+      homeowner: { id: '22222222-2222-2222-2222-222222222222', first_name: 'Alice Adams', phone: '555-0100', address: '14 Maple Ave', city: 'West Orange', zip: '07052', status: 'active' },
+      requests: [{
+        id: 'r1', createdAt: '2026-07-01T12:00:00Z', source: 'web', name: 'Alice Adams',
+        phone: '555-0100', address: '14 Maple Ave', city: 'West Orange', zip: '07052',
+        taskKeys: ['gutters'], services: [{ key: 'gutters', title: 'Clean gutters' }],
+      }],
+    };
+    const posted = await mockAdminApis(page, () => alice);
+    const sent: Record<string, unknown>[] = [];
+    await page.route('**/api/admin/service-quote/send', (route) => {
+      sent.push(route.request().postDataJSON());
+      return route.fulfill({ json: { status: 'sent' } });
+    });
+    await open(page, context, baseURL!);
+
+    await page.getByTestId('sq-email').fill('alice@example.com');
+    await page.getByTestId('sq-lookup').click();
+    await expect(page.getByTestId('sq-address')).toHaveValue('14 Maple Ave, West Orange, 07052');
+    await page.getByTestId('sq-qbo').fill('https://app.qbo.intuit.com/x');
+    await page.getByTestId('sq-date').fill('2026-08-05');
+    // Both write buttons are live for the customer actually on screen.
+    await expect(page.getByTestId('sq-send')).toBeEnabled();
+    await expect(page.getByTestId('sq-schedule')).toBeEnabled();
+
+    // Typed at, never submitted.
+    await page.getByTestId('sq-email').fill('bob@example.com');
+    await expect(page.getByTestId('sq-identity-split')).toContainText('bob@example.com');
+    await expect(page.getByTestId('sq-identity-split')).toContainText('alice@example.com');
+    await expect(page.getByTestId('sq-send')).toBeDisabled();
+    await expect(page.getByTestId('sq-schedule')).toBeDisabled();
+
+    // Put the loaded customer back - differently cased, because an address is
+    // not case sensitive and a warning that fired on one would be noise.
+    await page.getByTestId('sq-email').fill('Alice@Example.com');
+    await expect(page.getByTestId('sq-identity-split')).toHaveCount(0);
+    await expect(page.getByTestId('sq-schedule')).toBeEnabled();
+    await page.getByTestId('sq-schedule').click();
+    await expect.poll(() => posted.length).toBe(1);
+    // Booked under the customer whose services and address these are, not under
+    // the string in the box.
+    expect(posted[0].email).toBe('alice@example.com');
+    expect(sent).toHaveLength(0);
+  });
+
   test('AC99 re-saving a booked window sends what the window holds, not the last request', async ({ page, context, baseURL }) => {
     // The window holds gutters AND the dryer vent; the lead only ever asked for
     // gutters. Re-saving it - the documented way to add a crew member - used to
