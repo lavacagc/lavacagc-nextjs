@@ -124,6 +124,24 @@ export const UNKNOWN_DISPATCH_STATE: VisitDispatchState = {
 };
 
 /**
+ * The sub recorded on one visit, for the screen that can overwrite it.
+ *
+ * The Sub box is authoritative on every save and an empty one is a clear, so
+ * the admin has to be shown what is stored BEFORE they save - a blank box over
+ * a stored sub deletes a name nobody was ever shown. That makes `read` part of
+ * the answer rather than a detail: a sub that could not be read is not the
+ * absence of one, and the box cannot quietly present it as such.
+ */
+export interface VisitSubState {
+  /** `unavailable` is a READ that failed - never the same answer as "no sub". */
+  read: 'ok' | 'unavailable';
+  name: string | null;
+}
+
+/** What a visit's sub reads as when the dispatch row could not be read. */
+export const UNKNOWN_VISIT_SUB: VisitSubState = { read: 'unavailable', name: null };
+
+/**
  * The state of one visit's dispatch, read off its assignments.
  *
  * A FLAG OUTRANKS A CONFIRMATION. Somebody saying this visit has a problem is
@@ -216,7 +234,8 @@ export interface EnsureDispatchResult {
  * recovered where it happens instead: two callers that both miss the row - a
  * cron retry overlapping a booking, the same window saved from two tabs - race,
  * the loser's insert violates `idx_visit_dispatch_visit`, and it reads the
- * winner's row rather than failing a booking over a race it lost.
+ * winner's row rather than failing a booking over a race it lost - then applies
+ * its own sub to it, because the row it recovered was written by somebody else.
  *
  * An EXISTING row is reused either way - a reschedule, or an admin adding a
  * second person - so the escalation stamps that already fired survive. Creating
@@ -245,9 +264,18 @@ export async function ensureVisitDispatch(args: {
   // Empty is a CLEAR, undefined is "not my field to touch". They are different
   // answers here and must not be flattened into one.
   const sub = args.subName === undefined ? undefined : args.subName || null;
-  const existing = await dispatchForVisit(args.homeownerId, args.visitStart);
 
-  if (existing) {
+  /**
+   * The box applied to whichever row this call ended up with - the one that was
+   * already there, or the one a concurrent caller won the race with.
+   *
+   * The recovered row goes through here too rather than being handed straight
+   * back: the likeliest racer is precisely the caller with no sub to contribute
+   * - the escalation cron creating tomorrow's row - so returning the winner's
+   * row as-is dropped the sub the admin had just typed, and reported it as
+   * stored.
+   */
+  const withSub = async (existing: VisitDispatchRow): Promise<EnsureDispatchResult> => {
     if (sub !== undefined && sub !== existing.sub_name) {
       const subRecorded = await supabaseRest('PATCH', `visit_dispatch?id=eq.${existing.id}`, {
         sub_name: sub, updated_at: new Date().toISOString(),
@@ -268,6 +296,12 @@ export async function ensureVisitDispatch(args: {
       return { row: { ...existing, sub_name: sub }, subRecorded };
     }
     return { row: existing, subRecorded: 'ok' };
+  };
+
+  const existing = await dispatchForVisit(args.homeownerId, args.visitStart);
+
+  if (existing) {
+    return withSub(existing);
   }
 
   const created = await supabaseRest<VisitDispatchRow[]>('POST', 'visit_dispatch', [{
@@ -281,12 +315,15 @@ export async function ensureVisitDispatch(args: {
     );
     return null;
   });
+  // The insert carried the sub, so a row it created needs nothing further.
+  if (created?.[0]) return { row: created[0], subRecorded: 'ok' };
+
+  const won = await dispatchForVisit(args.homeownerId, args.visitStart).catch(() => null);
   // A row that could not be created carries no sub either, but that is the row
-  // failing rather than the sub - reported as `unavailable` below, where it
-  // stops the send outright.
-  const row = created?.[0]
-    ?? await dispatchForVisit(args.homeownerId, args.visitStart).catch(() => null);
-  return { row, subRecorded: 'ok' };
+  // failing rather than the sub - reported as `unavailable` by the caller, where
+  // it stops the send outright.
+  if (!won) return { row: null, subRecorded: 'ok' };
+  return withSub(won);
 }
 
 /** Who this dispatch can go to, and what could not be done to the rest. */

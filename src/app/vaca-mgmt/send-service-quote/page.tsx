@@ -45,6 +45,14 @@ interface BookingDispatch {
   confirmedBy: string[];
   flags: { by: string; note: string | null }[];
 }
+/**
+ * The sub recorded on a visit.
+ *
+ * `unavailable` is a read that FAILED, and it cannot be shown as "no sub": the
+ * Sub box is authoritative on every save and an empty one clears, so a blank
+ * box drawn from a failed read deletes a name nobody was shown.
+ */
+interface BookingSub { read: 'ok' | 'unavailable'; name: string | null }
 /** A visit on the books: one window, every service booked into it. */
 interface Booking {
   start: string;
@@ -52,6 +60,7 @@ interface Booking {
   address: string | null;
   tasks: { key: string; title: string; season: string }[];
   dispatch?: BookingDispatch;
+  sub?: BookingSub;
 }
 interface Intake {
   services: Service[];
@@ -91,7 +100,12 @@ export default function SendServiceQuotePage() {
   const [busy, setBusy] = useState<null | 'test' | 'send'>(null);
 
   const [address, setAddress] = useState('');
-  const [subName, setSubName] = useState('');
+  // What the admin has TYPED into the Sub box, or null while the box is still
+  // following the visit it is aimed at. The box is authoritative on save and an
+  // empty one clears, so it has to show the stored sub before it can be trusted
+  // to delete one - a box that always started blank made the destructive
+  // direction the default, and the clear succeeded, so nothing reported it.
+  const [subEdit, setSubEdit] = useState<string | null>(null);
   // Who the dispatch goes to. Loaded once and pre-ticked to everyone active,
   // so the default behaviour of the screen is "the crew is told".
   const [crew, setCrew] = useState<CrewMember[]>([]);
@@ -113,12 +127,45 @@ export default function SendServiceQuotePage() {
   const [scheduled, setScheduled] = useState<{ icsUrl: string } | null>(null);
   // The visits this customer has on the books, refreshed after every write.
   const [bookings, setBookings] = useState<Booking[]>([]);
+  // Whether that list could be read at all. An empty list from a failed read is
+  // not "nothing on the books", and here it also means the Sub box has nothing
+  // to fill itself from - which is a save away from clearing a stored sub.
+  const [bookingsRead, setBookingsRead] = useState<'ok' | 'unavailable'>('ok');
   const [completing, setCompleting] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [handling, setHandling] = useState<string | null>(null);
   // Kept apart from `intake`, because a walk-in has no homeowner record until
   // the booking creates one - and completing that visit still needs the id.
   const [homeownerId, setHomeownerId] = useState<string | null>(null);
+
+  /**
+   * The visit this form is aimed at: the one already on the books for the
+   * window the date and From time spell out.
+   *
+   * Saving that window re-writes THAT visit rather than adding a second one -
+   * `visit_dispatch` is keyed on (homeowner, start) - so it is the visit whose
+   * stored sub the box has to be showing.
+   */
+  const targetStart = date && from ? easternVisitInstant(date, from).getTime() : NaN;
+  const targetVisit = Number.isFinite(targetStart)
+    ? bookings.find((b) => new Date(b.start).getTime() === targetStart)
+    : undefined;
+  /**
+   * The Sub box: what is stored on that visit, until the admin types over it.
+   *
+   * Following the stored value is what makes clearing one a deliberate act -
+   * deleting a name that is on the screen - rather than the accident a box that
+   * always opened blank made of it. The typed edit wins while it lasts, and is
+   * dropped whenever the window, the customer, or what is stored changes.
+   */
+  const storedSub = targetVisit?.sub?.read === 'ok' ? targetVisit.sub.name ?? '' : '';
+  const subName = subEdit ?? storedSub;
+  // What is stored could NOT be read, so the box is not showing it - and an
+  // empty box clears. Said out loud rather than left to look like "no sub",
+  // but only once a window is named: with the visits unread this covers the
+  // case where we cannot even tell whether that window is already booked.
+  const subUnknown = Number.isFinite(targetStart)
+    && (bookingsRead === 'unavailable' || (targetVisit !== undefined && targetVisit.sub?.read !== 'ok'));
 
   /**
    * Load the crew picker, and NEVER let a failed read pass for an empty list.
@@ -184,8 +231,12 @@ export default function SendServiceQuotePage() {
       // whatever is on it.
       if (data.bookingsRead === 'unavailable') throw new Error('Their visits could not be read');
       setBookings(data.bookings ?? []);
+      setBookingsRead('ok');
       if (data.homeowner?.id) setHomeownerId(data.homeowner.id);
     } catch (e) {
+      // The list kept on screen is now of unknown age, and the Sub box fills
+      // itself from it - so what it shows can no longer be called stored.
+      setBookingsRead('unavailable');
       toast({
         title: 'The visit list could not be refreshed',
         description: `${e instanceof Error ? e.message : 'Unknown error'}. What is shown below may be `
@@ -210,7 +261,11 @@ export default function SendServiceQuotePage() {
       // its windows belong to somebody else, and "Mark completed" would aim
       // them at this homeowner. It goes, and the gap is said out loud instead.
       setBookings(data.bookings ?? []);
+      setBookingsRead(data.bookingsRead === 'unavailable' ? 'unavailable' : 'ok');
       setHomeownerId(data.homeowner?.id ?? null);
+      // A sub typed for the last customer is not this one's. The box goes back
+      // to following whatever this customer's visits carry.
+      setSubEdit(null);
       if (data.bookingsRead === 'unavailable') {
         toast({
           title: 'Their visits could not be read',
@@ -232,6 +287,10 @@ export default function SendServiceQuotePage() {
         setAddress([data.homeowner.address, data.homeowner.city, data.homeowner.zip].filter(Boolean).join(', '));
       }
     } catch (e) {
+      // Whatever is still listed belongs to whoever was loaded last, not to the
+      // address in the box - so this customer's visits, and the sub on them,
+      // are unread until somebody looks again.
+      setBookingsRead('unavailable');
       toast({
         title: 'Lookup failed',
         description: `${e instanceof Error ? e.message : 'Could not load this customer.'} `
@@ -316,6 +375,11 @@ export default function SendServiceQuotePage() {
       setScheduled({ icsUrl: data.icsUrl });
       setHomeownerId(data.homeownerId);
       await refreshBookings();
+      // Back to following the visit. The box now shows what the row actually
+      // holds - which is the point when the write did NOT land the sub: the
+      // toast below says so, and the box agrees with the row rather than with
+      // the email that has already gone out.
+      setSubEdit(null);
       // A reschedule takes the old window off the crew's calendars. When that
       // could not be delivered they are still holding it - and its 7:00am "text
       // the customer" alarm - so it is named here rather than logged.
@@ -679,19 +743,54 @@ export default function SendServiceQuotePage() {
           <div className="md:col-span-2">
             <Label htmlFor="sq-addr">Service address</Label>
             <Input id="sq-addr" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="14 Maple Ave, West Orange, NJ" data-testid="sq-address" />
+            {targetVisit?.address && targetVisit.address !== address.trim() && (
+              // This box fills from the CUSTOMER record, and `scheduleVisit`
+              // writes it onto the window - so re-saving a visit booked at a
+              // different address replaces the one stored on it. It cannot go
+              // blank (the button is disabled empty), so unlike the sub this is
+              // never a silent delete - but it is still a silent replacement,
+              // and the stored one is not otherwise on screen.
+              <p className="mt-1 text-xs font-medium text-destructive" data-testid="sq-address-differs">
+                This visit is on the books at {targetVisit.address}. Saving replaces that with what is
+                in the box.
+              </p>
+            )}
           </div>
-          <div><Label htmlFor="sq-date">Date</Label><Input id="sq-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="sq-date" /></div>
+          {/*
+            The date and the From time name the visit. Changing either aims the
+            form at a different one, so the Sub box stops showing the old
+            visit's sub and follows the new one - it is authoritative on save,
+            and a name carried over from another window would overwrite this
+            one's.
+          */}
+          <div><Label htmlFor="sq-date">Date</Label><Input id="sq-date" type="date" value={date} onChange={(e) => { setDate(e.target.value); setSubEdit(null); }} data-testid="sq-date" /></div>
           <div className="grid grid-cols-2 gap-2">
-            <div><Label htmlFor="sq-from">From</Label><Input id="sq-from" type="time" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
+            <div><Label htmlFor="sq-from">From</Label><Input id="sq-from" type="time" value={from} onChange={(e) => { setFrom(e.target.value); setSubEdit(null); }} /></div>
             <div><Label htmlFor="sq-to">To</Label><Input id="sq-to" type="time" value={to} onChange={(e) => setTo(e.target.value)} /></div>
           </div>
 
           <div className="md:col-span-2">
             <Label htmlFor="sq-sub">Sub (optional)</Label>
             <Input
-              id="sq-sub" value={subName} onChange={(e) => setSubName(e.target.value)}
+              id="sq-sub" value={subName} onChange={(e) => setSubEdit(e.target.value)}
               placeholder="Ramirez Exteriors" data-testid="sq-sub"
             />
+            {subUnknown ? (
+              // The box is authoritative and empty means CLEAR, so a box that
+              // could not be filled from the row has to say so - saving now
+              // would delete a sub nobody was shown.
+              <p className="mt-1 text-xs font-medium text-destructive" data-testid="sq-sub-unread">
+                What is stored on this window could NOT be read, so this box is not showing it.
+                Saving with the box empty would clear any sub already on the visit - look the
+                customer up again first.
+              </p>
+            ) : targetVisit ? (
+              <p className="mt-1 text-xs text-text-muted" data-testid="sq-sub-stored">
+                {storedSub
+                  ? `Stored on this visit: ${storedSub}. Whatever is in the box wins - emptying it removes the sub.`
+                  : 'No sub on this visit. Whatever is in the box wins.'}
+              </p>
+            ) : null}
           </div>
 
           {/*

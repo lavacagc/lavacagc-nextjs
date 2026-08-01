@@ -413,9 +413,28 @@ test('AC96 the dispatch row is a read-then-insert that survives losing the race'
   // So the conflict is recovered where it happens: two callers that both missed
   // the row race, the loser's insert violates idx_visit_dispatch_visit, and it
   // reads the winner's row rather than failing a booking over a race it lost.
-  expect(fn).toContain('const row = created?.[0]\n    ?? await dispatchForVisit(args.homeownerId, args.visitStart).catch(() => null);');
+  expect(fn).toContain("if (created?.[0]) return { row: created[0], subRecorded: 'ok' };");
+  expect(fn).toContain('const won = await dispatchForVisit(args.homeownerId, args.visitStart).catch(() => null);');
   expect(read('supabase/migrations/20260818000000_crew_dispatch.sql'))
     .toContain('idx_visit_dispatch_visit');
+});
+
+test('AC97 the row recovered from a lost race still gets the sub that was typed', () => {
+  // The likeliest racer is exactly the caller with no sub to contribute - the
+  // escalation cron creating tomorrow's row at 21:00 UTC, against a booking for
+  // the same window - so handing the winner's row straight back dropped the
+  // admin's sub from the row AND from the email built off it, under a clean
+  // 'sent'.
+  const src = read('src/lib/homecare/dispatch.ts');
+  const fn = src.slice(src.indexOf('export async function ensureVisitDispatch'), src.indexOf('export interface EnsureAssignmentsResult'));
+  // One write, reached by both paths, so the recovered row cannot drift from
+  // the one that was already there.
+  expect(fn).toContain('const withSub = async (existing: VisitDispatchRow): Promise<EnsureDispatchResult> => {');
+  expect(fn).toContain('return withSub(existing);');
+  expect(fn).toContain('return withSub(won);');
+  // And it reports the write the same way, so a sub the recovered row would not
+  // take can never answer 'ok'.
+  expect(fn.split("subRecorded: 'ok'").length - 1, 'only the paths that stored it report ok').toBe(3);
 });
 
 test('AC90 a sub the row would not store is reported, not just logged', () => {
@@ -482,6 +501,53 @@ test('AC93 whatever is in the sub box wins - an empty one clears it', () => {
   const cron = read('src/app/api/cron/visit-dispatch-escalation/route.ts');
   expect(cron).toContain('ensureVisitDispatch({ homeownerId: first.homeowner_id, visitStart: start })');
   expect(cron).not.toContain('subName');
+});
+
+test('AC98 the sub box shows the sub stored on the visit it is aimed at', () => {
+  // A box that is authoritative on save and always opens blank makes the
+  // DESTRUCTIVE direction the default: re-saving a window to add a crew member
+  // or fix the address - the documented way to do both - cleared the stored
+  // sub, and the clear succeeded, so no failure was ever reported.
+  const intake = read('src/app/api/admin/service-quote/intake/route.ts');
+  expect(intake).toContain('type BookedVisit = Booking & { dispatch: VisitDispatchState; sub: VisitSubState };');
+  expect(intake).toContain('subByStart.set(at, d.sub_name);');
+  expect(intake).toContain('sub: subFor(b),');
+  // A read that FAILED is not "no sub", because the next save would delete a
+  // name nobody was shown. The assignments read failing does NOT make the sub
+  // unknown - that came off the dispatch row, which read fine.
+  expect(intake).toContain('dispatch: UNKNOWN_DISPATCH_STATE, sub: UNKNOWN_VISIT_SUB');
+  expect(intake).toContain('dispatch: UNKNOWN_DISPATCH_STATE, sub: subFor(b)');
+
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  // The box follows the visit the date and From time name, until it is typed in.
+  expect(page).toContain('const targetStart = date && from ? easternVisitInstant(date, from).getTime() : NaN;');
+  expect(page).toContain("const storedSub = targetVisit?.sub?.read === 'ok' ? targetVisit.sub.name ?? '' : '';");
+  expect(page).toContain('const subName = subEdit ?? storedSub;');
+  // Aiming the form at a different window drops the edit, so a sub typed for
+  // one visit cannot overwrite another's.
+  expect(page).toContain('onChange={(e) => { setDate(e.target.value); setSubEdit(null); }}');
+  expect(page).toContain('onChange={(e) => { setFrom(e.target.value); setSubEdit(null); }}');
+  // As does looking up a different customer - the box used to keep the last
+  // one's sub - and saving, after which the box shows what the row now holds.
+  const lookupFn = page.slice(page.indexOf('const lookup = useCallback'), page.indexOf('const toggle = (key: string)'));
+  expect(lookupFn).toContain('setSubEdit(null);');
+  const scheduleFn = page.slice(page.indexOf('const schedule = async ()'), page.indexOf('const complete = async'));
+  expect(scheduleFn).toContain('setSubEdit(null);');
+  // And a box that could not be filled from the row says so, because an empty
+  // one is a clear.
+  expect(page).toContain("(bookingsRead === 'unavailable' || (targetVisit !== undefined && targetVisit.sub?.read !== 'ok'))");
+  expect(page).toContain('could NOT be read, so this box is not showing it');
+  expect(page).toContain('Stored on this visit: ${storedSub}');
+
+  // The sub is the only field here whose DEFAULT is destructive. The address is
+  // the one other value written onto the window - everything else that reaches
+  // the customer record fills blanks only - and it cannot go blank, because the
+  // button is disabled without one. It can still be silently replaced, so a
+  // window holding a different address says which one.
+  expect(read('src/lib/homecare/serviceScheduling.ts')).toContain('if (args.address && !row.address) patch.address = args.address;');
+  expect(page).toContain('targetVisit?.address && targetVisit.address !== address.trim()');
+  expect(page).toContain('This visit is on the books at {targetVisit.address}');
+  expect(page).toContain("disabled={scheduling || selected.size === 0 || !address.trim()");
 });
 
 test('AC38 re-dispatching reuses each assignment, so a re-send cannot un-confirm', () => {
@@ -1193,12 +1259,12 @@ test('AC84 a dispatch read that failed reads as unknown, never as never-dispatch
   // so a flagged visit vanished from the only surface a flag reaches, taking
   // its "Mark handled" button with it.
   expect(intake.match(/\.catch\(\(\) => null\)/g) ?? [], 'both reads fail closed').toHaveLength(2);
-  expect(intake).toContain('if (read === null) return unreadable();');
-  expect(intake).toContain('if (answered === null) return unreadable();');
-  expect(intake).toContain('dispatch: UNKNOWN_DISPATCH_STATE');
+  expect(intake).toContain('if (read === null) {');
+  expect(intake).toContain('if (answered === null) {');
+  expect(intake.match(/dispatch: UNKNOWN_DISPATCH_STATE/g) ?? [], 'both say unknown').toHaveLength(2);
   // An EMPTY read is still 'none' - that is a visit nobody was dispatched for,
   // which is a different thing from one we could not read.
-  expect(intake).toContain('if (dispatches.length === 0) return bookings.map((b) => ({ ...b, dispatch: blank }));');
+  expect(intake).toContain('if (dispatches.length === 0) return bookings.map((b) => ({ ...b, dispatch: blank, sub: noSub }));');
   // And so does the customer record the whole panel hangs off: swallowed to an
   // empty list it read as "no record for this customer", which takes the list,
   // the flag on it and the "Mark handled" button with it.

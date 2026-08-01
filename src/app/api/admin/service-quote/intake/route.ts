@@ -30,8 +30,9 @@ import {
   type ServiceCatalogRow, type CompletionRow, type BookedRow, type Booking,
 } from '@/lib/homecare/serviceIntake';
 import {
-  dispatchStateOf, UNKNOWN_DISPATCH_STATE, VISIT_DISPATCH_COLUMNS, DISPATCH_ASSIGNMENT_COLUMNS,
-  type DispatchAssignment, type VisitDispatchRow, type VisitDispatchState,
+  dispatchStateOf, UNKNOWN_DISPATCH_STATE, UNKNOWN_VISIT_SUB, VISIT_DISPATCH_COLUMNS,
+  DISPATCH_ASSIGNMENT_COLUMNS,
+  type DispatchAssignment, type VisitDispatchRow, type VisitDispatchState, type VisitSubState,
 } from '@/lib/homecare/dispatch';
 
 export const dynamic = 'force-dynamic';
@@ -44,10 +45,11 @@ interface LeadRow {
 }
 
 /** A booking with what the crew has said about it, for the "On the books" list. */
-type BookedVisit = Booking & { dispatch: VisitDispatchState };
+type BookedVisit = Booking & { dispatch: VisitDispatchState; sub: VisitSubState };
 
 /**
- * Attach each visit's dispatch state - awaiting, confirmed, or flagged.
+ * Attach each visit's dispatch state - awaiting, confirmed, or flagged - and
+ * the sub recorded on it.
  *
  * This is the ONLY admin surface a flag reaches. The crew screen is terminal by
  * design, and a flag no longer counts as an answer, so a visit somebody raised
@@ -66,27 +68,54 @@ type BookedVisit = Booking & { dispatch: VisitDispatchState };
  * failing open to "never dispatched" is what hides a flag, because the screen
  * renders nothing at all for a visit in that state - and this is the only
  * surface a flag ever reaches, along with the button that clears it.
+ *
+ * The sub follows the same rule, for a sharper reason: the Sub box is
+ * authoritative on every save and an empty one CLEARS, so the screen has to
+ * fill it from what is stored. A sub reported as absent because the read failed
+ * would be deleted by the next save of that window, silently - the write would
+ * succeed, so nothing downstream could say it had happened.
  */
 async function withDispatchState(homeownerId: string, bookings: Booking[]): Promise<BookedVisit[]> {
   const blank: VisitDispatchState = { state: 'none', confirmedBy: [], flags: [] };
-  const unreadable = () => bookings.map((b) => ({ ...b, dispatch: UNKNOWN_DISPATCH_STATE }));
+  const noSub: VisitSubState = { read: 'ok', name: null };
   if (bookings.length === 0) return [];
 
   const read = await supabaseRest<VisitDispatchRow[]>(
     'GET',
     `visit_dispatch?select=${VISIT_DISPATCH_COLUMNS}&homeowner_id=eq.${homeownerId}`,
   ).catch(() => null);
-  if (read === null) return unreadable();
+  // Nothing was read, so neither answer is knowable.
+  if (read === null) {
+    return bookings.map((b) => ({ ...b, dispatch: UNKNOWN_DISPATCH_STATE, sub: UNKNOWN_VISIT_SUB }));
+  }
 
   const dispatches = read ?? [];
-  if (dispatches.length === 0) return bookings.map((b) => ({ ...b, dispatch: blank }));
+  // Matched on the INSTANT, never the string: PostgREST renders `timestamptz`
+  // as "+00:00" where the booking carries a `Date`'s "Z", and the same moment
+  // spelled two ways would leave every visit reading "not dispatched".
+  const subByStart = new Map<number, string | null>();
+  for (const d of dispatches) {
+    const at = new Date(d.visit_start).getTime();
+    if (Number.isFinite(at)) subByStart.set(at, d.sub_name);
+  }
+  // A window with no dispatch row has no sub, and that IS an answer: this read
+  // succeeded.
+  const subFor = (b: Booking): VisitSubState => ({
+    read: 'ok', name: subByStart.get(new Date(b.start).getTime()) ?? null,
+  });
+
+  if (dispatches.length === 0) return bookings.map((b) => ({ ...b, dispatch: blank, sub: noSub }));
 
   const answered = await supabaseRest<DispatchAssignment[]>(
     'GET',
     `visit_dispatch_recipients?select=${DISPATCH_ASSIGNMENT_COLUMNS}` +
       `&dispatch_id=in.(${dispatches.map((d) => d.id).join(',')})`,
   ).catch(() => null);
-  if (answered === null) return unreadable();
+  // Only what the crew has said is unknown here - the sub came off the row
+  // above, which read fine, and blanking it would be the silent clear.
+  if (answered === null) {
+    return bookings.map((b) => ({ ...b, dispatch: UNKNOWN_DISPATCH_STATE, sub: subFor(b) }));
+  }
 
   const assignments = answered ?? [];
 
@@ -95,9 +124,6 @@ async function withDispatchState(homeownerId: string, bookings: Booking[]): Prom
     const bucket = byDispatch.get(a.dispatch_id);
     if (bucket) bucket.push(a); else byDispatch.set(a.dispatch_id, [a]);
   }
-  // Matched on the INSTANT, never the string: PostgREST renders `timestamptz`
-  // as "+00:00" where the booking carries a `Date`'s "Z", and the same moment
-  // spelled two ways would leave every visit reading "not dispatched".
   const stateByStart = new Map<number, VisitDispatchState>();
   for (const d of dispatches) {
     const at = new Date(d.visit_start).getTime();
@@ -107,6 +133,7 @@ async function withDispatchState(homeownerId: string, bookings: Booking[]): Prom
   return bookings.map((b) => ({
     ...b,
     dispatch: stateByStart.get(new Date(b.start).getTime()) ?? blank,
+    sub: subFor(b),
   }));
 }
 
