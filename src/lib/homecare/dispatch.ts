@@ -21,6 +21,7 @@ import { SERVICE_REPLY_TO } from '@/lib/homecare/serviceEmails';
 import { buildIcs, googleCalendarUrl, icsContentType } from '@/lib/homecare/ics';
 import { buildDispatchEmail, buildDispatchCancelledEmail } from '@/lib/homecare/dispatchEmail';
 import { visitKey, visitDateLabel, visitTimeWindow, visitEndsAt } from '@/lib/homecare/visitSchedule';
+import type { ReminderOutcome } from '@/lib/homecare/serviceScheduling';
 
 export interface DispatchRecipient {
   id: string;
@@ -798,7 +799,7 @@ export async function clearVisitDispatch(
       );
     } else {
       unretracted = await sendDispatchRetraction({
-        homeownerId, visitStart, dispatch, assignments, visit: described.visit,
+        homeownerId, visitStart, dispatch, assignments, visit: described.visit, now,
       }).catch((err) => {
         console.error(
           'crew dispatch retraction failed - the crew may still be holding the visit:',
@@ -876,8 +877,10 @@ async function sendDispatchRetraction(args: {
   dispatch: VisitDispatchRow;
   assignments: DispatchAssignment[];
   visit: VisitContext;
+  /** The instant the caller judged this window still ahead on. */
+  now: Date;
 }): Promise<string[]> {
-  const { homeownerId, visitStart, dispatch, assignments, visit } = args;
+  const { homeownerId, visitStart, dispatch, assignments, visit, now } = args;
 
   // Straight off the visit, which resolved a missing end through `visitEndsAt`
   // - the same helper the escalation and the confirm page read one through, so
@@ -894,6 +897,8 @@ async function sendDispatchRetraction(args: {
       services,
       visitDateLabel: visitDateLabel(visitStart),
       timeWindow: visitTimeWindow(visitStart, end),
+      visitStart,
+      now,
     });
 
     // Same UID as that person's invite, or a client files this as a second,
@@ -948,6 +953,16 @@ export interface SendDispatchArgs {
   timeWindow: string;
   subName?: string | null;
   recipientIds?: string[] | null;
+  /**
+   * What happened to the customer's night-before reminder, so the email can say
+   * whether one is coming instead of asserting it.
+   *
+   * Carried rather than re-derived: the booking route queues the reminder and
+   * holds the verdict before it calls this, and only that verdict knows the
+   * difference between "too late for the covering run" and "the queue write
+   * failed". Both mean the customer is told nothing automatically.
+   */
+  customerReminder: ReminderOutcome;
 }
 
 export interface SendDispatchResult {
@@ -995,7 +1010,12 @@ export async function sendVisitDispatch(args: SendDispatchArgs): Promise<SendDis
   const {
     siteUrl, homeownerId, visitStart, visitEnd, customerName, customerPhone,
     address, services, visitDateLabel, timeWindow, subName, recipientIds,
+    customerReminder,
   } = args;
+
+  // One instant for the whole run, so two people on the same visit cannot be
+  // sent emails that describe the deadlines differently.
+  const now = new Date();
 
   let recipients: DispatchRecipient[];
   let dispatch: VisitDispatchRow | null;
@@ -1069,6 +1089,7 @@ export async function sendVisitDispatch(args: SendDispatchArgs): Promise<SendDis
       variant: 'crew',
       sequence,
       attendees: [{ name: assignment.name, email: assignment.email }],
+      customerReminded: customerReminder === 'queued',
     });
 
     const { subject, html, text } = buildDispatchEmail({
@@ -1082,6 +1103,9 @@ export async function sendVisitDispatch(args: SendDispatchArgs): Promise<SendDis
       subName: dispatch.sub_name,
       confirmUrl: `${siteUrl}/crew/confirm/${assignment.confirm_token}`,
       calendarUrl,
+      visitStart,
+      now,
+      customerReminder,
     });
 
     const res = await sendCrewMail({

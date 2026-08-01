@@ -23,24 +23,15 @@
  * this alert is all there is.
  */
 import { escapeTelegram } from '@/lib/notify/telegramMessage';
-import type { ChaseStage } from './visitSchedule';
+import { chaseSentence, type ChaseStage } from './visitSchedule';
 
 /**
- * What is still coming for this visit, said in one sentence.
- *
- * `[]` is the one that had to be written down: with nothing ahead, the message
- * carrying this line is the last thing anybody will hear about the visit, and
- * the reader has to know that rather than wait for a chase that is not coming.
+ * Re-exported, not re-written: the admin flag list says the same thing about the
+ * same stages, and it is a client component that must not pull `escapeTelegram`
+ * into the browser bundle to find out what time the chase runs. The sentence
+ * lives beside `chasesAhead`, which is the only thing that knows the answer.
  */
-export function chaseSentence(ahead: ChaseStage[]): string {
-  if (ahead.length === 0) {
-    return 'Nothing else will chase this visit - no stage is left to run, so this alert is all you get.';
-  }
-  if (ahead.length === 2) return '5pm and 6pm will chase it until somebody does.';
-  return ahead[0] === 'nudge'
-    ? '5pm will chase it.'
-    : '6pm is the last chase before the customer is told at 7:30pm.';
-}
+export { chaseSentence };
 
 /** What one other person on the visit has answered. */
 export interface SiblingAnswer {

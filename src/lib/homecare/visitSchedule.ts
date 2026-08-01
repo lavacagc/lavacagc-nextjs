@@ -139,14 +139,85 @@ export function chasesAhead(args: {
 }
 
 /**
+ * The stages still ahead, named by the clock - "5pm and 6pm", "5pm", "6pm".
+ *
+ * Every sentence about a coming chase names the times, and they are read off
+ * `chasesAhead`'s answer rather than written out as a fixed phrase. The moment
+ * that distinction bites is the likeliest one: the owner gets the 5pm Telegram,
+ * opens the flag list at 5:30pm and clears it - the nudge has fired, only the
+ * escalation is left, and "5pm and 6pm" would name a chase that already ran as
+ * one still to come.
+ *
+ * `[]` has no label on purpose. Nothing coming is a different sentence, not a
+ * shorter list of times, and the caller has to say so.
+ */
+export function chaseStageLabel(ahead: ChaseStage[]): string {
+  return ahead.map((s) => (s === 'nudge' ? '5pm' : '6pm')).join(' and ');
+}
+
+/**
+ * What is still coming for this visit, said in one sentence.
+ *
+ * Lives here rather than beside the Telegram builders that first needed it: the
+ * admin flag list says the same thing about the same stages, and a client screen
+ * must not import a module that pulls `escapeTelegram` into the bundle to find
+ * out what time the chase runs.
+ *
+ * `[]` is the one that had to be written down: with nothing ahead, the message
+ * carrying this line is the last thing anybody will hear about the visit, and
+ * the reader has to know that rather than wait for a chase that is not coming.
+ */
+export function chaseSentence(ahead: ChaseStage[]): string {
+  if (ahead.length === 0) {
+    return 'Nothing else will chase this visit - no stage is left to run, so this alert is all you get.';
+  }
+  if (ahead.length === 2) return `${chaseStageLabel(ahead)} will chase it until somebody does.`;
+  return ahead[0] === 'nudge'
+    ? `${chaseStageLabel(ahead)} will chase it.`
+    : `${chaseStageLabel(ahead)} is the last chase before the customer is told at 7:30pm.`;
+}
+
+/**
  * Whether the customer still has to be told we are coming.
  *
- * The 23:30 UTC instant, not `reminderSendAt`: in winter the two are an hour
- * apart, and that hour is exactly when a page would tell a crew member the
- * customer is about to be told about a visit they were told about already.
+ * The covering RUN, which is the same gate `reminderIsStillUseful` queues on -
+ * one predicate, so a page cannot promise a reminder the booking never queued.
+ * Deliberately not `reminderSendAt`: in winter the two are an hour apart, and
+ * that hour is exactly when a page would tell a crew member the customer is
+ * about to be told about a visit they were told about already.
  */
 export function customerReminderAhead(visitStart: Date, now: Date): boolean {
-  return now.getTime() < runCoveringVisit(visitStart, 23, 30);
+  return reminderIsStillUseful(visitStart, now);
+}
+
+/**
+ * When that reminder lands, as a phrase - "at 7:30pm tonight", "at 7:30pm on
+ * Tue 4 Aug".
+ *
+ * A dispatch goes out the moment a visit is booked, which is routinely days or
+ * weeks ahead, so "tonight" is true for exactly one of those days. The date is
+ * named rather than softened to "the night before": the crew need to know WHEN,
+ * and a vague sentence is no more use than a wrong one.
+ *
+ * Only meaningful while `customerReminderAhead` holds - the caller has a
+ * different sentence for a customer who has already been told.
+ */
+export function customerReminderWhen(visitStart: Date, now: Date): string {
+  return easternDayOffset(visitStart, now) === 1
+    ? 'at 7:30pm tonight'
+    : `at 7:30pm on ${visitDateLabel(reminderSendAt(visitStart))}`;
+}
+
+/**
+ * Whether the calendar invite's 7:30pm "confirm tomorrow's visit" alarm is
+ * still ahead.
+ *
+ * The ALARM's own instant, not the customer-reminder run: `buildIcs` sets it
+ * with `reminderSendAt`'s arithmetic, and under EST the run fires a full hour
+ * earlier - an hour in which an email would describe an alarm that has gone.
+ */
+export function confirmAlarmAhead(visitStart: Date, now: Date): boolean {
+  return now.getTime() < reminderSendAt(visitStart).getTime();
 }
 
 /**
@@ -158,6 +229,14 @@ export function customerReminderAhead(visitStart: Date, now: Date): boolean {
  */
 export function morningAlarmAhead(visitStart: Date, now: Date): boolean {
   return now.getTime() < easternWallClock(easternDay(visitStart), 7, 0).getTime();
+}
+
+/** When that alarm fires, as a phrase - "at 7:00am tomorrow", "at 7:00am on Wed 5 Aug". */
+export function morningAlarmWhen(visitStart: Date, now: Date): string {
+  const offset = easternDayOffset(visitStart, now);
+  if (offset === 0) return 'at 7:00am this morning';
+  if (offset === 1) return 'at 7:00am tomorrow';
+  return `at 7:00am on ${visitDateLabel(visitStart)}`;
 }
 
 /**
@@ -215,10 +294,15 @@ export function easternVisitInstant(isoDate: string, time: string): Date {
  * fires at 6:30pm, a full hour BEFORE the nominal send time. 23:30 UTC always
  * lands on the same Eastern calendar date (18:30 or 19:30), so the run covering
  * a visit on Eastern date D is 23:30 UTC on D-1.
+ *
+ * Through `runCoveringVisit` rather than working the date out a second time.
+ * This instant decides both whether a reminder was queued at booking and whether
+ * the crew screen says the customer has already been told, and a schedule or DST
+ * correction applied to one copy and not the other would be invisible: the
+ * booking would skip the reminder while the screen still promised it.
  */
 export function reminderRunAt(visitStart: Date): Date {
-  const p = easternParts(visitStart);
-  return new Date(Date.UTC(p.y, p.m, p.day - 1, 23, 30));
+  return new Date(runCoveringVisit(visitStart, 23, 30));
 }
 
 /**

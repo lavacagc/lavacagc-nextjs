@@ -11,7 +11,7 @@ import {
   escalationMessage, flagAlertMessage, siblingVerdict, chaseSentence,
 } from '../src/lib/homecare/dispatchAlerts';
 import {
-  chasesAhead, customerReminderAhead, morningAlarmAhead, type ChaseStage,
+  chasesAhead, chaseStageLabel, customerReminderAhead, morningAlarmAhead, type ChaseStage,
 } from '../src/lib/homecare/visitSchedule';
 import { SERVICE_REPLY_TO } from '../src/lib/homecare/serviceEmails';
 import { HOME_CARE_FROM } from '../src/lib/notify/senders';
@@ -53,7 +53,12 @@ const ics = (over: Partial<Parameters<typeof buildIcs>[0]> = {}) => buildIcs({
   ...over,
 });
 
-const dispatch = (over = {}) => buildDispatchEmail({
+/**
+ * The dispatch email, rendered. Booked on 1 Aug for a visit on 5 Aug, which is
+ * the ordinary case: a dispatch goes out the moment a visit is booked, and that
+ * is routinely days or weeks ahead of the visit itself.
+ */
+const dispatch = (over: Partial<Parameters<typeof buildDispatchEmail>[0]> = {}) => buildDispatchEmail({
   recipientName: 'Veronica',
   customerName: 'Jordan Caruso',
   customerPhone: '(201) 555-0100',
@@ -64,8 +69,25 @@ const dispatch = (over = {}) => buildDispatchEmail({
   subName: 'Ramirez Exteriors',
   confirmUrl: 'https://www.lavacagc.com/crew/confirm/TOKEN',
   calendarUrl: 'https://calendar.google.com/calendar/render?action=TEMPLATE',
+  visitStart: START,
+  now: NOW,
+  customerReminder: 'queued',
   ...over,
 });
+
+/** The retraction that withdraws it. */
+const cancelled = (over: Partial<Parameters<typeof buildDispatchCancelledEmail>[0]> = {}) =>
+  buildDispatchCancelledEmail({
+    recipientName: 'Veronica',
+    customerName: 'Jordan Caruso',
+    address: '14 Maple Ave, West Orange, NJ',
+    services: ['Clean gutters & downspouts'],
+    visitDateLabel: 'Wed 5 Aug',
+    timeWindow: '8:00 - 11:00am',
+    visitStart: START,
+    now: NOW,
+    ...over,
+  });
 
 /**
  * The two Telegram alerts, rendered.
@@ -290,14 +312,96 @@ test('AC15 the sub row is omitted entirely when there is no sub', () => {
   expect(dispatch({ subName: null }).html).not.toContain('confirm they are booked');
 });
 
-test('AC16 the body says the customer is told at 7:30pm either way', () => {
-  expect(dispatch().html).toContain('7:30pm tonight either way');
+test('AC16 the body says WHEN the customer is told, read off the visit\'s own date', () => {
+  // "Tonight" is true for exactly one of the days a visit can be booked on. The
+  // .ics attached to this same email sets its alarms off the visit's date, so
+  // the unconditional wording had the body contradicting its own attachment.
+  const tomorrow = dispatch({ now: new Date(Date.UTC(2026, 7, 4, 12)) });
+  expect(tomorrow.html).toContain('their reminder at 7:30pm tonight either way');
+  expect(tomorrow.text).toContain('their reminder at 7:30pm tonight either way');
+
+  const weeksOut = dispatch();
+  expect(weeksOut.html).toContain('their reminder at 7:30pm on Tue 4 Aug either way');
+  expect(weeksOut.text).toContain('their reminder at 7:30pm on Tue 4 Aug either way');
+  // Named, not softened to "the night before": the crew need to know when.
+  expect(weeksOut.html).not.toContain('tonight');
+  expect(weeksOut.text).not.toContain('tonight');
 });
 
-test('AC17 the body explains the attachment and the 7:00am text reminder', () => {
-  const { html } = dispatch();
+test('AC16 a reminder that was never queued is reported, never promised', () => {
+  // The booking route holds this verdict BEFORE it sends the dispatch: 'skipped'
+  // is a booking that missed its covering run, 'unavailable' a queue write that
+  // failed. In both, nobody is telling the customer anything.
+  for (const customerReminder of ['skipped', 'unavailable'] as const) {
+    const { html, text } = dispatch({ customerReminder });
+    expect(html, customerReminder).toContain('No automatic reminder is going out to the customer');
+    expect(html, customerReminder).toContain('text Jordan Caruso yourself');
+    expect(html, customerReminder).not.toContain('either way');
+    expect(text, customerReminder).toContain('No automatic reminder is going out to the customer');
+    expect(text, customerReminder).not.toContain('either way');
+  }
+});
+
+test('AC17 the body explains the attachment and names when each alarm fires', () => {
+  const { html, text } = dispatch();
   expect(html).toContain('Save the calendar invite attached');
-  expect(html).toContain('7:00am tomorrow to text Jordan Caruso');
+  expect(html).toContain('one at 7:30pm on Tue 4 Aug to confirm');
+  expect(html).toContain('at 7:00am on Wed 5 Aug to text Jordan Caruso when you are on the way');
+  expect(text).toContain('at 7:00am on Wed 5 Aug to text Jordan Caruso when you are on the way');
+
+  const tomorrow = dispatch({ now: new Date(Date.UTC(2026, 7, 4, 12)) });
+  expect(tomorrow.html).toContain('at 7:00am tomorrow to text Jordan Caruso');
+  expect(tomorrow.text).toContain('at 7:00am tomorrow to text Jordan Caruso');
+});
+
+test('AC17 an alarm that has already fired is never described as coming', () => {
+  // Both alarms are absolute instants on the visit's own dates, so a same-day
+  // booking arrives after one or both have passed - and an invite described as
+  // carrying a reminder that has gone is how somebody stops watching for it.
+  const sameDay = dispatch({
+    visitStart: new Date(Date.UTC(2026, 7, 5, 21)),   // 5pm Eastern
+    now: new Date(Date.UTC(2026, 7, 5, 12)),          // 8am Eastern, same day
+    customerReminder: 'skipped',
+  });
+  expect(sameDay.html).toContain('have already passed');
+  expect(sameDay.html).toContain('text Jordan Caruso yourself before you go');
+  expect(sameDay.html).not.toContain('It carries two reminders');
+  expect(sameDay.text).toContain('text Jordan Caruso yourself before you go');
+
+  // Booked overnight: the 7:30pm confirm alarm has gone, the 7:00am has not.
+  const overnight = dispatch({
+    now: new Date(Date.UTC(2026, 7, 5, 5)),           // 1am Eastern on the day
+    customerReminder: 'skipped',
+  });
+  expect(overnight.html).toContain('at 7:00am this morning to text Jordan Caruso');
+  expect(overnight.html).not.toContain('It carries two reminders');
+  expect(overnight.text).toContain('at 7:00am this morning to text Jordan Caruso');
+});
+
+test('AC17 the text part carries the same claims as the HTML, never its own', () => {
+  // Both sentences are built once and rendered into both parts. They were
+  // spelled twice, which is a second bug waiting: a text part that drifts from
+  // the HTML tells half the crew something the other half was never told.
+  const { html, text } = dispatch();
+  for (const claim of [
+    'The customer gets their reminder at 7:30pm on Tue 4 Aug either way',
+    'at 7:00am on Wed 5 Aug to text Jordan Caruso when you are on the way',
+  ]) {
+    expect(html).toContain(claim);
+    expect(text).toContain(claim);
+  }
+  expect(text).not.toContain('tomorrow');
+});
+
+test('AC114 the invite\'s own 7:30pm alarm does not claim a reminder that never went', () => {
+  // The alarm fires the night before saying the customer reminder has gone out.
+  // Unset fails CLOSED - it says nothing about the customer rather than
+  // asserting they were told.
+  expect(ics({ customerReminded: true })).toContain('The customer reminder email has gone out');
+  expect(ics({ customerReminded: false })).not.toContain('The customer reminder email has gone out');
+  expect(ics()).not.toContain('The customer reminder email has gone out');
+  // The instruction the alarm exists for survives either way.
+  expect(ics()).toContain("Confirm tomorrow's visit for Jordan Caruso");
 });
 
 test('AC18 the dispatch carries no unsubscribe link and no postal address', () => {
@@ -1477,12 +1581,32 @@ test('AC111 the admin flag list promises no chase that cannot run either', () =>
   // chasing it" about a visit today is an alert that is not coming, told to the
   // one person who could have acted on it.
   const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
-  expect(page).toContain('const stillChased = chasesAhead({');
+  expect(page).toContain('const aheadNow = chasesAhead({');
   expect(page).toContain('and no chase is left to run - nothing else will raise it.');
   expect(page).toContain('and no chase is left to run - nothing else will ask.');
-  // The two truthful branches are kept, not replaced.
-  expect(page).toContain('so 5pm and 6pm will keep chasing it.');
-  expect(page).toContain('so 5pm and 6pm will still chase it.');
+  // The two truthful branches are kept, and now name the stages that are
+  // actually left rather than the fixed pair - see AC113.
+  expect(page).toContain('so ${chaseStageLabel(aheadNow)} will keep chasing it.');
+  expect(page).toContain('so ${chaseStageLabel(aheadNow)} will still chase it.');
+});
+
+test('AC113 a surviving chase is named by the stages that are actually left', () => {
+  // The likeliest moment this screen is ever used is the one where the fixed
+  // phrase is wrong: the owner gets the 5pm Telegram, opens the flag list at
+  // 5:30pm and clears it. The nudge has fired; only the escalation remains.
+  expect(chaseStageLabel(['nudge', 'escalate'])).toBe('5pm and 6pm');
+  expect(chaseStageLabel(['nudge'])).toBe('5pm');
+  expect(chaseStageLabel(['escalate'])).toBe('6pm');
+  // Nothing coming is a different sentence, not a shorter list of times.
+  expect(chaseStageLabel([])).toBe('');
+
+  // The rule is spelled once: the Telegram sentence renders off the same label.
+  expect(chaseSentence(['escalate'])).toContain('6pm is the last chase');
+  expect(chaseSentence(['nudge'])).toContain('5pm will chase it');
+
+  const visit = new Date(Date.UTC(2026, 7, 5, 12));
+  const halfPastFive = new Date(Date.UTC(2026, 7, 4, 21, 30));
+  expect(chaseStageLabel(chasesAhead({ visitStart: visit, now: halfPastFive }))).toBe('6pm');
 });
 
 test('AC74 only the transition into a flag alerts, so one token cannot flood the chat', () => {
@@ -1694,21 +1818,28 @@ test('AC70 a retraction carries NO alarm - it must never say "text the customer"
 });
 
 test('AC70 the cancelled email tells them not to text the customer', () => {
-  const { subject, html, text } = buildDispatchCancelledEmail({
-    recipientName: 'Veronica',
-    customerName: 'Jordan Caruso',
-    address: '14 Maple Ave, West Orange, NJ',
-    services: ['Clean gutters & downspouts'],
-    visitDateLabel: 'Wed 5 Aug',
-    timeWindow: '8:00 - 11:00am',
-  });
+  const { subject, html, text } = cancelled();
   expect(subject).toBe(`${CANCELLED_PREFIX} Wed 5 Aug, 8:00 - 11:00am - 14 Maple Ave`);
-  expect(html).toContain('Do not text ');
-  expect(html).toContain('Jordan Caruso');
-  expect(text).toContain('Do not text the customer about it');
+  expect(html).toContain('Do not text Jordan Caruso about it');
+  expect(text).toContain('Do not text Jordan Caruso about it');
+  expect(html).toContain('so its 7:00am reminder cannot fire');
   // Internal mail, exactly like the dispatch it retracts.
   expect(html.toLowerCase()).not.toContain('unsubscribe');
   expect(html).not.toContain('51 Crestmont Rd');
+});
+
+test('AC114 a retraction after the 7:00am alarm chases the text that may already have gone', () => {
+  // A retraction goes out for any window whose START is still ahead, which
+  // includes the morning OF the visit - by which time the "text the customer
+  // when the crew is on the way" alarm has fired and the text may be sent.
+  // "Do not text them" is then advice about something already done, and
+  // "delete it so the 7:00am reminder cannot fire" is about an alarm that has.
+  const { html, text } = cancelled({ now: new Date(Date.UTC(2026, 7, 5, 11, 30)) }); // 7:30am Eastern
+  expect(html).toContain('Your 7:00am reminder has already gone off');
+  expect(html).toContain('tell them the visit is off');
+  expect(html).not.toContain('cannot fire');
+  expect(text).toContain('Your 7:00am reminder has already gone off');
+  expect(text).not.toContain('cannot fire');
 });
 
 test('AC71 the recipients are read before the row is deleted, or they cascade away', () => {
@@ -2092,8 +2223,9 @@ test('AC109 one row-busy state, so a fourth row action cannot leave a button liv
   expect(runner).toContain('if (!window.confirm(copy.ask)) return;');
   expect(runner).toContain('setRowBusy({ action, start: booking.start });');
   expect(runner).toContain('setRowBusy(null);');
+  const bare = code('src/app/vaca-mgmt/send-service-quote/page.tsx');
   for (const handler of ['const complete =', 'const cancel =', 'const markHandled =']) {
-    expect(page.slice(page.indexOf(handler), page.indexOf(handler) + 200)).toContain('runRowAction(');
+    expect(bare.slice(bare.indexOf(handler), bare.indexOf(handler) + 200)).toContain('runRowAction(');
   }
 });
 
@@ -2204,10 +2336,11 @@ test('AC76 clearing a flag is an admin action, and only the flagged rows move', 
   // rather than by each handler remembering to ask it.
   // The chase half of that question is conditioned on a chase actually being
   // left to stop - a visit today is out of the escalation's window entirely.
-  expect(page).toContain("? 'Mark this flag handled? The 5pm and 6pm chases stop for this visit.'");
-  expect(page).toContain("chasesAhead({ visitStart: new Date(booking.start), now: new Date() }).length > 0");
+  // And the stages it names are the ones still ahead, never a fixed pair.
+  expect(page).toContain("? `Mark this flag handled? ${chaseStageLabel(ahead)} will not chase this visit.`");
+  expect(page).toContain('const ahead = chasesAhead({ visitStart: new Date(booking.start), now: new Date() });');
   expect(page).toContain('if (!window.confirm(copy.ask)) return;');
-  expect(page).toContain("const markHandled = (booking: Booking) => runRowAction(\n    'handle',");
+  expect(page).toContain("return runRowAction(\n      'handle',");
   // And offered only where there is a flag to clear.
   expect(page).toContain("b.dispatch?.state === 'flagged' && (");
 });
@@ -2230,8 +2363,9 @@ test('AC86 clearing a flag reports what actually moved, not what was intended', 
   expect(page).toContain('const state: string | undefined = data.dispatch?.state;');
   // What the admin is told about the chase comes from that state, all three ways.
   expect(page).toContain('This visit reads as confirmed now, so it will not be chased again.');
-  expect(page).toContain('Another flag is still open on it, so 5pm and 6pm will keep chasing it.');
-  expect(page).toContain('Nobody on this visit has confirmed, so 5pm and 6pm will still chase it.');
+  // Naming the stages still ahead, not the fixed pair - AC113.
+  expect(page).toContain('Another flag is still open on it, so ${chaseStageLabel(aheadNow)} will keep chasing it.');
+  expect(page).toContain('Nobody on this visit has confirmed, so ${chaseStageLabel(aheadNow)} will still chase it.');
   expect(page).toContain("title: cleared > 0 ? 'Flag cleared' : 'Nothing to clear',");
   expect(page).toContain('No flag was open on this visit - the list was out of date. ');
   expect(page).toContain("variant: state === 'confirmed' ? undefined : 'destructive',");

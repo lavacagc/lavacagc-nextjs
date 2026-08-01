@@ -81,6 +81,17 @@ export interface IcsArgs {
    * which is why `visit_dispatch.ics_sequence` counts them.
    */
   sequence?: number;
+  /**
+   * Whether the customer's night-before reminder is actually queued.
+   *
+   * Only the 7:30pm alarm on the two internal variants reads it, and it fails
+   * CLOSED: left unset, the alarm says nothing about the customer rather than
+   * asserting they have been told. `requeueVisitReminder` answers 'skipped' for
+   * a booking that missed its covering run and 'unavailable' when the queue
+   * write failed, and in both the alarm would otherwise fire the night before
+   * saying "the customer reminder email has gone out" when nothing went out.
+   */
+  customerReminded?: boolean;
   /** Stamped as DTSTAMP. Injected so output is deterministic in tests. */
   now?: Date;
 }
@@ -245,7 +256,8 @@ export function buildIcs(args: IcsArgs): string {
     lines.push(
       ...alarm(
         easternWallClock(dayBefore, 19, 30),
-        `Confirm tomorrow's visit for ${customerName}. The customer reminder email has gone out.`,
+        `Confirm tomorrow's visit for ${customerName}.`
+          + (args.customerReminded ? ' The customer reminder email has gone out.' : ''),
       ),
       ...alarm(
         easternWallClock(easternDay(start), 7, 0),

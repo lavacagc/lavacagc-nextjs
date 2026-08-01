@@ -22,7 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from '@/hooks/use-toast';
 import { Loader2, CalendarPlus, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
 import { scopeSummaryFrom } from '@/lib/homecare/serviceIntake';
-import { easternVisitInstant, chasesAhead } from '@/lib/homecare/visitSchedule';
+import { easternVisitInstant, chasesAhead, chaseStageLabel } from '@/lib/homecare/visitSchedule';
 
 interface Service { key: string; title: string; blurb: string; priority: number }
 /** Someone a visit dispatch can be sent to. Managed on /vaca-mgmt/crew. */
@@ -901,65 +901,68 @@ export default function SendServiceQuotePage() {
    * passes - three alerts for one problem already sorted, and no way to stop
    * them short of calling the visit off.
    */
-  const markHandled = (booking: Booking) => runRowAction(
-    'handle',
-    booking,
-    {
-      // Conditioned on whether either chase can still run, through the same rule
-      // the crew alert uses. Both stages only ever read TOMORROW'S window, so
-      // for a visit today - or one whose stages have already fired - "the chases
-      // stop" describes nothing that was going to happen, and clearing a flag is
-      // exactly the moment somebody decides no further alert is needed.
-      ask: chasesAhead({ visitStart: new Date(booking.start), now: new Date() }).length > 0
-        ? 'Mark this flag handled? The 5pm and 6pm chases stop for this visit.'
-        : 'Mark this flag handled? No chase was left to run for this visit anyway - this only '
-          + 'clears the flag off the list.',
-      failed: 'Failed',
-    },
-    async (homeownerId) => {
-      const res = await fetch('/api/admin/service-quote/dispatch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ homeownerId, start: booking.start }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      await refreshBookings();
-      // Both halves of the route's answer, neither assumed: how many flags
-      // actually moved, and what the visit reads as NOW. Zero rows means the
-      // list was stale - the flag was cleared elsewhere, or the assignment
-      // retired - and only the re-read state can say whether the chase has
-      // really stopped, because a visit nobody has confirmed is still chased.
-      const cleared: number = data.handled ?? 0;
-      const state: string | undefined = data.dispatch?.state;
-      // Whether either stage can still run at all, before saying one will. A
-      // visit today is out of the escalation's window entirely, so telling the
-      // admin it "will keep chasing it" promises an alert that is not coming -
-      // on the one screen from which a flag can be acted on.
-      const stillChased = chasesAhead({ visitStart: new Date(booking.start), now: new Date() }).length > 0;
-      const chaseLine = state === 'confirmed'
-        ? 'This visit reads as confirmed now, so it will not be chased again.'
-        : state === 'flagged'
-          ? stillChased
-            ? 'Another flag is still open on it, so 5pm and 6pm will keep chasing it.'
-            : 'Another flag is still open on it, and no chase is left to run - nothing else will raise it.'
-          // A re-read that FAILED, never the definite "nobody has confirmed":
-          // the write landed, so the chase may well have stopped - what could
-          // not be done is check.
-          : state === 'unknown'
-            ? 'What the visit reads as now could NOT be checked - look at it again before you rely on this.'
-            : stillChased
-              ? 'Nobody on this visit has confirmed, so 5pm and 6pm will still chase it.'
-              : 'Nobody on this visit has confirmed, and no chase is left to run - nothing else will ask.';
-      toast({
-        title: cleared > 0 ? 'Flag cleared' : 'Nothing to clear',
-        description: (cleared > 0
-          ? `${cleared} flag${cleared === 1 ? '' : 's'} cleared. `
-          : 'No flag was open on this visit - the list was out of date. ') + chaseLine,
-        variant: state === 'confirmed' ? undefined : 'destructive',
-      });
-    },
-  );
+  const markHandled = (booking: Booking) => {
+    // WHICH stages are left, not merely whether any are. Both only ever read
+    // TOMORROW'S window, so for a visit today - or one whose stages have already
+    // fired - "the chases stop" describes nothing that was going to happen; and
+    // at 5:30pm, the likeliest moment this button is ever pressed, the nudge has
+    // run and naming it as still to come is the same defect in miniature.
+    const ahead = chasesAhead({ visitStart: new Date(booking.start), now: new Date() });
+    return runRowAction(
+      'handle',
+      booking,
+      {
+        ask: ahead.length > 0
+          ? `Mark this flag handled? ${chaseStageLabel(ahead)} will not chase this visit.`
+          : 'Mark this flag handled? No chase was left to run for this visit anyway - this only '
+            + 'clears the flag off the list.',
+        failed: 'Failed',
+      },
+      async (homeownerId) => {
+        const res = await fetch('/api/admin/service-quote/dispatch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ homeownerId, start: booking.start }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed');
+        await refreshBookings();
+        // Both halves of the route's answer, neither assumed: how many flags
+        // actually moved, and what the visit reads as NOW. Zero rows means the
+        // list was stale - the flag was cleared elsewhere, or the assignment
+        // retired - and only the re-read state can say whether the chase has
+        // really stopped, because a visit nobody has confirmed is still chased.
+        const cleared: number = data.handled ?? 0;
+        const state: string | undefined = data.dispatch?.state;
+        // Re-read after the write, and by NAME: the round trip can cross 5pm, and
+        // a toast that answers "5pm and 6pm" for a visit only 6pm can still reach
+        // promises an alert that is not coming - on the one screen from which a
+        // flag can be acted on.
+        const aheadNow = chasesAhead({ visitStart: new Date(booking.start), now: new Date() });
+        const chaseLine = state === 'confirmed'
+          ? 'This visit reads as confirmed now, so it will not be chased again.'
+          : state === 'flagged'
+            ? aheadNow.length > 0
+              ? `Another flag is still open on it, so ${chaseStageLabel(aheadNow)} will keep chasing it.`
+              : 'Another flag is still open on it, and no chase is left to run - nothing else will raise it.'
+            // A re-read that FAILED, never the definite "nobody has confirmed":
+            // the write landed, so the chase may well have stopped - what could
+            // not be done is check.
+            : state === 'unknown'
+              ? 'What the visit reads as now could NOT be checked - look at it again before you rely on this.'
+              : aheadNow.length > 0
+                ? `Nobody on this visit has confirmed, so ${chaseStageLabel(aheadNow)} will still chase it.`
+                : 'Nobody on this visit has confirmed, and no chase is left to run - nothing else will ask.';
+        toast({
+          title: cleared > 0 ? 'Flag cleared' : 'Nothing to clear',
+          description: (cleared > 0
+            ? `${cleared} flag${cleared === 1 ? '' : 's'} cleared. `
+            : 'No flag was open on this visit - the list was out of date. ') + chaseLine,
+          variant: state === 'confirmed' ? undefined : 'destructive',
+        });
+      },
+    );
+  };
 
   const visitLabel = (b: Booking) => {
     const fmt: Intl.DateTimeFormatOptions = { timeZone: 'America/New_York' };

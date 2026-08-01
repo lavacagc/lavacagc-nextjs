@@ -174,6 +174,10 @@ export async function POST(request: NextRequest) {
       timeWindow: visitTimeWindow(startAt, endAt),
       subName,
       recipientIds,
+      // The verdict this request already holds, handed on rather than left
+      // behind: the email used to assert the customer gets their reminder
+      // whatever this line had just answered.
+      customerReminder: reminder,
     }).catch((err): SendDispatchResult => {
       const message = err instanceof Error ? err.message : String(err);
       console.error('crew dispatch threw after a successful booking:', message);
@@ -254,6 +258,11 @@ export async function POST(request: NextRequest) {
         address,
         name,
         ...(phone ? { phone } : {}),
+        // Carried onto the owner's own file so its 7:30pm alarm cannot claim the
+        // customer reminder went out when this booking's queue answered
+        // 'skipped' or 'unavailable'. Absent means absent: the GET below asserts
+        // nothing it was not told.
+        ...(reminder === 'queued' ? { reminded: '1' } : {}),
       })}`,
     });
   } catch (err) {
@@ -283,6 +292,7 @@ export async function GET(request: NextRequest) {
     customerName: name,
     customerPhone: q.get('phone'),
     variant: 'owner',
+    customerReminded: q.get('reminded') === '1',
   });
 
   return new NextResponse(ics, {
