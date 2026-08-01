@@ -1,4 +1,6 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 /**
  * The quote form's per-customer state, driven in a real browser.
@@ -472,6 +474,46 @@ test.describe('send-service-quote form state', () => {
       .toContainText('This is NOT "nothing on the books"');
     await expect(page.getByTestId('sq-homeowner-unread'))
       .toContainText('Nothing below can be marked completed, cancelled or handled');
+  });
+
+  test('AC112 a lookup already running cannot be overtaken from the keyboard', async ({ page, context, baseURL }) => {
+    // The "Look up" button is disabled while one runs; the Enter key on the box
+    // was not, and no response was matched to its request. A lookup for A that
+    // FAILED after a lookup for B had already loaded ran the reset and wiped B
+    // off the screen, toasting "Whoever was on screen has been cleared off it"
+    // about a customer who had just loaded correctly.
+    let started = 0;
+    await page.route('**/api/admin/crew', (route) => route.fulfill({ json: { recipients: [] } }));
+    await page.route('**/api/admin/service-quote/intake**', async (route) => {
+      started += 1;
+      // Slow enough that the second Enter lands while this one is still open.
+      await new Promise((r) => setTimeout(r, 1200));
+      await route.fulfill({ status: 500, json: { error: 'read failed' } });
+    });
+    await open(page, context, baseURL!);
+
+    await page.getByTestId('sq-email').fill('first@example.com');
+    await page.getByTestId('sq-email').press('Enter');
+    await expect(page.getByTestId('sq-lookup')).toBeDisabled();
+
+    // Retyping and pressing Enter again does nothing while one is in flight -
+    // the same lock the button has always shown.
+    await page.getByTestId('sq-email').fill('second@example.com');
+    await page.getByTestId('sq-email').press('Enter');
+    await page.getByTestId('sq-email').press('Enter');
+    expect(started).toBe(1);
+
+    await expect(page.getByTestId('sq-lookup')).toBeEnabled({ timeout: 5000 });
+    expect(started).toBe(1);
+
+    // And the guard behind the gate: a response is dropped whole - verdict,
+    // reset and spinner - once it is no longer the lookup being waited on, so a
+    // path added later cannot reopen the race the Enter key opened.
+    const src = readFileSync(join(process.cwd(), 'src/app/vaca-mgmt/send-service-quote/page.tsx'), 'utf8');
+    expect(src).toContain('const ticket = ++lookupTicket.current;');
+    expect(src).toContain('const mine = () => lookupTicket.current === ticket;');
+    expect(src).toContain('if (mine()) setLoading(false);');
+    expect((src.match(/if \(!mine\(\)\) return;/g) ?? [])).toHaveLength(2);
   });
 
   test('AC105 a refresh re-reads the customer on screen, not whatever the lookup box holds', async ({ page, context, baseURL }) => {

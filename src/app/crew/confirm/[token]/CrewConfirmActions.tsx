@@ -40,16 +40,37 @@ type Status = 'sent' | 'confirmed' | 'flagged';
  */
 export type FlagAlert = 'reached' | 'unreached';
 
+/**
+ * What is actually still ahead for this visit, computed on the server from the
+ * visit's own start rather than assumed by the copy.
+ *
+ * Every sentence on this screen used to assert that the customer is told at
+ * 7:30pm TONIGHT and that a reminder arrives at 7:00am - both true only for a
+ * visit tomorrow. The screen a confirmed person re-opens because the sub fell
+ * through at 6am is looking at a visit TODAY: the customer was told last night
+ * and the 7:00am alarm has already gone off. A promise about something that
+ * cannot happen reads as reassurance, on the one screen that has to make
+ * somebody pick up the phone.
+ */
+export interface VisitTiming {
+  /** The customer reminder sentence, already true for this visit. */
+  customerNotice: string;
+  /** Whether the invite's 7:00am "text the customer" alarm is still coming. */
+  morningAlarmAhead: boolean;
+}
+
 export default function CrewConfirmActions({
   token,
   initialStatus,
   initialFlagAlert,
   subName,
+  timing,
 }: {
   token: string;
   initialStatus: Status;
   initialFlagAlert: FlagAlert;
   subName: string | null;
+  timing: VisitTiming;
 }) {
   const [status, setStatus] = useState<Status>(initialStatus);
   const [flagAlert, setFlagAlert] = useState<FlagAlert>(initialFlagAlert);
@@ -137,8 +158,11 @@ export default function CrewConfirmActions({
           data-testid="crew-confirmed"
           className="rounded-xl bg-[#F0FDF4] px-4 py-3 text-sm font-medium text-[#166534]"
         >
-          Confirmed. You will get a reminder at 7:00am to text the customer when you are on the
-          way.
+          {timing.morningAlarmAhead
+            ? 'Confirmed. You will get a reminder at 7:00am to text the customer when you are on '
+              + 'the way.'
+            : 'Confirmed. The 7:00am reminder has already been and gone - text the customer '
+              + 'yourself when you are on the way.'}
         </p>
         <button
           type="button"
@@ -167,16 +191,14 @@ export default function CrewConfirmActions({
       >
         Flagged - but we could NOT get the alert through to the office. What you typed is written
         down, and nobody has been told it. Please call{' '}
-        <a className="font-bold underline" href="tel:2012124917">(201) 212-4917</a> now - the
-        customer is still told tonight that we are coming.
+        <a className="font-bold underline" href="tel:2012124917">(201) 212-4917</a> now - {timing.customerNotice}
       </p>
     ) : (
       <p
         data-testid="crew-flagged"
         className="mt-6 rounded-xl bg-[#FFFBEB] px-4 py-3 text-sm font-medium text-[#92400E]"
       >
-        Flagged. The office has it. If it is urgent, call (201) 212-4917 as well - the customer is
-        still told tonight that we are coming.
+        Flagged. The office has it. If it is urgent, call (201) 212-4917 as well - {timing.customerNotice}
       </p>
     );
   }

@@ -13,7 +13,9 @@
  */
 import type { Metadata } from 'next';
 import { lookupByToken } from '@/lib/homecare/dispatch';
-import { visitDateLabel, visitTimeWindow } from '@/lib/homecare/visitSchedule';
+import {
+  visitDateLabel, visitTimeWindow, easternDayOffset, customerReminderAhead, morningAlarmAhead,
+} from '@/lib/homecare/visitSchedule';
 import CrewConfirmActions from './CrewConfirmActions';
 
 export const dynamic = 'force-dynamic';
@@ -122,6 +124,11 @@ export default async function CrewConfirmPage({
 
   const dateLabel = visitDateLabel(visit.start);
   const window = visitTimeWindow(visit.start, visit.end);
+  const now = new Date();
+  const timing = {
+    customerNotice: customerNotice(visit.start, now),
+    morningAlarmAhead: morningAlarmAhead(visit.start, now),
+  };
 
   return (
     <Shell>
@@ -160,14 +167,36 @@ export default async function CrewConfirmPage({
         // nobody has read it, whether it was never attempted or never landed.
         initialFlagAlert={assignment.notified_at ? 'reached' : 'unreached'}
         subName={dispatch.sub_name}
+        timing={timing}
       />
 
       <p className="mt-6 text-xs leading-relaxed text-[#8A8A8A]">
-        The customer is told at 7:30pm tonight that we are coming, whether or not this is
-        confirmed. If something is wrong, flag it now.
+        Whether or not this is confirmed, {timing.customerNotice} If something is wrong, flag it
+        now.
       </p>
     </Shell>
   );
+}
+
+/**
+ * What this crew member can still expect the CUSTOMER to have been told, as a
+ * clause the screens below drop into their own sentences.
+ *
+ * The screen said "the customer is told at 7:30pm tonight" everywhere,
+ * unconditionally, and that is true only for a visit tomorrow. Somebody
+ * re-opening the link on the morning of the visit - which is the whole reason a
+ * confirmed screen can re-flag (the sub falls through at 6am) - was told a
+ * deadline was still ahead of them when the customer had been told the night
+ * before. That reads as "there is time", on the one screen whose job is to make
+ * them ring the office.
+ */
+function customerNotice(visitStart: Date, now: Date): string {
+  if (!customerReminderAhead(visitStart, now)) {
+    return 'the customer has ALREADY been told we are coming.';
+  }
+  return easternDayOffset(visitStart, now) === 1
+    ? 'the customer is told at 7:30pm tonight that we are coming.'
+    : 'the customer is told at 7:30pm the night before that we are coming.';
 }
 
 function Shell({ children }: { children: React.ReactNode }) {

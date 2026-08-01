@@ -93,6 +93,74 @@ export function easternDayOffset(start: Date, now: Date): number {
 }
 
 /**
+ * When the run that covers a visit fires, for a cron on a fixed UTC hour.
+ *
+ * Every scheduled job in this feature reads "tomorrow, Eastern" and fires on a
+ * fixed UTC time - 21:00 nudge, 22:00 escalate, 23:30 customer reminder - so the
+ * run that ever looks at a given visit is the one on the Eastern calendar day
+ * BEFORE it. 21:00, 22:00 and 23:30 UTC all fall on the same Eastern date as
+ * their UTC date, so that day is `visitDate - 1` in both seasons.
+ *
+ * This is the fact every "we will chase it later" sentence has to be conditioned
+ * on, and it is spelled here once rather than assumed at each of them.
+ */
+function runCoveringVisit(visitStart: Date, utcHour: number, utcMinute = 0): number {
+  const p = easternParts(visitStart);
+  return Date.UTC(p.y, p.m, p.day - 1, utcHour, utcMinute);
+}
+
+/** The two chases, in the order they run. */
+export type ChaseStage = 'nudge' | 'escalate';
+
+/**
+ * Which of the 5pm/6pm chases can still run for this visit - never a guess.
+ *
+ * A stage is ahead only when its stamp is unclaimed AND its run has not yet
+ * fired for this visit. Both halves matter, and both were previously assumed:
+ * the escalation reads TOMORROW'S window only, so a visit today is structurally
+ * out of scope and every stage for it fired last night, and a stamp already set
+ * means that stage is spent whatever the clock says.
+ *
+ * A released stamp - a send that failed and put its claim back - reads as spent
+ * too, and correctly: only a manual re-hit can use it, and no scheduled run ever
+ * looks at that visit again.
+ */
+export function chasesAhead(args: {
+  visitStart: Date;
+  now: Date;
+  nudgedAt?: string | null;
+  escalatedAt?: string | null;
+}): ChaseStage[] {
+  const at = args.now.getTime();
+  const ahead: ChaseStage[] = [];
+  if (!args.nudgedAt && at < runCoveringVisit(args.visitStart, 21)) ahead.push('nudge');
+  if (!args.escalatedAt && at < runCoveringVisit(args.visitStart, 22)) ahead.push('escalate');
+  return ahead;
+}
+
+/**
+ * Whether the customer still has to be told we are coming.
+ *
+ * The 23:30 UTC instant, not `reminderSendAt`: in winter the two are an hour
+ * apart, and that hour is exactly when a page would tell a crew member the
+ * customer is about to be told about a visit they were told about already.
+ */
+export function customerReminderAhead(visitStart: Date, now: Date): boolean {
+  return now.getTime() < runCoveringVisit(visitStart, 23, 30);
+}
+
+/**
+ * Whether the calendar invite's 7:00am "text the customer when you are on the
+ * way" alarm is still ahead.
+ *
+ * Through the same helpers `buildIcs` sets that alarm with, so the confirm
+ * screen cannot promise a reminder at a moment the invite does not carry one.
+ */
+export function morningAlarmAhead(visitStart: Date, now: Date): boolean {
+  return now.getTime() < easternWallClock(easternDay(visitStart), 7, 0).getTime();
+}
+
+/**
  * When the reminder row should be sent: 7:30pm Eastern the evening before.
  *
  * The cron fires at that time anyway, so this is really a marker the cron

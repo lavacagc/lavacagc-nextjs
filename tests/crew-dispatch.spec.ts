@@ -7,6 +7,12 @@ import {
   ACTION_PREFIX, CANCELLED_PREFIX,
 } from '../src/lib/homecare/dispatchEmail';
 import { escapeTelegram } from '../src/lib/notify/telegramMessage';
+import {
+  escalationMessage, flagAlertMessage, siblingVerdict, chaseSentence,
+} from '../src/lib/homecare/dispatchAlerts';
+import {
+  chasesAhead, customerReminderAhead, morningAlarmAhead, type ChaseStage,
+} from '../src/lib/homecare/visitSchedule';
 import { SERVICE_REPLY_TO } from '../src/lib/homecare/serviceEmails';
 import { HOME_CARE_FROM } from '../src/lib/notify/senders';
 import { crewIcsUid, dispatchStateOf, type DispatchAssignment } from '../src/lib/homecare/dispatch';
@@ -58,6 +64,41 @@ const dispatch = (over = {}) => buildDispatchEmail({
   subName: 'Ramirez Exteriors',
   confirmUrl: 'https://www.lavacagc.com/crew/confirm/TOKEN',
   calendarUrl: 'https://calendar.google.com/calendar/render?action=TEMPLATE',
+  ...over,
+});
+
+/**
+ * The two Telegram alerts, rendered.
+ *
+ * Both used to be assembled inline in the routes that send them, so the only way
+ * to pin either was to grep route source - which proves the file LOOKS right and
+ * nothing about what the owner actually reads. These build the message.
+ */
+const escalation = (over: Partial<Parameters<typeof escalationMessage>[0]> = {}) => escalationMessage({
+  stage: 'nudge',
+  customer: 'Jordan',
+  label: 'Wed 5 Aug 8:00 - 11:00am',
+  address: '14 Maple Ave, West Orange, NJ',
+  services: ['Clean gutters & downspouts'],
+  phone: '(201) 555-0100',
+  dispatched: true,
+  sentTo: ['Veronica'],
+  flags: [],
+  ...over,
+});
+
+const flagAlert = (over: Partial<Parameters<typeof flagAlertMessage>[0]> = {}) => flagAlertMessage({
+  who: 'Veronica',
+  when: 'Wed 5 Aug 8:00 - 11:00am',
+  customerName: 'Jordan Caruso',
+  customerPhone: '(201) 555-0100',
+  address: '14 Maple Ave, West Orange, NJ',
+  services: ['Clean gutters & downspouts'],
+  subName: 'Ramirez Exteriors',
+  visitRead: 'ok',
+  note: 'sub cancelled',
+  verdict: siblingVerdict([], ['nudge', 'escalate']),
+  customerReminderAhead: true,
   ...over,
 });
 
@@ -1109,26 +1150,35 @@ test('AC55 only a confirmation stops the chase - a flag does not', () => {
 });
 
 test('AC55 both stages carry the flag note, so the owner sees what is wrong', () => {
-  const src = cron();
-  expect(src).toContain("const flagged = mine.filter((a) => a.status === 'flagged');");
-  expect(src).toContain('flagged a problem');
-  expect(src).toContain('escapeTelegram(a.note)');
+  const text = escalation({ flags: [{ by: 'Veronica', note: 'sub cancelled' }] });
+  expect(text).toContain('Veronica flagged a problem');
+  expect(text).toContain('sub cancelled');
+  // A flag with no note still says somebody raised one.
+  expect(escalation({ flags: [{ by: 'Alex', note: null }] })).toContain('Alex flagged a problem</b> (no note).');
 });
 
 test('AC55 the flag note is never traded away for the never-dispatched warning', () => {
   // They used to be branches of one ternary, so a visit whose dispatch email
   // went out but whose write-back failed (`recorded: 'unavailable'`) read as
   // never dispatched AND silently dropped the flag - the highest-signal content
-  // in the message.
-  const src = cron();
-  const body = src.slice(src.indexOf('const dispatchLine = '), src.indexOf('const outcome = await sendTelegramMessage'));
-  expect(body).toContain('dispatchLine,');
-  expect(body).toContain('...flagLines,');
+  // in the message. Asserted on the RENDERED message now, not on the shape of
+  // the expression that builds it.
+  const both = escalation({
+    dispatched: false,
+    sentTo: ['Veronica'],
+    flags: [{ by: 'Veronica', note: 'sub cancelled' }],
+  });
+  expect(both).toContain('sub cancelled');
+  expect(both).toContain('This visit does not read as dispatched');
+
   // And "no dispatch was ever sent" is only said when there is nobody it could
   // have been sent to: assignments with no stamp is a write that failed, not a
   // crew nobody told.
-  expect(src).toContain('? mine.length > 0');
-  expect(src).toContain('This visit does not read as dispatched');
+  const nobody = escalation({ dispatched: false, sentTo: [] });
+  expect(nobody).toContain('No dispatch was ever sent for this visit');
+  const writeBackFailed = escalation({ dispatched: false, sentTo: ['Veronica', 'Alex'] });
+  expect(writeBackFailed).not.toContain('No dispatch was ever sent');
+  expect(writeBackFailed).toContain('it was sent to Veronica, Alex');
 });
 
 test('AC56 a stage already stamped is skipped, making a retry a no-op', () => {
@@ -1172,21 +1222,50 @@ test('AC59+AC60 a visit with no dispatch row is chased, and skipped if no row ca
 });
 
 test('AC61+AC62 the message carries the details, and the two stages differ on urgency', () => {
+  const nudge = escalation();
+  for (const detail of ['Jordan', 'Wed 5 Aug 8:00 - 11:00am', '14 Maple Ave', 'Clean gutters', '(201) 555-0100']) {
+    expect(nudge).toContain(detail);
+  }
+  expect(nudge).toContain('told we are coming at 7:30pm tonight');
+  expect(escalation({ stage: 'escalate' })).toContain('about 90 minutes from now');
+  expect(escalation({ dispatched: false, sentTo: [] })).toContain('No dispatch was ever sent for this visit');
+});
+
+test('AC61 the escalation message is a pure builder, rendered without sending', () => {
+  // It was assembled inline between the claim and the send, so the branch that
+  // distinguishes "nobody was ever told" from "the write-back failed" - the most
+  // consequential sentence in the feature - could only be pinned by grepping
+  // route source, and it went wrong once with nothing objecting.
   const src = cron();
-  expect(src).toContain('No dispatch was ever sent for this visit');
-  expect(src).toContain('about 90 minutes from now');
-  expect(src).toContain('told we are coming at 7:30pm tonight');
+  expect(src).toContain('const text = escalationMessage({');
+  expect(src).toContain('dispatched: Boolean(dispatch.dispatched_at),');
+  expect(src).not.toContain('const dispatchLine = ');
+  expect(src).not.toContain('escapeTelegram');
 });
 
 test('AC63 Telegram HTML is escaped', () => {
   expect(escapeTelegram('Ben & Co <script>')).toBe('Ben &amp; Co &lt;script&gt;');
-  const src = cron();
-  // Every interpolation into the message body goes through the escaper.
-  // From the first line built for the body, not from `const text` - the
-  // dispatch line is assembled just above it and interpolates just as freely.
-  const message = src.slice(src.indexOf('const dispatchLine = '), src.indexOf('const outcome = await sendTelegramMessage'));
-  for (const match of message.matchAll(/\$\{(?!escapeTelegram)([a-zA-Z][\w.?]*)\}/g)) {
-    throw new Error(`unescaped interpolation in the Telegram message: ${match[1]}`);
+  // On the RENDERED messages, with hostile values in every free-text field.
+  // Grepping the builder for un-escaped interpolations only ever proved that
+  // the file looked right.
+  const hostile = 'Ben & Co <script>';
+  const escaped = 'Ben &amp; Co &lt;script&gt;';
+  const chase = escalation({
+    customer: hostile, label: hostile, address: hostile, services: [hostile], phone: hostile,
+    sentTo: [hostile], flags: [{ by: hostile, note: hostile }], dispatched: false,
+  });
+  const flag = flagAlert({
+    who: hostile, when: hostile, customerName: hostile, customerPhone: hostile, address: hostile,
+    services: [hostile], subName: hostile, note: hostile,
+    verdict: siblingVerdict([{ name: hostile, email: hostile, status: 'confirmed' }], []),
+  });
+  for (const message of [chase, flag]) {
+    expect(message).toContain(escaped);
+    // Nothing survives that Telegram would read as markup: every remaining tag
+    // is one the builder wrote itself.
+    for (const tag of message.match(/<[^>]*>/g) ?? []) {
+      expect(['<b>', '</b>', '<code>', '</code>']).toContain(tag);
+    }
   }
 });
 
@@ -1256,21 +1335,23 @@ const confirmRoute = () => read('src/app/api/crew/confirm/route.ts');
 test('AC66 a flag Telegrams the office at once, with who, which visit, and the note', () => {
   const src = confirmRoute();
   expect(src).toContain('sendTelegramMessage');
-  const alert = src.slice(src.indexOf('async function notifyFlag'));
-  expect(alert).toContain('A visit has been flagged');
-  // Who, the visit, and what they typed - all of it escaped.
-  for (const field of [
-    'escapeTelegram(who)',
-    'escapeTelegram(visit?.customerName',
-    'escapeTelegram(when)',
-    'escapeTelegram(visit.address)',
-    'escapeTelegram(note)',
+  // Built by the shared builder, so the message is rendered and asserted here
+  // rather than grepped out of the route that sends it.
+  expect(src).toContain('const text = flagAlertMessage({');
+
+  const text = flagAlert();
+  expect(text).toContain('A visit has been flagged');
+  for (const detail of [
+    'Veronica', 'Jordan', 'Wed 5 Aug 8:00 - 11:00am', '14 Maple Ave',
+    'Clean gutters', '(201) 555-0100', 'Ramirez Exteriors', 'sub cancelled',
   ]) {
-    expect(alert).toContain(field);
+    expect(text).toContain(detail);
   }
-  for (const match of alert.matchAll(/\$\{(?!escapeTelegram)([a-zA-Z][\w.?]*)\}/g)) {
-    throw new Error(`unescaped interpolation in the flag alert: ${match[1]}`);
-  }
+  // No note is its own instruction, never a blank line.
+  expect(flagAlert({ note: null })).toContain('No note - call them.');
+  // A visit that could not be READ says so rather than degrading to a thin
+  // alert about "A customer" with no address and no services.
+  expect(flagAlert({ visitRead: 'unavailable' })).toContain('The visit itself could NOT be read');
 });
 
 test('AC66 a confirm sends no Telegram - only a flag does', () => {
@@ -1363,6 +1444,47 @@ test('AC108 a confirmed crew member can still raise a problem', () => {
   expect(flagged).not.toContain('setShowNote(true)');
 });
 
+test('AC111 the crew screen promises nothing that has already happened', () => {
+  // Every sentence here asserted a deadline still ahead - the customer told at
+  // 7:30pm "tonight", a reminder "at 7:00am" - and both are true only for a
+  // visit tomorrow. AC108 exists for the person re-opening this link on the
+  // MORNING of the visit, and they were the ones being told there was time.
+  const actions = read('src/app/crew/confirm/[token]/CrewConfirmActions.tsx');
+  const page = read('src/app/crew/confirm/[token]/page.tsx');
+
+  // No unconditional promise survives in either file.
+  expect(actions).not.toContain('customer is still told tonight');
+  expect(page).not.toContain('The customer is told at 7:30pm tonight that we are coming, whether');
+  // Both screens read one verdict, computed on the server from the visit's own
+  // start, so the flag panels and the footer cannot drift apart.
+  expect(page).toContain('customerNotice: customerNotice(visit.start, now),');
+  expect(page).toContain('morningAlarmAhead: morningAlarmAhead(visit.start, now),');
+  expect(page).toContain('timing={timing}');
+  expect((actions.match(/timing\.customerNotice/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  expect(actions).toContain('timing.morningAlarmAhead');
+  expect(actions).toContain('The 7:00am reminder has already been and gone');
+
+  // And the alarm verdict is the one buildIcs actually sets, so the screen
+  // cannot promise a reminder the invite does not carry.
+  const visit = new Date(Date.UTC(2026, 7, 5, 12));           // 5 Aug, 8am Eastern
+  expect(morningAlarmAhead(visit, new Date(Date.UTC(2026, 7, 4, 12)))).toBe(true);
+  expect(morningAlarmAhead(visit, new Date(Date.UTC(2026, 7, 5, 10)))).toBe(true);   // 6am Eastern
+  expect(morningAlarmAhead(visit, new Date(Date.UTC(2026, 7, 5, 11, 30)))).toBe(false); // 7:30am
+});
+
+test('AC111 the admin flag list promises no chase that cannot run either', () => {
+  // The same claim, on the only screen a flag reaches: "5pm and 6pm will keep
+  // chasing it" about a visit today is an alert that is not coming, told to the
+  // one person who could have acted on it.
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain('const stillChased = chasesAhead({');
+  expect(page).toContain('and no chase is left to run - nothing else will raise it.');
+  expect(page).toContain('and no chase is left to run - nothing else will ask.');
+  // The two truthful branches are kept, not replaced.
+  expect(page).toContain('so 5pm and 6pm will keep chasing it.');
+  expect(page).toContain('so 5pm and 6pm will still chase it.');
+});
+
 test('AC74 only the transition into a flag alerts, so one token cannot flood the chat', () => {
   // This route is public and unthrottled, and the token rides in an email that
   // can be forwarded. Judged against the row as it was BEFORE the PATCH, or the
@@ -1439,23 +1561,87 @@ test('AC75 the flag alert reads the other assignments rather than asserting nobo
   // The escalation skips any visit somebody has confirmed, so when a colleague
   // already answered this alert is the ONLY message the owner gets about the
   // problem. It cannot be the one that says something false.
-  expect(src).not.toContain('Nobody has confirmed it.');
-  const verdict = src.slice(src.indexOf('async function siblingVerdict'));
-  expect(verdict).toContain('assignmentsForDispatch(dispatch.id)');
+  expect(src).toContain('assignmentsForDispatch(dispatch.id)');
   // Live siblings only - somebody retired off the visit is not a colleague who
   // has answered it.
-  expect(verdict).toContain('liveAssignments(rows).filter((a) => a.id !== assignment.id)');
-  expect(verdict).toContain("a.status === 'confirmed'");
-  expect(verdict).toContain('escapeTelegram(confirmed.join');
-  // A read that failed says so rather than guessing either way.
-  expect(verdict).toContain('could not be read');
+  expect(src).toContain('liveAssignments(rows).filter((a) => a.id !== assignment.id)');
 
-  // Both reads, not just the sibling one. The visit used to degrade quietly to
-  // "A customer" with no address and no services, and no sign anything failed -
-  // in the very case this alert is the only message the owner ever gets.
-  const alert = src.slice(src.indexOf('async function notifyFlag'), src.indexOf('async function siblingVerdict'));
-  expect(alert).toContain("visitRead === 'unavailable'");
-  expect(alert).toContain('The visit itself could NOT be read');
+  const both: ChaseStage[] = ['nudge', 'escalate'];
+  expect(siblingVerdict([{ name: 'Alex', email: 'alex@lavacagc.com', status: 'confirmed' }], both))
+    .toContain('Alex has already confirmed this visit');
+  expect(siblingVerdict([
+    { name: 'Alex', email: 'alex@lavacagc.com', status: 'confirmed' },
+    { name: 'Sam', email: 'sam@lavacagc.com', status: 'confirmed' },
+  ], both)).toContain('Alex, Sam have already confirmed');
+  expect(siblingVerdict([{ name: null, email: 'sam@lavacagc.com', status: 'sent' }], both))
+    .toContain('Nobody has confirmed it.');
+  expect(siblingVerdict([], both)).toContain('Nobody else is on this visit');
+  // A read that failed says so rather than guessing either way.
+  expect(siblingVerdict(null, both)).toContain('could not be read');
+});
+
+test('AC110 the flag alert never promises a chase that is not coming', () => {
+  // The alert closed with "5pm and 6pm will chase it" whenever nobody else had
+  // confirmed - but the escalation only ever reads TOMORROW'S window and skips
+  // any stage already stamped. The two cases where that is false are the two
+  // most urgent ones: a visit TODAY, which is what re-flagging after a
+  // confirmation exists for (the sub falls through at 6am), and a visit
+  // tomorrow flagged after both stages have run. In both, this Telegram is the
+  // only message the owner will ever get, and it ended by saying another was
+  // coming.
+  const now = new Date(Date.UTC(2026, 7, 4, 12));       // 4 Aug, 8am Eastern
+  const tomorrow = new Date(Date.UTC(2026, 7, 5, 12));  // 5 Aug, 8am Eastern
+  const today = new Date(Date.UTC(2026, 7, 4, 18));     // 4 Aug, 2pm Eastern
+
+  expect(chasesAhead({ visitStart: tomorrow, now })).toEqual(['nudge', 'escalate']);
+  // Today: both stages ran last night, and no run ever looks at this visit again.
+  expect(chasesAhead({ visitStart: today, now })).toEqual([]);
+  // Tomorrow, but the stamps are claimed - a re-hit is the only thing left, and
+  // nothing scheduled.
+  expect(chasesAhead({
+    visitStart: tomorrow, now, nudgedAt: '2026-08-04T21:00:00Z', escalatedAt: '2026-08-04T22:00:00Z',
+  })).toEqual([]);
+  // Past 21:00 UTC the nudge has fired whether or not it stamped anything.
+  expect(chasesAhead({ visitStart: tomorrow, now: new Date(Date.UTC(2026, 7, 4, 21, 30)) }))
+    .toEqual(['escalate']);
+  // A visit weeks out is genuinely still ahead of both.
+  expect(chasesAhead({ visitStart: new Date(Date.UTC(2026, 7, 25, 12)), now }))
+    .toEqual(['nudge', 'escalate']);
+
+  // And the sentence follows the verdict rather than asserting one.
+  expect(chaseSentence(['nudge', 'escalate'])).toContain('5pm and 6pm will chase it');
+  expect(chaseSentence(['escalate'])).toContain('6pm is the last chase');
+  expect(chaseSentence([])).toContain('Nothing else will chase this visit');
+  expect(chaseSentence([])).not.toContain('will chase it');
+  expect(siblingVerdict([], [])).toContain('this alert is all you get');
+
+  // The route hands the real stamps in, so the verdict is the visit's own.
+  const src = confirmRoute();
+  expect(src).toContain('nudgedAt: dispatch.nudged_at,');
+  expect(src).toContain('escalatedAt: dispatch.escalated_at,');
+});
+
+test('AC110 the flag alert says whether the customer has already been told', () => {
+  // "The customer still gets their reminder the night before" was said whatever
+  // the date: for a same-day flag they were told last night, and a deadline
+  // described as still ahead is what makes the owner wait instead of ring.
+  const now = new Date(Date.UTC(2026, 7, 4, 12));
+  expect(customerReminderAhead(new Date(Date.UTC(2026, 7, 5, 12)), now)).toBe(true);
+  expect(customerReminderAhead(new Date(Date.UTC(2026, 7, 4, 18)), now)).toBe(false);
+  // 23:30 UTC, not `reminderSendAt` - in winter the two are an hour apart, and
+  // that hour is exactly when this would say "still to come" about a reminder
+  // already sent.
+  const winterVisit = new Date(Date.UTC(2026, 0, 5, 13));
+  expect(customerReminderAhead(winterVisit, new Date(Date.UTC(2026, 0, 4, 23, 0)))).toBe(true);
+  expect(customerReminderAhead(winterVisit, new Date(Date.UTC(2026, 0, 4, 23, 45)))).toBe(false);
+
+  expect(flagAlert({ customerReminderAhead: true })).toContain('still gets their reminder');
+  const sameDay = flagAlert({ customerReminderAhead: false });
+  expect(sameDay).toContain('ALREADY been told we are coming');
+  expect(sameDay).not.toContain('still gets their reminder');
+  // The customer's own number rides along, because "call them" is what is left
+  // once no chase is carrying the problem forward.
+  expect(sameDay).toContain('(201) 555-0100');
 });
 
 test('AC49 a server error on this public route leaks no Supabase detail', () => {
@@ -2016,7 +2202,10 @@ test('AC76 clearing a flag is an admin action, and only the flagged rows move', 
   // Confirm-gated, the same as "Mark completed" - through the one gate all
   // three row actions now share, so the question is asked by construction
   // rather than by each handler remembering to ask it.
-  expect(page).toContain("ask: 'Mark this flag handled? The 5pm and 6pm chases stop for this visit.',");
+  // The chase half of that question is conditioned on a chase actually being
+  // left to stop - a visit today is out of the escalation's window entirely.
+  expect(page).toContain("? 'Mark this flag handled? The 5pm and 6pm chases stop for this visit.'");
+  expect(page).toContain("chasesAhead({ visitStart: new Date(booking.start), now: new Date() }).length > 0");
   expect(page).toContain('if (!window.confirm(copy.ask)) return;');
   expect(page).toContain("const markHandled = (booking: Booking) => runRowAction(\n    'handle',");
   // And offered only where there is a flag to clear.

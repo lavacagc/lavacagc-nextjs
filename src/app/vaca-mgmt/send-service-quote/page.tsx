@@ -22,7 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from '@/hooks/use-toast';
 import { Loader2, CalendarPlus, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
 import { scopeSummaryFrom } from '@/lib/homecare/serviceIntake';
-import { easternVisitInstant } from '@/lib/homecare/visitSchedule';
+import { easternVisitInstant, chasesAhead } from '@/lib/homecare/visitSchedule';
 
 interface Service { key: string; title: string; blurb: string; priority: number }
 /** Someone a visit dispatch can be sent to. Managed on /vaca-mgmt/crew. */
@@ -426,8 +426,27 @@ export default function SendServiceQuotePage() {
     }
   }, []);
 
+  /**
+   * Which lookup the screen is waiting on.
+   *
+   * The button is disabled while one runs, but pressing Enter in the box was
+   * not, and no response was matched to its request - so a lookup for A that
+   * settled AFTER a lookup for B had already loaded applied its own verdict over
+   * the top. The identity was safe (each closure carries its own address), but
+   * the verdict was not: A's failure ran `clearCustomer()` and wiped B off the
+   * screen under "Whoever was on screen has been cleared off it", about a
+   * customer who had just loaded correctly.
+   *
+   * So every lookup takes a ticket, and only the latest one is allowed to say
+   * anything - including switching the spinner off. A stale answer is dropped
+   * whole rather than half-applied.
+   */
+  const lookupTicket = useRef(0);
+
   const lookup = useCallback(async () => {
     if (!email.trim()) return;
+    const ticket = ++lookupTicket.current;
+    const mine = () => lookupTicket.current === ticket;
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/service-quote/intake?email=${encodeURIComponent(email.trim())}`);
@@ -436,6 +455,10 @@ export default function SendServiceQuotePage() {
       // unchecked read would swap a real list of visits for an empty one and
       // report nothing.
       if (!res.ok) throw new Error(data.error || 'Could not load this customer.');
+      // A newer lookup is already on screen, so this answer is about somebody
+      // nobody asked about any more. Dropped before the first setter, never
+      // half-applied.
+      if (!mine()) return;
       // CLEARED FIRST, then filled back in from whatever this lookup returned.
       // These resets used to sit inside branches - the services and the scope
       // behind "this lead named some tasks", the name and address behind "there
@@ -480,6 +503,10 @@ export default function SendServiceQuotePage() {
         setAddress([data.homeowner.address, data.homeowner.city, data.homeowner.zip].filter(Boolean).join(', '));
       }
     } catch (e) {
+      // Same rule on the way out, and this is the path it was written for: an
+      // older lookup failing must not clear a customer a newer one has already
+      // loaded, nor mark their visits unread.
+      if (!mine()) return;
       // Whoever was loaded last comes OFF the screen, exactly as a lookup that
       // succeeded takes them off. Left there, their visits were relabelled as
       // this customer's "list of unknown age" and their id kept aiming
@@ -499,7 +526,10 @@ export default function SendServiceQuotePage() {
         variant: 'destructive',
       });
     } finally {
-      setLoading(false);
+      // Only the latest lookup owns the spinner - an older one settling would
+      // otherwise switch it off while a newer one is still running, which is the
+      // signal the "Look up" button is disabled on.
+      if (mine()) setLoading(false);
     }
   }, [email, clearCustomer]);
 
@@ -875,7 +905,15 @@ export default function SendServiceQuotePage() {
     'handle',
     booking,
     {
-      ask: 'Mark this flag handled? The 5pm and 6pm chases stop for this visit.',
+      // Conditioned on whether either chase can still run, through the same rule
+      // the crew alert uses. Both stages only ever read TOMORROW'S window, so
+      // for a visit today - or one whose stages have already fired - "the chases
+      // stop" describes nothing that was going to happen, and clearing a flag is
+      // exactly the moment somebody decides no further alert is needed.
+      ask: chasesAhead({ visitStart: new Date(booking.start), now: new Date() }).length > 0
+        ? 'Mark this flag handled? The 5pm and 6pm chases stop for this visit.'
+        : 'Mark this flag handled? No chase was left to run for this visit anyway - this only '
+          + 'clears the flag off the list.',
       failed: 'Failed',
     },
     async (homeownerId) => {
@@ -894,16 +932,25 @@ export default function SendServiceQuotePage() {
       // really stopped, because a visit nobody has confirmed is still chased.
       const cleared: number = data.handled ?? 0;
       const state: string | undefined = data.dispatch?.state;
+      // Whether either stage can still run at all, before saying one will. A
+      // visit today is out of the escalation's window entirely, so telling the
+      // admin it "will keep chasing it" promises an alert that is not coming -
+      // on the one screen from which a flag can be acted on.
+      const stillChased = chasesAhead({ visitStart: new Date(booking.start), now: new Date() }).length > 0;
       const chaseLine = state === 'confirmed'
         ? 'This visit reads as confirmed now, so it will not be chased again.'
         : state === 'flagged'
-          ? 'Another flag is still open on it, so 5pm and 6pm will keep chasing it.'
+          ? stillChased
+            ? 'Another flag is still open on it, so 5pm and 6pm will keep chasing it.'
+            : 'Another flag is still open on it, and no chase is left to run - nothing else will raise it.'
           // A re-read that FAILED, never the definite "nobody has confirmed":
           // the write landed, so the chase may well have stopped - what could
           // not be done is check.
           : state === 'unknown'
             ? 'What the visit reads as now could NOT be checked - look at it again before you rely on this.'
-            : 'Nobody on this visit has confirmed, so 5pm and 6pm will still chase it.';
+            : stillChased
+              ? 'Nobody on this visit has confirmed, so 5pm and 6pm will still chase it.'
+              : 'Nobody on this visit has confirmed, and no chase is left to run - nothing else will ask.';
       toast({
         title: cleared > 0 ? 'Flag cleared' : 'Nothing to clear',
         description: (cleared > 0
@@ -950,7 +997,10 @@ export default function SendServiceQuotePage() {
           <div className="flex flex-wrap gap-2">
             <Input
               value={email} onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && lookup()}
+              // Gated on `loading` exactly as the button is. The greyed-out
+              // button was the only thing that looked like a lock, and Enter
+              // walked straight past it.
+              onKeyDown={(e) => { if (e.key === 'Enter' && !loading) lookup(); }}
               placeholder="customer@example.com" className="max-w-sm" data-testid="sq-email"
             />
             <Button variant="outline" onClick={lookup} disabled={loading} data-testid="sq-lookup">

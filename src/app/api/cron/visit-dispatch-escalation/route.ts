@@ -31,13 +31,15 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
-import { sendTelegramMessage, escapeTelegram } from '@/lib/notify/telegramMessage';
+import { sendTelegramMessage } from '@/lib/notify/telegramMessage';
 import {
   ensureVisitDispatch, liveAssignments, VISIT_DISPATCH_COLUMNS, DISPATCH_ASSIGNMENT_COLUMNS,
   type DispatchAssignment, type VisitDispatchRow,
 } from '@/lib/homecare/dispatch';
+import { escalationMessage } from '@/lib/homecare/dispatchAlerts';
 import {
   tomorrowEasternWindow, visitDateLabel, visitTimeWindow, visitEndsAt, visitKey,
+  type ChaseStage,
 } from '@/lib/homecare/visitSchedule';
 
 export const dynamic = 'force-dynamic';
@@ -45,8 +47,6 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 const MAX_PER_RUN = 200;
-
-type Stage = 'nudge' | 'escalate';
 
 interface VisitRow {
   homeowner_id: string;
@@ -59,7 +59,7 @@ interface VisitRow {
 export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams;
   const dryRun = q.get('dryRun') === '1';
-  const stage: Stage = q.get('stage') === 'escalate' ? 'escalate' : 'nudge';
+  const stage: ChaseStage = q.get('stage') === 'escalate' ? 'escalate' : 'nudge';
   const stampColumn = stage === 'escalate' ? 'escalated_at' : 'nudged_at';
 
   const now = new Date();
@@ -253,55 +253,23 @@ export async function GET(request: NextRequest) {
       }
       wouldChase.push(chaseLabel);
 
-      const services = rows.map((r) => titleFor.get(r.task_key) ?? r.task_key);
-      const address = first.service_address ?? '';
-      const customer = owner?.first_name || owner?.email || 'a customer';
-      const neverDispatched = !dispatch.dispatched_at;
-      const sentTo = mine.map((a) => a.name || a.email).join(', ');
-      // Carried into the message rather than left as a status: "somebody said
-      // something is wrong" and "the sub cancelled" call for different moves,
-      // and only one of them is written down anywhere.
-      const flagged = mine.filter((a) => a.status === 'flagged');
-      const flagLines = flagged.map((a) =>
-        `⚠️ <b>${escapeTelegram(a.name || a.email)} flagged a problem</b>` +
-        `${a.note ? `: ${escapeTelegram(a.note)}` : ' (no note).'}`);
-
-      // The flag note is the highest-signal thing in this message and is never
-      // traded away for one of the other lines: "somebody said the sub
-      // cancelled" is what the reader has to act on, whatever else is also true
-      // of the row.
-      //
-      // And a row that does not read as dispatched is two different events. No
-      // assignments means nobody was ever told. Assignments with no
-      // `dispatched_at` means the email went out and the write-back failed
-      // (`recorded: 'unavailable'`) - stating flatly that nobody was told would
-      // send the owner chasing people who already have the visit.
-      const dispatchLine = neverDispatched
-        ? mine.length > 0
-          ? `⚠️ <b>This visit does not read as dispatched</b> - it was sent to ${escapeTelegram(sentTo)}, `
-            + 'but the record does not show it. Either they were never told or the send could not be '
-            + 'written down. Check with them.'
-          : '⚠️ <b>No dispatch was ever sent for this visit</b> - nobody has been told to go.'
-        : flagLines.length > 0
-          ? ''
-          : `Sent to ${escapeTelegram(sentTo || 'the crew')}, no answer yet.`;
-
-      const text = [
-        stage === 'escalate'
-          ? '🔴 <b>Still unconfirmed</b>'
-          : '🟠 <b>Nobody has confirmed tomorrow\'s visit</b>',
-        '',
-        `<b>${escapeTelegram(customer)}</b> - ${escapeTelegram(label)}`,
-        address ? `📍 ${escapeTelegram(address)}` : '',
-        `🧰 ${escapeTelegram(services.join(', '))}`,
-        owner?.phone ? `📱 <code>${escapeTelegram(owner.phone)}</code>` : '',
-        '',
-        dispatchLine,
-        ...flagLines,
-        stage === 'escalate'
-          ? 'The customer is told we are coming at 7:30pm - about 90 minutes from now.'
-          : 'The customer is told we are coming at 7:30pm tonight.',
-      ].filter(Boolean).join('\n');
+      // Built by the shared builder, not assembled here between a claim and a
+      // send. Which of "nobody was ever told" and "the send could not be written
+      // down" this message states is the most consequential branch in the
+      // feature, and inline it could only ever be pinned by grepping this file.
+      const text = escalationMessage({
+        stage,
+        customer: owner?.first_name || owner?.email || 'a customer',
+        label,
+        address: first.service_address ?? '',
+        services: rows.map((r) => titleFor.get(r.task_key) ?? r.task_key),
+        phone: owner?.phone ?? null,
+        dispatched: Boolean(dispatch.dispatched_at),
+        sentTo: mine.map((a) => a.name || a.email),
+        flags: mine
+          .filter((a) => a.status === 'flagged')
+          .map((a) => ({ by: a.name || a.email, note: a.note })),
+      });
 
       const outcome = await sendTelegramMessage(text);
       if (outcome === 'sent') {

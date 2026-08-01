@@ -16,16 +16,24 @@
  * button - "sub cancelled" and "van is in the shop" are different problems - and
  * writing it to a table nothing reads would make flagging strictly worse than
  * ignoring the email. So it goes to the operations Telegram chat as it is
- * tapped, and the 5pm/6pm stages still chase the visit until somebody confirms
- * it or it is called off.
+ * tapped, and any 5pm/6pm stage still ahead of the visit keeps chasing it until
+ * somebody confirms it or it is called off.
+ *
+ * THAT SECOND HALF IS NOT ALWAYS TRUE, and the alert says which it is. The
+ * escalation reads tomorrow's window only, so a flag raised on the day - the
+ * case a confirmed person re-flagging exists for - has no chase behind it at
+ * all, and this message is everything the owner will hear about the problem.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
-import { sendTelegramMessage, escapeTelegram } from '@/lib/notify/telegramMessage';
+import { sendTelegramMessage } from '@/lib/notify/telegramMessage';
 import {
   lookupByToken, assignmentsForDispatch, liveAssignments, type TokenLookup,
 } from '@/lib/homecare/dispatch';
-import { visitDateLabel, visitTimeWindow } from '@/lib/homecare/visitSchedule';
+import { flagAlertMessage, siblingVerdict } from '@/lib/homecare/dispatchAlerts';
+import {
+  visitDateLabel, visitTimeWindow, chasesAhead, customerReminderAhead,
+} from '@/lib/homecare/visitSchedule';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -142,8 +150,8 @@ export async function POST(request: NextRequest) {
   if (action === 'confirm') return NextResponse.json({ status: 'confirmed' });
 
   // The flag is already recorded, so a Telegram outage cannot cost the crew
-  // their tap - and it cannot leave the problem unreported either, because the
-  // 5pm and 6pm stages now carry this note too.
+  // their tap - and where a chase is still ahead, the 5pm and 6pm stages carry
+  // this note too. Where none is, the alert says so rather than implying one.
   const notified = alreadyTold ? 'duplicate' as const : await notifyFlag(found, note ?? null);
   if (notified === 'sent') {
     await recordNotified(assignment.id, now);
@@ -211,64 +219,47 @@ function retiredAnswer() {
   }, { status: 410 });
 }
 
-/** Who flagged it, which visit, and what they typed - verbatim. */
+/**
+ * Who flagged it, which visit, and what they typed - verbatim.
+ *
+ * The reads happen here; the message itself is built by `flagAlertMessage`, so
+ * what the owner is told can be rendered and asserted without a Telegram token.
+ *
+ * The one thing this alert must never do is promise a chase that is not coming,
+ * and the case it gets wrong is the case re-flagging a confirmed visit exists
+ * for: the sub falls through at 6am, so the visit is TODAY, and the escalation
+ * reads tomorrow's window only. Both stages ran last night. Nothing is left, and
+ * this message is all the owner gets - so `chasesAhead` decides the sentence.
+ */
 async function notifyFlag(found: TokenLookup, note: string | null) {
   const { assignment, dispatch, visit, visitRead } = found;
-  const who = assignment.name || assignment.email;
-  const when = visit
-    ? `${visitDateLabel(visit.start)} ${visitTimeWindow(visit.start, visit.end)}`
-    : visitDateLabel(new Date(dispatch.visit_start));
+  const visitStart = visit?.start ?? new Date(dispatch.visit_start);
+  const now = new Date();
 
-  const text = [
-    '🚩 <b>A visit has been flagged</b>',
-    '',
-    // Not "tomorrow's": a dispatch goes out when the visit is booked, which can
-    // be weeks ahead, so the flag can land at any point before the day.
-    `<b>${escapeTelegram(who)}</b> says something is wrong with this visit.`,
-    '',
-    `<b>${escapeTelegram(visit?.customerName ?? 'A customer')}</b> - ${escapeTelegram(when)}`,
-    visit?.address ? `📍 ${escapeTelegram(visit.address)}` : '',
-    visit?.services.length ? `🧰 ${escapeTelegram(visit.services.join(', '))}` : '',
-    dispatch.sub_name ? `👷 ${escapeTelegram(dispatch.sub_name)}` : '',
-    // Said out loud, the same shape siblingVerdict uses. Degrading quietly to
-    // "A customer" with no address and no services reads like a thin alert
-    // rather than a failed read - and when a colleague has already confirmed,
-    // the escalation stays silent and this is the only message the owner gets.
-    visitRead === 'unavailable'
-      ? '⚠️ The visit itself could NOT be read - no customer, address or services here. Look it up.'
-      : '',
-    '',
-    note ? `💬 ${escapeTelegram(note)}` : '💬 No note - call them.',
-    '',
-    'The customer still gets their reminder the night before, so this needs '
-      + 'sorting or the visit calling off.',
-    await siblingVerdict(found),
-  ].filter(Boolean).join('\n');
-
-  return sendTelegramMessage(text).catch(() => 'failed' as const);
-}
-
-/**
- * What the REST of the crew has said about this visit - read, never assumed.
- *
- * The escalation skips any visit somebody has confirmed, so when a colleague
- * already answered, this alert is the only message the owner will ever get
- * about the problem. It cannot be the one that says something false.
- */
-async function siblingVerdict(found: TokenLookup): Promise<string> {
-  const { assignment, dispatch } = found;
   const others = await assignmentsForDispatch(dispatch.id)
     .then((rows) => liveAssignments(rows).filter((a) => a.id !== assignment.id))
     .catch(() => null);
 
-  if (!others) return '⚠️ Whether anybody else has confirmed could not be read - check the visit.';
+  const text = flagAlertMessage({
+    who: assignment.name || assignment.email,
+    when: visit
+      ? `${visitDateLabel(visit.start)} ${visitTimeWindow(visit.start, visit.end)}`
+      : visitDateLabel(visitStart),
+    customerName: visit?.customerName ?? 'A customer',
+    customerPhone: visit?.customerPhone ?? null,
+    address: visit?.address || null,
+    services: visit?.services ?? [],
+    subName: dispatch.sub_name,
+    visitRead,
+    note,
+    verdict: siblingVerdict(others, chasesAhead({
+      visitStart,
+      now,
+      nudgedAt: dispatch.nudged_at,
+      escalatedAt: dispatch.escalated_at,
+    })),
+    customerReminderAhead: customerReminderAhead(visitStart, now),
+  });
 
-  const confirmed = others.filter((a) => a.status === 'confirmed').map((a) => a.name || a.email);
-  if (confirmed.length > 0) {
-    return `${escapeTelegram(confirmed.join(', '))} ${confirmed.length > 1 ? 'have' : 'has'} `
-      + 'already confirmed this visit, so the 5pm and 6pm chases stay quiet. This is the only alert you get.';
-  }
-  return others.length === 0
-    ? 'Nobody else is on this visit. It stays unconfirmed, so 5pm and 6pm will chase it.'
-    : 'Nobody has confirmed it, so 5pm and 6pm will chase it until somebody does.';
+  return sendTelegramMessage(text).catch(() => 'failed' as const);
 }

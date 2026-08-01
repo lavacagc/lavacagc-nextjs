@@ -170,7 +170,9 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     The confirmed screen was terminal and was the only terminal state with neither a way to raise a problem nor a phone number on it.
     Their own confirmation is what silences the 5pm and 6pm chases (AC55), so a sub cancelling overnight left the one person who knows with no route back into the system at all: every automatic check had already been switched off by their earlier answer, and the flag alert - the thing that Telegrams the owner the moment it is tapped - was unreachable.
     This was a UI gate only. `POST /api/crew/confirm` already accepts `action=flag` on a confirmed row: `alreadyTold` is false, the PATCH filters on the id and `neq.retired` alone, and `notifyFlag` fires normally.
-    So re-flagging genuinely **reopens** the visit rather than merely recording a note - a flag outranks a confirmation in `dispatchStateOf` (AC78) and the escalation skips only on a *live* `confirmed` (AC55), so both chases resume.
+    So re-flagging genuinely **reopens** the visit rather than merely recording a note - a flag outranks a confirmation in `dispatchStateOf` (AC78) and the escalation skips only on a *live* `confirmed` (AC55), so any chase still ahead of the visit resumes.
+    For the case this exists for there is usually none: "the sub cancels at 6am" is a SAME-DAY event, and the escalation only ever reads tomorrow's window, so both stages ran the night before.
+    The mechanism that helps there is the immediate Telegram, which fires either way - and what the alert says about a chase is conditioned on one actually being able to run (AC110).
     The note form is spelled once above both screens that open it, so the two entrances cannot drift into different forms.
     A **flagged** screen stays terminal, because clearing a flag is the admin's (AC76) - raising one again is not the same act as deciding one is sorted.
 49. `/api/crew/` is public in middleware, guarded by the token rather than a session.
@@ -206,6 +208,9 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     A row carrying live assignments but no `dispatched_at` is a send whose write-back failed, not a crew nobody told, and stating the second would send the owner chasing people who already have the visit - so that case says the visit does not *read* as dispatched, names who it went to, and says the record may simply not show it.
 60. If that row cannot be created, the visit is skipped rather than messaged, so a failure cannot produce repeat sends.
 61. The message names the customer, the window, the address, the services and the customer's phone number.
+    It is a **pure builder** - `escalationMessage` in `src/lib/homecare/dispatchAlerts.ts` - alongside `buildDispatchEmail`, `buildDispatchCancelledEmail` and `buildIcs`, rather than assembled inline between the claim and the send.
+    It carries more conditional logic than any other message here (dispatched vs never-dispatched vs write-back-failed, flag note present or not, which stage), and inline it could only be pinned by grepping route source - so the branch that distinguishes "nobody was ever told" from "the record does not show it" was asserted as a string rather than as output, which is why it went wrong once with nothing objecting.
+    `flagAlertMessage` and `siblingVerdict` moved for the same reason, so both Telegram alerts can be rendered and asserted without a bot token.
 62. The 6pm message says the customer is told in about 90 minutes; the 5pm one says tonight.
 63. Telegram HTML is escaped, so an address containing `&` or `<` cannot break the message.
 64. `?dryRun=1` reports who would be chased and stamps nothing.
@@ -312,6 +317,24 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     A fourth action meant four edits, and forgetting one leaves a button live during another action's write.
     So `rowBusy: { action, start } | null` holds it, `rowLocked` is spelled once, and `runRowAction` spells the prelude and epilogue all three share: the customer this page holds, the question asked before the write, the lock, and the failure toast.
     The per-action success toasts stay where they are - they are deliberate, and each says something different.
+110. **Nothing promises a chase that cannot run.** Every "5pm and 6pm will pick this up" is conditioned on `chasesAhead`, which is the one place that question is answered.
+    The flag alert closed with "5pm and 6pm will chase it" whenever no colleague had confirmed, and the escalation only ever reads **tomorrow's** window (`tomorrowEasternWindow`) and skips a stage already stamped (AC56).
+    So the promise was false in exactly the two most urgent cases: a visit **today**, which is what re-flagging after a confirmation exists for (AC108) and is structurally out of the cron's scope, and a visit tomorrow flagged after both stages have run.
+    In both, that Telegram is the only message the owner will ever get about the problem, and it ended by telling them another one was coming - the same failure-reads-as-success shape, in the message that replaces the chase.
+    Extending the cron to cover today would be the wrong fix on the merits: the 5pm/6pm stages exist to catch an unconfirmed visit *before* the customer is told at 7:30pm the night before, and for a same-day flag the customer has already been told. The immediate alert is the mechanism, and it has fired. What was broken is the sentence.
+    `chasesAhead` answers it exactly, from the visit's own start and the two stamps on its dispatch row: each stage is ahead only while its stamp is unclaimed **and** its run has not yet fired for that visit.
+    The run instants come from the fixed-UTC convention the schedule already uses (21:00, 22:00, 23:30), so no second copy of the timetable can drift from `vercel.json`.
+    A released stamp - a send that failed and put its claim back (AC58) - reads as spent, and correctly: only a manual re-hit can use it, and no scheduled run looks at that visit again.
+    The same rule conditions the customer-reminder sentence in that alert, and the "5pm and 6pm will keep chasing it" the admin is told when a flag is cleared (AC86), which is the one screen a flag can be acted on from.
+111. **The crew screen promises nothing that has already happened.** Every forward-looking sentence on it is conditioned on the visit's own date.
+    "The customer is told at 7:30pm tonight" and "you will get a reminder at 7:00am" were both stated unconditionally, and both are true only for a visit *tomorrow*.
+    The person AC108 was written for - re-opening the link on the **morning** of the visit because the sub fell through - is precisely the one being told a deadline was still ahead when the customer had been told the night before and the 7:00am alarm had already fired. A promise about something that cannot happen reads as reassurance, on the one screen whose job is to make somebody ring the office.
+    The verdict is computed once on the server, from `customerReminderAhead` and `morningAlarmAhead`, and handed to both the flag panels and the footer, so the two cannot drift.
+    `morningAlarmAhead` goes through the same `easternWallClock(easternDay(start), 7, 0)` that `buildIcs` sets the alarm with, so the screen cannot promise a reminder the invite does not carry; `customerReminderAhead` uses the 23:30 UTC cron instant rather than `reminderSendAt`, because in winter the two are an hour apart and that hour is exactly when this would call a sent reminder "still to come".
+112. **A lookup already running cannot be overtaken.** The Enter key on the box is gated on `loading` exactly as the "Look up" button is.
+    The button was disabled and the key was not, and no response was matched to its request - so a lookup for A that **failed** after a lookup for B had already loaded ran the reset and wiped B off the screen, toasting "Whoever was on screen has been cleared off it" about a customer who had just loaded correctly.
+    The identity outcome was already safe (each closure carries its own address, and `splitIdentity` catches a mismatch); the verdict was not, which is the half this fixes.
+    Behind the gate, each lookup takes a ticket and only the latest may say anything - including switching the spinner off - so a response that is no longer the one being waited on is dropped whole rather than half-applied, and a path added later cannot reopen the race.
 
 ## Retiring a visit
 
