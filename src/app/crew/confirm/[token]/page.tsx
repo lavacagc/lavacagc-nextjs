@@ -154,6 +154,11 @@ export default async function CrewConfirmPage({
       <CrewConfirmActions
         token={token}
         initialStatus={assignment.status}
+        // What the ROW says about the flag it carries, so a link re-opened
+        // after a flag repeats what the tap was told rather than contradicting
+        // it. Only a recorded delivery counts as reached; no stamp means
+        // nobody has read it, whether it was never attempted or never landed.
+        initialFlagAlert={assignment.notified_at ? 'reached' : 'unreached'}
         subName={dispatch.sub_name}
       />
 

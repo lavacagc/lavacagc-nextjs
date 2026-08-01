@@ -60,25 +60,35 @@ export interface DispatchEmailArgs {
  * which is a low risk on lavacagc.com-to-lavacagc.com mail but no reason to
  * spend goodwill.
  */
-export function dispatchSubject(args: {
-  visitDateLabel: string;
-  timeWindow: string;
-  address: string;
-}): string {
-  // Just the street part - the full address makes the subject too long to read
-  // in a list, and the town is the same for nearly every job.
-  const street = args.address.split(',')[0]?.trim() || args.address;
-  return `${ACTION_PREFIX} ${args.visitDateLabel}, ${args.timeWindow} - ${street}`;
+export function dispatchSubject(args: VisitSubjectArgs): string {
+  return visitSubject(ACTION_PREFIX, args);
 }
 
 /** `[CANCELLED] Tue 5 Aug, 8-11am - 14 Maple Ave` - the dispatch subject's twin. */
-export function cancelledSubject(args: {
+export function cancelledSubject(args: VisitSubjectArgs): string {
+  return visitSubject(CANCELLED_PREFIX, args);
+}
+
+interface VisitSubjectArgs {
   visitDateLabel: string;
   timeWindow: string;
   address: string;
-}): string {
+}
+
+/**
+ * The shape both subjects share, spelled once because it MUST NOT drift.
+ *
+ * Gmail threads on subject, and the retraction is meant to land in the same
+ * conversation as the invite it withdraws. Two copies of the street rule is two
+ * chances for one of them to change - and a `[CANCELLED]` that says "14 Maple
+ * Ave, West Orange, NJ" where the invite said "14 Maple Ave" is a second
+ * conversation, sitting where nobody is looking for it.
+ */
+function visitSubject(prefix: string, args: VisitSubjectArgs): string {
+  // Just the street part - the full address makes the subject too long to read
+  // in a list, and the town is the same for nearly every job.
   const street = args.address.split(',')[0]?.trim() || args.address;
-  return `${CANCELLED_PREFIX} ${args.visitDateLabel}, ${args.timeWindow} - ${street}`;
+  return `${prefix} ${args.visitDateLabel}, ${args.timeWindow} - ${street}`;
 }
 
 function kv(label: string, value: string): string {

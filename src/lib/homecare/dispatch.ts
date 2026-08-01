@@ -45,6 +45,17 @@ export interface DispatchAssignment {
   status: 'sent' | 'confirmed' | 'flagged' | 'retired';
   confirmed_at: string | null;
   note: string | null;
+  /**
+   * When the office was actually TOLD about the flag this row currently
+   * carries - a Telegram that genuinely returned 'sent', never an attempt.
+   *
+   * Null covers both "nothing to tell" and "we tried and it did not get
+   * through", and those are the same thing to everybody downstream: nobody has
+   * read it. It is what lets the repeat-tap guard suppress a second alert only
+   * when the first one landed, and what lets the confirm page say which of the
+   * two happened when the link is re-opened later.
+   */
+  notified_at: string | null;
 }
 
 export interface VisitDispatchRow {
@@ -65,7 +76,7 @@ export const VISIT_DISPATCH_COLUMNS =
 
 /** The same, for an assignment. Four readers select these; one spelling. */
 export const DISPATCH_ASSIGNMENT_COLUMNS =
-  'id,dispatch_id,recipient_id,email,name,confirm_token,status,confirmed_at,note';
+  'id,dispatch_id,recipient_id,email,name,confirm_token,status,confirmed_at,note,notified_at';
 
 /**
  * The dispatch row for one visit, or null if it has none.
@@ -408,7 +419,10 @@ export async function ensureAssignments(
     const revived = (await supabaseRest<DispatchAssignment[]>('PATCH',
       `visit_dispatch_recipients?id=in.(${returning.map((a) => a.id).join(',')})` +
         `&select=${DISPATCH_ASSIGNMENT_COLUMNS}`,
-      { status: 'sent', confirmed_at: null, note: null, updated_at: stamp },
+      // `notified_at` goes with the note it belonged to. Left standing it would
+      // tell the flag guard that an alert for this row's (now cleared) note
+      // already landed, and suppress the first real one.
+      { status: 'sent', confirmed_at: null, note: null, notified_at: null, updated_at: stamp },
     ).catch((err) => {
       console.error(
         'crew dispatch could not put a returning recipient back on the visit:',

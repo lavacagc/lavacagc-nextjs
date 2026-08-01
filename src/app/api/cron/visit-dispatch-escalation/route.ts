@@ -66,28 +66,51 @@ export async function GET(request: NextRequest) {
   const { startUtc, endUtc } = tomorrowEasternWindow(now);
 
   try {
-    const visits = (await supabaseRest<VisitRow[]>(
+    // ONE ROW MORE than the cap, and ordered by the full visit key. The extra
+    // row is what tells a genuinely-full page from a truncated one - reading
+    // exactly MAX_PER_RUN cannot, so a day with exactly that many task rows
+    // reported itself degraded having dropped nothing - and the second sort key
+    // is what makes the boundary a whole visit rather than an arbitrary slice
+    // of whichever visits share a start time.
+    const page = (await supabaseRest<VisitRow[]>(
       'GET',
       `homeowner_maintenance?select=homeowner_id,task_key,scheduled_start,scheduled_end,service_address` +
         `&scheduled_start=gte.${startUtc.toISOString()}&scheduled_start=lt.${endUtc.toISOString()}` +
-        `&order=scheduled_start.asc&limit=${MAX_PER_RUN}`,
+        `&order=scheduled_start.asc,homeowner_id.asc&limit=${MAX_PER_RUN + 1}`,
     )) ?? [];
 
     // The cap is on TASK rows, and a visit is one or more of them, so a full
     // page is "there may be more visits tomorrow than this run has seen" - and
     // the ones it has not seen are the ones nothing else will chase before the
     // 7:30pm customer reminder.
-    const truncated = visits.length === MAX_PER_RUN;
+    const truncated = page.length > MAX_PER_RUN;
+    // The last visit on a truncated page is the one whose remaining task rows
+    // may be over the edge, and a HALF-READ visit is worse than an unread one:
+    // its Telegram would list only the services that fit, and stamping it
+    // claims the send-once ledger, so no re-hit can ever correct the message.
+    // Dropped whole instead, and counted in `degraded` with the rest.
+    const last = page[page.length - 1];
+    const partial = truncated && last ? `${last.homeowner_id}|${last.scheduled_start}` : null;
+    const visits = partial
+      ? page.filter((v) => `${v.homeowner_id}|${v.scheduled_start}` !== partial)
+      : page;
     if (truncated) {
       console.error(
-        `visit-dispatch-escalation: read the maximum ${MAX_PER_RUN} task rows for ${startUtc.toISOString()} - ` +
-          'later visits in this window were NOT looked at and will not be chased.',
+        `visit-dispatch-escalation: read past the ${MAX_PER_RUN} task row cap for ${startUtc.toISOString()} - ` +
+          'later visits in this window were NOT looked at and will not be chased, and the visit at the ' +
+          'boundary was dropped rather than chased off a half-read window.',
       );
     }
 
     if (visits.length === 0) {
       return NextResponse.json({
-        ok: true, stage, window: { from: startUtc, to: endUtc }, visits: 0, chased: 0, dryRun,
+        ok: !truncated,
+        ...(truncated ? { degraded: ['visit_read_truncated'] } : {}),
+        stage,
+        window: { from: startUtc, to: endUtc },
+        visits: 0,
+        chased: 0,
+        dryRun,
       });
     }
 
@@ -169,8 +192,17 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      wouldChase.push(`${owner?.email ?? first.homeowner_id} ${label}`);
-      if (dryRun) continue;
+      // Pushed on the two paths that actually reach a send - the dry run that
+      // is reporting one, and the claim below that won one - never
+      // speculatively. Pushing here and unwinding with `.pop()` in each failure
+      // path below worked only for as long as everybody remembered: one new
+      // `continue` between the push and the send leaves a phantom entry in
+      // `would_chase`, which is the number the admin reads as "visits chased".
+      const chaseLabel = `${owner?.email ?? first.homeowner_id} ${label}`;
+      if (dryRun) {
+        wouldChase.push(chaseLabel);
+        continue;
+      }
 
       // No dispatch row at all: the visit was booked before this feature, or
       // its dispatch could not be recorded. That is MORE urgent, not less -
@@ -182,7 +214,6 @@ export async function GET(request: NextRequest) {
         if (!dispatch) {
           console.error(`visit-dispatch-escalation: no dispatch row to stamp for ${label}, skipping to avoid repeat sends`);
           failed.push(label);
-          wouldChase.pop();
           continue;
         }
       }
@@ -212,16 +243,15 @@ export async function GET(request: NextRequest) {
       });
       if (claimed === null) {
         failed.push(label);
-        wouldChase.pop();
         continue;
       }
       // Zero rows and no error IS the lost race: a concurrent run stamped it
       // first, so it has been chased and this one correctly stays quiet.
       if (claimed.length === 0) {
         alreadyChased += 1;
-        wouldChase.pop();
         continue;
       }
+      wouldChase.push(chaseLabel);
 
       const services = rows.map((r) => titleFor.get(r.task_key) ?? r.task_key);
       const address = first.service_address ?? '';
@@ -298,8 +328,9 @@ export async function GET(request: NextRequest) {
     // rather than leaving a console line in a cron nobody watches. A stage that
     // told nobody is one; a read that hit its own ceiling is the other - the
     // limit counts TASK rows, so a busy day's last visits are simply not in the
-    // list, and reporting a clean `visits:` count for a truncated read is the
-    // same silence, one step earlier.
+    // list (plus the boundary visit, dropped rather than chased off a half-read
+    // window), and reporting a clean `visits:` count for a truncated read is
+    // the same silence, one step earlier.
     const degraded = [
       ...(failed.length > 0 ? ['escalation_send_failed'] : []),
       ...(truncated ? ['visit_read_truncated'] : []),

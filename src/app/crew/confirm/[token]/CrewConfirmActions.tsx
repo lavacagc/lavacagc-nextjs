@@ -16,32 +16,35 @@ import { useState } from 'react';
 type Status = 'sent' | 'confirmed' | 'flagged';
 
 /**
- * Whether the office was actually TOLD about a flag tapped just now.
+ * Whether the office was actually TOLD about the flag on this row.
  *
- * The route answers `notified`, and only 'sent' and 'duplicate' mean somebody
- * has the message. Anything else - Telegram down, no chat configured, an
- * unrecognised answer from an older deploy - means the flag is recorded and
+ * There is no third value, and deliberately so. Anything short of a recorded
+ * delivery - Telegram down, no chat configured, a page re-opened on a flag
+ * whose alert never landed, an unrecognised answer from an older deploy - means
  * nobody has read it, and the person standing at the house is the only one in a
- * position to close that gap. It cannot be reported as "the office has it":
+ * position to close that gap. None of those may render as "the office has it":
  * when a colleague has already confirmed, both the 5pm and 6pm chases stay
  * quiet, so there may be no later message about this visit at all.
  *
- * 'unknown' is the page as it loaded - a flag raised on some earlier visit to
- * this link, whose alert this screen never saw the outcome of.
+ * On load it comes from `notified_at` on the assignment - the stamp the route
+ * writes only for a Telegram that genuinely sent - so re-opening the link says
+ * the same thing the tap did rather than the opposite.
  */
-type FlagAlert = 'unknown' | 'reached' | 'unreached';
+export type FlagAlert = 'reached' | 'unreached';
 
 export default function CrewConfirmActions({
   token,
   initialStatus,
+  initialFlagAlert,
   subName,
 }: {
   token: string;
   initialStatus: Status;
+  initialFlagAlert: FlagAlert;
   subName: string | null;
 }) {
   const [status, setStatus] = useState<Status>(initialStatus);
-  const [flagAlert, setFlagAlert] = useState<FlagAlert>('unknown');
+  const [flagAlert, setFlagAlert] = useState<FlagAlert>(initialFlagAlert);
   const [busy, setBusy] = useState<null | 'confirm' | 'flag'>(null);
   const [showNote, setShowNote] = useState(false);
   const [note, setNote] = useState('');
@@ -59,6 +62,9 @@ export default function CrewConfirmActions({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not save that');
       if (action === 'flag') {
+        // 'duplicate' now means a previous alert for this exact note is
+        // recorded as DELIVERED - the route checks the stamp, not the flag - so
+        // it is the one other answer that earns "the office has it".
         setFlagAlert(data.notified === 'sent' || data.notified === 'duplicate' ? 'reached' : 'unreached');
       }
       setStatus(action === 'confirm' ? 'confirmed' : 'flagged');

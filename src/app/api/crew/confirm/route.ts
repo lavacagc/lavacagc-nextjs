@@ -79,6 +79,25 @@ export async function POST(request: NextRequest) {
   // worse - it would satisfy the escalation for people who have not answered.
   if (assignment.status === 'retired') return retiredAnswer();
 
+  // Only the TRANSITION into a flag alerts, judged against the row as it was
+  // BEFORE the PATCH below. This route is public and unthrottled - the token
+  // travels in an email that can be forwarded - so alerting on every POST lets
+  // one link drive unlimited messages into the operations chat, and an honest
+  // double-tap tells the owner the same thing twice. A changed note is a new
+  // thing to say and does alert.
+  //
+  // `notified_at` is the other half, and the half that makes this safe: the
+  // guard suppresses an alert only when a previous one for this exact note is
+  // RECORDED as delivered. Keyed on the flag's existence alone it dedupes
+  // ATTEMPTS, so the realistic phone-at-a-job-site sequence - first tap writes
+  // the flag, Telegram fails, the response is lost on a bad signal, they tap
+  // again - answered 'duplicate' having told nobody anything, and the screen
+  // read that as "the office has it".
+  const alreadyTold = action === 'flag'
+    && assignment.status === 'flagged'
+    && (assignment.note ?? null) === (note ?? null)
+    && assignment.notified_at !== null;
+
   const now = new Date().toISOString();
   let updated: { id: string }[];
   try {
@@ -99,6 +118,11 @@ export async function POST(request: NextRequest) {
         // so the escalation keeps chasing a flag until it is confirmed or off.
         confirmed_at: now,
         note: action === 'flag' ? (note ?? null) : null,
+        // The delivery record belongs to the flag as it now reads, so it is
+        // kept ONLY by the tap that changes nothing about it. Anything else is
+        // about to attempt a fresh alert, and a stamp left standing from an
+        // older note would let a send that fails read as one that landed.
+        notified_at: alreadyTold ? assignment.notified_at : null,
         updated_at: now,
       },
     )) ?? [];
@@ -117,26 +141,47 @@ export async function POST(request: NextRequest) {
 
   if (action === 'confirm') return NextResponse.json({ status: 'confirmed' });
 
-  // Only the TRANSITION into a flag alerts, judged against the row as it was
-  // before the PATCH above. This route is public and unthrottled - the token
-  // travels in an email that can be forwarded - so alerting on every POST lets
-  // one link drive unlimited messages into the operations chat, and an honest
-  // double-tap tells the owner the same thing twice. A changed note is a new
-  // thing to say and does alert.
-  const repeat = assignment.status === 'flagged' && (assignment.note ?? null) === (note ?? null);
-
   // The flag is already recorded, so a Telegram outage cannot cost the crew
   // their tap - and it cannot leave the problem unreported either, because the
   // 5pm and 6pm stages now carry this note too.
-  const notified = repeat ? 'duplicate' as const : await notifyFlag(found, note ?? null);
-  if (notified !== 'sent' && notified !== 'duplicate') {
+  const notified = alreadyTold ? 'duplicate' as const : await notifyFlag(found, note ?? null);
+  if (notified === 'sent') {
+    await recordNotified(assignment.id);
+  } else if (notified !== 'duplicate') {
     console.error(
       `crew flag could not be Telegrammed (${notified}) for assignment ${assignment.id}. ` +
-        'The escalation still carries it.',
+        'The escalation still carries it, and the crew member is told to call.',
     );
   }
 
   return NextResponse.json({ status: 'flagged', notified });
+}
+
+/**
+ * Write down that this flag REACHED somebody - the one thing that earns a later
+ * tap the quiet answer, and the confirm page the words "the office has it".
+ *
+ * Best-effort and reported only to the logs: the alert is out and cannot be
+ * unsent, and the screen this tap is answering already says so truthfully. A
+ * stamp that did not land costs one duplicate alert on a re-tap and an
+ * over-cautious "call the office" on a re-open, which is the direction this
+ * whole feature errs in on purpose.
+ *
+ * Re-asserts `status=eq.flagged` so a row the admin cleared, or a re-dispatch
+ * retired, in the gap does not collect a delivery record for a flag it no
+ * longer carries.
+ */
+async function recordNotified(assignmentId: string) {
+  const stamp = new Date().toISOString();
+  await supabaseRest(
+    'PATCH',
+    `visit_dispatch_recipients?id=eq.${assignmentId}&status=eq.flagged`,
+    { notified_at: stamp, updated_at: stamp },
+  ).catch((err) => console.error(
+    `crew flag was Telegrammed but could not be recorded for assignment ${assignmentId} - ` +
+      'a repeat tap will alert again, and re-opening the link will tell them to call:',
+    err instanceof Error ? err.message : String(err),
+  ));
 }
 
 /**

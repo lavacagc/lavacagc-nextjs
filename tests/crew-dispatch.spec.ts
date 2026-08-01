@@ -3,7 +3,8 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { buildIcs, googleCalendarUrl, icsContentType, ICS_ORGANIZER } from '../src/lib/homecare/ics';
 import {
-  buildDispatchEmail, buildDispatchCancelledEmail, dispatchSubject, ACTION_PREFIX, CANCELLED_PREFIX,
+  buildDispatchEmail, buildDispatchCancelledEmail, dispatchSubject, cancelledSubject,
+  ACTION_PREFIX, CANCELLED_PREFIX,
 } from '../src/lib/homecare/dispatchEmail';
 import { escapeTelegram } from '../src/lib/notify/telegramMessage';
 import { SERVICE_REPLY_TO } from '../src/lib/homecare/serviceEmails';
@@ -215,6 +216,20 @@ test('AC13 the subject uses the street only, not the whole address', () => {
   const s = dispatchSubject({ visitDateLabel: 'Wed 5 Aug', timeWindow: '8-11am', address: '14 Maple Ave, West Orange, NJ 07052' });
   expect(s).toContain('14 Maple Ave');
   expect(s).not.toContain('07052');
+});
+
+test('AC13 the retraction subject is the invite\'s, prefix apart, so Gmail threads them together', () => {
+  // The street rule is the part that must not drift between the invite and the
+  // retraction that withdraws it: Gmail threads on subject, and a `[CANCELLED]`
+  // built from a different tail starts a second conversation sitting where
+  // nobody is looking for it. One spelling, two prefixes.
+  const args = { visitDateLabel: 'Wed 5 Aug', timeWindow: '8:00 - 11:00am', address: '14 Maple Ave, West Orange, NJ 07052' };
+  expect(dispatchSubject(args).slice(ACTION_PREFIX.length))
+    .toBe(cancelledSubject(args).slice(CANCELLED_PREFIX.length));
+  expect(cancelledSubject(args)).toBe('[CANCELLED] Wed 5 Aug, 8:00 - 11:00am - 14 Maple Ave');
+  // ...and spelled once, rather than twice and kept in step by hand.
+  const src = code('src/lib/homecare/dispatchEmail.ts');
+  expect(src.match(/address\.split\(','\)/g) ?? []).toHaveLength(1);
 });
 
 test('AC14 caps are confined to the prefix', () => {
@@ -715,7 +730,9 @@ test('AC38 re-dispatching reuses each assignment, so a re-send cannot un-confirm
   // confirmation is never touched, which is what this AC has always guarded.
   const revive = fn.slice(fn.indexOf('const returning ='), fn.indexOf('const missing ='));
   expect(revive).toContain("wanted.has(a.recipient_id) && a.status === 'retired'");
-  expect(revive).toContain("{ status: 'sent', confirmed_at: null, note: null, updated_at: stamp }");
+  expect(revive).toContain(
+    "{ status: 'sent', confirmed_at: null, note: null, notified_at: null, updated_at: stamp }",
+  );
   expect(fn.split("status: 'sent'").length - 1, 'no other write puts a row back to sent').toBe(1);
 });
 
@@ -802,7 +819,8 @@ test('AC81 a retired assignment counts for nothing, wherever the crew is read', 
 
   const a = (over: Partial<DispatchAssignment>): DispatchAssignment => ({
     id: 'a1', dispatch_id: 'd1', recipient_id: 'r1', email: 'alex@lavacagc.com',
-    name: 'Alex', confirm_token: 't', status: 'sent', confirmed_at: null, note: null, ...over,
+    name: 'Alex', confirm_token: 't', status: 'sent', confirmed_at: null, note: null,
+    notified_at: null, ...over,
   });
   // Veronica confirmed, then was taken off the visit. Alex has not answered, so
   // the visit is still awaiting - not confirmed on the strength of hers.
@@ -1061,7 +1079,7 @@ test('AC50+AC51+AC52 both stages are scheduled, and both land before the custome
 
 test('AC53 the escalation reads visits from homeowner_maintenance, not from visit_dispatch', () => {
   const src = cron();
-  const query = src.slice(src.indexOf('const visits = ('), src.indexOf('if (visits.length === 0)'));
+  const query = src.slice(src.indexOf('const page = ('), src.indexOf('if (visits.length === 0)'));
   expect(query).toContain('homeowner_maintenance?select=');
   expect(query).toContain('scheduled_start=gte.');
   expect(query).not.toContain('visit_dispatch?select=');
@@ -1164,8 +1182,22 @@ test('AC63 Telegram HTML is escaped', () => {
 
 test('AC64 dryRun reports who would be chased and stamps nothing', () => {
   const src = cron();
-  expect(src).toContain('if (dryRun) continue;');
-  expect(src.indexOf('if (dryRun) continue;')).toBeLessThan(src.indexOf('${stampColumn}=is.null'));
+  expect(src).toContain('wouldChase.push(chaseLabel);\n        continue;');
+  expect(src.indexOf('if (dryRun) {')).toBeLessThan(src.indexOf('${stampColumn}=is.null'));
+});
+
+test('AC64 would_chase is pushed where a chase really happens, never unwound', () => {
+  // It used to be pushed speculatively and `.pop()`ed back off in each of the
+  // three failure paths below it. That worked only for as long as everybody
+  // remembered: one new `continue` in between leaves a phantom entry in the
+  // number the admin reads as "visits chased".
+  const src = cron();
+  expect(src).not.toContain('wouldChase.pop()');
+  expect(src.match(/wouldChase\.push\(/g) ?? []).toHaveLength(2);
+  // The real-run push comes AFTER the claim is won, so nothing before it can
+  // count a visit nobody was told about.
+  expect(src.lastIndexOf('wouldChase.push(chaseLabel);'))
+    .toBeGreaterThan(src.indexOf('if (claimed.length === 0)'));
 });
 
 test('AC65 a run that could not deliver reports itself failed', () => {
@@ -1180,11 +1212,31 @@ test('AC65 a read that hit its own ceiling says what it dropped, rather than a c
   // - so a day whose bookings exceed it loses its tail from the last line of
   // defence before the 7:30pm customer reminder, and answered ok:true anyway.
   const src = cron();
-  expect(src).toContain('const truncated = visits.length === MAX_PER_RUN;');
+  expect(src).toContain('limit=${MAX_PER_RUN + 1}');
+  expect(src).toContain('const truncated = page.length > MAX_PER_RUN;');
   expect(src).toContain("...(truncated ? ['visit_read_truncated'] : [])");
   expect(src).toContain('will not be chased');
-  // ...and it turns the run's verdict, exactly as a failed send does.
+  // ...and it turns the run's verdict, exactly as a failed send does - on the
+  // empty-page exit too, which used to answer a flat ok:true.
   expect(src).toContain('ok: degraded.length === 0');
+  expect(src).toContain('ok: !truncated,');
+});
+
+test('AC65 the truncation verdict is exact, and no visit is chased off a half-read window', () => {
+  // Reading exactly MAX_PER_RUN cannot tell a genuinely-full page from a
+  // truncated one, so a day with exactly that many task rows reported itself
+  // degraded having dropped nothing. One row MORE settles it.
+  const src = cron();
+  expect(src).toContain('MAX_PER_RUN + 1');
+  // The boundary visit is DROPPED, not processed: grouped from only the task
+  // rows that fit, its Telegram would list an incomplete services line - and
+  // stamping it claims the send-once ledger, so no re-hit could ever correct
+  // the message.
+  expect(src).toContain('const partial = truncated && last');
+  expect(src).toContain("page.filter((v) => `${v.homeowner_id}|${v.scheduled_start}` !== partial)");
+  // Ordered by the whole visit key, or the boundary is an arbitrary slice of
+  // whichever visits happen to share a start time.
+  expect(src).toContain('order=scheduled_start.asc,homeowner_id.asc');
 });
 
 /* ── flagging reaches somebody (AC 66-67) ────────────────────────────────── */
@@ -1247,16 +1299,66 @@ test('AC67 the flag screen says whether the office was actually told', () => {
   expect(actions).toContain("setStatus(action === 'confirm' ? 'confirmed' : 'flagged');");
 });
 
+test('AC67 a link re-opened after a flag repeats what the tap was told, never the opposite', () => {
+  // The screen used to default to the reassuring copy on load, so anybody who
+  // re-opened the email after seeing the red "call us" screen was told the
+  // office had it. There is no third state to default TO now: the page reads
+  // the delivery stamp off the row and only that earns "the office has it".
+  const actions = read('src/app/crew/confirm/[token]/CrewConfirmActions.tsx');
+  expect(actions).toContain("export type FlagAlert = 'reached' | 'unreached';");
+  expect(actions).not.toContain("'unknown'");
+  expect(actions).toContain('useState<FlagAlert>(initialFlagAlert)');
+  const page = read('src/app/crew/confirm/[token]/page.tsx');
+  expect(page).toContain("initialFlagAlert={assignment.notified_at ? 'reached' : 'unreached'}");
+});
+
 test('AC74 only the transition into a flag alerts, so one token cannot flood the chat', () => {
   // This route is public and unthrottled, and the token rides in an email that
   // can be forwarded. Judged against the row as it was BEFORE the PATCH, or the
   // status just written would make every flag look like a repeat.
   const src = confirmRoute();
-  expect(src).toContain(
-    "const repeat = assignment.status === 'flagged' && (assignment.note ?? null) === (note ?? null);",
+  expect(src).toContain("assignment.status === 'flagged'");
+  expect(src).toContain("&& (assignment.note ?? null) === (note ?? null)");
+  expect(src).toContain("const notified = alreadyTold ? 'duplicate' as const : await notifyFlag(");
+  expect(src.indexOf('const alreadyTold =')).toBeLessThan(src.indexOf("supabaseRest<{ id: string }[]>("));
+});
+
+test('AC74 the guard dedupes DELIVERED alerts, not attempts', () => {
+  // The anti-spam guard short-circuited notifyFlag on a same-note repeat
+  // whether or not the first alert ever landed. The phone-at-a-job-site
+  // sequence is exact: tap one writes the flag, Telegram fails, the response is
+  // lost on a bad signal, they tap again - and were told the office had it when
+  // nobody had been told anything. So the guard keys off a recorded DELIVERY.
+  const src = confirmRoute();
+  expect(src).toContain('&& assignment.notified_at !== null');
+  // Stamped only for a Telegram that genuinely sent - never for an attempt,
+  // and never for the 'duplicate' that a stamp already explains.
+  expect(src).toContain("if (notified === 'sent') {");
+  expect(src).toContain('await recordNotified(assignment.id);');
+  const stamp = src.slice(src.indexOf('async function recordNotified'));
+  expect(stamp).toContain('status=eq.flagged');
+  expect(stamp).toContain('notified_at: stamp');
+  // The stamp belongs to the flag as it now reads: any tap about to attempt a
+  // fresh alert clears it first, so a send that fails cannot inherit an older
+  // note's delivery.
+  expect(src).toContain('notified_at: alreadyTold ? assignment.notified_at : null,');
+  // ...and a recipient put back on the visit starts clean, for the same reason.
+  expect(code('src/lib/homecare/dispatch.ts'))
+    .toContain("{ status: 'sent', confirmed_at: null, note: null, notified_at: null, updated_at: stamp }");
+  // The flag itself is never conditional on the alert landing.
+  expect(src.indexOf("status: action === 'confirm' ? 'confirmed' : 'flagged'"))
+    .toBeLessThan(src.indexOf('await notifyFlag('));
+});
+
+test('AC74 the delivery stamp is a column on the assignment, in the one migration', () => {
+  // Hand-applied and already live, so the DDL has to be safe to re-run.
+  const sql = read('supabase/migrations/20260818000000_crew_dispatch.sql');
+  expect(sql).toContain('ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ');
+  expect(sql.match(/CREATE TABLE (?!IF NOT EXISTS)/g) ?? []).toHaveLength(0);
+  // Every reader selects it, through the one column list.
+  expect(read('src/lib/homecare/dispatch.ts')).toContain(
+    "'id,dispatch_id,recipient_id,email,name,confirm_token,status,confirmed_at,note,notified_at'",
   );
-  expect(src).toContain("const notified = repeat ? 'duplicate' as const : await notifyFlag(");
-  expect(src.indexOf('const repeat =')).toBeGreaterThan(src.indexOf("supabaseRest('PATCH'"));
 });
 
 test('AC75 the flag alert reads the other assignments rather than asserting nobody confirmed', () => {
@@ -1583,7 +1685,8 @@ test('AC72 the retraction is auditable - its own category, filterable in the adm
 test('AC78 a flag outranks a confirmation when the state is summarised', () => {
   const a = (over: Partial<DispatchAssignment>): DispatchAssignment => ({
     id: 'a1', dispatch_id: 'd1', recipient_id: 'r1', email: 'alex@lavacagc.com',
-    name: 'Alex', confirm_token: 't', status: 'sent', confirmed_at: null, note: null, ...over,
+    name: 'Alex', confirm_token: 't', status: 'sent', confirmed_at: null, note: null,
+    notified_at: null, ...over,
   });
 
   expect(dispatchStateOf([]).state).toBe('none');

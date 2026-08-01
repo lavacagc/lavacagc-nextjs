@@ -35,6 +35,8 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 
 12. The subject begins with the literal `[ACTION REQUIRED]`.
 13. The subject continues with the date, the arrival window and the street, so Gmail does not collapse five different visits into one thread.
+    The `[CANCELLED]` retraction is the same subject with the other prefix, built by the same function.
+    Gmail threads on subject and the retraction is meant to land in the conversation holding the invite it withdraws, so the street rule is precisely the thing that must not drift between them - two copies of it were two chances for one to change and start a second conversation nobody is looking at.
 14. Caps are confined to the prefix; the rest of the subject is sentence case.
 15. The body names the customer, the address, the services and - when given - the sub.
 16. The body says the customer is told at 7:30pm whether or not this is confirmed.
@@ -199,9 +201,15 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 62. The 6pm message says the customer is told in about 90 minutes; the 5pm one says tonight.
 63. Telegram HTML is escaped, so an address containing `&` or `<` cannot break the message.
 64. `?dryRun=1` reports who would be chased and stamps nothing.
+    `would_chase` is pushed where a chase really happens - the dry run reporting one, or a claim that was won - and never speculatively then unwound.
+    It used to be pushed before the dry-run check and `.pop()`ed back off in each of the three failure paths below it, which held only for as long as everybody remembered: one new `continue` in between leaves a phantom entry in the number read as "visits chased".
 65. A run that could not do its whole job reports `ok: false` and names which part, in a `degraded` list.
     A stage that told nobody is `escalation_send_failed`.
     A read that hit its own ceiling is `visit_read_truncated`: `MAX_PER_RUN` caps **task** rows, not visits, so a busy day's last visits are simply not in the list - and reporting `visits: byVisit.size` with a clean `ok: true` is the same silence one step earlier, from the last line of defence before the 7:30pm customer reminder.
+    That verdict is **exact**, and the visit at the boundary is dropped rather than chased.
+    The read takes one row more than the cap, because `visits.length === MAX_PER_RUN` cannot tell a genuinely-full page from a truncated one and cried wolf on a day with exactly 200 task rows.
+    Ordering by `(scheduled_start, homeowner_id)` makes the boundary a whole visit rather than an arbitrary slice of whichever visits share a start time, and that visit is dropped whole: grouped from only the task rows that fit, its message would list an incomplete services line, and stamping it claims the send-once ledger so no re-hit could ever correct it.
+    An empty page after that drop still reports the truncation rather than a flat `ok: true`.
 
 ## Flagging a problem reaches somebody
 
@@ -213,10 +221,17 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     It used to render "Flagged. The office has it." either way, off a field the route computes, logs and hands back.
     That is the worst place in the feature for it: a colleague who has already confirmed silences both chases (AC55), so with Telegram down there is no later message at all, and the person standing at the house - told the office had it - was the only one who could have closed the gap.
     No silent retry: it delays the screen and still needs this message for when the retry also fails.
-    `duplicate` counts as told, because a duplicate is a note already raised (AC74) and the tap that actually produced the alert is the one that heard whether it landed.
+    `duplicate` counts as told because it now means a previous alert for this exact note is **recorded as delivered** (AC74), not merely that a flag already existed.
+    Re-opening the link later says the same thing the tap did, off that same record: the screen has no third "we never saw the outcome" state to default to, and no stamp means nobody has read it, whether it was never attempted or never landed.
+    It used to default to the reassuring copy on load, so anybody re-opening the email after seeing the red "call us" screen was told the opposite.
 74. Only the **transition into** a flag alerts, judged against the row as it was before the write.
     This route is public and unthrottled and the token rides in an email that can be forwarded, so alerting on every POST would let one link drive unlimited messages into the operations chat - and an honest double-tap would tell the owner the same thing twice.
     A changed note is a new thing to say, and does alert.
+    The guard dedupes **delivered** alerts, not attempts: `notified_at` on the assignment is stamped only for a Telegram that genuinely returned `sent`, and a repeat tap is quiet only when it finds that stamp.
+    Keyed on the flag's existence alone it short-circuited the send whether or not anybody was ever told, and the sequence that exposes it is a phone at a job site - tap one writes the flag, Telegram fails, the response is lost on a bad signal, they tap again and are told the office has it.
+    Both properties hold together, which is the point: no spam from repeated taps, and no silent "the office has it" for an alert that never sent.
+    The stamp belongs to the flag as it currently reads, so any tap about to attempt a fresh alert clears it first - otherwise a failed send for a changed note would inherit the old note's delivery - and a recipient put back on the visit starts with none.
+    The flag itself is still written before the Telegram is attempted: the notification failing must never cost us the record.
 75. The alert states what the **rest of the crew** has actually said, read off the other assignments on the same dispatch: whoever has already confirmed is named, or it says plainly that nobody has.
     This matters more than it looks: the escalation skips any visit with a `confirmed` assignment, so when a colleague has already answered, this alert is the only message the owner will ever get about the problem.
     It cannot be the one that says something false.

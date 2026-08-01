@@ -110,6 +110,20 @@ ALTER TABLE public.visit_dispatch_recipients
   ADD CONSTRAINT visit_dispatch_recipients_status_check
   CHECK (status IN ('sent', 'confirmed', 'flagged', 'retired'));
 
+-- WHEN THE OFFICE WAS ACTUALLY TOLD about the flag this row currently carries.
+-- Stamped only when the Telegram genuinely returned 'sent', and cleared
+-- whenever a fresh alert is about to be attempted, so it records a DELIVERY
+-- rather than an attempt.
+--
+-- The repeat-tap guard keys off this. Without it the guard suppressed the alert
+-- on a same-note re-tap whether or not the first one ever landed - so a crew
+-- member whose phone lost the first response, tapping again at the house, was
+-- told "the office has it" when Telegram had been down and nobody had been told
+-- anything. It also lets the confirm page say, on a later re-open, which of
+-- those two happened.
+ALTER TABLE public.visit_dispatch_recipients
+  ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ;
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_visit_dispatch_recipients_token
   ON public.visit_dispatch_recipients (confirm_token);
 
