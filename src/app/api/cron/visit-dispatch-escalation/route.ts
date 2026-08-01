@@ -37,6 +37,7 @@ import {
   type DispatchAssignment, type VisitDispatchRow,
 } from '@/lib/homecare/dispatch';
 import { escalationMessage } from '@/lib/homecare/dispatchAlerts';
+import { readCustomerReminder } from '@/lib/homecare/serviceScheduling';
 import {
   tomorrowEasternWindow, visitDateLabel, visitTimeWindow, visitEndsAt, visitKey,
   type ChaseStage,
@@ -253,6 +254,15 @@ export async function GET(request: NextRequest) {
       }
       wouldChase.push(chaseLabel);
 
+      // Whether there is a 7:30pm to beat, read rather than assumed: a booking
+      // too late for the covering run queued nothing, and this message's whole
+      // urgency is the deadline it names. Read only for a visit being chased,
+      // which is a handful a night rather than the whole window. No address to
+      // find the row by is its own answer, like every other read here.
+      const customerReminder = owner?.email
+        ? await readCustomerReminder(owner.email, start, now)
+        : 'unavailable' as const;
+
       // Built by the shared builder, not assembled here between a claim and a
       // send. Which of "nobody was ever told" and "the send could not be written
       // down" this message states is the most consequential branch in the
@@ -269,6 +279,7 @@ export async function GET(request: NextRequest) {
         flags: mine
           .filter((a) => a.status === 'flagged')
           .map((a) => ({ by: a.name || a.email, note: a.note })),
+        customerReminder,
       });
 
       const outcome = await sendTelegramMessage(text);

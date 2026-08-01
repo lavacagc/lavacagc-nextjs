@@ -11,7 +11,8 @@ import {
   escalationMessage, flagAlertMessage, siblingVerdict, chaseSentence,
 } from '../src/lib/homecare/dispatchAlerts';
 import {
-  chasesAhead, chaseStageLabel, customerReminderAhead, morningAlarmAhead, type ChaseStage,
+  chasesAhead, chaseStageLabel, customerReminderAhead, customerReminderState, morningAlarmAhead,
+  type ChaseStage,
 } from '../src/lib/homecare/visitSchedule';
 import { SERVICE_REPLY_TO } from '../src/lib/homecare/serviceEmails';
 import { HOME_CARE_FROM } from '../src/lib/notify/senders';
@@ -106,6 +107,7 @@ const escalation = (over: Partial<Parameters<typeof escalationMessage>[0]> = {})
   dispatched: true,
   sentTo: ['Veronica'],
   flags: [],
+  customerReminder: 'coming',
   ...over,
 });
 
@@ -120,7 +122,7 @@ const flagAlert = (over: Partial<Parameters<typeof flagAlertMessage>[0]> = {}) =
   visitRead: 'ok',
   note: 'sub cancelled',
   verdict: siblingVerdict([], ['nudge', 'escalate']),
-  customerReminderAhead: true,
+  customerReminder: 'coming',
   ...over,
 });
 
@@ -1561,7 +1563,7 @@ test('AC111 the crew screen promises nothing that has already happened', () => {
   expect(page).not.toContain('The customer is told at 7:30pm tonight that we are coming, whether');
   // Both screens read one verdict, computed on the server from the visit's own
   // start, so the flag panels and the footer cannot drift apart.
-  expect(page).toContain('customerNotice: customerNotice(visit.start, now),');
+  expect(page).toContain('customerNotice: customerNotice(visit.start, now, customerReminder),');
   expect(page).toContain('morningAlarmAhead: morningAlarmAhead(visit.start, now),');
   expect(page).toContain('timing={timing}');
   expect((actions.match(/timing\.customerNotice/g) ?? []).length).toBeGreaterThanOrEqual(2);
@@ -1603,6 +1605,18 @@ test('AC113 a surviving chase is named by the stages that are actually left', ()
   // The rule is spelled once: the Telegram sentence renders off the same label.
   expect(chaseSentence(['escalate'])).toContain('6pm is the last chase');
   expect(chaseSentence(['nudge'])).toContain('5pm will chase it');
+
+  // Including the branch that says why nothing is coming. A colleague's
+  // confirmation was credited with silencing "the 5pm and 6pm chases" whatever
+  // was left - and the case a re-flag exists for is the one where neither was
+  // ever going to run: the visit is TODAY, and both went last night.
+  const confirmedBy = [{ name: 'Alex', email: 'alex@lavacagc.com', status: 'confirmed' }];
+  expect(siblingVerdict(confirmedBy, ['nudge', 'escalate'])).toContain('so 5pm and 6pm stay quiet');
+  expect(siblingVerdict(confirmedBy, ['escalate'])).toContain('so 6pm stays quiet');
+  const nothingLeft = siblingVerdict(confirmedBy, []);
+  expect(nothingLeft).toContain('no chase was left to run for it anyway');
+  expect(nothingLeft).not.toContain('5pm');
+  expect(nothingLeft).toContain('This is the only alert you get.');
 
   const visit = new Date(Date.UTC(2026, 7, 5, 12));
   const halfPastFive = new Date(Date.UTC(2026, 7, 4, 21, 30));
@@ -1759,13 +1773,93 @@ test('AC110 the flag alert says whether the customer has already been told', () 
   expect(customerReminderAhead(winterVisit, new Date(Date.UTC(2026, 0, 4, 23, 0)))).toBe(true);
   expect(customerReminderAhead(winterVisit, new Date(Date.UTC(2026, 0, 4, 23, 45)))).toBe(false);
 
-  expect(flagAlert({ customerReminderAhead: true })).toContain('still gets their reminder');
-  const sameDay = flagAlert({ customerReminderAhead: false });
+  expect(flagAlert({ customerReminder: 'coming' })).toContain('still gets their reminder');
+  const sameDay = flagAlert({ customerReminder: 'told' });
   expect(sameDay).toContain('ALREADY been told we are coming');
   expect(sameDay).not.toContain('still gets their reminder');
   // The customer's own number rides along, because "call them" is what is left
   // once no chase is carrying the problem forward.
   expect(sameDay).toContain('(201) 555-0100');
+});
+
+test('AC115 the reminder verdict is read, never inferred from the clock', () => {
+  // The clock knows when a reminder WOULD go, not whether one exists. A
+  // same-day booking is past the covering run, so `requeueVisitReminder`
+  // answers 'skipped' and no queue row is ever written - and every surface
+  // reading the clock alone then says the customer has already been told about
+  // a visit nobody has mentioned to them.
+  const visit = new Date(Date.UTC(2026, 7, 5, 12));      // 5 Aug, 8am Eastern
+  const dayBefore = new Date(Date.UTC(2026, 7, 4, 12));  // 4 Aug, 8am Eastern
+  const sameDay = new Date(Date.UTC(2026, 7, 5, 10));    // 5 Aug, 6am Eastern
+  const row = (status: string) => ({ id: `row-${status}`, status, created_at: '2026-08-04T12:00:00Z' });
+
+  // No row is 'none', at any hour - this is the same-day booking, and the case
+  // the clock got backwards.
+  expect(customerReminderState([], visit, dayBefore)).toBe('none');
+  expect(customerReminderState(undefined, visit, sameDay)).toBe('none');
+  // A queued row is 'coming' only while a run that can carry it is still ahead.
+  expect(customerReminderState([row('pending')], visit, dayBefore)).toBe('coming');
+  expect(customerReminderState([row('pending')], visit, sameDay)).toBe('none');
+  // Delivered outranks everything, exactly as `ledgerVerdict` treats it.
+  expect(customerReminderState([row('sent')], visit, dayBefore)).toBe('told');
+  expect(customerReminderState([row('responded'), row('pending')], visit, dayBefore)).toBe('told');
+  // Deliberately cancelled is nothing coming, not a reminder still to send.
+  expect(customerReminderState([row('cancelled')], visit, dayBefore)).toBe('none');
+
+  // The read matches the ledger the way the reminder cron does - on (address,
+  // visit start) - and reports a failure rather than answering with the clock.
+  const scheduling = code('src/lib/homecare/serviceScheduling.ts');
+  expect(scheduling).toContain('export async function readCustomerReminder(');
+  expect(scheduling).toContain('follow_up_type=eq.${VISIT_REMINDER_TYPE}&visit_start=eq.${encodeURIComponent(key)}');
+  expect(scheduling).toContain("return 'unavailable';");
+  expect(scheduling).toContain('ledgerKey(r.lead_email ?? \'\', r.visit_start) === wanted');
+});
+
+test('AC115 all three surfaces past the send carry that verdict', () => {
+  // The dispatch email got the booking's own verdict (AC114) and the three
+  // surfaces that outlive it kept inferring one - so the email said "no
+  // automatic reminder is going out, text them yourself" and the page it links
+  // to said the customer had already been told.
+  const page = read('src/app/crew/confirm/[token]/page.tsx');
+  expect(page).toContain('await readCustomerReminder(visit.customerEmail, visit.start, now)');
+  expect(page).toContain('customerNotice: customerNotice(visit.start, now, customerReminder),');
+  expect(page).not.toContain('customerReminderAhead(visitStart, now)');
+
+  const route = confirmRoute();
+  expect(route).toContain('await readCustomerReminder(visit.customerEmail, visitStart, now)');
+  expect(route).toContain('customerReminder,');
+  expect(route).not.toContain('customerReminderAhead(');
+
+  const chase = read('src/app/api/cron/visit-dispatch-escalation/route.ts');
+  expect(chase).toContain('await readCustomerReminder(owner.email, start, now)');
+  expect(chase).toContain('customerReminder,');
+
+  // ...and each says what is actually true, including that it could not look.
+  expect(flagAlert({ customerReminder: 'none' })).toContain('NO automatic reminder is going out');
+  expect(flagAlert({ customerReminder: 'unavailable' })).toContain('could NOT be read');
+  expect(escalation({ customerReminder: 'coming' })).toContain('told we are coming at 7:30pm tonight');
+  expect(escalation({ customerReminder: 'none' })).toContain('No reminder is going out to the customer');
+  expect(escalation({ customerReminder: 'none' })).not.toContain('at 7:30pm');
+  expect(escalation({ customerReminder: 'told' })).toContain('has already been told we are coming');
+  expect(escalation({ customerReminder: 'unavailable' })).toContain('could not be read');
+  // A visit the read could not describe cannot name a reminder row either, and
+  // says so rather than falling back to the clock.
+  expect(confirmRoute()).toContain("? await readCustomerReminder(visit.customerEmail, visitStart, now)\n    : 'unavailable' as const");
+});
+
+test('AC115 the crew screen names the reminder it actually has', () => {
+  // The clause is dropped into three sentences on that screen - the footer and
+  // both flag panels - so it is written once and each of the four things that
+  // can be true has its own wording.
+  const page = read('src/app/crew/confirm/[token]/page.tsx');
+  expect(page).toContain('the customer has ALREADY been told we are coming.');
+  expect(page).toContain('no automatic reminder is going out to the customer, so nobody has told them');
+  expect(page).toContain('we could NOT check whether the customer has been told');
+  // When one IS coming the date is named, through the same helper the dispatch
+  // email uses - "tonight" is true for exactly one of the days a visit can be
+  // booked on (AC114), and this screen had its own copy of that claim.
+  expect(page).toContain('customerReminderWhen(visitStart, now)');
+  expect(page).not.toContain('at 7:30pm the night before');
 });
 
 test('AC49 a server error on this public route leaks no Supabase detail', () => {

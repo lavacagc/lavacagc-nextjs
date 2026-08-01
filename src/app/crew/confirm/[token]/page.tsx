@@ -13,8 +13,10 @@
  */
 import type { Metadata } from 'next';
 import { lookupByToken } from '@/lib/homecare/dispatch';
+import { readCustomerReminder } from '@/lib/homecare/serviceScheduling';
 import {
-  visitDateLabel, visitTimeWindow, easternDayOffset, customerReminderAhead, morningAlarmAhead,
+  visitDateLabel, visitTimeWindow, customerReminderWhen, morningAlarmAhead,
+  type CustomerReminderState,
 } from '@/lib/homecare/visitSchedule';
 import CrewConfirmActions from './CrewConfirmActions';
 
@@ -125,8 +127,12 @@ export default async function CrewConfirmPage({
   const dateLabel = visitDateLabel(visit.start);
   const window = visitTimeWindow(visit.start, visit.end);
   const now = new Date();
+  // What the customer has actually been told, read off the reminder ledger -
+  // the same question the dispatch email that sent them here already answers
+  // from the booking's own verdict.
+  const customerReminder = await readCustomerReminder(visit.customerEmail, visit.start, now);
   const timing = {
-    customerNotice: customerNotice(visit.start, now),
+    customerNotice: customerNotice(visit.start, now, customerReminder),
     morningAlarmAhead: morningAlarmAhead(visit.start, now),
   };
 
@@ -189,14 +195,22 @@ export default async function CrewConfirmPage({
  * deadline was still ahead of them when the customer had been told the night
  * before. That reads as "there is time", on the one screen whose job is to make
  * them ring the office.
+ *
+ * The clock answered the wrong question even once it was conditioned. It knows
+ * when a reminder WOULD go, not whether one exists: a same-day booking queues
+ * none at all, and this page then said the customer had already been told about
+ * a visit nobody has mentioned to them. So the ledger decides, and a read that
+ * failed says so rather than picking whichever half-answer sounds calmer.
  */
-function customerNotice(visitStart: Date, now: Date): string {
-  if (!customerReminderAhead(visitStart, now)) {
-    return 'the customer has ALREADY been told we are coming.';
+function customerNotice(visitStart: Date, now: Date, reminder: CustomerReminderState): string {
+  if (reminder === 'unavailable') {
+    return 'we could NOT check whether the customer has been told we are coming, so assume they have not.';
   }
-  return easternDayOffset(visitStart, now) === 1
-    ? 'the customer is told at 7:30pm tonight that we are coming.'
-    : 'the customer is told at 7:30pm the night before that we are coming.';
+  if (reminder === 'told') return 'the customer has ALREADY been told we are coming.';
+  if (reminder === 'none') {
+    return 'no automatic reminder is going out to the customer, so nobody has told them we are coming.';
+  }
+  return `the customer is told ${customerReminderWhen(visitStart, now)} that we are coming.`;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {

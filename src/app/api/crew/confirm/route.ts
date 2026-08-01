@@ -31,9 +31,8 @@ import {
   lookupByToken, assignmentsForDispatch, liveAssignments, type TokenLookup,
 } from '@/lib/homecare/dispatch';
 import { flagAlertMessage, siblingVerdict } from '@/lib/homecare/dispatchAlerts';
-import {
-  visitDateLabel, visitTimeWindow, chasesAhead, customerReminderAhead,
-} from '@/lib/homecare/visitSchedule';
+import { readCustomerReminder } from '@/lib/homecare/serviceScheduling';
+import { visitDateLabel, visitTimeWindow, chasesAhead } from '@/lib/homecare/visitSchedule';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -240,6 +239,15 @@ async function notifyFlag(found: TokenLookup, note: string | null) {
     .then((rows) => liveAssignments(rows).filter((a) => a.id !== assignment.id))
     .catch(() => null);
 
+  // READ, not worked out from the time of day. A same-day booking is past the
+  // covering run, so `requeueVisitReminder` answered 'skipped' and no reminder
+  // row exists - and the clock alone would tell the owner the customer already
+  // knows we are coming when nothing has ever told them. Without the visit
+  // there is no address to find the row by, which is its own answer.
+  const customerReminder = visit
+    ? await readCustomerReminder(visit.customerEmail, visitStart, now)
+    : 'unavailable' as const;
+
   const text = flagAlertMessage({
     who: assignment.name || assignment.email,
     when: visit
@@ -258,7 +266,7 @@ async function notifyFlag(found: TokenLookup, note: string | null) {
       nudgedAt: dispatch.nudged_at,
       escalatedAt: dispatch.escalated_at,
     })),
-    customerReminderAhead: customerReminderAhead(visitStart, now),
+    customerReminder,
   });
 
   return sendTelegramMessage(text).catch(() => 'failed' as const);

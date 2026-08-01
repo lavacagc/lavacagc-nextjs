@@ -482,6 +482,13 @@ export async function ensureAssignments(
 
 export interface VisitContext {
   customerName: string;
+  /**
+   * Never shown to the crew - it is how the customer's reminder is found.
+   * `follow_up_queue` is keyed on (address, visit start), so the surfaces that
+   * say whether the customer has been told need this to read the answer rather
+   * than infer one.
+   */
+  customerEmail: string;
   customerPhone: string | null;
   address: string;
   services: string[];
@@ -538,6 +545,7 @@ export async function visitContextFor(
   const endIso = booked[0]?.scheduled_end;
   return {
     customerName: owner.first_name || owner.email,
+    customerEmail: owner.email,
     customerPhone: owner.phone,
     address: booked[0]?.service_address ?? owner.address ?? '',
     services: booked.map((r) => titleFor.get(r.task_key) ?? r.task_key),

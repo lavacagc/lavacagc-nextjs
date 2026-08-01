@@ -23,7 +23,9 @@
  * this alert is all there is.
  */
 import { escapeTelegram } from '@/lib/notify/telegramMessage';
-import { chaseSentence, type ChaseStage } from './visitSchedule';
+import {
+  chaseSentence, chaseStageLabel, type ChaseStage, type CustomerReminderState,
+} from './visitSchedule';
 
 /**
  * Re-exported, not re-written: the admin flag list says the same thing about the
@@ -54,8 +56,16 @@ export function siblingVerdict(others: SiblingAnswer[] | null, ahead: ChaseStage
 
   const confirmed = others.filter((a) => a.status === 'confirmed').map((a) => a.name || a.email);
   if (confirmed.length > 0) {
+    // Which stages the confirmation is actually silencing, off the same verdict
+    // the branch below reads. The fixed pair named a chase that had already run
+    // as one being held back - and the case this alert exists for is the one
+    // where none was ever coming: the sub falls through at 6am, so the visit is
+    // TODAY and both stages went last night.
+    const quiet = ahead.length > 0
+      ? `so ${chaseStageLabel(ahead)} ${ahead.length > 1 ? 'stay' : 'stays'} quiet`
+      : 'and no chase was left to run for it anyway';
     return `${escapeTelegram(confirmed.join(', '))} ${confirmed.length > 1 ? 'have' : 'has'} `
-      + 'already confirmed this visit, so the 5pm and 6pm chases stay quiet. This is the only alert you get.';
+      + `already confirmed this visit, ${quiet}. This is the only alert you get.`;
   }
   const who = others.length === 0
     ? 'Nobody else is on this visit, so it stays unconfirmed.'
@@ -78,8 +88,13 @@ export interface FlagAlertArgs {
   note: string | null;
   /** What the rest of the crew has said, from `siblingVerdict`. */
   verdict: string;
-  /** Whether the customer still has to be told we are coming. */
-  customerReminderAhead: boolean;
+  /**
+   * What the customer has actually been told, READ off the reminder ledger.
+   *
+   * Not the clock's answer: a same-day booking queues nothing at all, so "they
+   * have already been told" was said about a customer nobody has told anything.
+   */
+  customerReminder: CustomerReminderState;
 }
 
 /** Who flagged it, which visit, and what they typed - verbatim. */
@@ -108,15 +123,36 @@ export function flagAlertMessage(args: FlagAlertArgs): string {
     '',
     args.note ? `💬 ${escapeTelegram(args.note)}` : '💬 No note - call them.',
     '',
-    // Conditioned, because it is a claim about the future: for a visit today the
-    // customer was told last night, and telling the owner a deadline has not
-    // passed yet is what makes them wait instead of ring.
-    args.customerReminderAhead
-      ? 'The customer still gets their reminder the night before, so this needs sorting or the '
-        + 'visit calling off.'
-      : 'The customer has ALREADY been told we are coming, so this needs sorting or calling off now.',
+    // Read, not inferred: for a visit today the customer was told last night,
+    // and for a same-day booking nothing was ever queued to tell them. Telling
+    // the owner a deadline has not passed yet is what makes them wait instead
+    // of ring; telling them the customer knows is what stops the call entirely.
+    customerReminderLine(args.customerReminder),
     args.verdict,
   ].filter(Boolean).join('\n');
+}
+
+/**
+ * What the flag alert says about the customer, for each of the four things that
+ * can be true - including "we could not find out", which is its own answer.
+ *
+ * 'none' is the one the clock could never produce: a booking too late for the
+ * covering run queues nothing, and a queue write that failed leaves nothing
+ * either, so the customer will hear from us only if a person tells them.
+ */
+function customerReminderLine(state: CustomerReminderState): string {
+  if (state === 'coming') {
+    return 'The customer still gets their reminder the night before, so this needs sorting or the '
+      + 'visit calling off.';
+  }
+  if (state === 'told') {
+    return 'The customer has ALREADY been told we are coming, so this needs sorting or calling off now.';
+  }
+  if (state === 'none') {
+    return 'NO automatic reminder is going out to the customer, so nobody has told them we are '
+      + 'coming - whatever happens here, somebody has to.';
+  }
+  return '⚠️ Whether the customer has been told we are coming could NOT be read - assume they have not been.';
 }
 
 export interface EscalationMessageArgs {
@@ -132,6 +168,14 @@ export interface EscalationMessageArgs {
   /** Everybody still on the visit, by name. */
   sentTo: string[];
   flags: { by: string; note: string | null }[];
+  /**
+   * What the customer has actually been told, READ off the reminder ledger.
+   *
+   * The deadline is what gives both stages their urgency, so it cannot be
+   * asserted: a booking whose reminder was never queued has no 7:30pm coming,
+   * and saying one is announces a visit nothing will announce.
+   */
+  customerReminder: CustomerReminderState;
 }
 
 /** The 5pm/6pm chase: what is unconfirmed, and how bad the silence is. */
@@ -175,8 +219,19 @@ export function escalationMessage(args: EscalationMessageArgs): string {
     '',
     dispatchLine,
     ...flagLines,
-    args.stage === 'escalate'
-      ? 'The customer is told we are coming at 7:30pm - about 90 minutes from now.'
-      : 'The customer is told we are coming at 7:30pm tonight.',
+    // The deadline these two stages exist to beat - stated only where it exists.
+    // A visit whose reminder was skipped or could not be queued has nothing
+    // coming at 7:30pm, and a chase that names a deadline nothing will keep
+    // reads as "there is still a safety net" for the one visit that has none.
+    args.customerReminder === 'coming'
+      ? args.stage === 'escalate'
+        ? 'The customer is told we are coming at 7:30pm - about 90 minutes from now.'
+        : 'The customer is told we are coming at 7:30pm tonight.'
+      : args.customerReminder === 'told'
+        ? 'The customer has already been told we are coming.'
+        : args.customerReminder === 'none'
+          ? '⚠️ <b>No reminder is going out to the customer for this visit</b> - nobody is telling '
+            + 'them we are coming unless somebody does it by hand.'
+          : '⚠️ Whether the customer has been told we are coming could not be read.',
   ].filter(Boolean).join('\n');
 }
