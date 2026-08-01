@@ -370,4 +370,115 @@ test.describe('send-service-quote form state', () => {
     await expect(page.getByText('no record', { exact: true })).toHaveCount(0);
     await expect(page.getByText('not read', { exact: true })).toHaveCount(CATALOG.length);
   });
+
+  test('AC104 a lookup that FAILED takes the previous customer off the screen', async ({ page, context, baseURL }) => {
+    // The reset only ever ran on the SUCCESS path - every setter sat inside the
+    // try, above the throw - so a lookup that failed left the last customer's
+    // id live under an email box showing somebody else's address. Their visit
+    // could be cancelled or completed from there, and the panel relabelled it
+    // as this customer's "list of unknown age".
+    const win = easternWindow('2026-08-05', 8, 11);
+    const dana: StubIntake = {
+      ...blankIntake(),
+      homeowner: { id: '22222222-2222-2222-2222-222222222222', first_name: 'Dana', phone: null, address: '9 Oak St', city: 'Montclair', zip: '07042', status: 'active' },
+      bookings: [{
+        ...win, address: '9 Oak St, Montclair, 07042',
+        tasks: [{ key: 'gutters', title: 'Clean gutters', season: 'fall' }],
+        dispatch: { state: 'flagged', confirmedBy: [], flags: [{ by: 'Alex', note: 'gate is locked' }] },
+        sub: { read: 'ok', name: null },
+      }],
+    };
+    await page.route('**/api/admin/crew', (route) => route.fulfill({
+      json: { recipients: [{ id: '11111111-1111-1111-1111-111111111111', name: 'Alex', email: 'alex@lavacagc.com', active: true }] },
+    }));
+    await page.route('**/api/admin/service-quote/intake**', (route) => (
+      new URL(route.request().url()).searchParams.get('email') === 'dana@example.com'
+        ? route.fulfill({ json: dana })
+        : route.fulfill({ status: 500, json: { error: 'read failed' } })
+    ));
+    await open(page, context, baseURL!);
+
+    await page.getByTestId('sq-email').fill('dana@example.com');
+    await page.getByTestId('sq-lookup').click();
+    await expect(page.getByTestId('sq-address')).toHaveValue('9 Oak St, Montclair, 07042');
+    await expect(page.getByTestId('sq-handled')).toBeEnabled();
+
+    await page.getByTestId('sq-email').fill('erin@example.com');
+    await page.getByTestId('sq-lookup').click();
+
+    // Nothing of Dana's is left to act on. The buttons are the point: all three
+    // fire against the id this page is holding, not against the address typed
+    // in the box above them.
+    await expect(page.getByTestId('sq-address')).toHaveValue('');
+    await expect(page.locator('#sq-name')).toHaveValue('');
+    await expect(page.getByTestId('sq-complete')).toHaveCount(0);
+    await expect(page.getByTestId('sq-cancel')).toHaveCount(0);
+    await expect(page.getByTestId('sq-handled')).toHaveCount(0);
+    // And what is left says the true thing: Erin's visits were never read, and
+    // Dana's are not being passed off as a list of unknown age.
+    await expect(page.getByTestId('sq-bookings-unread'))
+      .toContainText('This is NOT "nothing on the books"');
+    await expect(page.getByTestId('sq-homeowner-unread'))
+      .toContainText('Nothing below can be marked completed, cancelled or handled');
+  });
+
+  test('AC105 a refresh re-reads the customer on screen, not whatever the lookup box holds', async ({ page, context, baseURL }) => {
+    // The refresh read by the LOOKUP box, which is free text and binds to
+    // nothing below it. Both edits of it produced a silent answer: emptied, the
+    // refresh returned without running, so "Visit cancelled - off the books"
+    // was toasted beside the visit still listed as booked; retyped, it replaced
+    // the panel with somebody else's visits under this customer's id.
+    const visit = (day: string, from: number, to: number, title: string, key: string) => ({
+      ...easternWindow(day, from, to), address: '9 Oak St, Montclair, 07042',
+      tasks: [{ key, title, season: 'fall' }],
+      dispatch: { state: 'awaiting', confirmedBy: [], flags: [] },
+      sub: { read: 'ok' as const, name: null },
+    });
+    // Gina has two; Hank has three, so which list is on screen is never a
+    // matter of interpretation.
+    const gina = [visit('2026-08-05', 8, 11, 'Clean gutters', 'gutters'), visit('2026-08-06', 8, 11, 'Clean gutters', 'gutters')];
+    const ginaIntake = (): StubIntake => ({
+      ...blankIntake(),
+      homeowner: { id: '22222222-2222-2222-2222-222222222222', first_name: 'Gina', phone: null, address: '9 Oak St', city: 'Montclair', zip: '07042', status: 'active' },
+      bookings: [...gina],
+    });
+    const hankIntake: StubIntake = {
+      ...blankIntake(),
+      homeowner: { id: '33333333-3333-3333-3333-333333333333', first_name: 'Hank', phone: null, address: '4 Elm Rd', city: 'Verona', zip: '07044', status: 'active' },
+      bookings: [visit('2026-08-07', 13, 15, 'Furnace tune-up', 'furnace'), visit('2026-08-08', 13, 15, 'Furnace tune-up', 'furnace'), visit('2026-08-09', 13, 15, 'Furnace tune-up', 'furnace')],
+    };
+    await page.route('**/api/admin/crew', (route) => route.fulfill({
+      json: { recipients: [{ id: '11111111-1111-1111-1111-111111111111', name: 'Alex', email: 'alex@lavacagc.com', active: true }] },
+    }));
+    // Every read succeeds, so nothing here is a failed-read case: the only
+    // question is WHOSE visits come back.
+    await page.route('**/api/admin/service-quote/intake**', (route) => route.fulfill({
+      json: new URL(route.request().url()).searchParams.get('email') === 'gina@example.com' ? ginaIntake() : hankIntake,
+    }));
+    await page.route('**/api/admin/service-quote/schedule**', (route) => {
+      gina.shift();
+      return route.fulfill({ json: { status: 'cancelled', reminder: 'cancelled', dispatch: { status: 'ok', retraction: 'sent', unretracted: [] } } });
+    });
+    page.on('dialog', (d) => d.accept());
+    await open(page, context, baseURL!);
+
+    await page.getByTestId('sq-email').fill('gina@example.com');
+    await page.getByTestId('sq-lookup').click();
+    await expect(page.getByTestId('sq-cancel')).toHaveCount(2);
+
+    // The box is retyped - typed at, never submitted - and then GINA's visit is
+    // called off, because the buttons fire against the id this page holds. The
+    // refresh has to be Gina's too. The longer waits are for the blocking
+    // `window.confirm` each click opens, which Playwright dismisses out of band.
+    await page.getByTestId('sq-email').fill('hank@example.com');
+    await page.getByTestId('sq-cancel').first().click();
+    await expect(page.getByTestId('sq-cancel')).toHaveCount(1, { timeout: 15_000 });
+    await expect(page.getByTestId('sq-bookings-unread')).toHaveCount(0);
+
+    // And emptied, which used to skip the read entirely and leave the list
+    // reading as freshly re-read.
+    await page.getByTestId('sq-email').fill('');
+    await page.getByTestId('sq-cancel').click();
+    await expect(page.getByTestId('sq-bookings')).toHaveCount(0, { timeout: 15_000 });
+  });
 });

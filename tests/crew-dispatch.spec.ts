@@ -616,8 +616,11 @@ test('AC98 the sub box shows the sub stored on the visit it is aimed at', () => 
   expect(retargetFn).toContain('if (!subless) setSubEdit(null);');
   // As does looking up a different customer - the box used to keep the last
   // one's sub - and saving, after which the box shows what the row now holds.
+  // The lookup does it through `clearCustomer`, which BOTH its paths run.
   const lookupFn = page.slice(page.indexOf('const lookup = useCallback'), page.indexOf('const toggle = (key: string)'));
-  expect(lookupFn).toContain('setSubEdit(null);');
+  const reset = page.slice(page.indexOf('const clearCustomer = useCallback'), page.indexOf('const refreshBookings ='));
+  expect(lookupFn).toContain('clearCustomer();');
+  expect(reset).toContain('setSubEdit(null);');
   const scheduleFn = page.slice(page.indexOf('const schedule = async ()'), page.indexOf('const complete = async'));
   expect(scheduleFn).toContain('setSubEdit(null);');
   // And a box that could not be filled from the row says so, because an empty
@@ -659,7 +662,10 @@ test('AC99 the ticked services show what the visit the form is aimed at holds', 
   const scheduleFn = page.slice(page.indexOf('const schedule = async ()'), page.indexOf('const complete = async'));
   expect(scheduleFn).toContain('setTaskEdit(null);');
   const lookupFn = page.slice(page.indexOf('const lookup = useCallback'), page.indexOf('const toggle = (key: string)'));
-  expect(lookupFn).toContain('setTaskEdit(null);');
+  expect(lookupFn).toContain('clearCustomer();');
+  expect(page.slice(
+    page.indexOf('const clearCustomer = useCallback'), page.indexOf('const refreshBookings ='),
+  )).toContain('setTaskEdit(null);');
 
   // The ticks live in the card ABOVE the date, so a date landing on a booked
   // visit changes them out of sight. The window says what it holds where the
@@ -707,15 +713,19 @@ test('AC101 a customer lookup clears every per-customer field before it fills an
   // written for another, and the booking writes their window onto another
   // customer's services at another customer's address.
   const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  // Spelled in one place now (AC104), because the failure path needed the same
+  // reset and inline copies are what let the two drift apart.
+  const reset = page.slice(page.indexOf('const clearCustomer = useCallback'), page.indexOf('const refreshBookings ='));
+  expect(reset, 'the name is cleared').toContain("setName('');");
+  expect(reset).toContain("setAddress('');");
+  expect(reset).toContain("setScope('');");
+  expect(reset).toContain('setRequestTasks(new Set());');
+  expect(reset).toContain('setTaskEdit(null);');
+  expect(reset).toContain('setSubEdit(null);');
   const lookupFn = page.slice(page.indexOf('const lookup = useCallback'), page.indexOf('const toggle = (key: string)'));
-  const cleared = lookupFn.indexOf("setName('');");
+  const cleared = lookupFn.indexOf('clearCustomer();');
   const filled = lookupFn.indexOf('const latest = data.requests[0];');
-  expect(cleared, 'the name is cleared').toBeGreaterThan(-1);
-  expect(lookupFn).toContain("setAddress('');");
-  expect(lookupFn).toContain("setScope('');");
-  expect(lookupFn).toContain('setRequestTasks(new Set());');
-  expect(lookupFn).toContain('setTaskEdit(null);');
-  expect(lookupFn).toContain('setSubEdit(null);');
+  expect(cleared, 'the lookup runs it').toBeGreaterThan(-1);
   // Cleared FIRST, then filled from whatever this lookup returned - the order
   // is the whole guarantee, because the fill is what is conditional.
   expect(cleared, 'cleared before anything is filled back in').toBeLessThan(filled);
@@ -1607,7 +1617,10 @@ test('AC84 a dispatch read that failed reads as unknown, never as never-dispatch
   // as never dispatched, and the screen renders nothing at all in that state -
   // so a flagged visit vanished from the only surface a flag reaches, taking
   // its "Mark handled" button with it.
-  expect(intake.match(/\.catch\(\(\) => null\)/g) ?? [], 'both reads fail closed').toHaveLength(2);
+  const withDispatch = intake.slice(
+    intake.indexOf('async function withDispatchState'), intake.indexOf('export async function GET'),
+  );
+  expect(withDispatch.match(/readOrNull\(/g) ?? [], 'both reads fail closed').toHaveLength(2);
   expect(intake).toContain('if (read === null) {');
   expect(intake).toContain('if (answered === null) {');
   expect(intake.match(/dispatch: UNKNOWN_DISPATCH_STATE/g) ?? [], 'both say unknown').toHaveLength(2);
@@ -1617,8 +1630,8 @@ test('AC84 a dispatch read that failed reads as unknown, never as never-dispatch
   // And so does the customer record the whole panel hangs off: swallowed to an
   // empty list it read as "no record for this customer", which takes the list,
   // the flag on it and the "Mark handled" button with it.
-  expect(intake).toContain("let bookingsRead: 'ok' | 'unavailable' = owners === null ? 'unavailable' : 'ok';");
-  expect(intake).toContain("'service-quote intake could not read the customer record:',");
+  expect(intake).toContain('let bookingsRead: ReadVerdict = owners === null ? \'unavailable\' : \'ok\';');
+  expect(intake).toContain("readOrNull('the customer record', supabaseRest<");
 
   const lib = read('src/lib/homecare/dispatch.ts');
   expect(lib).toContain("state: 'unknown', confirmedBy: [], flags: []");
@@ -1681,15 +1694,23 @@ test('AC103 every read behind this screen answers its own verdict, never a neigh
   // reads as, no requests is also "they have never asked us for anything", and
   // an empty history prints "no record" against every service on the page.
   const intake = read('src/app/api/admin/service-quote/intake/route.ts');
-  expect(intake).toContain("const homeownerRead: 'ok' | 'unavailable' = owners === null ? 'unavailable' : 'ok';");
-  expect(intake).toContain("const requestsRead: 'ok' | 'unavailable' = leads === null ? 'unavailable' : 'ok';");
-  expect(intake).toContain("let historyRead: 'ok' | 'unavailable' = owners === null ? 'unavailable' : 'ok';");
+  expect(intake).toContain("const homeownerRead: ReadVerdict = owners === null ? 'unavailable' : 'ok';");
+  expect(intake).toContain("const requestsRead: ReadVerdict = leads === null ? 'unavailable' : 'ok';");
+  expect(intake).toContain("let historyRead: ReadVerdict = owners === null ? 'unavailable' : 'ok';");
   expect(intake).toContain('if (done === null) historyRead = ');
+  expect(intake).toContain('if (booked === null) bookingsRead = ');
   expect(intake).toContain('homeownerRead, requestsRead, historyRead, bookings, bookingsRead });');
   // Each read that used to swallow itself to an empty list now says so out loud
-  // on the way past, the same as the customer record already did.
-  expect(intake).toContain("'service-quote intake could not read their past requests:',");
-  expect(intake).toContain("'service-quote intake could not read their service history:',");
+  // on the way past, the same as the customer record already did - and the rule
+  // is spelled ONCE, because a fifth read added later is the one most likely to
+  // get it wrong, and four hand-written copies had nothing to object with.
+  expect(intake).toContain('async function readOrNull<T>(what: string, read: Promise<T | null>)');
+  expect(intake).toContain('`service-quote intake could not read ${what}:`');
+  expect(intake).toContain("readOrNull('their past requests', supabaseRest<");
+  expect(intake).toContain("readOrNull('their service history', supabaseRest<");
+  expect(intake).toContain("readOrNull('the visits on the books', supabaseRest<");
+  // No read left with a catch of its own to get wrong.
+  expect(intake.match(/\.catch\(/g) ?? [], 'one catch, inside the helper').toHaveLength(1);
 
   const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
   expect(page).toContain('data-testid="sq-homeowner-unread"');
@@ -1705,6 +1726,70 @@ test('AC103 every read behind this screen answers its own verdict, never a neigh
   const lookupFn = page.slice(page.indexOf('const lookup ='), page.indexOf('const toggle ='));
   expect(lookupFn).toContain("setHomeownerRead(data.homeownerRead === 'unavailable' ? 'unavailable' : 'ok');");
   expect(lookupFn).toContain("setHomeownerRead('unavailable');");
+});
+
+test('AC104 one reset, run on the lookup that FAILED as well as the one that worked', () => {
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  // Spelled once so the two paths cannot drift apart again - which is how the
+  // failure path came to have no reset at all.
+  expect(page).toContain('const clearCustomer = useCallback(() => {');
+  const reset = page.slice(
+    page.indexOf('const clearCustomer = useCallback'), page.indexOf('const refreshBookings ='),
+  );
+  for (const setter of [
+    'setIntake(null);', "setName('');", "setAddress('');", "setScope('');",
+    'setTaskEdit(null);', 'setSubEdit(null);', 'setBookings([]);',
+    // The two that matter most: the id all three buttons fire against, and the
+    // calendar link for whoever was booked.
+    'setHomeownerId(null);', 'setScheduled(null);',
+  ]) expect(reset, `${setter} belongs to one customer`).toContain(setter);
+
+  const lookupFn = page.slice(page.indexOf('const lookup ='), page.indexOf('const toggle ='));
+  expect(lookupFn.match(/clearCustomer\(\)/g) ?? [], 'both paths reset').toHaveLength(2);
+  // The failure toast no longer says the screen is untouched, because it is not.
+  expect(lookupFn).toContain('has been cleared off it');
+  expect(lookupFn).not.toContain('Nothing on screen has been changed.');
+
+  // And the record warning reads its claim off the same value that GATES the
+  // buttons rather than asserting a safety beside it: a booking made after a
+  // failed record read still yields a real id, so the flat claim was false
+  // there too.
+  const banner = page.slice(
+    page.indexOf('data-testid="sq-homeowner-unread"'), page.indexOf('data-testid="sq-requests-unread"'),
+  );
+  expect(banner, 'the claim is read off what gates the buttons').toContain('homeownerId');
+  expect(banner).toContain('Nothing below can be marked completed, cancelled or handled.');
+  expect(banner).toContain('still acts on the customer');
+});
+
+test('AC106 the refresh re-reads the customer on screen, not the lookup box', () => {
+  // `cancel`, `complete` and `markHandled` all await this and then toast
+  // success, and all three fire against `homeownerId` - so a refresh keyed on a
+  // free text field nothing binds to that id had two silent answers in it:
+  // emptied it returned without reading, leaving the list looking freshly
+  // re-read beside a visit just called off; retyped it swapped the panel for
+  // somebody else's visits under this customer's id.
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain('const loadedEmail = useRef(\'\');');
+  const refresh = page.slice(page.indexOf('const refreshBookings ='), page.indexOf('const lookup ='));
+  expect(refresh).toContain('const who = loadedEmail.current;');
+  expect(refresh).toContain('intake?email=${encodeURIComponent(who)}');
+  expect(refresh, 'never the live box').not.toContain('email.trim()');
+  // Nobody loaded is a read that could not happen, not a quiet return.
+  expect(refresh).toContain('if (!who) throw new Error(');
+  expect(refresh, 'no path out that skips the verdict').not.toContain('return;');
+  // One exit, so the marking cannot be forgotten on a path added later.
+  expect(refresh.indexOf("setBookingsRead('unavailable');")).toBeGreaterThan(refresh.indexOf('} catch (e) {'));
+
+  // Both ways of becoming the customer on screen record it, and clearing the
+  // screen clears it - a ref, because `schedule` books and refreshes in one
+  // handler, where a setter's value would not be visible to the call it makes.
+  const lookupFn = page.slice(page.indexOf('const lookup ='), page.indexOf('const toggle ='));
+  expect(lookupFn).toContain('loadedEmail.current = email.trim();');
+  const scheduleFn = page.slice(page.indexOf('const schedule = async ()'), page.indexOf('const complete = async'));
+  expect(scheduleFn.indexOf('loadedEmail.current = email.trim();')).toBeLessThan(scheduleFn.indexOf('await refreshBookings();'));
+  const reset = page.slice(page.indexOf('const clearCustomer = useCallback'), page.indexOf('const refreshBookings ='));
+  expect(reset).toContain("loadedEmail.current = '';");
 });
 
 test('AC89 one spelling of the (homeowner, window) dispatch read', () => {

@@ -48,6 +48,33 @@ interface LeadRow {
 type BookedVisit = Booking & { dispatch: VisitDispatchState; sub: VisitSubState };
 
 /**
+ * Whether one of the reads behind this answer actually happened. `unavailable`
+ * is a read that FAILED, handed back alongside everything that did load.
+ */
+type ReadVerdict = 'ok' | 'unavailable';
+
+/**
+ * One read, one verdict: `null` when it FAILED, never the empty answer, and
+ * which read it was said out loud on the way past.
+ *
+ * Spelled once because it is the rule this whole route turns on. Every panel
+ * this answer feeds renders an empty value as a definite claim - no visits, no
+ * record, never asked us for anything, never had it done - so a read that
+ * swallows itself to `[]` becomes a sentence the screen states about a customer
+ * nobody managed to look up. Written out per read, a fifth one added later
+ * could quietly get it wrong with nothing in the file objecting.
+ */
+async function readOrNull<T>(what: string, read: Promise<T | null>): Promise<T | null> {
+  return read.catch((err) => {
+    console.error(
+      `service-quote intake could not read ${what}:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    return null;
+  });
+}
+
+/**
  * Attach each visit's dispatch state - awaiting, confirmed, or flagged - and
  * the sub recorded on it.
  *
@@ -80,10 +107,10 @@ async function withDispatchState(homeownerId: string, bookings: Booking[]): Prom
   const noSub: VisitSubState = { read: 'ok', name: null };
   if (bookings.length === 0) return [];
 
-  const read = await supabaseRest<VisitDispatchRow[]>(
+  const read = await readOrNull('the crew records on their visits', supabaseRest<VisitDispatchRow[]>(
     'GET',
     `visit_dispatch?select=${VISIT_DISPATCH_COLUMNS}&homeowner_id=eq.${homeownerId}`,
-  ).catch(() => null);
+  ));
   // Nothing was read, so neither answer is knowable.
   if (read === null) {
     return bookings.map((b) => ({ ...b, dispatch: UNKNOWN_DISPATCH_STATE, sub: UNKNOWN_VISIT_SUB }));
@@ -106,11 +133,11 @@ async function withDispatchState(homeownerId: string, bookings: Booking[]): Prom
 
   if (dispatches.length === 0) return bookings.map((b) => ({ ...b, dispatch: blank, sub: noSub }));
 
-  const answered = await supabaseRest<DispatchAssignment[]>(
+  const answered = await readOrNull('what the crew has said', supabaseRest<DispatchAssignment[]>(
     'GET',
     `visit_dispatch_recipients?select=${DISPATCH_ASSIGNMENT_COLUMNS}` +
       `&dispatch_id=in.(${dispatches.map((d) => d.id).join(',')})`,
-  ).catch(() => null);
+  ));
   // Only what the crew has said is unknown here - the sub came off the row
   // above, which read fine, and blanking it would be the silent clear.
   if (answered === null) {
@@ -176,33 +203,21 @@ export async function GET(request: NextRequest) {
       // panel at all - and the scope sentence and the pre-ticked services are
       // both drawn from it, so a failed read quietly becomes a blank form for a
       // customer with history.
-      supabaseRest<LeadRow[]>(
+      readOrNull('their past requests', supabaseRest<LeadRow[]>(
         'GET',
         `leads?select=id,first_name,last_name,email,phone,address,city,zip_code,source,message,created_at` +
           `&email=ilike.${encodeURIComponent(escapeLikePattern(email))}&order=created_at.desc&limit=50`,
-      ).catch((err) => {
-        console.error(
-          'service-quote intake could not read their past requests:',
-          err instanceof Error ? err.message : String(err),
-        );
-        return null;
-      }),
+      )),
       // Null, never an empty list, when this one FAILS. Everything the admin
       // acts on hangs off the customer record - the visits, the crew state on
       // them, and the buttons that complete, cancel or clear a flag - so
       // swallowing it to `[]` rendered "no record for this customer" and took
       // the whole "On the books" panel with it, flag and all. Reported below as
       // the visits being unreadable, which is exactly what it means.
-      supabaseRest<{ id: string; first_name: string | null; phone: string | null; address: string | null; city: string | null; zip: string | null; status: string }[]>(
+      readOrNull('the customer record', supabaseRest<{ id: string; first_name: string | null; phone: string | null; address: string | null; city: string | null; zip: string | null; status: string }[]>(
         'GET',
         `homeowners?select=id,first_name,phone,address,city,zip,status&email=eq.${enc}&limit=1`,
-      ).catch((err) => {
-        console.error(
-          'service-quote intake could not read the customer record:',
-          err instanceof Error ? err.message : String(err),
-        );
-        return null;
-      }),
+      )),
     ]);
 
     const homeowner = owners?.[0] ?? null;
@@ -212,8 +227,8 @@ export async function GET(request: NextRequest) {
     // address from it, and hangs every visit action off its id. Reported as a
     // read that failed, so the screen can say so rather than draw a blank form
     // for a customer we have on file.
-    const homeownerRead: 'ok' | 'unavailable' = owners === null ? 'unavailable' : 'ok';
-    const requestsRead: 'ok' | 'unavailable' = leads === null ? 'unavailable' : 'ok';
+    const homeownerRead: ReadVerdict = owners === null ? 'unavailable' : 'ok';
+    const requestsRead: ReadVerdict = leads === null ? 'unavailable' : 'ok';
 
     // Their request history, with the services each one asked for resolved.
     // The ilike prefilter above can over-match (a stored `a*@example.com` is a
@@ -252,12 +267,12 @@ export async function GET(request: NextRequest) {
     // A customer record that could not be read starts here too: with no
     // homeowner there is nothing to read visits against, so answering 'ok'
     // would say "nothing on the books" about a customer we never looked up.
-    let bookingsRead: 'ok' | 'unavailable' = owners === null ? 'unavailable' : 'ok';
+    let bookingsRead: ReadVerdict = owners === null ? 'unavailable' : 'ok';
     // The same rule for what they last had done. Every service the catalog
     // offers reads "no record" against an empty history, which is a definite
     // claim about a customer whose completions were never read - and it is the
     // line the quote is argued from.
-    let historyRead: 'ok' | 'unavailable' = owners === null ? 'unavailable' : 'ok';
+    let historyRead: ReadVerdict = owners === null ? 'unavailable' : 'ok';
     if (homeowner) {
       const [done, booked] = await Promise.all([
         // Selected on the TIMESTAMP, not on `status`. The two answer different
@@ -265,33 +280,21 @@ export async function GET(request: NextRequest) {
         // it back to 'todo' - "this needs doing again" - while the job itself
         // still happened. Narrowed to `status=eq.done`, that tap took an
         // invoiced visit out of the history and this panel read "no record".
-        supabaseRest<CompletionRow[]>(
+        readOrNull('their service history', supabaseRest<CompletionRow[]>(
           'GET',
           `homeowner_maintenance?select=task_key,status,completed_at,completed_by` +
             `&homeowner_id=eq.${homeowner.id}&completed_at=not.is.null`,
-        ).catch((err) => {
-          console.error(
-            'service-quote intake could not read their service history:',
-            err instanceof Error ? err.message : String(err),
-          );
-          return null;
-        }),
+        )),
         // The scheduling columns are hand-applied (20260815), as every migration
         // here is. A lookup is still worth answering without them.
-        supabaseRest<BookedRow[]>(
+        readOrNull('the visits on the books', supabaseRest<BookedRow[]>(
           'GET',
           `homeowner_maintenance?select=task_key,season,scheduled_start,scheduled_end,service_address` +
             `&homeowner_id=eq.${homeowner.id}&scheduled_start=not.is.null&order=scheduled_start.asc`,
-        ).catch((err) => {
-          console.error(
-            'service-quote intake could not read the visits on the books:',
-            err instanceof Error ? err.message : String(err),
-          );
-          bookingsRead = 'unavailable';
-          return [] as BookedRow[];
-        }),
+        )),
       ]);
       if (done === null) historyRead = 'unavailable';
+      if (booked === null) bookingsRead = 'unavailable';
       history = Object.fromEntries(
         [...lastDoneFor(done ?? []).entries()].map(([k, v]) => [k, { at: v.at.toISOString(), by: v.by, label: lastDoneLabel(v) }]),
       );

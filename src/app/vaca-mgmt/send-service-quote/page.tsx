@@ -13,7 +13,7 @@
  * catalog titles. Their service history ("last done Oct 2025") comes from
  * completions the checklist has been recording since launch.
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -162,6 +162,22 @@ export default function SendServiceQuotePage() {
   // Kept apart from `intake`, because a walk-in has no homeowner record until
   // the booking creates one - and completing that visit still needs the id.
   const [homeownerId, setHomeownerId] = useState<string | null>(null);
+  /**
+   * The address the customer ON SCREEN was loaded with, which is not the same
+   * thing as what is in the lookup box.
+   *
+   * The box is a free text field: it can be cleared or retyped at any point
+   * after a customer is loaded, and nothing binds it to the visits listed
+   * below or to the id the buttons fire against - the same reason `cancel`
+   * refuses to send it as the customer's address. Re-reading by the box let a
+   * refresh answer with SOMEBODY ELSE's visits under this customer's id, and
+   * swap the panel to them with nothing on screen marking the change.
+   *
+   * A ref, not state: `schedule` books a walk-in and refreshes in the same
+   * handler, and a setter's value would not be visible to the refresh it just
+   * called.
+   */
+  const loadedEmail = useRef('');
 
   /**
    * The visit this form is aimed at: the one already on the books for the
@@ -278,6 +294,46 @@ export default function SendServiceQuotePage() {
   };
 
   /**
+   * Take the customer currently on screen OFF it.
+   *
+   * Everything here was filled in from one lookup and belongs to one person -
+   * their name, their address, what they asked for, the visits they have on the
+   * books, and the id every one of "Mark completed", "Cancel visit" and "Mark
+   * handled" fires against. Spelled once so the two paths that need it cannot
+   * drift: a lookup that SUCCEEDED clears it before filling it back in, and a
+   * lookup that FAILED clears it and leaves it cleared.
+   *
+   * The failure path is the one that was missing. Every setter sat inside the
+   * `try`, above the throw, so a failed lookup left the previous customer's
+   * identity live underneath an email box showing somebody else's address -
+   * `homeownerId` still theirs, so all three buttons stayed enabled and would
+   * have cancelled or completed THEIR visit, and the visits still listed as
+   * this customer's. That is the same defect the success-path reset exists to
+   * prevent, arriving through the other door.
+   *
+   * What is deliberately kept is what the admin typed for themselves and no
+   * lookup fills: the CC line, the note, the estimate URL, the window. None of
+   * it names a customer or aims an action at one.
+   */
+  const clearCustomer = useCallback(() => {
+    setIntake(null);
+    setName('');
+    setAddress('');
+    setScope('');
+    setRequestTasks(new Set());
+    // Ticks and a sub typed for the last customer are not this one's. Both go
+    // back to following whatever this customer's visits carry.
+    setTaskEdit(null);
+    setSubEdit(null);
+    setBookings([]);
+    setHomeownerId(null);
+    // The calendar link is for the visit booked for whoever was on screen.
+    setScheduled(null);
+    // Nobody is loaded now, so there is nobody to re-read.
+    loadedEmail.current = '';
+  }, []);
+
+  /**
    * Re-read the visits on the books, and NEVER empty the list because the read
    * failed.
    *
@@ -288,11 +344,25 @@ export default function SendServiceQuotePage() {
    * worked, on the only screen a crew flag ever reaches and the only place
    * "Mark handled" exists. So it keeps what it had and says the refresh failed,
    * failing closed the way the server now does.
+   *
+   * It re-reads the customer ON SCREEN, never whatever the lookup box happens
+   * to hold. The box is free text and nothing binds it to the visits listed
+   * below or to the id these writes just fired against, so reading by it made
+   * two silent answers out of an edit nobody had submitted: emptied, the
+   * refresh returned without running at all and left the list reading as
+   * freshly re-read while "Visit cancelled - off the books" was toasted beside
+   * the visit still on it; pointed at somebody else, it replaced the panel with
+   * THEIR visits under this customer's id, with nothing marking the swap.
+   *
+   * And a refresh that cannot run - nobody loaded - fails like any other
+   * unreadable answer rather than returning quietly. One exit, so a path added
+   * later cannot skip the verdict.
    */
   const refreshBookings = useCallback(async () => {
-    if (!email.trim()) return;
     try {
-      const res = await fetch(`/api/admin/service-quote/intake?email=${encodeURIComponent(email.trim())}`);
+      const who = loadedEmail.current;
+      if (!who) throw new Error('No customer is loaded, so their visits could not be re-read');
+      const res = await fetch(`/api/admin/service-quote/intake?email=${encodeURIComponent(who)}`);
       const data: Intake = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not read this customer\'s visits');
       // A 200 that could not read the visits is the same failure wearing a
@@ -317,7 +387,7 @@ export default function SendServiceQuotePage() {
         variant: 'destructive',
       });
     }
-  }, [email]);
+  }, []);
 
   const lookup = useCallback(async () => {
     if (!email.trim()) return;
@@ -329,7 +399,6 @@ export default function SendServiceQuotePage() {
       // unchecked read would swap a real list of visits for an empty one and
       // report nothing.
       if (!res.ok) throw new Error(data.error || 'Could not load this customer.');
-      setIntake(data);
       // CLEARED FIRST, then filled back in from whatever this lookup returned.
       // These resets used to sit inside branches - the services and the scope
       // behind "this lead named some tasks", the name and address behind "there
@@ -338,14 +407,11 @@ export default function SendServiceQuotePage() {
       // written for somebody else, and "Schedule visit" booked their window
       // onto somebody else's services at somebody else's address, both of which
       // the crew dispatch and the night-before reminder are built from.
-      setName('');
-      setAddress('');
-      setScope('');
-      setRequestTasks(new Set());
-      // Ticks and a sub typed for the last customer are not this one's. Both go
-      // back to following whatever this customer's visits carry.
-      setTaskEdit(null);
-      setSubEdit(null);
+      clearCustomer();
+      setIntake(data);
+      // THIS is who is on screen now, and who a refresh re-reads - not whatever
+      // the box holds by the time one runs.
+      loadedEmail.current = email.trim();
       // This IS a different customer, so the old list cannot stay on screen -
       // its windows belong to somebody else, and "Mark completed" would aim
       // them at this homeowner. It goes, and the gap is said out loud instead.
@@ -377,21 +443,28 @@ export default function SendServiceQuotePage() {
         setAddress([data.homeowner.address, data.homeowner.city, data.homeowner.zip].filter(Boolean).join(', '));
       }
     } catch (e) {
-      // Whatever is still listed belongs to whoever was loaded last, not to the
-      // address in the box - so this customer's visits, their record, and the
-      // sub on them are all unread until somebody looks again.
+      // Whoever was loaded last comes OFF the screen, exactly as a lookup that
+      // succeeded takes them off. Left there, their visits were relabelled as
+      // this customer's "list of unknown age" and their id kept aiming
+      // "Mark completed", "Cancel visit" and "Mark handled" at their visits
+      // while the box showed a different address - the same one-customer's-work
+      // -on-another's mix-up the success-path reset was written to stop.
+      clearCustomer();
+      // And this customer's visits, their record, and the sub on them are all
+      // unread until somebody looks again.
       setBookingsRead('unavailable');
       setHomeownerRead('unavailable');
       toast({
         title: 'Lookup failed',
         description: `${e instanceof Error ? e.message : 'Could not load this customer.'} `
-          + 'Nothing on screen has been changed.',
+          + 'Whoever was on screen has been cleared off it - nothing here belongs to either '
+          + 'customer now. Look somebody up again before you send or book anything.',
         variant: 'destructive',
       });
     } finally {
       setLoading(false);
     }
-  }, [email]);
+  }, [email, clearCustomer]);
 
   const toggle = (key: string) => {
     // Ticking is the admin taking the boxes off whatever they were following -
@@ -474,6 +547,11 @@ export default function SendServiceQuotePage() {
       if (!res.ok) throw new Error(data.error || data.issues?.[0]?.message || 'Scheduling failed');
       setScheduled({ icsUrl: data.icsUrl });
       setHomeownerId(data.homeownerId);
+      // A booking loads a customer too - a walk-in booked without a lookup has
+      // no other way of becoming the one on screen - so the refresh below has
+      // somebody to re-read. Set before the await, not through a setter, which
+      // this call would not see.
+      loadedEmail.current = email.trim();
       await refreshBookings();
       // Back to following the visit. The box and the ticks now show what the
       // row actually holds - which is the point when a write did NOT land: the
@@ -769,10 +847,20 @@ export default function SendServiceQuotePage() {
             // as - so without this the screen shows a blank name, a blank
             // address and three greyed-out buttons for a customer we have on
             // file, and gives no reason for any of it.
+            // What it says about those buttons is read off the same value that
+            // GATES them, rather than asserted beside it. Stated flatly, the
+            // claim was false wherever an id survived this state - a lookup
+            // that failed used to leave the last customer's, and a booking made
+            // after one still hands back a real one - and a banner promising a
+            // safety the screen does not have is worse than no banner at all.
             <p className="text-xs font-medium text-destructive" data-testid="sq-homeowner-unread">
               Their customer record could NOT be read, so this is not a new customer. Their name and
-              address are not filled in from it, nothing below can be marked completed, cancelled or
-              handled, and the visits they have on the books are unknown. Look them up again.
+              address are not filled in from it, and the visits they have on the books are unknown.
+              {homeownerId
+                ? ' Marking anything below completed, cancelled or handled still acts on the customer'
+                  + ' record this page is holding - make sure that is the right one first.'
+                : ' Nothing below can be marked completed, cancelled or handled.'}
+              {' '}Look them up again.
             </p>
           )}
 

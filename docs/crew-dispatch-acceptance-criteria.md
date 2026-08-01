@@ -274,6 +274,23 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     Their **past requests** answer `requestsRead`, because an empty list reads as "they have never asked us for anything" - and the scope sentence the quote mails and the services it is ticked for are both pre-filled from it.
     What they have had **done** answers `historyRead`, because an empty history prints "no record" against every service on the page, which is a definite claim about completions nobody read, and "you last had this done 14 months ago" is the line the quote is argued from. Those rows read "not read" instead.
     Each is reported by the intake route as its own verdict rather than folded into a neighbour's, and each is stated on the screen where it is acted on.
+    That rule is spelled **once** on the route, as `readOrNull(what, read)`: hand back `null` when a read failed, never the empty answer, and say which read it was on the way past.
+    Four hand-written copies of it had nothing to object with when a fifth read swallowed itself to `[]`, and this is the rule the whole answer turns on.
+104. A lookup that **failed** takes the previous customer off the screen, exactly as one that succeeded does.
+    Both paths go through one `clearCustomer`, because the reset used to live inline on the success path only - every setter inside the `try`, above the throw.
+    So a failed lookup left the last customer's `homeownerId` live under an email box showing somebody else's address, and "Mark completed", "Cancel visit" and "Mark handled" are gated on that id, not on the box: all three stayed enabled and fired against **their** visit.
+    Their visits stayed listed too, relabelled by the round-102 panel as this customer's "list of unknown age".
+    That is the same one-customer's-work-on-another's mix-up the success-path reset was written to stop, arriving through the other door.
+    What is deliberately kept is what the admin typed and no lookup fills - the CC line, the note, the estimate URL, the window - none of which names a customer or aims an action at one.
+    The failure toast says the screen has been cleared rather than that nothing on it changed.
+105. `sq-homeowner-unread` reads its claim about those buttons off the **same value that gates them**, rather than asserting it alongside.
+    Stated flatly, "nothing below can be marked completed, cancelled or handled" was false wherever an id survived that state - the failed lookup above, and a booking made after a failed record read, which still hands back a real id - and a banner promising a safety the screen does not have is worse than no banner.
+106. The refresh re-reads the customer **on screen**, never whatever the lookup box holds, and a refresh that cannot run is a failed read rather than a silent no-op.
+    `refreshBookings` read by the box, which is free text bound to nothing below it, while `cancel`, `complete` and `markHandled` all fire against `homeownerId` and then toast success.
+    That mismatch had two silent answers in it: **emptied**, the refresh returned without reading at all, so "Visit cancelled - off the books, and the reminder is pulled" appeared beside the visit still listed as booked with no unread marker anywhere; **retyped**, it replaced the panel with somebody else's visits under this customer's id, with nothing on screen marking the swap.
+    So the address the customer was loaded with is recorded when they are loaded - by a lookup, or by the booking that creates a walk-in - and cleared with them, and the refresh reads by that.
+    It is a ref rather than state because `schedule` books and refreshes inside one handler, where a setter's value would not be visible to the call it makes.
+    With nobody loaded there is nobody to re-read, and that fails down the same path as any other unreadable answer: one exit, so a path added later cannot skip the verdict.
 
 ## Retiring a visit
 
