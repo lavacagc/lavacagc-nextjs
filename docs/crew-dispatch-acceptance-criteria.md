@@ -19,6 +19,8 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
    The organizer is **derived from the address the dispatch is sent from** (`HOME_CARE_FROM`), never written out again.
    Gmail and Outlook check that the sender is entitled to act as the organizer before rendering their own RSVP control; on a mismatch they fall back to offering the file as a plain download, which is exactly what `METHOD:REQUEST` was chosen to avoid.
 3. A crew file carries one `ATTENDEE` line per recipient, with `RSVP=TRUE`.
+   The `CN` is a **parameter** value, so it is DQUOTE-wrapped per RFC 5545 §3.1 rather than backslash-escaped the way a TEXT value is.
+   `CN=Ramirez\, Jr` is read as two parameters or rejected outright, which would break the invite for exactly the person whose name has a comma in it; a quoted value has no escape of its own, so an embedded DQUOTE is dropped.
 4. A crew file carries a `SEQUENCE`, and it **actually counts up**: `visit_dispatch.ics_sequence` is incremented whenever a visit that has already been dispatched issues another calendar message.
    A client applies a re-send to the event it holds only when the number is higher than the one it stored, so a re-dispatch or a retraction at the same number can be discarded as a duplicate.
 5. A crew file carries **both** owner alarms: 7:30pm the night before to confirm, and 7:00am on the day to text the customer.
@@ -42,10 +44,17 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 20. The send passes **no `preferenceStream`**, so a marketing opt-out can never suppress a dispatch.
 21. One email per recipient, never one email to several: the confirm link identifies the person, so a shared message would record the wrong one as having confirmed.
 22. The `.ics` rides as an attachment named `visit.ics`.
+    Both crew calendar messages - the invite and the `METHOD:CANCEL` that withdraws it - go out through **one** `sendCrewMail` envelope, differing only in `category`.
+    The `campaign` shape is what the `email_log` audit reads and what records the attachment name, and the content type is what makes the invite render as a calendar card, so two copies of those ten lines is two chances for one of them to rot.
 
 ## Attachments in the send chokepoint
 
 23. `sendTrackedEmail` accepts `attachments` and base64-encodes the content, because that is the only shape Resend's JSON API takes.
+23a. The `.ics` is **sent as a calendar part**: `text/calendar; charset=utf-8; method=REQUEST` on the invite, `; method=CANCEL` on the retraction.
+    Gmail and Outlook decide whether to render their own "Add to calendar" / RSVP card off the MIME **part**, not off the bytes - an attachment with no declared type is offered as a plain file download, which is the desktop-Gmail download-and-import path the owner rejected and the exact outcome AC1's `METHOD:REQUEST` was chosen to avoid.
+    Without it that decision is inert, which is how this survived ten rounds: AC1 and AC2 assert what the FILE contains, and nothing asserted how it was sent.
+    The type is read off the file itself (`icsContentType`), so the header can never disagree with the body - a CANCEL announced as a REQUEST is a retraction a client is entitled to ignore, leaving the visit and its 7:00am "text the customer" alarm exactly where they were.
+    `contentType` is optional on `TrackedEmailBase.attachments` and spread rather than set, so every send that does not ask for one produces exactly the request it produced before.
 24. Attachment **bytes are never written to `email_log`**. Only the filenames are recorded, on the `campaign` field.
 25. A send with no attachments produces exactly the request it produced before.
 
@@ -159,6 +168,9 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 82. A **retired** token gets its own answer - "You are no longer on this visit", with "please don't text the customer about it" - never the generic "this link is not valid", and `POST /api/crew/confirm` refuses it with `410`.
     This is the mitigation for the gap AC81 accepts: the event is still on their calendar and its 7:00am alarm will still fire, so this page is where somebody acting on that alarm learns the visit is not theirs *before* they text a customer about a job they are not going to.
     An unknown token keeps the generic answer, so AC44 still holds and live tokens cannot be enumerated.
+    The **write re-asserts it too**: the PATCH filters `status=neq.retired` and treats zero returned rows as the same answer.
+    The status check above it reads a snapshot, and an admin re-dispatching the window in the gap retires this row - a filter on the id alone would write `confirmed` straight back over it, which is the precise failure the `retired` status exists to prevent.
+    The same shape as the escalation's claim, which re-asserts `is.null` for the same reason (AC57).
 
 ## Escalation
 
@@ -170,6 +182,8 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 55. A visit is skipped **only** when an assignment reads `confirmed`.
     A `flagged` assignment does **not** count as answered: a flag says this visit has a problem, and the customer is still told at 7:30pm that we are coming, so it is the one visit that most needs chasing.
     Both stages carry the flag note in the message, so the owner sees *what* is wrong rather than only that something is.
+    The note is never **traded away** for another line: it and the dispatch line are separate entries in the message, not branches of one ternary.
+    They were branches, and `neverDispatched` outranked the flag - so a visit whose dispatch email went out but whose write-back failed (`recorded: 'unavailable'`) dropped the highest-signal content in the message in favour of a sentence that was itself untrue.
     The chase stops when the office clears the flag from the admin list (76-78), not when the crew taps something.
 56. A stage that has already stamped its column is skipped, making a cron retry a no-op.
 57. The stamp is claimed **before** the send, re-asserting `is.null`, so a concurrent run cannot double-send.
@@ -178,18 +192,28 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     Zero rows and no error is the lost race, and skipping is right; a PATCH that failed is a visit nobody will be told about, so it is logged, pushed into `failed`, and turns the run's `ok` false.
     Folding the two together answered `ok: true` with the visit counted under `already_chased` - silence from the last line of defence before the 7:30pm customer reminder, in the one cron nobody watches.
 59. A visit with no dispatch row at all is chased *harder*, not skipped - nobody was ever told - and a row is created so the stamp has somewhere to live.
+    "No dispatch was ever sent" is said only when there is **nobody it could have been sent to**.
+    A row carrying live assignments but no `dispatched_at` is a send whose write-back failed, not a crew nobody told, and stating the second would send the owner chasing people who already have the visit - so that case says the visit does not *read* as dispatched, names who it went to, and says the record may simply not show it.
 60. If that row cannot be created, the visit is skipped rather than messaged, so a failure cannot produce repeat sends.
 61. The message names the customer, the window, the address, the services and the customer's phone number.
 62. The 6pm message says the customer is told in about 90 minutes; the 5pm one says tonight.
 63. Telegram HTML is escaped, so an address containing `&` or `<` cannot break the message.
 64. `?dryRun=1` reports who would be chased and stamps nothing.
-65. A run that could not deliver reports `ok: false` with `degraded: 'escalation_send_failed'`.
+65. A run that could not do its whole job reports `ok: false` and names which part, in a `degraded` list.
+    A stage that told nobody is `escalation_send_failed`.
+    A read that hit its own ceiling is `visit_read_truncated`: `MAX_PER_RUN` caps **task** rows, not visits, so a busy day's last visits are simply not in the list - and reporting `visits: byVisit.size` with a clean `ok: true` is the same silence one step earlier, from the last line of defence before the 7:30pm customer reminder.
 
 ## Flagging a problem reaches somebody
 
 66. `POST /api/crew/confirm` with `action=flag` Telegrams the operations chat **immediately**, naming who flagged it, the customer, the date and window, the address and the sub, and carrying the note verbatim.
     Everything interpolated is escaped for Telegram's HTML mode.
 67. The flag is written **before** the Telegram is attempted, and a failed send is logged rather than returned as an error: the crew member's tap records either way, and the escalation still carries the flag, so a Telegram outage cannot bury the problem.
+    The screen then says which of those two happened.
+    The route answers `notified`, and only `sent` and `duplicate` mean somebody has the message; anything else - Telegram down, no chat configured, an answer this screen does not recognise - renders "we could NOT get the alert through to the office", with (201) 212-4917 as a tap-to-call link.
+    It used to render "Flagged. The office has it." either way, off a field the route computes, logs and hands back.
+    That is the worst place in the feature for it: a colleague who has already confirmed silences both chases (AC55), so with Telegram down there is no later message at all, and the person standing at the house - told the office had it - was the only one who could have closed the gap.
+    No silent retry: it delays the screen and still needs this message for when the retry also fails.
+    `duplicate` counts as told, because a duplicate is a note already raised (AC74) and the tap that actually produced the alert is the one that heard whether it landed.
 74. Only the **transition into** a flag alerts, judged against the row as it was before the write.
     This route is public and unthrottled and the token rides in an email that can be forwarded, so alerting on every POST would let one link drive unlimited messages into the operations chat - and an honest double-tap would tell the owner the same thing twice.
     A changed note is a new thing to say, and does alert.

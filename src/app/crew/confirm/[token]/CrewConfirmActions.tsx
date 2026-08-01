@@ -15,6 +15,22 @@ import { useState } from 'react';
 
 type Status = 'sent' | 'confirmed' | 'flagged';
 
+/**
+ * Whether the office was actually TOLD about a flag tapped just now.
+ *
+ * The route answers `notified`, and only 'sent' and 'duplicate' mean somebody
+ * has the message. Anything else - Telegram down, no chat configured, an
+ * unrecognised answer from an older deploy - means the flag is recorded and
+ * nobody has read it, and the person standing at the house is the only one in a
+ * position to close that gap. It cannot be reported as "the office has it":
+ * when a colleague has already confirmed, both the 5pm and 6pm chases stay
+ * quiet, so there may be no later message about this visit at all.
+ *
+ * 'unknown' is the page as it loaded - a flag raised on some earlier visit to
+ * this link, whose alert this screen never saw the outcome of.
+ */
+type FlagAlert = 'unknown' | 'reached' | 'unreached';
+
 export default function CrewConfirmActions({
   token,
   initialStatus,
@@ -25,6 +41,7 @@ export default function CrewConfirmActions({
   subName: string | null;
 }) {
   const [status, setStatus] = useState<Status>(initialStatus);
+  const [flagAlert, setFlagAlert] = useState<FlagAlert>('unknown');
   const [busy, setBusy] = useState<null | 'confirm' | 'flag'>(null);
   const [showNote, setShowNote] = useState(false);
   const [note, setNote] = useState('');
@@ -41,6 +58,9 @@ export default function CrewConfirmActions({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not save that');
+      if (action === 'flag') {
+        setFlagAlert(data.notified === 'sent' || data.notified === 'duplicate' ? 'reached' : 'unreached');
+      }
       setStatus(action === 'confirm' ? 'confirmed' : 'flagged');
       setShowNote(false);
     } catch (e) {
@@ -63,7 +83,17 @@ export default function CrewConfirmActions({
   }
 
   if (status === 'flagged') {
-    return (
+    return flagAlert === 'unreached' ? (
+      <p
+        data-testid="crew-flag-unreached"
+        className="mt-6 rounded-xl bg-[#FEF2F2] px-4 py-3 text-sm font-medium text-[#991B1B]"
+      >
+        Flagged - but we could NOT get the alert through to the office. What you typed is written
+        down, and nobody has been told it. Please call{' '}
+        <a className="font-bold underline" href="tel:2012124917">(201) 212-4917</a> now - the
+        customer is still told tonight that we are coming.
+      </p>
+    ) : (
       <p
         data-testid="crew-flagged"
         className="mt-6 rounded-xl bg-[#FFFBEB] px-4 py-3 text-sm font-medium text-[#92400E]"

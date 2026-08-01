@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { buildIcs, googleCalendarUrl, ICS_ORGANIZER } from '../src/lib/homecare/ics';
+import { buildIcs, googleCalendarUrl, icsContentType, ICS_ORGANIZER } from '../src/lib/homecare/ics';
 import {
   buildDispatchEmail, buildDispatchCancelledEmail, dispatchSubject, ACTION_PREFIX, CANCELLED_PREFIX,
 } from '../src/lib/homecare/dispatchEmail';
@@ -80,7 +80,23 @@ test('AC3 one ATTENDEE line per recipient, RSVP requested', () => {
   expect(lines).toHaveLength(2);
   expect(lines[0]).toContain('RSVP=TRUE');
   expect(lines[0]).toContain('mailto:alex@lavacagc.com');
-  expect(lines[1]).toContain('CN=Veronica');
+  expect(lines[1]).toContain('CN="Veronica"');
+});
+
+test('AC3 a CN is a quoted PARAMETER value, not backslash-escaped TEXT', () => {
+  // RFC 5545 §3.1: parameter values are not escaped the way TEXT values are.
+  // `CN=Ramirez\, Jr` is read as two parameters or rejected outright, which
+  // breaks the invite for exactly the person whose name has a comma in it.
+  const out = ics({ attendees: [{ name: 'Ramirez, Jr', email: 'sub@example.com' }] });
+  const line = out.split('\r\n').find((l) => l.startsWith('ATTENDEE'))!;
+  expect(line).toContain('CN="Ramirez, Jr"');
+  expect(line).not.toContain('Ramirez\\,');
+  // A quoted value has no escape of its own, so an embedded DQUOTE has to come
+  // out rather than be smuggled in.
+  const quoted = ics({ attendees: [{ name: 'Al "Big Al" Ramirez', email: 'sub@example.com' }] });
+  const quotedLine = quoted.split('\r\n').find((l) => l.startsWith('ATTENDEE'))!;
+  expect(quotedLine).toContain('CN="Al Big Al Ramirez"');
+  expect(quotedLine.split(':mailto:')[0].split('CN=')[1]).toBe('"Al Big Al Ramirez"');
 });
 
 test('AC2 the ORGANIZER is the address the dispatch is actually sent from', () => {
@@ -256,14 +272,59 @@ test('AC20 the dispatch send passes no preferenceStream', () => {
 test('AC21 the dispatch is sent per recipient, inside the assignment loop', () => {
   const src = read('src/lib/homecare/dispatch.ts');
   const loop = src.slice(src.indexOf('for (const assignment of assignments)'));
-  expect(loop).toContain('sendTrackedEmail');
-  expect(loop).toContain('to: assignment.email');
+  expect(loop).toContain('sendCrewMail');
+  expect(loop).toContain('assignment,');
   expect(loop).toContain('confirm/${assignment.confirm_token}');
+  // ...and the envelope it goes out in is addressed to that one person.
+  const envelope = src.slice(src.indexOf('function sendCrewMail'));
+  expect(envelope).toContain('to: assignment.email');
 });
 
 test('AC22 the calendar file rides as an attachment named visit.ics', () => {
   const src = read('src/lib/homecare/dispatch.ts');
-  expect(src).toContain("attachments: [{ filename: 'visit.ics', content: ics }]");
+  expect(src).toContain(
+    "attachments: [{ filename: 'visit.ics', content: ics, contentType: icsContentType(ics) }]",
+  );
+});
+
+test('AC22 both crew sends spell the envelope once, so the audit shape cannot drift', () => {
+  // The campaign blob is what the email_log audit reads and what records the
+  // attachment name, and the content type is what makes the invite render as a
+  // calendar card. Two copies of that is two chances for one of them to rot.
+  const src = code('src/lib/homecare/dispatch.ts');
+  expect(src.match(/sendTrackedEmail\(\{/g) ?? []).toHaveLength(1);
+  expect(src.match(/sendCrewMail\(\{/g) ?? []).toHaveLength(2);
+  const envelope = src.slice(src.indexOf('function sendCrewMail'));
+  expect(envelope).toContain('campaign: { visit_start: visitKey(visitStart), dispatch_id: dispatchId }');
+  expect(envelope).toContain('replyTo: SERVICE_REPLY_TO.join');
+  // Only the category differs between the invite and the retraction.
+  expect(envelope).toContain('category,');
+});
+
+test('AC23a the .ics is SENT as a calendar part, with the method its body declares', () => {
+  // Gmail and Outlook render their own "Add to calendar" / RSVP card off the
+  // MIME PART, not off the bytes: an attachment with no declared type is
+  // offered as a plain file download, which is the exact outcome METHOD:REQUEST
+  // was chosen over METHOD:PUBLISH to avoid. Without this the whole decision is
+  // inert - which is how it survived ten rounds, since AC1 only ever asserted
+  // what the FILE contains.
+  expect(icsContentType(ics())).toBe('text/calendar; charset=utf-8; method=REQUEST');
+  // And a retraction is announced as what it is. A CANCEL sent as a REQUEST is
+  // one a client is entitled to ignore, leaving the visit and its 7:00am "text
+  // the customer" alarm exactly where they were.
+  expect(icsContentType(ics({ cancel: true, sequence: 1 })))
+    .toBe('text/calendar; charset=utf-8; method=CANCEL');
+  // Read off the file, never written out beside it, so the header cannot
+  // disagree with the body.
+  expect(icsContentType('BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n')).toBe('text/calendar; charset=utf-8');
+});
+
+test('AC23a the chokepoint passes a content type through, and omits it when unasked', () => {
+  const src = read('src/lib/notify/sendEmail.ts');
+  expect(src).toContain('contentType?: string');
+  // Spread, so every existing attachment-carrying send produces exactly the
+  // request it produced before.
+  expect(src).toContain("...(a.contentType ? { contentType: a.contentType } : {})");
 });
 
 test('AC22 the dispatch replies to the service addresses', () => {
@@ -772,7 +833,22 @@ test('AC82 a retired token says so plainly, and cannot answer', () => {
   expect(route).toContain('{ status: 410 }');
   // Refused before the write, or it would satisfy the escalation for people
   // who have not answered.
-  expect(route.indexOf("assignment.status === 'retired'")).toBeLessThan(route.indexOf("supabaseRest('PATCH'"));
+  expect(route.indexOf("assignment.status === 'retired'"))
+    .toBeLessThan(route.indexOf('visit_dispatch_recipients?id=eq.'));
+});
+
+test('AC82 the write re-asserts it, so a re-dispatch mid-request cannot be overwritten', () => {
+  // The check above reads a snapshot. An admin re-dispatching this window in
+  // the gap retires the row, and a PATCH filtered on the id alone would write
+  // 'confirmed' straight back over it: the escalation would then count an
+  // answer from somebody who is not going and both chases would go quiet for a
+  // visit the people actually going have never answered. The same shape as the
+  // escalation's claim, which re-asserts is.null for the same reason.
+  const route = read('src/app/api/crew/confirm/route.ts');
+  expect(route).toContain('`visit_dispatch_recipients?id=eq.${assignment.id}&status=neq.retired`');
+  // Zero rows back IS the retired answer, not a confirmation of nothing.
+  expect(route).toContain('if (updated.length === 0) return retiredAnswer();');
+  expect(route.indexOf('status=neq.retired')).toBeLessThan(route.indexOf('if (updated.length === 0)'));
 });
 
 test('AC81 the status CHECK allows retired, and the migration stays re-runnable', () => {
@@ -1011,6 +1087,22 @@ test('AC55 both stages carry the flag note, so the owner sees what is wrong', ()
   expect(src).toContain('escapeTelegram(a.note)');
 });
 
+test('AC55 the flag note is never traded away for the never-dispatched warning', () => {
+  // They used to be branches of one ternary, so a visit whose dispatch email
+  // went out but whose write-back failed (`recorded: 'unavailable'`) read as
+  // never dispatched AND silently dropped the flag - the highest-signal content
+  // in the message.
+  const src = cron();
+  const body = src.slice(src.indexOf('const dispatchLine = '), src.indexOf('const outcome = await sendTelegramMessage'));
+  expect(body).toContain('dispatchLine,');
+  expect(body).toContain('...flagLines,');
+  // And "no dispatch was ever sent" is only said when there is nobody it could
+  // have been sent to: assignments with no stamp is a write that failed, not a
+  // crew nobody told.
+  expect(src).toContain('? mine.length > 0');
+  expect(src).toContain('This visit does not read as dispatched');
+});
+
 test('AC56 a stage already stamped is skipped, making a retry a no-op', () => {
   expect(cron()).toContain('if (dispatch && dispatch[stampColumn])');
 });
@@ -1032,8 +1124,10 @@ test('AC88 a claim that threw is not a lost race, and never reports ok', () => {
   // Zero rows and no error is still the lost race, and still a correct skip.
   expect(src).toContain('if (claimed.length === 0) {\n        alreadyChased += 1;');
   expect(src).not.toContain('.catch(() => [] as VisitDispatchRow[])');
-  // ...which turns the run's own verdict, since `failed` is what ok reads.
-  expect(src).toContain('ok: failed.length === 0');
+  // ...which turns the run's own verdict, since a failed send is one of the
+  // things `degraded` collects and `ok` is read straight off that.
+  expect(src).toContain("...(failed.length > 0 ? ['escalation_send_failed'] : [])");
+  expect(src).toContain('ok: degraded.length === 0');
 });
 
 test('AC58 a failed send releases its stamp so a re-hit can still get through', () => {
@@ -1060,7 +1154,9 @@ test('AC63 Telegram HTML is escaped', () => {
   expect(escapeTelegram('Ben & Co <script>')).toBe('Ben &amp; Co &lt;script&gt;');
   const src = cron();
   // Every interpolation into the message body goes through the escaper.
-  const message = src.slice(src.indexOf('const text = ['), src.indexOf('const outcome = await sendTelegramMessage'));
+  // From the first line built for the body, not from `const text` - the
+  // dispatch line is assembled just above it and interpolates just as freely.
+  const message = src.slice(src.indexOf('const dispatchLine = '), src.indexOf('const outcome = await sendTelegramMessage'));
   for (const match of message.matchAll(/\$\{(?!escapeTelegram)([a-zA-Z][\w.?]*)\}/g)) {
     throw new Error(`unescaped interpolation in the Telegram message: ${match[1]}`);
   }
@@ -1074,8 +1170,21 @@ test('AC64 dryRun reports who would be chased and stamps nothing', () => {
 
 test('AC65 a run that could not deliver reports itself failed', () => {
   const src = cron();
-  expect(src).toContain('ok: failed.length === 0');
-  expect(src).toContain("degraded: 'escalation_send_failed'");
+  expect(src).toContain('ok: degraded.length === 0');
+  expect(src).toContain("'escalation_send_failed'");
+  expect(src).toContain('...(degraded.length > 0 ? { degraded } : {})');
+});
+
+test('AC65 a read that hit its own ceiling says what it dropped, rather than a clean count', () => {
+  // MAX_PER_RUN caps TASK rows, and the response reports `visits: byVisit.size`
+  // - so a day whose bookings exceed it loses its tail from the last line of
+  // defence before the 7:30pm customer reminder, and answered ok:true anyway.
+  const src = cron();
+  expect(src).toContain('const truncated = visits.length === MAX_PER_RUN;');
+  expect(src).toContain("...(truncated ? ['visit_read_truncated'] : [])");
+  expect(src).toContain('will not be chased');
+  // ...and it turns the run's verdict, exactly as a failed send does.
+  expect(src).toContain('ok: degraded.length === 0');
 });
 
 /* ── flagging reaches somebody (AC 66-67) ────────────────────────────────── */
@@ -1115,6 +1224,27 @@ test('AC67 the flag is recorded before the Telegram, and a failed send is logged
   const after = src.slice(src.indexOf('const notified = '));
   expect(after).toContain('console.error');
   expect(after).toContain("return NextResponse.json({ status: 'flagged', notified });");
+});
+
+test('AC67 the flag screen says whether the office was actually told', () => {
+  // The route computes `notified` and the screen used to throw it away, so a
+  // flag nobody received still rendered "Flagged. The office has it." With a
+  // colleague already confirmed, both chases stay quiet and that screen is the
+  // last thing standing between the problem and nobody hearing about it.
+  const actions = read('src/app/crew/confirm/[token]/CrewConfirmActions.tsx');
+  expect(actions).toContain(
+    "setFlagAlert(data.notified === 'sent' || data.notified === 'duplicate' ? 'reached' : 'unreached');",
+  );
+  expect(actions).toContain("flagAlert === 'unreached'");
+  expect(actions).toContain('could NOT get the alert through to the office');
+  // ...and it gives them the number, because they are the only one who can
+  // close the gap from where they are standing.
+  expect(actions).toContain('(201) 212-4917');
+  expect(actions).toContain('href="tel:2012124917"');
+  // The record is never conditional on the alert: the flag is written by the
+  // route before the Telegram is attempted, and the screen still reports it as
+  // flagged either way.
+  expect(actions).toContain("setStatus(action === 'confirm' ? 'confirmed' : 'flagged');");
 });
 
 test('AC74 only the transition into a flag alerts, so one token cannot flood the chat', () => {

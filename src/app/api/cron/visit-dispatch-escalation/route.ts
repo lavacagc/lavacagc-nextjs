@@ -73,6 +73,18 @@ export async function GET(request: NextRequest) {
         `&order=scheduled_start.asc&limit=${MAX_PER_RUN}`,
     )) ?? [];
 
+    // The cap is on TASK rows, and a visit is one or more of them, so a full
+    // page is "there may be more visits tomorrow than this run has seen" - and
+    // the ones it has not seen are the ones nothing else will chase before the
+    // 7:30pm customer reminder.
+    const truncated = visits.length === MAX_PER_RUN;
+    if (truncated) {
+      console.error(
+        `visit-dispatch-escalation: read the maximum ${MAX_PER_RUN} task rows for ${startUtc.toISOString()} - ` +
+          'later visits in this window were NOT looked at and will not be chased.',
+      );
+    }
+
     if (visits.length === 0) {
       return NextResponse.json({
         ok: true, stage, window: { from: startUtc, to: endUtc }, visits: 0, chased: 0, dryRun,
@@ -224,6 +236,26 @@ export async function GET(request: NextRequest) {
         `⚠️ <b>${escapeTelegram(a.name || a.email)} flagged a problem</b>` +
         `${a.note ? `: ${escapeTelegram(a.note)}` : ' (no note).'}`);
 
+      // The flag note is the highest-signal thing in this message and is never
+      // traded away for one of the other lines: "somebody said the sub
+      // cancelled" is what the reader has to act on, whatever else is also true
+      // of the row.
+      //
+      // And a row that does not read as dispatched is two different events. No
+      // assignments means nobody was ever told. Assignments with no
+      // `dispatched_at` means the email went out and the write-back failed
+      // (`recorded: 'unavailable'`) - stating flatly that nobody was told would
+      // send the owner chasing people who already have the visit.
+      const dispatchLine = neverDispatched
+        ? mine.length > 0
+          ? `⚠️ <b>This visit does not read as dispatched</b> - it was sent to ${escapeTelegram(sentTo)}, `
+            + 'but the record does not show it. Either they were never told or the send could not be '
+            + 'written down. Check with them.'
+          : '⚠️ <b>No dispatch was ever sent for this visit</b> - nobody has been told to go.'
+        : flagLines.length > 0
+          ? ''
+          : `Sent to ${escapeTelegram(sentTo || 'the crew')}, no answer yet.`;
+
       const text = [
         stage === 'escalate'
           ? '🔴 <b>Still unconfirmed</b>'
@@ -234,11 +266,8 @@ export async function GET(request: NextRequest) {
         `🧰 ${escapeTelegram(services.join(', '))}`,
         owner?.phone ? `📱 <code>${escapeTelegram(owner.phone)}</code>` : '',
         '',
-        neverDispatched
-          ? '⚠️ <b>No dispatch was ever sent for this visit</b> - nobody has been told to go.'
-          : flagLines.length > 0
-            ? flagLines.join('\n')
-            : `Sent to ${escapeTelegram(sentTo || 'the crew')}, no answer yet.`,
+        dispatchLine,
+        ...flagLines,
         stage === 'escalate'
           ? 'The customer is told we are coming at 7:30pm - about 90 minutes from now.'
           : 'The customer is told we are coming at 7:30pm tonight.',
@@ -265,11 +294,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // A run that could not do its whole job says which part it could not do,
+    // rather than leaving a console line in a cron nobody watches. A stage that
+    // told nobody is one; a read that hit its own ceiling is the other - the
+    // limit counts TASK rows, so a busy day's last visits are simply not in the
+    // list, and reporting a clean `visits:` count for a truncated read is the
+    // same silence, one step earlier.
+    const degraded = [
+      ...(failed.length > 0 ? ['escalation_send_failed'] : []),
+      ...(truncated ? ['visit_read_truncated'] : []),
+    ];
+
     return NextResponse.json({
-      // A stage that could not tell anyone is a failed run and says so, rather
-      // than leaving a console line in a cron nobody watches.
-      ok: failed.length === 0,
-      ...(failed.length > 0 ? { degraded: 'escalation_send_failed' } : {}),
+      ok: degraded.length === 0,
+      ...(degraded.length > 0 ? { degraded } : {}),
       stage,
       window: { from: startUtc, to: endUtc },
       visits: byVisit.size,

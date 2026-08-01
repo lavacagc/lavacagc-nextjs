@@ -18,7 +18,7 @@ import { newToken } from '@/lib/homecare/homeowners';
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { HOME_CARE_FROM } from '@/lib/notify/sendHomeCareEmails';
 import { SERVICE_REPLY_TO } from '@/lib/homecare/serviceEmails';
-import { buildIcs, googleCalendarUrl } from '@/lib/homecare/ics';
+import { buildIcs, googleCalendarUrl, icsContentType } from '@/lib/homecare/ics';
 import { buildDispatchEmail, buildDispatchCancelledEmail } from '@/lib/homecare/dispatchEmail';
 import { visitKey, visitDateLabel, visitTimeWindow, visitEndsAt } from '@/lib/homecare/visitSchedule';
 
@@ -800,6 +800,50 @@ export async function clearVisitDispatch(
 }
 
 /**
+ * The one envelope every crew calendar message rides in.
+ *
+ * Spelled once because the parts that are not obvious are the parts that must
+ * not drift: the `campaign` shape is what the email_log audit reads and what
+ * records the attachment name, and the .ics has to declare its own MIME type or
+ * Gmail and Outlook offer it as a plain download instead of the "Add to
+ * calendar" / RSVP card the whole METHOD:REQUEST decision exists for. The type
+ * is read off the file, so an invite and the retraction that withdraws it are
+ * each announced as what they actually are.
+ *
+ * Only `category` differs between the two callers, which is exactly why this is
+ * one function taking it as an argument rather than two copies of ten lines.
+ */
+function sendCrewMail(args: {
+  category: 'crew_dispatch' | 'crew_dispatch_cancelled';
+  assignment: Pick<DispatchAssignment, 'email' | 'name'>;
+  dispatchId: string;
+  visitStart: Date;
+  homeownerId: string;
+  subject: string;
+  html: string;
+  text: string;
+  ics: string;
+}) {
+  const { category, assignment, dispatchId, visitStart, homeownerId, subject, html, text, ics } = args;
+  // No preferenceStream, on either message: a marketing opt-out must never be
+  // able to suppress the email that tells someone where to be tomorrow, nor the
+  // one that tells them not to go.
+  return sendTrackedEmail({
+    from: HOME_CARE_FROM,
+    to: assignment.email,
+    replyTo: SERVICE_REPLY_TO.join(', '),
+    subject,
+    html,
+    text,
+    category,
+    toName: assignment.name,
+    homeownerId,
+    campaign: { visit_start: visitKey(visitStart), dispatch_id: dispatchId },
+    attachments: [{ filename: 'visit.ics', content: ics, contentType: icsContentType(ics) }],
+  });
+}
+
+/**
  * Tell everyone who was sent this visit that it is off, and answer with the
  * addresses that could NOT be told.
  *
@@ -853,18 +897,16 @@ async function sendDispatchRetraction(args: {
       attendees: [{ name: assignment.name, email: assignment.email }],
     });
 
-    const res = await sendTrackedEmail({
-      from: HOME_CARE_FROM,
-      to: assignment.email,
-      replyTo: SERVICE_REPLY_TO.join(', '),
+    const res = await sendCrewMail({
+      category: 'crew_dispatch_cancelled',
+      assignment,
+      dispatchId: dispatch.id,
+      visitStart,
+      homeownerId,
       subject,
       html,
       text,
-      category: 'crew_dispatch_cancelled',
-      toName: assignment.name,
-      homeownerId,
-      campaign: { visit_start: visitKey(visitStart), dispatch_id: dispatch.id },
-      attachments: [{ filename: 'visit.ics', content: ics }],
+      ics,
     });
 
     if (res.status !== 'sent') {
@@ -1028,20 +1070,16 @@ export async function sendVisitDispatch(args: SendDispatchArgs): Promise<SendDis
       calendarUrl,
     });
 
-    // No preferenceStream: a marketing opt-out must never be able to suppress
-    // the email that tells someone where to be tomorrow.
-    const res = await sendTrackedEmail({
-      from: HOME_CARE_FROM,
-      to: assignment.email,
-      replyTo: SERVICE_REPLY_TO.join(', '),
+    const res = await sendCrewMail({
+      category: 'crew_dispatch',
+      assignment,
+      dispatchId: dispatch.id,
+      visitStart,
+      homeownerId,
       subject,
       html,
       text,
-      category: 'crew_dispatch',
-      toName: assignment.name,
-      homeownerId,
-      campaign: { visit_start: visitKey(visitStart), dispatch_id: dispatch.id },
-      attachments: [{ filename: 'visit.ics', content: ics }],
+      ics,
     });
 
     if (res.status === 'sent') sentTo.push(assignment.email);

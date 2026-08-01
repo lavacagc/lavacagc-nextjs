@@ -77,28 +77,43 @@ export async function POST(request: NextRequest) {
   // sitting on their calendar, and the one thing they must learn before they
   // text the customer is that the visit is not theirs. Answering would be
   // worse - it would satisfy the escalation for people who have not answered.
-  if (assignment.status === 'retired') {
-    return NextResponse.json({
-      status: 'retired',
-      error: 'You are no longer on this visit - there is nothing to confirm.',
-    }, { status: 410 });
-  }
+  if (assignment.status === 'retired') return retiredAnswer();
 
   const now = new Date().toISOString();
+  let updated: { id: string }[];
   try {
-    await supabaseRest('PATCH', `visit_dispatch_recipients?id=eq.${assignment.id}`, {
-      status: action === 'confirm' ? 'confirmed' : 'flagged',
-      // Stamped for a flag too. It is the record of when somebody actually
-      // looked at this - which is not the same as the visit being dealt with,
-      // so the escalation keeps chasing a flag until it is confirmed or off.
-      confirmed_at: now,
-      note: action === 'flag' ? (note ?? null) : null,
-      updated_at: now,
-    });
+    updated = (await supabaseRest<{ id: string }[]>(
+      'PATCH',
+      // The retired check above reads a snapshot; this re-asserts it at the
+      // write, the same way the escalation re-asserts `is.null` when it claims
+      // a stamp. An admin re-dispatching this window in the gap between the two
+      // retires this row, and a filter on the id alone would write 'confirmed'
+      // straight back over that - the escalation would count an answer from
+      // somebody who is not going, and both chases would go quiet for a visit
+      // the people actually going have never answered.
+      `visit_dispatch_recipients?id=eq.${assignment.id}&status=neq.retired`,
+      {
+        status: action === 'confirm' ? 'confirmed' : 'flagged',
+        // Stamped for a flag too. It is the record of when somebody actually
+        // looked at this - which is not the same as the visit being dealt with,
+        // so the escalation keeps chasing a flag until it is confirmed or off.
+        confirmed_at: now,
+        note: action === 'flag' ? (note ?? null) : null,
+        updated_at: now,
+      },
+    )) ?? [];
   } catch (err) {
     console.error('crew confirm failed:', err instanceof Error ? err.message : String(err));
     return NextResponse.json({ error: 'server_error' }, { status: 500 });
   }
+
+  // Nothing matched, and the row was there to read a moment ago: it was retired
+  // underneath us. The same answer the snapshot check gives, because it is the
+  // same event - and because reporting a write that changed nothing as
+  // 'confirmed' would leave this person believing they are on a visit they have
+  // been taken off, with the 7:00am "text the customer" alarm still on their
+  // phone.
+  if (updated.length === 0) return retiredAnswer();
 
   if (action === 'confirm') return NextResponse.json({ status: 'confirmed' });
 
@@ -122,6 +137,17 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ status: 'flagged', notified });
+}
+
+/**
+ * Taken OFF this visit - reached from both the read and the write, because a
+ * re-dispatch between them is the same event arriving a moment later.
+ */
+function retiredAnswer() {
+  return NextResponse.json({
+    status: 'retired',
+    error: 'You are no longer on this visit - there is nothing to confirm.',
+  }, { status: 410 });
 }
 
 /** Who flagged it, which visit, and what they typed - verbatim. */

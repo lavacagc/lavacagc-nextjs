@@ -74,8 +74,17 @@ interface TrackedEmailBase {
    * is a way to make the table unreadable and unbounded. The filenames are
    * recorded on the campaign field instead, which is enough to answer "did this
    * email carry the calendar file".
+   *
+   * `contentType` declares the MIME type of the part. Optional, and omitted
+   * unless a caller asks for one, so every existing send produces exactly the
+   * request it produced before - Resend derives a type from the filename when
+   * none is given. It exists for the parts whose type carries meaning the
+   * extension cannot: a calendar invite is only rendered as an "Add to
+   * calendar" / RSVP card when its part says
+   * `text/calendar; charset=utf-8; method=REQUEST`, and is offered as a plain
+   * download otherwise.
    */
-  attachments?: { filename: string; content: string | Buffer }[];
+  attachments?: { filename: string; content: string | Buffer; contentType?: string }[];
 
   /**
    * Set false to skip the audit-log row (rare — e.g. a caller that logs the
@@ -274,6 +283,10 @@ export async function sendTrackedEmail(input: TrackedEmailInput): Promise<Tracke
             attachments: input.attachments.map((a) => ({
               filename: a.filename,
               content: Buffer.from(a.content).toString('base64'),
+              // Spread, so a caller that asks for no type sends the same
+              // attachment object it has always sent and Resend keeps deriving
+              // one from the filename.
+              ...(a.contentType ? { contentType: a.contentType } : {}),
             })),
           }
         : {}),

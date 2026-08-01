@@ -85,6 +85,18 @@ export interface IcsArgs {
   now?: Date;
 }
 
+/**
+ * RFC 5545 §3.1: a PARAMETER value, which is not escaped the way a TEXT value
+ * is. Backslash-escaping one produces `CN=Ramirez\, Jr`, which a parser reads as
+ * two parameters or rejects outright - so a recipient whose name carries a
+ * comma, a semicolon or a colon would break their own invite. The spec's answer
+ * is a DQUOTE-wrapped value, and a quoted value has no escape of its own, so an
+ * embedded DQUOTE has to come out.
+ */
+export function quoteIcsParam(value: string): string {
+  return `"${value.replace(/"/g, '').replace(/\r?\n/g, ' ')}"`;
+}
+
 /** RFC 5545 §3.3.11: escape backslash, semicolon, comma; newlines become \n. */
 export function escapeIcsText(value: string): string {
   return value
@@ -220,7 +232,7 @@ export function buildIcs(args: IcsArgs): string {
       ...attendees.map((a) =>
         `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT` +
         `${isCancel ? '' : ';PARTSTAT=NEEDS-ACTION;RSVP=TRUE'}` +
-        `${a.name ? `;CN=${escapeIcsText(a.name)}` : ''}:mailto:${a.email}`),
+        `${a.name ? `;CN=${quoteIcsParam(a.name)}` : ''}:mailto:${a.email}`),
     );
   }
 
@@ -245,6 +257,24 @@ export function buildIcs(args: IcsArgs): string {
   lines.push('END:VEVENT', 'END:VCALENDAR');
   // RFC 5545 requires CRLF.
   return lines.join('\r\n') + '\r\n';
+}
+
+/**
+ * The MIME type a generated calendar file has to ride as.
+ *
+ * Gmail and Outlook decide whether to render their own "Add to calendar" / RSVP
+ * card off the MIME PART, not off the bytes: a `text/calendar` part carrying
+ * `method=REQUEST` gets the card, and an attachment with no declared type is
+ * offered as a plain file download - the exact outcome METHOD:REQUEST was
+ * chosen over METHOD:PUBLISH to avoid. Without this the whole decision is inert.
+ *
+ * Read off the file itself, so the header can never disagree with the body. A
+ * CANCEL announced as a REQUEST is a retraction a client is entitled to ignore,
+ * leaving the visit - and its 7:00am "text the customer" alarm - in place.
+ */
+export function icsContentType(ics: string): string {
+  const method = /^METHOD:([A-Z]+)\r?$/m.exec(ics)?.[1];
+  return `text/calendar; charset=utf-8${method ? `; method=${method}` : ''}`;
 }
 
 /**
