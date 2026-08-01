@@ -84,9 +84,16 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 35. The admin toast reports the reminder and the dispatch as two separate outcomes, and is destructive if either failed.
 36. `no_recipients` is reported distinctly, because "nobody is configured" and "the send failed" need different fixes.
 37. Re-dispatching a visit reuses its `visit_dispatch` row, so escalation stamps and existing confirmations survive.
-90. A sub the row would **not store** is reported, not just logged, and the send reports `sent_degraded` rather than a clean `sent`.
-    The email is right either way - it is built from the value handed back, never re-read - so the divergence between what was mailed and what is stored is invisible from everywhere else: the confirm page silently drops its "Sub" row and its button reverts from "Confirm - sub is booked" to "Confirm - I am on this", and a later flag alert about the visit cannot name who was booked for it.
-    The admin toast is the only place that is ever said, so it names the sub and tells them to re-save.
+96. That row is a **read-then-insert**, not an upsert, and the comment says so.
+    `on_conflict` would switch the Prefer header to `return=minimal` (supabase-rest.ts), leaving every first dispatch with no row to hand back and reporting `unavailable` - so the conflict is recovered where it happens instead.
+    Two callers that both miss the row - a cron retry overlapping a booking, the same window saved from two tabs - race, the loser's insert violates `idx_visit_dispatch_visit`, and it re-reads the winner's row rather than failing a booking over a race it lost.
+93. **Whatever is in the Sub box wins.** A name replaces the one stored, and an EMPTY box clears it.
+    The old fill-only rule was borrowed from `ensureServiceHomeowner`, where "only fill blanks" is right because the CUSTOMER owns that data and a booking must not overwrite what they told us themselves. The admin is the sole author of this field, so the same rule produced the opposite of the right behaviour: a sub was write-once per window, and after Ramirez fell through the crew were re-mailed "Sub: Ramirez Exteriors - confirm they are booked" with no way to correct it short of cancelling the visit and re-booking it - which mails a `[CANCELLED]` and then a fresh `[ACTION REQUIRED]` for a visit that never moved.
+    ABSENT and EMPTY are therefore different answers the whole way down: the page always sends the field, the schema turns `''` into an explicit `null` rather than erasing it, and `ensureVisitDispatch` writes whatever was supplied - including the clear.
+    A caller that omits the field entirely still leaves the stored sub alone, which is why this is absent-vs-empty rather than "always write": the escalation cron passes no sub, and chasing a visit must never wipe one as a side effect.
+90. A sub the row would **not store** - or would not **clear** - is reported, not just logged, and the send reports `sent_degraded` rather than a clean `sent`.
+    The email is right either way - it is built from the value handed back, never re-read - so the divergence between what was mailed and what is stored is invisible from everywhere else: the confirm page silently drops its "Sub" row and its button reverts from "Confirm - sub is booked" to "Confirm - I am on this", and a later flag alert about the visit cannot name who was booked for it. A clear that did not land is the mirror image, and just as quiet: the email leaves the sub off while the row still names them.
+    The admin toast is the only place that is ever said, so it names the sub - or says it could not be cleared, which has no name to give - and tells them to re-save.
     The write stays best-effort - a sub that could not be stored is no reason to fail a booking the customer has already been given - which is exactly why it has to be *reported* instead.
 89. Every reader that resolves a visit's dispatch row goes through **one** `dispatchForVisit(homeownerId, visitStart)`, the rule `assignmentsForDispatch` and `DISPATCH_ASSIGNMENT_COLUMNS` already hold the sibling read to.
     The (homeowner, window) key is exactly the value that must not drift: the `visitKey` normalisation and the URL encoding both have to be right in every copy, and a reader that got either wrong would quietly find no row and report a dispatched visit as never dispatched.
@@ -169,12 +176,16 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
 86. Clearing a flag reports what actually **moved**, not what the click intended.
     The route answers `nothing_to_handle` when the PATCH matched no row - the flag went in another tab, or the assignment was retired between the list being read and the button being pressed - and the toast is written from the state re-read **after** the write.
     Only a visit that now reads `confirmed` is described as one that will not be chased again: a flag cleared off a visit nobody has confirmed is still chased at 5pm and 6pm, so saying otherwise would be a promise the escalation does not keep.
+95. A **re-read that failed** after that write is `unknown`, never a 500 over a write that landed.
+    The flags really are cleared and the chases really have stopped by that point, so answering "Failed" told the admin the opposite - and the page throws before refreshing, leaving the stale "Flagged by ..." row and its "Mark handled" button on screen, so the visit might be called off over a problem already closed.
+    The toast has its own `unknown` branch for the same reason its neighbours do: asserting "nobody on this visit has confirmed" about a state that could not be read is the same failed-read-as-a-definite-answer, just in the safe direction.
 84. A dispatch read that FAILS reads as `unknown`, never as `none`, and the list says so on the visit.
     Both queries behind that state are best-effort so a lookup is still worth answering without them - but the screen renders nothing at all for a visit in state `none`, so failing open would make a flagged visit vanish from the only surface a flag reaches, taking its "Mark handled" button with it.
     Failing closed to "could not read what the crew has said" is safe; failing open to "never dispatched" is what hides a flag.
     The screen fails closed the same way: the intake read is checked for `res.ok` before anything is replaced, a failed refresh **keeps the list it had** and says the refresh failed rather than emptying the panel.
     The trap is the timing - a refresh runs straight after a cancel or a completion, where a shrinking list is what success looks like, so a blanked panel read as the write having worked.
     So does the read of the visits themselves: it stays best-effort, because the scheduling columns are hand-applied and a lookup is worth answering without them, but it now hands back `bookingsRead: 'unavailable'` rather than an empty list wearing a 200.
+    And so does the **customer record** the whole panel hangs off - the visits, the crew state on them, and the buttons that complete, cancel or clear a flag all need it - so a failed read of that answers `unavailable` too rather than rendering as a customer with no record.
     A **lookup** replaces the list either way - those windows belong to a different customer, and leaving them would aim "Mark completed" at this homeowner - and says out loud that this is not "nothing booked".
 
 ## Retiring a visit
@@ -201,6 +212,11 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     "Reported, never assumed" is not satisfied by reporting only the half that happens to be readable.
 80. A visit with no stored `scheduled_end` resolves through `visitEndsAt`, never a fallback spelled out again.
     That helper says two hours; an hour written out here made the 5pm Telegram and the crew's confirm page describe one visit as "8:00 - 10:00am" and "8:00 - 9:00am", and the CANCEL `.ics` inherited the shorter one.
+    The retraction now takes the window straight off the visit it was handed rather than working one out for itself, so there is only ever the one fallback to keep right.
+94. A retraction that cannot **name** what it is retracting is not sent at all, and says so.
+    Every visit read in this feature goes through one `readVisitContext`, which reports `ok`, `none` or `unavailable` instead of throwing - so a read that FAILED can no longer arrive as the same null an empty answer produces, and both callers hand that verdict down rather than its value.
+    Without it a cancellation went out built entirely from defaults: "the customer", a blank address, no work, and a subject trailing off after the dash - a `[CANCELLED]` the crew cannot tie to any job - and it was reported as `sent`.
+    So `sendDispatchRetraction` requires a real visit, the outcome `unavailable` is told apart from a send that was attempted and failed, everybody is listed as still holding it, and the toast tells the admin to call them.
 
 ## Row-level security
 

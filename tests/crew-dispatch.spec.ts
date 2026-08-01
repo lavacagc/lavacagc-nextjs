@@ -401,6 +401,23 @@ test('AC37 re-dispatching reuses the visit row rather than resetting its stamps'
   expect(fn).not.toContain('nudged_at: null');
 });
 
+test('AC96 the dispatch row is a read-then-insert that survives losing the race', () => {
+  const src = read('src/lib/homecare/dispatch.ts');
+  const fn = src.slice(src.indexOf('export async function ensureVisitDispatch'), src.indexOf('export interface EnsureAssignmentsResult'));
+  // NOT an upsert, whatever the comment used to say: `onConflict` switches the
+  // Prefer header to return=minimal (supabase-rest.ts), so `created?.[0]` would
+  // be undefined and every FIRST dispatch would report 'unavailable'.
+  expect(fn).not.toContain('onConflict');
+  expect(src.slice(0, src.indexOf('export async function ensureAssignments')))
+    .not.toContain('Upserts on (homeowner_id, visit_start)');
+  // So the conflict is recovered where it happens: two callers that both missed
+  // the row race, the loser's insert violates idx_visit_dispatch_visit, and it
+  // reads the winner's row rather than failing a booking over a race it lost.
+  expect(fn).toContain('const row = created?.[0]\n    ?? await dispatchForVisit(args.homeownerId, args.visitStart).catch(() => null);');
+  expect(read('supabase/migrations/20260818000000_crew_dispatch.sql'))
+    .toContain('idx_visit_dispatch_visit');
+});
+
 test('AC90 a sub the row would not store is reported, not just logged', () => {
   // The email is right - it is built from the value handed back - so the
   // divergence is invisible from everywhere else: the confirm page drops its
@@ -411,7 +428,7 @@ test('AC90 a sub the row would not store is reported, not just logged', () => {
   expect(fn).toContain("}).then(() => 'ok' as const).catch((err) => {");
   expect(fn).toContain("return 'unavailable' as const;");
   // What the admin typed still goes in the email either way.
-  expect(fn).toContain('return { row: { ...existing, sub_name: args.subName }, subRecorded };');
+  expect(fn).toContain('return { row: { ...existing, sub_name: sub }, subRecorded };');
 
   // Carried through the send's verdict, so a stored-nowhere sub cannot report
   // a clean 'sent'...
@@ -422,12 +439,49 @@ test('AC90 a sub the row would not store is reported, not just logged', () => {
   const route = read('src/app/api/admin/service-quote/schedule/route.ts');
   expect(route).toContain('dispatchSubRecorded: dispatch.subRecorded,');
 
-  // ...and into the toast, which is the only place the divergence is ever said.
+  // ...and into the toast, which is the only place the divergence is ever said,
+  // in BOTH directions: a sub the row would not store, and one it would not
+  // clear. The second one has no name to put in the sentence, so it cannot
+  // share the first one's wording.
   const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
-  expect(page).toContain("data.dispatchSubRecorded === 'unavailable'");
+  expect(page).toContain("data.dispatchSubRecorded !== 'unavailable'");
   expect(page).toContain('is NOT stored on the visit');
+  expect(page).toContain('The sub could NOT be cleared from the visit');
   expect(page).toContain('any flag alert will not');
+  expect(page).toContain('still name them');
   expect(page).toContain('+ recordLine + subLine + movedLine + staleLine');
+});
+
+test('AC93 whatever is in the sub box wins - an empty one clears it', () => {
+  // The fill-only rule was borrowed from ensureServiceHomeowner, where "only
+  // fill blanks" is right because the CUSTOMER owns the data. The admin is the
+  // sole author of this field, so the same rule made a sub write-once per
+  // window: the crew were re-mailed "Sub: Ramirez Exteriors - confirm they are
+  // booked" for a sub who had fallen through, with no way to correct it short
+  // of cancelling the visit and re-booking it.
+  const src = read('src/lib/homecare/dispatch.ts');
+  const fn = src.slice(src.indexOf('export async function ensureVisitDispatch'), src.indexOf('export interface EnsureAssignmentsResult'));
+  // ABSENT and EMPTY stop meaning the same thing, and the write happens for
+  // anything supplied - including the null a cleared box becomes.
+  expect(fn).toContain('const sub = args.subName === undefined ? undefined : args.subName || null;');
+  expect(fn).toContain('if (sub !== undefined && sub !== existing.sub_name) {');
+  expect(fn).toContain('sub_name: sub, updated_at: new Date().toISOString(),');
+  expect(fn, 'a fill-only guard is what made it write-once').not.toContain('if (args.subName &&');
+
+  // The boundary has to keep them apart or the clear silently no-ops...
+  const schema = read('src/app/api/admin/service-quote/_schema.ts');
+  expect(schema).toContain("subName: z.string().trim().max(160).optional().transform((v) => (v === '' ? null : v)),");
+  // ...and the page has to actually send the empty box.
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain('subName: subName.trim(),');
+  expect(page).not.toContain('...(subName.trim() ? { subName: subName.trim() } : {})');
+
+  // A caller that omits the field leaves the stored sub alone - which is why
+  // this is absent-vs-empty rather than "always write". The escalation cron
+  // passes no sub, and chasing a visit must not wipe one as a side effect.
+  const cron = read('src/app/api/cron/visit-dispatch-escalation/route.ts');
+  expect(cron).toContain('ensureVisitDispatch({ homeownerId: first.homeowner_id, visitStart: start })');
+  expect(cron).not.toContain('subName');
 });
 
 test('AC38 re-dispatching reuses each assignment, so a re-send cannot un-confirm', () => {
@@ -674,8 +728,15 @@ test('AC87 a visit that could not be READ is never rendered as a cancelled one',
   // confirmed" for a visit we told them was cancelled.
   const src = read('src/lib/homecare/dispatch.ts');
   const fn = src.slice(src.indexOf('export async function lookupByToken'), src.indexOf('export type RetractionOutcome'));
-  expect(fn).toContain("found: { assignment, dispatch: row, visit, visitRead: visit ? 'ok' : 'unavailable' },");
-  expect(fn).toContain('console.error');
+  // Through the same helper the retraction reads a visit through, so the two
+  // cannot drift into different answers about the same failure.
+  expect(fn).toContain('const read = await readVisitContext(row.homeowner_id, new Date(row.visit_start));');
+  expect(fn).toContain("visit: read.status === 'ok' ? read.visit : null,");
+  expect(fn).toContain("visitRead: read.status === 'ok' ? 'ok' : 'unavailable',");
+  const helper = src.slice(src.indexOf('export async function readVisitContext'), src.indexOf('export interface TokenLookup'));
+  expect(helper).toContain("return { status: 'unavailable' };");
+  expect(helper).toContain("return visit ? { status: 'ok', visit } : { status: 'none' };");
+  expect(helper).toContain('console.error');
 
   const page = read('src/app/crew/confirm/[token]/page.tsx');
   expect(page).toContain("if (visitRead === 'unavailable' || !visit) {");
@@ -1018,7 +1079,7 @@ test('AC72 only a cancelled visit whose dispatch actually sent, and is still ahe
   expect(src).toContain('if (retracting && dispatch && assignments.length > 0) {');
   // Injectable, so the cutoff is testable rather than only observable in
   // production - the same shape crossSeasonBookings uses.
-  expect(src).toContain("opts: { reason: 'cancelled' | 'completed'; visit?: VisitContext | null; now?: Date },");
+  expect(src).toContain("opts: { reason: 'cancelled' | 'completed'; visit?: VisitContextRead | null; now?: Date },");
 });
 
 test('AC72 a window already past is cleared but never mailed about', () => {
@@ -1046,6 +1107,37 @@ test('AC79 a retraction that did not land is reported, never assumed', () => {
   // ...and a throw is treated as nobody having been told, not as success.
   expect(src).toContain('return assignments.map((a) => a.email);');
   expect(src).toContain("retraction = unretracted.length > 0 ? 'send_failed' : 'sent';");
+});
+
+test('AC94 a retraction that cannot NAME the visit is never sent, and is reported', () => {
+  // Both reads folded a failure into the same null an empty answer produces,
+  // and the email went out built entirely from defaults: "the customer", a
+  // blank address, no work, and a subject trailing off after the dash. That is
+  // a cancellation the crew cannot tie to a job, and it reported 'sent'.
+  const src = read('src/lib/homecare/dispatch.ts');
+  const fn = src.slice(src.indexOf('export async function clearVisitDispatch'));
+  expect(fn).toContain('const described = visit ?? await readVisitContext(homeownerId, visitStart);');
+  expect(fn).toContain("if (described.status !== 'ok') {");
+  expect(fn).toContain("retraction = 'unavailable';");
+  // Nobody was told, so everybody is still holding it - the admin is the one
+  // who has to make the call.
+  expect(fn).toContain('unretracted = assignments.map((a) => a.email);');
+  // With no defaults left to fall back on, the send cannot be reached without
+  // something to name the job by.
+  const send = src.slice(src.indexOf('async function sendDispatchRetraction'));
+  expect(send).toContain('visit: VisitContext;');
+  expect(send, 'no more inventing a customer').not.toContain("?? 'the customer'");
+
+  // Both callers hand the READ down rather than its value, so a failed one can
+  // still be told from a window with nothing in it.
+  const route = read('src/app/api/admin/service-quote/schedule/route.ts');
+  expect(route).toContain('visit: await readVisitContext(homeowner.id, when),');
+  expect(route).toContain('const visit = await readVisitContext(homeownerId, startAt);');
+  expect(route).not.toContain('visitContextFor');
+
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain("const undescribed = data.dispatch?.retraction === 'unavailable';");
+  expect(page).toContain('the visit could not be read, so no cancellation was sent');
 });
 
 test('AC79 both callers surface it - the cancel response and the reschedule', () => {
@@ -1107,6 +1199,11 @@ test('AC84 a dispatch read that failed reads as unknown, never as never-dispatch
   // An EMPTY read is still 'none' - that is a visit nobody was dispatched for,
   // which is a different thing from one we could not read.
   expect(intake).toContain('if (dispatches.length === 0) return bookings.map((b) => ({ ...b, dispatch: blank }));');
+  // And so does the customer record the whole panel hangs off: swallowed to an
+  // empty list it read as "no record for this customer", which takes the list,
+  // the flag on it and the "Mark handled" button with it.
+  expect(intake).toContain("let bookingsRead: 'ok' | 'unavailable' = owners === null ? 'unavailable' : 'ok';");
+  expect(intake).toContain("'service-quote intake could not read the customer record:',");
 
   const lib = read('src/lib/homecare/dispatch.ts');
   expect(lib).toContain("state: 'unknown', confirmedBy: [], flags: []");
@@ -1131,7 +1228,6 @@ test('AC84 a dispatch read that failed reads as unknown, never as never-dispatch
   // scheduling columns are hand-applied - but an empty list wearing a 200 is
   // the same lie: this panel is the only place a flag appears, and it renders
   // nothing at all when the list is empty.
-  expect(intake).toContain("let bookingsRead: 'ok' | 'unavailable' = 'ok';");
   expect(intake).toContain("bookingsRead = 'unavailable';");
   expect(intake).toContain('bookings, bookingsRead });');
   expect(refresh).toContain("if (data.bookingsRead === 'unavailable') throw new Error(");
@@ -1173,7 +1269,9 @@ test('AC80 a missing scheduled_end resolves through visitEndsAt, never a second 
   // "8:00 - 9:00am", and the CANCEL .ics inherited the shorter one.
   const src = read('src/lib/homecare/dispatch.ts');
   expect(src).toContain('end: new Date(visitEndsAt(key, endIso))');
-  expect(src).toContain('visit?.end ?? new Date(visitEndsAt(visitKey(visitStart), null))');
+  // The retraction takes the window straight off the visit it was handed rather
+  // than working one out for itself, so there is only ever the one fallback.
+  expect(src).toContain('const { end, customerName, address, services } = visit;');
   expect(src, 'no third copy of the fallback').not.toContain('3600_000');
 });
 
@@ -1259,7 +1357,7 @@ test('AC86 clearing a flag reports what actually moved, not what was intended', 
   // The state is re-read AFTER the write, so it is the visit's, not this
   // route's intention.
   expect(route.indexOf("supabaseRest<DispatchAssignment[]>(\n      'PATCH'"))
-    .toBeLessThan(route.indexOf('dispatchStateOf(await assignmentsForDispatch(dispatch.id))'));
+    .toBeLessThan(route.indexOf('const after = await assignmentsForDispatch(dispatch.id)'));
 
   const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
   expect(page).toContain('const cleared: number = data.handled ?? 0;');
@@ -1271,6 +1369,27 @@ test('AC86 clearing a flag reports what actually moved, not what was intended', 
   expect(page).toContain("title: cleared > 0 ? 'Flag cleared' : 'Nothing to clear',");
   expect(page).toContain('No flag was open on this visit - the list was out of date. ');
   expect(page).toContain("variant: state === 'confirmed' ? undefined : 'destructive',");
+});
+
+test('AC95 a flag clear whose re-read failed is not reported as a failed clear', () => {
+  // The PATCH landed and the 5pm/6pm chases really have stopped by this point.
+  // Answering 500 over the read that follows told the admin the opposite, and
+  // the page throws before refreshing - so the stale "Flagged by ..." row and
+  // its "Mark handled" button stayed on screen under a "Failed" toast, and the
+  // visit might be called off over a problem already closed.
+  const route = read('src/app/api/admin/service-quote/dispatch/route.ts');
+  expect(route).toContain('const after = await assignmentsForDispatch(dispatch.id).catch((err) => {');
+  expect(route).toContain('dispatch: after ? dispatchStateOf(after) : UNKNOWN_DISPATCH_STATE,');
+  // The re-read is the LAST thing that can fail, so nothing after it can turn
+  // a landed write into a 500.
+  expect(route.indexOf('const after = await assignmentsForDispatch'))
+    .toBeGreaterThan(route.indexOf("`visit_dispatch_recipients?dispatch_id=eq.${dispatch.id}&status=eq.flagged`"));
+
+  // And the toast has an `unknown` branch, or it would assert the definite
+  // "nobody has confirmed" about a state it could not read.
+  const page = read('src/app/vaca-mgmt/send-service-quote/page.tsx');
+  expect(page).toContain("state === 'unknown'");
+  expect(page).toContain('What the visit reads as now could NOT be checked');
 });
 
 /* ── row-level security (AC 73) ──────────────────────────────────────────── */

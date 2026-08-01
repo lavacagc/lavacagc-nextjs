@@ -198,10 +198,11 @@ export async function resolveRecipients(ids?: string[] | null): Promise<Dispatch
 export interface EnsureDispatchResult {
   row: VisitDispatchRow | null;
   /**
-   * Whether the sub the admin typed reached the row. `unavailable` means the
-   * email names them and the record does NOT - the confirm page loses its "Sub"
-   * line and its "sub is booked" wording, and a later flag alert cannot name
-   * them either.
+   * Whether the sub the admin typed reached the row. `unavailable` means what
+   * was mailed and what is stored have DIVERGED, in whichever direction: a sub
+   * the email names and the row does not, or one the email leaves off and the
+   * row still carries. Either way the confirm page and a later flag alert read
+   * the row, so only the toast can say so.
    */
   subRecorded: 'ok' | 'unavailable';
 }
@@ -209,10 +210,26 @@ export interface EnsureDispatchResult {
 /**
  * The dispatch row for this visit, created if it does not exist.
  *
- * Upserts on (homeowner_id, visit_start) so re-dispatching a visit - a
- * reschedule, or an admin adding a second person - reuses the row and keeps the
- * escalation stamps that already fired. Creating a second row would reset them
- * and re-nudge for a visit somebody already confirmed.
+ * A READ-THEN-INSERT, not an upsert - `on_conflict` would switch the Prefer
+ * header to `return=minimal` (supabase-rest.ts), leaving every first dispatch
+ * with no row to hand back and reporting `unavailable`. So the conflict is
+ * recovered where it happens instead: two callers that both miss the row - a
+ * cron retry overlapping a booking, the same window saved from two tabs - race,
+ * the loser's insert violates `idx_visit_dispatch_visit`, and it reads the
+ * winner's row rather than failing a booking over a race it lost.
+ *
+ * An EXISTING row is reused either way - a reschedule, or an admin adding a
+ * second person - so the escalation stamps that already fired survive. Creating
+ * a second row would reset them and re-nudge a visit somebody already confirmed.
+ *
+ * WHATEVER IS IN THE SUB BOX WINS. A name replaces the one stored, and an EMPTY
+ * box clears it: the admin is the sole author of that field, so the "only fill
+ * blanks" rule `ensureServiceHomeowner` follows - which is right where the
+ * CUSTOMER owns the data - made a sub write-once per window, re-mailing a sub
+ * who fell through with no way to correct it short of cancelling the visit.
+ * ABSENT is the one thing that leaves the stored value alone, which is what
+ * keeps the escalation cron - it passes no sub at all - from wiping one as a
+ * side effect of chasing a visit.
  *
  * The sub write is best-effort but REPORTED, like every other write here. What
  * was mailed and what was stored diverging is the whole of the harm, and it is
@@ -225,18 +242,22 @@ export async function ensureVisitDispatch(args: {
   subName?: string | null;
 }): Promise<EnsureDispatchResult> {
   const key = visitKey(args.visitStart);
+  // Empty is a CLEAR, undefined is "not my field to touch". They are different
+  // answers here and must not be flattened into one.
+  const sub = args.subName === undefined ? undefined : args.subName || null;
   const existing = await dispatchForVisit(args.homeownerId, args.visitStart);
 
   if (existing) {
-    // Only fill the sub in - never blank one an admin already typed by
-    // re-booking without it.
-    if (args.subName && args.subName !== existing.sub_name) {
+    if (sub !== undefined && sub !== existing.sub_name) {
       const subRecorded = await supabaseRest('PATCH', `visit_dispatch?id=eq.${existing.id}`, {
-        sub_name: args.subName, updated_at: new Date().toISOString(),
+        sub_name: sub, updated_at: new Date().toISOString(),
       }).then(() => 'ok' as const).catch((err) => {
         console.error(
-          `crew dispatch could not store the sub "${args.subName}" - this send still names them, ` +
-            'but the confirm page and a later flag alert will not:',
+          sub
+            ? `crew dispatch could not store the sub "${sub}" - this send still names them, `
+              + 'but the confirm page and a later flag alert will not:'
+            : `crew dispatch could not clear the sub "${existing.sub_name}" - this send leaves them `
+              + 'off, but the confirm page and a later flag alert still name them:',
           err instanceof Error ? err.message : String(err),
         );
         return 'unavailable' as const;
@@ -244,7 +265,7 @@ export async function ensureVisitDispatch(args: {
       // What the admin typed, whether or not it was stored: this value is what
       // goes in the email, and a failed write is a reason to report, not a
       // reason to tell the crew a different sub's name.
-      return { row: { ...existing, sub_name: args.subName }, subRecorded };
+      return { row: { ...existing, sub_name: sub }, subRecorded };
     }
     return { row: existing, subRecorded: 'ok' };
   }
@@ -252,12 +273,20 @@ export async function ensureVisitDispatch(args: {
   const created = await supabaseRest<VisitDispatchRow[]>('POST', 'visit_dispatch', [{
     homeowner_id: args.homeownerId,
     visit_start: key,
-    sub_name: args.subName ?? null,
-  }]);
+    sub_name: sub ?? null,
+  }]).catch((err) => {
+    console.error(
+      'crew dispatch row could not be created - re-reading in case a concurrent caller won the race:',
+      err instanceof Error ? err.message : String(err),
+    );
+    return null;
+  });
   // A row that could not be created carries no sub either, but that is the row
   // failing rather than the sub - reported as `unavailable` below, where it
   // stops the send outright.
-  return { row: created?.[0] ?? null, subRecorded: 'ok' };
+  const row = created?.[0]
+    ?? await dispatchForVisit(args.homeownerId, args.visitStart).catch(() => null);
+  return { row, subRecorded: 'ok' };
 }
 
 /** Who this dispatch can go to, and what could not be done to the rest. */
@@ -470,6 +499,45 @@ export async function visitContextFor(
   };
 }
 
+/**
+ * What a visit read produced, or why it produced nothing.
+ *
+ * `none` is an ANSWER - there is no such customer - and `unavailable` is a read
+ * that FAILED. Kept apart from each other and from `ok` for the reason the whole
+ * module keeps them apart: an email, a page or an alert built out of a failed
+ * read looks exactly like one built out of an empty answer, and only one of the
+ * two is safe to put in front of somebody.
+ */
+export type VisitContextRead =
+  | { status: 'ok'; visit: VisitContext }
+  | { status: 'none' }
+  | { status: 'unavailable' };
+
+/**
+ * `visitContextFor`, reported rather than thrown.
+ *
+ * Every caller that describes a visit to a human goes through here, so none of
+ * them can invent its own `.catch(() => null)` and lose the difference between
+ * "no such visit" and "we could not look". That difference decided whether a
+ * crew member was told their live visit was cancelled, and whether a retraction
+ * went out naming nobody.
+ */
+export async function readVisitContext(
+  homeownerId: string,
+  visitStart: Date,
+): Promise<VisitContextRead> {
+  try {
+    const visit = await visitContextFor(homeownerId, visitStart);
+    return visit ? { status: 'ok', visit } : { status: 'none' };
+  } catch (err) {
+    console.error(
+      `crew dispatch could not read the visit at ${visitKey(visitStart)} for ${homeownerId}:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    return { status: 'unavailable' };
+  }
+}
+
 /** An assignment plus the visit it belongs to, resolved from a confirm token. */
 export interface TokenLookup {
   assignment: DispatchAssignment;
@@ -546,24 +614,32 @@ export async function lookupByToken(token: string): Promise<TokenLookupResult> {
   // The visit read is the one part of this that is allowed to fail without
   // losing the lookup - but the failure is HANDED BACK rather than folded into
   // a null that reads like an answer. A caller that could not tell the two
-  // apart tells a crew member their live, booked visit is cancelled.
+  // apart tells a crew member their live, booked visit is cancelled. Through
+  // the same helper the retraction reads it, so neither can drift.
   const row = dispatch;
-  const visit = await visitContextFor(row.homeowner_id, new Date(row.visit_start))
-    .catch((err) => {
-      console.error(
-        `crew confirm could not read the visit behind dispatch ${row.id}:`,
-        err instanceof Error ? err.message : String(err),
-      );
-      return null;
-    });
+  const read = await readVisitContext(row.homeowner_id, new Date(row.visit_start));
   return {
     status: 'ok',
-    found: { assignment, dispatch: row, visit, visitRead: visit ? 'ok' : 'unavailable' },
+    found: {
+      assignment,
+      dispatch: row,
+      visit: read.status === 'ok' ? read.visit : null,
+      visitRead: read.status === 'ok' ? 'ok' : 'unavailable',
+    },
   };
 }
 
-/** Whether the crew was actually told the visit is off. */
-export type RetractionOutcome = 'sent' | 'not_needed' | 'send_failed';
+/**
+ * Whether the crew was actually told the visit is off.
+ *
+ * `unavailable` is the one that needs saying out loud: nothing was sent because
+ * the visit could not be READ, so there was nothing to name it by. A
+ * cancellation built out of defaults - "the customer", no address, no work, a
+ * subject trailing off after the dash - is a cancellation for a visit the crew
+ * cannot identify, which is worse than none at all. So it is not sent, and the
+ * admin is told to call them instead.
+ */
+export type RetractionOutcome = 'sent' | 'not_needed' | 'send_failed' | 'unavailable';
 
 export interface ClearDispatchResult {
   /** Whether the dispatch row itself came off. */
@@ -603,8 +679,10 @@ export interface ClearDispatchResult {
  * always BEFORE the delete, because the assignments cascade with the row and
  * take the addresses and the UIDs with them.
  *
- * `visit` describes what is being retracted, for the email and the .ics. Pass it
- * from before the window was cleared where you can - once the tasks are unbooked
+ * `visit` describes what is being retracted, for the email and the .ics. Pass
+ * the READ, not just its value - a visit that could not be read is not a visit
+ * with nothing in it, and only the first of those must stop the send. Take it
+ * from before the window was cleared where you can: once the tasks are unbooked
  * the services are no longer readable. What was actually sent is recorded in
  * email_log, which this does not touch, so the audit trail survives.
  *
@@ -616,7 +694,7 @@ export interface ClearDispatchResult {
 export async function clearVisitDispatch(
   homeownerId: string,
   visitStart: Date,
-  opts: { reason: 'cancelled' | 'completed'; visit?: VisitContext | null; now?: Date },
+  opts: { reason: 'cancelled' | 'completed'; visit?: VisitContextRead | null; now?: Date },
 ): Promise<ClearDispatchResult> {
   const { reason, visit, now = new Date() } = opts;
   let dispatch: VisitDispatchRow | null = null;
@@ -652,15 +730,33 @@ export async function clearVisitDispatch(
   let retraction: RetractionOutcome = 'not_needed';
   let unretracted: string[] = [];
   if (retracting && dispatch && assignments.length > 0) {
-    unretracted = await sendDispatchRetraction({ homeownerId, visitStart, dispatch, assignments, visit })
-      .catch((err) => {
+    // Read here only as a fallback, for a caller that no longer holds it - and
+    // a read that FAILED stops the send rather than filling it in from
+    // defaults. "the customer", no address, no work and a subject trailing off
+    // after the dash is a cancellation the crew cannot tie to a job, which is
+    // worse than no cancellation: it is reported instead, so the admin calls
+    // them rather than believing they were told.
+    const described = visit ?? await readVisitContext(homeownerId, visitStart);
+    if (described.status !== 'ok') {
+      unretracted = assignments.map((a) => a.email);
+      retraction = 'unavailable';
+      console.error(
+        `crew dispatch retraction NOT sent for ${visitKey(visitStart)} - the visit could not be `
+          + `read (${described.status}), so nothing could name what is being cancelled. Still `
+          + `holding it: ${unretracted.join(', ')}`,
+      );
+    } else {
+      unretracted = await sendDispatchRetraction({
+        homeownerId, visitStart, dispatch, assignments, visit: described.visit,
+      }).catch((err) => {
         console.error(
           'crew dispatch retraction failed - the crew may still be holding the visit:',
           err instanceof Error ? err.message : String(err),
         );
         return assignments.map((a) => a.email);
       });
-    retraction = unretracted.length > 0 ? 'send_failed' : 'sent';
+      retraction = unretracted.length > 0 ? 'send_failed' : 'sent';
+    }
   }
 
   return { status: 'cleared', retraction, unretracted };
@@ -674,28 +770,24 @@ export async function clearVisitDispatch(
  * event it holds only when the number is higher than the one it stored, so a
  * retraction reusing the invite's number can be discarded as a duplicate and
  * leave the event - and its 7:00am alarm - exactly where it was.
+ *
+ * The visit is REQUIRED, not optional. Its caller resolves the read and reports
+ * a failed one rather than calling here, because a cancellation that cannot name
+ * the customer, the address or the work is one the crew cannot act on.
  */
 async function sendDispatchRetraction(args: {
   homeownerId: string;
   visitStart: Date;
   dispatch: VisitDispatchRow;
   assignments: DispatchAssignment[];
-  visit?: VisitContext | null;
+  visit: VisitContext;
 }): Promise<string[]> {
-  const { homeownerId, visitStart, dispatch, assignments } = args;
+  const { homeownerId, visitStart, dispatch, assignments, visit } = args;
 
-  // Read only as a fallback: by the time a cancel gets here the window is
-  // usually already cleared, so this recovers the customer and the address but
-  // not the services. Callers that still hold the visit pass it in.
-  const visit = args.visit
-    ?? await visitContextFor(homeownerId, visitStart).catch(() => null);
-
-  // Same helper the escalation and the confirm page read a missing end through,
-  // so a retraction cannot describe a different window than the chase did.
-  const end = visit?.end ?? new Date(visitEndsAt(visitKey(visitStart), null));
-  const customerName = visit?.customerName ?? 'the customer';
-  const address = visit?.address ?? '';
-  const services = visit?.services ?? [];
+  // Straight off the visit, which resolved a missing end through `visitEndsAt`
+  // - the same helper the escalation and the confirm page read one through, so
+  // a retraction cannot describe a different window than the chase did.
+  const { end, customerName, address, services } = visit;
   const sequence = (dispatch.ics_sequence ?? 0) + 1;
   const unretracted: string[] = [];
 

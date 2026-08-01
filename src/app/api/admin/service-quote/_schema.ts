@@ -80,8 +80,17 @@ export const scheduleSchema = z.object({
    * way for the same reason - see `resolveRecipients`.
    */
   recipientIds: z.array(z.string().uuid()).max(20).optional(),
-  /** Free text, by design - the sub is named in the dispatch, not modelled. */
-  subName: z.string().trim().max(160).optional().or(z.literal('').transform(() => undefined)),
+  /**
+   * Free text, by design - the sub is named in the dispatch, not modelled.
+   *
+   * ABSENT and EMPTY are DIFFERENT answers and the boundary has to keep them
+   * apart. Whatever is in the admin's box wins, so an empty box is an explicit
+   * clear - `null` - and only a field left out altogether leaves the stored sub
+   * alone. Transforming '' to undefined here made a sub write-once per window:
+   * the PATCH was skipped, and the crew were re-mailed a sub who had fallen
+   * through with no way to correct it short of cancelling the visit.
+   */
+  subName: z.string().trim().max(160).optional().transform((v) => (v === '' ? null : v)),
 }).refine((d) => new Date(d.end).getTime() > new Date(d.start).getTime(), {
   message: 'The end of the window must be after the start', path: ['end'],
 });

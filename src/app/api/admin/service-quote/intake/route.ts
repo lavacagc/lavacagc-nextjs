@@ -146,10 +146,22 @@ export async function GET(request: NextRequest) {
         `leads?select=id,first_name,last_name,email,phone,address,city,zip_code,source,message,created_at` +
           `&email=ilike.${encodeURIComponent(escapeLikePattern(email))}&order=created_at.desc&limit=50`,
       ).catch(() => [] as LeadRow[]),
+      // Null, never an empty list, when this one FAILS. Everything the admin
+      // acts on hangs off the customer record - the visits, the crew state on
+      // them, and the buttons that complete, cancel or clear a flag - so
+      // swallowing it to `[]` rendered "no record for this customer" and took
+      // the whole "On the books" panel with it, flag and all. Reported below as
+      // the visits being unreadable, which is exactly what it means.
       supabaseRest<{ id: string; first_name: string | null; phone: string | null; address: string | null; city: string | null; zip: string | null; status: string }[]>(
         'GET',
         `homeowners?select=id,first_name,phone,address,city,zip,status&email=eq.${enc}&limit=1`,
-      ).catch(() => []),
+      ).catch((err) => {
+        console.error(
+          'service-quote intake could not read the customer record:',
+          err instanceof Error ? err.message : String(err),
+        );
+        return null;
+      }),
     ]);
 
     const homeowner = owners?.[0] ?? null;
@@ -187,7 +199,11 @@ export async function GET(request: NextRequest) {
     // not read their visits" are not the same answer, and the second one hides
     // a flag: this list is the only surface a flag reaches, and the empty state
     // renders nothing at all. The same rule `withDispatchState` follows.
-    let bookingsRead: 'ok' | 'unavailable' = 'ok';
+    //
+    // A customer record that could not be read starts here too: with no
+    // homeowner there is nothing to read visits against, so answering 'ok'
+    // would say "nothing on the books" about a customer we never looked up.
+    let bookingsRead: 'ok' | 'unavailable' = owners === null ? 'unavailable' : 'ok';
     if (homeowner) {
       const [done, booked] = await Promise.all([
         // Selected on the TIMESTAMP, not on `status`. The two answer different

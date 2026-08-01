@@ -8,7 +8,7 @@ import { lastDoneFor, lastDoneLabel, type CompletionRow } from '../src/lib/homec
 import { visitKey, reminderSendAt } from '../src/lib/homecare/visitSchedule';
 import {
   clearVisitDispatch, dispatchStateOf, assignmentsForDispatch, ensureAssignments,
-  type DispatchRecipient,
+  ensureVisitDispatch, type DispatchRecipient,
 } from '../src/lib/homecare/dispatch';
 import { easternWallClock } from '../src/lib/homecare/ics';
 import { supabaseRest } from '../src/lib/notify/supabase-rest';
@@ -780,6 +780,79 @@ test('a dispatch that never sent leaves nothing to retract', async () => {
 
   const result = await clearVisitDispatch('member-1', start, { reason: 'cancelled' });
   expect(result.retraction).toBe('not_needed');
+});
+
+test('a cancellation that cannot NAME the visit is not sent, and says so', async () => {
+  // The caller's read failed, so there is nothing to describe the job by. Sent
+  // anyway it went out built entirely from defaults - "the customer", a blank
+  // address, no work, and a subject trailing off after the dash - which is a
+  // cancellation the crew cannot tie to any job, and it reported 'sent'.
+  const start = new Date(Date.now() + 4 * 24 * 3600_000);
+  const id = seedDispatch(start);
+
+  const result = await clearVisitDispatch('member-1', start, {
+    reason: 'cancelled', visit: { status: 'unavailable' },
+  });
+
+  // The row still comes off - a stale one makes the next booking of that window
+  // inherit the stamps saying it has already been chased.
+  expect(db.visit_dispatch.some((r) => r.id === id)).toBe(false);
+  // Told apart from a send that was ATTEMPTED and failed: nothing was sent at
+  // all here, and everybody is still holding the visit, so the admin is the one
+  // who has to tell them.
+  expect(result.retraction).toBe('unavailable');
+  expect(result.unretracted).toEqual(['veronica@lavacagc.com']);
+});
+
+/* ── the sub on a visit (crew dispatch AC 93) ────────────────────────────── */
+
+test('the sub box wins: a name replaces it, an empty box clears it, absence leaves it', async () => {
+  // Write-once was the bug: the admin re-saved the window with the Sub box
+  // empty after Ramirez fell through, the PATCH was skipped, and the crew were
+  // mailed "Sub: Ramirez Exteriors - confirm they are booked" all over again.
+  const start = new Date(Date.now() + 9 * 24 * 3600_000);
+  const id = seedDispatch(start, { sub_name: 'Ramirez Exteriors' });
+  const stored = () => db.visit_dispatch.find((r) => r.id === id)!.sub_name;
+
+  // Absent leaves it alone - this is the escalation cron's call, and chasing a
+  // visit must never wipe the sub as a side effect.
+  const untouched = await ensureVisitDispatch({ homeownerId: 'member-1', visitStart: start });
+  expect(stored()).toBe('Ramirez Exteriors');
+  expect(untouched.row?.sub_name).toBe('Ramirez Exteriors');
+
+  const replaced = await ensureVisitDispatch({
+    homeownerId: 'member-1', visitStart: start, subName: 'Delgado Roofing',
+  });
+  expect(stored()).toBe('Delgado Roofing');
+  expect(replaced.row?.sub_name, 'the email is built from this').toBe('Delgado Roofing');
+  expect(replaced.subRecorded).toBe('ok');
+
+  const cleared = await ensureVisitDispatch({
+    homeownerId: 'member-1', visitStart: start, subName: '',
+  });
+  expect(stored(), 'an empty box is a clear, not a no-op').toBe(null);
+  expect(cleared.row?.sub_name, 'so the email leaves the sub off too').toBe(null);
+  expect(cleared.subRecorded).toBe('ok');
+});
+
+test('a sub that could not be CLEARED is reported, not swallowed', async () => {
+  // The mirror of a sub that could not be stored, and just as invisible from
+  // anywhere else: the email leaves them off, the row still names them, so the
+  // confirm page keeps its "Sub" row and a flag alert keeps naming them.
+  const start = new Date(Date.now() + 10 * 24 * 3600_000);
+  const id = seedDispatch(start, { sub_name: 'Ramirez Exteriors' });
+
+  failPatchOn = 'visit_dispatch';
+  const result = await ensureVisitDispatch({
+    homeownerId: 'member-1', visitStart: start, subName: '',
+  });
+  failPatchOn = null;
+
+  expect(result.subRecorded).toBe('unavailable');
+  // What the admin typed is still what goes in the email - reporting the
+  // divergence is the fix, telling the crew the row's version is not.
+  expect(result.row?.sub_name).toBe(null);
+  expect(db.visit_dispatch.find((r) => r.id === id)!.sub_name).toBe('Ramirez Exteriors');
 });
 
 /* ── taking somebody off a visit (crew dispatch AC 81, 85) ───────────────── */

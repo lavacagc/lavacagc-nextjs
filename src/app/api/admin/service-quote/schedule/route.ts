@@ -21,7 +21,7 @@ import {
 } from '@/lib/homecare/serviceScheduling';
 import { buildVisitReminderEmail } from '@/lib/homecare/serviceEmails';
 import {
-  sendVisitDispatch, clearVisitDispatch, visitContextFor,
+  sendVisitDispatch, clearVisitDispatch, readVisitContext,
   type SendDispatchResult, type ClearDispatchResult,
 } from '@/lib/homecare/dispatch';
 import { visitDateLabel, visitTimeWindow, easternParts } from '@/lib/homecare/visitSchedule';
@@ -125,10 +125,12 @@ export async function POST(request: NextRequest) {
     // What each vacated window was, read BEFORE the upsert moves its rows: once
     // the window is given up the services are no longer readable, and the
     // calendar retraction that takes it off the crew's phones has to name the
-    // visit it is withdrawing.
+    // visit it is withdrawing. The READ is carried, not just its value - a
+    // window that could not be read is not an empty one, and a retraction built
+    // out of the defaults that produced names nothing the crew can act on.
     const vacated = await Promise.all(supersedes.map(async (when) => ({
       when,
-      visit: await visitContextFor(homeowner.id, when).catch(() => null),
+      visit: await readVisitContext(homeowner.id, when),
     })));
 
     await scheduleVisit({ homeownerId: homeowner.id, tasks, start: startAt, end: endAt, address });
@@ -330,8 +332,9 @@ export async function DELETE(request: NextRequest) {
 
     // Read while the visit still exists. Clearing the window is what makes it a
     // cancellation, and after that there is nothing left to describe to the
-    // crew in the calendar retraction below.
-    const visit = await visitContextFor(homeownerId, startAt).catch(() => null);
+    // crew in the calendar retraction below. The verdict travels with it: a
+    // read that failed must not be mistaken for a visit with nothing in it.
+    const visit = await readVisitContext(homeownerId, startAt);
 
     const filter = `homeowner_maintenance?homeowner_id=eq.${homeownerId}` +
       `&scheduled_start=eq.${encodeURIComponent(startAt.toISOString())}`;

@@ -22,7 +22,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import {
-  assignmentsForDispatch, dispatchForVisit, dispatchStateOf, type DispatchAssignment,
+  assignmentsForDispatch, dispatchForVisit, dispatchStateOf, UNKNOWN_DISPATCH_STATE,
+  type DispatchAssignment,
 } from '@/lib/homecare/dispatch';
 import { handleFlagSchema } from '../_schema';
 
@@ -58,6 +59,21 @@ export async function POST(request: NextRequest) {
       { status: 'confirmed', confirmed_at: now, updated_at: now },
     )) ?? [];
 
+    // Re-read AFTER the write, so what the admin is told about the chase is the
+    // visit's actual state rather than the one this route intended - and a
+    // re-read that FAILED is `unknown`, never a 500 over a write that landed.
+    // The flags really are cleared and the 5pm/6pm chases really have stopped
+    // by this point; answering 500 told the admin the opposite and left the
+    // stale "Flagged by ..." row on screen, so they might call the visit off
+    // over a problem already closed.
+    const after = await assignmentsForDispatch(dispatch.id).catch((err) => {
+      console.error(
+        'service-quote dispatch handled: the flags were cleared but the visit could not be re-read:',
+        err instanceof Error ? err.message : String(err),
+      );
+      return null;
+    });
+
     // Reported, never assumed. Zero rows means there was no open flag to clear
     // - it went in another tab, or the assignment was retired between the list
     // being read and the button being pressed - and answering a flat 'handled'
@@ -65,9 +81,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       status: handled.length > 0 ? 'handled' : 'nothing_to_handle',
       handled: handled.length,
-      // Re-read AFTER the write, so what the admin is told about the chase is
-      // the visit's actual state rather than the one this route intended.
-      dispatch: dispatchStateOf(await assignmentsForDispatch(dispatch.id)),
+      dispatch: after ? dispatchStateOf(after) : UNKNOWN_DISPATCH_STATE,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

@@ -304,7 +304,11 @@ export default function SendServiceQuotePage() {
           // for a failed load, and wrong for a deliberate empty pick. The
           // button is disabled in that second case, so it cannot arise.
           ...(crew.length > 0 ? { recipientIds: [...crewPicked] } : {}),
-          ...(subName.trim() ? { subName: subName.trim() } : {}),
+          // ALWAYS sent, empty included. The box is authoritative on every
+          // save, so an empty one is a clear - omitting the field would mean
+          // "leave whatever is stored alone", which is what made a sub
+          // write-once per window and re-mailed a sub who had fallen through.
+          subName: subName.trim(),
         }),
       });
       const data = await res.json();
@@ -350,12 +354,15 @@ export default function SendServiceQuotePage() {
       const recordLine = data.dispatchRecorded === 'unavailable'
         ? ' The dispatch is NOT recorded on the visit - 5pm will chase it as never sent, and cancelling it will not take it off their calendars.'
         : '';
-      // What was mailed and what was stored have diverged. The crew's email
-      // names the sub; nothing else does - not their confirm page, not a flag
-      // alert about this visit - and only this line ever says so.
-      const subLine = data.dispatchSubRecorded === 'unavailable'
-        ? ` The sub (${subName.trim()}) is NOT stored on the visit - the crew email names them, but their confirm page and any flag alert will not. Re-save the visit.`
-        : '';
+      // What was mailed and what was stored have diverged, in whichever
+      // direction. The crew's email is built from what was typed here; the
+      // confirm page and any flag alert read the row - and only this line ever
+      // says the two disagree.
+      const subLine = data.dispatchSubRecorded !== 'unavailable'
+        ? ''
+        : subName.trim()
+          ? ` The sub (${subName.trim()}) is NOT stored on the visit - the crew email names them, but their confirm page and any flag alert will not. Re-save the visit.`
+          : ' The sub could NOT be cleared from the visit - the crew email leaves them off, but their confirm page and any flag alert still name them. Re-save the visit.';
       const movedLine = stillHolding.length > 0
         ? ` The OLD window could not be taken off ${stillHolding.join(', ')}'s calendar - call them, or they will text the customer about it at 7:00am.`
         : '';
@@ -471,10 +478,16 @@ export default function SendServiceQuotePage() {
       // returns before the cancellation goes out - so an empty `unretracted`
       // there means nobody was told, not that everybody was.
       const dispatchStale = data.dispatch?.status === 'unavailable';
+      // Nothing was sent at all, because the visit could not be read and a
+      // cancellation that cannot name the job is worse than none: the crew get
+      // "[CANCELLED]" with no customer, no address and no work. They are all
+      // still holding it, so the admin is the one who has to tell them.
+      const undescribed = data.dispatch?.retraction === 'unavailable';
       const crewLine = dispatchStale
         ? ' The crew record could NOT be cleared - nobody has been told it is off, and re-booking this slot may go unchased. Call them.'
         : stillHolding.length > 0
-          ? ` The crew could NOT be told it is off (${stillHolding.join(', ')}) - call them.`
+          ? ` The crew could NOT be told it is off (${stillHolding.join(', ')})${
+            undescribed ? ' - the visit could not be read, so no cancellation was sent' : ''} - call them.`
           : data.dispatch?.retraction === 'sent'
             ? ' The crew has been sent a calendar cancellation.'
             : '';
@@ -525,7 +538,12 @@ export default function SendServiceQuotePage() {
         ? 'This visit reads as confirmed now, so it will not be chased again.'
         : state === 'flagged'
           ? 'Another flag is still open on it, so 5pm and 6pm will keep chasing it.'
-          : 'Nobody on this visit has confirmed, so 5pm and 6pm will still chase it.';
+          // A re-read that FAILED, never the definite "nobody has confirmed":
+          // the write landed, so the chase may well have stopped - what could
+          // not be done is check.
+          : state === 'unknown'
+            ? 'What the visit reads as now could NOT be checked - look at it again before you rely on this.'
+            : 'Nobody on this visit has confirmed, so 5pm and 6pm will still chase it.';
       toast({
         title: cleared > 0 ? 'Flag cleared' : 'Nothing to clear',
         description: (cleared > 0
