@@ -46,11 +46,21 @@ export default function UpcomingVisitCard({ visit, now = new Date() }: { visit: 
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-card" data-testid="upcoming-visit">
+      {/*
+        Three tiers, not two. A visit still weeks out was grey, which read as
+        disabled next to everything else on the checklist - a member scanning
+        the page did not see they had a visit booked at all.
+
+        It is orange now, but a SOFTER orange than the imminent band above it:
+        the gradient has to stay the loudest thing on the card on the morning
+        somebody needs to be home, and two identical bands would flatten that
+        difference away.
+      */}
       <div
         className={
           soon
             ? 'bg-gradient-to-r from-primary to-accent-sunset px-4 py-2.5 text-xs font-bold uppercase tracking-[0.11em] text-white'
-            : 'border-b border-border bg-muted/40 px-4 py-2.5 text-xs font-bold uppercase tracking-[0.11em] text-text-muted'
+            : 'border-b border-primary/20 bg-primary/10 px-4 py-2.5 text-xs font-bold uppercase tracking-[0.11em] text-primary-dark'
         }
       >
         {today ? 'Today' : soon ? 'Coming up - tomorrow' : 'Scheduled'}
