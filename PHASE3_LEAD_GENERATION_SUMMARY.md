@@ -39,6 +39,8 @@ A comprehensive lead scoring algorithm that evaluates leads based on:
 - 🟡 **Warm Lead:** 50-79 points
 - 🔵 **Cold Lead:** <50 points
 
+_These weights and thresholds are unchanged and still describe `score`/`tier` on the lead row, but as of August 2026 the tier no longer decides who gets called. Project type alone contributes 50-95 points against the 80-point hot threshold, so almost every lead lands hot and the tier cannot separate anything: a bathroom lead from out of area with no phone number scores 105 and reads as hot. **Routing** is decided by a second, separate scorer that runs when a lead finishes the intake chat (`scoreIntake` in `src/lib/intake/scoring.ts`), on signals that do not exist at form-submit time, and is written to its own `intake_score`/`intake_bucket` columns. See `docs/lead-routing-acceptance-criteria.md`. Nothing here is re-scored._
+
 ### 2. Database Migration (`supabase/migrations/20260217120000_add_lead_scoring_columns.sql`)
 **Status:** ✅ Complete (needs manual application)
 

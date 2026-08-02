@@ -8,6 +8,8 @@
  *   - CHECK:    leads_inquiry_type_check            (estimate | contact | exit_intent)
  *               leads_contact_time_preference_check (anytime | morning | afternoon |
  *                                                    evening | weekends | specific | NULL)
+ *               leads_intake_bucket_check           (hot | cold | NULL) - unreachable
+ *                                                    from here, see the column list
  *   - Types:    square_footage / score / visit_count are integers,
  *               first_seen is timestamptz
  *   - Unknown columns make PostgREST reject the whole insert (PGRST204)
@@ -43,9 +45,15 @@ export const LEAD_CONTACT_TIME_PREFERENCES = [
 const FALLBACK_INQUIRY_TYPE = 'contact';
 
 // Writable public.leads columns. id / created_at / updated_at / archived_at
-// are server-managed and never accepted from a payload. If a new column is
-// added to the table, it must be added here too or the sanitizer will drop it
-// (loudly, via an adjustment note in the owner alert).
+// are server-managed and never accepted from a payload, and so is the routing
+// verdict - intake_score, intake_bucket, intake_signals, routed_to, routed_at
+// and routing_reason are written only by `recordRouting`, which PATCHes the
+// lead directly and never comes through here. /api/leads/submit is
+// unauthenticated and its schema passes unknown keys through, so a routing
+// column arriving in a payload can only be a forgery: it is dropped with a
+// note, exactly like any other column this table does not accept from a form.
+// If a new column is added to the table, it must be added here too or the
+// sanitizer will drop it (loudly, via an adjustment note in the owner alert).
 const TEXT_COLUMNS = [
   'first_name',
   'last_name',

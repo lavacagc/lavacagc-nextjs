@@ -1,6 +1,6 @@
 /**
  * Lead Scoring System for La Vaca GC
- * 
+ *
  * Scores leads based on multiple factors to prioritize follow-up efforts.
  * Scoring criteria:
  * - Service type (50-95 pts)
@@ -8,6 +8,19 @@
  * - Contact info completeness (25 pts max)
  * - Lead source quality (5-20 pts)
  * - Budget indicators (10-20 pts)
+ *
+ * This runs at form-submit time, on what little is known then, and writes
+ * `score` / `tier`. It does NOT decide routing, and its weights and thresholds
+ * are deliberately frozen: live data depends on what those two columns mean,
+ * and no historical lead is re-scored.
+ *
+ * Routing is a separate verdict from a separate scorer - `scoreIntake` in
+ * `src/lib/intake/scoring.ts` - which runs once the lead has finished the
+ * intake chat, on signals that do not exist yet here. Adding those signals to
+ * this function instead would not work: service type alone contributes 50-95
+ * points against an 80-point hot threshold, so almost every lead is already
+ * hot, and more points on a saturated scale separate nothing. See
+ * `docs/lead-routing-acceptance-criteria.md`.
  */
 
 export interface LeadScoringInput {

@@ -136,6 +136,9 @@ The new-lead alert fires at form submission, when all we know is a name and a pr
 - Routing hot leads differently from cold ones (WEB-01A).
 - The abandoned-session cron (WEB-01B). The `opened_at` column it needs is created here.
 
+All three have since shipped as slice B, specified in [`lead-routing-acceptance-criteria.md`](lead-routing-acceptance-criteria.md).
+Two things there change what a criterion above describes: the completion brief of AC13 now leads with the routing bucket and its score, and the `opened_at` column is what the chase cron selects its never-opened candidates by.
+
 ## Running the suite without sending real email
 
 The Playwright config starts `npm run start` on port 3000 and reuses whatever is already there.

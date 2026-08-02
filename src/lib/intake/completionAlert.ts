@@ -12,14 +12,52 @@
  * picking it up, not an archive; the answers are on the lead row either way.
  */
 import { sendTelegramMessage, escapeTelegramClipped, type TelegramOutcome } from '@/lib/notify/telegramMessage';
+import { HOT_AT } from './scoring';
 
 export interface CompletionContext {
   firstName: string | null;
   projectType: string | null;
   answers: Record<string, string>;
+  /**
+   * The routing decision (WEB-01A), when one was made. Leads the brief, because
+   * "is this worth dropping what I am doing for" is the first thing the owner
+   * wants to know from a phone.
+   *
+   * `recorded` is whether the decision reached the lead row. False must be said
+   * out loud: a brief that announces a routing the lead has no record of is
+   * exactly the state `recordRouting` returns its boolean to avoid. null is a
+   * session with no lead row - nothing was due, so nothing is warned about.
+   *
+   * `signals` are the scorer's own words for how it got there. The brief needs
+   * them because the bucket can disagree with the score: an unreadable photo
+   * count routes a 45 hot, and "HOT LEAD (45/100)" under a threshold of 55 with
+   * no explanation reads to the owner as a bug in the scoring.
+   */
+  routing?: {
+    bucket: 'hot' | 'cold';
+    score: number;
+    /**
+     * What the score was out of. 80 for a project type the flow never asks
+     * about price on, so the banner shows the scale the lead was measured on
+     * rather than implying a 100 they could not have reached.
+     *
+     * Required, for the reason `photoCount` and `projectType` are required one
+     * level up: a default of 100 renders an 80-scale lead as "50/100", which is
+     * a denominator that is WRONG rather than merely missing - on the one line
+     * the owner reads before deciding whether to pick up the phone.
+     */
+    outOf: number;
+    recorded?: boolean | null;
+    signals?: string[];
+  } | null;
   phone?: string | null;
   email?: string | null;
-  photoCount?: number;
+  /**
+   * The photo count, null when it could not be read - which is a different
+   * thing from the zero of a lead who sent none, and renders differently.
+   * Omitted entirely when the caller has no count to offer either way.
+   */
+  photoCount?: number | null;
   /** What we told them the work starts at, if anything. */
   priceAnchor?: number | null;
 }
@@ -109,7 +147,23 @@ const CAP = {
   preset: 80,
   phone: 40,
   line: 160,
+  note: 240,
 } as const;
+
+/**
+ * Why a bucket that disagrees with its own score is not a bug.
+ *
+ * Two ways it can happen: an unreadable photo count routed hot on the benefit
+ * of the doubt, and a project type the flow never asked about price on, which
+ * is judged out of 80 and hot at 44. The scorer puts whichever decided it
+ * first, so the brief quotes it rather than re-deriving the reasoning
+ * downstream and risking a different account of the same decision.
+ */
+export function bucketExplanation(routing: CompletionContext['routing']): string | null {
+  if (!routing || routing.bucket !== 'hot' || routing.score >= HOT_AT) return null;
+  return routing.signals?.[0]
+    ?? `Under the usual ${HOT_AT} needed, and routed hot on the benefit of the doubt.`;
+}
 
 export function completionMessage(ctx: CompletionContext): string {
   const a = ctx.answers;
@@ -119,9 +173,26 @@ export function completionMessage(ctx: CompletionContext): string {
   const row = (label: string, value: string | null | undefined, max: number): string | null =>
     value ? `<b>${label}</b> ${esc(value, max)}` : null;
 
+  // A hot lead announces itself. A cold one still gets the full brief - cold is
+  // a different destination, not a bin - but it does not shout.
+  const out = ctx.routing ? `${ctx.routing.score}/${ctx.routing.outOf}` : '';
+  const banner = ctx.routing
+    ? ctx.routing.bucket === 'hot'
+      ? `\u{1F525} <b>HOT LEAD (${out}) - ${esc(who, CAP.name)}</b>`
+      : `<b>Intake finished - ${esc(who, CAP.name)}</b> (cold, ${out})`
+    : `<b>Intake finished - ${esc(who, CAP.name)}</b>`;
+
+  const explained = bucketExplanation(ctx.routing);
+
   const lines: (string | null)[] = [
-    `<b>Intake finished - ${esc(who, CAP.name)}</b>`,
+    banner,
     ctx.projectType ? esc(ctx.projectType, CAP.projectType) : null,
+    // Both of these sit directly under the banner, because each qualifies a
+    // claim the banner itself makes - the score it shows, and that it was saved.
+    explained ? `<i>${esc(explained, CAP.note)}</i>` : null,
+    ctx.routing && ctx.routing.recorded === false
+      ? '⚠️ <b>NOT saved to the lead</b> - this routing decision exists only in this message.'
+      : null,
     '',
     a.message ? `<i>"${esc(a.message, CAP.message)}"</i>` : null,
     a.message ? '' : null,
@@ -133,7 +204,16 @@ export function completionMessage(ctx: CompletionContext): string {
     row('Address', a.address, CAP.address),
     row('Call them', CONTACT[a.contact_time_preference] ?? a.contact_time_preference, CAP.preset),
     ctx.phone ? row('Phone', ctx.phone, CAP.phone) : null,
-    ctx.photoCount ? `<b>Photos</b> ${ctx.photoCount} attached` : null,
+    // A count that could not be read is not a lead who sent none, and the brief
+    // is the surface the owner reads before picking up the phone - the one place
+    // that distinction may not go quiet.
+    ctx.photoCount === undefined
+      ? null
+      : ctx.photoCount === null
+        ? '<b>Photos</b> count unavailable - could not be read'
+        : ctx.photoCount > 0
+          ? `<b>Photos</b> ${ctx.photoCount} attached`
+          : '<b>Photos</b> none sent',
     '',
   ];
 

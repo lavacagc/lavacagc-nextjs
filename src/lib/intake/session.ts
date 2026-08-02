@@ -207,6 +207,49 @@ export async function mirrorToLead(
   }
 }
 
+/**
+ * Persist the routing decision on the lead (WEB-01A).
+ *
+ * Its acceptance criterion is that the decision AND its recipient are logged,
+ * so a failure here is not cosmetic - it leaves a lead that was routed with no
+ * record of where or why. Logged loudly, and reported to the caller so the
+ * brief can say the record is missing rather than imply it is there.
+ *
+ * null, not false, when there is no lead row to write to: a session whose lead
+ * insert returned nothing never had a record for this to be missing from, and
+ * warning that a routing decision was lost when none was ever due teaches the
+ * reader to ignore the warning that matters.
+ */
+export async function recordRouting(args: {
+  leadId: string | null;
+  score: number;
+  bucket: 'hot' | 'cold';
+  signals: string[];
+  routedTo: string;
+  reason: string;
+}): Promise<boolean | null> {
+  if (!args.leadId) return null;
+  try {
+    await supabaseRest(
+      'PATCH',
+      `leads?id=eq.${args.leadId}`,
+      {
+        intake_score: args.score,
+        intake_bucket: args.bucket,
+        intake_signals: args.signals,
+        routed_to: args.routedTo,
+        routed_at: new Date().toISOString(),
+        routing_reason: args.reason,
+      },
+      { prefer: 'return=minimal' },
+    );
+    return true;
+  } catch (err) {
+    console.error(`[intake] FAILED to record routing for lead ${args.leadId}:`, err);
+    return false;
+  }
+}
+
 /** Record an off-script question. Returns the row id so routing can stamp it. */
 export async function recordOffScript(args: {
   sessionId: string;
@@ -242,23 +285,52 @@ export async function markRouted(eventId: string): Promise<void> {
 }
 
 /**
- * How many photos this session has already stored.
+ * How many photos this session has already stored, or null when that could not
+ * be read.
  *
- * Returns 0 when the count cannot be read. Both callers use it to decide
- * whether there is room for more, and refusing an upload because Supabase
- * blinked would cost a real lead their photos.
+ * The two callers want opposite things from a failed read, so the distinction
+ * is made here once rather than guessed at twice.
  */
-export async function countPhotos(sessionId: string): Promise<number> {
+export async function countPhotosOrNull(sessionId: string): Promise<number | null> {
   try {
     const rows = await supabaseRest<{ id: string }[]>(
       'GET',
       `lead_intake_photos?session_id=eq.${sessionId}&select=id`,
     );
-    return Array.isArray(rows) ? rows.length : 0;
+    return Array.isArray(rows) ? rows.length : null;
   } catch (err) {
     console.error('[intake] failed to count photos:', err);
-    return 0;
+    return null;
   }
+}
+
+/**
+ * The scoring read: the same count, tried a second time before it is allowed to
+ * answer "unknown".
+ *
+ * The count is worth 10 points and can decide the bucket, and these reads fail
+ * transiently or not at all, so one retry closes most of the window at the cost
+ * of one request on a path that runs once per completed intake. It still
+ * answers null rather than inventing a number - "we could not tell" survives to
+ * the scorer, which knows what to do with it.
+ */
+export async function countPhotosForScoring(
+  sessionId: string,
+  read: (id: string) => Promise<number | null> = countPhotosOrNull,
+): Promise<number | null> {
+  const first = await read(sessionId);
+  return first === null ? read(sessionId) : first;
+}
+
+/**
+ * The same count, with a failed read treated as 0.
+ *
+ * For the upload path only, which uses it to decide whether there is room for
+ * more: refusing an upload because Supabase blinked would cost a real lead
+ * their photos. Scoring must NOT use this - see `countPhotosOrNull`.
+ */
+export async function countPhotos(sessionId: string): Promise<number> {
+  return (await countPhotosOrNull(sessionId)) ?? 0;
 }
 
 export async function recordPhoto(args: {
