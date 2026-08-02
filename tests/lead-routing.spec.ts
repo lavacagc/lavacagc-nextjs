@@ -9,7 +9,7 @@ import {
   chaseOne, candidateQuery, claimPath, chaseCutoff, paginate, CHASE_PAGE, CHASE_STAMP,
   type ChaseCandidate, type ChaseDeps,
 } from '../src/lib/intake/chase';
-import { countPhotosForScoring } from '../src/lib/intake/session';
+import { countPhotosForScoring, recordRouting } from '../src/lib/intake/session';
 import { completionMessage } from '../src/lib/intake/completionAlert';
 import { TELEGRAM_TEXT_LIMIT, type TelegramOutcome } from '../src/lib/notify/telegramMessage';
 
@@ -34,30 +34,30 @@ const answers = (o: Partial<Record<string, string>> = {}) => ({
 
 test.describe('AC1 - the spec four', () => {
   test('town in the service area scores, and is named in the record', () => {
-    const near = scoreIntake({ answers: answers({ city: 'Montclair' }) });
-    const far = scoreIntake({ answers: answers({ city: 'Princeton' }) });
+    const near = scoreIntake({ answers: answers({ city: 'Montclair' }), photoCount: 0 });
+    const far = scoreIntake({ answers: answers({ city: 'Princeton' }), photoCount: 0 });
     expect(near.score).toBeGreaterThan(far.score);
     expect(near.signals.join(' ')).toContain('In the service area');
     expect(far.signals.join(' ')).toContain('Outside the service area');
   });
 
   test('scope tier is ordered full gut > major update > refresh', () => {
-    const s = (v: string) => scoreIntake({ answers: answers({ scope_tier: v }) }).score;
+    const s = (v: string) => scoreIntake({ answers: answers({ scope_tier: v }), photoCount: 0 }).score;
     expect(s('full_gut')).toBeGreaterThan(s('major_update'));
     expect(s('major_update')).toBeGreaterThan(s('refresh'));
   });
 
   test('"described it themselves" scores mid, not zero', () => {
     // They told us more, not less. Scoring it zero would punish engagement.
-    const own = scoreIntake({ answers: answers({ scope_tier: 'own_details' }) }).score;
-    const refresh = scoreIntake({ answers: answers({ scope_tier: 'refresh' }) }).score;
-    const gut = scoreIntake({ answers: answers({ scope_tier: 'full_gut' }) }).score;
+    const own = scoreIntake({ answers: answers({ scope_tier: 'own_details' }), photoCount: 0 }).score;
+    const refresh = scoreIntake({ answers: answers({ scope_tier: 'refresh' }), photoCount: 0 }).score;
+    const gut = scoreIntake({ answers: answers({ scope_tier: 'full_gut' }), photoCount: 0 }).score;
     expect(own).toBeGreaterThan(refresh);
     expect(own).toBeLessThan(gut);
   });
 
   test('timeline is ordered, and "just planning" scores nothing', () => {
-    const s = (v: string) => scoreIntake({ answers: answers({ project_timeline: v }) }).score;
+    const s = (v: string) => scoreIntake({ answers: answers({ project_timeline: v }), photoCount: 0 }).score;
     expect(s('asap')).toBeGreaterThan(s('1_3_months'));
     expect(s('1_3_months')).toBeGreaterThan(s('3_6_months'));
     expect(s('3_6_months')).toBeGreaterThan(s('later_this_year'));
@@ -146,22 +146,22 @@ test.describe('AC1 - the spec four', () => {
 
 test.describe('AC2 - the price reaction is scored and is heaviest', () => {
   test('priced out costs more than any other single downgrade', () => {
-    const base = scoreIntake({ answers: answers() }).score;
-    const priced = base - scoreIntake({ answers: answers({ price_reaction: 'well_above' }) }).score;
-    const timing = base - scoreIntake({ answers: answers({ project_timeline: 'planning' }) }).score;
-    const scope = base - scoreIntake({ answers: answers({ scope_tier: 'refresh' }) }).score;
+    const base = scoreIntake({ answers: answers(), photoCount: 0 }).score;
+    const priced = base - scoreIntake({ answers: answers({ price_reaction: 'well_above' }), photoCount: 0 }).score;
+    const timing = base - scoreIntake({ answers: answers({ project_timeline: 'planning' }), photoCount: 0 }).score;
+    const scope = base - scoreIntake({ answers: answers({ scope_tier: 'refresh' }), photoCount: 0 }).score;
     expect(priced).toBeGreaterThan(0);
     expect(priced).toBeGreaterThanOrEqual(Math.min(timing, scope));
   });
 
   test('"under what I expected" is not penalised against "about right"', () => {
-    const under = scoreIntake({ answers: answers({ price_reaction: 'below_expected' }) }).score;
-    const about = scoreIntake({ answers: answers({ price_reaction: 'about_expected' }) }).score;
+    const under = scoreIntake({ answers: answers({ price_reaction: 'below_expected' }), photoCount: 0 }).score;
+    const about = scoreIntake({ answers: answers({ price_reaction: 'about_expected' }), photoCount: 0 }).score;
     expect(under).toBe(about);
   });
 
   test('the reaction is named in plain words in the record', () => {
-    const r = scoreIntake({ answers: answers({ price_reaction: 'well_above' }) });
+    const r = scoreIntake({ answers: answers({ price_reaction: 'well_above' }), photoCount: 0 });
     expect(r.signals.join(' ')).toContain('well above what they planned');
   });
 });
@@ -213,7 +213,10 @@ test.describe('AC3 - bucketing actually separates', () => {
       for (const scope of ['full_gut', 'major_update', 'refresh', 'own_details']) {
         for (const tl of ['asap', '1_3_months', '3_6_months', 'later_this_year', 'planning']) {
           for (const pr of ['below_expected', 'about_expected', 'a_bit_more', 'well_above']) {
-            seen.add(scoreIntake({ answers: { city, scope_tier: scope, project_timeline: tl, price_reaction: pr } }).bucket);
+            seen.add(scoreIntake({
+              answers: { city, scope_tier: scope, project_timeline: tl, price_reaction: pr },
+              photoCount: 0,
+            }).bucket);
           }
         }
       }
@@ -222,7 +225,7 @@ test.describe('AC3 - bucketing actually separates', () => {
   });
 
   test('an empty answer set does not crash and is cold', () => {
-    const r = scoreIntake({ answers: {} });
+    const r = scoreIntake({ answers: {}, photoCount: 0 });
     expect(r.bucket).toBe('cold');
     expect(r.score).toBe(0);
   });
@@ -239,7 +242,9 @@ test.describe('AC4 - routing is recorded, not just made', () => {
   });
 
   test('cold enters nurture - a destination, not a bin', () => {
-    const d = routeIntake(scoreIntake({ answers: { city: 'Princeton', project_timeline: 'planning' } }));
+    const d = routeIntake(scoreIntake({
+      answers: { city: 'Princeton', project_timeline: 'planning' }, photoCount: 0,
+    }));
     expect(d.bucket).toBe('cold');
     expect(d.routedTo).toBe('nurture');
   });
@@ -265,6 +270,21 @@ test.describe('AC4 - routing is recorded, not just made', () => {
     const src = code('src/app/api/intake/[token]/answer/route.ts');
     expect(src).toContain('const routingRecorded = await recordRouting(');
     expect(src).toContain('recorded: routingRecorded');
+  });
+
+  test('A SESSION WITH NO LEAD ROW IS NOT A FAILED WRITE', async () => {
+    // submit/route sets lead_id to null when the insert returned nothing. There
+    // was never a row for the routing to be missing from, and warning about a
+    // lost record when none was due teaches the owner to ignore the warning.
+    expect(await recordRouting({
+      leadId: null, score: 90, bucket: 'hot', signals: [], routedTo: 'Alex and Veronica', reason: 'x',
+    })).toBeNull();
+
+    const msg = completionMessage({
+      firstName: 'Sarah', projectType: 'Kitchen Remodeling', answers: answers(),
+      routing: { bucket: 'hot', score: 92, recorded: null },
+    });
+    expect(msg).not.toContain('NOT saved to the lead');
   });
 
   test('a brief whose routing did not save says so, rather than implying it did', () => {
@@ -371,6 +391,49 @@ test.describe('AC5 - a hot lead announces itself', () => {
   test('with no routing at all the brief still renders', () => {
     const plain = completionMessage({ firstName: 'Sarah', projectType: 'Kitchen', answers: answers() });
     expect(plain).toContain('Intake finished');
+  });
+
+  test('A HOT BANNER UNDER THE THRESHOLD EXPLAINS ITSELF', async () => {
+    // The benefit of the doubt produces "HOT LEAD (45/100)" against a threshold
+    // of 55. Unexplained, the one message the owner reads before picking up the
+    // phone looks like a bug in the scoring, on the one occasion they most need
+    // to trust the label.
+    const scored = scoreIntake({
+      answers: answers({ project_timeline: 'planning', price_reaction: 'well_above' }),
+      photoCount: null,
+    });
+    expect(scored.score).toBeLessThan(55);
+    expect(scored.bucket).toBe('hot');
+
+    const msg = completionMessage({
+      firstName: 'Sarah', projectType: 'Kitchen Remodeling', answers: answers(),
+      routing: { bucket: scored.bucket, score: scored.score, signals: scored.signals },
+    });
+    expect(msg).toContain(`HOT LEAD (${scored.score}/100)`);
+    expect(msg).toContain('Photo count unavailable');
+    expect(msg).toContain('routed hot rather than risk losing it');
+  });
+
+  test('a hot lead whose score earned it is not explained at all', () => {
+    const msg = completionMessage({
+      firstName: 'Sarah', projectType: 'Kitchen Remodeling', answers: answers(),
+      routing: { bucket: 'hot', score: 92, signals: ['In the service area (Montclair)'] },
+    });
+    expect(msg).toContain('HOT LEAD (92/100)');
+    expect(msg).not.toContain('In the service area');
+  });
+
+  test('A PHOTO COUNT THAT COULD NOT BE READ DOES NOT RENDER AS "THEY SENT NONE"', () => {
+    const brief = (photoCount: number | null | undefined) => completionMessage({
+      firstName: 'Sarah', projectType: 'Kitchen Remodeling', answers: answers(), photoCount,
+    });
+    expect(brief(3)).toContain('<b>Photos</b> 3 attached');
+    expect(brief(0)).toContain('none sent');
+    expect(brief(null)).toContain('count unavailable');
+    // Three different facts, three different lines - and no line at all when
+    // the caller had no count to offer either way.
+    expect(brief(0)).not.toBe(brief(null));
+    expect(brief(undefined)).not.toContain('Photos');
   });
 });
 
@@ -500,7 +563,8 @@ function fakeDeps(opts: {
   claim?: unknown;
   claimThrows?: boolean;
   send?: TelegramOutcome;
-  recorded?: boolean;
+  /** One entry per attempt, so a write that succeeds on the retry can be told. */
+  recorded?: boolean | null | Array<boolean | null>;
 } = {}) {
   const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
   const sends: string[] = [];
@@ -518,7 +582,9 @@ function fakeDeps(opts: {
     },
     async recordRouting(args) {
       routed.push({ leadId: args.leadId, bucket: args.bucket });
-      return opts.recorded ?? true;
+      const r = opts.recorded;
+      if (Array.isArray(r)) return r[Math.min(routed.length - 1, r.length - 1)];
+      return r === undefined ? true : r;
     },
   };
   return { deps, patches, sends, routed };
@@ -639,6 +705,59 @@ test.describe('AC8 - a broken cron does not look like a quiet one', () => {
     expect(result.routingRecorded).toBe(false);
   });
 
+  test('THE ROUTING WRITE IS RETRIED, BECAUSE NOTHING ELSE EVER WILL', async () => {
+    // The alert has gone and the stamp stays set - releasing it would re-alert,
+    // which is worse - so this session is a candidate for no future run. A write
+    // dropped here is recorded nowhere, permanently.
+    const f = fakeDeps({ recorded: [false, true] });
+    const result = await chaseOne('low_intent', candidate(), NOW, f.deps);
+    expect(result.routingRecorded).toBe(true);
+    expect(f.routed).toHaveLength(2);
+
+    // And it is not retried forever, nor reported as saved when it was not.
+    const lost = fakeDeps({ recorded: false });
+    expect((await chaseOne('low_intent', candidate(), NOW, lost.deps)).routingRecorded).toBe(false);
+    expect(lost.routed).toHaveLength(2);
+  });
+
+  test('A THROW AFTER THE CLAIM RELEASES IT INSTEAD OF SWALLOWING THE LEAD', async () => {
+    // The stamp is written before the send, so anything that throws between the
+    // two would leave a claimed, unsent candidate that no future run can see -
+    // the one case the claim-before-send sequence cannot survive on its own.
+    const f = fakeDeps();
+    const broken = quiet({ answers: null as unknown as Record<string, string> });
+    const result = await chaseOne('abandoned', broken, NOW, f.deps);
+    expect(result.outcome).toBe('failed');
+    expect(f.sends).toEqual([]);
+    expect(f.patches).toHaveLength(2);
+    expect(f.patches[1].body).toEqual({ [CHASE_STAMP.abandoned]: null });
+  });
+
+  test('the run names the fault, not the stage after it', async () => {
+    // Supabase refusing every claim reported "chase_send_failed", which sends
+    // the reader to look at Telegram. This is the only field the cron log shows.
+    expect((await chaseOne('low_intent', candidate(), NOW, fakeDeps({ claimThrows: true }).deps)).failure)
+      .toBe('claim');
+    expect((await chaseOne('low_intent', candidate(), NOW, fakeDeps({ claim: null }).deps)).failure)
+      .toBe('claim');
+    expect((await chaseOne('abandoned', quiet(), NOW, fakeDeps({ send: 'failed' }).deps)).failure)
+      .toBe('send');
+    expect((await chaseOne('abandoned', quiet(), NOW, fakeDeps().deps)).failure).toBeUndefined();
+
+    const src = code('src/app/api/cron/intake-chase/route.ts');
+    for (const label of ['chase_claim_failed', 'chase_send_failed', 'chase_threw']) {
+      expect(src).toContain(label);
+    }
+  });
+
+  test('one bad candidate cannot take the whole run down with it', () => {
+    // chaseOne releases its own claim on a throw; the loop still guards, so the
+    // REST of the page is not left claimed and unsent by something unforeseen.
+    const src = code('src/app/api/cron/intake-chase/route.ts');
+    expect(src).toMatch(/try\s*\{\s*result = await chaseOne\(/);
+    expect(src).toContain('threw and was not chased');
+  });
+
   test('a session with no lead has nothing to record, which is not a failure', async () => {
     const f = fakeDeps();
     const result = await chaseOne('low_intent', candidate({ lead_id: null }), NOW, f.deps);
@@ -683,5 +802,23 @@ test.describe('AC8 - a broken cron does not look like a quiet one', () => {
     const vercel = read('vercel.json');
     expect(vercel).toContain('/api/cron/intake-chase?stage=low_intent');
     expect(vercel).toContain('/api/cron/intake-chase?stage=abandoned');
+  });
+
+  test('THE THRESHOLD DECIDES WHEN A CHASE LANDS, NOT THE CRON TIME', () => {
+    // Checked once a day, a 6h threshold is inoperative: a lead who submits at
+    // 10am is chased at 9am the next day. Every three hours across the working
+    // day, so the wait is the one the constants describe - and daytime only,
+    // because these land in the owner's personal chat.
+    const crons: Array<{ path: string; schedule: string }> =
+      JSON.parse(read('vercel.json')).crons;
+    const stages = crons.filter((c) => c.path.startsWith('/api/cron/intake-chase'));
+    expect(stages).toHaveLength(2);
+    for (const stage of stages) {
+      const hours = stage.schedule.split(' ')[1].split(',').map(Number);
+      expect(hours, `${stage.path} must run more than once a day`).toEqual([13, 16, 19, 22]);
+      // 9am to 6pm Eastern in summer, an hour earlier in winter. Fixed UTC with
+      // the DST drift accepted, like the dispatch escalation crons.
+      expect(Math.max(...hours) - Math.min(...hours)).toBeLessThanOrEqual(12);
+    }
   });
 });

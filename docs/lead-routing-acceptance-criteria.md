@@ -37,6 +37,7 @@ Honouring decision D3: the three-tier `tier` column keeps its meaning and no his
   Where that missing count would have decided the bucket - the score is under the threshold but within the photo weighting of it - the lead is routed **hot** and the record says so.
   The two errors do not cost the same: a wrongly hot lead costs one phone call, a wrongly cold one is lost.
   The count is never invented, so the score stands as scored.
+  `photoCount` is a required input, and only `null` earns the unavailable signal and the benefit of the doubt: "not supplied" must not be able to become "we could not tell" by omission.
 
 ## AC2 - The fifth signal, added deliberately
 
@@ -61,6 +62,8 @@ WEB-01A's criterion is that "the routing decision and its recipient are logged o
 - The reason is human-readable, not a code.
 - A routing write that fails is logged loudly and does not silently leave the lead unrouted.
 - The owner's brief says when the write failed, rather than announcing a routing the lead has no record of.
+- A session with no lead row is **not** a failed write: nothing was due, `recordRouting` answers null rather than false, and the brief warns about nothing.
+  A warning raised when no record was ever due teaches the reader to ignore the warning that matters.
 - The routing verdict is server-written and is **never** accepted from a request body.
   `/api/leads/submit` is unauthenticated and its schema passes unknown keys through, so `intake_score`, `intake_bucket`, `intake_signals`, `routed_to`, `routed_at` and `routing_reason` are dropped by the sanitizer with a loud note - which also keeps a CHECK-violating `intake_bucket` from making Postgres reject the whole submission and lose the lead.
 
@@ -69,13 +72,23 @@ WEB-01A's criterion is that "the routing decision and its recipient are logged o
 - **Hot**: the owner alert says so and leads with why, so it is actionable on a phone.
 - **Cold**: enters nurture, and no visit alert is raised.
 - Neither path drops the lead. Cold is a different destination, not a bin.
+- A bucket that disagrees with its own score explains itself.
+  The benefit of the doubt can render "HOT LEAD (45/100)" against a threshold of 55, so the scorer's leading signal travels with the decision and is quoted under the banner.
+  Unexplained, the one message the owner reads before picking up the phone looks like a bug in the scoring, on the occasion they most need to trust the label.
+- The brief renders three different photo facts three different ways: a count, "none sent", and "count unavailable".
+  Everywhere else in this feature a failed read reads differently from an absent thing, and the brief is not an exception.
 
 ## AC6 - WEB-01B, the lead who never opened the chat
 
 - A cron finds sessions created more than N hours ago with `opened_at IS NULL`.
 - Each is flagged for manual follow-up and enters nurture.
 - Non-engagement is recorded as a signal on the lead rather than inferred later from an absence.
+  That write is retried once: the alert has gone and the stamp stays set, so the session is a candidate for no future run and nothing else would ever retry it.
 - The alert fires **once** per session. A second run must not re-alert.
+- Both stages run every three hours across the working day - 13:00, 16:00, 19:00 and 22:00 UTC, which is 9am to 6pm Eastern in summer and an hour earlier in winter.
+  A 6-hour threshold checked once a day is inoperative: the cron time, not the threshold, decides when the alert lands, and a lead who submits at 10am waits until the following morning.
+  Daytime only, because these land in the owner's personal chat - a 3am chase is worse than a late one - and the elapsed hours are computed from the timestamp, so they stay true whenever the run lands.
+  Fixed UTC with the hour of DST drift accepted, the same convention the dispatch escalation crons use.
 
 ## AC7 - The lead who started and stopped
 
@@ -99,6 +112,10 @@ Not in the spec, and raised because slice A left it in the gap between "never op
   The list is read once and worked through one at a time, so the claim is the only atomic point in the run: a lead who opens their link or finishes mid-run is skipped rather than told they never opened it and re-routed cold.
 - A run that could not drain its backlog reports `truncated`, so it does not read like a run that had nothing left to do.
 - `ok` follows a `degraded` list naming what went wrong - failed sends, failed routing writes, a truncated read - so a half-done run is visible in the cron log rather than only in a counter in a body nobody reads.
+- That list names the **fault**, not the stage after it: `chase_claim_failed` for a claim Supabase refused, `chase_send_failed` for a send Telegram refused, `chase_threw` for anything else.
+  It is the only field the cron log surfaces, so pointing at Telegram when the database is unreachable defeats the purpose of having it.
+- Any throw after the stamp is written releases the claim, and the loop guards each candidate.
+  Otherwise one bad row leaves itself and every candidate after it claimed and unsent, which no future run can see.
 - The route sets `maxDuration = 300` like every other looping cron here: a run killed mid-loop leaves candidates claimed but unsent, and those keep their stamp and are never chased again.
 
 ## Out of scope

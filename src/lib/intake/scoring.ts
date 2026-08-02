@@ -31,8 +31,12 @@ export interface IntakeScoringInput {
    * statement onto the lead row permanently, and with HOT_AT at 55 that misroutes
    * any lead scoring 55-64 on a transient Supabase blip - the precise outcome
    * this module exists to prevent. See the bucket, where the doubt is settled.
+   *
+   * Required, not optional: null means "we tried and could not tell" and earns
+   * the unavailable signal and the benefit of the doubt, so a caller who simply
+   * forgot to pass a count must not be able to claim either by omission.
    */
-  photoCount?: number | null;
+  photoCount: number | null;
 }
 
 export interface IntakeScoringResult {
@@ -49,8 +53,11 @@ export interface IntakeScoringResult {
  * Maximum reachable is 100: town 20, scope 25, timeline 25, photos 10,
  * price reaction 20. HOT_AT 55 means a lead needs roughly two strong signals
  * plus a weak one, and cannot get there on any single input.
+ *
+ * Exported because the completion brief has to be able to recognise a bucket
+ * that disagrees with its own score - see the benefit of the doubt below.
  */
-const HOT_AT = 55;
+export const HOT_AT = 55;
 
 /** What photos are worth - and so how much doubt an unreadable count creates. */
 const PHOTO_POINTS = 10;
@@ -144,7 +151,7 @@ export function scoreIntake(input: IntakeScoringInput): IntakeScoringResult {
   //    is safe to write down. Its signal is written below, once it is known
   //    whether the doubt mattered.
   const photos = input.photoCount;
-  const photosUnknown = photos === undefined || photos === null;
+  const photosUnknown = photos === null;
   const photoSignalAt = signals.length;
   if (!photosUnknown) {
     if (photos > 0) {

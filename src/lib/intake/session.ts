@@ -214,6 +214,11 @@ export async function mirrorToLead(
  * so a failure here is not cosmetic - it leaves a lead that was routed with no
  * record of where or why. Logged loudly, and reported to the caller so the
  * brief can say the record is missing rather than imply it is there.
+ *
+ * null, not false, when there is no lead row to write to: a session whose lead
+ * insert returned nothing never had a record for this to be missing from, and
+ * warning that a routing decision was lost when none was ever due teaches the
+ * reader to ignore the warning that matters.
  */
 export async function recordRouting(args: {
   leadId: string | null;
@@ -222,8 +227,8 @@ export async function recordRouting(args: {
   signals: string[];
   routedTo: string;
   reason: string;
-}): Promise<boolean> {
-  if (!args.leadId) return false;
+}): Promise<boolean | null> {
+  if (!args.leadId) return null;
   try {
     await supabaseRest(
       'PATCH',

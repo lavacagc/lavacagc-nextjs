@@ -7,6 +7,18 @@
  *   ?stage=low_intent   never opened the link      (WEB-01B)
  *   ?stage=abandoned    opened it, went quiet
  *
+ * Both stages run at 13:00, 16:00, 19:00 and 22:00 UTC - 9am, noon, 3pm and 6pm
+ * Eastern in summer, an hour earlier in winter. Fixed UTC times with the hour of
+ * DST drift accepted, the same convention the dispatch escalation crons use.
+ *
+ * Every three hours because the thresholds are 6h and 4h: checked once a day the
+ * cron time, not the threshold, decides when the alert lands, and a lead who
+ * went quiet at 2pm would be chased the following afternoon. Daytime only,
+ * because these land in the owner's personal chat - a 3am chase is worse than a
+ * late one, and a lead who goes quiet at 11pm is best chased in the morning
+ * anyway. The elapsed hours in the message are computed from the timestamp, so
+ * they stay true whenever the run lands.
+ *
  * ?dry=1 reports what it would do and sends nothing.
  *
  * The stamp is claimed BEFORE the send and released if the send fails, so a
@@ -19,9 +31,20 @@ import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTelegramMessage } from '@/lib/notify/telegramMessage';
 import {
   chaseMessage, chaseOne, candidateQuery, chaseCutoff, paginate,
-  type ChaseCandidate, type ChaseDeps, type ChaseKind,
+  type ChaseCandidate, type ChaseDeps, type ChaseFailure, type ChaseKind, type ChaseResult,
 } from '@/lib/intake/chase';
 import { recordRouting } from '@/lib/intake/session';
+
+/**
+ * What each failure is called in the cron log. This is the one field Vercel
+ * surfaces, so it names the fault: a run whose claims were all refused by an
+ * unreachable Supabase must not send the reader to look at Telegram.
+ */
+const FAULT_LABEL: Record<ChaseFailure, string> = {
+  claim: 'chase_claim_failed',
+  send: 'chase_send_failed',
+  unexpected: 'chase_threw',
+};
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -101,12 +124,26 @@ export async function GET(request: NextRequest) {
   let skipped = 0;
   let failed = 0;
   let routingUnrecorded = 0;
+  const faults = new Set<string>();
 
   for (const c of candidates) {
-    const result = await chaseOne(kind, c, now, deps);
+    // One bad row must not take the run down with it. `chaseOne` already
+    // releases its own claim on a throw; this is the backstop that keeps the
+    // REST of the page from being left claimed and unsent by a failure nobody
+    // has thought of yet.
+    let result: ChaseResult;
+    try {
+      result = await chaseOne(kind, c, now, deps);
+    } catch (err) {
+      console.error(`[intake-chase] ${c.id} threw and was not chased:`, err);
+      result = { outcome: 'failed', failure: 'unexpected', routingRecorded: null };
+    }
     if (result.outcome === 'sent') sent++;
     else if (result.outcome === 'skipped') skipped++;
-    else failed++;
+    else {
+      failed++;
+      faults.add(FAULT_LABEL[result.failure ?? 'unexpected']);
+    }
     // The alert went but the lead has no record of where it was routed. Not a
     // send failure, and it must not be reported as a clean run either.
     if (result.routingRecorded === false) routingUnrecorded++;
@@ -115,9 +152,10 @@ export async function GET(request: NextRequest) {
   // A run that could not do its whole job names the part it could not do, in
   // the field the cron log actually shows. `ok: true` with the detail buried in
   // a counter is the same silence AC8 exists to stop: a run where all 25 sends
-  // failed must not answer the way a clean one does.
+  // failed must not answer the way a clean one does - and a run where Supabase
+  // refused every claim must not point the reader at Telegram.
   const degraded = [
-    ...(failed > 0 ? ['chase_send_failed'] : []),
+    ...[...faults].sort(),
     ...(routingUnrecorded > 0 ? ['routing_write_failed'] : []),
     ...(truncated ? ['candidate_read_truncated'] : []),
   ];

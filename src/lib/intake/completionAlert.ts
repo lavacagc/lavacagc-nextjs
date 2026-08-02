@@ -12,6 +12,7 @@
  * picking it up, not an archive; the answers are on the lead row either way.
  */
 import { sendTelegramMessage, escapeTelegramClipped, type TelegramOutcome } from '@/lib/notify/telegramMessage';
+import { HOT_AT } from './scoring';
 
 export interface CompletionContext {
   firstName: string | null;
@@ -24,12 +25,27 @@ export interface CompletionContext {
    *
    * `recorded` is whether the decision reached the lead row. False must be said
    * out loud: a brief that announces a routing the lead has no record of is
-   * exactly the state `recordRouting` returns its boolean to avoid.
+   * exactly the state `recordRouting` returns its boolean to avoid. null is a
+   * session with no lead row - nothing was due, so nothing is warned about.
+   *
+   * `signals` are the scorer's own words for how it got there. The brief needs
+   * them because the bucket can disagree with the score: an unreadable photo
+   * count routes a 45 hot, and "HOT LEAD (45/100)" under a threshold of 55 with
+   * no explanation reads to the owner as a bug in the scoring.
    */
-  routing?: { bucket: 'hot' | 'cold'; score: number; recorded?: boolean } | null;
+  routing?: {
+    bucket: 'hot' | 'cold';
+    score: number;
+    recorded?: boolean | null;
+    signals?: string[];
+  } | null;
   phone?: string | null;
   email?: string | null;
-  /** null when the count could not be read, which renders as no line at all. */
+  /**
+   * The photo count, null when it could not be read - which is a different
+   * thing from the zero of a lead who sent none, and renders differently.
+   * Omitted entirely when the caller has no count to offer either way.
+   */
   photoCount?: number | null;
   /** What we told them the work starts at, if anything. */
   priceAnchor?: number | null;
@@ -120,7 +136,21 @@ const CAP = {
   preset: 80,
   phone: 40,
   line: 160,
+  note: 240,
 } as const;
+
+/**
+ * Why a bucket that disagrees with its own score is not a bug.
+ *
+ * The scorer puts the deciding signal first for exactly this, so the brief
+ * quotes it rather than re-deriving the reasoning downstream and risking a
+ * different account of the same decision.
+ */
+export function bucketExplanation(routing: CompletionContext['routing']): string | null {
+  if (!routing || routing.bucket !== 'hot' || routing.score >= HOT_AT) return null;
+  return routing.signals?.[0]
+    ?? `Under the usual ${HOT_AT} needed, and routed hot on the benefit of the doubt.`;
+}
 
 export function completionMessage(ctx: CompletionContext): string {
   const a = ctx.answers;
@@ -138,10 +168,14 @@ export function completionMessage(ctx: CompletionContext): string {
       : `<b>Intake finished - ${esc(who, CAP.name)}</b> (cold, ${ctx.routing.score}/100)`
     : `<b>Intake finished - ${esc(who, CAP.name)}</b>`;
 
+  const explained = bucketExplanation(ctx.routing);
+
   const lines: (string | null)[] = [
     banner,
     ctx.projectType ? esc(ctx.projectType, CAP.projectType) : null,
-    // Directly under the banner, because it qualifies the banner's own claim.
+    // Both of these sit directly under the banner, because each qualifies a
+    // claim the banner itself makes - the score it shows, and that it was saved.
+    explained ? `<i>${esc(explained, CAP.note)}</i>` : null,
     ctx.routing && ctx.routing.recorded === false
       ? '⚠️ <b>NOT saved to the lead</b> - this routing decision exists only in this message.'
       : null,
@@ -156,7 +190,16 @@ export function completionMessage(ctx: CompletionContext): string {
     row('Address', a.address, CAP.address),
     row('Call them', CONTACT[a.contact_time_preference] ?? a.contact_time_preference, CAP.preset),
     ctx.phone ? row('Phone', ctx.phone, CAP.phone) : null,
-    ctx.photoCount ? `<b>Photos</b> ${ctx.photoCount} attached` : null,
+    // A count that could not be read is not a lead who sent none, and the brief
+    // is the surface the owner reads before picking up the phone - the one place
+    // that distinction may not go quiet.
+    ctx.photoCount === undefined
+      ? null
+      : ctx.photoCount === null
+        ? '<b>Photos</b> count unavailable - could not be read'
+        : ctx.photoCount > 0
+          ? `<b>Photos</b> ${ctx.photoCount} attached`
+          : '<b>Photos</b> none sent',
     '',
   ];
 

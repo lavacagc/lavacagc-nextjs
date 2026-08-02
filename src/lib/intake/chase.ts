@@ -227,8 +227,15 @@ export interface ChaseDeps {
     signals: string[];
     routedTo: string;
     reason: string;
-  }) => Promise<boolean>;
+  }) => Promise<boolean | null>;
 }
+
+/**
+ * Which half of the run broke, because the cron log shows the name and nothing
+ * else. "The send failed" pointed at Telegram for a run where every claim was
+ * refused by an unreachable Supabase, which is worse than reporting nothing.
+ */
+export type ChaseFailure = 'claim' | 'send' | 'unexpected';
 
 export interface ChaseResult {
   /**
@@ -236,8 +243,33 @@ export interface ChaseResult {
    * a candidate while this run worked through the list. Neither is a failure.
    */
   outcome: 'sent' | 'skipped' | 'failed';
+  /** Set only on `failed`, and names the fault rather than the stage after it. */
+  failure?: ChaseFailure;
   /** null when no routing decision was due, so it cannot read as a failure. */
   routingRecorded: boolean | null;
+}
+
+/**
+ * Give the stamp back, scoped to the exact value this run wrote so it can never
+ * clear somebody else's claim. A stamp left behind on a lead nobody was told
+ * about is a lead nobody is EVER told about: the row stops being a candidate.
+ */
+async function releaseClaim(
+  deps: ChaseDeps,
+  kind: ChaseKind,
+  id: string,
+  stampedAt: string,
+): Promise<void> {
+  const stamp = CHASE_STAMP[kind];
+  try {
+    await deps.patch(
+      `lead_intake_sessions?id=eq.${encodeURIComponent(id)}` +
+        `&${stamp}=eq.${encodeURIComponent(stampedAt)}`,
+      { [stamp]: null },
+    );
+  } catch (err) {
+    console.error(`[intake-chase] could not release the claim on ${id}:`, err);
+  }
 }
 
 /**
@@ -248,6 +280,12 @@ export interface ChaseResult {
  * is still a candidate and that nobody has stamped, so the affected rows are
  * what tell this run whether it won the race - a PATCH that reports nothing
  * back cannot, and two overlapping runs would both alert on the same lead.
+ *
+ * Everything between the claim and the send is inside the try that releases it.
+ * The stamp is written first on purpose, so ANY throw after it - a row whose
+ * `answers` came back as something the message builder cannot walk, anything
+ * else nobody has thought of - would otherwise leave a claimed, unsent
+ * candidate that no future run can see.
  */
 export async function chaseOne(
   kind: ChaseKind,
@@ -265,7 +303,7 @@ export async function chaseOne(
     });
   } catch (err) {
     console.error(`[intake-chase] could not claim ${c.id}:`, err);
-    return { outcome: 'failed', routingRecorded: null };
+    return { outcome: 'failed', failure: 'claim', routingRecorded: null };
   }
 
   if (!Array.isArray(claimed)) {
@@ -273,7 +311,7 @@ export async function chaseOne(
     // the stamp is left alone because clearing one this run may not have set
     // would hand the same lead to a second alert.
     console.error(`[intake-chase] claim on ${c.id} returned no rows to check - not sending`);
-    return { outcome: 'failed', routingRecorded: null };
+    return { outcome: 'failed', failure: 'claim', routingRecorded: null };
   }
   if (claimed.length === 0) {
     // Either another run holds the stamp or the session is no longer a
@@ -282,22 +320,20 @@ export async function chaseOne(
     return { outcome: 'skipped', routingRecorded: null };
   }
 
-  const outcome = await deps.send(chaseMessage(kind, c, now));
+  let outcome: TelegramOutcome;
+  try {
+    outcome = await deps.send(chaseMessage(kind, c, now));
+  } catch (err) {
+    console.error(`[intake-chase] chasing ${c.id} threw after the claim:`, err);
+    await releaseClaim(deps, kind, c.id, stampedAt);
+    return { outcome: 'failed', failure: 'unexpected', routingRecorded: null };
+  }
 
   if (outcome !== 'sent') {
-    // Release the claim so the next run retries. A stamp left behind on a
-    // failed send is a lead nobody is ever told about. Scoped to the exact
-    // value this run wrote, so it can never clear somebody else's stamp.
-    try {
-      await deps.patch(
-        `lead_intake_sessions?id=eq.${encodeURIComponent(c.id)}` +
-          `&${stamp}=eq.${encodeURIComponent(stampedAt)}`,
-        { [stamp]: null },
-      );
-    } catch (err) {
-      console.error(`[intake-chase] could not release the claim on ${c.id}:`, err);
-    }
-    return { outcome: 'failed', routingRecorded: null };
+    // Released so the next run retries. A stamp left behind on a failed send is
+    // a lead nobody is ever told about.
+    await releaseClaim(deps, kind, c.id, stampedAt);
+    return { outcome: 'failed', failure: 'send', routingRecorded: null };
   }
 
   // WEB-01B: non-engagement recorded as a signal on the lead, not inferred
@@ -305,13 +341,26 @@ export async function chaseOne(
   if (kind !== 'low_intent' || !c.lead_id) return { outcome: 'sent', routingRecorded: null };
 
   const d = lowIntentDecision();
-  const routingRecorded = await deps.recordRouting({
+  const write = {
     leadId: c.lead_id,
     score: 0,
     bucket: d.bucket,
     signals: ['Never opened the intake link'],
     routedTo: d.routedTo,
     reason: d.reason,
-  });
+  };
+
+  // The alert has gone and the stamp stays set - releasing it here would send a
+  // second alert, which is worse - so this session is a candidate for no future
+  // run and nothing else will ever retry this write. Tried twice on the same
+  // reasoning as the scoring read: these fail transiently or not at all.
+  let routingRecorded: boolean | null;
+  try {
+    routingRecorded = await deps.recordRouting(write);
+    if (routingRecorded === false) routingRecorded = await deps.recordRouting(write);
+  } catch (err) {
+    console.error(`[intake-chase] recording the routing for ${c.id} threw:`, err);
+    routingRecorded = false;
+  }
   return { outcome: 'sent', routingRecorded };
 }

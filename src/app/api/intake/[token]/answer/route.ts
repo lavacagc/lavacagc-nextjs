@@ -189,7 +189,15 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
       email: contact?.email ?? null,
       photoCount,
       priceAnchor: answers.price_reaction ? anchor?.amount ?? null : null,
-      routing: { bucket: decision.bucket, score: scored.score, recorded: routingRecorded },
+      // The signals travel with the decision: where an unreadable photo count
+      // decided the bucket, the brief has to be able to say so, or a score under
+      // the threshold beside a HOT banner reads as a bug in the scoring.
+      routing: {
+        bucket: decision.bucket,
+        score: scored.score,
+        signals: scored.signals,
+        recorded: routingRecorded,
+      },
     });
     if (outcome !== 'sent') {
       // Loud, because the whole point of the flow is that the call is informed.

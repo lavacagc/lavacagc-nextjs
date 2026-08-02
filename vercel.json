@@ -67,11 +67,11 @@
     },
     {
       "path": "/api/cron/intake-chase?stage=low_intent",
-      "schedule": "0 13 * * *"
+      "schedule": "0 13,16,19,22 * * *"
     },
     {
       "path": "/api/cron/intake-chase?stage=abandoned",
-      "schedule": "0 21 * * *"
+      "schedule": "0 13,16,19,22 * * *"
     }
   ]
 }
