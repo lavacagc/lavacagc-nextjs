@@ -6,9 +6,10 @@ import { scoreLead } from '../src/lib/leadScoring';
 import { sanitizeLeadForInsert } from '../src/lib/leadSanitize';
 import {
   chaseMessage, lowIntentMessage, abandonedMessage, answeredLabels, hoursSince,
-  chaseOne, candidateQuery, paginate, CHASE_PAGE, CHASE_STAMP,
+  chaseOne, candidateQuery, claimPath, chaseCutoff, paginate, CHASE_PAGE, CHASE_STAMP,
   type ChaseCandidate, type ChaseDeps,
 } from '../src/lib/intake/chase';
+import { countPhotosForScoring } from '../src/lib/intake/session';
 import { completionMessage } from '../src/lib/intake/completionAlert';
 import { TELEGRAM_TEXT_LIMIT, type TelegramOutcome } from '../src/lib/notify/telegramMessage';
 
@@ -80,10 +81,59 @@ test.describe('AC1 - the spec four', () => {
     expect(unknown.signals.join(' ')).toContain('Photo count unavailable');
   });
 
+  test('AN UNREADABLE COUNT THAT WOULD HAVE DECIDED THE BUCKET ROUTES HOT', () => {
+    // 45 with photos unknown: 10 more would clear 55. A wrongly hot lead costs
+    // one phone call, a wrongly cold one is lost, so the doubt goes to the lead.
+    const doubtful = scoreIntake({
+      answers: answers({ project_timeline: 'planning', price_reaction: 'well_above' }),
+      photoCount: null,
+    });
+    expect(doubtful.score).toBe(45);
+    expect(doubtful.bucket).toBe('hot');
+    // The count is never invented, and the record says which way the doubt went.
+    expect(scoreIntake({
+      answers: answers({ project_timeline: 'planning', price_reaction: 'well_above' }),
+      photoCount: 0,
+    }).bucket).toBe('cold');
+    expect(doubtful.signals[0]).toContain('Photo count unavailable');
+    expect(doubtful.signals[0]).toContain('routed hot rather than risk losing it');
+    // ...and it leads the reason, so a score under the threshold next to a hot
+    // bucket is never left looking like a bug.
+    expect(routeIntake(doubtful).reason).toContain('Photo count unavailable');
+  });
+
+  test('an unreadable count that could not have changed the bucket says exactly that', () => {
+    const stillHot = scoreIntake({ answers: answers(), photoCount: null });
+    expect(stillHot.bucket).toBe('hot');
+    expect(stillHot.signals.join(' ')).toContain('could not have changed the bucket');
+
+    const stillCold = scoreIntake({ answers: { city: 'Princeton' }, photoCount: null });
+    expect(stillCold.bucket).toBe('cold');
+    expect(stillCold.signals.join(' ')).toContain('could not have changed the bucket');
+  });
+
   test('the completion path reads a count that is allowed to say "unknown"', () => {
     const src = code('src/app/api/intake/[token]/answer/route.ts');
-    expect(src).toContain('countPhotosOrNull(session.id)');
+    expect(src).toContain('countPhotosForScoring(session.id)');
     expect(src).not.toContain('countPhotos(session.id)');
+  });
+
+  test('the scoring read retries once before it settles for "unknown"', async () => {
+    let calls = 0;
+    const recovered = await countPhotosForScoring('s1', async () => (++calls === 1 ? null : 3));
+    expect(recovered).toBe(3);
+    expect(calls).toBe(2);
+
+    calls = 0;
+    expect(await countPhotosForScoring('s1', async () => { calls++; return null; })).toBeNull();
+    expect(calls).toBe(2);
+  });
+
+  test('a count that read first time is not read again', async () => {
+    let calls = 0;
+    // Zero is an answer, not a failure, and must not trigger the retry.
+    expect(await countPhotosForScoring('s1', async () => { calls++; return 0; })).toBe(0);
+    expect(calls).toBe(1);
   });
 
   test('the town predicate is shared with the flow and the scorer, not re-implemented', () => {
@@ -140,6 +190,7 @@ test.describe('AC3 - bucketing actually separates', () => {
   test('local and ambitious but priced out and not starting is still cold', () => {
     const r = scoreIntake({
       answers: answers({ project_timeline: 'planning', price_reaction: 'well_above' }),
+      photoCount: 0,
     });
     expect(r.bucket).toBe('cold');
   });
@@ -241,11 +292,32 @@ test.describe('AC4 - routing is recorded, not just made', () => {
     expect(sql).toContain("CHECK (intake_bucket IS NULL OR intake_bucket IN ('hot', 'cold'))");
   });
 
-  test('a CHECK-constrained intake_bucket never costs the whole lead', () => {
-    // LeadSubmitSchema passes unknown keys through, so a payload can carry an
-    // intake_bucket the CHECK rejects. Postgres would answer 23514, the route
-    // would 500, and the lead would be lost - for a column no form should be
-    // sending in the first place. Losing a field beats losing a lead.
+  test('A ROUTING VERDICT IN A PAYLOAD IS DROPPED, NEVER WRITTEN', () => {
+    // /api/leads/submit is unauthenticated and LeadSubmitSchema passes unknown
+    // keys through, so anything the sanitizer accepts here can be forged onto a
+    // fresh lead. recordRouting PATCHes the lead directly and never comes
+    // through this function, so none of these columns has any business being
+    // accepted from a request body.
+    const forged = {
+      intake_bucket: 'hot', intake_score: 100, intake_signals: ['forged'],
+      routed_to: 'Alex and Veronica', routing_reason: 'forged', routed_at: '2026-08-02T00:00:00Z',
+    };
+    const r = sanitizeLeadForInsert({
+      first_name: 'Sarah', last_name: 'K', email: 'a@b.c', phone: '201',
+      inquiry_type: 'estimate', ...forged,
+    });
+    for (const col of Object.keys(forged)) {
+      expect(r.lead[col], `${col} must never come from a payload`).toBeUndefined();
+      expect(r.adjustments.join(' ')).toContain(col);
+    }
+    // Dropped loudly, and the lead itself still saves. Losing a field a form had
+    // no business sending beats losing the lead.
+    expect(r.lead.first_name).toBe('Sarah');
+  });
+
+  test('a value the CHECK would reject cannot cost the whole lead either', () => {
+    // Postgres answers 23514 for an out-of-range intake_bucket, the route would
+    // 500, and the lead would be lost. Dropped before it gets there.
     const r = sanitizeLeadForInsert({
       first_name: 'Sarah', last_name: 'K', email: 'a@b.c', phone: '201',
       inquiry_type: 'estimate', intake_bucket: 'warm',
@@ -255,12 +327,18 @@ test.describe('AC4 - routing is recorded, not just made', () => {
     expect(r.lead.first_name).toBe('Sarah');
   });
 
-  test('a bucket the scorer really writes still goes through', () => {
-    for (const bucket of ['hot', 'cold']) {
-      const r = sanitizeLeadForInsert({ email: 'a@b.c', inquiry_type: 'estimate', intake_bucket: bucket });
-      expect(r.lead.intake_bucket).toBe(bucket);
-      expect(r.adjustments.join(' ')).not.toContain('intake_bucket');
-    }
+  test('the columns the intake really does capture still go through', () => {
+    // The answers slice A collects are mirrored onto the lead and must not be
+    // caught by the same net as the routing verdict.
+    const r = sanitizeLeadForInsert({
+      first_name: 'Sarah', last_name: 'K', email: 'a@b.c', phone: '201',
+      inquiry_type: 'estimate',
+      scope_tier: 'full_gut', scope_detail: 'gut it', finish_level: 'middle',
+      price_reaction: 'about_expected',
+    });
+    expect(r.lead.scope_tier).toBe('full_gut');
+    expect(r.lead.price_reaction).toBe('about_expected');
+    expect(r.adjustments).toEqual([]);
   });
 
   test('score and tier are left alone', () => {
@@ -473,6 +551,49 @@ test.describe('AC8 - a broken cron does not look like a quiet one', () => {
     expect(f.patches[0].body).toEqual({ [CHASE_STAMP.abandoned]: NOW.toISOString() });
   });
 
+  test('THE CLAIM RE-ASSERTS WHAT MADE THE ROW A CANDIDATE, NOT JUST THE STAMP', async () => {
+    // The list is read once and then worked through one at a time. A lead who
+    // opens their link mid-run must not be told "never opened their intake
+    // link", and must not have a real routing decision overwritten with cold.
+    const low = fakeDeps();
+    await chaseOne('low_intent', candidate(), NOW, low.deps);
+    expect(low.patches[0].path).toBe(claimPath('low_intent', 's1', chaseCutoff('low_intent', NOW)));
+    for (const guard of ['opened_at=is.null', 'completed_at=is.null', 'declined_at=is.null']) {
+      expect(low.patches[0].path, `the claim must re-check ${guard}`).toContain(guard);
+    }
+
+    const ab = fakeDeps();
+    await chaseOne('abandoned', quiet(), NOW, ab.deps);
+    for (const guard of [
+      'opened_at=not.is.null', 'completed_at=is.null', 'declined_at=is.null',
+      // The quiet window too: a lead who answers during the run is active again.
+      `updated_at=lt.${chaseCutoff('abandoned', NOW)}`,
+    ]) {
+      expect(ab.patches[0].path, `the claim must re-check ${guard}`).toContain(guard);
+    }
+  });
+
+  test('the claim and the candidate query apply the same conditions', () => {
+    // One definition, so a guard added to the snapshot cannot be missing from
+    // the only atomic point in the run.
+    for (const kind of ['low_intent', 'abandoned'] as const) {
+      const cutoff = chaseCutoff(kind, NOW);
+      const claim = claimPath(kind, 's1', cutoff).split('&').slice(1).sort();
+      const query = candidateQuery(kind, cutoff)
+        .replace(`&limit=${CHASE_PAGE + 1}`, '').split('&').slice(1).sort();
+      expect(claim).toEqual(query);
+    }
+  });
+
+  test('a row that stopped being a candidate mid-run is skipped, not chased', async () => {
+    // Which is what a zero-row claim now means, as well as a lost race.
+    const f = fakeDeps({ claim: [] });
+    const result = await chaseOne('low_intent', candidate(), NOW, f.deps);
+    expect(result.outcome).toBe('skipped');
+    expect(f.sends).toEqual([]);
+    expect(f.routed).toEqual([]);
+  });
+
   test('a claim that could not be verified sends nothing and clears nothing', async () => {
     const f = fakeDeps({ claim: null });
     const result = await chaseOne('abandoned', quiet(), NOW, f.deps);
@@ -533,6 +654,23 @@ test.describe('AC8 - a broken cron does not look like a quiet one', () => {
     // One row over the page is what makes the difference detectable at all.
     expect(candidateQuery('abandoned', CUTOFF)).toContain(`limit=${CHASE_PAGE + 1}`);
     expect(code('src/app/api/cron/intake-chase/route.ts')).toContain('truncated');
+  });
+
+  test('a half-done run does not answer the way a clean one does', () => {
+    // Same shape as the cron this is modelled on: ok follows the degraded list,
+    // so a run where every send failed is visible in the cron log itself and
+    // not only in a counter buried in a body nobody reads.
+    const src = code('src/app/api/cron/intake-chase/route.ts');
+    expect(src).toContain('ok: degraded.length === 0');
+    for (const reason of ['chase_send_failed', 'routing_write_failed', 'candidate_read_truncated']) {
+      expect(src).toContain(reason);
+    }
+  });
+
+  test('a run that could be killed mid-loop gets the time not to be', () => {
+    // A candidate claimed but not yet sent keeps its stamp and is never chased
+    // again, because the release never runs.
+    expect(code('src/app/api/cron/intake-chase/route.ts')).toContain('maxDuration = 300');
   });
 
   test('an unknown stage is rejected rather than defaulted', () => {

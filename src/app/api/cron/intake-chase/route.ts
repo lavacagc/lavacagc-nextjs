@@ -18,18 +18,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTelegramMessage } from '@/lib/notify/telegramMessage';
 import {
-  chaseMessage, chaseOne, candidateQuery, paginate,
+  chaseMessage, chaseOne, candidateQuery, chaseCutoff, paginate,
   type ChaseCandidate, type ChaseDeps, type ChaseKind,
 } from '@/lib/intake/chase';
 import { recordRouting } from '@/lib/intake/session';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-/** Long enough that a lead who is simply busy is not chased mid-afternoon. */
-const LOW_INTENT_AFTER_HOURS = 6;
-/** Measured from the last answer, not from the open. See `candidateQuery`. */
-const ABANDONED_AFTER_HOURS = 4;
+/**
+ * A full page is 25 sequential candidates, each a PATCH plus a Telegram send
+ * that waits up to 6s of its own. A run killed mid-loop is the one thing the
+ * claim-before-send sequence cannot survive: every candidate already claimed
+ * but not yet sent keeps its stamp and is never chased again, because the
+ * release never runs. 300 like every other looping cron here.
+ */
+export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
@@ -45,8 +48,9 @@ export async function GET(request: NextRequest) {
   const kind: ChaseKind = stage;
 
   const now = new Date();
-  const hours = kind === 'low_intent' ? LOW_INTENT_AFTER_HOURS : ABANDONED_AFTER_HOURS;
-  const cutoff = new Date(now.getTime() - hours * 3_600_000).toISOString();
+  // The same clock the claim re-checks each candidate against, so a row cannot
+  // be selected by one window and stamped under another.
+  const cutoff = chaseCutoff(kind, now);
 
   // A read that failed is NOT an empty list. Reporting ok:true and processed:0
   // for a query that never ran would make a broken cron look like a quiet one.
@@ -72,7 +76,8 @@ export async function GET(request: NextRequest) {
 
   if (dry) {
     return NextResponse.json({
-      ok: true,
+      ok: !truncated,
+      ...(truncated ? { degraded: ['candidate_read_truncated'] } : {}),
       stage: kind,
       dry: true,
       cutoff,
@@ -107,14 +112,26 @@ export async function GET(request: NextRequest) {
     if (result.routingRecorded === false) routingUnrecorded++;
   }
 
+  // A run that could not do its whole job names the part it could not do, in
+  // the field the cron log actually shows. `ok: true` with the detail buried in
+  // a counter is the same silence AC8 exists to stop: a run where all 25 sends
+  // failed must not answer the way a clean one does.
+  const degraded = [
+    ...(failed > 0 ? ['chase_send_failed'] : []),
+    ...(routingUnrecorded > 0 ? ['routing_write_failed'] : []),
+    ...(truncated ? ['candidate_read_truncated'] : []),
+  ];
+
   return NextResponse.json({
-    ok: true,
+    ok: degraded.length === 0,
+    ...(degraded.length > 0 ? { degraded } : {}),
     stage: kind,
     cutoff,
     found: candidates.length,
     ...backlog,
     sent,
-    // Another run held the stamp. Expected under overlap, not an error.
+    // Another run held the stamp, or the session stopped being a candidate.
+    // Expected under overlap, not an error.
     skipped,
     failed,
     ...(routingUnrecorded ? { routingUnrecorded } : {}),

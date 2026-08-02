@@ -132,12 +132,31 @@ export const CHASE_STAMP: Record<ChaseKind, string> = {
 /** How many candidates one run will chase. */
 export const CHASE_PAGE = 25;
 
+/**
+ * How long each stage waits before a session counts as quiet.
+ *
+ * Lives here, with the query and the claim that both apply it, so the window a
+ * candidate was selected by and the window its claim re-checks cannot drift.
+ */
+export const CHASE_AFTER_HOURS: Record<ChaseKind, number> = {
+  /** Long enough that a lead who is simply busy is not chased mid-afternoon. */
+  low_intent: 6,
+  /** Measured from the last answer, not from the open. See `conditions`. */
+  abandoned: 4,
+};
+
+export function chaseCutoff(kind: ChaseKind, now: Date): string {
+  return new Date(now.getTime() - CHASE_AFTER_HOURS[kind] * 3_600_000).toISOString();
+}
+
 const SELECT = 'id,lead_id,first_name,project_type,answers,created_at,opened_at,updated_at';
 
 /**
- * The two candidate queries.
+ * Everything that makes a session a candidate for a stage, as PostgREST
+ * filters - written once and applied BOTH when the candidates are listed and
+ * when one of them is claimed.
  *
- * Both guard `completed_at` and `declined_at`: `markOpened` deliberately
+ * Both stages guard `completed_at` and `declined_at`: `markOpened` deliberately
  * swallows its errors, so a finished session with an unwritten open stamp would
  * otherwise match the low-intent query and have its real routing decision
  * overwritten with score 0 / cold.
@@ -147,24 +166,42 @@ const SELECT = 'id,lead_id,first_name,project_type,answers,created_at,opened_at,
  * answered a question at 20:55 is still mid-conversation, and telling the owner
  * they "did not finish" a minute before the completion brief arrives would make
  * both messages untrustworthy.
- *
- * One row over the page size is requested so the caller can tell a drained run
- * from a truncated one.
  */
-export function candidateQuery(kind: ChaseKind, cutoff: string): string {
+function conditions(kind: ChaseKind, cutoff: string): string {
+  const stamp = CHASE_STAMP[kind];
   if (kind === 'low_intent') {
     return (
-      `lead_intake_sessions?select=${SELECT}` +
-      `&opened_at=is.null&low_intent_alert_at=is.null` +
-      `&completed_at=is.null&declined_at=is.null` +
-      `&created_at=lt.${cutoff}&limit=${CHASE_PAGE + 1}`
+      `&opened_at=is.null&completed_at=is.null&declined_at=is.null` +
+      `&${stamp}=is.null&created_at=lt.${cutoff}`
     );
   }
   return (
-    `lead_intake_sessions?select=${SELECT}` +
     `&opened_at=not.is.null&completed_at=is.null&declined_at=is.null` +
-    `&abandoned_alert_at=is.null&updated_at=lt.${cutoff}&limit=${CHASE_PAGE + 1}`
+    `&${stamp}=is.null&updated_at=lt.${cutoff}`
   );
+}
+
+/**
+ * The candidate list. One row over the page size is requested so the caller can
+ * tell a drained run from a truncated one.
+ */
+export function candidateQuery(kind: ChaseKind, cutoff: string): string {
+  return `lead_intake_sessions?select=${SELECT}${conditions(kind, cutoff)}&limit=${CHASE_PAGE + 1}`;
+}
+
+/**
+ * The claim on one candidate.
+ *
+ * It re-asserts the whole candidate condition, not just the unset stamp. The
+ * list is read ONCE and then worked through one at a time - tens of seconds for
+ * a full page, each with a Telegram send - so by the time a row is reached its
+ * state is an assumption. The claim is the only atomic point in the run, and it
+ * is where that assumption has to be paid for: a lead who opens their link
+ * mid-run must not be told "never opened their intake link" and must not have a
+ * real routing decision overwritten with score 0 / cold.
+ */
+export function claimPath(kind: ChaseKind, id: string, cutoff: string): string {
+  return `lead_intake_sessions?id=eq.${encodeURIComponent(id)}${conditions(kind, cutoff)}`;
 }
 
 /**
@@ -194,7 +231,10 @@ export interface ChaseDeps {
 }
 
 export interface ChaseResult {
-  /** `skipped` is another run holding the stamp, which is not a failure. */
+  /**
+   * `skipped` is another run holding the stamp, or a session that stopped being
+   * a candidate while this run worked through the list. Neither is a failure.
+   */
   outcome: 'sent' | 'skipped' | 'failed';
   /** null when no routing decision was due, so it cannot read as a failure. */
   routingRecorded: boolean | null;
@@ -204,10 +244,10 @@ export interface ChaseResult {
  * Chase one candidate: claim the stamp, send, and release the claim if the send
  * failed.
  *
- * The claim must be PROVEN, not assumed. The filter only matches a session
- * nobody has stamped, so the affected rows are what tell this run whether it
- * won the race - a PATCH that reports nothing back cannot, and two overlapping
- * runs would both alert on the same lead.
+ * The claim must be PROVEN, not assumed. The filter matches only a session that
+ * is still a candidate and that nobody has stamped, so the affected rows are
+ * what tell this run whether it won the race - a PATCH that reports nothing
+ * back cannot, and two overlapping runs would both alert on the same lead.
  */
 export async function chaseOne(
   kind: ChaseKind,
@@ -220,7 +260,7 @@ export async function chaseOne(
 
   let claimed: unknown;
   try {
-    claimed = await deps.patch(`lead_intake_sessions?id=eq.${c.id}&${stamp}=is.null`, {
+    claimed = await deps.patch(claimPath(kind, c.id, chaseCutoff(kind, now)), {
       [stamp]: stampedAt,
     });
   } catch (err) {
@@ -236,6 +276,9 @@ export async function chaseOne(
     return { outcome: 'failed', routingRecorded: null };
   }
   if (claimed.length === 0) {
+    // Either another run holds the stamp or the session is no longer a
+    // candidate - it was opened, finished or declined since the list was read.
+    // Both mean this run has nothing to say about it.
     return { outcome: 'skipped', routingRecorded: null };
   }
 
@@ -247,7 +290,8 @@ export async function chaseOne(
     // value this run wrote, so it can never clear somebody else's stamp.
     try {
       await deps.patch(
-        `lead_intake_sessions?id=eq.${c.id}&${stamp}=eq.${encodeURIComponent(stampedAt)}`,
+        `lead_intake_sessions?id=eq.${encodeURIComponent(c.id)}` +
+          `&${stamp}=eq.${encodeURIComponent(stampedAt)}`,
         { [stamp]: null },
       );
     } catch (err) {

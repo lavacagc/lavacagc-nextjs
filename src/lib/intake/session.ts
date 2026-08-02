@@ -300,6 +300,24 @@ export async function countPhotosOrNull(sessionId: string): Promise<number | nul
 }
 
 /**
+ * The scoring read: the same count, tried a second time before it is allowed to
+ * answer "unknown".
+ *
+ * The count is worth 10 points and can decide the bucket, and these reads fail
+ * transiently or not at all, so one retry closes most of the window at the cost
+ * of one request on a path that runs once per completed intake. It still
+ * answers null rather than inventing a number - "we could not tell" survives to
+ * the scorer, which knows what to do with it.
+ */
+export async function countPhotosForScoring(
+  sessionId: string,
+  read: (id: string) => Promise<number | null> = countPhotosOrNull,
+): Promise<number | null> {
+  const first = await read(sessionId);
+  return first === null ? read(sessionId) : first;
+}
+
+/**
  * The same count, with a failed read treated as 0.
  *
  * For the upload path only, which uses it to decide whether there is room for

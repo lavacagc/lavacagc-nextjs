@@ -33,7 +33,10 @@ Honouring decision D3: the three-tier `tier` column keeps its meaning and no his
 - **Scope tier** - `full_gut` > `major_update` > `refresh`. A lead who described it themselves scores neutral, not zero: they told us more, not less.
 - **Timeline** - `asap` and `1_3_months` are the money; `planning` is not.
 - **Photos** - supplied or not.
-  A count that could not be read is neither: it scores nothing and is recorded as "photo count unavailable", because writing "No photos" onto the lead on the strength of a Supabase blip is a permanent false statement.
+  A count that could not be read is neither: the read is retried once, and if it still fails it scores nothing and is recorded as "photo count unavailable", because writing "No photos" onto the lead on the strength of a Supabase blip is a permanent false statement.
+  Where that missing count would have decided the bucket - the score is under the threshold but within the photo weighting of it - the lead is routed **hot** and the record says so.
+  The two errors do not cost the same: a wrongly hot lead costs one phone call, a wrongly cold one is lost.
+  The count is never invented, so the score stands as scored.
 
 ## AC2 - The fifth signal, added deliberately
 
@@ -58,7 +61,8 @@ WEB-01A's criterion is that "the routing decision and its recipient are logged o
 - The reason is human-readable, not a code.
 - A routing write that fails is logged loudly and does not silently leave the lead unrouted.
 - The owner's brief says when the write failed, rather than announcing a routing the lead has no record of.
-- `intake_bucket` is CHECK-constrained, so the sanitizer drops an out-of-range value with a note instead of letting Postgres reject the whole submission.
+- The routing verdict is server-written and is **never** accepted from a request body.
+  `/api/leads/submit` is unauthenticated and its schema passes unknown keys through, so `intake_score`, `intake_bucket`, `intake_signals`, `routed_to`, `routed_at` and `routing_reason` are dropped by the sanitizer with a loud note - which also keeps a CHECK-violating `intake_bucket` from making Postgres reject the whole submission and lose the lead.
 
 ## AC5 - Hot and cold go different places
 
@@ -91,7 +95,11 @@ Not in the spec, and raised because slice A left it in the gap between "never op
 - A cron that cannot read its candidates says so and reports zero processed, rather than reporting success on an empty list it never actually fetched.
 - An alert that fails to send leaves the "alerted" stamp unset, so the next run retries rather than assuming it went.
 - The claim is **proven, not assumed**: the PATCH returns the rows it affected, so a run that matched none knows it lost the race and skips that candidate instead of sending a second alert.
+- The claim re-asserts everything that made the row a candidate, not just the unset stamp.
+  The list is read once and worked through one at a time, so the claim is the only atomic point in the run: a lead who opens their link or finishes mid-run is skipped rather than told they never opened it and re-routed cold.
 - A run that could not drain its backlog reports `truncated`, so it does not read like a run that had nothing left to do.
+- `ok` follows a `degraded` list naming what went wrong - failed sends, failed routing writes, a truncated read - so a half-done run is visible in the cron log rather than only in a counter in a body nobody reads.
+- The route sets `maxDuration = 300` like every other looping cron here: a run killed mid-loop leaves candidates claimed but unsent, and those keep their stamp and are never chased again.
 
 ## Out of scope
 

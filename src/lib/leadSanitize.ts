@@ -8,7 +8,8 @@
  *   - CHECK:    leads_inquiry_type_check            (estimate | contact | exit_intent)
  *               leads_contact_time_preference_check (anytime | morning | afternoon |
  *                                                    evening | weekends | specific | NULL)
- *               leads_intake_bucket_check           (hot | cold | NULL)
+ *               leads_intake_bucket_check           (hot | cold | NULL) - unreachable
+ *                                                    from here, see the column list
  *   - Types:    square_footage / score / visit_count are integers,
  *               first_seen is timestamptz
  *   - Unknown columns make PostgREST reject the whole insert (PGRST204)
@@ -39,15 +40,20 @@ export const LEAD_CONTACT_TIME_PREFERENCES = [
   'weekends',
   'specific',
 ] as const;
-export const LEAD_INTAKE_BUCKETS = ['hot', 'cold'] as const;
 
 /** Neutral fallback when a form sends a missing/unknown inquiry_type. */
 const FALLBACK_INQUIRY_TYPE = 'contact';
 
 // Writable public.leads columns. id / created_at / updated_at / archived_at
-// are server-managed and never accepted from a payload. If a new column is
-// added to the table, it must be added here too or the sanitizer will drop it
-// (loudly, via an adjustment note in the owner alert).
+// are server-managed and never accepted from a payload, and so is the routing
+// verdict - intake_score, intake_bucket, intake_signals, routed_to, routed_at
+// and routing_reason are written only by `recordRouting`, which PATCHes the
+// lead directly and never comes through here. /api/leads/submit is
+// unauthenticated and its schema passes unknown keys through, so a routing
+// column arriving in a payload can only be a forgery: it is dropped with a
+// note, exactly like any other column this table does not accept from a form.
+// If a new column is added to the table, it must be added here too or the
+// sanitizer will drop it (loudly, via an adjustment note in the owner alert).
 const TEXT_COLUMNS = [
   'first_name',
   'last_name',
@@ -76,14 +82,10 @@ const TEXT_COLUMNS = [
   'scope_detail',
   'finish_level',
   'price_reaction',
-  // Written by the intake scorer at completion (WEB-01A), never by a form.
-  'intake_bucket',
-  'routed_to',
-  'routing_reason',
 ] as const;
-const INTEGER_COLUMNS = ['square_footage', 'score', 'visit_count', 'price_anchor_shown', 'intake_score'] as const;
+const INTEGER_COLUMNS = ['square_footage', 'score', 'visit_count', 'price_anchor_shown'] as const;
 const TIMESTAMP_COLUMNS = ['first_seen'] as const;
-const ARRAY_COLUMNS = ['scoring_reasons', 'intake_signals'] as const;
+const ARRAY_COLUMNS = ['scoring_reasons'] as const;
 
 const ALL_COLUMNS = new Set<string>([
   ...TEXT_COLUMNS,
@@ -196,19 +198,6 @@ export function sanitizeLeadForInsert(fields: Record<string, unknown>): LeadSani
       `contact_time_preference: dropped ${JSON.stringify(ctp)} (not in [${LEAD_CONTACT_TIME_PREFERENCES.join(', ')}])`
     );
     delete lead.contact_time_preference;
-  }
-
-  // Nullable but CHECK-constrained intake_bucket. Only the intake scorer writes
-  // this column, so any value arriving in a form payload is already wrong - but
-  // LeadSubmitSchema passes unknown keys through, and an unguarded 'warm' here
-  // makes Postgres reject the INSERT with 23514 and the whole submission 500s.
-  // Losing a field is recoverable; losing the lead is not.
-  const bucket = lead.intake_bucket;
-  if (bucket !== undefined && !(LEAD_INTAKE_BUCKETS as readonly string[]).includes(bucket as string)) {
-    adjustments.push(
-      `intake_bucket: dropped ${JSON.stringify(bucket)} (not in [${LEAD_INTAKE_BUCKETS.join(', ')}])`
-    );
-    delete lead.intake_bucket;
   }
 
   return { lead, adjustments };

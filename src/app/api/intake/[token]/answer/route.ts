@@ -11,7 +11,7 @@ import {
   type FlowContext, type StepId,
 } from '@/lib/intake/flow';
 import { priceAnchorFor } from '@/lib/intake/pricing';
-import { lookupByToken, recordAnswer, mirrorToLead, markOpened, countPhotosOrNull, recordRouting } from '@/lib/intake/session';
+import { lookupByToken, recordAnswer, mirrorToLead, markOpened, countPhotosForScoring, recordRouting } from '@/lib/intake/session';
 import { scoreIntake, routeIntake } from '@/lib/intake/scoring';
 import { sendCompletionAlert } from '@/lib/intake/completionAlert';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
@@ -160,11 +160,11 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
   if (terminal && !declined) {
     const answers = { ...session.answers, ...(step.field ? { [step.field]: answer } : {}) };
     const anchor = priceAnchorFor(session.project_type);
-    // null, not 0, when the count could not be read: the scorer must not be
-    // told "no photos" on the strength of a Supabase blip.
+    // Retried once, then null - not 0 - if it still could not be read: the
+    // scorer must not be told "no photos" on the strength of a Supabase blip.
     const [contact, photoCount] = await Promise.all([
       leadContact(session.lead_id),
-      countPhotosOrNull(session.id),
+      countPhotosForScoring(session.id),
     ]);
 
     // WEB-019 and WEB-01A. Scored on what the lead actually told us, not on the

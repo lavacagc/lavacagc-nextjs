@@ -30,7 +30,7 @@ export interface IntakeScoringInput {
    * unreadable count as "no photos" costs the lead 10 points and writes a false
    * statement onto the lead row permanently, and with HOT_AT at 55 that misroutes
    * any lead scoring 55-64 on a transient Supabase blip - the precise outcome
-   * this module exists to prevent.
+   * this module exists to prevent. See the bucket, where the doubt is settled.
    */
   photoCount?: number | null;
 }
@@ -51,6 +51,9 @@ export interface IntakeScoringResult {
  * plus a weak one, and cannot get there on any single input.
  */
 const HOT_AT = 55;
+
+/** What photos are worth - and so how much doubt an unreadable count creates. */
+const PHOTO_POINTS = 10;
 
 const SCOPE_POINTS: Record<string, number> = {
   full_gut: 25,
@@ -136,17 +139,20 @@ export function scoreIntake(input: IntakeScoringInput): IntakeScoringResult {
     signals.push(`Timeline: ${TIMELINE_LABEL[timeline]}`);
   }
 
-  // 4. Photos. An unknown count scores nothing either way and says so, because
-  //    "they sent none" and "we could not tell" are different facts and only
-  //    one of them is safe to write down.
+  // 4. Photos. An unknown count scores nothing either way, because "they sent
+  //    none" and "we could not tell" are different facts and only one of them
+  //    is safe to write down. Its signal is written below, once it is known
+  //    whether the doubt mattered.
   const photos = input.photoCount;
-  if (photos === undefined || photos === null) {
-    signals.push('Photo count unavailable - not scored');
-  } else if (photos > 0) {
-    score += 10;
-    signals.push(`Sent ${photos} photo${photos === 1 ? '' : 's'}`);
-  } else {
-    signals.push('No photos');
+  const photosUnknown = photos === undefined || photos === null;
+  const photoSignalAt = signals.length;
+  if (!photosUnknown) {
+    if (photos > 0) {
+      score += PHOTO_POINTS;
+      signals.push(`Sent ${photos} photo${photos === 1 ? '' : 's'}`);
+    } else {
+      signals.push('No photos');
+    }
   }
 
   // 5. Price reaction.
@@ -156,7 +162,30 @@ export function scoreIntake(input: IntakeScoringInput): IntakeScoringResult {
     signals.push(`Price: ${PRICE_LABEL[price]}`);
   }
 
-  return { score, bucket: score >= HOT_AT ? 'hot' : 'cold', signals };
+  // The bucket. Where an unreadable photo count would have decided the outcome,
+  // the lead gets the benefit of the doubt: the two errors do not cost the same
+  // - a wrongly hot lead costs one phone call, a wrongly cold one is lost. The
+  // count is never invented, so the score stands as scored; what the record says
+  // is which way the doubt was resolved, and never that the bucket was computed
+  // as though no photos existed.
+  let bucket: IntakeBucket = score >= HOT_AT ? 'hot' : 'cold';
+  if (photosUnknown) {
+    const wouldHaveDecided = bucket === 'cold' && score + PHOTO_POINTS >= HOT_AT;
+    if (wouldHaveDecided) bucket = 'hot';
+    // First when it decided the bucket, because a score below the threshold
+    // next to a hot bucket is the thing the reader has to be told about, and
+    // `routeIntake` quotes the leading signals into `routing_reason`.
+    signals.splice(
+      wouldHaveDecided ? 0 : photoSignalAt,
+      0,
+      wouldHaveDecided
+        ? `Photo count unavailable - not scored, and photos would have decided this one `
+          + `(${score} of the ${HOT_AT} needed), so it is routed hot rather than risk losing it`
+        : 'Photo count unavailable - not scored, and it could not have changed the bucket',
+    );
+  }
+
+  return { score, bucket, signals };
 }
 
 export interface RoutingDecision {
