@@ -460,8 +460,9 @@ interface ReminderQueueRow extends ReminderLedgerRow {
  * the length of that request, and three screens read the same fact afterwards -
  * the crew confirm page, the flag alert and the 5pm/6pm chase. They inferred it
  * from the clock, which is wrong for every same-day booking (no row was ever
- * queued) and for every queue write that failed. The ledger is the one place
- * that knows, so they ask it rather than each guessing.
+ * queued, and no later run reaches that visit) and for every reminder somebody
+ * cancelled. The ledger is the one place that knows, so they ask it rather than
+ * each guessing.
  *
  * Matched the way the reminder cron matches its own ledger: on (address, visit
  * start), the pair that names one visit. Filtered on `visit_start` in the query

@@ -1793,9 +1793,12 @@ test('AC115 the reminder verdict is read, never inferred from the clock', () => 
   const sameDay = new Date(Date.UTC(2026, 7, 5, 10));    // 5 Aug, 6am Eastern
   const row = (status: string) => ({ id: `row-${status}`, status, created_at: '2026-08-04T12:00:00Z' });
 
-  // No row is 'none', at any hour - this is the same-day booking, and the case
-  // the clock got backwards.
-  expect(customerReminderState([], visit, dayBefore)).toBe('none');
+  // No row does NOT mean nobody is telling them: the reminder cron backfills a
+  // ledger row and mails any visit in its window that has none, so an empty
+  // ledger reads exactly as an open one does.
+  expect(customerReminderState([], visit, dayBefore)).toBe('coming');
+  // Past the covering run there is nothing left to backfill it - this is the
+  // same-day booking, and the case the clock got backwards.
   expect(customerReminderState(undefined, visit, sameDay)).toBe('none');
   // A queued row is 'coming' only while a run that can carry it is still ahead.
   expect(customerReminderState([row('pending')], visit, dayBefore)).toBe('coming');

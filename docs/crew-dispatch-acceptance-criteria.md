@@ -355,8 +355,14 @@ Owner decisions this was built to, from the Lavish review on 31 July 2026:
     The clock knows when a reminder *would* go, not whether one exists, and the two disagree in an ordinary case: a **same-day booking** is past the covering run, so `requeueVisitReminder` answers `skipped` and no `follow_up_queue` row is ever written.
     The dispatch email then correctly said "No automatic reminder is going out to the customer for this visit - text {customer} yourself", and the confirm page it links to said the opposite - "the customer has ALREADY been told we are coming" - with the flag alert telling the owner the same.
     A crew member deciding whether to phone the customer reads that line.
-    `unavailable` at booking - the queue insert failed - is the mirror: the clock says a reminder is still to come, and there is no row for it to come from.
-    So `customerReminderState` reads the rows, matched on the same (address, visit start) pair the reminder cron matches its own ledger on and through the same `ledgerVerdict`: a delivered row is `told`, an open row is `coming` while a run that can carry it is still ahead, and everything else - no row, a cancelled one, or one no run will ever reach - is `none`.
+    So `customerReminderState` reads the rows, matched on the same (address, visit start) pair the reminder cron matches its own ledger on and through the same `ledgerVerdict` - and it answers what that cron will actually do, because that cron is the thing that does or does not send.
+    A delivered row is `told`.
+    Rows the cron skips - all cancelled, `ledgerVerdict`'s `closed` - are `none`: somebody pulled that reminder deliberately.
+    Everything left is a visit it will send for, and that includes **no row at all**: finding none, the cron backfills a fresh row and mails the customer.
+    Either way it is `coming` only while a run that can carry it is still ahead, and `none` past that, because no later run ever looks at that visit again.
+    Mapping an empty ledger to `none` was a defect this criterion introduced and then had to correct.
+    `unavailable` at booking - the queue insert failed - leaves no row behind, and the three surfaces then said "nobody is telling them we are coming" about a visit the cron announces ninety minutes after the 5pm/6pm chase names it, dropping the 7:30pm deadline that gives both stages their urgency.
+    A state machine written over the ledger has to say what the reader of that ledger does with it, not what its rows look like.
     A read that FAILED is `unavailable`, and is never folded into one of the other three: "we could not look" is not "nobody is telling them", and this reaches the one screen whose job is to make somebody pick up the phone.
     Each surface states that verdict in its own register.
     The crew screen names the reminder's date through `customerReminderWhen` when one is coming, and says plainly that nobody has told them when none is.

@@ -186,9 +186,9 @@ export function chaseSentence(ahead: ChaseStage[]): string {
  * that hour is exactly when a page would tell a crew member the customer is
  * about to be told about a visit they were told about already.
  *
- * Half the answer, never the whole one. It says what the CLOCK allows, and a
- * booking that skipped the queue or could not write to it has no reminder for
- * the clock to be right about - which is what `customerReminderState` reads.
+ * Half the answer, never the whole one. It says what the CLOCK allows; whether
+ * anything is actually going to be sent inside that window is the ledger's
+ * answer, which is what `customerReminderState` reads.
  */
 export function customerReminderAhead(visitStart: Date, now: Date): boolean {
   return reminderIsStillUseful(visitStart, now);
@@ -380,15 +380,21 @@ export type CustomerReminderState = 'told' | 'coming' | 'none' | 'unavailable';
  * that costs a phone call: a SAME-DAY booking is past the covering run, so
  * `requeueVisitReminder` answers 'skipped' and no queue row is ever written -
  * and a screen reading only the clock says "the customer has ALREADY been told
- * we are coming" about a customer nobody has told anything. A queue write that
- * failed ('unavailable' at booking) is the mirror: the clock says a reminder is
- * still to come, and there is no row for it to come from.
+ * we are coming" about a customer nobody has told anything.
  *
- * So the rows decide. A delivered reminder is 'told'. An open row - the same one
- * `ledgerVerdict` would let the cron claim - is 'coming', but only while a run
- * that can carry it is still ahead; past that nothing will ever send it, which
- * is the same answer as never having queued one. Everything else is 'none': no
- * row, or one somebody deliberately cancelled.
+ * So the rows decide, and they are read the way the REMINDER CRON reads them,
+ * because that cron is the thing that does or does not send. A delivered row is
+ * 'told'. Rows it would skip - all cancelled, `ledgerVerdict`'s `closed` - are
+ * 'none': somebody pulled that reminder deliberately.
+ *
+ * Everything else is a visit that cron will send for, and that includes NO ROW
+ * AT ALL: finding none, it backfills a fresh row and mails the customer. Reading
+ * an empty ledger as 'none' was the trap - a queue write that failed at booking
+ * ('unavailable') leaves nothing behind, and these surfaces then told the owner
+ * nobody was telling the customer about a visit the cron announces ninety
+ * minutes later. Open row or no row, it is 'coming' only while a run that can
+ * carry it is still ahead; past that nothing will ever send it, which is the
+ * same answer as never having queued one.
  */
 export function customerReminderState(
   rows: ReminderLedgerRow[] | undefined,
@@ -396,6 +402,6 @@ export function customerReminderState(
   now: Date,
 ): Exclude<CustomerReminderState, 'unavailable'> {
   if (rows?.some((r) => r.status === 'sent' || r.status === 'responded')) return 'told';
-  if (!ledgerVerdict(rows).claim) return 'none';
+  if (ledgerVerdict(rows).closed) return 'none';
   return customerReminderAhead(visitStart, now) ? 'coming' : 'none';
 }

@@ -137,8 +137,9 @@ export function flagAlertMessage(args: FlagAlertArgs): string {
  * can be true - including "we could not find out", which is its own answer.
  *
  * 'none' is the one the clock could never produce: a booking too late for the
- * covering run queues nothing, and a queue write that failed leaves nothing
- * either, so the customer will hear from us only if a person tells them.
+ * covering run queues nothing and no later run ever reaches that visit, and a
+ * reminder somebody cancelled is not coming back - so in both the customer will
+ * hear from us only if a person tells them.
  */
 function customerReminderLine(state: CustomerReminderState): string {
   if (state === 'coming') {
@@ -172,7 +173,7 @@ export interface EscalationMessageArgs {
    * What the customer has actually been told, READ off the reminder ledger.
    *
    * The deadline is what gives both stages their urgency, so it cannot be
-   * asserted: a booking whose reminder was never queued has no 7:30pm coming,
+   * asserted: a visit nothing will send a reminder for has no 7:30pm coming,
    * and saying one is announces a visit nothing will announce.
    */
   customerReminder: CustomerReminderState;
@@ -220,7 +221,7 @@ export function escalationMessage(args: EscalationMessageArgs): string {
     dispatchLine,
     ...flagLines,
     // The deadline these two stages exist to beat - stated only where it exists.
-    // A visit whose reminder was skipped or could not be queued has nothing
+    // A visit whose reminder was skipped or deliberately cancelled has nothing
     // coming at 7:30pm, and a chase that names a deadline nothing will keep
     // reads as "there is still a safety net" for the one visit that has none.
     args.customerReminder === 'coming'
