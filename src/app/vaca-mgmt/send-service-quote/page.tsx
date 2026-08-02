@@ -12,6 +12,18 @@
  * booking writes its task keys into the lead message, and those keys resolve to
  * catalog titles. Their service history ("last done Oct 2025") comes from
  * completions the checklist has been recording since launch.
+ *
+ * Booking also dispatches the crew, so this screen carries the two fields that
+ * decide it: who it goes to (pre-ticked with everyone active - un-ticking is the
+ * only way to take somebody off a visit) and the sub, which is authoritative on
+ * every save, including an EMPTY box clearing it. Both are therefore filled
+ * from the visit the form is aimed at rather than left blank, and a value that
+ * could not be READ says so instead of showing as an absent one - an empty box
+ * is a clear, and the row is what it would be cleared from.
+ *
+ * "On the books" is the only surface a crew flag ever reaches: the crew's own
+ * screen is terminal by design, so the button that clears one lives here. See
+ * docs/crew-dispatch-acceptance-criteria.md.
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
