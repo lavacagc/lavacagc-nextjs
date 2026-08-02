@@ -11,7 +11,7 @@ import {
   type FlowContext, type StepId,
 } from '@/lib/intake/flow';
 import { priceAnchorFor } from '@/lib/intake/pricing';
-import { lookupByToken, recordAnswer, mirrorToLead, markOpened, countPhotos, recordRouting } from '@/lib/intake/session';
+import { lookupByToken, recordAnswer, mirrorToLead, markOpened, countPhotosOrNull, recordRouting } from '@/lib/intake/session';
 import { scoreIntake, routeIntake } from '@/lib/intake/scoring';
 import { sendCompletionAlert } from '@/lib/intake/completionAlert';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
@@ -160,9 +160,11 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
   if (terminal && !declined) {
     const answers = { ...session.answers, ...(step.field ? { [step.field]: answer } : {}) };
     const anchor = priceAnchorFor(session.project_type);
+    // null, not 0, when the count could not be read: the scorer must not be
+    // told "no photos" on the strength of a Supabase blip.
     const [contact, photoCount] = await Promise.all([
       leadContact(session.lead_id),
-      countPhotos(session.id),
+      countPhotosOrNull(session.id),
     ]);
 
     // WEB-019 and WEB-01A. Scored on what the lead actually told us, not on the
@@ -170,7 +172,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
     // so a lead cannot be routed with no record of where or why.
     const scored = scoreIntake({ answers, photoCount });
     const decision = routeIntake(scored);
-    await recordRouting({
+    const routingRecorded = await recordRouting({
       leadId: session.lead_id,
       score: scored.score,
       bucket: decision.bucket,
@@ -187,7 +189,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
       email: contact?.email ?? null,
       photoCount,
       priceAnchor: answers.price_reaction ? anchor?.amount ?? null : null,
-      routing: { bucket: decision.bucket, score: scored.score },
+      routing: { bucket: decision.bucket, score: scored.score, recorded: routingRecorded },
     });
     if (outcome !== 'sent') {
       // Loud, because the whole point of the flow is that the call is informed.

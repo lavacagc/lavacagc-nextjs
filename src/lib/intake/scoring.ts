@@ -25,7 +25,14 @@ export type IntakeBucket = 'hot' | 'cold';
 
 export interface IntakeScoringInput {
   answers: Record<string, string>;
-  photoCount?: number;
+  /**
+   * null when the count could not be read, which is NOT zero. Scoring an
+   * unreadable count as "no photos" costs the lead 10 points and writes a false
+   * statement onto the lead row permanently, and with HOT_AT at 55 that misroutes
+   * any lead scoring 55-64 on a transient Supabase blip - the precise outcome
+   * this module exists to prevent.
+   */
+  photoCount?: number | null;
 }
 
 export interface IntakeScoringResult {
@@ -129,9 +136,13 @@ export function scoreIntake(input: IntakeScoringInput): IntakeScoringResult {
     signals.push(`Timeline: ${TIMELINE_LABEL[timeline]}`);
   }
 
-  // 4. Photos.
-  const photos = input.photoCount ?? 0;
-  if (photos > 0) {
+  // 4. Photos. An unknown count scores nothing either way and says so, because
+  //    "they sent none" and "we could not tell" are different facts and only
+  //    one of them is safe to write down.
+  const photos = input.photoCount;
+  if (photos === undefined || photos === null) {
+    signals.push('Photo count unavailable - not scored');
+  } else if (photos > 0) {
     score += 10;
     signals.push(`Sent ${photos} photo${photos === 1 ? '' : 's'}`);
   } else {

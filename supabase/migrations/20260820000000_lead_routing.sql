@@ -52,8 +52,14 @@ CREATE INDEX IF NOT EXISTS lead_intake_sessions_needs_low_intent_idx
   ON public.lead_intake_sessions (created_at)
   WHERE opened_at IS NULL AND low_intent_alert_at IS NULL;
 
+-- Keyed on updated_at, because the abandoned stage measures the QUIET period
+-- and not the time since the link was opened: a lead who opened it at 16:00 and
+-- answered a question at 20:55 is still mid-conversation and must not be told
+-- they did not finish. DROP first - CREATE INDEX IF NOT EXISTS would silently
+-- keep the old opened_at definition on a database that already ran this file.
+DROP INDEX IF EXISTS public.lead_intake_sessions_needs_abandoned_idx;
 CREATE INDEX IF NOT EXISTS lead_intake_sessions_needs_abandoned_idx
-  ON public.lead_intake_sessions (opened_at)
+  ON public.lead_intake_sessions (updated_at)
   WHERE opened_at IS NOT NULL
     AND completed_at IS NULL
     AND declined_at IS NULL

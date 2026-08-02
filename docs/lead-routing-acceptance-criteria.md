@@ -33,6 +33,7 @@ Honouring decision D3: the three-tier `tier` column keeps its meaning and no his
 - **Scope tier** - `full_gut` > `major_update` > `refresh`. A lead who described it themselves scores neutral, not zero: they told us more, not less.
 - **Timeline** - `asap` and `1_3_months` are the money; `planning` is not.
 - **Photos** - supplied or not.
+  A count that could not be read is neither: it scores nothing and is recorded as "photo count unavailable", because writing "No photos" onto the lead on the strength of a Supabase blip is a permanent false statement.
 
 ## AC2 - The fifth signal, added deliberately
 
@@ -56,6 +57,8 @@ WEB-01A's criterion is that "the routing decision and its recipient are logged o
 - `routed_to`, `routed_at` and `routing_reason` are written on the lead.
 - The reason is human-readable, not a code.
 - A routing write that fails is logged loudly and does not silently leave the lead unrouted.
+- The owner's brief says when the write failed, rather than announcing a routing the lead has no record of.
+- `intake_bucket` is CHECK-constrained, so the sanitizer drops an out-of-range value with a note instead of letting Postgres reject the whole submission.
 
 ## AC5 - Hot and cold go different places
 
@@ -74,15 +77,21 @@ WEB-01A's criterion is that "the routing decision and its recipient are logged o
 
 Not in the spec, and raised because slice A left it in the gap between "never opened" and "completed".
 
-- A session opened but not completed after N hours produces one Telegram carrying whatever they did answer.
-- It says plainly how far they got, so a half-answered lead is not mistaken for a finished one.
+- A session opened but not completed, and **quiet for N hours**, produces one Telegram carrying whatever they did answer.
+  The clock is `updated_at`, which every answer writes - not `opened_at`.
+  A lead who opened the link at 16:00 and answered a question at 20:55 is still mid-conversation, and telling the owner they "did not finish" a minute before the completion brief arrives would make both messages untrustworthy.
+- It says plainly how far they got and how long they have been quiet, so a half-answered lead is not mistaken for a finished one.
 - Fires once, like AC6.
 - A lead who **declined** at the consent step is not chased: they answered the question that was asked.
+- Every lead-supplied field in the message is clipped.
+  Over Telegram's 4096-character limit the send 400s, the claim is released, and the same session fails identically on every run afterwards - so that lead is never chased at all.
 
 ## AC8 - Failure reads as failure
 
 - A cron that cannot read its candidates says so and reports zero processed, rather than reporting success on an empty list it never actually fetched.
 - An alert that fails to send leaves the "alerted" stamp unset, so the next run retries rather than assuming it went.
+- The claim is **proven, not assumed**: the PATCH returns the rows it affected, so a run that matched none knows it lost the race and skips that candidate instead of sending a second alert.
+- A run that could not drain its backlog reports `truncated`, so it does not read like a run that had nothing left to do.
 
 ## Out of scope
 

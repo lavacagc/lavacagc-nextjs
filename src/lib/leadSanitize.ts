@@ -8,6 +8,7 @@
  *   - CHECK:    leads_inquiry_type_check            (estimate | contact | exit_intent)
  *               leads_contact_time_preference_check (anytime | morning | afternoon |
  *                                                    evening | weekends | specific | NULL)
+ *               leads_intake_bucket_check           (hot | cold | NULL)
  *   - Types:    square_footage / score / visit_count are integers,
  *               first_seen is timestamptz
  *   - Unknown columns make PostgREST reject the whole insert (PGRST204)
@@ -38,6 +39,7 @@ export const LEAD_CONTACT_TIME_PREFERENCES = [
   'weekends',
   'specific',
 ] as const;
+export const LEAD_INTAKE_BUCKETS = ['hot', 'cold'] as const;
 
 /** Neutral fallback when a form sends a missing/unknown inquiry_type. */
 const FALLBACK_INQUIRY_TYPE = 'contact';
@@ -194,6 +196,19 @@ export function sanitizeLeadForInsert(fields: Record<string, unknown>): LeadSani
       `contact_time_preference: dropped ${JSON.stringify(ctp)} (not in [${LEAD_CONTACT_TIME_PREFERENCES.join(', ')}])`
     );
     delete lead.contact_time_preference;
+  }
+
+  // Nullable but CHECK-constrained intake_bucket. Only the intake scorer writes
+  // this column, so any value arriving in a form payload is already wrong - but
+  // LeadSubmitSchema passes unknown keys through, and an unguarded 'warm' here
+  // makes Postgres reject the INSERT with 23514 and the whole submission 500s.
+  // Losing a field is recoverable; losing the lead is not.
+  const bucket = lead.intake_bucket;
+  if (bucket !== undefined && !(LEAD_INTAKE_BUCKETS as readonly string[]).includes(bucket as string)) {
+    adjustments.push(
+      `intake_bucket: dropped ${JSON.stringify(bucket)} (not in [${LEAD_INTAKE_BUCKETS.join(', ')}])`
+    );
+    delete lead.intake_bucket;
   }
 
   return { lead, adjustments };

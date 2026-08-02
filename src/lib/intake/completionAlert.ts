@@ -21,11 +21,16 @@ export interface CompletionContext {
    * The routing decision (WEB-01A), when one was made. Leads the brief, because
    * "is this worth dropping what I am doing for" is the first thing the owner
    * wants to know from a phone.
+   *
+   * `recorded` is whether the decision reached the lead row. False must be said
+   * out loud: a brief that announces a routing the lead has no record of is
+   * exactly the state `recordRouting` returns its boolean to avoid.
    */
-  routing?: { bucket: 'hot' | 'cold'; score: number } | null;
+  routing?: { bucket: 'hot' | 'cold'; score: number; recorded?: boolean } | null;
   phone?: string | null;
   email?: string | null;
-  photoCount?: number;
+  /** null when the count could not be read, which renders as no line at all. */
+  photoCount?: number | null;
   /** What we told them the work starts at, if anything. */
   priceAnchor?: number | null;
 }
@@ -136,6 +141,10 @@ export function completionMessage(ctx: CompletionContext): string {
   const lines: (string | null)[] = [
     banner,
     ctx.projectType ? esc(ctx.projectType, CAP.projectType) : null,
+    // Directly under the banner, because it qualifies the banner's own claim.
+    ctx.routing && ctx.routing.recorded === false
+      ? '⚠️ <b>NOT saved to the lead</b> - this routing decision exists only in this message.'
+      : null,
     '',
     a.message ? `<i>"${esc(a.message, CAP.message)}"</i>` : null,
     a.message ? '' : null,

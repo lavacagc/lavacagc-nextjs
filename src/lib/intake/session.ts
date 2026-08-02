@@ -280,23 +280,34 @@ export async function markRouted(eventId: string): Promise<void> {
 }
 
 /**
- * How many photos this session has already stored.
+ * How many photos this session has already stored, or null when that could not
+ * be read.
  *
- * Returns 0 when the count cannot be read. Both callers use it to decide
- * whether there is room for more, and refusing an upload because Supabase
- * blinked would cost a real lead their photos.
+ * The two callers want opposite things from a failed read, so the distinction
+ * is made here once rather than guessed at twice.
  */
-export async function countPhotos(sessionId: string): Promise<number> {
+export async function countPhotosOrNull(sessionId: string): Promise<number | null> {
   try {
     const rows = await supabaseRest<{ id: string }[]>(
       'GET',
       `lead_intake_photos?session_id=eq.${sessionId}&select=id`,
     );
-    return Array.isArray(rows) ? rows.length : 0;
+    return Array.isArray(rows) ? rows.length : null;
   } catch (err) {
     console.error('[intake] failed to count photos:', err);
-    return 0;
+    return null;
   }
+}
+
+/**
+ * The same count, with a failed read treated as 0.
+ *
+ * For the upload path only, which uses it to decide whether there is room for
+ * more: refusing an upload because Supabase blinked would cost a real lead
+ * their photos. Scoring must NOT use this - see `countPhotosOrNull`.
+ */
+export async function countPhotos(sessionId: string): Promise<number> {
+  return (await countPhotosOrNull(sessionId)) ?? 0;
 }
 
 export async function recordPhoto(args: {
