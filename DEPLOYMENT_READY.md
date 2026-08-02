@@ -55,12 +55,14 @@ TELEGRAM_CHAT_ID=your_chat_id
 - Sends email + Telegram notifications
 - Source: `contact_form`
 
-### 5. ✅ Chatbot Integration
-**File:** `src/app/api/chat/route.ts`
+### 5. ⚠️ Chatbot Integration _(removed August 2026)_
+**File:** `src/app/api/chat/route.ts` _(deleted)_
 
 - Scores chatbot-captured leads
 - Dual notification (email + Telegram)
 - Source: `chatbot`
+
+_The site-wide AI chat widget and this route were deleted in August 2026 and replaced by the tokenized **lead intake chat**, which makes no model call at all and enriches an existing lead rather than creating one. See `docs/lead-intake-acceptance-criteria.md`. The `chatbot` source stays in the scoring model for historical leads._
 
 ### 6. ✅ Calculator Integration
 **File:** `supabase/functions/calculate-estimate/index.ts`
@@ -90,7 +92,7 @@ Fixed pre-existing Next.js 15 build error by wrapping dynamic imports in client 
 
 ### Modified (3 files):
 1. `src/components/ContactForm.tsx` - Added lead scoring + Telegram
-2. `src/app/api/chat/route.ts` - Added lead scoring + Telegram
+2. `src/app/api/chat/route.ts` - Added lead scoring + Telegram _(file deleted August 2026 - see Section 5)_
 3. `supabase/functions/calculate-estimate/index.ts` - Added lead scoring + Telegram
 4. `src/app/layout.tsx` - Fixed build error
 
@@ -108,7 +110,7 @@ Fixed pre-existing Next.js 15 build error by wrapping dynamic imports in client 
 
 ### Testing (After Deploy)
 - [ ] Submit contact form → check Telegram notification
-- [ ] Use chatbot → provide email → check notification
+- [ ] ~~Use chatbot → provide email → check notification~~ _(no longer applicable - widget removed, see Section 5)_
 - [ ] Complete calculator → verify email + Telegram + database scoring
 - [ ] Query database: `SELECT * FROM leads WHERE tier = 'hot' ORDER BY score DESC LIMIT 10;`
 

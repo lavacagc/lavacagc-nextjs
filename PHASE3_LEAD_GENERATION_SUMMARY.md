@@ -26,7 +26,7 @@ A comprehensive lead scoring algorithm that evaluates leads based on:
 - **Lead Source Quality (5-20 points)**
   - Calculator: 20pts
   - Contact Form: 15pts
-  - Chatbot: 10pts
+  - Chatbot: 10pts _(deprecated: the site-wide AI chat widget was retired in August 2026 and `src/app/api/chat/route.ts` no longer exists, so no new `chatbot` leads are produced. Kept in the scoring model and `leads.source` enum for historical leads. Its replacement, the tokenized lead intake chat, does not create leads - it enriches the lead the form already created; see `docs/lead-intake-acceptance-criteria.md`.)_
   - Exit Intent: 5pts _(deprecated: the exit-intent popup now captures a monthly-newsletter email signup (`POST /api/newsletter/subscribe`) instead of submitting a lead, so no new `exit_intent` leads are produced. Kept in the scoring model and `leads.source` enum for historical leads.)_
 
 - **Budget Indicators (10-20 points)**
@@ -96,13 +96,15 @@ Updated `src/components/ContactForm.tsx` to:
 - Include `source: 'contact_form'` in lead data
 
 ### 5. Chatbot Integration
-**Status:** ✅ Complete
+**Status:** ⚠️ Removed August 2026 - historical record only
 
 Updated `src/app/api/chat/route.ts` to:
 - Apply lead scoring when capturing lead info
 - Save score and tier to database
 - Send Telegram notifications in addition to email
 - Include lead source as 'chatbot'
+
+_This route and its `ChatWidget` were **deleted** in August 2026: the site-wide widget called an LLM on every message, which the website spec bans (no live model call per chat message, no freeform answers from the bot, API token spend near zero). The tokenized **lead intake chat** replaces it and makes no model call at all - it does not create leads, it enriches the lead the form already created. See `docs/lead-intake-acceptance-criteria.md`. The `chat_conversations` table and its rows were deliberately left in place._
 
 ### 6. Calculator Integration
 **Status:** ✅ Complete
@@ -125,11 +127,11 @@ Before deploying to production, test each integration:
 - [ ] Check Telegram notification received
 - [ ] Verify tier emoji matches score
 
-### Chatbot
-- [ ] Start chat and provide email/phone
-- [ ] Verify lead captured with scoring
-- [ ] Check both email and Telegram notifications
-- [ ] Test with different project types mentioned
+### Chatbot _(no longer applicable - the widget was removed in August 2026; see Section 5)_
+- [ ] ~~Start chat and provide email/phone~~
+- [ ] ~~Verify lead captured with scoring~~
+- [ ] ~~Check both email and Telegram notifications~~
+- [ ] ~~Test with different project types mentioned~~
 
 ### Calculator
 - [ ] Complete calculator for kitchen project (should be hot lead)

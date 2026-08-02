@@ -9,6 +9,10 @@ The site ran a site-wide `ChatWidget` calling `gpt-4o-mini` on every message.
 That contradicted three separate lines of the spec: section 7 bans live LLM calls per chat message, WEB-017 bans the bot answering freeform questions, and the framing constraint requires API token spend near zero.
 The owner decided on 1 Aug to retire it completely rather than keep it alongside the new flow.
 
+The public disclosure moved with it.
+`src/content/privacy-policy-content.md` described an AI chat assistant that transmitted every message to OpenAI, and listed OpenAI as a processor of personal information.
+Section 3.5 now describes this flow instead - what it collects, that the messages go to no AI provider, and that an off-script question is forwarded to a human - with section 5.1 and the section 7.1 retention row updated to match.
+
 ## Scope decisions taken before building
 
 Bilingual delivery is **cut from scope**. WEB-010 keeps only its instant-response half, which already passed.
@@ -23,7 +27,8 @@ Recorded as a decision, not a miss.
 ## AC1 - The LLM is gone
 
 - `src/components/ChatWidget.tsx` and `src/app/api/chat/route.ts` no longer exist.
-- Nothing in `src/` imports the `openai` package.
+- No intake or lead code imports the `openai` package.
+  The dependency and `OPENAI_API_KEY` **stay**: `content-actions/draft`, `cron/generate-renderings` and `cron/seo-maintain` still use them to generate our own content, and none of the three touches a visitor's words.
 - `/api/chat` is removed from middleware `PUBLIC_ROUTES`.
 - The `chat_conversations` table and its rows are **left untouched**. Deleting the writer must not delete the history.
 
@@ -90,7 +95,7 @@ The word "budget" never appears anywhere in the flow copy.
 ## AC10 - Data lands in the right columns
 
 - `message`, `city`, `project_timeline`, `address` and `contact_time_preference` are existing columns and are filled, not duplicated.
-- `contact_time_preference` values are restricted to the six the database check constraint allows, so no answer can be rejected on write.
+- `contact_time_preference` values are drawn from the six the database check constraint allows - the flow offers five of them - so no answer can be rejected on write.
 - The new fields `scope_tier`, `scope_detail`, `finish_level`, `price_anchor_shown` and `price_reaction` are added by migration.
 - `budget_range` is **not** reused for the reaction. It holds real ranges written by the calculator and forms, and the owner alert renders it.
 

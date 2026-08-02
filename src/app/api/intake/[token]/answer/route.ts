@@ -42,7 +42,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 /**
- * Carried forward from /api/chat, which is being deleted. Removing the model
+ * Carried forward from /api/chat, which this replaces. Removing the model
  * removes the token spend but not the reasons to rate limit: these routes do
  * Supabase reads and writes for an unauthenticated caller.
  */

@@ -22,7 +22,9 @@ export const maxDuration = 300;
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || '';
-// Reuses the same OPENAI_API_KEY the chatbot already uses (no new env var).
+// Reuses the same OPENAI_API_KEY the other AI routes already use (no new env
+// var): content-actions/draft and cron/seo-maintain. The chat widget that
+// originally introduced it was deleted with the lead intake chat.
 // cleanEnv() strips trailing whitespace / newlines / literal "\n" that a
 // dashboard paste can append — those produce an opaque 401 "Incorrect API key".
 const OPENAI_API_KEY = cleanEnv(process.env.OPENAI_API_KEY) || '';
