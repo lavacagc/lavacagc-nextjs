@@ -21,6 +21,8 @@
   - Lead source (5-20pts)
   - Budget indicators (10-20pts)
 
+_Unchanged as of August 2026, and deliberately so - live data depends on what `score` and `tier` mean, and no historical lead is re-scored. What changed is what they are used **for**: the tier no longer routes anybody, because service type alone contributes 50-95 points against the 80-point hot threshold and almost every lead is therefore hot (see the second example below). Routing is decided by a separate scorer that runs at intake-chat completion and writes its own `intake_score`/`intake_bucket` columns. See `docs/lead-routing-acceptance-criteria.md`._
+
 ### 2. ✅ Database Migration
 **File:** `supabase/migrations/20260217120000_add_lead_scoring_columns.sql`
 
@@ -129,7 +131,7 @@ vercel --prod
 
 ## Example Lead Scoring
 
-### 🔥 Hot Lead (125 points)
+### 🔥 Hot Lead (175 points)
 ```
 Service: Kitchen (90pts)
 Location: Montclair, NJ (20pts)
@@ -140,7 +142,7 @@ Budget: $75k estimate (20pts)
 Total: 175 pts → HOT 🔥
 ```
 
-### 🟡 Warm Lead (65 points)
+### 🔥 Also a hot lead (105 points) - which is the problem
 ```
 Service: Bathroom (80pts)
 Location: Out of area (0pts)
@@ -148,8 +150,10 @@ Contact: Email only (10pts)
 Source: Contact form (15pts)
 Budget: Not mentioned (0pts)
 ─────────────────────────
-Total: 105 pts → WARM 🟡
+Total: 105 pts → HOT 🔥
 ```
+
+_Out of the service area, no phone number and no budget signal, and it still clears the 80-point threshold on service type alone. That is why the tier cannot route: `warm` and `cold` are close to unreachable for a real project inquiry. The routing decision is made separately, when the lead finishes the intake chat - see `docs/lead-routing-acceptance-criteria.md`._
 
 ## Telegram Notification Example
 
