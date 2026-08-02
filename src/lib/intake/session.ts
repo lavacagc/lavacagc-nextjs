@@ -36,8 +36,19 @@ export function newIntakeToken(): string {
   return randomBytes(32).toString('base64url');
 }
 
+/**
+ * The site-relative link. This is what the browser gets back from the submit
+ * route: the confirmation panel is already on whichever host served the form,
+ * so a path is correct on the apex, on www, on a preview and on localhost
+ * alike, and nothing about the link is derived from a client-supplied Host.
+ */
+export function intakePathFor(token: string): string {
+  return `/intake/${encodeURIComponent(token)}`;
+}
+
+/** The absolute link, for anywhere there is no page to be relative to - email. */
 export function intakeUrlFor(origin: string, token: string): string {
-  return `${origin}/intake/${encodeURIComponent(token)}`;
+  return `${origin}${intakePathFor(token)}`;
 }
 
 /**
@@ -134,6 +145,39 @@ export async function recordAnswer(args: {
 }
 
 /**
+ * Columns the lead forms already write, where the intake must ADD to what is
+ * there rather than replace it.
+ *
+ * `leads.message` is the one that matters: RequestEstimateForm composes the
+ * property type, the services of interest, the timing, the call window and the
+ * lead's own notes into it, and it now renders the intake invite on its
+ * confirmation panel. A blind PATCH would destroy all of that the moment the
+ * same lead answered the intake's opening question. The migration's own note
+ * says these columns are "filled, not duplicated" - filled, not overwritten.
+ */
+const APPEND_COLUMNS = new Set(['message']);
+
+const INTAKE_SEPARATOR = '--- Added in the intake conversation ---';
+
+/**
+ * Read the column and return what should be written in its place.
+ *
+ * Throws if the read fails, which the caller turns into "write nothing". Not
+ * knowing what is already there is precisely when overwriting is unsafe.
+ */
+async function appendedValue(leadId: string, field: string, value: string): Promise<string | null> {
+  const rows = await supabaseRest<Record<string, string | null>[]>(
+    'GET',
+    `leads?id=eq.${leadId}&select=${encodeURIComponent(field)}&limit=1`,
+  );
+  const existing = (Array.isArray(rows) && rows[0] ? rows[0][field] : null)?.trim() ?? '';
+  if (!existing) return value;
+  // A retried answer must not stack up a second copy.
+  if (existing.includes(value)) return null;
+  return `${existing}\n\n${INTAKE_SEPARATOR}\n${value}`;
+}
+
+/**
  * Mirror the answer onto the lead itself.
  *
  * Separate from `recordAnswer` and deliberately non-fatal: the session is the
@@ -147,10 +191,15 @@ export async function mirrorToLead(
 ): Promise<void> {
   if (!leadId || !field) return;
   try {
+    const next =
+      APPEND_COLUMNS.has(field) && typeof value === 'string'
+        ? await appendedValue(leadId, field, value)
+        : value;
+    if (next === null) return;
     await supabaseRest(
       'PATCH',
       `leads?id=eq.${leadId}`,
-      { [field]: value },
+      { [field]: next },
       { prefer: 'return=minimal' },
     );
   } catch (err) {
@@ -189,6 +238,26 @@ export async function markRouted(eventId: string): Promise<void> {
     );
   } catch (err) {
     console.error('[intake] failed to stamp routed_at:', err);
+  }
+}
+
+/**
+ * How many photos this session has already stored.
+ *
+ * Returns 0 when the count cannot be read. Both callers use it to decide
+ * whether there is room for more, and refusing an upload because Supabase
+ * blinked would cost a real lead their photos.
+ */
+export async function countPhotos(sessionId: string): Promise<number> {
+  try {
+    const rows = await supabaseRest<{ id: string }[]>(
+      'GET',
+      `lead_intake_photos?session_id=eq.${sessionId}&select=id`,
+    );
+    return Array.isArray(rows) ? rows.length : 0;
+  } catch (err) {
+    console.error('[intake] failed to count photos:', err);
+    return 0;
   }
 }
 

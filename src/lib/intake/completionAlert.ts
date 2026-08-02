@@ -11,7 +11,7 @@
  * Telegram only, deliberately. This is a brief to read on a phone before
  * picking it up, not an archive; the answers are on the lead row either way.
  */
-import { sendTelegramMessage, escapeTelegram, type TelegramOutcome } from '@/lib/notify/telegramMessage';
+import { sendTelegramMessage, escapeTelegramClipped, type TelegramOutcome } from '@/lib/notify/telegramMessage';
 
 export interface CompletionContext {
   firstName: string | null;
@@ -90,37 +90,58 @@ export function urgencyLine(timeline: string | undefined, reaction: string | und
   return null;
 }
 
+/**
+ * Per-field budgets, counted in escaped characters.
+ *
+ * Three of these fields are freeform, and `isValidAnswer` lets each run to 2000
+ * characters. Telegram rejects the whole sendMessage over 4096 with a 400, so
+ * without a cap the most engaged lead - the one who wrote a long description
+ * AND took the "Add my own details" branch - is exactly the one whose brief
+ * never arrives. These sum to roughly 2,700 with the labels, which leaves room
+ * for the whole of the rest of the message.
+ */
+const CAP = {
+  name: 60,
+  projectType: 80,
+  message: 900,
+  scopeDetail: 700,
+  address: 200,
+  preset: 80,
+  phone: 40,
+  line: 160,
+} as const;
+
 export function completionMessage(ctx: CompletionContext): string {
   const a = ctx.answers;
   const who = ctx.firstName || 'A lead';
-  const esc = escapeTelegram;
+  const esc = escapeTelegramClipped;
 
-  const row = (label: string, value: string | null | undefined): string | null =>
-    value ? `<b>${label}</b> ${esc(value)}` : null;
+  const row = (label: string, value: string | null | undefined, max: number): string | null =>
+    value ? `<b>${label}</b> ${esc(value, max)}` : null;
 
   const lines: (string | null)[] = [
-    `<b>Intake finished - ${esc(who)}</b>`,
-    ctx.projectType ? esc(ctx.projectType) : null,
+    `<b>Intake finished - ${esc(who, CAP.name)}</b>`,
+    ctx.projectType ? esc(ctx.projectType, CAP.projectType) : null,
     '',
-    a.message ? `<i>"${esc(a.message)}"</i>` : null,
+    a.message ? `<i>"${esc(a.message, CAP.message)}"</i>` : null,
     a.message ? '' : null,
-    row('Scope', SCOPE[a.scope_tier] ?? a.scope_tier),
-    a.scope_detail ? `<b>In their words</b> ${esc(a.scope_detail)}` : null,
-    row('Finish', FINISH[a.finish_level] ?? a.finish_level),
-    row('Timeline', TIMELINE[a.project_timeline] ?? a.project_timeline),
-    row('Town', a.city),
-    row('Address', a.address),
-    row('Call them', CONTACT[a.contact_time_preference] ?? a.contact_time_preference),
-    ctx.phone ? row('Phone', ctx.phone) : null,
+    row('Scope', SCOPE[a.scope_tier] ?? a.scope_tier, CAP.preset),
+    a.scope_detail ? `<b>In their words</b> ${esc(a.scope_detail, CAP.scopeDetail)}` : null,
+    row('Finish', FINISH[a.finish_level] ?? a.finish_level, CAP.preset),
+    row('Timeline', TIMELINE[a.project_timeline] ?? a.project_timeline, CAP.preset),
+    row('Town', a.city, CAP.preset),
+    row('Address', a.address, CAP.address),
+    row('Call them', CONTACT[a.contact_time_preference] ?? a.contact_time_preference, CAP.preset),
+    ctx.phone ? row('Phone', ctx.phone, CAP.phone) : null,
     ctx.photoCount ? `<b>Photos</b> ${ctx.photoCount} attached` : null,
     '',
   ];
 
   const money = reactionLine(a.price_reaction, ctx.priceAnchor);
-  if (money) lines.push(`\u{1F4B0} ${esc(money)}`);
+  if (money) lines.push(`\u{1F4B0} ${esc(money, CAP.line)}`);
 
   const urgency = urgencyLine(a.project_timeline, a.price_reaction);
-  if (urgency) lines.push(`\u{1F449} ${esc(urgency)}`);
+  if (urgency) lines.push(`\u{1F449} ${esc(urgency, CAP.line)}`);
 
   return lines.filter((l) => l !== null).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }

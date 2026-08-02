@@ -19,6 +19,25 @@ export function escapeTelegram(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/** sendMessage rejects the whole request over this, with a 400. */
+export const TELEGRAM_TEXT_LIMIT = 4096;
+
+/**
+ * Escape a lead-supplied value and bound the result.
+ *
+ * Anything a lead typed is unbounded from Telegram's point of view, and one
+ * long answer costs the owner the ENTIRE message rather than the tail of it.
+ * Clipping happens after escaping because escaping is what inflates the length
+ * (one '&' becomes five characters), so the budget counted here is the real
+ * one. A trailing half-entity is dropped rather than delivered as literal text.
+ */
+export function escapeTelegramClipped(value: string, max: number): string {
+  const escaped = escapeTelegram(value);
+  if (escaped.length <= max) return escaped;
+  const kept = escaped.slice(0, Math.max(0, max - 3)).replace(/&[a-z]*$/i, '');
+  return `${kept.trimEnd()}...`;
+}
+
 export async function sendTelegramMessage(text: string): Promise<TelegramOutcome> {
   // Defensive clean - env values pasted into dashboards carry stray whitespace
   // and literal backslash-n escapes.

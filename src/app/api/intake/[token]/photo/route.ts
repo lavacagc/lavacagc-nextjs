@@ -7,7 +7,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { lookupByToken, recordPhoto, markOpened } from '@/lib/intake/session';
+import { lookupByToken, recordPhoto, markOpened, countPhotos } from '@/lib/intake/session';
+import { isTerminal } from '@/lib/intake/flow';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,15 @@ export const runtime = 'nodejs';
 
 const BUCKET = 'intake-photos';
 const MAX_FILES = 6;
+/**
+ * A ceiling on the whole session, not just one request.
+ *
+ * MAX_FILES bounds a single upload and the rate limit bounds how often, but
+ * without this a token holder can keep uploading 6 at a time forever into a
+ * public-read bucket. Twice the per-request limit is generous for a lead
+ * photographing one room and still finite.
+ */
+const MAX_PER_SESSION = 12;
 const MAX_BYTES = 8 * 1024 * 1024;
 const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 
@@ -41,6 +51,15 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
   }
   const session = found.session;
 
+  // Same rule the answer route applies: a finished or declined conversation
+  // takes nothing further. Alex has already been sent the brief.
+  if (isTerminal(session.current_step)) {
+    return NextResponse.json(
+      { error: 'This conversation has already finished. Bring the photos to the call.' },
+      { status: 409 },
+    );
+  }
+
   let form: FormData;
   try {
     form = await request.formData();
@@ -51,7 +70,17 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
   const files = form.getAll('photos').filter((f): f is File => f instanceof File);
   if (files.length === 0) return NextResponse.json({ error: 'No photos supplied' }, { status: 400 });
   if (files.length > MAX_FILES) {
-    return NextResponse.json({ error: `You can add up to ${MAX_FILES} photos.` }, { status: 400 });
+    return NextResponse.json({ error: `You can add up to ${MAX_FILES} photos at a time.` }, { status: 400 });
+  }
+
+  const already = await countPhotos(session.id);
+  if (already + files.length > MAX_PER_SESSION) {
+    return NextResponse.json(
+      {
+        error: `That's more than the ${MAX_PER_SESSION} photos we can take here. Show Alex the rest on the call.`,
+      },
+      { status: 400 },
+    );
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

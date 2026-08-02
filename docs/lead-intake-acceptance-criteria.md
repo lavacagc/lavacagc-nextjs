@@ -29,9 +29,10 @@ Recorded as a decision, not a miss.
 
 ## AC2 - Two ways in, one token
 
-- A successful `POST /api/leads/submit` returns an `intakeUrl` in its response body.
+- A successful `POST /api/leads/submit` returns an `intakeUrl` in its response body, as a site-relative path.
 - The on-page confirmation renders that link, and also offers skipping it in plain words.
-- The `instant_ack` email carries the same link.
+- The `instant_ack` email carries the same token, made absolute against the canonical `NEXT_PUBLIC_SITE_URL` rather than the request host.
+  An emailed link is opened days later from an inbox, so it cannot point at whichever alias happened to serve the form.
 - Both resolve to the same session for the same lead. A token maps to exactly one lead, and no lead can reach another lead's session.
 
 ## AC3 - The flow never calls a model

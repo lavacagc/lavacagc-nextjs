@@ -314,6 +314,21 @@ export function isTerminal(id: StepId): boolean {
   return id === 'done' || id === 'declined';
 }
 
+/**
+ * Clean a freeform value the moment it arrives, before anything validates,
+ * stores or echoes it.
+ *
+ * Postgres rejects U+0000 in text (22P05) AND in jsonb, so one NUL pasted out
+ * of a PDF makes the session write throw. The route can only answer 503, the
+ * client has already cleared the draft, and every retry of the same content
+ * fails identically - the lead is dead-ended mid-conversation with no way
+ * forward. `leadSanitize` strips this exact character for this exact reason,
+ * and the `project` step invites people to paste from a document.
+ */
+export function normalizeIntakeText(raw: string): string {
+  return raw.replace(/\u0000/g, '').trim();
+}
+
 /** Validate an answer before it is written. Presets must be a listed value. */
 export function isValidAnswer(step: Step, answer: string): boolean {
   const trimmed = answer.trim();

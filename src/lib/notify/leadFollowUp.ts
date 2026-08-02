@@ -30,10 +30,16 @@ export interface LeadFollowUpPayload {
   leadId?: string;
   estimateLeadId?: string;
   /**
-   * WEB-012 path 2. Optional and nullable: the session is created best-effort
-   * at submit time, and a lead whose session failed must still be acknowledged.
+   * WEB-012 path 2, as a site-relative path. Optional and nullable: the session
+   * is created best-effort at submit time, and a lead whose session failed must
+   * still be acknowledged.
+   *
+   * A path rather than a finished URL so the link in the email is built from
+   * the same canonical SITE_URL the unsubscribe link in it already uses. The
+   * request host is the wrong source for a link that will be opened days later
+   * from an inbox, and it is client-influenced besides.
    */
-  intakeUrl?: string | null;
+  intakePath?: string | null;
 }
 
 export interface LeadFollowUpResult {
@@ -107,7 +113,7 @@ export async function createLeadFollowUpSequence(
   payload: LeadFollowUpPayload
 ): Promise<LeadFollowUpResult> {
   try {
-    const { name, email, projectType, leadId, estimateLeadId, intakeUrl } = payload;
+    const { name, email, projectType, leadId, estimateLeadId, intakePath } = payload;
 
     if (!name || !email) {
       return { status: 'invalid', error: 'Name and email required' };
@@ -144,7 +150,12 @@ export async function createLeadFollowUpSequence(
       };
     }
 
-    const emails = generateFollowUpEmails(name, projectType, followUpUnsubUrl(email), intakeUrl);
+    const emails = generateFollowUpEmails(
+      name,
+      projectType,
+      followUpUnsubUrl(email),
+      intakePath ? `${SITE_URL}${intakePath}` : null,
+    );
     const now = new Date();
 
     const followUps: Array<{

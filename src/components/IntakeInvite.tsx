@@ -35,7 +35,7 @@ export default function IntakeInvite({ url }: { url?: string | null }) {
         Add a few details <ArrowRight className="h-4 w-4" />
       </a>
       <p className="mt-3 text-xs text-text-muted">
-        Or skip it — we&apos;ll still call you within 24 hours.
+        Or skip it - we&apos;ll still call you within 24 hours.
       </p>
     </div>
   );

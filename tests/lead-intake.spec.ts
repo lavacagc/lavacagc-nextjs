@@ -2,14 +2,15 @@ import { test, expect } from '@playwright/test';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import {
-  buildStep, nextStep, isTerminal, isValidAnswer, closingPromise,
+  buildStep, nextStep, isTerminal, isValidAnswer, closingPromise, normalizeIntakeText,
   type FlowContext, type StepId,
 } from '../src/lib/intake/flow';
 import { priceAnchorFor, hasPriceAnchor, NO_ANCHOR_SENTENCE } from '../src/lib/intake/pricing';
 import { isServiceArea, normalizeTown } from '../src/lib/intake/serviceArea';
 import { offScriptReply, reachedAHuman, offScriptTelegram } from '../src/lib/intake/offScript';
 import { completionMessage, reactionLine, urgencyLine } from '../src/lib/intake/completionAlert';
-import { newIntakeToken, intakeUrlFor } from '../src/lib/intake/session';
+import { newIntakeToken, intakeUrlFor, intakePathFor } from '../src/lib/intake/session';
+import { TELEGRAM_TEXT_LIMIT } from '../src/lib/notify/telegramMessage';
 import { leadInstantAckHtml } from '../src/lib/emailTemplates';
 
 /**
@@ -365,11 +366,23 @@ test.describe('AC2 - entry points', () => {
     }
   });
 
-  test('the submit route returns the same url the email uses', () => {
+  test('both entry points address the same token', () => {
+    expect(intakePathFor('abc')).toBe('/intake/abc');
     expect(intakeUrlFor('https://www.lavacagc.com', 'abc')).toBe('https://www.lavacagc.com/intake/abc');
     const src = code('src/app/api/leads/submit/route.ts');
-    expect(src).toContain('intakeUrlFor');
-    expect(src).toContain('intakeUrl,');
+    expect(src).toContain('intakePathFor');
+    expect(src).toContain('intakeUrl: intakePath,');
+  });
+
+  test('the emailed link is canonical, not built from the request host', () => {
+    // An emailed CTA is opened days later from an inbox, so it cannot point at
+    // whichever alias - apex, www, a preview host - happened to serve the form.
+    const submit = code('src/app/api/leads/submit/route.ts');
+    expect(submit, 'the submit route must not derive the link from request.url')
+      .not.toContain('new URL(request.url).origin');
+
+    const followUp = code('src/lib/notify/leadFollowUp.ts');
+    expect(followUp).toContain('${SITE_URL}${intakePath}');
   });
 
   test('a failed session does not fail the submission', () => {
@@ -415,6 +428,20 @@ test.describe('AC11 - security', () => {
     expect(src).toContain('export async function POST');
     expect(src).not.toContain('export async function GET');
   });
+
+  test('a finished conversation takes no further uploads', () => {
+    // The answer route already 409s on a terminal session; without the same
+    // check here a completed session is an open upload endpoint forever.
+    const src = code('src/app/api/intake/[token]/photo/route.ts');
+    expect(src).toContain('isTerminal(session.current_step)');
+    expect(src).toContain('status: 409');
+  });
+
+  test('photos are bounded per session, not just per request', () => {
+    const src = code('src/app/api/intake/[token]/photo/route.ts');
+    expect(src).toContain('MAX_PER_SESSION');
+    expect(src).toContain('already + files.length > MAX_PER_SESSION');
+  });
 });
 
 test.describe('AC12 - failure reads as failure', () => {
@@ -431,6 +458,34 @@ test.describe('AC12 - failure reads as failure', () => {
     expect(src).toContain("status: 503");
     expect(src).toContain("status: 404");
     expect(src).toContain("wasn't saved");
+  });
+
+  test('a NUL byte does not dead-end the conversation', () => {
+    // Postgres rejects U+0000 in text AND in jsonb, so an unstripped one makes
+    // recordAnswer throw, the route answer 503, and every identical retry fail
+    // the same way - with the draft already cleared on the client.
+    const pasted = `open the \u0000kitchen\u0000`;
+    expect(normalizeIntakeText(pasted)).toBe('open the kitchen');
+    expect(normalizeIntakeText('  padded  ')).toBe('padded');
+    // A button value survives it, so validation still passes.
+    expect(isValidAnswer(buildStep('scope', CTX), normalizeIntakeText('full_gut\u0000'))).toBe(true);
+
+    for (const f of [
+      'src/app/api/intake/[token]/answer/route.ts',
+      'src/app/api/intake/[token]/message/route.ts',
+    ]) {
+      expect(code(f), `${f} must normalise before it validates or stores`).toContain('normalizeIntakeText(');
+    }
+  });
+
+  test('the intake adds to leads.message rather than replacing it', () => {
+    // RequestEstimateForm composes property type, services, timing and the
+    // lead's own notes into that column, and now shows the intake invite on its
+    // confirmation panel. A blind PATCH would destroy all of it.
+    const src = code('src/lib/intake/session.ts');
+    expect(src).toContain("APPEND_COLUMNS = new Set(['message'])");
+    expect(src, 'a failed read must write nothing rather than overwrite').toContain('if (next === null) return;');
+    expect(src, 'a retried answer must not stack a second copy').toContain('existing.includes(value)');
   });
 
   test('a partial photo upload reports the failures', () => {
@@ -513,6 +568,18 @@ test.describe('AC2 - the on-page invite', () => {
     expect(src).toContain('still call you within 24 hours');
   });
 
+  test('nothing this feature says to a lead uses an em dash', () => {
+    for (const f of [
+      'src/components/IntakeInvite.tsx',
+      'src/lib/intake/flow.ts',
+      'src/lib/intake/pricing.ts',
+      'src/app/intake/[token]/IntakeThread.tsx',
+      'src/app/intake/[token]/page.tsx',
+    ]) {
+      expect(read(f), `${f} must use a plain dash`).not.toContain('—');
+    }
+  });
+
   test('the invite states 3 minutes, not a question count', () => {
     const src = read('src/components/IntakeInvite.tsx');
     expect(src).toContain('three minutes');
@@ -564,6 +631,48 @@ test.describe('AC13 - finishing the intake tells a human', () => {
     expect(urgencyLine('1_3_months', 'well_above')).toContain('stretch');
     expect(urgencyLine('planning', 'about_expected')).toContain('Still planning');
     expect(urgencyLine('3_6_months', undefined)).toBeNull();
+  });
+
+  test('a very long answer still fits inside one Telegram message', () => {
+    // sendMessage 400s on the WHOLE message over 4096 characters, so without a
+    // cap the most engaged lead - long description AND the "Add my own details"
+    // branch - is exactly the one whose brief never arrives. '&' is the worst
+    // case: escaping turns each one into five characters.
+    const long = '&'.repeat(2000);
+    const msg = completionMessage({
+      firstName: long,
+      projectType: long,
+      answers: {
+        ...ANSWERS, message: long, scope_detail: long, address: long, city: long,
+      },
+      phone: long,
+      photoCount: 6,
+      priceAnchor: 35000,
+    });
+    expect(msg.length).toBeLessThanOrEqual(TELEGRAM_TEXT_LIMIT);
+    // Clipped, not dropped: the start of what they said still has to be there.
+    expect(msg).toContain('Intake finished');
+    expect(msg).toContain('...');
+
+    const question = offScriptTelegram({
+      firstName: long, email: long, phone: long, projectType: long,
+      question: long, intakeUrl: null,
+    });
+    expect(question.length).toBeLessThanOrEqual(TELEGRAM_TEXT_LIMIT);
+    expect(question).toContain('did NOT answer this');
+  });
+
+  test('clipping never leaves half an HTML entity behind', () => {
+    // '&' escapes to '&amp;'. A cut through the middle of that would arrive as
+    // the literal text "&am", which is the bug this whole test file guards.
+    for (const n of [1, 2, 3, 4, 5, 6, 7]) {
+      const msg = completionMessage({
+        ...base,
+        answers: { ...ANSWERS, address: `${'x'.repeat(190 + n)}${'&'.repeat(20)}` },
+      });
+      const entities = msg.match(/&[a-z]*;?/gi) ?? [];
+      expect(entities.every((e) => ['&lt;', '&gt;', '&amp;'].includes(e.toLowerCase())), msg).toBe(true);
+    }
   });
 
   test('no HTML entity beyond the three Telegram actually supports', () => {

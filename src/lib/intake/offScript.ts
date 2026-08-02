@@ -5,7 +5,7 @@
  * Veronica, and re-asks the question the lead was on. No model is involved at
  * any point, which is the whole reason this file exists rather than a prompt.
  */
-import { sendTelegramMessage, escapeTelegram } from '@/lib/notify/telegramMessage';
+import { sendTelegramMessage, escapeTelegramClipped } from '@/lib/notify/telegramMessage';
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 
 export interface OffScriptContext {
@@ -32,17 +32,23 @@ export function reachedAHuman(outcome: RouteOutcome): boolean {
  * Telegram's HTML parse mode supports EXACTLY three entities: &lt;, &gt; and
  * &amp;. Anything else - &middot;, &#128222; - is delivered as literal text, so
  * the message arrives reading "Alex &middot; Kitchen". Real characters only.
+ *
+ * Every lead-supplied value is clipped, because Telegram rejects the whole
+ * message over 4096 characters. A question too long to send is a question
+ * nobody is told about, and `reachedAHuman` would then be false for a lead who
+ * asked a perfectly reasonable thing.
  */
 export function offScriptTelegram(ctx: OffScriptContext): string {
   const who = ctx.firstName || ctx.email || 'A lead';
+  const esc = escapeTelegramClipped;
   const lines = [
     '<b>Question from a lead, mid-intake</b>',
     '',
-    `<b>${escapeTelegram(who)}</b>${ctx.projectType ? ` · ${escapeTelegram(ctx.projectType)}` : ''}`,
-    ctx.phone ? `\u{1F4DE} ${escapeTelegram(ctx.phone)}` : null,
-    ctx.email ? `✉️ ${escapeTelegram(ctx.email)}` : null,
+    `<b>${esc(who, 120)}</b>${ctx.projectType ? ` · ${esc(ctx.projectType, 80)}` : ''}`,
+    ctx.phone ? `\u{1F4DE} ${esc(ctx.phone, 40)}` : null,
+    ctx.email ? `✉️ ${esc(ctx.email, 120)}` : null,
     '',
-    `<i>"${escapeTelegram(ctx.question)}"</i>`,
+    `<i>"${esc(ctx.question, 1500)}"</i>`,
     '',
     'The assistant did NOT answer this. It told them you would, on the call.',
   ];

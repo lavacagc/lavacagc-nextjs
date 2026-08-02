@@ -5,10 +5,16 @@
  * exists, or runs standalone with no lead at all. Use it to click through the
  * flow locally without submitting a form and mailing real people.
  *
- *   npx tsx scripts/intake-seed.ts                      # standalone session
- *   npx tsx scripts/intake-seed.ts --project="Bathroom Renovation"
- *   npx tsx scripts/intake-seed.ts --lead=<uuid>        # attach to a real lead
- *   npx tsx scripts/intake-seed.ts --cleanup            # remove seeded sessions
+ * It talks to whatever project SUPABASE_SECRET_KEY points at, so .env.local has
+ * to be loaded explicitly - a bare `npx tsx scripts/intake-seed.ts` sees no
+ * credentials at all. Same form scripts/verify-email-log.ts documents:
+ *
+ *   SEED="npx tsx -r dotenv/config scripts/intake-seed.ts dotenv_config_path=.env.local"
+ *
+ *   $SEED                                # standalone session
+ *   $SEED --project="Bathroom Renovation"
+ *   $SEED --lead=<uuid>                  # attach to a real lead
+ *   $SEED --cleanup                      # remove seeded sessions
  */
 import { createIntakeSession, intakeUrlFor } from '../src/lib/intake/session';
 import { supabaseRest } from '../src/lib/notify/supabase-rest';
@@ -23,6 +29,27 @@ const ORIGIN = arg('origin') ?? 'http://localhost:3000';
 const SEED_NAME = 'IntakePreview';
 
 /**
+ * Fail on the real reason.
+ *
+ * `createIntakeSession` swallows its error and returns null, so without this
+ * check a missing env var surfaces as "has the migration been applied?" and
+ * sends you off to the SQL editor to look at a migration that is fine.
+ */
+function requireCredentials(): string {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const missing = (['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SECRET_KEY'] as const).filter(
+    (k) => !process.env[k],
+  );
+  if (missing.length > 0 || !url) {
+    console.error(`Missing ${missing.join(' and ')}.`);
+    console.error('Load .env.local explicitly:');
+    console.error('  npx tsx -r dotenv/config scripts/intake-seed.ts dotenv_config_path=.env.local');
+    process.exit(1);
+  }
+  return url;
+}
+
+/**
  * Remove every seeded session, identified by having no lead.
  *
  * NOT by name: --name= exists, so filtering on the default name silently leaves
@@ -31,7 +58,12 @@ const SEED_NAME = 'IntakePreview';
  * true of a seed and never true of a real session - a real one always has a
  * lead_id, because it is created by the submit route from an inserted lead.
  */
-async function cleanup() {
+async function cleanup(projectUrl: string) {
+  // Say which project is about to be deleted from. SUPABASE_SECRET_KEY points
+  // at production for this repo, and a silent DELETE there is not something to
+  // find out about afterwards.
+  console.log(`Cleaning up seeded sessions in ${new URL(projectUrl).host}`);
+
   const rows = await supabaseRest<{ id: string; first_name: string | null }[]>(
     'GET',
     'lead_intake_sessions?lead_id=is.null&select=id,first_name',
@@ -51,7 +83,8 @@ async function cleanup() {
 }
 
 async function main() {
-  if (has('cleanup')) return cleanup();
+  const projectUrl = requireCredentials();
+  if (has('cleanup')) return cleanup(projectUrl);
 
   const projectType = arg('project') ?? 'Kitchen Remodeling';
   const leadId = arg('lead') ?? null;
@@ -59,7 +92,9 @@ async function main() {
 
   const session = await createIntakeSession({ leadId, firstName, projectType });
   if (!session) {
-    console.error('Could not create the session. Has the migration been applied?');
+    // createIntakeSession already logged the real error above this line.
+    console.error('Could not create the session - see the error above.');
+    console.error('If it is a missing table, apply supabase/migrations/20260819000000_lead_intake.sql.');
     process.exit(1);
   }
 

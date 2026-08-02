@@ -6,9 +6,12 @@
  * costs nothing to run and cannot say something nobody wrote.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { buildStep, nextStep, isTerminal, isValidAnswer, type FlowContext, type StepId } from '@/lib/intake/flow';
+import {
+  buildStep, nextStep, isTerminal, isValidAnswer, normalizeIntakeText,
+  type FlowContext, type StepId,
+} from '@/lib/intake/flow';
 import { priceAnchorFor } from '@/lib/intake/pricing';
-import { lookupByToken, recordAnswer, mirrorToLead, markOpened } from '@/lib/intake/session';
+import { lookupByToken, recordAnswer, mirrorToLead, markOpened, countPhotos } from '@/lib/intake/session';
 import { sendCompletionAlert } from '@/lib/intake/completionAlert';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
@@ -32,18 +35,6 @@ async function leadContact(leadId: string | null): Promise<LeadContact | null> {
   } catch (err) {
     console.error('[intake] could not read lead contact for the completion brief:', err);
     return null;
-  }
-}
-
-async function countPhotos(sessionId: string): Promise<number> {
-  try {
-    const rows = await supabaseRest<{ id: string }[]>(
-      'GET',
-      `lead_intake_photos?session_id=eq.${sessionId}&select=id`,
-    );
-    return Array.isArray(rows) ? rows.length : 0;
-  } catch {
-    return 0;
   }
 }
 
@@ -86,7 +77,9 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
   } catch {
     return NextResponse.json({ error: 'Malformed request' }, { status: 400 });
   }
-  const answer = typeof body.answer === 'string' ? body.answer.trim() : '';
+  // Normalised before anything else looks at it, so the value validated, the
+  // value stored and the value read back in the brief are the same string.
+  const answer = typeof body.answer === 'string' ? normalizeIntakeText(body.answer) : '';
   if (!answer) return NextResponse.json({ error: 'No answer supplied' }, { status: 400 });
 
   const found = await lookupByToken(token);

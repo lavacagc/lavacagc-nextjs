@@ -7,7 +7,7 @@
  * not - the reply text branches on what actually happened.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { buildStep, type FlowContext } from '@/lib/intake/flow';
+import { buildStep, normalizeIntakeText, type FlowContext } from '@/lib/intake/flow';
 import { lookupByToken, recordOffScript, markRouted, markOpened } from '@/lib/intake/session';
 import { routeOffScript, offScriptReply, reachedAHuman } from '@/lib/intake/offScript';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
   } catch {
     return NextResponse.json({ error: 'Malformed request' }, { status: 400 });
   }
-  const message = typeof body.message === 'string' ? body.message.trim().slice(0, 2000) : '';
+  const message = typeof body.message === 'string' ? normalizeIntakeText(body.message).slice(0, 2000) : '';
   if (!message) return NextResponse.json({ error: 'Empty message' }, { status: 400 });
 
   const found = await lookupByToken(token);
