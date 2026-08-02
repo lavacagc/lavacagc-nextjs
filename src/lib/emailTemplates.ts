@@ -317,9 +317,41 @@ export function feedbackDay7Html(name: string, unsubscribeUrl: string): string {
 // LEAD FOLLOW-UP EMAILS
 // ==========================================
 
-export function leadInstantAckHtml(name: string, projectType: string | undefined, unsubscribeUrl: string): string {
+/**
+ * The instant acknowledgement, and WEB-012's second path into the intake flow.
+ *
+ * `intakeUrl` is optional and nullable on purpose: the session is created
+ * best-effort at submit time, and a lead whose session failed to create must
+ * still get this email. When it is absent the block simply is not rendered -
+ * never a dead button.
+ */
+export function leadInstantAckHtml(
+  name: string,
+  projectType: string | undefined,
+  unsubscribeUrl: string,
+  intakeUrl?: string | null,
+): string {
   const firstName = name.split(' ')[0] || name;
   const projectMention = projectType ? ` about your ${projectType} project` : '';
+  const FF = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`;
+  const intakeBlock = intakeUrl
+    ? `${spacer(8)}
+     ${divider()}
+     ${spacer(16)}
+     <div style="padding:0 48px">
+       <div style="background-color:#FEF7EF;border:1px solid #F6DCC0;border-radius:14px;padding:24px;text-align:center">
+         <p style="margin:0;font-family:${FF};font-size:12px;letter-spacing:0.07em;font-weight:700;color:${BRAND_COLOR};text-transform:uppercase">Before we call</p>
+         <p style="margin:8px 0 0 0;font-family:${FF};font-size:19px;line-height:26px;font-weight:700;color:#1A1A1A">Make the call worth your time</p>
+         <p style="margin:12px 0 20px 0;font-family:${FF};font-size:15px;line-height:23px;color:#4A4A4A">Our assistant can take a few details so the call is about your project rather than paperwork. About three minutes, and it's mostly buttons.</p>
+         <div style="text-align:center">
+           <div style="display:inline-block;border-radius:8px;background-color:${BRAND_COLOR}">
+             <a href="${intakeUrl}" style="display:inline-block;text-decoration:none;color:#ffffff;font-family:${FF};font-size:16px;font-weight:600;line-height:22px;padding:15px 32px">Add a few details &rarr;</a>
+           </div>
+         </div>
+         <p style="margin:14px 0 0 0;font-family:${FF};font-size:13px;line-height:18px;color:#8A8A8A">This link is just for you. Skip it if you'd rather - we'll still call within 24 hours.</p>
+       </div>
+     </div>`
+    : '';
 
   return emailShell(
     `${logo()}
@@ -339,6 +371,7 @@ export function leadInstantAckHtml(name: string, projectType: string | undefined
          <tr><td style="padding:6px 0"><a href="tel:2012124917" style="color:${BRAND_COLOR};font-size:15px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;text-decoration:none;font-weight:500">→ Call us directly: ${PHONE}</a></td></tr>
        </table>
      </div>
+     ${intakeBlock}
      ${spacer(8)}
      ${paragraphLeft('We look forward to working with you!<br><br>Best regards,<br><strong>The La Vaca Team</strong>')}
      ${spacer(8)}

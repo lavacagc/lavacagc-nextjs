@@ -60,9 +60,6 @@ export default function AutomationTestPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(false);
   const [testOutput, setTestOutput] = useState<string[]>([]);
-  const [chatTestInput, setChatTestInput] = useState('');
-  const [chatTestConvoId, setChatTestConvoId] = useState<string | null>(null);
-  const [chatTestMessages, setChatTestMessages] = useState<Array<{ role: string; content: string }>>([]);
 
   const log = useCallback((msg: string) => {
     setTestOutput(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
@@ -127,36 +124,6 @@ export default function AutomationTestPage() {
     }
   };
 
-  const testChatbot = async () => {
-    if (!chatTestInput.trim()) return;
-
-    const userMsg = chatTestInput.trim();
-    setChatTestMessages(prev => [...prev, { role: 'user', content: userMsg }]);
-    setChatTestInput('');
-    log(`Sending to chatbot: "${userMsg}"`);
-
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userMsg,
-          conversationId: chatTestConvoId,
-          visitorId: 'test-dashboard-' + Date.now(),
-          pageUrl: '/admin/automation-test',
-        }),
-      });
-      const data = await response.json();
-      setChatTestMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
-      if (data.conversationId) setChatTestConvoId(data.conversationId);
-      log(`Chatbot reply: "${data.reply.substring(0, 80)}..." | Lead captured: ${data.leadCaptured}`);
-      await fetchData();
-    } catch (err) {
-      log(`Chatbot error: ${err}`);
-      setChatTestMessages(prev => [...prev, { role: 'assistant', content: 'Error connecting to chatbot API' }]);
-    }
-  };
-
   const statusBadge = (status: string) => {
     const colors: Record<string, string> = {
       pending: 'bg-yellow-100 text-yellow-800',
@@ -185,7 +152,7 @@ export default function AutomationTestPage() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">🔨 Automation Test Dashboard</h1>
-          <p className="text-gray-500 mt-1">La Vaca AI Chatbot + Lead Follow-Up System</p>
+          <p className="text-gray-500 mt-1">Lead Follow-Up System</p>
         </div>
 
         {/* Stats */}
@@ -251,56 +218,6 @@ export default function AutomationTestPage() {
                 >
                   📧 Trigger Follow-ups
                 </button>
-                <button
-                  onClick={() => {
-                    setChatTestMessages([]);
-                    setChatTestConvoId(null);
-                    log('Chat test reset');
-                  }}
-                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium cursor-pointer transition-colors"
-                >
-                  🗑️ Reset Chat Test
-                </button>
-              </div>
-            </div>
-
-            {/* Chatbot Test */}
-            <div className="bg-white rounded-xl p-6 shadow-sm border">
-              <h2 className="text-lg font-semibold mb-4">🤖 Test Chatbot</h2>
-              <div className="bg-gray-50 rounded-lg p-4 mb-4 max-h-80 overflow-y-auto space-y-3">
-                {chatTestMessages.length === 0 && (
-                  <p className="text-gray-400 text-sm text-center py-4">Send a message to test the chatbot...</p>
-                )}
-                {chatTestMessages.map((msg, i) => (
-                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                      msg.role === 'user'
-                        ? 'bg-[#EE9639] text-white'
-                        : 'bg-white border text-gray-800'
-                    }`}>
-                      {msg.content}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={chatTestInput}
-                  onChange={(e) => setChatTestInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && testChatbot()}
-                  placeholder="Type a test message..."
-                  className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#EE9639]/30 focus:border-[#EE9639]"
-                />
-                <button
-                  onClick={testChatbot}
-                  className="px-4 py-2 bg-[#EE9639] hover:bg-[#E08530] text-white rounded-lg text-sm font-medium cursor-pointer transition-colors"
-                >
-                  Send
-                </button>
-              </div>
-              <div className="mt-3 text-xs text-gray-400">
-                <p>Try: &quot;What services do you offer?&quot; | &quot;How much does a kitchen remodel cost?&quot; | &quot;My email is test@example.com&quot;</p>
               </div>
             </div>
 

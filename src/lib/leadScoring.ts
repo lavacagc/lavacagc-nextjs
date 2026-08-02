@@ -44,7 +44,10 @@ export interface LeadScoringResult {
 }
 
 // Service areas in Northern NJ (primary markets)
-const SERVICE_AREAS = [
+// Exported so the intake flow can decide whether "that's ten minutes from us"
+// is a true thing to say. Two separate lists would drift, and the flow would
+// eventually be warm about a town the scorer treats as out of area.
+export const SERVICE_AREAS = [
   'montclair', 'west orange', 'livingston', 'short hills', 'maplewood',
   'millburn', 'summit', 'chatham', 'madison', 'morristown',
   'verona', 'caldwell', 'west caldwell', 'essex fells', 'bloomfield',
@@ -64,6 +67,22 @@ const SERVICE_ZIPS = [
   '07401', '07458', '07423', // Alpine, Saddle River, Ho-Ho-Kus
   '07405', '07013', '07065'  // Kinnelon, Clifton, Rahway
 ];
+
+/**
+ * Is this city one we serve?
+ *
+ * The single predicate for that question. The intake flow asks it too, to
+ * decide whether "that's ten minutes from us" is a true thing to say after the
+ * town question, and it must never answer differently from the scorer - a lead
+ * greeted as a neighbour and then scored as out-of-area is a contradiction the
+ * owner would see in the same alert email.
+ *
+ * Expects an already-lowercased city.
+ */
+export function cityInServiceArea(city: string): boolean {
+  if (!city) return false;
+  return SERVICE_AREAS.some(area => city.includes(area));
+}
 
 /**
  * Score a lead based on multiple weighted factors
@@ -99,7 +118,7 @@ export function scoreLead(input: LeadScoringInput): LeadScoringResult {
   const city = (input.city || '').toLowerCase().trim();
   const zipCode = (input.zip_code || '').trim();
   
-  const isServiceArea = SERVICE_AREAS.some(area => city.includes(area)) ||
+  const isServiceArea = cityInServiceArea(city) ||
                         SERVICE_ZIPS.includes(zipCode);
   
   if (isServiceArea) {

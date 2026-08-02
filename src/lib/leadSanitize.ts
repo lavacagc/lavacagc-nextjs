@@ -68,8 +68,14 @@ const TEXT_COLUMNS = [
   'contact_time_preference',
   'contact_time_details',
   'contact_timezone',
+  // Captured by the tokenized intake flow (WEB-015/016). No lead form sends
+  // these; they arrive as the lead answers, and are mirrored onto the row.
+  'scope_tier',
+  'scope_detail',
+  'finish_level',
+  'price_reaction',
 ] as const;
-const INTEGER_COLUMNS = ['square_footage', 'score', 'visit_count'] as const;
+const INTEGER_COLUMNS = ['square_footage', 'score', 'visit_count', 'price_anchor_shown'] as const;
 const TIMESTAMP_COLUMNS = ['first_seen'] as const;
 const ARRAY_COLUMNS = ['scoring_reasons'] as const;
 
