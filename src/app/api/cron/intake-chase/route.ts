@@ -36,8 +36,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTelegramMessage } from '@/lib/notify/telegramMessage';
 import {
-  chaseMessage, chaseOne, candidateQuery, chaseCutoff, isPastChasing, paginate,
-  CHASE_MAX_AGE_HOURS,
+  chaseMessage, chaseOne, candidateQuery, chaseClock, chaseCutoff, hoursSince,
+  isPastChasing, paginate, CHASE_MAX_AGE_HOURS,
   type ChaseCandidate, type ChaseDeps, type ChaseFailure, type ChaseKind, type ChaseResult,
 } from '@/lib/intake/chase';
 import { recordRouting } from '@/lib/intake/session';
@@ -107,15 +107,24 @@ export async function GET(request: NextRequest) {
 
   // Aged-out rows are claimed and dropped rather than sent, so counting them as
   // "would chase" would overstate what the run is about to do.
-  const wouldRetire = candidates.filter((c) => isPastChasing(kind, c, now)).length;
+  const stale = candidates.filter((c) => isPastChasing(kind, c, now));
+  const chasing = candidates.filter((c) => !isPastChasing(kind, c, now));
+  const wouldRetire = stale.length;
 
   if (dry) {
-    // The preview renders the same lead-supplied rows the live path does, and
-    // the live path treats a row it cannot render as one failed candidate and
-    // keeps going. Unguarded here, the one surface a malformed row would first
-    // be noticed on is the one that answers a bare 500 naming no row at all.
+    // Previewed from the rows that will actually be chased, with the
+    // retirements shown as themselves. The queue is drained oldest first, so
+    // the head of the list is exactly where the rows past the ceiling collect:
+    // rendering their messages here would show three fully-formed alerts that
+    // will never be sent, on the one surface that exists to say what the run
+    // is about to do.
+    //
+    // Guarded per row the way the live loop is - the live path treats a row it
+    // cannot render as one failed candidate and keeps going, and the
+    // diagnostic surface a malformed row is first noticed on is the last place
+    // that should answer a bare 500 naming no row at all.
     const previewFailures: string[] = [];
-    const preview = candidates.slice(0, 3).map((c) => {
+    const preview = chasing.slice(0, 3).map((c) => {
       try {
         return { session: c.id, who: c.first_name, message: chaseMessage(kind, c, now) };
       } catch (err) {
@@ -124,6 +133,13 @@ export async function GET(request: NextRequest) {
         return { session: c.id, who: c.first_name, error: 'could not be rendered' };
       }
     });
+
+    const retiring = stale.slice(0, 3).map((c) => ({
+      session: c.id,
+      who: c.first_name,
+      quietFor: `${hoursSince(chaseClock(kind, c), now)}h`,
+      verdict: `past the ${CHASE_MAX_AGE_HOURS}h ceiling - would be stamped and retired, nothing sent`,
+    }));
 
     const dryDegraded = [
       ...(previewFailures.length > 0 ? ['preview_render_failed'] : []),
@@ -135,8 +151,8 @@ export async function GET(request: NextRequest) {
       stage: kind,
       dry: true,
       cutoff,
-      wouldChase: candidates.length - wouldRetire,
-      ...(wouldRetire ? { wouldRetire } : {}),
+      wouldChase: chasing.length,
+      ...(wouldRetire ? { wouldRetire, retiring } : {}),
       ...backlog,
       preview,
     });

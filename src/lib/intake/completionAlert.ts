@@ -36,6 +36,12 @@ export interface CompletionContext {
   routing?: {
     bucket: 'hot' | 'cold';
     score: number;
+    /**
+     * What the score was out of. 80 for a project type the flow never asks
+     * about price on, so the banner shows the scale the lead was measured on
+     * rather than implying a 100 they could not have reached.
+     */
+    outOf?: number;
     recorded?: boolean | null;
     signals?: string[];
   } | null;
@@ -142,9 +148,11 @@ const CAP = {
 /**
  * Why a bucket that disagrees with its own score is not a bug.
  *
- * The scorer puts the deciding signal first for exactly this, so the brief
- * quotes it rather than re-deriving the reasoning downstream and risking a
- * different account of the same decision.
+ * Two ways it can happen: an unreadable photo count routed hot on the benefit
+ * of the doubt, and a project type the flow never asked about price on, which
+ * is judged out of 80 and hot at 44. The scorer puts whichever decided it
+ * first, so the brief quotes it rather than re-deriving the reasoning
+ * downstream and risking a different account of the same decision.
  */
 export function bucketExplanation(routing: CompletionContext['routing']): string | null {
   if (!routing || routing.bucket !== 'hot' || routing.score >= HOT_AT) return null;
@@ -162,10 +170,11 @@ export function completionMessage(ctx: CompletionContext): string {
 
   // A hot lead announces itself. A cold one still gets the full brief - cold is
   // a different destination, not a bin - but it does not shout.
+  const out = ctx.routing ? `${ctx.routing.score}/${ctx.routing.outOf ?? 100}` : '';
   const banner = ctx.routing
     ? ctx.routing.bucket === 'hot'
-      ? `\u{1F525} <b>HOT LEAD (${ctx.routing.score}/100) - ${esc(who, CAP.name)}</b>`
-      : `<b>Intake finished - ${esc(who, CAP.name)}</b> (cold, ${ctx.routing.score}/100)`
+      ? `\u{1F525} <b>HOT LEAD (${out}) - ${esc(who, CAP.name)}</b>`
+      : `<b>Intake finished - ${esc(who, CAP.name)}</b> (cold, ${out})`
     : `<b>Intake finished - ${esc(who, CAP.name)}</b>`;
 
   const explained = bucketExplanation(ctx.routing);

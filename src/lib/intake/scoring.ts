@@ -19,6 +19,7 @@
  * two-valued because routing is a two-way decision.
  */
 import { cityInServiceArea } from '@/lib/leadScoring';
+import { hasPriceAnchor } from './pricing';
 import { normalizeTown } from './serviceArea';
 
 export type IntakeBucket = 'hot' | 'cold';
@@ -37,10 +38,28 @@ export interface IntakeScoringInput {
    * forgot to pass a count must not be able to claim either by omission.
    */
   photoCount: number | null;
+  /**
+   * The lead's project type, because it decides whether the price question was
+   * ever PUT to them - `hasPriceAnchor` is the same predicate the flow uses to
+   * skip the step for work with no honest starting number.
+   *
+   * Required for the same reason `photoCount` is. A lead who was never asked is
+   * judged on a smaller scale, so a caller who omitted the type would be handing
+   * out that smaller scale - and the signal that says why - by accident.
+   */
+  projectType: string | null;
 }
 
 export interface IntakeScoringResult {
   score: number;
+  /**
+   * The most this particular lead could have scored. 100 normally, 80 where the
+   * flow never asked about price - a denominator, so a score is never read
+   * against a scale it was not measured on.
+   */
+  outOf: number;
+  /** The threshold actually applied, scaled to `outOf`. */
+  hotAt: number;
   bucket: IntakeBucket;
   /** Human-readable, one per contributing signal. Written to the lead. */
   signals: string[];
@@ -54,13 +73,36 @@ export interface IntakeScoringResult {
  * price reaction 20. HOT_AT 55 means a lead needs roughly two strong signals
  * plus a weak one, and cannot get there on any single input.
  *
+ * A lead the flow never asked about price reaches 80, not 100, and is judged
+ * against `hotThresholdFor(80)` - see below.
+ *
  * Exported because the completion brief has to be able to recognise a bucket
  * that disagrees with its own score - see the benefit of the doubt below.
  */
 export const HOT_AT = 55;
 
+const MAX_SCORE = 100;
+
 /** What photos are worth - and so how much doubt an unreadable count creates. */
 const PHOTO_POINTS = 10;
+
+/** What the price reaction is worth, and so how much scale it takes with it. */
+const PRICE_POINTS_MAX = 20;
+
+/**
+ * The threshold for a lead who could not reach 100.
+ *
+ * The price step is skipped by design for work with no honest starting number -
+ * Whole Home Remodeling, Interior Finishing, anything unrecognised - so those
+ * leads have 80 points available and judging them against a threshold built for
+ * 100 scores "we never asked" exactly like "well above what I planned". That
+ * made the highest-value project type in the business the one structurally
+ * hardest to route hot. The threshold moves with the reachable maximum instead,
+ * so a lead is judged on the signals they were actually asked about.
+ */
+export function hotThresholdFor(outOf: number): number {
+  return Math.round((HOT_AT * outOf) / MAX_SCORE);
+}
 
 const SCOPE_POINTS: Record<string, number> = {
   full_gut: 25,
@@ -162,9 +204,16 @@ export function scoreIntake(input: IntakeScoringInput): IntakeScoringResult {
     }
   }
 
-  // 5. Price reaction.
+  // 5. Price reaction - but only where the flow had a starting number to react
+  //    to. Where it did not, this is not a signal that came back weak: it is a
+  //    question nobody put to them, so it comes off the scale rather than
+  //    scoring zero like the worst possible answer. Last of the five, so the
+  //    note that replaces it belongs at the end of the natural order.
+  const priceAsked = hasPriceAnchor(input.projectType);
+  const outOf = priceAsked ? MAX_SCORE : MAX_SCORE - PRICE_POINTS_MAX;
+  const hotAt = hotThresholdFor(outOf);
   const price = a.price_reaction;
-  if (price && price in PRICE_POINTS) {
+  if (priceAsked && price && price in PRICE_POINTS) {
     score += PRICE_POINTS[price];
     signals.push(`Price: ${PRICE_LABEL[price]}`);
   }
@@ -175,24 +224,36 @@ export function scoreIntake(input: IntakeScoringInput): IntakeScoringResult {
   // count is never invented, so the score stands as scored; what the record says
   // is which way the doubt was resolved, and never that the bucket was computed
   // as though no photos existed.
-  let bucket: IntakeBucket = score >= HOT_AT ? 'hot' : 'cold';
-  if (photosUnknown) {
-    const wouldHaveDecided = bucket === 'cold' && score + PHOTO_POINTS >= HOT_AT;
-    if (wouldHaveDecided) bucket = 'hot';
-    // First when it decided the bucket, because a score below the threshold
-    // next to a hot bucket is the thing the reader has to be told about, and
-    // `routeIntake` quotes the leading signals into `routing_reason`.
-    signals.splice(
-      wouldHaveDecided ? 0 : photoSignalAt,
-      0,
-      wouldHaveDecided
-        ? `Photo count unavailable - not scored, and photos would have decided this one `
-          + `(${score} of the ${HOT_AT} needed), so it is routed hot rather than risk losing it`
-        : 'Photo count unavailable - not scored, and it could not have changed the bucket',
-    );
+  let bucket: IntakeBucket = score >= hotAt ? 'hot' : 'cold';
+  const photosDecided = photosUnknown && bucket === 'cold' && score + PHOTO_POINTS >= hotAt;
+  if (photosDecided) bucket = 'hot';
+
+  const photoNote = !photosUnknown
+    ? null
+    : photosDecided
+      ? `Photo count unavailable - not scored, and photos would have decided this one `
+        + `(${score} of the ${hotAt} needed), so it is routed hot rather than risk losing it`
+      : 'Photo count unavailable - not scored, and it could not have changed the bucket';
+  const priceNote = priceAsked
+    ? null
+    : `Price not asked for this project type - scored out of ${outOf}, where ${hotAt} is hot`;
+
+  if (priceNote) signals.push(priceNote);
+  if (photoNote) signals.splice(photoSignalAt, 0, photoNote);
+
+  // Whichever of the two explains a bucket the score does not obviously support
+  // leads the list: `routeIntake` quotes the leading signals into
+  // `routing_reason` and the brief reads the first, and a score under the
+  // familiar 55 beside a hot bucket is the thing the reader has to be told
+  // about. The photo note wins when both apply - it is the tighter account of
+  // the same decision, and it carries the scaled threshold in its own text.
+  const leading = photosDecided ? photoNote : score < HOT_AT && bucket === 'hot' ? priceNote : null;
+  if (leading) {
+    signals.splice(signals.indexOf(leading), 1);
+    signals.unshift(leading);
   }
 
-  return { score, bucket, signals };
+  return { score, outOf, hotAt, bucket, signals };
 }
 
 export interface RoutingDecision {
@@ -211,17 +272,21 @@ const VISIT_OWNERS = 'Alex and Veronica';
  */
 export function routeIntake(result: IntakeScoringResult): RoutingDecision {
   const top = result.signals.slice(0, 3).join('; ');
+  // The denominator travels with the score. Two leads can be scored on two
+  // different scales, and "Scored 50, hot" read against the usual 100 is the
+  // ambiguity that made a whole-home lead look like a scoring bug.
+  const out = `Scored ${result.score} of ${result.outOf}`;
   if (result.bucket === 'hot') {
     return {
       bucket: 'hot',
       routedTo: VISIT_OWNERS,
-      reason: `Scored ${result.score}, hot. ${top}`,
+      reason: `${out}, hot. ${top}`,
     };
   }
   return {
     bucket: 'cold',
     routedTo: 'nurture',
-    reason: `Scored ${result.score}, cold. ${top}`,
+    reason: `${out}, cold. ${top}`,
   };
 }
 

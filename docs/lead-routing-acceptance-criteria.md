@@ -47,6 +47,18 @@ The spec lists four signals because it was written before the price question exi
 
 Recorded here as an addition to WEB-019, not an oversight.
 
+**A question nobody asked is not an answer that came back worst.**
+
+The flow skips the price step for work with no honest starting number - Whole Home Remodeling, Interior Finishing, anything unrecognised - and that skip is correct and stays.
+Those leads can only reach 80 points, so judging them against a threshold built for 100 scored "we never asked" exactly like "well above what I planned", and made the highest-value project type in the business the one structurally hardest to route hot.
+
+- The reachable maximum is computed per lead, and the threshold moves with it: out of 100 and hot at 55 normally, out of 80 and hot at 44 where price was never asked.
+- `hasPriceAnchor` decides it - the same predicate the flow uses to skip the step, so the question asked and the question scored cannot drift apart.
+- The record says so in plain words: "Price not asked for this project type - scored out of 80, where 44 is hot".
+  It leads the signals when the smaller scale is what made the lead hot, because a 50 beside a hot bucket is what the reader has to be told about.
+- The denominator travels with the score into `routing_reason` and the brief. A score with no scale is the ambiguity being fixed.
+- `projectType` is a required input for the same reason `photoCount` is: a caller who omitted it would be handing out the smaller scale, and the signal that explains it, by accident.
+
 ## AC3 - Two buckets, and the threshold is defensible
 
 - The bucket is `hot` or `cold`. No third value.
@@ -73,8 +85,9 @@ WEB-01A's criterion is that "the routing decision and its recipient are logged o
 - **Cold**: enters nurture, and no visit alert is raised.
 - Neither path drops the lead. Cold is a different destination, not a bin.
 - A bucket that disagrees with its own score explains itself.
-  The benefit of the doubt can render "HOT LEAD (45/100)" against a threshold of 55, so the scorer's leading signal travels with the decision and is quoted under the banner.
+  The benefit of the doubt can render "HOT LEAD (45/100)" against a threshold of 55, and a project type the flow never asks about price on can render "HOT LEAD (50/80)", so the scorer's leading signal travels with the decision and is quoted under the banner.
   Unexplained, the one message the owner reads before picking up the phone looks like a bug in the scoring, on the occasion they most need to trust the label.
+- The banner shows the scale the lead was measured on, not a 100 they could not have reached.
 - The brief renders three different photo facts three different ways: a count, "none sent", and "count unavailable".
   Everywhere else in this feature a failed read reads differently from an absent thing, and the brief is not an exception.
 
@@ -89,6 +102,8 @@ WEB-01A's criterion is that "the routing decision and its recipient are logged o
   Past three days the lead has either called or gone, and "submitted 700 hours ago - worth one manual follow-up" is advice the owner cannot act on.
   This is not a hypothetical backlog: a send that does not succeed releases its claim so the next run retries, so an environment with no Telegram credentials, a disabled cron, or any sustained outage accumulates candidates indefinitely and would deliver them a page per run on recovery.
   Retirements are counted, logged and named in `degraded` - ending a lead's chase with nobody told is a decision the run has to show, not absorb.
+  The row records it as a retirement too, in its own `*_retired_at` column written by the same PATCH as the claim.
+  The stamp that retires the row is named for an alert, so on its own it would leave the row permanently asserting that a lead deliberately never told about was told about - and the counters and the console line age out of the log while the row does not.
 - The backlog drains **oldest first**, on the same clock each stage selects by, so the queue the route describes is one and the rows nearest the ceiling are retired before the page fills with rows that still have time.
 - Both stages run every three hours across the working day - 13:00, 16:00, 19:00 and 22:00 UTC, which is 9am to 6pm Eastern in summer and an hour earlier in winter.
   A 6-hour threshold checked once a day is inoperative: the cron time, not the threshold, decides when the alert lands, and a lead who submits at 10am waits until the following morning.
@@ -125,7 +140,9 @@ Not in the spec, and raised because slice A left it in the gap between "never op
   Nothing was delivered, so the claim still goes back and every candidate is still a candidate once the configuration is fixed.
 - The `?dry=1` preview guards each row the way the live loop does, and reports `preview_render_failed`.
   It is the diagnostic surface a malformed row is first noticed on, so it is the last place that should answer a bare 500 naming no row at all.
-  It also counts what it would retire apart from what it would chase, since a retirement sends nothing.
+- The preview shows what would actually be **sent**, and lists the retirements separately with no message at all.
+  It counts them apart too, since a retirement sends nothing.
+  The queue drains oldest first, so the head of the list is exactly where rows past the ceiling collect: previewed from the raw list, the surface that exists to say what a run is about to do would show three fully-rendered alerts that will never go.
 - Any throw after the stamp is written releases the claim, and the loop guards each candidate.
   Otherwise one bad row leaves itself and every candidate after it claimed and unsent, which no future run can see.
 - The route sets `maxDuration = 300` like every other looping cron here: a run killed mid-loop leaves candidates claimed but unsent, and those keep their stamp and are never chased again.

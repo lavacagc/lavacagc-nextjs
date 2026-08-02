@@ -7,7 +7,7 @@ import { sanitizeLeadForInsert } from '../src/lib/leadSanitize';
 import {
   chaseMessage, lowIntentMessage, abandonedMessage, answeredLabels, hoursSince,
   chaseOne, candidateQuery, claimPath, chaseCutoff, paginate, isPastChasing,
-  CHASE_PAGE, CHASE_STAMP, CHASE_MAX_AGE_HOURS,
+  CHASE_PAGE, CHASE_STAMP, CHASE_RETIRED_STAMP, CHASE_MAX_AGE_HOURS,
   type ChaseCandidate, type ChaseDeps,
 } from '../src/lib/intake/chase';
 import { countPhotosForScoring, recordRouting } from '../src/lib/intake/session';
@@ -31,34 +31,47 @@ const answers = (o: Partial<Record<string, string>> = {}) => ({
   price_reaction: 'about_expected', ...o,
 }) as Record<string, string>;
 
+/** A project type the flow DOES ask about price on, which most cases assume. */
+const PRICED = 'Kitchen Remodeling';
+/** One with no honest starting number, so the flow skips the price step. */
+const UNPRICED = 'Whole Home Remodeling';
+
+/**
+ * `projectType` is a required input - see AC2 - so the common case is stated
+ * once here rather than thirty times below. Cases that turn on it pass it.
+ */
+const scored = (
+  input: Omit<Parameters<typeof scoreIntake>[0], 'projectType'> & { projectType?: string | null },
+) => scoreIntake({ projectType: PRICED, ...input });
+
 /* ── AC1 - the four signals the spec names ────────────────────────────────── */
 
 test.describe('AC1 - the spec four', () => {
   test('town in the service area scores, and is named in the record', () => {
-    const near = scoreIntake({ answers: answers({ city: 'Montclair' }), photoCount: 0 });
-    const far = scoreIntake({ answers: answers({ city: 'Princeton' }), photoCount: 0 });
+    const near = scored({ answers: answers({ city: 'Montclair' }), photoCount: 0 });
+    const far = scored({ answers: answers({ city: 'Princeton' }), photoCount: 0 });
     expect(near.score).toBeGreaterThan(far.score);
     expect(near.signals.join(' ')).toContain('In the service area');
     expect(far.signals.join(' ')).toContain('Outside the service area');
   });
 
   test('scope tier is ordered full gut > major update > refresh', () => {
-    const s = (v: string) => scoreIntake({ answers: answers({ scope_tier: v }), photoCount: 0 }).score;
+    const s = (v: string) => scored({ answers: answers({ scope_tier: v }), photoCount: 0 }).score;
     expect(s('full_gut')).toBeGreaterThan(s('major_update'));
     expect(s('major_update')).toBeGreaterThan(s('refresh'));
   });
 
   test('"described it themselves" scores mid, not zero', () => {
     // They told us more, not less. Scoring it zero would punish engagement.
-    const own = scoreIntake({ answers: answers({ scope_tier: 'own_details' }), photoCount: 0 }).score;
-    const refresh = scoreIntake({ answers: answers({ scope_tier: 'refresh' }), photoCount: 0 }).score;
-    const gut = scoreIntake({ answers: answers({ scope_tier: 'full_gut' }), photoCount: 0 }).score;
+    const own = scored({ answers: answers({ scope_tier: 'own_details' }), photoCount: 0 }).score;
+    const refresh = scored({ answers: answers({ scope_tier: 'refresh' }), photoCount: 0 }).score;
+    const gut = scored({ answers: answers({ scope_tier: 'full_gut' }), photoCount: 0 }).score;
     expect(own).toBeGreaterThan(refresh);
     expect(own).toBeLessThan(gut);
   });
 
   test('timeline is ordered, and "just planning" scores nothing', () => {
-    const s = (v: string) => scoreIntake({ answers: answers({ project_timeline: v }), photoCount: 0 }).score;
+    const s = (v: string) => scored({ answers: answers({ project_timeline: v }), photoCount: 0 }).score;
     expect(s('asap')).toBeGreaterThan(s('1_3_months'));
     expect(s('1_3_months')).toBeGreaterThan(s('3_6_months'));
     expect(s('3_6_months')).toBeGreaterThan(s('later_this_year'));
@@ -66,8 +79,8 @@ test.describe('AC1 - the spec four', () => {
   });
 
   test('photos score, and their absence is recorded rather than left silent', () => {
-    const with3 = scoreIntake({ answers: answers(), photoCount: 3 });
-    const none = scoreIntake({ answers: answers(), photoCount: 0 });
+    const with3 = scored({ answers: answers(), photoCount: 3 });
+    const none = scored({ answers: answers(), photoCount: 0 });
     expect(with3.score).toBeGreaterThan(none.score);
     expect(with3.signals.join(' ')).toContain('Sent 3 photos');
     expect(none.signals.join(' ')).toContain('No photos');
@@ -77,7 +90,7 @@ test.describe('AC1 - the spec four', () => {
     // The signals are written permanently to the lead and quoted into
     // routing_reason. A transient Supabase error must not put a false statement
     // there: "they sent none" and "we could not tell" are different facts.
-    const unknown = scoreIntake({ answers: answers(), photoCount: null });
+    const unknown = scored({ answers: answers(), photoCount: null });
     expect(unknown.signals.join(' ')).not.toContain('No photos');
     expect(unknown.signals.join(' ')).toContain('Photo count unavailable');
   });
@@ -85,14 +98,14 @@ test.describe('AC1 - the spec four', () => {
   test('AN UNREADABLE COUNT THAT WOULD HAVE DECIDED THE BUCKET ROUTES HOT', () => {
     // 45 with photos unknown: 10 more would clear 55. A wrongly hot lead costs
     // one phone call, a wrongly cold one is lost, so the doubt goes to the lead.
-    const doubtful = scoreIntake({
+    const doubtful = scored({
       answers: answers({ project_timeline: 'planning', price_reaction: 'well_above' }),
       photoCount: null,
     });
     expect(doubtful.score).toBe(45);
     expect(doubtful.bucket).toBe('hot');
     // The count is never invented, and the record says which way the doubt went.
-    expect(scoreIntake({
+    expect(scored({
       answers: answers({ project_timeline: 'planning', price_reaction: 'well_above' }),
       photoCount: 0,
     }).bucket).toBe('cold');
@@ -104,11 +117,11 @@ test.describe('AC1 - the spec four', () => {
   });
 
   test('an unreadable count that could not have changed the bucket says exactly that', () => {
-    const stillHot = scoreIntake({ answers: answers(), photoCount: null });
+    const stillHot = scored({ answers: answers(), photoCount: null });
     expect(stillHot.bucket).toBe('hot');
     expect(stillHot.signals.join(' ')).toContain('could not have changed the bucket');
 
-    const stillCold = scoreIntake({ answers: { city: 'Princeton' }, photoCount: null });
+    const stillCold = scored({ answers: { city: 'Princeton' }, photoCount: null });
     expect(stillCold.bucket).toBe('cold');
     expect(stillCold.signals.join(' ')).toContain('could not have changed the bucket');
   });
@@ -147,23 +160,97 @@ test.describe('AC1 - the spec four', () => {
 
 test.describe('AC2 - the price reaction is scored and is heaviest', () => {
   test('priced out costs more than any other single downgrade', () => {
-    const base = scoreIntake({ answers: answers(), photoCount: 0 }).score;
-    const priced = base - scoreIntake({ answers: answers({ price_reaction: 'well_above' }), photoCount: 0 }).score;
-    const timing = base - scoreIntake({ answers: answers({ project_timeline: 'planning' }), photoCount: 0 }).score;
-    const scope = base - scoreIntake({ answers: answers({ scope_tier: 'refresh' }), photoCount: 0 }).score;
+    const base = scored({ answers: answers(), photoCount: 0 }).score;
+    const priced = base - scored({ answers: answers({ price_reaction: 'well_above' }), photoCount: 0 }).score;
+    const timing = base - scored({ answers: answers({ project_timeline: 'planning' }), photoCount: 0 }).score;
+    const scope = base - scored({ answers: answers({ scope_tier: 'refresh' }), photoCount: 0 }).score;
     expect(priced).toBeGreaterThan(0);
     expect(priced).toBeGreaterThanOrEqual(Math.min(timing, scope));
   });
 
   test('"under what I expected" is not penalised against "about right"', () => {
-    const under = scoreIntake({ answers: answers({ price_reaction: 'below_expected' }), photoCount: 0 }).score;
-    const about = scoreIntake({ answers: answers({ price_reaction: 'about_expected' }), photoCount: 0 }).score;
+    const under = scored({ answers: answers({ price_reaction: 'below_expected' }), photoCount: 0 }).score;
+    const about = scored({ answers: answers({ price_reaction: 'about_expected' }), photoCount: 0 }).score;
     expect(under).toBe(about);
   });
 
   test('the reaction is named in plain words in the record', () => {
-    const r = scoreIntake({ answers: answers({ price_reaction: 'well_above' }), photoCount: 0 });
+    const r = scored({ answers: answers({ price_reaction: 'well_above' }), photoCount: 0 });
     expect(r.signals.join(' ')).toContain('well above what they planned');
+  });
+
+  test('A QUESTION NOBODY ASKED IS NOT AN ANSWER THAT CAME BACK WORST', () => {
+    // The flow skips the price step for work with no honest starting number, so
+    // those leads could only ever reach 80 - and judging them against a
+    // threshold built for 100 scored "we never asked" exactly like "well above
+    // what I planned". Whole Home is the highest-value type in this business
+    // and was the one structurally hardest to route hot.
+    const asked = scored({
+      answers: answers({ scope_tier: 'major_update', project_timeline: '3_6_months', price_reaction: 'well_above' }),
+      photoCount: 0,
+    });
+    const never = scored({
+      answers: answers({ scope_tier: 'major_update', project_timeline: '3_6_months' }),
+      photoCount: 0,
+      projectType: UNPRICED,
+    });
+
+    // Same four answered signals, same 50 points, opposite buckets: one told us
+    // the number was a stretch, the other was never given the chance to.
+    expect(asked.score).toBe(50);
+    expect(never.score).toBe(50);
+    expect(asked.bucket).toBe('cold');
+    expect(never.bucket).toBe('hot');
+  });
+
+  test('an unasked price question is judged out of 80, and says so', () => {
+    const r = scored({ answers: answers(), photoCount: 0, projectType: UNPRICED });
+    expect(r.outOf).toBe(80);
+    expect(r.hotAt).toBe(44);
+    expect(r.signals.join(' ')).toContain('Price not asked for this project type');
+    // Never invented: nothing claims a reaction they were not asked for.
+    expect(r.signals.join(' ')).not.toContain('Price: ');
+
+    // ...and a type the flow does price is still judged out of the full scale.
+    const priced = scored({ answers: answers(), photoCount: 0 });
+    expect(priced.outOf).toBe(100);
+    expect(priced.hotAt).toBe(55);
+  });
+
+  test('the whole-home lead the owner would want called is hot', () => {
+    const r = scored({
+      answers: answers({ city: 'Montclair', scope_tier: 'full_gut', project_timeline: 'asap' }),
+      photoCount: 3,
+      projectType: UNPRICED,
+    });
+    expect(r.bucket).toBe('hot');
+    // The scale it was measured on travels with the score, so 80/80 is never
+    // read against a 100 this lead could not have reached.
+    expect(routeIntake(r).reason).toContain('Scored 80 of 80, hot');
+  });
+
+  test('the reason explains the smaller scale when the smaller scale decided it', () => {
+    const r = scored({
+      answers: answers({ scope_tier: 'major_update', project_timeline: '3_6_months' }),
+      photoCount: 0,
+      projectType: UNPRICED,
+    });
+    // 50 beside a hot bucket, under the 55 the reader knows, must never be left
+    // looking like a bug in the scoring.
+    expect(r.signals[0]).toContain('Price not asked for this project type');
+    expect(routeIntake(r).reason).toContain('Price not asked');
+    expect(completionMessage({
+      firstName: 'Sarah', projectType: UNPRICED, answers: answers(),
+      routing: { bucket: r.bucket, score: r.score, outOf: r.outOf, signals: r.signals },
+    })).toContain('HOT LEAD (50/80)');
+  });
+
+  test('the price step is skipped by the same predicate that unscores it', () => {
+    // Two copies of "does this type have a starting number" would drift, and a
+    // lead asked the question but scored as though they were not - or the
+    // reverse - is the failure that costs the most.
+    expect(code('src/lib/intake/scoring.ts')).toContain('hasPriceAnchor');
+    expect(code('src/lib/intake/flow.ts')).toContain('hasPriceAnchor(ctx.projectType)');
   });
 });
 
@@ -177,7 +264,7 @@ test.describe('AC3 - bucketing actually separates', () => {
     const old = scoreLead({ projectType: 'Bathroom Renovation', city: 'Princeton', email: 'a@b.c', source: 'contact_form' });
     expect(old.tier).toBe('hot');
 
-    const now = scoreIntake({
+    const now = scored({
       answers: { city: 'Princeton', scope_tier: 'refresh', project_timeline: 'planning', price_reaction: 'well_above' },
       photoCount: 0,
     });
@@ -185,11 +272,11 @@ test.describe('AC3 - bucketing actually separates', () => {
   });
 
   test('in area, full gut, starting soon, price fine is hot', () => {
-    expect(scoreIntake({ answers: answers(), photoCount: 3 }).bucket).toBe('hot');
+    expect(scored({ answers: answers(), photoCount: 3 }).bucket).toBe('hot');
   });
 
   test('local and ambitious but priced out and not starting is still cold', () => {
-    const r = scoreIntake({
+    const r = scored({
       answers: answers({ project_timeline: 'planning', price_reaction: 'well_above' }),
       photoCount: 0,
     });
@@ -203,7 +290,7 @@ test.describe('AC3 - bucketing actually separates', () => {
       { project_timeline: 'asap' },
       { price_reaction: 'about_expected' },
     ]) {
-      const r = scoreIntake({ answers: only as Record<string, string>, photoCount: 0 });
+      const r = scored({ answers: only as Record<string, string>, photoCount: 0 });
       expect(r.bucket, `${JSON.stringify(only)} alone must not be hot`).toBe('cold');
     }
   });
@@ -214,7 +301,7 @@ test.describe('AC3 - bucketing actually separates', () => {
       for (const scope of ['full_gut', 'major_update', 'refresh', 'own_details']) {
         for (const tl of ['asap', '1_3_months', '3_6_months', 'later_this_year', 'planning']) {
           for (const pr of ['below_expected', 'about_expected', 'a_bit_more', 'well_above']) {
-            seen.add(scoreIntake({
+            seen.add(scored({
               answers: { city, scope_tier: scope, project_timeline: tl, price_reaction: pr },
               photoCount: 0,
             }).bucket);
@@ -226,7 +313,7 @@ test.describe('AC3 - bucketing actually separates', () => {
   });
 
   test('an empty answer set does not crash and is cold', () => {
-    const r = scoreIntake({ answers: {}, photoCount: 0 });
+    const r = scored({ answers: {}, photoCount: 0 });
     expect(r.bucket).toBe('cold');
     expect(r.score).toBe(0);
   });
@@ -236,14 +323,14 @@ test.describe('AC3 - bucketing actually separates', () => {
 
 test.describe('AC4 - routing is recorded, not just made', () => {
   test('hot routes to the people who do the visit', () => {
-    const d = routeIntake(scoreIntake({ answers: answers(), photoCount: 2 }));
+    const d = routeIntake(scored({ answers: answers(), photoCount: 2 }));
     expect(d.bucket).toBe('hot');
     expect(d.routedTo).toContain('Alex');
     expect(d.routedTo).toContain('Veronica');
   });
 
   test('cold enters nurture - a destination, not a bin', () => {
-    const d = routeIntake(scoreIntake({
+    const d = routeIntake(scored({
       answers: { city: 'Princeton', project_timeline: 'planning' }, photoCount: 0,
     }));
     expect(d.bucket).toBe('cold');
@@ -251,8 +338,8 @@ test.describe('AC4 - routing is recorded, not just made', () => {
   });
 
   test('the reason is readable by a person, not a code', () => {
-    const d = routeIntake(scoreIntake({ answers: answers(), photoCount: 1 }));
-    expect(d.reason).toMatch(/^Scored \d+, hot\./);
+    const d = routeIntake(scored({ answers: answers(), photoCount: 1 }));
+    expect(d.reason).toMatch(/^Scored \d+ of \d+, hot\./);
     expect(d.reason).toContain('In the service area');
     expect(d.reason).not.toMatch(/full_gut|1_3_months|about_expected/);
   });
@@ -399,18 +486,21 @@ test.describe('AC5 - a hot lead announces itself', () => {
     // of 55. Unexplained, the one message the owner reads before picking up the
     // phone looks like a bug in the scoring, on the one occasion they most need
     // to trust the label.
-    const scored = scoreIntake({
+    const doubtful = scored({
       answers: answers({ project_timeline: 'planning', price_reaction: 'well_above' }),
       photoCount: null,
     });
-    expect(scored.score).toBeLessThan(55);
-    expect(scored.bucket).toBe('hot');
+    expect(doubtful.score).toBeLessThan(55);
+    expect(doubtful.bucket).toBe('hot');
 
     const msg = completionMessage({
       firstName: 'Sarah', projectType: 'Kitchen Remodeling', answers: answers(),
-      routing: { bucket: scored.bucket, score: scored.score, signals: scored.signals },
+      routing: {
+        bucket: doubtful.bucket, score: doubtful.score,
+        outOf: doubtful.outOf, signals: doubtful.signals,
+      },
     });
-    expect(msg).toContain(`HOT LEAD (${scored.score}/100)`);
+    expect(msg).toContain(`HOT LEAD (${doubtful.score}/100)`);
     expect(msg).toContain('Photo count unavailable');
     expect(msg).toContain('routed hot rather than risk losing it');
   });
@@ -784,8 +874,14 @@ test.describe('AC8 - a broken cron does not look like a quiet one', () => {
     expect(abResult.outcome).toBe('retired');
     expect(ab.sends).toEqual([]);
     // One PATCH: the claim that retired it. No release - the stamp is the point.
+    // It carries the retirement with it, so the row does not permanently assert
+    // an alert this lead was deliberately never sent: the counters and the
+    // console line age out of the log, and the row does not.
     expect(ab.patches).toHaveLength(1);
-    expect(ab.patches[0].body).toEqual({ [CHASE_STAMP.abandoned]: NOW.toISOString() });
+    expect(ab.patches[0].body).toEqual({
+      [CHASE_STAMP.abandoned]: NOW.toISOString(),
+      [CHASE_RETIRED_STAMP.abandoned]: NOW.toISOString(),
+    });
 
     // And the low-intent stage does not write score 0 / cold onto a lead it
     // decided was too old to have an opinion about.
@@ -794,6 +890,16 @@ test.describe('AC8 - a broken cron does not look like a quiet one', () => {
     expect(lowResult.outcome).toBe('retired');
     expect(low.sends).toEqual([]);
     expect(low.routed).toEqual([]);
+    expect(low.patches[0].body).toHaveProperty(CHASE_RETIRED_STAMP.low_intent, NOW.toISOString());
+  });
+
+  test('a lead who WAS alerted is not marked retired', async () => {
+    // The two are told apart on the row, not only in a run that has scrolled
+    // out of the log: an audit of who was contacted has to be able to answer.
+    const f = fakeDeps();
+    const result = await chaseOne('abandoned', quiet(), NOW, f.deps);
+    expect(result.outcome).toBe('sent');
+    expect(f.patches[0].body).toEqual({ [CHASE_STAMP.abandoned]: NOW.toISOString() });
   });
 
   test('each stage measures age on the same clock it selects by', () => {

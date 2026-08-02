@@ -170,7 +170,9 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
     // WEB-019 and WEB-01A. Scored on what the lead actually told us, not on the
     // submit-time guess, and the decision is written down before it is acted on
     // so a lead cannot be routed with no record of where or why.
-    const scored = scoreIntake({ answers, photoCount });
+    // The project type decides whether the price question was ever asked, and
+    // so what this lead could have scored out of at all.
+    const scored = scoreIntake({ answers, photoCount, projectType: session.project_type });
     const decision = routeIntake(scored);
     const routingRecorded = await recordRouting({
       leadId: session.lead_id,
@@ -195,6 +197,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
       routing: {
         bucket: decision.bucket,
         score: scored.score,
+        outOf: scored.outOf,
         signals: scored.signals,
         recorded: routingRecorded,
       },

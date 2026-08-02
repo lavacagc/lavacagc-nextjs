@@ -141,10 +141,12 @@ test('A LEAD PAST THE AGE CEILING IS STAMPED AND NOT SENT, AND THE RUN SAYS SO',
   expect(body.ok).toBe(false);
   expect(body.degraded).toContain('chase_retired_stale');
 
-  // Stamped once and never released, so it leaves the queue for good...
+  // Stamped once and never released, so it leaves the queue for good - and the
+  // stamp says it was a retirement, not an alert nobody received.
   const stale = calls.filter((c) => c.method === 'PATCH' && c.url.includes('id=eq.stale'));
   expect(stale).toHaveLength(1);
   expect(stale[0].body?.abandoned_alert_at).toEqual(expect.any(String));
+  expect(stale[0].body?.abandoned_retired_at).toEqual(stale[0].body?.abandoned_alert_at);
   // ...and the only message that went was for the row still worth chasing.
   expect(calls.filter(isTelegram)).toHaveLength(1);
 });
@@ -185,12 +187,34 @@ test('the dry run previews a row it cannot render instead of 500ing on it', asyn
   expect(body.preview[1].message).toContain('Started the intake and stopped');
 });
 
-test('the dry run counts what it would retire apart from what it would chase', async () => {
+test('THE DRY RUN PREVIEWS WHAT WOULD BE SENT, NOT WHAT WOULD BE RETIRED', async () => {
+  // The queue drains oldest first, so the head of the list is exactly where
+  // rows past the ceiling collect. Previewing them would render fully-formed
+  // "submitted 700 hours ago" alerts that will never be sent, on the one
+  // surface that exists to say what the run is about to do.
   stub((c) => (isCandidateRead(c) ? { body: [row('stale', { updated_at: ago(100) }), row('fresh')] } : { body: [] }));
 
   const { body } = await run('abandoned', '&dry=1');
   expect(body.wouldChase).toBe(1);
   expect(body.wouldRetire).toBe(1);
+
+  // The message shown is the one that would actually go...
+  expect(body.preview).toHaveLength(1);
+  expect(body.preview[0].session).toBe('fresh');
+  // ...and the retirement is shown as a retirement, with no message at all.
+  expect(body.retiring).toHaveLength(1);
+  expect(body.retiring[0].session).toBe('stale');
+  expect(body.retiring[0].message).toBeUndefined();
+  expect(body.retiring[0].verdict).toContain('nothing sent');
+});
+
+test('a dry run with nothing to retire says nothing about retirements', async () => {
+  stub((c) => (isCandidateRead(c) ? { body: [row('fresh')] } : { body: [] }));
+
+  const { body } = await run('abandoned', '&dry=1');
+  expect(body.wouldChase).toBe(1);
+  expect(body.wouldRetire).toBeUndefined();
+  expect(body.retiring).toBeUndefined();
 });
 
 test('a clean run says so, and stamps every candidate exactly once', async () => {

@@ -129,6 +129,20 @@ export const CHASE_STAMP: Record<ChaseKind, string> = {
   abandoned: 'abandoned_alert_at',
 };
 
+/**
+ * What closed the chase, alongside the stamp that closed it.
+ *
+ * The stamp is what retires an aged-out candidate, and it is named for an alert
+ * - so on its own the row permanently asserts that a lead deliberately never
+ * told about WAS told about. The run reports the retirement, but a counter and
+ * a console line age out of the log and the row does not. Written in the same
+ * PATCH as the claim, so the retirement stays atomic and stays truthful.
+ */
+export const CHASE_RETIRED_STAMP: Record<ChaseKind, string> = {
+  low_intent: 'low_intent_retired_at',
+  abandoned: 'abandoned_retired_at',
+};
+
 /** How many candidates one run will chase. */
 export const CHASE_PAGE = 25;
 
@@ -286,7 +300,8 @@ export interface ChaseResult {
    * a candidate while this run worked through the list. Neither is a failure.
    *
    * `retired` is a candidate past `CHASE_MAX_AGE_HOURS`: claimed so it leaves
-   * the queue for good, deliberately never sent.
+   * the queue for good, deliberately never sent, and marked as retired on the
+   * row so the stamp is not left claiming an alert nobody received.
    */
   outcome: 'sent' | 'skipped' | 'failed' | 'retired';
   /** Set only on `failed`, and names the fault rather than the stage after it. */
@@ -343,10 +358,20 @@ export async function chaseOne(
   const stamp = CHASE_STAMP[kind];
   const stampedAt = now.toISOString();
 
+  // Decided before the claim so the one PATCH can say what it is doing, but
+  // still PROVEN by it: both `now` and the row are already fixed, so this reads
+  // the same either side of the write, and a claim that matches nothing retires
+  // nothing.
+  const retiring = isPastChasing(kind, c, now);
+
   let claimed: unknown;
   try {
     claimed = await deps.patch(claimPath(kind, c.id, chaseCutoff(kind, now)), {
       [stamp]: stampedAt,
+      // A retirement is recorded as a retirement. The stamp alone would leave
+      // the row saying this lead was alerted, which is the opposite of what
+      // happened and the one durable trace anybody would audit later.
+      ...(retiring ? { [CHASE_RETIRED_STAMP[kind]]: stampedAt } : {}),
     });
   } catch (err) {
     console.error(`[intake-chase] could not claim ${c.id}:`, err);
@@ -370,9 +395,10 @@ export async function chaseOne(
   // Aged out. The claim above is what retires it: the stamp is now set, so the
   // row leaves the queue for good and no future run rediscovers it - and
   // nothing is sent, because a three-week-old "they never opened their link" is
-  // not something the owner can act on. Deliberately AFTER the claim, so this
-  // is a proven, atomic retirement rather than an assumed one.
-  if (isPastChasing(kind, c, now)) {
+  // not something the owner can act on. Only acted on once the claim has come
+  // back with a row, so this is a proven, atomic retirement rather than an
+  // assumed one.
+  if (retiring) {
     console.warn(
       `[intake-chase] ${c.id} aged out at ${hoursSince(chaseClock(kind, c), now)}h ` +
         `(ceiling ${CHASE_MAX_AGE_HOURS}h) - stamped and retired, nothing sent`,
