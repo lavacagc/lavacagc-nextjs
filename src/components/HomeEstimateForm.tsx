@@ -12,6 +12,7 @@ import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config';
 import { ChevronDown, ChevronUp, Calculator, CheckCircle } from "lucide-react";
 import { z } from "zod";
 import { trackEstimateRequest } from '@/components/Analytics';
+import IntakeInvite from '@/components/IntakeInvite';
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
@@ -70,6 +71,8 @@ const HomeEstimateForm = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  /** WEB-012 path 1. Null when the session could not be created; the invite renders nothing. */
+  const [intakeUrl, setIntakeUrl] = useState<string | null>(null);
   const [honeypot, setHoneypot] = useState("");
   const [formData, setFormData] = useState<QuickEstimateData>({
     firstName: "",
@@ -313,6 +316,7 @@ const HomeEstimateForm = () => {
       // Track successful estimate request in GA4
       trackEstimateRequest('home_quick_form');
 
+      setIntakeUrl((submitResult.data?.intakeUrl as string | undefined) ?? null);
       setIsSubmitted(true);
 
       toast({
@@ -344,6 +348,7 @@ const HomeEstimateForm = () => {
           <p className="text-sm text-text-muted mb-6">
             We&apos;ll call you at {formData.phone} within 24 hours to discuss details.
           </p>
+          <IntakeInvite url={intakeUrl} />
           <Button
             onClick={() => {
               setIsSubmitted(false);

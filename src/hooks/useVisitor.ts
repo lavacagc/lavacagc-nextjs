@@ -34,7 +34,9 @@ function saveVisitor(data: VisitorData): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    // Keep legacy key in sync for chat widget compatibility
+    // Keep the legacy key in sync - getVisitorId still falls back to it for
+    // returning visitors whose browser predates lavaca_visitor. (It was
+    // originally kept for the chat widget, which no longer exists.)
     localStorage.setItem(LEGACY_KEY, data.id);
   } catch {
     // storage full or disabled

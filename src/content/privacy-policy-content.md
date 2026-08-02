@@ -1,7 +1,7 @@
 # Privacy Policy
 
-**Last Updated: July 31, 2026**
-**Version: 2.4**
+**Last Updated: August 2, 2026**
+**Version: 2.5**
 
 ---
 
@@ -90,9 +90,15 @@ While you are signed in as a subscriber, **we record the pages you view across o
 
 This identified tracking applies only to verified subscribers. You can stop it at any time by using the **unsubscribe link** in any of our emails, which removes you from the list, **clears your access cookie, and ends this identified activity tracking** (you would need to subscribe again to regain access). You may also exercise the rights in Section 8 (including access and deletion) with respect to this information.
 
-### 3.5 AI Chat Assistant
+### 3.5 Intake Assistant
 
-Our Website offers an AI-powered chat assistant. **Messages you send to the chat are stored by us and transmitted to our AI provider, OpenAI, to generate responses.** We also retain the conversation, associated with your visitor identifier, and if you provide contact details (such as your name, email, or phone) in the chat, **we may use them to create a lead and follow up with you.** Please **do not enter sensitive personal information** (such as financial account or government ID numbers) into the chat.
+After you send us an inquiry through one of our forms, we may invite you - on the confirmation panel and in your acknowledgement email - to answer a few questions from our assistant through a **private link that is unique to you**. This is optional: you can decline it, or simply never open it, and we will still call you.
+
+**Your messages are not sent to OpenAI or to any other AI provider.** The assistant asks a fixed set of questions and does not generate its replies. What you tell it is stored by us and added to the inquiry you already sent, so that the person who calls you is prepared. This includes your description of the project, your town, the scope and finish level you choose, your timeline, how our starting price compares to what you expected, the address of the property, when you prefer to be called, and any **photos of the space** you choose to upload.
+
+If you type a question the assistant is not able to answer, **we store that message and forward it to our team by email and by Telegram** so that a person can answer it; the assistant never attempts an answer of its own. Please **do not enter sensitive personal information** (such as financial account or government ID numbers) into the assistant or its photo upload.
+
+Our Website previously offered a general-purpose AI chat assistant that transmitted your messages to OpenAI to generate replies. That assistant was **retired in August 2026** and is no longer offered. Transcripts collected while it was in use are retained as described in Section 7.
 
 ### 3.6 La Vaca Home Care
 
@@ -203,7 +209,7 @@ These service providers include:
 - **Hosting, Database, and Storage**: **Supabase** (database, file storage, and authentication) and our website hosting provider store the personal information described in this Policy
 - **Email Delivery**: **Resend** sends our transactional and newsletter emails (recipient name and email address, and message content). We and Resend also **track whether the emails we send are delivered, opened, and whether links in them are clicked**, so we can measure engagement and improve our communications
 - **Internal Team Notifications**: **Telegram** is used to alert our staff of new leads (which includes the lead's name, contact details, and inquiry)
-- **AI Assistant Provider**: **OpenAI** processes chat messages to power our AI chat assistant (see Section 3.5)
+- **AI Providers**: We **no longer send your messages or any other personal information to an AI provider**. We use **OpenAI** only to help us produce our own website content and imagery, which does not involve your personal information. Our former AI chat assistant, which did transmit chat messages to OpenAI, was retired in August 2026 (see Section 3.5)
 - **Bot Detection**: **Google reCAPTCHA Enterprise** evaluates form submissions to prevent spam and abuse; Google receives your IP address, interaction signals, and a site token (see Google's privacy policy at https://policies.google.com/privacy)
 
 We conduct due diligence on our service providers' privacy and security practices before engaging them and periodically review their compliance.
@@ -409,7 +415,7 @@ We retain your personal information only for as long as necessary to fulfill the
 | **Communication Content** (emails, messages, inquiries) | Duration of business relationship + 7 years | Contract enforcement; dispute resolution; quality assurance; customer service |
 | **Website Usage Data and Analytics** (IP address, browsing behavior, device information) | 26 months | Website improvement; analytics (aligned with Google Analytics default); user experience optimization |
 | **Subscriber Activity Logs** (pages viewed while signed in as a Buy + Remodel subscriber, linked to your identity) | Duration of your subscription + up to 24 months, or until you unsubscribe or request deletion | Understanding subscriber interest; improving listings and communications |
-| **AI Chat Transcripts** (messages exchanged with our chat assistant) | Up to 24 months, or until you request deletion | Customer service; lead follow-up; quality and safety. Our AI provider (OpenAI) retains data per its own policies |
+| **Chat and Intake Assistant Messages** (transcripts from our retired AI chat assistant, and the answers, photos, and questions you give our intake assistant) | Up to 24 months, or until you request deletion. Answers that become part of your inquiry are kept with it (see Project Details and Communication Content above) | Customer service; lead follow-up; quality and safety. Messages sent to the retired chat assistant before August 2026 were processed by OpenAI, which retains data per its own policies; intake assistant messages are not sent to any AI provider |
 | **Marketing Communications Records** | Until you opt out + 30 days to process opt-out, then deleted | Direct marketing; compliance with opt-out requests |
 | **Cookies and Tracking Technologies** | Varies by cookie type: Essential (session); Analytics (26 months); Marketing (13 months) | See Section 6 for cookie-specific retention |
 
@@ -755,6 +761,7 @@ If you are a California resident, you have additional rights under the Californi
 - **Commercial Information:** Transaction history, service requests, scheduled service appointments (the date and time window of a booked visit and the services booked into it), service and maintenance history, payment records, project details
 - **Internet or Network Activity:** Browsing history, search history, interactions with our Website, pages visited, links clicked
 - **Geolocation Data:** General location based on IP address (not precise geolocation)
+- **Visual Information:** Photographs of a property that you choose to upload to us (for example the photos of the space you can add in our intake assistant - see Section 3.5)
 - **Inferences:** Preferences, characteristics, trends, behavior patterns derived from your information
 
 **Sensitive Personal Information Collected:**
@@ -1070,7 +1077,7 @@ Before initiating any legal action, we encourage you to contact us using the inf
 
 This Privacy Policy is effective as of the "Last Updated" date indicated at the top of this document.
 
-**Last Updated:** July 31, 2026
-**Version:** 2.4
+**Last Updated:** August 2, 2026
+**Version:** 2.5
 **Original Effective Date:** November 12, 2025
 

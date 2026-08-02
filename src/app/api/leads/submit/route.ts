@@ -7,6 +7,7 @@ import { sendNewLeadEmail } from '@/lib/notify/newLeadEmail';
 import { sendFormFailureAlert, FormErrorAlertPayload } from '@/lib/notify/formErrorAlert';
 import { createLeadFollowUpSequence } from '@/lib/notify/leadFollowUp';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { createIntakeSession, intakePathFor } from '@/lib/intake/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -457,6 +458,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to save lead' }, { status: 500 });
     }
 
+    // Create the intake session (WEB-012/013) before the notifications, so the
+    // ack email can carry the link. Deliberately non-fatal: a lead whose
+    // session failed to create is still a lead, and must still get its alerts
+    // and its acknowledgement. In that case the flow simply is not offered.
+    const intakeSession = await createIntakeSession({
+      leadId,
+      firstName: (finalLeadData.first_name as string | undefined) ?? null,
+      projectType: (finalLeadData.project_type as string | undefined) ?? null,
+    });
+    // A path, not an absolute URL built from the request host. The confirmation
+    // panel is already on whichever host served the form, so a path is right
+    // there; and the ack email must not carry a link derived from a
+    // client-supplied Host - `createLeadFollowUpSequence` makes it absolute
+    // against the canonical NEXT_PUBLIC_SITE_URL instead.
+    const intakePath = intakeSession ? intakePathFor(intakeSession.token) : null;
+
     // The lead is saved. If the sanitizer had to change anything to get it
     // past the DB constraints, tell the owner - a form is sending
     // non-standard values and should be fixed before the data quality slips.
@@ -546,6 +563,7 @@ export async function POST(request: NextRequest) {
           source,
           projectType,
           leadId: leadId ?? undefined,
+          intakePath,
         }),
         4000,
         'follow-up'
@@ -604,6 +622,10 @@ export async function POST(request: NextRequest) {
       success: true,
       score: finalLeadData.score,
       tier: finalLeadData.tier,
+      // WEB-012 path 1: the on-page confirmation offers this immediately.
+      // Null when the session could not be created, and the caller must treat
+      // null as "do not offer it" rather than rendering a dead link.
+      intakeUrl: intakePath,
     });
   } catch (error) {
     console.error('Lead submission error:', error);

@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { RECAPTCHA_SITE_KEY } from "@/lib/recaptcha-config";
 import { useRecaptchaChallenge } from "@/components/recaptcha/RecaptchaChallengeProvider";
 import { submitLead } from "@/lib/submitLead";
+import IntakeInvite from "@/components/IntakeInvite";
 import {
   COMMERCIAL_INTEREST_OPTIONS,
   HOME_INTEREST_OPTIONS,
@@ -87,6 +88,8 @@ export default function RequestEstimateForm() {
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  /** WEB-012 path 1. Null when the session could not be created; the invite then renders nothing. */
+  const [intakeUrl, setIntakeUrl] = useState<string | null>(null);
 
   // Lazy-load reCAPTCHA on first interaction
   useEffect(() => {
@@ -265,6 +268,7 @@ export default function RequestEstimateForm() {
         });
       }
 
+      setIntakeUrl((result.data?.intakeUrl as string | undefined) ?? null);
       setSubmitted(true);
       toast({
         title: "Request sent",
@@ -294,6 +298,7 @@ export default function RequestEstimateForm() {
           day to confirm scope, timing, and the right next step. For anything
           urgent, call <a className="text-primary font-bold" href="tel:+12012124917">(201) 212-4917</a>.
         </p>
+        <IntakeInvite url={intakeUrl} />
       </div>
     );
   }

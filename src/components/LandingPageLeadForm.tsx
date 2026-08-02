@@ -12,6 +12,7 @@ import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config'
 import { ContactTimePicker, type ContactTimePreference } from '@/components/forms/ContactTimePicker'
 import { useRecaptchaChallenge } from '@/components/recaptcha/RecaptchaChallengeProvider'
 import { submitLead } from '@/lib/submitLead'
+import IntakeInvite from '@/components/IntakeInvite'
 
 interface LandingPageLeadFormProps {
   source: string
@@ -53,6 +54,8 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
+  /** WEB-012 path 1. Null when the session could not be created; the invite renders nothing. */
+  const [intakeUrl, setIntakeUrl] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const { toast } = useToast()
   const { requestChallenge } = useRecaptchaChallenge()
@@ -197,6 +200,7 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
         });
       }
 
+      setIntakeUrl((submitResult.data?.intakeUrl as string | undefined) ?? null)
       setIsSubmitted(true)
       toast({
         title: 'Request Sent!',
@@ -225,6 +229,7 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
         <p className="text-sm text-text-muted">
           A team member will contact you within 24 hours.
         </p>
+        <IntakeInvite url={intakeUrl} />
       </div>
     )
   }

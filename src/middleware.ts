@@ -96,7 +96,7 @@ const PUBLIC_ROUTES = [
   '/api/leads/submit',
   '/api/banners',          // Public banner retrieval (GET without /admin)
   '/api/referrals',
-  '/api/chat',
+  '/api/intake/',       // Tokenized lead intake - auth is the per-session token, self-guarded
   '/api/documents/',
   '/api/buy-and-remodel/', // Newsletter signup / email-verify / unsubscribe (self-guarded)
   '/api/newsletter/',      // Monthly-newsletter signup (rate-limited, self-guarded)
