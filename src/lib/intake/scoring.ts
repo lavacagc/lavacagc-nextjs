@@ -1,0 +1,193 @@
+/**
+ * Scoring and bucketing a COMPLETED intake (WEB-019).
+ *
+ * Deliberately separate from `scoreLead()`, which runs at form-submit time and
+ * stays untouched. Two reasons:
+ *
+ * 1. The signals WEB-019 names - town, scope tier, timeline, photos - are
+ *    mostly unknown when the form is submitted. They only exist once the lead
+ *    has answered, which is why the criterion says "every COMPLETED CHAT
+ *    produces a hot or cold bucket".
+ *
+ * 2. `scoreLead()` cannot route. Project type alone contributes 50-95 points
+ *    against an 80-point hot threshold, so a bathroom lead from Princeton with
+ *    no phone number scores 105 and buckets hot. Adding these signals to it
+ *    would add points to an already-saturated scale rather than separate
+ *    anything.
+ *
+ * The submit-time tier keeps its three values and its meaning; this bucket is
+ * two-valued because routing is a two-way decision.
+ */
+import { cityInServiceArea } from '@/lib/leadScoring';
+import { normalizeTown } from './serviceArea';
+
+export type IntakeBucket = 'hot' | 'cold';
+
+export interface IntakeScoringInput {
+  answers: Record<string, string>;
+  photoCount?: number;
+}
+
+export interface IntakeScoringResult {
+  score: number;
+  bucket: IntakeBucket;
+  /** Human-readable, one per contributing signal. Written to the lead. */
+  signals: string[];
+}
+
+/**
+ * Thresholds, with the arithmetic stated so they can be tuned without being
+ * re-derived from scratch.
+ *
+ * Maximum reachable is 100: town 20, scope 25, timeline 25, photos 10,
+ * price reaction 20. HOT_AT 55 means a lead needs roughly two strong signals
+ * plus a weak one, and cannot get there on any single input.
+ */
+const HOT_AT = 55;
+
+const SCOPE_POINTS: Record<string, number> = {
+  full_gut: 25,
+  major_update: 18,
+  refresh: 8,
+  // They took the trouble to describe it rather than pick. That is engagement,
+  // not absence, so it scores mid rather than zero.
+  own_details: 15,
+};
+
+const TIMELINE_POINTS: Record<string, number> = {
+  asap: 25,
+  '1_3_months': 22,
+  '3_6_months': 12,
+  later_this_year: 5,
+  planning: 0,
+};
+
+/**
+ * The price reaction, scored heaviest of the five.
+ *
+ * WEB-019 lists four signals because it was written before this question
+ * existed. A lead who said "well above what I planned" is materially colder
+ * than one who said "about what I expected", whatever the other four say, and
+ * leaving that out to match a list would be pedantry. Recorded in the AC doc as
+ * a deliberate addition.
+ */
+const PRICE_POINTS: Record<string, number> = {
+  below_expected: 20,
+  about_expected: 20,
+  a_bit_more: 10,
+  well_above: 0,
+};
+
+const SCOPE_LABEL: Record<string, string> = {
+  full_gut: 'full gut',
+  major_update: 'major update',
+  refresh: 'refresh only',
+  own_details: 'described their own scope',
+};
+
+const TIMELINE_LABEL: Record<string, string> = {
+  asap: 'wants to start as soon as possible',
+  '1_3_months': 'starting in 1 to 3 months',
+  '3_6_months': 'starting in 3 to 6 months',
+  later_this_year: 'later this year',
+  planning: 'just planning',
+};
+
+const PRICE_LABEL: Record<string, string> = {
+  below_expected: 'our starting price was under what they expected',
+  about_expected: 'our starting price landed where they expected',
+  a_bit_more: 'our starting price is a bit more than they planned',
+  well_above: 'our starting price is well above what they planned',
+};
+
+export function scoreIntake(input: IntakeScoringInput): IntakeScoringResult {
+  const a = input.answers ?? {};
+  const signals: string[] = [];
+  let score = 0;
+
+  // 1. Town. Same predicate the flow uses to decide whether "ten minutes from
+  //    us" is true, so a lead greeted as a neighbour is never scored as distant.
+  const town = a.city ? normalizeTown(a.city) : '';
+  if (town && cityInServiceArea(town)) {
+    score += 20;
+    signals.push(`In the service area (${a.city.trim()})`);
+  } else if (town) {
+    signals.push(`Outside the service area (${a.city.trim()})`);
+  }
+
+  // 2. Scope tier.
+  const scope = a.scope_tier;
+  if (scope && scope in SCOPE_POINTS) {
+    score += SCOPE_POINTS[scope];
+    signals.push(`Scope: ${SCOPE_LABEL[scope]}`);
+  }
+
+  // 3. Timeline.
+  const timeline = a.project_timeline;
+  if (timeline && timeline in TIMELINE_POINTS) {
+    score += TIMELINE_POINTS[timeline];
+    signals.push(`Timeline: ${TIMELINE_LABEL[timeline]}`);
+  }
+
+  // 4. Photos.
+  const photos = input.photoCount ?? 0;
+  if (photos > 0) {
+    score += 10;
+    signals.push(`Sent ${photos} photo${photos === 1 ? '' : 's'}`);
+  } else {
+    signals.push('No photos');
+  }
+
+  // 5. Price reaction.
+  const price = a.price_reaction;
+  if (price && price in PRICE_POINTS) {
+    score += PRICE_POINTS[price];
+    signals.push(`Price: ${PRICE_LABEL[price]}`);
+  }
+
+  return { score, bucket: score >= HOT_AT ? 'hot' : 'cold', signals };
+}
+
+export interface RoutingDecision {
+  bucket: IntakeBucket;
+  /** Who the lead goes to. 'nurture' is a destination, not a bin. */
+  routedTo: string;
+  /** Plain words, because this is read by a person in an alert, not parsed. */
+  reason: string;
+}
+
+const VISIT_OWNERS = 'Alex and Veronica';
+
+/**
+ * WEB-01A. Hot goes to a human for the visit, cold enters nurture, and both are
+ * recorded so the decision can be reviewed rather than reconstructed.
+ */
+export function routeIntake(result: IntakeScoringResult): RoutingDecision {
+  const top = result.signals.slice(0, 3).join('; ');
+  if (result.bucket === 'hot') {
+    return {
+      bucket: 'hot',
+      routedTo: VISIT_OWNERS,
+      reason: `Scored ${result.score}, hot. ${top}`,
+    };
+  }
+  return {
+    bucket: 'cold',
+    routedTo: 'nurture',
+    reason: `Scored ${result.score}, cold. ${top}`,
+  };
+}
+
+/**
+ * WEB-01B. A lead who submitted the form and never opened the chat.
+ *
+ * Non-engagement is a signal in its own right, recorded rather than inferred
+ * later from an absence.
+ */
+export function lowIntentDecision(): RoutingDecision {
+  return {
+    bucket: 'cold',
+    routedTo: 'nurture',
+    reason: 'Never opened the intake link. Lower intent - worth one manual follow-up before nurture takes over.',
+  };
+}

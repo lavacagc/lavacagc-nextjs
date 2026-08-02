@@ -17,6 +17,12 @@ export interface CompletionContext {
   firstName: string | null;
   projectType: string | null;
   answers: Record<string, string>;
+  /**
+   * The routing decision (WEB-01A), when one was made. Leads the brief, because
+   * "is this worth dropping what I am doing for" is the first thing the owner
+   * wants to know from a phone.
+   */
+  routing?: { bucket: 'hot' | 'cold'; score: number } | null;
   phone?: string | null;
   email?: string | null;
   photoCount?: number;
@@ -119,8 +125,16 @@ export function completionMessage(ctx: CompletionContext): string {
   const row = (label: string, value: string | null | undefined, max: number): string | null =>
     value ? `<b>${label}</b> ${esc(value, max)}` : null;
 
+  // A hot lead announces itself. A cold one still gets the full brief - cold is
+  // a different destination, not a bin - but it does not shout.
+  const banner = ctx.routing
+    ? ctx.routing.bucket === 'hot'
+      ? `\u{1F525} <b>HOT LEAD (${ctx.routing.score}/100) - ${esc(who, CAP.name)}</b>`
+      : `<b>Intake finished - ${esc(who, CAP.name)}</b> (cold, ${ctx.routing.score}/100)`
+    : `<b>Intake finished - ${esc(who, CAP.name)}</b>`;
+
   const lines: (string | null)[] = [
-    `<b>Intake finished - ${esc(who, CAP.name)}</b>`,
+    banner,
     ctx.projectType ? esc(ctx.projectType, CAP.projectType) : null,
     '',
     a.message ? `<i>"${esc(a.message, CAP.message)}"</i>` : null,

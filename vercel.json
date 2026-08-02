@@ -64,6 +64,14 @@
     {
       "path": "/api/cron/visit-dispatch-escalation?stage=escalate",
       "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/cron/intake-chase?stage=low_intent",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/intake-chase?stage=abandoned",
+      "schedule": "0 21 * * *"
     }
   ]
 }

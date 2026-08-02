@@ -207,6 +207,44 @@ export async function mirrorToLead(
   }
 }
 
+/**
+ * Persist the routing decision on the lead (WEB-01A).
+ *
+ * Its acceptance criterion is that the decision AND its recipient are logged,
+ * so a failure here is not cosmetic - it leaves a lead that was routed with no
+ * record of where or why. Logged loudly, and reported to the caller so the
+ * brief can say the record is missing rather than imply it is there.
+ */
+export async function recordRouting(args: {
+  leadId: string | null;
+  score: number;
+  bucket: 'hot' | 'cold';
+  signals: string[];
+  routedTo: string;
+  reason: string;
+}): Promise<boolean> {
+  if (!args.leadId) return false;
+  try {
+    await supabaseRest(
+      'PATCH',
+      `leads?id=eq.${args.leadId}`,
+      {
+        intake_score: args.score,
+        intake_bucket: args.bucket,
+        intake_signals: args.signals,
+        routed_to: args.routedTo,
+        routed_at: new Date().toISOString(),
+        routing_reason: args.reason,
+      },
+      { prefer: 'return=minimal' },
+    );
+    return true;
+  } catch (err) {
+    console.error(`[intake] FAILED to record routing for lead ${args.leadId}:`, err);
+    return false;
+  }
+}
+
 /** Record an off-script question. Returns the row id so routing can stamp it. */
 export async function recordOffScript(args: {
   sessionId: string;

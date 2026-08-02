@@ -11,7 +11,8 @@ import {
   type FlowContext, type StepId,
 } from '@/lib/intake/flow';
 import { priceAnchorFor } from '@/lib/intake/pricing';
-import { lookupByToken, recordAnswer, mirrorToLead, markOpened, countPhotos } from '@/lib/intake/session';
+import { lookupByToken, recordAnswer, mirrorToLead, markOpened, countPhotos, recordRouting } from '@/lib/intake/session';
+import { scoreIntake, routeIntake } from '@/lib/intake/scoring';
 import { sendCompletionAlert } from '@/lib/intake/completionAlert';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
@@ -163,6 +164,21 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
       leadContact(session.lead_id),
       countPhotos(session.id),
     ]);
+
+    // WEB-019 and WEB-01A. Scored on what the lead actually told us, not on the
+    // submit-time guess, and the decision is written down before it is acted on
+    // so a lead cannot be routed with no record of where or why.
+    const scored = scoreIntake({ answers, photoCount });
+    const decision = routeIntake(scored);
+    await recordRouting({
+      leadId: session.lead_id,
+      score: scored.score,
+      bucket: decision.bucket,
+      signals: scored.signals,
+      routedTo: decision.routedTo,
+      reason: decision.reason,
+    });
+
     const outcome = await sendCompletionAlert({
       firstName: contact?.first_name ?? session.first_name,
       projectType: contact?.project_type ?? session.project_type,
@@ -171,6 +187,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
       email: contact?.email ?? null,
       photoCount,
       priceAnchor: answers.price_reaction ? anchor?.amount ?? null : null,
+      routing: { bucket: decision.bucket, score: scored.score },
     });
     if (outcome !== 'sent') {
       // Loud, because the whole point of the flow is that the call is informed.

@@ -74,10 +74,14 @@ const TEXT_COLUMNS = [
   'scope_detail',
   'finish_level',
   'price_reaction',
+  // Written by the intake scorer at completion (WEB-01A), never by a form.
+  'intake_bucket',
+  'routed_to',
+  'routing_reason',
 ] as const;
-const INTEGER_COLUMNS = ['square_footage', 'score', 'visit_count', 'price_anchor_shown'] as const;
+const INTEGER_COLUMNS = ['square_footage', 'score', 'visit_count', 'price_anchor_shown', 'intake_score'] as const;
 const TIMESTAMP_COLUMNS = ['first_seen'] as const;
-const ARRAY_COLUMNS = ['scoring_reasons'] as const;
+const ARRAY_COLUMNS = ['scoring_reasons', 'intake_signals'] as const;
 
 const ALL_COLUMNS = new Set<string>([
   ...TEXT_COLUMNS,
