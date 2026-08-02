@@ -8,6 +8,7 @@ import {
 import { priceAnchorFor, hasPriceAnchor, NO_ANCHOR_SENTENCE } from '../src/lib/intake/pricing';
 import { isServiceArea, normalizeTown } from '../src/lib/intake/serviceArea';
 import { offScriptReply, reachedAHuman, offScriptTelegram } from '../src/lib/intake/offScript';
+import { completionMessage, reactionLine, urgencyLine } from '../src/lib/intake/completionAlert';
 import { newIntakeToken, intakeUrlFor } from '../src/lib/intake/session';
 import { leadInstantAckHtml } from '../src/lib/emailTemplates';
 
@@ -516,5 +517,94 @@ test.describe('AC2 - the on-page invite', () => {
     const src = read('src/components/IntakeInvite.tsx');
     expect(src).toContain('three minutes');
     expect(src.toLowerCase()).not.toContain('seven');
+  });
+});
+
+/* ── AC13 - the completion brief ──────────────────────────────────────────── */
+
+test.describe('AC13 - finishing the intake tells a human', () => {
+  const ANSWERS = {
+    message: 'open the kitchen into the living room, there is a wall in the middle',
+    city: 'West Orange', address: '51 Crestmont Rd', scope_tier: 'major_update',
+    finish_level: 'middle', project_timeline: '1_3_months',
+    price_reaction: 'about_expected', contact_time_preference: 'afternoon',
+  };
+  const base = { firstName: 'Alex', projectType: 'Kitchen Remodeling', answers: ANSWERS };
+
+  test('the brief carries every answer the lead gave', () => {
+    const msg = completionMessage({ ...base, phone: '(201) 555-0100', photoCount: 3, priceAnchor: 35000 });
+    expect(msg).toContain('Intake finished');
+    expect(msg).toContain('open the kitchen into the living room');
+    expect(msg).toContain('Major update');
+    expect(msg).toContain('1 to 3 months');
+    expect(msg).toContain('West Orange');
+    expect(msg).toContain('51 Crestmont Rd');
+    expect(msg).toContain('Weekday afternoons');
+    expect(msg).toContain('3 attached');
+  });
+
+  test('stored codes are translated, never shown raw', () => {
+    const msg = completionMessage({ ...base, priceAnchor: 35000 });
+    for (const raw of ['major_update', '1_3_months', 'about_expected', 'contact_time_preference']) {
+      expect(msg, `${raw} must not reach the owner as a code`).not.toContain(raw);
+    }
+  });
+
+  test('the money signal is stated in plain words, with the number we showed', () => {
+    expect(reactionLine('about_expected', 35000)).toContain('$35,000');
+    expect(reactionLine('well_above', 16000)).toContain('WELL ABOVE');
+    expect(reactionLine('below_expected', 30000)).toContain('less than they expected');
+    // No anchor shown means no invented figure in the brief either.
+    expect(reactionLine('about_expected', null)).toContain('our starting price');
+    expect(reactionLine(undefined, 35000)).toBeNull();
+  });
+
+  test('urgency reads off timeline and price together', () => {
+    expect(urgencyLine('asap', 'about_expected')).toContain('Call this one first');
+    expect(urgencyLine('1_3_months', 'well_above')).toContain('stretch');
+    expect(urgencyLine('planning', 'about_expected')).toContain('Still planning');
+    expect(urgencyLine('3_6_months', undefined)).toBeNull();
+  });
+
+  test('no HTML entity beyond the three Telegram actually supports', () => {
+    // Telegram HTML mode delivers &middot; and &#128222; as literal text, so a
+    // message using them arrives reading "Alex &middot; Kitchen".
+    const messages = [
+      completionMessage({ ...base, phone: '(201) 555-0100', priceAnchor: 35000 }),
+      offScriptTelegram({
+        firstName: 'Alex', email: 'a@x.com', phone: '201-555-0100',
+        projectType: 'Kitchen Remodeling', question: 'permits?', intakeUrl: null,
+      }),
+    ];
+    for (const msg of messages) {
+      const entities = msg.match(/&[a-z]+;|&#\d+;/gi) ?? [];
+      const unsupported = entities.filter((e) => !['&lt;', '&gt;', '&amp;'].includes(e.toLowerCase()));
+      expect(unsupported, `unsupported Telegram entities: ${unsupported.join(', ')}`).toEqual([]);
+    }
+  });
+
+  test('the answer route sends it on completion, and awaits it', () => {
+    const src = code('src/app/api/intake/[token]/answer/route.ts');
+    expect(src).toContain('await sendCompletionAlert(');
+    expect(src).toContain('terminal && !declined');
+  });
+
+  test('a lead who declined gets no brief - there is nothing new to say', () => {
+    const src = code('src/app/api/intake/[token]/answer/route.ts');
+    const guard = src.indexOf('terminal && !declined');
+    const call = src.indexOf('await sendCompletionAlert(');
+    expect(guard).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(call);
+  });
+
+  test('the last answer is included, not the stale session copy', () => {
+    // contact_time_preference is the FINAL answer; reading session.answers
+    // alone would send a brief missing the one field that says when to call.
+    const src = code('src/app/api/intake/[token]/answer/route.ts');
+    expect(src).toContain('...session.answers, ...(step.field ? { [step.field]: answer } : {})');
+  });
+
+  test('a failed brief is logged loudly rather than swallowed', () => {
+    expect(code('src/app/api/intake/[token]/answer/route.ts')).toContain("outcome !== 'sent'");
   });
 });

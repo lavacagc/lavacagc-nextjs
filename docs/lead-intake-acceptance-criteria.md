@@ -108,6 +108,21 @@ Carried over from the crew dispatch review, where roughly a dozen instances of t
 - A failed answer write tells the lead the answer did not save, and does not advance the step.
 - A failed photo upload says so and does not claim the photo reached Alex.
 
+## AC13 - finishing the intake tells a human
+
+Found during the owner's own walkthrough on 1 Aug: he completed all eight questions and no Telegram arrived, because nothing sent one.
+The notification order was backwards.
+The new-lead alert fires at form submission, when all we know is a name and a project type; the lead then spends three minutes giving us scope, timeline, price reaction, address and when to call, and nobody was told any of it.
+
+- Completing the flow sends a Telegram brief carrying every answer.
+- Stored codes (`major_update`, `1_3_months`) are translated to words, never shown raw.
+- The price reaction is stated in plain language alongside the figure the lead was actually shown.
+- The brief includes the final answer, not the stale session copy - `contact_time_preference` is the last thing answered, and reading `session.answers` alone would omit the one field that says when to call.
+- Declining at consent sends nothing: there is nothing new to say, and the new-lead alert already went.
+- The send is awaited. A fire-and-forget fetch is killed when the serverless response returns.
+- A failed brief is logged loudly rather than swallowed.
+- **Telegram HTML mode supports exactly three entities: `&lt;`, `&gt;`, `&amp;`.** Anything else arrives as literal text. A test asserts no other entity appears in any Telegram message this feature sends.
+
 ## Out of scope for this slice
 
 - Scoring against the new fields. The fields are captured here; WEB-019 wires them in slice B.

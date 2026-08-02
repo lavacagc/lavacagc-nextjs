@@ -9,7 +9,43 @@ import { NextRequest, NextResponse } from 'next/server';
 import { buildStep, nextStep, isTerminal, isValidAnswer, type FlowContext, type StepId } from '@/lib/intake/flow';
 import { priceAnchorFor } from '@/lib/intake/pricing';
 import { lookupByToken, recordAnswer, mirrorToLead, markOpened } from '@/lib/intake/session';
+import { sendCompletionAlert } from '@/lib/intake/completionAlert';
+import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+
+interface LeadContact {
+  first_name: string | null;
+  email: string | null;
+  phone: string | null;
+  project_type: string | null;
+}
+
+/** Best-effort. A missing phone number must not cost us the whole brief. */
+async function leadContact(leadId: string | null): Promise<LeadContact | null> {
+  if (!leadId) return null;
+  try {
+    const rows = await supabaseRest<LeadContact[]>(
+      'GET',
+      `leads?id=eq.${leadId}&select=first_name,email,phone,project_type&limit=1`,
+    );
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch (err) {
+    console.error('[intake] could not read lead contact for the completion brief:', err);
+    return null;
+  }
+}
+
+async function countPhotos(sessionId: string): Promise<number> {
+  try {
+    const rows = await supabaseRest<{ id: string }[]>(
+      'GET',
+      `lead_intake_photos?session_id=eq.${sessionId}&select=id`,
+    );
+    return Array.isArray(rows) ? rows.length : 0;
+  } catch {
+    return 0;
+  }
+}
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -120,6 +156,33 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
   if (target === 'price') {
     const anchor = priceAnchorFor(session.project_type);
     if (anchor) await mirrorToLead(session.lead_id, 'price_anchor_shown', anchor.amount);
+  }
+
+  // The brief. Awaited, not fire-and-forget: a serverless response that returns
+  // first kills the outbound fetch, which is how these go missing on Vercel.
+  //
+  // Only on a real completion. A lead who declined at the consent step told us
+  // nothing new, and the new-lead alert already went out at submit time.
+  if (terminal && !declined) {
+    const answers = { ...session.answers, ...(step.field ? { [step.field]: answer } : {}) };
+    const anchor = priceAnchorFor(session.project_type);
+    const [contact, photoCount] = await Promise.all([
+      leadContact(session.lead_id),
+      countPhotos(session.id),
+    ]);
+    const outcome = await sendCompletionAlert({
+      firstName: contact?.first_name ?? session.first_name,
+      projectType: contact?.project_type ?? session.project_type,
+      answers,
+      phone: contact?.phone ?? null,
+      email: contact?.email ?? null,
+      photoCount,
+      priceAnchor: answers.price_reaction ? anchor?.amount ?? null : null,
+    });
+    if (outcome !== 'sent') {
+      // Loud, because the whole point of the flow is that the call is informed.
+      console.error(`[intake] completion alert for session ${session.id} was ${outcome}`);
+    }
   }
 
   const next = buildStep(target, advancedCtx);

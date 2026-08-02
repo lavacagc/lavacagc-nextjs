@@ -28,14 +28,19 @@ export function reachedAHuman(outcome: RouteOutcome): boolean {
   return outcome.telegram === 'sent' || outcome.email === 'sent';
 }
 
+/**
+ * Telegram's HTML parse mode supports EXACTLY three entities: &lt;, &gt; and
+ * &amp;. Anything else - &middot;, &#128222; - is delivered as literal text, so
+ * the message arrives reading "Alex &middot; Kitchen". Real characters only.
+ */
 export function offScriptTelegram(ctx: OffScriptContext): string {
   const who = ctx.firstName || ctx.email || 'A lead';
   const lines = [
     '<b>Question from a lead, mid-intake</b>',
     '',
-    `<b>${escapeTelegram(who)}</b>${ctx.projectType ? ` &middot; ${escapeTelegram(ctx.projectType)}` : ''}`,
-    ctx.phone ? `&#128222; ${escapeTelegram(ctx.phone)}` : null,
-    ctx.email ? `&#9993; ${escapeTelegram(ctx.email)}` : null,
+    `<b>${escapeTelegram(who)}</b>${ctx.projectType ? ` · ${escapeTelegram(ctx.projectType)}` : ''}`,
+    ctx.phone ? `\u{1F4DE} ${escapeTelegram(ctx.phone)}` : null,
+    ctx.email ? `✉️ ${escapeTelegram(ctx.email)}` : null,
     '',
     `<i>"${escapeTelegram(ctx.question)}"</i>`,
     '',
