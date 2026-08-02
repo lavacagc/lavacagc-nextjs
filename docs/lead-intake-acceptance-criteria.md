@@ -128,3 +128,20 @@ The new-lead alert fires at form submission, when all we know is a name and a pr
 - Scoring against the new fields. The fields are captured here; WEB-019 wires them in slice B.
 - Routing hot leads differently from cold ones (WEB-01A).
 - The abandoned-session cron (WEB-01B). The `opened_at` column it needs is created here.
+
+## Running the suite without sending real email
+
+The Playwright config starts `npm run start` on port 3000 and reuses whatever is already there.
+That server inherits the shell environment, and `.env.local` refills any key the shell merely unsets.
+So a full local run against production credentials fires **4 real form-error alerts per run** - the lead-submit tests deliberately POST bad reCAPTCHA, and the alert path emails for real.
+
+Blank the credentials rather than unsetting them, because an unset key is repopulated from `.env.local` while an empty one is not:
+
+```sh
+export RESEND_API_KEY=""
+export TELEGRAM_BOT_TOKEN=""
+npx playwright test
+```
+
+Verified: 1410 pass, 0 emails written to `email_log`.
+Kill any stray dev server on port 3000 first - two processes on the same port produce failures that look like real regressions and are not.

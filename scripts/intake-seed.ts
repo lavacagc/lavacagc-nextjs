@@ -22,10 +22,19 @@ const has = (name: string) => process.argv.includes(`--${name}`);
 const ORIGIN = arg('origin') ?? 'http://localhost:3000';
 const SEED_NAME = 'IntakePreview';
 
+/**
+ * Remove every seeded session, identified by having no lead.
+ *
+ * NOT by name: --name= exists, so filtering on the default name silently leaves
+ * behind anything seeded with a different one. That exact mistake left test rows
+ * in production on the last feature, so this keys off the thing that is actually
+ * true of a seed and never true of a real session - a real one always has a
+ * lead_id, because it is created by the submit route from an inserted lead.
+ */
 async function cleanup() {
-  const rows = await supabaseRest<{ id: string }[]>(
+  const rows = await supabaseRest<{ id: string; first_name: string | null }[]>(
     'GET',
-    `lead_intake_sessions?first_name=eq.${SEED_NAME}&select=id`,
+    'lead_intake_sessions?lead_id=is.null&select=id,first_name',
   );
   if (!Array.isArray(rows) || rows.length === 0) {
     console.log('Nothing seeded to clean up.');
@@ -33,11 +42,12 @@ async function cleanup() {
   }
   await supabaseRest(
     'DELETE',
-    `lead_intake_sessions?first_name=eq.${SEED_NAME}`,
+    'lead_intake_sessions?lead_id=is.null',
     undefined,
     { prefer: 'return=minimal' },
   );
-  console.log(`Deleted ${rows.length} seeded session(s).`);
+  const names = rows.map((r) => r.first_name ?? '(no name)').join(', ');
+  console.log(`Deleted ${rows.length} seeded session(s): ${names}`);
 }
 
 async function main() {
