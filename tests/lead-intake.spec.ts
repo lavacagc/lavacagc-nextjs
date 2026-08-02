@@ -587,6 +587,27 @@ test.describe('AC2 - the on-page invite', () => {
   });
 });
 
+/* ── the chat surface itself, on the phone a lead opens it on ─────────────── */
+
+test.describe('nothing sits on top of the conversation', () => {
+  test('the site-wide sticky CTA is suppressed on the intake', () => {
+    // That bar is `fixed bottom-0 z-50 md:hidden` - exactly where the answer
+    // buttons and the composer are. A lead tapping the last price option was
+    // hitting its "Free Estimate" link and being sent to /contact instead.
+    expect(code('src/components/StickyCTA.tsx')).toContain("pathname.startsWith('/intake')");
+  });
+
+  test('the thread scrolls inside itself rather than growing the page', () => {
+    // A page taller than the window is what put the composer below the fold and
+    // armed that bar in the first place, so the shell needs a definite height
+    // and the scrolling column needs to be allowed to shrink under its content.
+    const src = code('src/app/intake/[token]/IntakeThread.tsx');
+    expect(src).toContain('h-dvh');
+    expect(src).not.toContain('min-h-screen');
+    expect(src).toContain('min-h-0 flex-1 overflow-y-auto');
+  });
+});
+
 /* ── AC13 - the completion brief ──────────────────────────────────────────── */
 
 test.describe('AC13 - finishing the intake tells a human', () => {

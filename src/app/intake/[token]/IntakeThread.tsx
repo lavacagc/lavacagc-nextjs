@@ -163,8 +163,15 @@ export default function IntakeThread({
   const showComposer = !done && (step.kind === 'text' || step.kind === 'buttons');
   const showPhoto = !done && step.field === 'message';
 
+  // A definite height, not a minimum: the thread scrolls inside itself, and the
+  // composer stays put. Under `min-h-screen` the bubbles grew the page instead,
+  // so on a phone the composer scrolled off the bottom of the window.
+  //
+  // pb-0 undoes the global `main { padding-bottom: 80px }` that reserves room
+  // for the sticky mobile CTA. That bar is suppressed here, so the reservation
+  // is just a dead grey band under the composer.
   return (
-    <main className="flex min-h-screen flex-col bg-[#F6F7F9]">
+    <main className="flex h-dvh flex-col bg-[#F6F7F9] pb-0">
       <header className="flex items-center gap-3 bg-[#002855] px-4 py-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-extrabold text-white">
           LV
@@ -175,7 +182,9 @@ export default function IntakeThread({
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-3 py-4" data-testid="intake-thread">
+      {/* min-h-0, or this flex child refuses to shrink below its content and
+          scrolls the page rather than the thread. */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4" data-testid="intake-thread">
         <div className="mx-auto flex w-full max-w-lg flex-col gap-2.5">
           {bubbles.map((b) =>
             b.who === 'note' ? (
