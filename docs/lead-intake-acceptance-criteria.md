@@ -1,6 +1,7 @@
 # Lead intake chat - acceptance criteria
 
-Slice A of the website spec (`02-website-nextjs.md`), covering WEB-010 through WEB-018.
+Slice A of the website spec (`02-website-nextjs.md` - the owner's spec, held outside this repo, so
+this file is the tracked record of what WEB-010 through WEB-018 were built to).
 Approved from the Lavish build render on 1 Aug 2026, after two rounds of owner copy changes.
 
 ## What this replaces

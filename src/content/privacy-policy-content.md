@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Last Updated: August 2, 2026**
-**Version: 2.4**
+**Version: 2.5**
 
 ---
 
@@ -761,6 +761,7 @@ If you are a California resident, you have additional rights under the Californi
 - **Commercial Information:** Transaction history, service requests, scheduled service appointments (the date and time window of a booked visit and the services booked into it), service and maintenance history, payment records, project details
 - **Internet or Network Activity:** Browsing history, search history, interactions with our Website, pages visited, links clicked
 - **Geolocation Data:** General location based on IP address (not precise geolocation)
+- **Visual Information:** Photographs of a property that you choose to upload to us (for example the photos of the space you can add in our intake assistant - see Section 3.5)
 - **Inferences:** Preferences, characteristics, trends, behavior patterns derived from your information
 
 **Sensitive Personal Information Collected:**
@@ -1077,6 +1078,6 @@ Before initiating any legal action, we encourage you to contact us using the inf
 This Privacy Policy is effective as of the "Last Updated" date indicated at the top of this document.
 
 **Last Updated:** August 2, 2026
-**Version:** 2.4
+**Version:** 2.5
 **Original Effective Date:** November 12, 2025
 
