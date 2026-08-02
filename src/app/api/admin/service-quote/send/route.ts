@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
     from: HOME_CARE_FROM,
     to,
     ...(ccEmails && ccEmails.length > 0 && !isTest ? { cc: ccEmails } : {}),
-    replyTo: SERVICE_REPLY_TO.join(', '),
+    replyTo: SERVICE_REPLY_TO,
     subject: isTest ? `[TEST] ${subject}` : subject,
     html,
     text,

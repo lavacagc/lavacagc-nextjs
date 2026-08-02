@@ -854,7 +854,7 @@ function sendCrewMail(args: {
   return sendTrackedEmail({
     from: HOME_CARE_FROM,
     to: assignment.email,
-    replyTo: SERVICE_REPLY_TO.join(', '),
+    replyTo: SERVICE_REPLY_TO,
     subject,
     html,
     text,

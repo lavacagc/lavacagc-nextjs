@@ -48,7 +48,17 @@ interface TrackedEmailBase {
   from: string;
   to: string | string[];
   cc?: string | string[];
-  replyTo?: string;
+  /**
+   * One address, or several.
+   *
+   * An ARRAY for several - never a comma-joined string. Resend validates this
+   * field per-address and answers 422 "Invalid `reply_to` field" for
+   * "a@x.com, b@x.com", which fails the whole send. Every service-quote email
+   * passed `SERVICE_REPLY_TO.join(', ')`, so the quote, the completion feedback
+   * request and the night-before visit reminder could none of them ever be
+   * delivered - latent only because no service quote had been sent yet.
+   */
+  replyTo?: string | string[];
   subject: string;
   html?: string;
   text?: string;
@@ -158,7 +168,9 @@ async function writeEmailLog(
       to_name: input.toName ?? null,
       cc_emails: ccList.length ? ccList.join(',') : null,
       from_email: input.from,
-      reply_to: input.replyTo ?? null,
+      // Flattened for the audit column, which is TEXT. The wire format is the
+      // array above; this is only what the admin reads back.
+      reply_to: Array.isArray(input.replyTo) ? input.replyTo.join(', ') : input.replyTo ?? null,
       subject: input.subject,
       html: input.html ?? null,
       text: input.text ?? null,

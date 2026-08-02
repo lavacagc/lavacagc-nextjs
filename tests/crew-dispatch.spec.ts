@@ -458,7 +458,10 @@ test('AC22 both crew sends spell the envelope once, so the audit shape cannot dr
   expect(src.match(/sendCrewMail\(\{/g) ?? []).toHaveLength(2);
   const envelope = src.slice(src.indexOf('function sendCrewMail'));
   expect(envelope).toContain('campaign: { visit_start: visitKey(visitStart), dispatch_id: dispatchId }');
-  expect(envelope).toContain('replyTo: SERVICE_REPLY_TO.join');
+  // The ARRAY, not a comma-joined string: Resend 422s on the latter and the
+  // whole send fails. See the reply-to tests at the end of this file.
+  expect(envelope).toContain('replyTo: SERVICE_REPLY_TO');
+  expect(envelope).not.toContain('SERVICE_REPLY_TO.join');
   // Only the category differs between the invite and the retraction.
   expect(envelope).toContain('category,');
 });
@@ -490,7 +493,8 @@ test('AC23a the chokepoint passes a content type through, and omits it when unas
 });
 
 test('AC22 the dispatch replies to the service addresses', () => {
-  expect(read('src/lib/homecare/dispatch.ts')).toContain('replyTo: SERVICE_REPLY_TO.join');
+  expect(read('src/lib/homecare/dispatch.ts')).toContain('replyTo: SERVICE_REPLY_TO');
+  expect(read('src/lib/homecare/dispatch.ts')).not.toContain('SERVICE_REPLY_TO.join');
   expect(SERVICE_REPLY_TO).toEqual(['alex@lavacagc.com', 'veronica@lavacagc.com']);
 });
 
@@ -2542,4 +2546,42 @@ test('no automated "on our way" customer email was added', () => {
 test('the live reminder copy promising a text is untouched', () => {
   const service = read('src/lib/homecare/serviceEmails.ts');
   expect(service).toContain("so you'll know roughly when to expect the knock");
+});
+
+/* ── reply-to: the bug a source-string assertion could not catch ──────────── */
+
+test('a multi-address reply-to is passed as an ARRAY, never a comma-joined string', () => {
+  // Resend validates reply_to per address and answers 422 "Invalid `reply_to`
+  // field" for "a@x.com, b@x.com", which fails the whole send. Every
+  // service-quote email passed SERVICE_REPLY_TO.join(', '), so the quote, the
+  // completion feedback request and the night-before visit reminder could none
+  // of them ever be delivered - latent only because no service quote had been
+  // sent. Found by an actual send, not by a test: the old assertions checked
+  // that the source CONTAINED `replyTo: SERVICE_REPLY_TO.join(', ')`, which is
+  // the broken call spelled correctly.
+  for (const f of [
+    'src/app/api/admin/service-quote/send/route.ts',
+    'src/app/api/admin/service-quote/complete/route.ts',
+    'src/app/api/cron/visit-reminders/route.ts',
+    'src/lib/homecare/dispatch.ts',
+  ]) {
+    expect(code(f), `${f} must not comma-join a reply-to`).not.toMatch(/replyTo:.*\.join\(/);
+  }
+});
+
+test('the send chokepoint accepts an array reply-to and flattens it only for the audit row', () => {
+  const src = read('src/lib/notify/sendEmail.ts');
+  expect(src).toContain('replyTo?: string | string[]');
+  // The wire value is the array; email_log's column is TEXT, so only the audit
+  // row is flattened. Flattening before the send is the original bug.
+  expect(src).toContain('reply_to: Array.isArray(input.replyTo)');
+  const payload = src.slice(src.indexOf('const { data, error } = await resend.emails.send'));
+  expect(payload).toContain('...(input.replyTo ? { replyTo: input.replyTo } : {})');
+  expect(payload).not.toContain('replyTo.join');
+});
+
+test('SERVICE_REPLY_TO is a real array, so passing it straight through is correct', () => {
+  expect(Array.isArray(SERVICE_REPLY_TO)).toBe(true);
+  expect(SERVICE_REPLY_TO.length).toBeGreaterThan(1);
+  for (const a of SERVICE_REPLY_TO) expect(a).toMatch(/^[^\s,]+@[^\s,]+$/);
 });

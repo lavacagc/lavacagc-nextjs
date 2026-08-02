@@ -243,7 +243,7 @@ export async function GET(request: NextRequest) {
       const res = await sendTrackedEmail({
         from: HOME_CARE_FROM,
         to: owner.email,
-        replyTo: SERVICE_REPLY_TO.join(', '),
+        replyTo: SERVICE_REPLY_TO,
         subject,
         html,
         text,
