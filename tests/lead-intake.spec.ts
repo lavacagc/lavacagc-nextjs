@@ -483,3 +483,38 @@ test.describe('AC10 - data lands in the right columns', () => {
     }
   });
 });
+
+/* ── AC2 (cont) - the on-page confirmation ────────────────────────────────── */
+
+test.describe('AC2 - the on-page invite', () => {
+  const FORMS = [
+    'src/components/HomeEstimateForm.tsx',
+    'src/components/LandingPageLeadForm.tsx',
+    'src/components/services/RequestEstimateForm.tsx',
+  ];
+
+  test('every form with a confirmation panel renders the invite', () => {
+    for (const f of FORMS) {
+      const src = code(f);
+      expect(src, `${f} must render IntakeInvite`).toContain('<IntakeInvite url={intakeUrl}');
+      expect(src, `${f} must read intakeUrl off the submit response`).toContain('data?.intakeUrl');
+    }
+  });
+
+  test('the invite renders nothing without a url, rather than a dead button', () => {
+    const src = code('src/components/IntakeInvite.tsx');
+    expect(src).toContain('if (!url) return null;');
+  });
+
+  test('and offers skipping in plain words', () => {
+    const src = read('src/components/IntakeInvite.tsx');
+    expect(src).toContain('Or skip it');
+    expect(src).toContain('still call you within 24 hours');
+  });
+
+  test('the invite states 3 minutes, not a question count', () => {
+    const src = read('src/components/IntakeInvite.tsx');
+    expect(src).toContain('three minutes');
+    expect(src.toLowerCase()).not.toContain('seven');
+  });
+});
