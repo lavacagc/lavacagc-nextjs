@@ -88,6 +88,7 @@ WEB-01A's criterion is that "the routing decision and its recipient are logged o
   The benefit of the doubt can render "HOT LEAD (45/100)" against a threshold of 55, and a project type the flow never asks about price on can render "HOT LEAD (50/80)", so the scorer's leading signal travels with the decision and is quoted under the banner.
   Unexplained, the one message the owner reads before picking up the phone looks like a bug in the scoring, on the occasion they most need to trust the label.
 - The banner shows the scale the lead was measured on, not a 100 they could not have reached.
+  The denominator is required of the caller rather than defaulted, for the reason the photo count and the project type are required of the scorer: an 80-scale lead rendered as "50/100" is a denominator that is wrong rather than missing, and nobody may be handed the wrong scale by omission.
 - The brief renders three different photo facts three different ways: a count, "none sent", and "count unavailable".
   Everywhere else in this feature a failed read reads differently from an absent thing, and the brief is not an exception.
 
@@ -104,6 +105,8 @@ WEB-01A's criterion is that "the routing decision and its recipient are logged o
   Retirements are counted, logged and named in `degraded` - ending a lead's chase with nobody told is a decision the run has to show, not absorb.
   The row records it as a retirement too, in its own `*_retired_at` column written by the same PATCH as the claim.
   The stamp that retires the row is named for an alert, so on its own it would leave the row permanently asserting that a lead deliberately never told about was told about - and the counters and the console line age out of the log while the row does not.
+  The verdict still reaches the lead: nobody was told, but the non-engagement of a session never opened and days gone is the most certain there is, and an unrecorded one reads on the row exactly like a lead still working through the intake - invisible to the admin view the bucket index is built for.
+  It is written in the retirement's own words, not the chase's, because "worth one manual follow-up" is the stale advice the retirement exists to suppress and a row carrying it would imply a follow-up nobody was asked to make.
 - The backlog drains **oldest first**, on the same clock each stage selects by, so the queue the route describes is one and the rows nearest the ceiling are retired before the page fills with rows that still have time.
 - Both stages run every three hours across the working day - 13:00, 16:00, 19:00 and 22:00 UTC, which is 9am to 6pm Eastern in summer and an hour earlier in winter.
   A 6-hour threshold checked once a day is inoperative: the cron time, not the threshold, decides when the alert lands, and a lead who submits at 10am waits until the following morning.

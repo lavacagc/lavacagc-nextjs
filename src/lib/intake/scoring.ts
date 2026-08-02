@@ -303,3 +303,24 @@ export function lowIntentDecision(): RoutingDecision {
     reason: 'Never opened the intake link. Lower intent - worth one manual follow-up before nurture takes over.',
   };
 }
+
+/**
+ * The same lead, found too late to be worth telling anybody about.
+ *
+ * Still recorded, because these are the rows whose non-engagement is the most
+ * certain there is - never opened, and days gone - and a lead left with no
+ * verdict at all is indistinguishable on the row from one still mid-intake.
+ *
+ * Its own words rather than `lowIntentDecision`'s: "worth one manual follow-up"
+ * is the stale advice the retirement exists to suppress, and a row that carries
+ * it would imply a chase that was deliberately never made.
+ */
+export function retiredChaseDecision(hours: number): RoutingDecision {
+  return {
+    bucket: 'cold',
+    routedTo: 'nurture',
+    reason:
+      `Never opened the intake link, and aged out of the chase after ${hours} hours. ` +
+      'Retired without an alert - too old to follow up on, so into nurture.',
+  };
+}

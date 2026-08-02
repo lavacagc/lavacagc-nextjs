@@ -14,7 +14,7 @@
  * by exercising it, not by grepping the route for the spelling of a filter.
  */
 import { escapeTelegram, escapeTelegramClipped, type TelegramOutcome } from '@/lib/notify/telegramMessage';
-import { lowIntentDecision } from './scoring';
+import { lowIntentDecision, retiredChaseDecision, type RoutingDecision } from './scoring';
 
 export type ChaseKind = 'low_intent' | 'abandoned';
 
@@ -301,7 +301,10 @@ export interface ChaseResult {
    *
    * `retired` is a candidate past `CHASE_MAX_AGE_HOURS`: claimed so it leaves
    * the queue for good, deliberately never sent, and marked as retired on the
-   * row so the stamp is not left claiming an alert nobody received.
+   * row so the stamp is not left claiming an alert nobody received. The verdict
+   * still reaches the lead - nobody was told, but the non-engagement is as
+   * certain as it gets, and an unrecorded one is indistinguishable from a lead
+   * still mid-intake.
    */
   outcome: 'sent' | 'skipped' | 'failed' | 'retired';
   /** Set only on `failed`, and names the fault rather than the stage after it. */
@@ -330,6 +333,43 @@ async function releaseClaim(
     );
   } catch (err) {
     console.error(`[intake-chase] could not release the claim on ${id}:`, err);
+  }
+}
+
+/**
+ * Write the verdict onto the lead, and try again once if the write comes back
+ * false.
+ *
+ * Nothing else ever will: whether this candidate was alerted or retired, the
+ * stamp stays set - releasing it would send a second alert, or resurrect a lead
+ * already judged too old to tell anybody about - so the session is a candidate
+ * for no future run. Two attempts on the same reasoning as the scoring read:
+ * these fail transiently or not at all.
+ *
+ * null when there is no lead row to write to, so a non-event cannot read as a
+ * failed write.
+ */
+async function writeRouting(
+  deps: ChaseDeps,
+  c: ChaseCandidate,
+  decision: RoutingDecision,
+  signals: string[],
+): Promise<boolean | null> {
+  if (!c.lead_id) return null;
+  const write = {
+    leadId: c.lead_id,
+    score: 0,
+    bucket: decision.bucket,
+    signals,
+    routedTo: decision.routedTo,
+    reason: decision.reason,
+  };
+  try {
+    const recorded = await deps.recordRouting(write);
+    return recorded === false ? await deps.recordRouting(write) : recorded;
+  } catch (err) {
+    console.error(`[intake-chase] recording the routing for ${c.id} threw:`, err);
+    return false;
   }
 }
 
@@ -399,11 +439,26 @@ export async function chaseOne(
   // back with a row, so this is a proven, atomic retirement rather than an
   // assumed one.
   if (retiring) {
+    const aged = hoursSince(chaseClock(kind, c), now);
     console.warn(
-      `[intake-chase] ${c.id} aged out at ${hoursSince(chaseClock(kind, c), now)}h ` +
+      `[intake-chase] ${c.id} aged out at ${aged}h ` +
         `(ceiling ${CHASE_MAX_AGE_HOURS}h) - stamped and retired, nothing sent`,
     );
-    return { outcome: 'retired', routingRecorded: null };
+    // Nobody was told, but the lead still gets the verdict (AC6): the
+    // non-engagement is recorded rather than inferred later from an absence,
+    // and these are the rows where it is least in doubt. Left null they read on
+    // the lead exactly like a lead still working through the intake, and they
+    // are invisible to the bucket index the admin view is built on. Said in the
+    // retirement's own words, so the row does not imply the follow-up nobody
+    // was asked to make.
+    const routingRecorded =
+      kind === 'low_intent'
+        ? await writeRouting(deps, c, retiredChaseDecision(aged), [
+            'Never opened the intake link',
+            `Retired after ${aged} hours without an alert - past the ${CHASE_MAX_AGE_HOURS}h chase ceiling`,
+          ])
+        : null;
+    return { outcome: 'retired', routingRecorded };
   }
 
   let outcome: TelegramOutcome;
@@ -432,29 +487,10 @@ export async function chaseOne(
 
   // WEB-01B: non-engagement recorded as a signal on the lead, not inferred
   // later from an absence.
-  if (kind !== 'low_intent' || !c.lead_id) return { outcome: 'sent', routingRecorded: null };
+  if (kind !== 'low_intent') return { outcome: 'sent', routingRecorded: null };
 
-  const d = lowIntentDecision();
-  const write = {
-    leadId: c.lead_id,
-    score: 0,
-    bucket: d.bucket,
-    signals: ['Never opened the intake link'],
-    routedTo: d.routedTo,
-    reason: d.reason,
-  };
-
-  // The alert has gone and the stamp stays set - releasing it here would send a
-  // second alert, which is worse - so this session is a candidate for no future
-  // run and nothing else will ever retry this write. Tried twice on the same
-  // reasoning as the scoring read: these fail transiently or not at all.
-  let routingRecorded: boolean | null;
-  try {
-    routingRecorded = await deps.recordRouting(write);
-    if (routingRecorded === false) routingRecorded = await deps.recordRouting(write);
-  } catch (err) {
-    console.error(`[intake-chase] recording the routing for ${c.id} threw:`, err);
-    routingRecorded = false;
-  }
+  const routingRecorded = await writeRouting(deps, c, lowIntentDecision(), [
+    'Never opened the intake link',
+  ]);
   return { outcome: 'sent', routingRecorded };
 }

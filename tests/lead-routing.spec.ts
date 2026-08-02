@@ -370,7 +370,7 @@ test.describe('AC4 - routing is recorded, not just made', () => {
 
     const msg = completionMessage({
       firstName: 'Sarah', projectType: 'Kitchen Remodeling', answers: answers(),
-      routing: { bucket: 'hot', score: 92, recorded: null },
+      routing: { bucket: 'hot', score: 92, outOf: 100, recorded: null },
     });
     expect(msg).not.toContain('NOT saved to the lead');
   });
@@ -378,7 +378,7 @@ test.describe('AC4 - routing is recorded, not just made', () => {
   test('a brief whose routing did not save says so, rather than implying it did', () => {
     const msg = completionMessage({
       firstName: 'Sarah', projectType: 'Kitchen Remodeling', answers: answers(),
-      routing: { bucket: 'hot', score: 92, recorded: false },
+      routing: { bucket: 'hot', score: 92, outOf: 100, recorded: false },
     });
     expect(msg).toContain('HOT LEAD (92/100)');
     expect(msg).toContain('NOT saved to the lead');
@@ -387,7 +387,7 @@ test.describe('AC4 - routing is recorded, not just made', () => {
   test('a brief whose routing did save does not nag about it', () => {
     const msg = completionMessage({
       firstName: 'Sarah', projectType: 'Kitchen Remodeling', answers: answers(),
-      routing: { bucket: 'hot', score: 92, recorded: true },
+      routing: { bucket: 'hot', score: 92, outOf: 100, recorded: true },
     });
     expect(msg).not.toContain('NOT saved to the lead');
   });
@@ -459,15 +459,28 @@ test.describe('AC5 - a hot lead announces itself', () => {
   test('the brief leads with the bucket and the score', () => {
     const hot = completionMessage({
       firstName: 'Sarah', projectType: 'Kitchen Remodeling', answers: answers(),
-      routing: { bucket: 'hot', score: 92 },
+      routing: { bucket: 'hot', score: 92, outOf: 100 },
     });
     expect(hot).toContain('HOT LEAD (92/100)');
+  });
+
+  test('THE SCALE IS NOT SOMETHING A CALLER CAN LEAVE OUT', () => {
+    // A missing denominator used to default to 100, so an 80-scale lead read
+    // "50/100" - wrong rather than merely absent, on the line the owner reads
+    // before picking up the phone. Required now, for the reason photoCount and
+    // projectType are required a level up: nobody is handed the wrong scale by
+    // omission.
+    const src = code('src/lib/intake/completionAlert.ts');
+    expect(src).toContain('outOf: number;');
+    expect(src).not.toContain('?? 100');
+    // And the production caller takes it from the scorer that set it.
+    expect(code('src/app/api/intake/[token]/answer/route.ts')).toContain('outOf: scored.outOf');
   });
 
   test('a cold lead still gets the whole brief, quietly', () => {
     const cold = completionMessage({
       firstName: 'Sarah', projectType: 'Kitchen Remodeling', answers: answers(),
-      routing: { bucket: 'cold', score: 30 },
+      routing: { bucket: 'cold', score: 30, outOf: 100 },
     });
     expect(cold).toContain('cold, 30/100');
     expect(cold).not.toContain('HOT LEAD');
@@ -508,7 +521,7 @@ test.describe('AC5 - a hot lead announces itself', () => {
   test('a hot lead whose score earned it is not explained at all', () => {
     const msg = completionMessage({
       firstName: 'Sarah', projectType: 'Kitchen Remodeling', answers: answers(),
-      routing: { bucket: 'hot', score: 92, signals: ['In the service area (Montclair)'] },
+      routing: { bucket: 'hot', score: 92, outOf: 100, signals: ['In the service area (Montclair)'] },
     });
     expect(msg).toContain('HOT LEAD (92/100)');
     expect(msg).not.toContain('In the service area');
@@ -659,7 +672,7 @@ function fakeDeps(opts: {
 } = {}) {
   const patches: Array<{ path: string; body: Record<string, unknown> }> = [];
   const sends: string[] = [];
-  const routed: Array<{ leadId: string | null; bucket: string }> = [];
+  const routed: Array<{ leadId: string | null; bucket: string; reason: string }> = [];
   const deps: ChaseDeps = {
     async patch(path, body) {
       patches.push({ path, body });
@@ -672,7 +685,7 @@ function fakeDeps(opts: {
       return opts.send ?? 'sent';
     },
     async recordRouting(args) {
-      routed.push({ leadId: args.leadId, bucket: args.bucket });
+      routed.push({ leadId: args.leadId, bucket: args.bucket, reason: args.reason });
       const r = opts.recorded;
       if (Array.isArray(r)) return r[Math.min(routed.length - 1, r.length - 1)];
       return r === undefined ? true : r;
@@ -800,7 +813,9 @@ test.describe('AC8 - a broken cron does not look like a quiet one', () => {
   test('a low-intent send records its routing, and a failed write is reported', async () => {
     const ok = fakeDeps();
     expect((await chaseOne('low_intent', candidate(), NOW, ok.deps)).routingRecorded).toBe(true);
-    expect(ok.routed).toEqual([{ leadId: 'l1', bucket: 'cold' }]);
+    expect(ok.routed).toEqual([
+      { leadId: 'l1', bucket: 'cold', reason: lowIntentDecision().reason },
+    ]);
 
     const bad = fakeDeps({ recorded: false });
     const result = await chaseOne('low_intent', candidate(), NOW, bad.deps);
@@ -883,14 +898,57 @@ test.describe('AC8 - a broken cron does not look like a quiet one', () => {
       [CHASE_RETIRED_STAMP.abandoned]: NOW.toISOString(),
     });
 
-    // And the low-intent stage does not write score 0 / cold onto a lead it
-    // decided was too old to have an opinion about.
     const low = fakeDeps();
     const lowResult = await chaseOne('low_intent', candidate({ created_at: old }), NOW, low.deps);
     expect(lowResult.outcome).toBe('retired');
     expect(low.sends).toEqual([]);
-    expect(low.routed).toEqual([]);
     expect(low.patches[0].body).toHaveProperty(CHASE_RETIRED_STAMP.low_intent, NOW.toISOString());
+  });
+
+  test('A RETIRED LEAD STILL GETS ITS VERDICT, IN THE RETIREMENT\'S OWN WORDS', async () => {
+    // Nobody was told, but the non-engagement is as certain as it gets - never
+    // opened, days gone - and AC6 records it rather than leaving it to be
+    // inferred from an absence. Left null the row reads exactly like a lead
+    // still working through the intake, and is invisible to the bucket index.
+    const old = new Date(NOW.getTime() - (CHASE_MAX_AGE_HOURS + 1) * 3_600_000).toISOString();
+    const f = fakeDeps();
+    const result = await chaseOne('low_intent', candidate({ created_at: old }), NOW, f.deps);
+
+    expect(result.outcome).toBe('retired');
+    expect(result.routingRecorded).toBe(true);
+    expect(f.routed).toHaveLength(1);
+    expect(f.routed[0].bucket).toBe('cold');
+    // Its own reason: "worth one manual follow-up" is the stale advice the
+    // retirement exists to suppress, and a row carrying it would imply a chase
+    // this lead was deliberately never given.
+    expect(f.routed[0].reason).toContain('aged out of the chase');
+    expect(f.routed[0].reason).toContain('Retired without an alert');
+    expect(f.routed[0].reason).not.toContain('worth one manual follow-up');
+    expect(f.routed[0].reason).not.toBe(lowIntentDecision().reason);
+
+    // A retired session with no lead row has nothing to write to, and that is
+    // not a failed write.
+    const none = fakeDeps();
+    const noLead = await chaseOne(
+      'low_intent', candidate({ created_at: old, lead_id: null }), NOW, none.deps,
+    );
+    expect(noLead.outcome).toBe('retired');
+    expect(noLead.routingRecorded).toBeNull();
+    expect(none.routed).toEqual([]);
+
+    // And a failed write on a retirement is reported the way any other is, so
+    // the run's routingUnrecorded counter can see it.
+    const lost = fakeDeps({ recorded: false });
+    expect((await chaseOne('low_intent', candidate({ created_at: old }), NOW, lost.deps))
+      .routingRecorded).toBe(false);
+    expect(lost.routed).toHaveLength(2);
+
+    // The abandoned stage still records nothing: an incomplete intake was never
+    // scored or routed, which is what its own message says.
+    const ab = fakeDeps();
+    const abResult = await chaseOne('abandoned', quiet({ updated_at: old }), NOW, ab.deps);
+    expect(abResult.outcome).toBe('retired');
+    expect(ab.routed).toEqual([]);
   });
 
   test('a lead who WAS alerted is not marked retired', async () => {

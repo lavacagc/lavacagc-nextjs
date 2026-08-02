@@ -40,8 +40,13 @@ export interface CompletionContext {
      * What the score was out of. 80 for a project type the flow never asks
      * about price on, so the banner shows the scale the lead was measured on
      * rather than implying a 100 they could not have reached.
+     *
+     * Required, for the reason `photoCount` and `projectType` are required one
+     * level up: a default of 100 renders an 80-scale lead as "50/100", which is
+     * a denominator that is WRONG rather than merely missing - on the one line
+     * the owner reads before deciding whether to pick up the phone.
      */
-    outOf?: number;
+    outOf: number;
     recorded?: boolean | null;
     signals?: string[];
   } | null;
@@ -170,7 +175,7 @@ export function completionMessage(ctx: CompletionContext): string {
 
   // A hot lead announces itself. A cold one still gets the full brief - cold is
   // a different destination, not a bin - but it does not shout.
-  const out = ctx.routing ? `${ctx.routing.score}/${ctx.routing.outOf ?? 100}` : '';
+  const out = ctx.routing ? `${ctx.routing.score}/${ctx.routing.outOf}` : '';
   const banner = ctx.routing
     ? ctx.routing.bucket === 'hot'
       ? `\u{1F525} <b>HOT LEAD (${out}) - ${esc(who, CAP.name)}</b>`
