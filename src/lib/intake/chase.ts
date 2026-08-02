@@ -145,8 +145,39 @@ export const CHASE_AFTER_HOURS: Record<ChaseKind, number> = {
   abandoned: 4,
 };
 
+/**
+ * How old a candidate may be before chasing it stops being worth doing.
+ *
+ * Three days, because past that the lead has either called or gone, and
+ * "Submitted 700 hours ago, link never opened - worth one manual follow-up" is
+ * advice the owner cannot act on. It is also not a hypothetical backlog: a send
+ * that does not succeed releases its claim so the next run retries, so any
+ * sustained outage - or an environment with no Telegram credentials at all -
+ * accumulates candidates indefinitely, and they would arrive 25 a run on
+ * recovery. A channel that delivers stale noise is a channel that gets ignored.
+ */
+export const CHASE_MAX_AGE_HOURS = 72;
+
 export function chaseCutoff(kind: ChaseKind, now: Date): string {
   return new Date(now.getTime() - CHASE_AFTER_HOURS[kind] * 3_600_000).toISOString();
+}
+
+/**
+ * The timestamp a stage measures its candidate by - the same one `conditions`
+ * selects on, so the age judged here cannot mean something else than the age
+ * that put the row on the list.
+ */
+export function chaseClock(kind: ChaseKind, c: ChaseCandidate): string {
+  return kind === 'low_intent' ? c.created_at : (c.updated_at ?? c.created_at);
+}
+
+/**
+ * Too old to be worth a message. An unparseable timestamp reads as 0 hours via
+ * `hoursSince`, so it is chased normally rather than silently retired: dropping
+ * a lead on the strength of a bad date is the more expensive mistake.
+ */
+export function isPastChasing(kind: ChaseKind, c: ChaseCandidate, now: Date): boolean {
+  return hoursSince(chaseClock(kind, c), now) >= CHASE_MAX_AGE_HOURS;
 }
 
 const SELECT = 'id,lead_id,first_name,project_type,answers,created_at,opened_at,updated_at';
@@ -184,9 +215,21 @@ function conditions(kind: ChaseKind, cutoff: string): string {
 /**
  * The candidate list. One row over the page size is requested so the caller can
  * tell a drained run from a truncated one.
+ *
+ * Oldest first, on the same clock the stage selects by. Unordered, a backlog is
+ * drained in whatever order Postgres happens to produce, so a lead quiet for
+ * three hours can go ahead of one quiet for three days and the dry run previews
+ * three arbitrary rows rather than the three that will actually go. "The rest go
+ * on the next run" only reads as a queue if it is one - and it puts the rows
+ * near the age ceiling at the front, where they are retired before the page
+ * fills with rows that still have time.
  */
 export function candidateQuery(kind: ChaseKind, cutoff: string): string {
-  return `lead_intake_sessions?select=${SELECT}${conditions(kind, cutoff)}&limit=${CHASE_PAGE + 1}`;
+  const order = kind === 'low_intent' ? 'created_at.asc' : 'updated_at.asc';
+  return (
+    `lead_intake_sessions?select=${SELECT}${conditions(kind, cutoff)}` +
+    `&order=${order}&limit=${CHASE_PAGE + 1}`
+  );
 }
 
 /**
@@ -235,14 +278,17 @@ export interface ChaseDeps {
  * else. "The send failed" pointed at Telegram for a run where every claim was
  * refused by an unreachable Supabase, which is worse than reporting nothing.
  */
-export type ChaseFailure = 'claim' | 'send' | 'unexpected';
+export type ChaseFailure = 'claim' | 'send' | 'not_configured' | 'unexpected';
 
 export interface ChaseResult {
   /**
    * `skipped` is another run holding the stamp, or a session that stopped being
    * a candidate while this run worked through the list. Neither is a failure.
+   *
+   * `retired` is a candidate past `CHASE_MAX_AGE_HOURS`: claimed so it leaves
+   * the queue for good, deliberately never sent.
    */
-  outcome: 'sent' | 'skipped' | 'failed';
+  outcome: 'sent' | 'skipped' | 'failed' | 'retired';
   /** Set only on `failed`, and names the fault rather than the stage after it. */
   failure?: ChaseFailure;
   /** null when no routing decision was due, so it cannot read as a failure. */
@@ -274,7 +320,8 @@ async function releaseClaim(
 
 /**
  * Chase one candidate: claim the stamp, send, and release the claim if the send
- * failed.
+ * failed. A candidate past the age ceiling keeps the claim and gets no send -
+ * the claim is what retires it.
  *
  * The claim must be PROVEN, not assumed. The filter matches only a session that
  * is still a candidate and that nobody has stamped, so the affected rows are
@@ -320,6 +367,19 @@ export async function chaseOne(
     return { outcome: 'skipped', routingRecorded: null };
   }
 
+  // Aged out. The claim above is what retires it: the stamp is now set, so the
+  // row leaves the queue for good and no future run rediscovers it - and
+  // nothing is sent, because a three-week-old "they never opened their link" is
+  // not something the owner can act on. Deliberately AFTER the claim, so this
+  // is a proven, atomic retirement rather than an assumed one.
+  if (isPastChasing(kind, c, now)) {
+    console.warn(
+      `[intake-chase] ${c.id} aged out at ${hoursSince(chaseClock(kind, c), now)}h ` +
+        `(ceiling ${CHASE_MAX_AGE_HOURS}h) - stamped and retired, nothing sent`,
+    );
+    return { outcome: 'retired', routingRecorded: null };
+  }
+
   let outcome: TelegramOutcome;
   try {
     outcome = await deps.send(chaseMessage(kind, c, now));
@@ -332,8 +392,16 @@ export async function chaseOne(
   if (outcome !== 'sent') {
     // Released so the next run retries. A stamp left behind on a failed send is
     // a lead nobody is ever told about.
+    //
+    // Missing credentials are reported apart from a refused send. Nothing was
+    // delivered either way, so the claim goes back either way - but an unset
+    // token is not transient, and retrying the rest of the page against it just
+    // builds the backlog the age ceiling then has to retire. The caller stops
+    // the run on this one, and the cron log names the configuration rather than
+    // 25 Telegram failures that never happened.
     await releaseClaim(deps, kind, c.id, stampedAt);
-    return { outcome: 'failed', failure: 'send', routingRecorded: null };
+    const failure: ChaseFailure = outcome === 'not_configured' ? 'not_configured' : 'send';
+    return { outcome: 'failed', failure, routingRecorded: null };
   }
 
   // WEB-01B: non-engagement recorded as a signal on the lead, not inferred

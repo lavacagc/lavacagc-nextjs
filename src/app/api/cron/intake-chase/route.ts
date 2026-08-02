@@ -25,12 +25,19 @@
  * crash between the two cannot silently swallow a lead, and a success cannot be
  * alerted twice. `chaseOne` owns that sequence - see the note there on why the
  * claim has to prove it won the race rather than assume it.
+ *
+ * A candidate past `CHASE_MAX_AGE_HOURS` is claimed and NOT sent: the backlog a
+ * sustained outage builds would otherwise arrive a page per run reporting hours
+ * in the hundreds, and stale advice in the owner's chat is what teaches him to
+ * stop reading it. Retirements are counted, logged and named in `degraded`,
+ * because ending a lead's chase with nobody told is a decision, not a quiet run.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTelegramMessage } from '@/lib/notify/telegramMessage';
 import {
-  chaseMessage, chaseOne, candidateQuery, chaseCutoff, paginate,
+  chaseMessage, chaseOne, candidateQuery, chaseCutoff, isPastChasing, paginate,
+  CHASE_MAX_AGE_HOURS,
   type ChaseCandidate, type ChaseDeps, type ChaseFailure, type ChaseKind, type ChaseResult,
 } from '@/lib/intake/chase';
 import { recordRouting } from '@/lib/intake/session';
@@ -43,6 +50,7 @@ import { recordRouting } from '@/lib/intake/session';
 const FAULT_LABEL: Record<ChaseFailure, string> = {
   claim: 'chase_claim_failed',
   send: 'chase_send_failed',
+  not_configured: 'telegram_not_configured',
   unexpected: 'chase_threw',
 };
 
@@ -97,20 +105,40 @@ export async function GET(request: NextRequest) {
     ? { truncated: true, note: `More than ${candidates.length} are waiting - the rest go on the next run.` }
     : { truncated: false };
 
+  // Aged-out rows are claimed and dropped rather than sent, so counting them as
+  // "would chase" would overstate what the run is about to do.
+  const wouldRetire = candidates.filter((c) => isPastChasing(kind, c, now)).length;
+
   if (dry) {
+    // The preview renders the same lead-supplied rows the live path does, and
+    // the live path treats a row it cannot render as one failed candidate and
+    // keeps going. Unguarded here, the one surface a malformed row would first
+    // be noticed on is the one that answers a bare 500 naming no row at all.
+    const previewFailures: string[] = [];
+    const preview = candidates.slice(0, 3).map((c) => {
+      try {
+        return { session: c.id, who: c.first_name, message: chaseMessage(kind, c, now) };
+      } catch (err) {
+        console.error(`[intake-chase] could not render a preview for ${c.id}:`, err);
+        previewFailures.push(c.id);
+        return { session: c.id, who: c.first_name, error: 'could not be rendered' };
+      }
+    });
+
+    const dryDegraded = [
+      ...(previewFailures.length > 0 ? ['preview_render_failed'] : []),
+      ...(truncated ? ['candidate_read_truncated'] : []),
+    ];
     return NextResponse.json({
-      ok: !truncated,
-      ...(truncated ? { degraded: ['candidate_read_truncated'] } : {}),
+      ok: dryDegraded.length === 0,
+      ...(dryDegraded.length > 0 ? { degraded: dryDegraded } : {}),
       stage: kind,
       dry: true,
       cutoff,
-      wouldChase: candidates.length,
+      wouldChase: candidates.length - wouldRetire,
+      ...(wouldRetire ? { wouldRetire } : {}),
       ...backlog,
-      preview: candidates.slice(0, 3).map((c) => ({
-        session: c.id,
-        who: c.first_name,
-        message: chaseMessage(kind, c, now),
-      })),
+      preview,
     });
   }
 
@@ -123,10 +151,13 @@ export async function GET(request: NextRequest) {
   let sent = 0;
   let skipped = 0;
   let failed = 0;
+  let retired = 0;
+  let processed = 0;
   let routingUnrecorded = 0;
   const faults = new Set<string>();
 
   for (const c of candidates) {
+    processed++;
     // One bad row must not take the run down with it. `chaseOne` already
     // releases its own claim on a throw; this is the backstop that keeps the
     // REST of the page from being left claimed and unsent by a failure nobody
@@ -140,6 +171,7 @@ export async function GET(request: NextRequest) {
     }
     if (result.outcome === 'sent') sent++;
     else if (result.outcome === 'skipped') skipped++;
+    else if (result.outcome === 'retired') retired++;
     else {
       failed++;
       faults.add(FAULT_LABEL[result.failure ?? 'unexpected']);
@@ -147,6 +179,24 @@ export async function GET(request: NextRequest) {
     // The alert went but the lead has no record of where it was routed. Not a
     // send failure, and it must not be reported as a clean run either.
     if (result.routingRecorded === false) routingUnrecorded++;
+
+    // Nothing can send without credentials, so working through the rest of the
+    // page would claim and release 24 more rows to no purpose and report a
+    // Telegram fault 25 times over. The stamps are already back, so every one
+    // of them is still a candidate for the run after the config is fixed.
+    if (result.failure === 'not_configured') {
+      console.error('[intake-chase] Telegram is not configured - stopping the run');
+      break;
+    }
+  }
+
+  // A mass retirement must not pass for a quiet run. It is the one outcome here
+  // that permanently ends a lead's chase without anybody being told.
+  if (retired > 0) {
+    console.warn(
+      `[intake-chase] retired ${retired} ${kind} session(s) older than ` +
+        `${CHASE_MAX_AGE_HOURS}h - stamped, not sent`,
+    );
   }
 
   // A run that could not do its whole job names the part it could not do, in
@@ -154,8 +204,10 @@ export async function GET(request: NextRequest) {
   // a counter is the same silence AC8 exists to stop: a run where all 25 sends
   // failed must not answer the way a clean one does - and a run where Supabase
   // refused every claim must not point the reader at Telegram.
+  const unprocessed = candidates.length - processed;
   const degraded = [
     ...[...faults].sort(),
+    ...(retired > 0 ? ['chase_retired_stale'] : []),
     ...(routingUnrecorded > 0 ? ['routing_write_failed'] : []),
     ...(truncated ? ['candidate_read_truncated'] : []),
   ];
@@ -172,6 +224,11 @@ export async function GET(request: NextRequest) {
     // Expected under overlap, not an error.
     skipped,
     failed,
+    // Past the age ceiling: stamped so they leave the queue, deliberately never
+    // sent. Reported because nobody was told about these leads and nobody will
+    // be, which is a decision the run has to show rather than absorb.
+    ...(retired ? { retired } : {}),
+    ...(unprocessed ? { unprocessed } : {}),
     ...(routingUnrecorded ? { routingUnrecorded } : {}),
   });
 }

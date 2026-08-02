@@ -6,7 +6,8 @@ import { scoreLead } from '../src/lib/leadScoring';
 import { sanitizeLeadForInsert } from '../src/lib/leadSanitize';
 import {
   chaseMessage, lowIntentMessage, abandonedMessage, answeredLabels, hoursSince,
-  chaseOne, candidateQuery, claimPath, chaseCutoff, paginate, CHASE_PAGE, CHASE_STAMP,
+  chaseOne, candidateQuery, claimPath, chaseCutoff, paginate, isPastChasing,
+  CHASE_PAGE, CHASE_STAMP, CHASE_MAX_AGE_HOURS,
   type ChaseCandidate, type ChaseDeps,
 } from '../src/lib/intake/chase';
 import { countPhotosForScoring, recordRouting } from '../src/lib/intake/session';
@@ -641,14 +642,26 @@ test.describe('AC8 - a broken cron does not look like a quiet one', () => {
 
   test('the claim and the candidate query apply the same conditions', () => {
     // One definition, so a guard added to the snapshot cannot be missing from
-    // the only atomic point in the run.
+    // the only atomic point in the run. Paging and ordering shape the list and
+    // are not conditions, so they are the only difference allowed.
     for (const kind of ['low_intent', 'abandoned'] as const) {
       const cutoff = chaseCutoff(kind, NOW);
       const claim = claimPath(kind, 's1', cutoff).split('&').slice(1).sort();
-      const query = candidateQuery(kind, cutoff)
-        .replace(`&limit=${CHASE_PAGE + 1}`, '').split('&').slice(1).sort();
+      const query = candidateQuery(kind, cutoff).split('&').slice(1)
+        .filter((p) => !p.startsWith('limit=') && !p.startsWith('order=')).sort();
       expect(claim).toEqual(query);
     }
+  });
+
+  test('THE BACKLOG DRAINS OLDEST FIRST, ON THE CLOCK THE STAGE SELECTS BY', () => {
+    // Unordered, a lead quiet for three hours can go ahead of one quiet for
+    // three days, and the dry run previews three arbitrary rows rather than the
+    // three that will actually go. "The rest go on the next run" is only a
+    // queue if it is ordered.
+    expect(candidateQuery('low_intent', CUTOFF)).toContain('order=created_at.asc');
+    expect(candidateQuery('abandoned', CUTOFF)).toContain('order=updated_at.asc');
+    // And ordering is not a condition: it must not reach the claim.
+    expect(claimPath('abandoned', 's1', CUTOFF)).not.toContain('order=');
   });
 
   test('a row that stopped being a candidate mid-run is skipped, not chased', async () => {
@@ -756,6 +769,68 @@ test.describe('AC8 - a broken cron does not look like a quiet one', () => {
     const src = code('src/app/api/cron/intake-chase/route.ts');
     expect(src).toMatch(/try\s*\{\s*result = await chaseOne\(/);
     expect(src).toContain('threw and was not chased');
+  });
+
+  test('A CANDIDATE PAST THE AGE CEILING KEEPS ITS CLAIM AND GETS NO MESSAGE', async () => {
+    // A send that does not succeed releases its claim, so an environment with
+    // no Telegram credentials - or any sustained outage - accumulates
+    // candidates indefinitely and delivers them a page per run on recovery.
+    // The claim is what retires them: stamped, so no future run sees the row,
+    // and nothing sent, because "submitted 700 hours ago" is not actionable.
+    const old = new Date(NOW.getTime() - (CHASE_MAX_AGE_HOURS + 1) * 3_600_000).toISOString();
+
+    const ab = fakeDeps();
+    const abResult = await chaseOne('abandoned', quiet({ updated_at: old }), NOW, ab.deps);
+    expect(abResult.outcome).toBe('retired');
+    expect(ab.sends).toEqual([]);
+    // One PATCH: the claim that retired it. No release - the stamp is the point.
+    expect(ab.patches).toHaveLength(1);
+    expect(ab.patches[0].body).toEqual({ [CHASE_STAMP.abandoned]: NOW.toISOString() });
+
+    // And the low-intent stage does not write score 0 / cold onto a lead it
+    // decided was too old to have an opinion about.
+    const low = fakeDeps();
+    const lowResult = await chaseOne('low_intent', candidate({ created_at: old }), NOW, low.deps);
+    expect(lowResult.outcome).toBe('retired');
+    expect(low.sends).toEqual([]);
+    expect(low.routed).toEqual([]);
+  });
+
+  test('each stage measures age on the same clock it selects by', () => {
+    const past = new Date(NOW.getTime() - (CHASE_MAX_AGE_HOURS + 1) * 3_600_000).toISOString();
+    // A lead who answered an hour ago is not stale because they first arrived
+    // four days ago - the abandoned stage's clock is the last answer.
+    expect(isPastChasing('abandoned', quiet({ created_at: past }), NOW)).toBe(false);
+    expect(isPastChasing('abandoned', quiet({ updated_at: past }), NOW)).toBe(true);
+    expect(isPastChasing('low_intent', candidate({ created_at: past }), NOW)).toBe(true);
+    expect(isPastChasing('low_intent', candidate(), NOW)).toBe(false);
+    // A timestamp that cannot be parsed reads as brand new, so it is chased
+    // rather than silently retired: dropping a lead on a bad date is worse.
+    expect(isPastChasing('low_intent', candidate({ created_at: 'not-a-date' }), NOW)).toBe(false);
+  });
+
+  test('MISSING CREDENTIALS ARE NOT A REFUSED SEND, AND THE CLAIM STILL GOES BACK', async () => {
+    // An unset token is not transient. Named apart so the cron log points at
+    // the configuration instead of at a Telegram that was never asked.
+    const f = fakeDeps({ send: 'not_configured' });
+    const result = await chaseOne('abandoned', quiet(), NOW, f.deps);
+    expect(result.outcome).toBe('failed');
+    expect(result.failure).toBe('not_configured');
+    // Nothing was delivered, so the lead stays chaseable once it is fixed.
+    expect(f.patches).toHaveLength(2);
+    expect(f.patches[1].body).toEqual({ [CHASE_STAMP.abandoned]: null });
+
+    const src = code('src/app/api/cron/intake-chase/route.ts');
+    expect(src).toContain('telegram_not_configured');
+    // And the run stops rather than claiming and releasing the rest of the page
+    // against credentials that will not be there by the next candidate.
+    expect(src).toMatch(/if \(result\.failure === 'not_configured'\)/);
+  });
+
+  test('a retirement is reported, because nobody was told and nobody will be', () => {
+    const src = code('src/app/api/cron/intake-chase/route.ts');
+    expect(src).toContain('chase_retired_stale');
+    expect(src).toContain('retired ${retired}');
   });
 
   test('a session with no lead has nothing to record, which is not a failure', async () => {

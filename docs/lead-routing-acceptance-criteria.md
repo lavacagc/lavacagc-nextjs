@@ -85,6 +85,11 @@ WEB-01A's criterion is that "the routing decision and its recipient are logged o
 - Non-engagement is recorded as a signal on the lead rather than inferred later from an absence.
   That write is retried once: the alert has gone and the stamp stays set, so the session is a candidate for no future run and nothing else would ever retry it.
 - The alert fires **once** per session. A second run must not re-alert.
+- A candidate more than **72 hours** old is retired instead of chased: the stamp is claimed so the row leaves the queue for good, and nothing is sent.
+  Past three days the lead has either called or gone, and "submitted 700 hours ago - worth one manual follow-up" is advice the owner cannot act on.
+  This is not a hypothetical backlog: a send that does not succeed releases its claim so the next run retries, so an environment with no Telegram credentials, a disabled cron, or any sustained outage accumulates candidates indefinitely and would deliver them a page per run on recovery.
+  Retirements are counted, logged and named in `degraded` - ending a lead's chase with nobody told is a decision the run has to show, not absorb.
+- The backlog drains **oldest first**, on the same clock each stage selects by, so the queue the route describes is one and the rows nearest the ceiling are retired before the page fills with rows that still have time.
 - Both stages run every three hours across the working day - 13:00, 16:00, 19:00 and 22:00 UTC, which is 9am to 6pm Eastern in summer and an hour earlier in winter.
   A 6-hour threshold checked once a day is inoperative: the cron time, not the threshold, decides when the alert lands, and a lead who submits at 10am waits until the following morning.
   Daytime only, because these land in the owner's personal chat - a 3am chase is worse than a late one - and the elapsed hours are computed from the timestamp, so they stay true whenever the run lands.
@@ -98,7 +103,8 @@ Not in the spec, and raised because slice A left it in the gap between "never op
   The clock is `updated_at`, which every answer writes - not `opened_at`.
   A lead who opened the link at 16:00 and answered a question at 20:55 is still mid-conversation, and telling the owner they "did not finish" a minute before the completion brief arrives would make both messages untrustworthy.
 - It says plainly how far they got and how long they have been quiet, so a half-answered lead is not mistaken for a finished one.
-- Fires once, like AC6.
+- Fires once, and is retired at the same 72-hour ceiling, like AC6.
+  Its clock is the last answer, so a lead who arrived four days ago but answered an hour ago is not stale.
 - A lead who **declined** at the consent step is not chased: they answered the question that was asked.
 - Every lead-supplied field in the message is clipped.
   Over Telegram's 4096-character limit the send 400s, the claim is released, and the same session fails identically on every run afterwards - so that lead is never chased at all.
@@ -114,6 +120,12 @@ Not in the spec, and raised because slice A left it in the gap between "never op
 - `ok` follows a `degraded` list naming what went wrong - failed sends, failed routing writes, a truncated read - so a half-done run is visible in the cron log rather than only in a counter in a body nobody reads.
 - That list names the **fault**, not the stage after it: `chase_claim_failed` for a claim Supabase refused, `chase_send_failed` for a send Telegram refused, `chase_threw` for anything else.
   It is the only field the cron log surfaces, so pointing at Telegram when the database is unreachable defeats the purpose of having it.
+- Missing Telegram credentials are `telegram_not_configured`, not a refused send, and they **stop the run**.
+  An unset token is not transient: working through the rest of the page against it claims and releases every remaining row to no purpose and reports a Telegram fault 25 times for sends that were never attempted.
+  Nothing was delivered, so the claim still goes back and every candidate is still a candidate once the configuration is fixed.
+- The `?dry=1` preview guards each row the way the live loop does, and reports `preview_render_failed`.
+  It is the diagnostic surface a malformed row is first noticed on, so it is the last place that should answer a bare 500 naming no row at all.
+  It also counts what it would retire apart from what it would chase, since a retirement sends nothing.
 - Any throw after the stamp is written releases the claim, and the loop guards each candidate.
   Otherwise one bad row leaves itself and every candidate after it claimed and unsent, which no future run can see.
 - The route sets `maxDuration = 300` like every other looping cron here: a run killed mid-loop leaves candidates claimed but unsent, and those keep their stamp and are never chased again.

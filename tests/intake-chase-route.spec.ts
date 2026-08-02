@@ -54,14 +54,18 @@ function stub(handler: (c: Call) => { status?: number; body?: unknown }): Call[]
 const isCandidateRead = (c: Call) => c.method === 'GET' && c.url.includes('lead_intake_sessions?select=');
 const isTelegram = (c: Call) => c.url.includes('api.telegram.org');
 
+/** Hours before this run started, so rows sit either side of the age ceiling. */
+const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+
 const row = (id: string, extra: Record<string, unknown> = {}) => ({
   id, lead_id: `lead-${id}`, first_name: 'Sarah', project_type: 'Kitchen Remodeling',
-  answers: {}, created_at: '2020-01-01T00:00:00Z', opened_at: '2020-01-01T00:00:00Z',
-  updated_at: '2020-01-01T00:00:00Z', ...extra,
+  answers: {}, created_at: ago(8), opened_at: ago(8), updated_at: ago(6), ...extra,
 });
 
-async function run(stage: string) {
-  const res = await GET(new NextRequest(`https://lavacagc.test/api/cron/intake-chase?stage=${stage}`));
+async function run(stage: string, extra = '') {
+  const res = await GET(
+    new NextRequest(`https://lavacagc.test/api/cron/intake-chase?stage=${stage}${extra}`),
+  );
   return { status: res.status, body: await res.json() };
 }
 
@@ -119,6 +123,74 @@ test('a candidate list that could not be read is a 503, not a quiet run', async 
   expect(status).toBe(503);
   expect(body.ok).toBe(false);
   expect(body.error).toContain('nothing was chased');
+});
+
+test('A LEAD PAST THE AGE CEILING IS STAMPED AND NOT SENT, AND THE RUN SAYS SO', async () => {
+  // "Submitted 700 hours ago, link never opened - worth one manual follow-up"
+  // is advice nobody can act on, and a channel that delivers it gets ignored.
+  const calls = stub((c) => {
+    if (isCandidateRead(c)) return { body: [row('stale', { updated_at: ago(100) }), row('fresh')] };
+    if (isTelegram(c)) return { body: { ok: true } };
+    return { body: [{ id: 'x' }] };
+  });
+
+  const { body } = await run('abandoned');
+  expect(body.retired).toBe(1);
+  expect(body.sent).toBe(1);
+  // Ending a lead's chase with nobody told is a decision, not a quiet run.
+  expect(body.ok).toBe(false);
+  expect(body.degraded).toContain('chase_retired_stale');
+
+  // Stamped once and never released, so it leaves the queue for good...
+  const stale = calls.filter((c) => c.method === 'PATCH' && c.url.includes('id=eq.stale'));
+  expect(stale).toHaveLength(1);
+  expect(stale[0].body?.abandoned_alert_at).toEqual(expect.any(String));
+  // ...and the only message that went was for the row still worth chasing.
+  expect(calls.filter(isTelegram)).toHaveLength(1);
+});
+
+test('MISSING TELEGRAM CREDENTIALS STOP THE RUN INSTEAD OF DRAINING THE PAGE', async () => {
+  // An unset token is not transient. Retrying the rest of the page against it
+  // claims and releases every row to no purpose, and reports a Telegram fault
+  // for sends that were never attempted.
+  delete process.env.TELEGRAM_BOT_TOKEN;
+  const calls = stub((c) => (isCandidateRead(c) ? { body: [row('a'), row('b')] } : { body: [{ id: 'x' }] }));
+
+  const { body } = await run('abandoned');
+  expect(body.ok).toBe(false);
+  expect(body.degraded).toEqual(['telegram_not_configured']);
+  expect(body.failed).toBe(1);
+  // The second candidate was never touched, and the run says one was left.
+  expect(body.unprocessed).toBe(1);
+  expect(calls.filter((c) => c.url.includes('id=eq.b'))).toEqual([]);
+
+  // Nothing was delivered, so the claim goes back: both are candidates again
+  // for the run after the configuration is fixed.
+  const released = calls.filter((c) => c.method === 'PATCH' && c.body?.abandoned_alert_at === null);
+  expect(released).toHaveLength(1);
+  expect(released[0].url).toContain('id=eq.a');
+});
+
+test('the dry run previews a row it cannot render instead of 500ing on it', async () => {
+  // The diagnostic surface is where a malformed row is first noticed, so it is
+  // the last place that should answer a bare 500 naming no row at all.
+  stub((c) => (isCandidateRead(c) ? { body: [row('bad', { answers: null }), row('good')] } : { body: [] }));
+
+  const { status, body } = await run('abandoned', '&dry=1');
+  expect(status).toBe(200);
+  expect(body.ok).toBe(false);
+  expect(body.degraded).toEqual(['preview_render_failed']);
+  expect(body.preview[0].session).toBe('bad');
+  expect(body.preview[0].error).toBeTruthy();
+  expect(body.preview[1].message).toContain('Started the intake and stopped');
+});
+
+test('the dry run counts what it would retire apart from what it would chase', async () => {
+  stub((c) => (isCandidateRead(c) ? { body: [row('stale', { updated_at: ago(100) }), row('fresh')] } : { body: [] }));
+
+  const { body } = await run('abandoned', '&dry=1');
+  expect(body.wouldChase).toBe(1);
+  expect(body.wouldRetire).toBe(1);
 });
 
 test('a clean run says so, and stamps every candidate exactly once', async () => {
