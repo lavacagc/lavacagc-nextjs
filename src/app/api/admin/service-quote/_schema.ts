@@ -70,6 +70,27 @@ export const scheduleSchema = z.object({
   address: z.string().trim().min(1, 'A service address is required for the calendar invite').max(300),
   city: z.string().trim().max(120).optional().or(z.literal('').transform(() => undefined)),
   zip: z.string().trim().max(20).optional().or(z.literal('').transform(() => undefined)),
+
+  /**
+   * Who the crew dispatch goes to.
+   *
+   * OMITTED means every active recipient, not none: a booking made without
+   * touching the picker must still reach the crew, because a dispatch nobody
+   * receives is the exact gap this closes. An empty array is treated the same
+   * way for the same reason - see `resolveRecipients`.
+   */
+  recipientIds: z.array(z.string().uuid()).max(20).optional(),
+  /**
+   * Free text, by design - the sub is named in the dispatch, not modelled.
+   *
+   * ABSENT and EMPTY are DIFFERENT answers and the boundary has to keep them
+   * apart. Whatever is in the admin's box wins, so an empty box is an explicit
+   * clear - `null` - and only a field left out altogether leaves the stored sub
+   * alone. Transforming '' to undefined here made a sub write-once per window:
+   * the PATCH was skipped, and the crew were re-mailed a sub who had fallen
+   * through with no way to correct it short of cancelling the visit.
+   */
+  subName: z.string().trim().max(160).optional().transform((v) => (v === '' ? null : v)),
 }).refine((d) => new Date(d.end).getTime() > new Date(d.start).getTime(), {
   message: 'The end of the window must be after the start', path: ['end'],
 });
@@ -98,6 +119,20 @@ export const cancelVisitSchema = z.object({
 });
 
 export type CancelVisitInput = z.infer<typeof cancelVisitSchema>;
+
+/**
+ * Payload for clearing a crew flag on ONE visit.
+ *
+ * Same (homeowner, window) pair every other visit-scoped action takes, and for
+ * the same reason: it is what names a visit, and a flag cleared without one
+ * would reach every visit this customer has on the books.
+ */
+export const handleFlagSchema = z.object({
+  homeownerId: z.string().uuid(),
+  start: z.string().datetime({ offset: true }),
+});
+
+export type HandleFlagInput = z.infer<typeof handleFlagSchema>;
 
 export const completeSchema = z.object({
   homeownerId: z.string().uuid(),

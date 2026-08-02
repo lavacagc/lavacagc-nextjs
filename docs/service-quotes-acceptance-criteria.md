@@ -33,8 +33,14 @@ These were settled by the owner during review; the ACs assume them.
    tells the customer La Vaca will text when on the way; that text is sent by
    hand.
 7. **The customer's calendar file lives on the portal**, not attached to email,
-   so the only `.ics` ever generated carries internal ops alarms and can only
-   reach the owner.
+   and their copy carries no ops alarms.
+   When this was written that made the owner's the only `.ics` in existence;
+   crew dispatch has since added a third variant that is deliberately attached
+   to the crew's own email and carries the same two alarms, because the 7:00am
+   one is what prompts the text this feature promises in writing - see
+   `docs/crew-dispatch-acceptance-criteria.md`. What this decision protects is
+   unchanged: nothing carrying an internal ops alarm is ever mailed to the
+   customer.
 
 ---
 
@@ -264,6 +270,14 @@ These were settled by the owner during review; the ACs assume them.
 - **ICS5** The customer variant contains **no** `VALARM` at all, so internal ops
   reminders can never reach them.
 - **ICS6** `LOCATION` carries the service address.
+
+`buildIcs` takes a `variant`, and the third one - `crew` - belongs to crew
+dispatch rather than to this slice: `METHOD:REQUEST` with an `ORGANIZER` and one
+`ATTENDEE` per recipient, a `SEQUENCE` that counts up, both alarms, and a
+`METHOD:CANCEL` retraction that carries none. It is specified in
+`docs/crew-dispatch-acceptance-criteria.md` (AC1-AC11). ICS3 and ICS5 are
+untouched by it - the owner's copy still carries both alarms, the customer's
+still carries none.
 
 ## RM - the night-before reminder
 

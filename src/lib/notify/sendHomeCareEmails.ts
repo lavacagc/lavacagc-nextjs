@@ -1,4 +1,5 @@
 import { sendTrackedEmail, type EmailCategory } from '@/lib/notify/sendEmail';
+import { HOME_CARE_FROM } from '@/lib/notify/senders';
 import type { StreamKey } from '@/lib/preferences/preferences';
 import { buildVerificationEmail, buildWelcomeEmail } from '@/lib/homecare/lifecycleEmails';
 
@@ -15,10 +16,12 @@ import { buildVerificationEmail, buildWelcomeEmail } from '@/lib/homecare/lifecy
  * so they can be rendered and asserted without sending anything. `HOME_CARE_FROM`
  * is the shared sender for the service-work emails too, which send through
  * sendTrackedEmail directly with their own reply-to (SERVICE_REPLY_TO) rather
- * than the DEFAULT_REPLY_TO here.
+ * than the DEFAULT_REPLY_TO here. It lives in notify/senders.ts because the
+ * calendar builder has to name the same address as the invite's ORGANIZER and
+ * cannot import this module; re-exported here so every caller keeps one import.
  */
 
-export const HOME_CARE_FROM = 'La Vaca Home Care <alex@email.lavaca.link>';
+export { HOME_CARE_FROM };
 const DEFAULT_REPLY_TO = 'info@lavacagc.com';
 
 export interface HomeCareEmailResult {

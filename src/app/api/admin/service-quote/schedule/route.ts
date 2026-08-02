@@ -2,12 +2,14 @@
  * POST /api/admin/service-quote/schedule  - book a visit
  * GET  /api/admin/service-quote/schedule?... - download the owner's .ics
  *
- * Booking does four things:
+ * Booking does five things:
  *   1. upserts a lightweight homeowners record (pending + service_quote, so it
  *      can never receive marketing - see serviceScheduling.ts),
  *   2. writes the window onto each task as status='booked',
  *   3. cancels any stale reminder and queues the night-before one,
- *   4. returns the owner's .ics, alarms included.
+ *   4. dispatches the crew - the email with the calendar invite attached and a
+ *      per-person confirm link (see lib/homecare/dispatch.ts),
+ *   5. returns the owner's .ics, alarms included.
  *
  * Admin auth is enforced by middleware on /api/admin/*.
  */
@@ -18,6 +20,10 @@ import {
   crossSeasonBookings, requeueVisitReminder, cancelVisitReminder, type VisitTask,
 } from '@/lib/homecare/serviceScheduling';
 import { buildVisitReminderEmail } from '@/lib/homecare/serviceEmails';
+import {
+  sendVisitDispatch, clearVisitDispatch, readVisitContext,
+  type SendDispatchResult, type ClearDispatchResult,
+} from '@/lib/homecare/dispatch';
 import { visitDateLabel, visitTimeWindow, easternParts } from '@/lib/homecare/visitSchedule';
 import { seasonForTaskVisit } from '@/lib/homecare/season';
 import { buildIcs } from '@/lib/homecare/ics';
@@ -39,7 +45,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Validation failed', issues: parsed.error.issues }, { status: 400 });
   }
-  const { email, name, phone, taskKeys, start, end, address, city, zip } = parsed.data;
+  const { email, name, phone, taskKeys, start, end, address, city, zip, recipientIds, subName } = parsed.data;
   const startAt = new Date(start);
   const endAt = new Date(end);
 
@@ -116,6 +122,17 @@ export async function POST(request: NextRequest) {
     const superseded = supersededBookings({ previous, tasks, start: startAt });
     const supersedes = orphanedVisitStarts({ previous, superseded });
 
+    // What each vacated window was, read BEFORE the upsert moves its rows: once
+    // the window is given up the services are no longer readable, and the
+    // calendar retraction that takes it off the crew's phones has to name the
+    // visit it is withdrawing. The READ is carried, not just its value - a
+    // window that could not be read is not an empty one, and a retraction built
+    // out of the defaults that produced names nothing the crew can act on.
+    const vacated = await Promise.all(supersedes.map(async (when) => ({
+      when,
+      visit: await readVisitContext(homeowner.id, when),
+    })));
+
     await scheduleVisit({ homeownerId: homeowner.id, tasks, start: startAt, end: endAt, address });
 
     const services = taskKeys.map((k) => catalog.find((c) => c.key === k)?.title ?? k);
@@ -139,11 +156,96 @@ export async function POST(request: NextRequest) {
       email, name, start: startAt, subject, html, supersedes,
     });
 
+    // Tell the crew. Runs AFTER the booking is written and never throws: the
+    // booking is the customer's commitment and it already succeeded, so a
+    // dispatch that cannot go out is something the admin needs to be told
+    // about - not a reason to report a booking failed that in fact happened.
+    // Which is why the outcome is in the response and surfaced in the toast.
+    const dispatch = await sendVisitDispatch({
+      siteUrl: SITE_URL,
+      homeownerId: homeowner.id,
+      visitStart: startAt,
+      visitEnd: endAt,
+      customerName: name,
+      customerPhone: phone,
+      address,
+      services,
+      visitDateLabel: visitDateLabel(startAt),
+      timeWindow: visitTimeWindow(startAt, endAt),
+      subName,
+      recipientIds,
+      // The verdict this request already holds, handed on rather than left
+      // behind: the email used to assert the customer gets their reminder
+      // whatever this line had just answered.
+      customerReminder: reminder,
+    }).catch((err): SendDispatchResult => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('crew dispatch threw after a successful booking:', message);
+      return {
+        outcome: 'unavailable', sentTo: [], stillLive: [], notMailed: [],
+        recorded: 'ok', subRecorded: 'ok', error: message,
+      };
+    });
+
+    // A window this booking moved off is as retired as a cancelled one: its
+    // dispatch row would otherwise be inherited by whatever is booked into that
+    // slot next, complete with the stamps that say it has already been chased,
+    // and the crew would be left holding two events - the moved visit's and the
+    // new one's - each with its own 7:00am "text the customer" alarm.
+    //
+    // BOTH verdicts are kept, not discarded. A retraction that never landed
+    // leaves somebody holding the OLD window and its alarm, and the admin who
+    // moved the visit is the only person in a position to call them; a row that
+    // would not come off leaves the next booking of that slot inheriting the
+    // stamps that say it has already been chased, and nothing else would ever
+    // say so.
+    const retired: { when: Date; result: ClearDispatchResult }[] = [];
+    for (const { when, visit } of vacated) {
+      const result = await clearVisitDispatch(homeowner.id, when, { reason: 'cancelled', visit })
+        .catch((err): ClearDispatchResult => {
+          console.error(
+            'crew dispatch for a superseded window could not be retired:',
+            err instanceof Error ? err.message : String(err),
+          );
+          return { status: 'unavailable', retraction: 'not_needed', unretracted: [] };
+        });
+      retired.push({ when, result });
+    }
+    const stillHolding = [...new Set(retired.flatMap((r) => r.result.unretracted))];
+    const unretiredWindows = retired
+      .filter((r) => r.result.status === 'unavailable')
+      .map((r) => r.when.toISOString());
+
     return NextResponse.json({
       status: 'scheduled',
       homeownerId: homeowner.id,
       homeownerStatus: homeowner.status,
       services,
+      dispatch: dispatch.outcome,
+      dispatchedTo: dispatch.sentTo,
+      // Somebody un-ticked from this visit whose row would NOT retire. Their
+      // confirm link still works, and one tap from them reads as "the crew
+      // answered" - silencing the 5pm and 6pm chases for a visit the people
+      // actually going have never confirmed. Only the admin can undo that, so
+      // it is named here rather than left in a log.
+      crewStillLive: dispatch.stillLive,
+      // Ticked, and not written to at all. Their assignment row could not be
+      // prepared, so no email was even attempted.
+      crewNotMailed: dispatch.notMailed,
+      // The send itself is not on the dispatch row: the escalation will read
+      // this visit as never dispatched, and cancelling it will retract nothing.
+      dispatchRecorded: dispatch.recorded,
+      // The sub is in the email that went out and NOT on the visit, so the
+      // confirm page and any later flag alert cannot name them. The only two
+      // places that divergence is visible are here and the log.
+      dispatchSubRecorded: dispatch.subRecorded,
+      // Who was NOT told the old window is off, when this booking moved one.
+      // Empty is the normal answer; anything in it is a phone call.
+      stillHolding,
+      // Old windows whose dispatch record would not come off at all - so
+      // nothing was retracted for them either, and re-booking that slot would
+      // inherit stamps saying it has already been chased.
+      unretiredWindows,
       // What each task was actually filed under. "Mark complete" needs this:
       // the season is per task and derived here, so the caller cannot guess it.
       seasons: Object.fromEntries(tasks.map((t) => [t.taskKey, t.season])),
@@ -156,6 +258,11 @@ export async function POST(request: NextRequest) {
         address,
         name,
         ...(phone ? { phone } : {}),
+        // Carried onto the owner's own file so its 7:30pm alarm cannot claim the
+        // customer reminder went out when this booking's queue answered
+        // 'skipped' or 'unavailable'. Absent means absent: the GET below asserts
+        // nothing it was not told.
+        ...(reminder === 'queued' ? { reminded: '1' } : {}),
       })}`,
     });
   } catch (err) {
@@ -185,6 +292,7 @@ export async function GET(request: NextRequest) {
     customerName: name,
     customerPhone: q.get('phone'),
     variant: 'owner',
+    customerReminded: q.get('reminded') === '1',
   });
 
   return new NextResponse(ics, {
@@ -232,6 +340,12 @@ export async function DELETE(request: NextRequest) {
     const owner = owners[0];
     if (!owner?.email) return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
 
+    // Read while the visit still exists. Clearing the window is what makes it a
+    // cancellation, and after that there is nothing left to describe to the
+    // crew in the calendar retraction below. The verdict travels with it: a
+    // read that failed must not be mistaken for a visit with nothing in it.
+    const visit = await readVisitContext(homeownerId, startAt);
+
     const filter = `homeowner_maintenance?homeowner_id=eq.${homeownerId}` +
       `&scheduled_start=eq.${encodeURIComponent(startAt.toISOString())}`;
     // The window is what identifies the visit; `status` is shared with the
@@ -243,7 +357,21 @@ export async function DELETE(request: NextRequest) {
     // a pending "we're coming tomorrow" for a visit that was called off, and
     // answering a flat "cancelled" is what hid it.
     const reminder = await cancelVisitReminder(owner.email, startAt);
-    return NextResponse.json({ status: 'cancelled', reminder });
+    // The dispatch record goes with the visit. It is keyed on (homeowner,
+    // window), so leaving it behind means re-booking that same window later
+    // inherits this visit's escalation stamps - and a `nudged_at` already set
+    // is what tells the 5pm stage it has nothing to do. This also mails the
+    // crew a METHOD:CANCEL, because deleting the row does nothing to the event
+    // already on their phone, and that event is what tells them to text the
+    // customer at 7:00am. The record of what was actually sent lives in
+    // email_log, which this does not touch.
+    //
+    // Reported, never assumed - the same rule the reminder follows. A cancel
+    // whose retraction did not land leaves the crew holding the visit and its
+    // 7:00am "text the customer" alarm, and answering a flat "cancelled" is
+    // what would hide it.
+    const dispatch = await clearVisitDispatch(homeownerId, startAt, { reason: 'cancelled', visit });
+    return NextResponse.json({ status: 'cancelled', reminder, dispatch });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('service-quote cancel failed:', message);

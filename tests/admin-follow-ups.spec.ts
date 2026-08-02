@@ -1,5 +1,4 @@
 import { test, expect, type BrowserContext } from '@playwright/test';
-import http from 'http';
 import path from 'path';
 import { mkdirSync } from 'fs';
 
@@ -14,8 +13,9 @@ import { mkdirSync } from 'fs';
  * and the per-person "Stop drip" control persists through the same API.
  *
  * This spec renders the real page the same way the other /vaca-mgmt admin tests
- * do: NEXT_PUBLIC_SUPABASE_URL is baked to a local GoTrue stub (127.0.0.1:9099)
- * and a fabricated session cookie makes middleware's getUser() succeed. The
+ * do: NEXT_PUBLIC_SUPABASE_URL is baked to the local GoTrue stub
+ * (127.0.0.1:9099) that playwright.config.ts starts for the run, and a
+ * fabricated session cookie makes middleware's getUser() succeed. The
  * /api/admin/follow-ups JSON is mocked at the browser network layer with a
  * prod-shaped queue (5 people, 7 pending emails, 1 review sequence) so we can
  * screenshot the dashboard populated instead of zeroed, and prove "Stop drip"
@@ -100,52 +100,13 @@ function prodShapedQueue(): QueueRow[] {
 }
 
 test.describe('admin /vaca-mgmt/follow-ups', () => {
-  const STUB_PORT = 9099;
-  let stub: http.Server;
-
-  test.beforeAll(async () => {
-    // Minimal GoTrue stand-in: middleware's supabase.auth.getUser() hits
-    // GET /auth/v1/user; any authenticated user unlocks the admin page.
-    stub = http.createServer((req, res) => {
-      if (req.url?.startsWith('/auth/v1/user')) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            id: '00000000-0000-0000-0000-000000000001',
-            aud: 'authenticated',
-            role: 'authenticated',
-            email: 'admin@lavacagc.com',
-            created_at: '2026-01-01T00:00:00Z',
-            app_metadata: {},
-            user_metadata: {},
-          }),
-        );
-        return;
-      }
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end('{}');
-    });
-    const deadline = Date.now() + 60_000;
-    for (;;) {
-      try {
-        await new Promise<void>((resolve, reject) => {
-          stub.once('error', reject);
-          stub.listen(STUB_PORT, '127.0.0.1', () => {
-            stub.removeAllListeners('error');
-            resolve();
-          });
-        });
-        break;
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE' || Date.now() > deadline) throw err;
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    }
-  });
-
-  test.afterAll(async () => {
-    await new Promise((resolve) => stub.close(resolve));
-  });
+  // The dashboard renders two layouts and this spec drives the DESKTOP table:
+  // it finds a person's row with `page.locator('tr', ...)` and stops their drip
+  // from it. On the mobile project that table is `hidden md:block`, so the name
+  // resolved to an invisible cell and there were no rows to act on - the spec
+  // failed on the layout it was never written for. Pinned to a desktop viewport
+  // so both projects run the assertions against the layout they belong to.
+  test.use({ viewport: { width: 1280, height: 900 } });
 
   async function signInAsAdmin(context: BrowserContext, baseURL: string) {
     const session = {
@@ -243,7 +204,13 @@ test.describe('admin /vaca-mgmt/follow-ups', () => {
     await sarahRow.getByRole('button', { name: /Stop drip/ }).click();
 
     // Toast confirms the persisted cancel count coming back from the API.
-    await expect(page.getByText(/Cancelled 2 pending emails for Sarah Chen/)).toBeVisible();
+    // Matched EXACTLY, on the toast's own description: the same sentence is also
+    // concatenated into the `role="status"` live region the toaster announces
+    // through, so a substring match resolves to two elements and trips strict
+    // mode - intermittently, because it depends on catching both mounted.
+    await expect(
+      page.getByText('Cancelled 2 pending emails for Sarah Chen.', { exact: true }),
+    ).toBeVisible();
     // After the refetch, Sarah is gone and the pending total dropped 7 -> 5.
     await expect(page.getByText('sarah.chen@example.com')).toHaveCount(0);
     await expect(page.locator('p.text-2xl', { hasText: /^5$/ })).toBeVisible();

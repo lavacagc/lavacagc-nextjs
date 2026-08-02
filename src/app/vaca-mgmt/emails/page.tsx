@@ -33,7 +33,7 @@ const CATEGORIES = [
   '', 'verification', 'welcome', 'estimate', 'lead_followup', 'lead_notification',
   'home_care_newsletter', 'buy_remodel', 'seo_report', 'staged_draft',
   'rollback_digest', 'form_error', 'feedback_request', 'broadcast', 'release',
-  'service_quote', 'visit_reminder', 'other',
+  'service_quote', 'visit_reminder', 'crew_dispatch', 'crew_dispatch_cancelled', 'other',
 ];
 
 const STATUS_FILTERS = ['', 'sent', 'delivered', 'opened', 'clicked', 'bounced', 'failed', 'error'];
@@ -55,6 +55,10 @@ function catLabel(c: string) {
   if (c === 'release') return 'Release notes';
   if (c === 'service_quote') return 'Service quote';
   if (c === 'visit_reminder') return 'Visit reminder';
+  if (c === 'crew_dispatch') return 'Crew dispatch';
+  // The retraction. Worth filtering for on its own: it is the send most likely
+  // to need auditing after a cancellation went wrong.
+  if (c === 'crew_dispatch_cancelled') return 'Crew dispatch cancelled';
   return c ? c.replace(/_/g, ' ') : 'All categories';
 }
 

@@ -594,9 +594,13 @@ test('SC14: a booked visit can be cancelled from the admin page', () => {
   expect(adminPage).toContain('Cancel visit');
   expect(adminPage).toContain("method: 'DELETE'");
   expect(adminPage).toContain('/api/admin/service-quote/schedule?');
-  const fn = adminPage.slice(adminPage.indexOf('const cancel = async (booking: Booking)'), adminPage.indexOf('const visitLabel'));
-  // Confirm-gated, names the window, and the list is re-read afterwards.
-  expect(fn).toContain('window.confirm');
+  const fn = adminPage.slice(adminPage.indexOf('const cancel = (booking: Booking)'), adminPage.indexOf('const markHandled ='));
+  // Confirm-gated - through the one gate all three row actions share, so the
+  // question is asked by construction rather than by each handler remembering
+  // to ask it - and it names the window, and re-reads the list afterwards.
+  expect(fn).toContain('runRowAction(');
+  expect(fn).toContain("ask: 'Cancel this visit?");
+  expect(adminPage).toContain('if (!window.confirm(copy.ask)) return;');
   expect(fn).toContain('start: booking.start');
   expect(fn).toContain('await refreshBookings()');
 
@@ -680,7 +684,7 @@ test('CP9: a booked visit can be completed without re-booking it first', () => {
   expect(intakeRoute).toContain('groupBookings');
   expect(intakeRoute).toContain('bookings');
   expect(adminPage).toContain('data-testid="sq-bookings"');
-  expect(adminPage).toContain('const complete = async (booking: Booking)');
+  expect(adminPage).toContain('const complete = (booking: Booking) => runRowAction(');
   // The completion names the window it closes, so it cannot reach another visit.
   expect(adminPage).toContain('start: booking.start');
   expect(schema).toContain('start: z.string().datetime({ offset: true }).optional()');
@@ -779,7 +783,10 @@ test('RM17: a cancel that could not be carried out is never reported as done', (
   expect(requeue.indexOf("=== 'unavailable') return 'unavailable'"))
     .toBeLessThan(requeue.indexOf("'follow_up_queue'"));
   // Both admin actions hand the verdict back, and the page says so plainly.
-  expect(scheduleRoute).toContain("NextResponse.json({ status: 'cancelled', reminder })");
+  // Asserted on the field rather than the whole literal: crew dispatch added a
+  // `dispatch` outcome alongside it, and what this guards is that the REMINDER
+  // verdict is returned rather than swallowed - not the shape of its neighbours.
+  expect(scheduleRoute).toMatch(/NextResponse\.json\(\{ status: 'cancelled',[^}]*\breminder\b/);
   expect(completeRoute).toContain("reminder: 'cancelled' | 'unavailable'");
   expect(adminPage).toContain("data.reminder === 'unavailable'");
   expect(adminPage).toContain('could NOT be pulled');

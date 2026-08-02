@@ -29,7 +29,14 @@ export default function StickyCTA() {
   // Also hide across the whole Home Care section: it's a free, no-fee program,
   // so a "Free Estimate / Call Now" marketing bar is off-message, and the
   // checklist portal has its own floating "Estimate (n)" action.
-  const isSuppressed = SUPPRESSED_PATHS.includes(pathname) || pathname.startsWith('/home-care');
+  //
+  // And across the admin console, where it is not marketing at anybody - it is
+  // a fixed bar over our own controls. On a phone it sits on top of the bottom
+  // of every admin form: "Schedule visit" on /vaca-mgmt/send-service-quote is
+  // underneath it and cannot be tapped at all.
+  const isSuppressed = SUPPRESSED_PATHS.includes(pathname)
+    || pathname.startsWith('/home-care')
+    || pathname.startsWith('/vaca-mgmt');
 
   useEffect(() => {
     if (isSuppressed) return;

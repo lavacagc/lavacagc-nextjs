@@ -38,10 +38,10 @@ jobs:
           NEXT_PUBLIC_RECAPTCHA_V2_SITE_KEY: "test-placeholder-v2-site-key"
           # Public Supabase URL is baked into the client bundle AND the middleware
           # at build time. Point it at 127.0.0.1:9099 — the local GoTrue stub that
-          # tests/preferences-ui-fixes.spec.ts starts so middleware's getUser()
-          # can authenticate the /vaca-mgmt admin-page test (cookie name
-          # sb-127-auth-token derives from this hostname). While the stub isn't
-          # running the port refuses connections, which behaves exactly like the
+          # playwright.config.ts starts as a webServer for the whole run, so
+          # middleware's getUser() can authenticate the /vaca-mgmt admin-page
+          # tests (cookie name sb-127-auth-token derives from this hostname).
+          # While the stub isn't running the port refuses connections, which behaves exactly like the
           # old unreachable placeholder: mocked tests never hit Supabase (they
           # stub/intercept), and live-backend tests skip unless E2E_LIVE_BACKEND
           # is set. The browser client reads NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY

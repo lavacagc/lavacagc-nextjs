@@ -20,7 +20,10 @@ import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { newToken, normalizeEmail } from '@/lib/homecare/homeowners';
 import { isRowCurrent } from '@/lib/homecare/selection';
 import { escapeLikePattern } from '@/lib/notify/cancelFollowUps';
-import { VISIT_REMINDER_TYPE, reminderSendAt, visitKey, reminderIsStillUseful } from './visitSchedule';
+import {
+  VISIT_REMINDER_TYPE, reminderSendAt, visitKey, reminderIsStillUseful, ledgerKey,
+  customerReminderState, type CustomerReminderState, type ReminderLedgerRow,
+} from './visitSchedule';
 
 export interface HomeownerLite {
   id: string;
@@ -441,6 +444,63 @@ export async function requeueVisitReminder(args: {
     return 'unavailable';
   }
   return 'queued';
+}
+
+/** The ledger row as this read needs it - the send-once fields, plus what names the visit. */
+interface ReminderQueueRow extends ReminderLedgerRow {
+  lead_email: string;
+  visit_start: string | null;
+}
+
+/**
+ * What the customer has actually been told about this visit, for the surfaces
+ * that outlive the booking.
+ *
+ * The verdict `requeueVisitReminder` hands the dispatch email exists only for
+ * the length of that request, and three screens read the same fact afterwards -
+ * the crew confirm page, the flag alert and the 5pm/6pm chase. They inferred it
+ * from the clock, which is wrong for every same-day booking (no row was ever
+ * queued, and no later run reaches that visit) and for every reminder somebody
+ * cancelled. The ledger is the one place that knows, so they ask it rather than
+ * each guessing.
+ *
+ * Matched the way the reminder cron matches its own ledger: on (address, visit
+ * start), the pair that names one visit. Filtered on `visit_start` in the query
+ * and on the address in JS, because PostgREST reads `*` in an `ilike` as `%` and
+ * offers no way to escape it - the same reason `cancelPendingVisitReminders`
+ * post-filters rather than trusting the pattern.
+ *
+ * A read that FAILS says so. Rendering it as 'none' would tell a crew member to
+ * text a customer who has already had our email, and as 'coming' it would
+ * promise a reminder that may not exist.
+ */
+export async function readCustomerReminder(
+  email: string,
+  visitStart: Date,
+  now = new Date(),
+): Promise<CustomerReminderState> {
+  const key = visitKey(visitStart);
+  let rows: ReminderQueueRow[];
+  try {
+    rows = (await supabaseRest<ReminderQueueRow[]>(
+      'GET',
+      `follow_up_queue?select=id,lead_email,visit_start,status,created_at` +
+        `&follow_up_type=eq.${VISIT_REMINDER_TYPE}&visit_start=eq.${encodeURIComponent(key)}`,
+    )) ?? [];
+  } catch (err) {
+    console.error(
+      `visit reminder state could not be read for ${key}:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    return 'unavailable';
+  }
+
+  const wanted = ledgerKey(email, key);
+  return customerReminderState(
+    rows.filter((r) => r.visit_start && ledgerKey(r.lead_email ?? '', r.visit_start) === wanted),
+    visitStart,
+    now,
+  );
 }
 
 /**

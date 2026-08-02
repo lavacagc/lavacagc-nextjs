@@ -38,13 +38,27 @@ export type EmailCategory =
   | 'release'
   | 'service_quote'
   | 'visit_reminder'
+  /** Internal: the crew's "you are on this visit" email. Never customer-facing. */
+  | 'crew_dispatch'
+  /** Internal: the METHOD:CANCEL that takes a retired visit off the crew's calendar. */
+  | 'crew_dispatch_cancelled'
   | 'other';
 
 interface TrackedEmailBase {
   from: string;
   to: string | string[];
   cc?: string | string[];
-  replyTo?: string;
+  /**
+   * One address, or several.
+   *
+   * An ARRAY for several - never a comma-joined string. Resend validates this
+   * field per-address and answers 422 "Invalid `reply_to` field" for
+   * "a@x.com, b@x.com", which fails the whole send. Every service-quote email
+   * passed `SERVICE_REPLY_TO.join(', ')`, so the quote, the completion feedback
+   * request and the night-before visit reminder could none of them ever be
+   * delivered - latent only because no service quote had been sent yet.
+   */
+  replyTo?: string | string[];
   subject: string;
   html?: string;
   text?: string;
@@ -60,6 +74,27 @@ interface TrackedEmailBase {
   sentBy?: string | null;
   /** Recipient display name, for the admin list. */
   toName?: string | null;
+
+  /**
+   * Files to attach. `content` is the raw body; it is base64-encoded here
+   * because that is the only shape Resend's JSON API accepts.
+   *
+   * The bytes are NEVER written to email_log. The audit row exists so the admin
+   * can see what went out, and a base64 blob in a TEXT column is not that - it
+   * is a way to make the table unreadable and unbounded. The filenames are
+   * recorded on the campaign field instead, which is enough to answer "did this
+   * email carry the calendar file".
+   *
+   * `contentType` declares the MIME type of the part. Optional, and omitted
+   * unless a caller asks for one, so every existing send produces exactly the
+   * request it produced before - Resend derives a type from the filename when
+   * none is given. It exists for the parts whose type carries meaning the
+   * extension cannot: a calendar invite is only rendered as an "Add to
+   * calendar" / RSVP card when its part says
+   * `text/calendar; charset=utf-8; method=REQUEST`, and is offered as a plain
+   * download otherwise.
+   */
+  attachments?: { filename: string; content: string | Buffer; contentType?: string }[];
 
   /**
    * Set false to skip the audit-log row (rare — e.g. a caller that logs the
@@ -133,14 +168,21 @@ async function writeEmailLog(
       to_name: input.toName ?? null,
       cc_emails: ccList.length ? ccList.join(',') : null,
       from_email: input.from,
-      reply_to: input.replyTo ?? null,
+      // Flattened for the audit column, which is TEXT. The wire format is the
+      // array above; this is only what the admin reads back.
+      reply_to: Array.isArray(input.replyTo) ? input.replyTo.join(', ') : input.replyTo ?? null,
       subject: input.subject,
       html: input.html ?? null,
       text: input.text ?? null,
       homeowner_id: input.homeownerId ?? null,
       subscriber_id: input.subscriberId ?? null,
       lead_id: input.leadId ?? null,
-      campaign: input.campaign ?? null,
+      // Attachment NAMES only - see the note on `attachments`. Folded into the
+      // campaign blob rather than given a column, because "what rode along with
+      // this email" is metadata about the send, not a new first-class field.
+      campaign: input.attachments?.length
+        ? { ...(input.campaign ?? {}), attachments: input.attachments.map((a) => a.filename) }
+        : input.campaign ?? null,
       sent_by: input.sentBy ?? 'system',
       resend_message_id: result.emailId ?? null,
       status: result.status,
@@ -244,6 +286,22 @@ export async function sendTrackedEmail(input: TrackedEmailInput): Promise<Tracke
       ...(input.replyTo ? { replyTo: input.replyTo } : {}),
       subject: input.subject,
       ...(unsubHeaders ? { headers: unsubHeaders } : {}),
+      // Base64 is the only encoding Resend's JSON API takes for attachment
+      // content. A Buffer would serialize to `{"type":"Buffer","data":[...]}`
+      // and silently arrive as a corrupt file, so the conversion happens here
+      // rather than being left to each caller to remember.
+      ...(input.attachments?.length
+        ? {
+            attachments: input.attachments.map((a) => ({
+              filename: a.filename,
+              content: Buffer.from(a.content).toString('base64'),
+              // Spread, so a caller that asks for no type sends the same
+              // attachment object it has always sent and Resend keeps deriving
+              // one from the filename.
+              ...(a.contentType ? { contentType: a.contentType } : {}),
+            })),
+          }
+        : {}),
       // Resend requires at least one of html/text; senders always pass one.
       ...(input.html !== undefined ? { html: input.html } : {}),
       ...(input.text !== undefined ? { text: input.text } : {}),

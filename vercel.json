@@ -56,6 +56,14 @@
     {
       "path": "/api/cron/visit-reminders",
       "schedule": "30 23 * * *"
+    },
+    {
+      "path": "/api/cron/visit-dispatch-escalation?stage=nudge",
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/visit-dispatch-escalation?stage=escalate",
+      "schedule": "0 22 * * *"
     }
   ]
 }

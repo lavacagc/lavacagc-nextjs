@@ -20,7 +20,8 @@ import { preflightReleaseAssets } from '../src/lib/homecare/releaseAssets';
  * The admin JSON APIs are mocked at the browser network layer — the flows
  * under test are client-side. The admin page is reached the same way as in
  * preferences-ui-fixes.spec.ts: NEXT_PUBLIC_SUPABASE_URL is baked to a local
- * GoTrue stub (127.0.0.1:9099) and a fabricated session cookie makes
+ * GoTrue stub playwright.config.ts starts for the run (127.0.0.1:9099) and a
+ * fabricated session cookie makes
  * middleware's getUser() succeed.
  */
 
@@ -323,54 +324,6 @@ async function mockReleasesApi(page: Page, rows: MockRow[], sendCalls: SendCall[
 }
 
 test.describe('admin /vaca-mgmt/releases', () => {
-  const STUB_PORT = 9099;
-  let stub: http.Server;
-
-  test.beforeAll(async () => {
-    // Minimal GoTrue stand-in (same as preferences-ui-fixes.spec.ts):
-    // middleware's supabase.auth.getUser() hits GET /auth/v1/user.
-    stub = http.createServer((req, res) => {
-      if (req.url?.startsWith('/auth/v1/user')) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            id: '00000000-0000-0000-0000-000000000001',
-            aud: 'authenticated',
-            role: 'authenticated',
-            email: 'admin@lavacagc.com',
-            created_at: '2026-01-01T00:00:00Z',
-            app_metadata: {},
-            user_metadata: {},
-          }),
-        );
-        return;
-      }
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end('{}');
-    });
-    // Another spec's worker may hold the port briefly — retry until free.
-    const deadline = Date.now() + 60_000;
-    for (;;) {
-      try {
-        await new Promise<void>((resolve, reject) => {
-          stub.once('error', reject);
-          stub.listen(STUB_PORT, '127.0.0.1', () => {
-            stub.removeAllListeners('error');
-            resolve();
-          });
-        });
-        break;
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE' || Date.now() > deadline) throw err;
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    }
-  });
-
-  test.afterAll(async () => {
-    await new Promise((resolve) => stub.close(resolve));
-  });
-
   async function signInAsAdmin(context: BrowserContext, baseURL: string) {
     const session = {
       access_token: 'stub-access-token',
