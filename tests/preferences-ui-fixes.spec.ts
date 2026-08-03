@@ -104,6 +104,91 @@ test.describe('public /preferences page', () => {
       .screenshot({ path: shot('02-toggle-row-closeup.png') });
   });
 
+  test('the Home Care toggle warns that turning it off deletes saved home details', async ({
+    page,
+  }) => {
+    // Slice 8 makes this toggle destructive: turning it off is an intentional
+    // leave, which permanently purges the homeowner's saved home details. The
+    // row must say so - a customer throttling email volume would otherwise read
+    // it as a plain subscription switch and lose their shut-off map.
+    const posts: unknown[] = [];
+    await mockPublicPrefsApi(page, posts);
+    await page.goto('/preferences?token=test-token');
+    await expect(page.getByTestId('pref-email')).toHaveText('alex@vacamoo.com');
+
+    const notice = page.getByTestId('home-care-purge-notice');
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText(/permanently deletes/i);
+    await expect(notice).toContainText(/ends your Home Care membership/i);
+
+    // Scoped to Home Care: it is the only stream whose opt-out destroys data.
+    await expect(page.getByTestId('home-care-purge-notice')).toHaveCount(1);
+    await expect(page.getByTestId('stream-home_care')).toContainText(/permanently deletes/i);
+    for (const key of ['newsletter', 'buy_remodel', 'announcements'] as const) {
+      await expect(page.getByTestId(`stream-${key}`)).not.toContainText(/permanently deletes/i);
+    }
+
+    // The warning reaches a screen reader AT the control it describes - this is
+    // the one switch whose flip destroys data, so the aria-label alone ("Toggle
+    // La Vaca Home Care") would announce none of the consequence.
+    await expect(notice).toHaveAttribute('id', 'home-care-purge-notice');
+    await expect(page.getByTestId('switch-home_care')).toHaveAttribute(
+      'aria-describedby',
+      'home-care-purge-notice',
+    );
+
+    await page
+      .getByTestId('stream-home_care')
+      .screenshot({ path: shot('05-home-care-purge-notice.png') });
+
+    // Already left: the details are gone, so warning about deleting them is
+    // both alarming and untrue. The notice describes an available action only.
+    await page.getByTestId('switch-home_care').click();
+    await expect(page.getByTestId('home-care-purge-notice')).toHaveCount(0);
+    await expect(page.getByTestId('switch-home_care')).not.toHaveAttribute(
+      'aria-describedby',
+      /.*/,
+    );
+  });
+
+  test('the unsubscribe confirm card warns about the purge before the destructive click', async ({
+    page,
+  }) => {
+    // This card - not the stream row - is what an email footer link lands on,
+    // and "Yes, unsubscribe" is the click that destroys the data. The Home Care
+    // footer link redirects here with confirm=home_care rather than acting on
+    // the GET itself, so this is the last screen before an irreversible delete.
+    const posts: unknown[] = [];
+    await mockPublicPrefsApi(page, posts);
+
+    for (const confirm of ['home_care', 'all'] as const) {
+      await page.goto(`/preferences?token=test-token&confirm=${confirm}`);
+      const card = page.getByTestId('confirm-unsubscribe');
+      await expect(card).toBeVisible();
+      // Above the CTA, in the card the user is actually reading.
+      const warning = page.getByTestId('confirm-home-care-purge-notice');
+      await expect(warning).toBeVisible();
+      await expect(warning).toContainText(/permanently deletes/i);
+      await expect(warning).toContainText(/ends your Home Care membership/i);
+      await expect(card).toContainText(/permanently deletes/i);
+    }
+
+    await page.screenshot({ path: shot('06-confirm-card-purge-notice.png'), fullPage: true });
+
+    // A confirm that cannot reach home_care must not borrow the scare copy.
+    await page.goto('/preferences?token=test-token&confirm=newsletter');
+    await expect(page.getByTestId('confirm-unsubscribe')).toBeVisible();
+    await expect(page.getByTestId('confirm-home-care-purge-notice')).toHaveCount(0);
+
+    // Already left: nothing left to delete, so the warning would be untrue.
+    await page.goto('/preferences?token=test-token');
+    await page.getByTestId('switch-home_care').click();
+    await expect(page.getByTestId('home-care-purge-notice')).toHaveCount(0);
+    await page.goto('/preferences?token=test-token&confirm=all');
+    await expect(page.getByTestId('confirm-unsubscribe')).toBeVisible();
+    await expect(page.getByTestId('confirm-home-care-purge-notice')).toHaveCount(0);
+  });
+
   test('narrow mobile viewport still cannot compress the track', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 740 });
     const posts: unknown[] = [];
@@ -155,7 +240,13 @@ test.describe('public /preferences page', () => {
     expect(posts[0].token).toBe('test-token');
     expect(posts[0].changes).toEqual({ home_care: false });
 
+    // Unsubscribe-all routes through the same confirm card as a footer link, so
+    // the deletion warning can never be bypassed; the POST fires only on the
+    // confirmed "Yes, unsubscribe" click.
     await page.getByTestId('unsubscribe-all').click();
+    await expect(page.getByTestId('confirm-unsubscribe')).toBeVisible();
+    expect(posts).toHaveLength(1);
+    await page.getByTestId('confirm-unsubscribe-yes').click();
     await expect(page.getByTestId('saved-msg')).toContainText('unsubscribed from all');
     expect(posts).toHaveLength(2);
     expect(posts[1].changes).toEqual({

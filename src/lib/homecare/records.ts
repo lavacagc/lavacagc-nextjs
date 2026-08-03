@@ -26,7 +26,11 @@
  * detail identically; Slice 6 routes the staff Home Record view
  * (api/admin/home-care/home-records) through the same HOME_FACTS +
  * factValueSummary chokepoint, so the crew sees a saved detail exactly as the
- * homeowner does and unknown fact_keys are skipped. Per owner decision, v1
+ * homeowner does and unknown fact_keys are skipped; Slice 8 enforces the
+ * "deleted when I leave the program" half of the consent promise below -
+ * purgeHomeRecords in retention.ts deletes a homeowner's home_records rows
+ * (and their access-log trail) on every leave path, since an ordinary
+ * unsubscribe only flips status and never cascades. Per owner decision, v1
  * captures locations + a few appliance details (brand/model/install year/filter
  * size) but NOT serial numbers.
  */

@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { purgeHomeRecordsByEmail } from '@/lib/homecare/retention';
 import {
   normalizeEmail,
   SUPPRESSION_KEYS,
@@ -103,6 +104,21 @@ export async function findByToken(token: string): Promise<EmailPreferences | nul
 }
 
 /**
+ * Non-creating lookup by email. Returns null when no preferences row exists.
+ * Use this where a read must NOT seed a consent row (e.g. a link-scanner GET on
+ * a footer unsubscribe link, where getOrCreateByEmail would otherwise record a
+ * departed homeowner as consenting to every stream).
+ */
+export async function findByEmail(rawEmail: string): Promise<EmailPreferences | null> {
+  const email = normalizeEmail(rawEmail);
+  const rows = await supabaseRest<EmailPreferences[]>(
+    'GET',
+    `email_preferences?email=eq.${encodeURIComponent(email)}&limit=1`,
+  );
+  return rows?.[0] ?? null;
+}
+
+/**
  * All emails that have opted OUT of a stream. Used to suppress recipients from
  * Resend broadcasts (which send via audiences, outside the sendTrackedEmail
  * wrapper), and by the monthly Home Care newsletter cron, which classifies
@@ -144,7 +160,40 @@ export async function isSuppressed(rawEmail: string, stream: SuppressionKey): Pr
   }
 }
 
-export type PrefActor = 'self' | 'admin' | 'webhook' | 'system';
+export type PrefActor = 'self' | 'self_unverified' | 'self_oneclick' | 'admin' | 'webhook' | 'system';
+
+/**
+ * Actors whose stream change carries deliberate human intent to leave, PROVEN
+ * by an identity check AND surfaceable with a deletion warning before the fact:
+ * 'self' (the homeowner, established by a capability token only their inbox
+ * holds - preference token or unsubscribe token, acting through the preference
+ * center where the purge is shown and confirmed) or 'admin' (an authenticated
+ * staff member acting for them).
+ *
+ * Deliberately excluded:
+ *  - 'self_unverified': a tokenless caller who merely typed an address into the
+ *    public /unsub form. The claim "I am this person" is unproven, so anyone
+ *    could submit a victim's address; it suppresses the mail (CAN-SPAM requires
+ *    the mechanism to work for a recipient who has no token) but must never
+ *    trigger the irreversible purge.
+ *  - 'self_oneclick': an RFC 8058 List-Unsubscribe=One-Click POST from a mail
+ *    client's native Unsubscribe button. The token proves identity, but the
+ *    button turns off ALL marketing streams (the user may have meant only a
+ *    newsletter or listings list) and lives inside the mail client, so there is
+ *    no surface on which to show the deletion warning first. It suppresses the
+ *    mail but must never delete home records; the purge stays on the
+ *    preference-center confirm and admin paths, where the warning is shown.
+ *  - 'webhook' / 'system': machine-driven deliverability signals (Resend
+ *    bounce/complaint auto-suppression, contact.deleted), not a decision to
+ *    leave the program.
+ * All of them still suppress email; only the purge is gated
+ * (owner decision 2026-07-16; see homecare/retention.ts).
+ */
+const INTENTIONAL_LEAVE_ACTORS: readonly PrefActor[] = ['self', 'admin'];
+
+export function isIntentionalLeaveActor(actor: PrefActor): boolean {
+  return INTENTIONAL_LEAVE_ACTORS.includes(actor);
+}
 
 /**
  * Apply a set of stream changes to a preferences row, write an audit event per
@@ -196,7 +245,7 @@ export async function applyUpdate(args: {
 
   // Sync legacy status columns (best-effort). home_care → homeowners,
   // buy_remodel → newsletter_subscribers. announcements has no identity table.
-  await syncLegacyStatus(current.email, patch).catch((e) =>
+  await syncLegacyStatus(current.email, patch, actor).catch((e) =>
     console.error('legacy status sync failed (non-fatal):', e),
   );
 
@@ -220,7 +269,11 @@ export async function setStreamByEmail(
   await applyUpdate({ current, changes: { [stream]: value }, actor, actorDetail });
 }
 
-async function syncLegacyStatus(email: string, patch: Record<string, boolean>): Promise<void> {
+async function syncLegacyStatus(
+  email: string,
+  patch: Record<string, boolean>,
+  actor: PrefActor,
+): Promise<void> {
   const enc = encodeURIComponent(email);
   const nowIso = new Date().toISOString();
 
@@ -237,6 +290,17 @@ async function syncLegacyStatus(email: string, patch: Record<string, boolean>): 
         : { status: 'unsubscribed', unsubscribed_at: nowIso },
       { prefer: 'return=minimal' },
     );
+    if (!patch.home_care && isIntentionalLeaveActor(actor)) {
+      // An INTENTIONAL, identity-proven leave deletes saved home details (the
+      // "deleted when you leave" promise, Slice 8; the staff access log is
+      // deliberately kept - see retention.ts). Those paths - the token-bearing
+      // preference center and admin Subscriptions - funnel through here. The
+      // status flip above still applies to every actor, so a Resend
+      // bounce/complaint suppression or a tokenless /unsub submission stops the
+      // mail without destroying the homeowner's records. Never throws; a real
+      // failure alerts internally while the opt-out itself still sticks.
+      await purgeHomeRecordsByEmail(email, `preference-stream-off:${actor}`);
+    }
   }
   if (typeof patch.buy_remodel === 'boolean') {
     await supabaseRest(

@@ -26,8 +26,8 @@ import { requireHomeCareStaff } from '@/lib/homecare/staffAccess';
 import { findHomeownerById } from '@/lib/homecare/homeowners';
 import { readHomeRecordsStrict } from '@/lib/homecare/homeRecords';
 import { HOME_FACTS, factValueSummary } from '@/lib/homecare/records';
-import { supabaseRest } from '@/lib/notify/supabase-rest';
-import { getClientIp } from '@/lib/rateLimit';
+import { supabaseRest, isMissingTableError } from '@/lib/notify/supabase-rest';
+import { clientInetOrNull } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,6 +40,7 @@ const OWNER_ID_BATCH = 100;
 
 interface RosterSourceRow {
   homeowner_id: string;
+  fact_key: string;
   updated_at: string;
 }
 
@@ -77,28 +78,47 @@ export async function GET(request: NextRequest) {
 /**
  * Which homeowners have saved details, with counts and freshness only - never
  * the values themselves, so opening the roster is not a logged record view.
- * Fail-soft: before go-live the home_records table doesn't exist yet, and the
- * staff page should render an empty roster, not an error.
+ *
+ * Fail-soft for exactly ONE case: before go-live the home_records table doesn't
+ * exist yet, and the staff page should render an empty roster, not an error.
+ * Every other error 500s - an outage or a missing key reported as "nobody has
+ * saved anything" is the same masquerade readHomeRecordsStrict exists to
+ * prevent, and staff would read it as truth.
  */
 async function roster() {
   const rows: RosterSourceRow[] = [];
   try {
+    let complete = false;
     for (let offset = 0; offset < ROSTER_MAX_ROWS; offset += ROSTER_PAGE) {
       const page = (await supabaseRest<RosterSourceRow[]>(
         'GET',
-        `home_records?select=homeowner_id,updated_at&order=id.asc&limit=${ROSTER_PAGE}&offset=${offset}`,
+        `home_records?select=homeowner_id,fact_key,updated_at&order=id.asc&limit=${ROSTER_PAGE}&offset=${offset}`,
       )) ?? [];
       rows.push(...page);
-      if (page.length < ROSTER_PAGE) break;
+      if (page.length < ROSTER_PAGE) {
+        complete = true;
+        break;
+      }
+    }
+    // A roster silently truncated at the cap reads to staff as a complete one -
+    // the same masquerade rosterReadFailure narrowing exists to prevent.
+    if (!complete) {
+      console.warn(
+        `home-record roster truncated at ROSTER_MAX_ROWS=${ROSTER_MAX_ROWS}; some homeowners are omitted`,
+      );
     }
   } catch (err) {
-    console.error('home-record roster read failed:', err instanceof Error ? err.message : String(err));
-    return NextResponse.json({ ok: true, roster: [] });
+    return rosterReadFailure('home-record roster read failed', err);
   }
   if (!rows.length) return NextResponse.json({ ok: true, roster: [] });
 
+  // Registry filter, same chokepoint as detail(): a fact_key retired from
+  // HOME_FACTS renders nowhere, so it must not be counted here either - a
+  // phantom count sends staff to a record that shows "Nothing saved yet".
+  const knownFactKeys = new Set(HOME_FACTS.map((f) => f.key));
   const byOwner = new Map<string, { count: number; last: string }>();
   for (const r of rows) {
+    if (!knownFactKeys.has(r.fact_key)) continue;
     const cur = byOwner.get(r.homeowner_id);
     if (!cur) byOwner.set(r.homeowner_id, { count: 1, last: r.updated_at });
     else {
@@ -106,6 +126,7 @@ async function roster() {
       if (r.updated_at > cur.last) cur.last = r.updated_at;
     }
   }
+  if (!byOwner.size) return NextResponse.json({ ok: true, roster: [] });
 
   const owners: HomeownerLite[] = [];
   try {
@@ -119,8 +140,7 @@ async function roster() {
       owners.push(...batch);
     }
   } catch (err) {
-    console.error('home-record roster owners read failed:', err instanceof Error ? err.message : String(err));
-    return NextResponse.json({ ok: true, roster: [] });
+    return rosterReadFailure('home-record roster owners read failed', err);
   }
 
   const roster = owners
@@ -137,9 +157,22 @@ async function roster() {
         last_updated: agg.last,
       };
     })
-    .sort((a, b) => (a.last_updated < b.last_updated ? 1 : -1));
+    .sort((a, b) => b.last_updated.localeCompare(a.last_updated));
 
   return NextResponse.json({ ok: true, roster });
+}
+
+/**
+ * Pre-go-live the table is simply absent - that is an empty roster, not an
+ * error. Anything else is a real fault and must reach staff as a 500.
+ */
+function rosterReadFailure(context: string, err: unknown) {
+  console.error(`${context}:`, err instanceof Error ? err.message : String(err));
+  if (isMissingTableError(err)) return NextResponse.json({ ok: true, roster: [] });
+  return NextResponse.json(
+    { ok: false, error: 'Could not load home records. Please try again.' },
+    { status: 500 },
+  );
 }
 
 /** One homeowner's saved facts - audit-logged BEFORE any value leaves the server. */
@@ -186,10 +219,10 @@ async function detail(request: NextRequest, staffEmail: string, homeownerId: str
         fact_keys: facts.map((f) => f.fact_key),
         user_agent: request.headers.get('user-agent') || null,
       };
-      const ip = getClientIp(request);
-      if (ip && ip !== 'unknown' && /^[0-9a-fA-F.:]+$/.test(ip)) {
-        auditRow.ip_address = ip;
-      }
+      // An unparseable IP header drops the optional field - it must never be
+      // the reason a legitimate, audited view is refused below.
+      const ip = clientInetOrNull(request);
+      if (ip) auditRow.ip_address = ip;
       await supabaseRest('POST', 'home_record_access_log', auditRow, { prefer: 'return=minimal' });
     } catch (err) {
       console.error('home-record access log failed:', err instanceof Error ? err.message : String(err));

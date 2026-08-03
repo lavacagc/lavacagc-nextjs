@@ -64,6 +64,55 @@ export interface RateLimitOptions {
   consume?: boolean;
 }
 
+/**
+ * The client IP as a value Postgres will accept for an INET column, or null.
+ *
+ * `ip_address` is an optional audit field, so a header we can't parse must drop
+ * the field - never fail the write it decorates (an INET cast error would 422
+ * the whole insert, and the same header repeats on every retry, so it would not
+ * self-heal). Deliberately strict: proxies do append ports ("1.2.3.4:5678") and
+ * zone ids ("fe80::1%eth0"), and 'unknown' is getClientIp's own sentinel -
+ * none of those are INET values.
+ */
+export function clientInetOrNull(request: Request): string | null {
+  const ip = getClientIp(request);
+  if (!ip || ip === 'unknown') return null;
+  return isInetAddress(ip) ? ip : null;
+}
+
+const V4_OCTET = '(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
+const V4 = `${V4_OCTET}(\\.${V4_OCTET}){3}`;
+const V6_SEG = '[0-9a-fA-F]{1,4}';
+
+const IPV4_RE = new RegExp(`^${V4}$`);
+
+/**
+ * Self-contained RFC 4291 IPv6 matcher: full, compressed ('::'), and
+ * IPv4-mapped/embedded forms. Written out rather than delegating to the URL
+ * parser, which is not an anchored validator - it terminates the host at the
+ * first '/', '?' or '#', so "::1]/evil" parsed clean and reached Postgres.
+ */
+const IPV6_RE = new RegExp(
+  '^(' +
+    `(${V6_SEG}:){7}${V6_SEG}|` +
+    `(${V6_SEG}:){1,7}:|` +
+    `(${V6_SEG}:){1,6}:${V6_SEG}|` +
+    `(${V6_SEG}:){1,5}(:${V6_SEG}){1,2}|` +
+    `(${V6_SEG}:){1,4}(:${V6_SEG}){1,3}|` +
+    `(${V6_SEG}:){1,3}(:${V6_SEG}){1,4}|` +
+    `(${V6_SEG}:){1,2}(:${V6_SEG}){1,5}|` +
+    `${V6_SEG}:(:${V6_SEG}){1,6}|` +
+    `:((:${V6_SEG}){1,7}|:)|` +
+    `::(ffff(:0{1,4})?:)?${V4}|` +
+    `(${V6_SEG}:){1,4}:${V4}` +
+    ')$',
+);
+
+/** Strict IPv4 / IPv6 literal check (no ports, no zone ids, no CIDR suffix). */
+export function isInetAddress(value: string): boolean {
+  return IPV4_RE.test(value) || IPV6_RE.test(value);
+}
+
 export async function checkRateLimit(
   bucket: string,
   limit: number,

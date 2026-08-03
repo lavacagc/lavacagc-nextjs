@@ -46,7 +46,10 @@ async function unsubscribe(request: NextRequest, token: string, streamParam: str
   await applyUpdate({
     current: pref,
     changes: streamsToTurnOff(streamParam),
-    actor: 'self',
+    // One-click (RFC 8058) suppresses but must never purge home records: the
+    // marketing link turns off ALL streams and the button lives in the mail
+    // client, so there is no surface to show the deletion warning first.
+    actor: 'self_oneclick',
     actorDetail: streamParam === 'follow_ups' ? 'one-click-followups' : 'one-click',
     ip: getClientIp(request),
   });

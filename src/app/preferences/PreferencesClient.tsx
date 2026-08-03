@@ -12,6 +12,12 @@ const LOGO = '/logo.png';
 
 type ConfirmTarget = StreamKey | 'all';
 
+// One source of truth for the deletion warning, so the stream row and the
+// confirm card a footer link lands on can never drift apart.
+const PURGE_WARNING =
+  'ends your Home Care membership and permanently deletes the home details you ' +
+  'saved with us, like shut-off locations and appliance info.';
+
 function parseConfirm(raw: string | null): ConfirmTarget | null {
   if (!raw) return null;
   if (raw === 'all') return 'all';
@@ -103,13 +109,6 @@ export default function PreferencesClient() {
     save({ [key]: next[key] }, streams, 'Saved.');
   };
 
-  const unsubscribeAll = () => {
-    if (!streams) return;
-    const next = Object.fromEntries(STREAM_KEYS.map((k) => [k, false])) as StreamState;
-    setStreams(next);
-    save(next, streams, "You've been unsubscribed from all marketing emails.");
-  };
-
   const confirmLabel =
     confirmTarget && confirmTarget !== 'all'
       ? STREAMS.find((s) => s.key === confirmTarget)?.label ?? 'this list'
@@ -188,6 +187,15 @@ export default function PreferencesClient() {
                   <p className="text-sm font-semibold text-amber-900 mb-2">
                     Unsubscribe from {confirmLabel}?
                   </p>
+                  {(confirmTarget === 'home_care' || confirmTarget === 'all') &&
+                    streams.home_care && (
+                      <p
+                        className="text-xs font-semibold text-amber-900 mb-2"
+                        data-testid="confirm-home-care-purge-notice"
+                      >
+                        Confirming {PURGE_WARNING}
+                      </p>
+                    )}
                   <p className="text-xs text-amber-800 mb-3">
                     Nothing has changed yet — confirm below, or keep your subscription and adjust
                     individual lists instead.
@@ -237,12 +245,26 @@ export default function PreferencesClient() {
                     <div className="min-w-0">
                       <div className="font-semibold">{s.label}</div>
                       <div className="text-sm text-muted-foreground">{s.description}</div>
+                      {s.key === 'home_care' && streams?.home_care && (
+                        <div
+                          id="home-care-purge-notice"
+                          className="text-sm text-amber-800 mt-1.5"
+                          data-testid="home-care-purge-notice"
+                        >
+                          Turning this off {PURGE_WARNING}
+                        </div>
+                      )}
                     </div>
                     <Switch
                       checked={streams?.[s.key] ?? false}
                       disabled={saving}
                       onCheckedChange={() => toggle(s.key)}
                       aria-label={`Toggle ${s.label}`}
+                      aria-describedby={
+                        s.key === 'home_care' && streams?.home_care
+                          ? 'home-care-purge-notice'
+                          : undefined
+                      }
                       data-testid={`switch-${s.key}`}
                     />
                   </div>
@@ -258,7 +280,7 @@ export default function PreferencesClient() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={unsubscribeAll}
+                    onClick={() => setConfirmTarget('all')}
                     disabled={saving}
                     data-testid="unsubscribe-all"
                     className="flex-shrink-0"

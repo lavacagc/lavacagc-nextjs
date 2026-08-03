@@ -28,7 +28,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById } from '@/lib/homecare/homeowners';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
-import { getClientIp } from '@/lib/rateLimit';
+import { clientInetOrNull } from '@/lib/rateLimit';
 import {
   getFact,
   validateFactDetail,
@@ -90,10 +90,10 @@ export async function POST(request: NextRequest) {
           consent_text: HOME_DETAILS_CONSENT_TEXT,
           user_agent: request.headers.get('user-agent') || null,
         };
-        const ip = getClientIp(request);
-        if (ip && ip !== 'unknown' && /^[0-9a-fA-F.:]+$/.test(ip)) {
-          consentRow.ip_address = ip;
-        }
+        // An unparseable IP header drops the optional field - it must never be
+        // the reason a consented save is refused below.
+        const ip = clientInetOrNull(request);
+        if (ip) consentRow.ip_address = ip;
         await supabaseRest('POST', 'consent_logs', consentRow, { prefer: 'return=minimal' });
       } catch (err) {
         console.error('home-care record consent log failed:', err instanceof Error ? err.message : String(err));
