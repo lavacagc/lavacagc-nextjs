@@ -1,6 +1,7 @@
 /**
  * Server-only read of a homeowner's saved "home facts" (My Home Systems), used
- * to prefill the inline capture panels on the checklist.
+ * to prefill the inline capture panels and seed the "My Home" recap on the
+ * checklist.
  *
  * This lives in its own module - NOT in records.ts - on purpose: records.ts is a
  * pure registry that client components import (getFactForTask, the consent text,
