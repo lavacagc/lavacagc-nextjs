@@ -1,0 +1,145 @@
+<!doctype html><meta charset="utf-8"><title>Crew dispatch - preview</title>
+<style>
+ body{margin:0;background:#F4F1ED;font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#303030}
+ .w{max-width:1000px;margin:0 auto;padding:28px 18px 80px}
+ h1{font-size:30px;letter-spacing:-.02em;margin:0 0 6px;color:#1A1A1A}
+ .lede{color:#666;margin:0 0 26px;max-width:70ch}
+ .warn{background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:14px 16px;margin-bottom:26px}
+ .c{background:#fff;border:1px solid #E2E8F0;border-radius:12px;margin-bottom:18px;overflow:hidden}
+ .h{padding:14px 18px;border-bottom:1px solid #E2E8F0}
+ .h b{display:block;color:#1A1A1A;font-size:16px}
+ .h span{font-size:13px;color:#666}
+ .subj{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:#F8FAFC;padding:8px 18px;border-bottom:1px solid #E2E8F0;color:#1A1A1A;overflow-x:auto;white-space:nowrap}
+ iframe{width:100%;height:760px;border:0;display:block}
+ pre{margin:0;padding:16px 18px;background:#0F172A;color:#E2E8F0;font-size:12.5px;overflow-x:auto;white-space:pre-wrap;word-break:break-word}
+</style>
+<div class="w">
+<h1>Crew dispatch - every message it can send</h1>
+<p class="lede">Rendered straight from the builders. <strong>Nothing was sent and nothing was written to the database</strong> - no Resend credits used.</p>
+<div class="warn"><strong>Careful in the admin UI.</strong> Your local server reads and writes the REAL production Supabase, and scheduling a visit there sends REAL email to alex@ and veronica@. Use it to look around; use this page to read the copy.</div>
+<div class="c">
+  <div class="h"><b>Dispatch - visit tomorrow, reminder queued</b><span>The ordinary case. Note "tonight" and "tomorrow" are correct here.</span></div>
+  <div class="subj">[ACTION REQUIRED] Sun 2 Aug, 8:00 - 11:00am - 14 Maple Ave</div>
+  <iframe src="./dispatch-tomorrow.html"></iframe>
+</div>
+<div class="c">
+  <div class="h"><b>Dispatch - with the homeowner's saved home details (My Home Systems)</b><span>The Slice 5 rider on the crew email: details scoped to the booked services, body only, never the .ics.</span></div>
+  <div class="subj">[ACTION REQUIRED] Sun 2 Aug, 8:00 - 11:00am - 14 Maple Ave</div>
+  <iframe src="./dispatch-home-details.html"></iframe>
+</div>
+<div class="c">
+  <div class="h"><b>Dispatch - visit three weeks out</b><span>Booked 1 Aug for 20 Aug. This is what used to say "tonight" - check the dates read correctly.</span></div>
+  <div class="subj">[ACTION REQUIRED] Thu 20 Aug, 8:00 - 11:00am - 14 Maple Ave</div>
+  <iframe src="./dispatch-weeks-out.html"></iframe>
+</div>
+<div class="c">
+  <div class="h"><b>Dispatch - same-day booking, NO customer reminder</b><span>requeueVisitReminder answered "skipped": nobody is telling the customer, and the crew are the only ones who can.</span></div>
+  <div class="subj">[ACTION REQUIRED] Sun 2 Aug, 8:00 - 11:00am - 14 Maple Ave</div>
+  <iframe src="./dispatch-no-reminder.html"></iframe>
+</div>
+<div class="c">
+  <div class="h"><b>Dispatch - no sub named</b><span>The Sub row disappears entirely and the button reads "Confirm - I am on this".</span></div>
+  <div class="subj">[ACTION REQUIRED] Sun 2 Aug, 8:00 - 11:00am - 14 Maple Ave</div>
+  <iframe src="./dispatch-no-sub.html"></iframe>
+</div>
+<div class="c">
+  <div class="h"><b>Retraction - the visit is off</b><span>Carries a METHOD:CANCEL .ics. Leads with "do not text this customer", because the invite they hold says to.</span></div>
+  <div class="subj">[CANCELLED] Sun 2 Aug, 8:00 - 11:00am - 14 Maple Ave</div>
+  <iframe src="./cancelled.html"></iframe>
+</div>
+<div class="c">
+  <div class="h"><b>The crew calendar invite (attached to the dispatch)</b><span>Look for METHOD:REQUEST, the ATTENDEE line, and TWO alarms - 7:30pm the night before, and 7:00am on the day telling you to text the customer.</span></div>
+  
+  <pre>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//La Vaca General Contractors//Home Care//EN
+CALSCALE:GREGORIAN
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:lavaca-crew-PREVIEW
+DTSTAMP:20260801T140000Z
+DTSTART:20260802T120000Z
+DTEND:20260802T150000Z
+SUMMARY:La Vaca: Clean gutters &amp; downspouts\, Clean the dryer vent - Jordan Caruso
+LOCATION:14 Maple Ave\, West Orange\, NJ
+DESCRIPTION:Services: Clean gutters &amp; downspouts\, Clean the dryer vent\nAddress: 14 Maple Ave\, West Orange\, NJ\nCustomer: Jordan Caruso - (201) 555-0100
+STATUS:CONFIRMED
+SEQUENCE:0
+ORGANIZER;CN=La Vaca General Contractors:mailto:alex@email.lavaca.link
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN="Veronica":mailto:veronica@lavacagc.com
+BEGIN:VALARM
+ACTION:DISPLAY
+TRIGGER;VALUE=DATE-TIME:20260801T233000Z
+DESCRIPTION:Confirm tomorrow's visit for Jordan Caruso.
+END:VALARM
+BEGIN:VALARM
+ACTION:DISPLAY
+TRIGGER;VALUE=DATE-TIME:20260802T110000Z
+DESCRIPTION:Text Jordan Caruso when the crew is on the way - (201) 555-0100.
+END:VALARM
+END:VEVENT
+END:VCALENDAR
+</pre>
+</div>
+<div class="c">
+  <div class="h"><b>Telegram 5pm - nobody has confirmed</b><span>Goes to your existing chat. This is the first stage.</span></div>
+  
+  <pre>🟠 &lt;b&gt;Nobody has confirmed tomorrow's visit&lt;/b&gt;
+&lt;b&gt;Jordan Caruso&lt;/b&gt; - Sun 2 Aug 8:00 - 11:00am
+📍 14 Maple Ave, West Orange, NJ
+🧰 Clean gutters &amp;amp; downspouts, Clean the dryer vent
+📱 &lt;code&gt;(201) 555-0100&lt;/code&gt;
+Sent to Alex, Veronica, no answer yet.
+The customer is told we are coming at 7:30pm tonight.</pre>
+</div>
+<div class="c">
+  <div class="h"><b>Telegram 6pm - still unconfirmed</b><span>Second stage. Note the urgency changes - the customer is told at 7:30pm.</span></div>
+  
+  <pre>🔴 &lt;b&gt;Still unconfirmed&lt;/b&gt;
+&lt;b&gt;Jordan Caruso&lt;/b&gt; - Sun 2 Aug 8:00 - 11:00am
+📍 14 Maple Ave, West Orange, NJ
+🧰 Clean gutters &amp;amp; downspouts, Clean the dryer vent
+📱 &lt;code&gt;(201) 555-0100&lt;/code&gt;
+Sent to Alex, Veronica, no answer yet.
+The customer is told we are coming at 7:30pm - about 90 minutes from now.</pre>
+</div>
+<div class="c">
+  <div class="h"><b>Telegram - nobody was EVER told</b><span>The worse case: no dispatch went out at all, so this is chased harder rather than skipped.</span></div>
+  
+  <pre>🔴 &lt;b&gt;Still unconfirmed&lt;/b&gt;
+&lt;b&gt;Jordan Caruso&lt;/b&gt; - Sun 2 Aug 8:00 - 11:00am
+📍 14 Maple Ave, West Orange, NJ
+🧰 Clean gutters &amp;amp; downspouts, Clean the dryer vent
+📱 &lt;code&gt;(201) 555-0100&lt;/code&gt;
+⚠️ &lt;b&gt;No dispatch was ever sent for this visit&lt;/b&gt; - nobody has been told to go.
+The customer is told we are coming at 7:30pm - about 90 minutes from now.</pre>
+</div>
+<div class="c">
+  <div class="h"><b>Telegram - a crew member flagged a problem</b><span>Fires the moment they tap it, with their note verbatim. This is the one you asked for.</span></div>
+  
+  <pre>🚩 &lt;b&gt;A visit has been flagged&lt;/b&gt;
+&lt;b&gt;Veronica&lt;/b&gt; says something is wrong with this visit.
+&lt;b&gt;Jordan Caruso&lt;/b&gt; - Sun 2 Aug 8:00 - 11:00am
+📍 14 Maple Ave, West Orange, NJ
+🧰 Clean gutters &amp;amp; downspouts, Clean the dryer vent
+📱 &lt;code&gt;(201) 555-0100&lt;/code&gt;
+👷 Ramirez Exteriors
+💬 Sub cancelled on me - Ramirez cannot make Sunday.
+The customer still gets their reminder the night before, so this needs sorting or the visit calling off.
+Nobody has confirmed it. 5pm and 6pm will chase it until somebody does.</pre>
+</div>
+<div class="c">
+  <div class="h"><b>Telegram - flagged AFTER a colleague confirmed</b><span>The important one: because Alex confirmed, the 5pm/6pm chases are silent, so this alert is the only warning you get.</span></div>
+  
+  <pre>🚩 &lt;b&gt;A visit has been flagged&lt;/b&gt;
+&lt;b&gt;Veronica&lt;/b&gt; says something is wrong with this visit.
+&lt;b&gt;Jordan Caruso&lt;/b&gt; - Sun 2 Aug 8:00 - 11:00am
+📍 14 Maple Ave, West Orange, NJ
+🧰 Clean gutters &amp;amp; downspouts, Clean the dryer vent
+📱 &lt;code&gt;(201) 555-0100&lt;/code&gt;
+👷 Ramirez Exteriors
+💬 Van is in the shop, we cannot get there.
+The customer has ALREADY been told we are coming, so this needs sorting or calling off now.
+Alex has already confirmed this visit, and no chase was left to run for it anyway. This is the only alert you get.</pre>
+</div>
+</div>

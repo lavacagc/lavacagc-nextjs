@@ -1,0 +1,30 @@
+# Gitleaks config. Used by the .githooks/pre-commit scanner.
+#
+# Defaults are good — we only add allowlist entries for known-safe patterns
+# that would otherwise false-positive (e.g. the public Supabase anon key,
+# example tokens in tests).
+
+title = "Lavaca website credential scan"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known-safe patterns intentionally present in the repo"
+paths = [
+  '''node_modules''',
+  '''\.next''',
+  '''playwright-report''',
+  '''test-results''',
+  '''package-lock\.json''',
+]
+regexes = [
+  # NEXT_PUBLIC_* env values are by definition browser-exposed (publishable),
+  # not secrets. Never block those.
+  '''NEXT_PUBLIC_[A-Z0-9_]+''',
+  # Test/local-dev placeholder strings used in CI workflow + Playwright env.
+  '''local-dev-secret''',
+  '''placeholder''',
+  '''example''',
+  '''fixture-access-token''',
+]
