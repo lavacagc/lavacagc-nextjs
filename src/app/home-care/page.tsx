@@ -8,6 +8,7 @@ import ChecklistPreview from '@/components/homecare/ChecklistPreview';
 import { CalendarCheck, ChevronDown, ListChecks, Wrench } from 'lucide-react';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById } from '@/lib/homecare/homeowners';
+import { accessErrorCopy } from '@/lib/homecare/accessErrors';
 
 export const metadata: Metadata = {
   title: 'Free Seasonal Home Maintenance Plan | La Vaca Home Care',
@@ -38,36 +39,6 @@ const STEPS = [
   { icon: CalendarCheck, title: 'Get your seasonal checklist', body: 'See exactly what your house needs this season — with a quick why for each task.' },
   { icon: Wrench, title: 'DIY it — or book us', body: 'Knock out the easy ones yourself, and tap “Book La Vaca” on anything you’d rather hand off.' },
 ];
-
-/**
- * What each `?error=` code tells the visitor.
- *
- * They are separated because the advice differs. Telling someone to request a
- * fresh link is actively wrong for `unavailable` - that is our signing secret or
- * our database, and a fresh link fails in exactly the same way - and wrong again
- * for `unsubscribed`, where the link worked and the account is the problem.
- */
-const ACCESS_ERRORS: Record<string, string> = {
-  invalid: "That link was invalid or expired. Enter your email below and we'll send a fresh one.",
-  expired: "That link was invalid or expired. Enter your email below and we'll send a fresh one.",
-  unavailable: "We couldn't open your plan just now - that one is on us, not your link. Please try the same link again in a few minutes.",
-  error: "We couldn't open your plan just now - that one is on us, not your link. Please try the same link again in a few minutes.",
-  unsubscribed: "That plan is unsubscribed, so the link no longer opens it. Re-join below and your checklist comes straight back.",
-  busy: "We're seeing a lot of requests from your network right now. Please try the same link again in a few minutes.",
-};
-const ACCESS_ERROR_FALLBACK = ACCESS_ERRORS.invalid;
-
-/**
- * `?error=` is whatever the visitor typed, so it is matched against the codes we
- * actually defined rather than indexed straight into the map. A plain lookup
- * resolves inherited keys - `?error=toString` returns a function and
- * `?error=__proto__` an object, neither of which `??` rejects and neither of
- * which React can render - so a crafted URL took the public signup page down.
- */
-function accessErrorCopy(code: string | undefined): string {
-  if (!code || !Object.prototype.hasOwnProperty.call(ACCESS_ERRORS, code)) return ACCESS_ERROR_FALLBACK;
-  return ACCESS_ERRORS[code];
-}
 
 export default async function HomeCarePage({ searchParams }: { searchParams: Promise<{ error?: string; unsub?: string }> }) {
   const sp = await searchParams;

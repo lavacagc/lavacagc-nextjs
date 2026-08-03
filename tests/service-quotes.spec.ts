@@ -607,11 +607,16 @@ test('SC7: the visit instant is built in Eastern, never in the local zone', () =
 
 /* ── CP: completion ──────────────────────────────────────────────────────── */
 
-test('CP5: the completion email uses the owner-specified wording', () => {
+test('CP5: the subject and headline ask for the review the button opens', () => {
   const n = completed();
-  expect(n.subject).toBe('Please let us know how our team did');
-  expect(n.html).toContain('Please let us know');
-  expect(n.html).toContain('how our team did.');
+  // The button opens Google. The subject is the line the customer reads first,
+  // so it says so rather than promising a private channel the email lacks.
+  expect(n.subject).toBe('How did we do? A quick Google review helps');
+  expect(n.html).toContain('How did we do?');
+  expect(n.html).toContain('A quick review helps.');
+  for (const stale of [n.subject, n.html]) {
+    expect(stale, 'the private-feedback framing must not outlive the CTA').not.toContain('Please let us know');
+  }
 });
 
 test('CP6: "we come back" precedes any mention of a public word', () => {

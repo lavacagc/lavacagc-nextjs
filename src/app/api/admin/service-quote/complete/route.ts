@@ -4,7 +4,7 @@
  * "Mark service completed" from the admin dashboard. Two effects:
  *   1. stamps the tasks done, with completed_by='lavaca' so the portal can
  *      label the work La Vaca performed and leave self-ticked tasks unlabelled,
- *   2. sends the feedback email - "Please let us know how our team did".
+ *   2. sends the review-ask email - "How did we do? A quick Google review helps".
  *
  * IDEMPOTENT: a second click must not send a second feedback email. Rows
  * already done by La Vaca are treated as already-handled, so the send only

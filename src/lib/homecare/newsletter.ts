@@ -200,6 +200,14 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
    */
   const portalHref = esc(portalUrl);
   /**
+   * The "Add to plan" deep link, built once for both parts. The HTML and text
+   * builders each used to construct it, they drifted, and the text one ended up
+   * concatenating "?add=" onto a URL that already carried a query - a second '?'
+   * and a dead link, shipped only in the alternative most clients read last.
+   */
+  const addToPlanUrl = (key: string) =>
+    checklistUrl(baseUrl, args.accessToken, { query: { add: key }, utm: NEWSLETTER_UTM });
+  /**
    * Standing links for the caught-up email. Tagged like the member-share line
    * so the traffic is attributable, and pointed at the index pages rather than
    * individual posts so a send needs no extra data fetch.
@@ -291,7 +299,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
     // member adds them to one request and checks out once - no per-task
     // one-off booking, so no separate owner alert per link.
     const book = t.bookable
-      ? `<div style="padding-top:10px"><a href="${esc(checklistUrl(baseUrl, args.accessToken, { query: { add: t.key }, utm: NEWSLETTER_UTM }))}" style="display:inline-block;background:${ORANGE};border-radius:8px;padding:9px 16px;font-family:${FF};font-size:13px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none">Add to plan</a></div>`
+      ? `<div style="padding-top:10px"><a href="${esc(addToPlanUrl(t.key))}" style="display:inline-block;background:${ORANGE};border-radius:8px;padding:9px 16px;font-family:${FF};font-size:13px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none">Add to plan</a></div>`
       : '';
     // Top and bottom are independent: the first row tucks under the panel
     // heading, and the last row closes the panel out - unless a teaser row
@@ -464,15 +472,7 @@ ${keepInTouch}
     text += `${panelHeading.toUpperCase()}\n\n`;
     list.forEach((t, i) => {
       text += `${String(i + 1).padStart(2, '0')}. ${t.title}\n    ${plainMeta(t)}\n`;
-      // Built, not concatenated: the portal link already carries ?token=&to=,
-      // so appending "?add=" here produced a second '?' and a dead link.
-      if (t.bookable) {
-        const addUrl = checklistUrl(baseUrl, args.accessToken, {
-          query: { add: t.key },
-          utm: NEWSLETTER_UTM,
-        });
-        text += `    Add to your plan: ${addUrl}\n`;
-      }
+      if (t.bookable) text += `    Add to your plan: ${addToPlanUrl(t.key)}\n`;
     });
     if (remaining) {
       text += `\n+ ${remaining} more ${jobWord(remaining)} on your ${seasonLower} list. Open your checklist to see the rest: ${portalUrl}\n`;

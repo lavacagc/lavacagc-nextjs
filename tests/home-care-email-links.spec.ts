@@ -10,6 +10,7 @@ import { buildServiceCompletedEmail, buildVisitReminderEmail } from '../src/lib/
 import { buildReleaseEmail } from '../src/lib/homecare/releaseEmail';
 import { buildWelcomeEmail } from '../src/lib/homecare/lifecycleEmails';
 import { buildNewsletter, type NewsletterTask } from '../src/lib/homecare/newsletter';
+import { accessErrorCopy } from '../src/lib/homecare/accessErrors';
 import { stubEmailEnv } from './helpers/stubEmailEnv';
 
 /**
@@ -153,10 +154,16 @@ test.describe('the completion email asks for a Google review', () => {
     // The button went to Google while the copy asked for private feedback
     // ("Tell us how it went", "tell us and we'll come back"), so a customer
     // with a complaint followed the email's own instruction onto a one-star.
-    const { html, text } = buildServiceCompletedEmail({
+    const { subject, html, text } = buildServiceCompletedEmail({
       recipientName: 'Jordan', services: ['Clean gutters'],
       feedbackUrl: GOOGLE_REVIEW_URL, unsubscribeUrl: `${BASE}/unsub`,
     });
+    // The subject and the H1 are read before anything else, and were the last
+    // two strings still promising a private channel this email does not have.
+    expect(subject.toLowerCase(), 'the inbox line must name where the button goes').toContain('review');
+    for (const [part, body] of [['subject', subject], ['html', html], ['text', text]] as const) {
+      expect(body, `${part}: the private-feedback framing must not survive`).not.toMatch(/please let us know/i);
+    }
     for (const [part, body] of [['html', html], ['text', text]] as const) {
       expect(body, `${part}: the button must say where it goes`).toContain('Leave us a Google review');
       expect(body, `${part}: nothing may promise a private channel through the button`)
@@ -311,6 +318,28 @@ test.describe('emailed portal links carry the access token', () => {
     const plain = text.match(/\/api\/home-care\/access\?\S+/g) ?? [];
     expect(plain.length, 'the text part must carry the same links').toBeGreaterThan(0);
     for (const url of plain) expect(url, `${url} must not be entity-escaped`).not.toContain('&amp;');
+  });
+
+  test('the "Add to plan" deep link is one URL, not one per rendering', () => {
+    // The HTML and text builders each constructed it, they drifted, and the
+    // text one ended up appending "?add=" to a URL that already carried a
+    // query - a second '?' and a dead link, in the alternative most clients
+    // read last. Asserting they carry ?add= each would have passed anyway.
+    const { html, text } = buildNewsletter({
+      firstName: 'Jordan', season: 'fall', tasks: [NEWSLETTER_TASK], isSeasonal: true,
+      baseUrl: BASE, accessToken: TOKEN, unsubscribeUrl: `${BASE}/unsub`,
+    });
+    const addLink = (body: string, unescape: boolean) => {
+      const urls = (body.match(/https:\/\/[^\s"']*\/api\/home-care\/access\?[^\s"']*/g) ?? [])
+        .map((u) => (unescape ? u.replace(/&amp;/g, '&') : u))
+        .filter((u) => (new URL(u).searchParams.get('to') ?? '').includes(`add=${NEWSLETTER_TASK.key}`));
+      expect(urls.length, 'exactly one "Add to plan" link per part').toBe(1);
+      return urls[0];
+    };
+    const fromHtml = addLink(html, true);
+    expect(fromHtml, 'the two parts must render the same deep link').toBe(addLink(text, false));
+    // And it is a URL, not a concatenation: one '?' after the origin.
+    expect(fromHtml.slice(BASE.length).match(/\?/g)).toHaveLength(1);
   });
 
   test('the shared CTA button escapes its href too, for every portal email that uses it', () => {
@@ -630,24 +659,31 @@ test.describe('a live access token never reaches a log line', () => {
 });
 
 test.describe('every recipient is told something true', () => {
-  const page = read('src/app/home-care/page.tsx');
-
   test('each error code gets its own copy, not one catch-all', () => {
     const codes = ['invalid', 'unavailable', 'unsubscribed', 'busy'];
-    const copy = codes.map((c) => page.match(new RegExp(`^\\s*${c}:\\s*"([^"]+)"`, 'm'))?.[1]);
-    for (const [i, c] of copy.entries()) {
-      expect(c, `${codes[i]} must have its own copy`).toBeTruthy();
+    for (const c of codes) {
+      expect(accessErrorCopy(c), `${c} must have its own copy`).toBeTruthy();
     }
-    expect(new Set(copy).size, 'the four codes must not share one message').toBe(4);
+    expect(new Set(codes.map(accessErrorCopy)).size, 'the four outcomes must not share one message').toBe(4);
+  });
+
+  test('the two routes that spell one outcome differently say the same thing', () => {
+    // /verify emits expired/error where /api/home-care/access emits
+    // invalid/unavailable. They were duplicated verbatim, so editing one left
+    // its twin describing the same failure in different words.
+    expect(accessErrorCopy('expired')).toBe(accessErrorCopy('invalid'));
+    expect(accessErrorCopy('error')).toBe(accessErrorCopy('unavailable'));
+    expect(accessErrorCopy(undefined), 'an absent code falls back to the dead-link copy')
+      .toBe(accessErrorCopy('invalid'));
   });
 
   test('"request a fresh link" is never the advice when a fresh link fails too', () => {
     // unavailable = our signing secret or our database. A fresh link fails
     // identically, so telling someone to request one is actively wrong.
-    for (const code of ['unavailable', 'busy']) {
-      const copy = page.match(new RegExp(`^\\s*${code}:\\s*"([^"]+)"`, 'm'))![1];
-      expect(copy.toLowerCase(), `${code} must not promise a fresh link`).not.toMatch(/fresh one|send.*fresh/);
-      expect(copy.toLowerCase()).toContain('try the same link again');
+    for (const code of ['unavailable', 'error', 'busy']) {
+      const copy = accessErrorCopy(code).toLowerCase();
+      expect(copy, `${code} must not promise a fresh link`).not.toMatch(/fresh one|send.*fresh/);
+      expect(copy).toContain('try the same link again');
     }
   });
 

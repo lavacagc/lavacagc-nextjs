@@ -5,7 +5,7 @@
  *
  *  - `buildServiceQuoteEmail`  - the lighter sibling of the project estimate
  *  - `buildVisitReminderEmail` - 7:30pm the evening before
- *  - `buildServiceCompletedEmail` - "Please let us know how our team did"
+ *  - `buildServiceCompletedEmail` - "How did we do? A quick Google review helps"
  *
  * What is deliberately absent from the quote, versus the project estimate:
  * no portal URL, no update cadence, no lifetime Schluter warranty (tile-
@@ -243,7 +243,7 @@ export function buildServiceCompletedEmail(args: ServiceCompletedArgs): { subjec
     licenceBar(),
     brandRow(),
     pill(['Service complete']),
-    headline('Please let us know', 'how our team did.'),
+    headline('How did we do?', 'A quick review helps.'),
     intro(
       `Hi ${first},`,
       `We finished ${svc} at your place. <strong style="color:${INK}">If anything isn't right, call us and we'll come back</strong> - one call is all it takes. And a quick Google review helps other Northern NJ homeowners find us.`,
@@ -270,5 +270,5 @@ export function buildServiceCompletedEmail(args: ServiceCompletedArgs): { subjec
     `Something not quite right? Call (201) 212-4917 instead and we'll come back out.\n` +
     textFooter(`You're getting this because La Vaca completed work at your home.`, unsubscribeUrl, preferencesUrl ?? undefined);
 
-  return { subject: 'Please let us know how our team did', html, text };
+  return { subject: 'How did we do? A quick Google review helps', html, text };
 }
