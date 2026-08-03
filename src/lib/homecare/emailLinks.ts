@@ -53,7 +53,10 @@ export function checklistUrl(
 
   const url = new URL('/api/home-care/access', baseUrl);
   url.searchParams.set('token', accessToken);
-  url.searchParams.set('to', `${destination.pathname}${destination.search}`);
+  // The hash rides along too. The newsletter's own "Learn more" links are
+  // `/home-care/guides/<season>#<task>`, so the first `to` anyone passes is very
+  // likely to carry one, and dropping it lands them on the guide index.
+  url.searchParams.set('to', `${destination.pathname}${destination.search}${destination.hash}`);
   return url.toString();
 }
 

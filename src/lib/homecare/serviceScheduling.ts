@@ -81,9 +81,18 @@ export async function ensureServiceHomeowner(args: {
     if (args.zip && !row.zip) patch.zip = args.zip;
     if (args.phone && !row.phone) patch.phone = args.phone;
     if (args.firstName && !row.first_name) patch.first_name = args.firstName;
+    // Not a blank the caller supplied - one we owe them. This row goes straight
+    // into the visit-scheduled email, and a null token there sends the bare
+    // link the branch exists to fix.
+    if (!row.access_token) patch.access_token = newToken();
     if (Object.keys(patch).length > 0) {
-      await supabaseRest('PATCH', `homeowners?id=eq.${row.id}`, patch).catch(() => {});
-      return { ...row, ...patch } as HomeownerLite;
+      const persisted = await supabaseRest('PATCH', `homeowners?id=eq.${row.id}`, patch)
+        .then(() => true, () => false);
+      // A patch that did not land is not reported as though it had. That mattered
+      // little for the address blanks, and it matters for the token: one that
+      // exists only in this response fails the exchange, so the recipient is told
+      // their link expired - strictly worse than the bare URL a null degrades to.
+      if (persisted) return { ...row, ...patch } as HomeownerLite;
     }
     return row;
   }

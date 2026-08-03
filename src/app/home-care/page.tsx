@@ -57,6 +57,18 @@ const ACCESS_ERRORS: Record<string, string> = {
 };
 const ACCESS_ERROR_FALLBACK = ACCESS_ERRORS.invalid;
 
+/**
+ * `?error=` is whatever the visitor typed, so it is matched against the codes we
+ * actually defined rather than indexed straight into the map. A plain lookup
+ * resolves inherited keys - `?error=toString` returns a function and
+ * `?error=__proto__` an object, neither of which `??` rejects and neither of
+ * which React can render - so a crafted URL took the public signup page down.
+ */
+function accessErrorCopy(code: string | undefined): string {
+  if (!code || !Object.prototype.hasOwnProperty.call(ACCESS_ERRORS, code)) return ACCESS_ERROR_FALLBACK;
+  return ACCESS_ERRORS[code];
+}
+
 export default async function HomeCarePage({ searchParams }: { searchParams: Promise<{ error?: string; unsub?: string }> }) {
   const sp = await searchParams;
 
@@ -90,7 +102,7 @@ export default async function HomeCarePage({ searchParams }: { searchParams: Pro
           <div className="bg-secondary/10 text-center text-sm py-3 px-4 text-text-secondary">You&apos;ve been unsubscribed from La Vaca Home Care. You can re-join anytime below.</div>
         )}
         {sp?.error && (
-          <div className="bg-destructive/10 text-center text-sm py-3 px-4 text-destructive">{ACCESS_ERRORS[sp.error] ?? ACCESS_ERROR_FALLBACK}</div>
+          <div className="bg-destructive/10 text-center text-sm py-3 px-4 text-destructive">{accessErrorCopy(sp.error)}</div>
         )}
 
         <section className="py-10 md:py-16 bg-gradient-subtle">

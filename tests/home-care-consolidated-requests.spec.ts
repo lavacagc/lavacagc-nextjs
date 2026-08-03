@@ -132,10 +132,21 @@ test('AC9: guides + newsletter per-task CTAs deep-link the task via ?add=', () =
   expect(addKey('tok-ac9'), 'tokenized links must still carry ?add=').toEqual(['clean_gutters', 'clean_gutters']);
   expect(addKey(null), 'and so must the bare fallback').toEqual(['clean_gutters', 'clean_gutters']);
   // The full-checklist buttons stay bare (no ?add), so they open the whole plan.
-  // The label is season/month-specific since the design port ("Open My August
-  // Checklist"), so assert the bare link itself rather than the old copy.
-  expect(newsletter).toContain('<a href="${checklistUrl}" style="display:block;');
-  expect(newsletter).toContain('${ctaLabel}: ${checklistUrl}\\n');
+  // Rendered for the same reason the deep link above is: the label is
+  // season/month-specific since the design port ("Open My August Checklist"),
+  // and a source literal asserts how the builder is written rather than what it
+  // emits - it broke on a rename of a local while the emails were correct.
+  const { html, text } = buildNewsletter({
+    firstName: 'Dana', season: 'fall', tasks: AC9_TASKS, isSeasonal: true,
+    baseUrl: 'https://www.lavacagc.com', accessToken: 'tok-ac9',
+    unsubscribeUrl: 'https://www.lavacagc.com/u',
+  });
+  for (const [part, body] of [['html', html], ['text', text]] as const) {
+    const wholePlan = (body.match(/https:\/\/[^\s"']*\/api\/home-care\/access[^\s"']*/g) ?? [])
+      .map((u) => new URL(u.replace(/&amp;/g, '&')))
+      .filter((u) => !(u.searchParams.get('to') ?? '').includes('add='));
+    expect(wholePlan.length, `${part} must offer a link to the whole plan, not only ?add= deep links`).toBeGreaterThan(0);
+  }
 });
 
 test('AC10: checklist page derives autoAddKey behind a bookable/dismissed guard', () => {

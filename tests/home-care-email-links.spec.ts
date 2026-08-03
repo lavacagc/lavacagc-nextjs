@@ -1,9 +1,14 @@
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { createServer } from 'http';
+import type { AddressInfo } from 'net';
 import { checklistUrl, safeDestination, GOOGLE_REVIEW_URL } from '../src/lib/homecare/emailLinks';
+import { redactRestPath } from '../src/lib/notify/supabase-rest';
+import { findHomeownerByAccessToken } from '../src/lib/homecare/homeowners';
 import { buildServiceCompletedEmail, buildVisitReminderEmail } from '../src/lib/homecare/serviceEmails';
 import { buildReleaseEmail } from '../src/lib/homecare/releaseEmail';
+import { buildWelcomeEmail } from '../src/lib/homecare/lifecycleEmails';
 import { buildNewsletter, type NewsletterTask } from '../src/lib/homecare/newsletter';
 
 /**
@@ -35,6 +40,42 @@ const NEWSLETTER_TASK: NewsletterTask = {
   key: 'clean_gutters', title: 'Clean gutters', blurb: 'Clear them out.',
   bookable: true, diy_or_pro: 'pro', priority: 9, applies_to: ['all'],
 };
+
+/**
+ * Every email builder that renders a portal CTA, FOUND rather than listed.
+ *
+ * A builder renders one exactly when its args interface names a portal link or
+ * an access token - those are the only two ways a link into the cookie-gated
+ * portal can reach it. Reading that off the source is what stops a new email
+ * from being missed the way the release and welcome ones both were.
+ */
+function portalEmailBuilders(): string[] {
+  const dir = 'src/lib/homecare';
+  const found: string[] = [];
+  for (const file of readdirSync(join(process.cwd(), dir)).filter((f) => f.endsWith('.ts'))) {
+    const src = read(join(dir, file));
+    for (const [, name, argsType] of src.matchAll(/export function (build\w+)\(\s*args:\s*(\w+)/g)) {
+      const body = src.match(new RegExp(`export interface ${argsType} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? '';
+      if (/^\s*(portalUrl|checklistUrl|accessToken)\??:/m.test(body)) found.push(name);
+    }
+  }
+  expect(found.length, 'the builder scan found nothing - the pattern has drifted').toBeGreaterThan(0);
+  return found.sort();
+}
+
+/** Every API route that sends Home Care mail, so none can be left off a list. */
+function routeFiles(): string[] {
+  const out: string[] = [];
+  const walk = (rel: string) => {
+    for (const entry of readdirSync(join(process.cwd(), rel), { withFileTypes: true })) {
+      const next = join(rel, entry.name);
+      if (entry.isDirectory()) walk(next);
+      else if (entry.name === 'route.ts') out.push(next);
+    }
+  };
+  walk('src/app/api');
+  return out.filter((f) => /home-care|releases|service-quote|visit-reminders/.test(f));
+}
 
 test.describe('the completion email asks for a Google review', () => {
   test('the CTA is the owner Google review URL, not the checklist', () => {
@@ -109,6 +150,17 @@ test.describe('emailed portal links carry the access token', () => {
     expect(dest.searchParams.get('utm_source')).toBe('newsletter');
   });
 
+  test('a destination anchor survives the exchange', () => {
+    // The newsletter's own "Learn more" links are /home-care/guides/<season>#<task>,
+    // so the first `to` anyone passes will carry a fragment; dropped, it lands
+    // them on the guide index instead of the task they tapped.
+    const url = checklistUrl(BASE, TOKEN, { to: '/home-care/guides/fall#clean_gutters' });
+    const to = new URL(url).searchParams.get('to')!;
+    expect(to).toBe('/home-care/guides/fall#clean_gutters');
+    expect(safeDestination(to), 'and the route must still accept it').toBe(to);
+    expect(new URL(to, BASE).hash).toBe('#clean_gutters');
+  });
+
   test('no token degrades to the bare url, never to token=null', () => {
     for (const missing of [null, undefined, '']) {
       const url = checklistUrl(BASE, missing);
@@ -163,27 +215,52 @@ test.describe('emailed portal links carry the access token', () => {
   });
 
   test('every portal email actually RENDERS the token, not just imports the helper', () => {
-    // The point of asserting on output: the previous version of this test only
-    // checked that each builder mentioned the helper, so it passed green while
-    // the release email shipped a bare link because no token was ever passed.
-    const rendered: Array<[string, { html: string; text: string }]> = [
-      ['release', buildReleaseEmail({
+    // Two things this test has to do, because it failed at both before.
+    //
+    // Assert on OUTPUT: its first version only checked that each builder
+    // mentioned the helper, so it passed green while the release email shipped
+    // a bare link because no token was ever passed to it.
+    //
+    // And DISCOVER the builders rather than list them: its second version named
+    // three by hand, so the welcome email - a fifth portal CTA - was invisible
+    // by construction. Anything found here that has no renderer below fails,
+    // which is what makes adding a sixth email force the issue.
+    const rendered: Record<string, { html: string; text: string }> = {
+      buildReleaseEmail: buildReleaseEmail({
         firstName: 'Jordan', features: [RELEASE_FEATURE], baseUrl: BASE,
         accessToken: TOKEN, unsubscribeUrl: `${BASE}/unsub`,
-      })],
-      ['newsletter', buildNewsletter({
+      }),
+      buildNewsletter: buildNewsletter({
         firstName: 'Jordan', season: 'fall', tasks: [NEWSLETTER_TASK], isSeasonal: true,
         baseUrl: BASE, accessToken: TOKEN, unsubscribeUrl: `${BASE}/unsub`,
-      })],
-      ['visit reminder', buildVisitReminderEmail({
+      }),
+      buildVisitReminderEmail: buildVisitReminderEmail({
         recipientName: 'Jordan', services: ['Clean gutters'], address: '14 Maple Ave',
         timeWindow: '8:00 - 11:00am', visitDateLabel: 'Tomorrow',
         portalUrl: checklistUrl(BASE, TOKEN), unsubscribeUrl: `${BASE}/unsub`,
-      })],
-    ];
-    for (const [name, { html, text }] of rendered) {
+      }),
+      buildWelcomeEmail: buildWelcomeEmail({
+        firstName: 'Jordan', checklistUrl: checklistUrl(BASE, TOKEN),
+        unsubscribeUrl: `${BASE}/unsub`, baseUrl: BASE,
+      }),
+    };
+
+    expect(portalEmailBuilders(), 'a portal-CTA builder with no renderer here')
+      .toEqual(Object.keys(rendered).sort());
+
+    for (const [name, { html, text }] of Object.entries(rendered)) {
       expect(html, `${name} html must carry the token`).toContain(`token=${TOKEN}`);
       expect(text, `${name} text must carry the token`).toContain(`token=${TOKEN}`);
+    }
+  });
+
+  test('no sender builds a bare portal link where the helper belongs', () => {
+    // The welcome email did exactly this for a round: `${origin}/home-care/checklist`
+    // handed to a builder, with the token sitting unread on the row two lines up.
+    for (const file of routeFiles()) {
+      const src = code(file);
+      expect(src, `${file} must not hand a bare portal URL to an email`)
+        .not.toMatch(/\$\{[A-Za-z_.]+\}\/home-care\/(checklist|book)/);
     }
   });
 
@@ -196,11 +273,21 @@ test.describe('emailed portal links carry the access token', () => {
       ['src/app/api/cron/home-care-newsletter/route.ts', 'src/app/api/cron/home-care-newsletter/route.ts'],
       ['src/app/api/admin/releases/send/route.ts', 'src/app/api/admin/releases/send/route.ts'],
       ['src/app/api/admin/service-quote/schedule/route.ts', 'src/lib/homecare/serviceScheduling.ts'],
+      // The welcome email. Its row comes from findHomeownerByVerifyToken, which
+      // selects *, and the token it passes on is the healed one.
+      ['src/app/api/home-care/verify/route.ts', 'src/lib/homecare/homeowners.ts'],
     ];
+    // One entry per route file that sends a portal email, so a sixth sender
+    // cannot be added without landing here.
+    expect(
+      senders.length,
+      'a route sends a portal email without being asserted on',
+    ).toBe(routeFiles().filter((f) => /checklistUrl\(|accessToken:/.test(code(f))).length);
+
     for (const [file, selectSource] of senders) {
       const src = code(file);
-      expect(code(selectSource), `${selectSource} must select access_token`).toMatch(/select=[^`'"]*access_token/);
-      const buildsItself = /checklistUrl\([^)]*\.access_token/s.test(src);
+      expect(code(selectSource), `${selectSource} must select access_token`).toMatch(/select=[^`'"]*(access_token|\*)/);
+      const buildsItself = /checklistUrl\([^)]*(\.access_token|accessToken)/.test(src);
       const delegates = /accessToken:\s*\w+\.access_token/.test(src);
       expect(buildsItself || delegates, `${file} must pass the homeowner's token to the link`).toBe(true);
       expect(src, `${file} must not build a bare checklist link`).not.toMatch(/\$\{[A-Za-z_]+\}\/home-care\/checklist/);
@@ -297,7 +384,7 @@ test.describe('the access route fails safely', () => {
     // links exist to stop recipients seeing. The token is 32 random bytes, so
     // guessing was never the realistic threat.
     const src = code('src/app/api/home-care/access/route.ts');
-    expect(src).toMatch(/checkRateLimit\([^)]*consume:\s*false/s);
+    expect(src).toMatch(/checkRateLimit\([^)]*consume:[\s\S]*?false/);
     // The success path sets the cookie without ever charging the bucket.
     const successIdx = src.indexOf('HC_ACCESS_COOKIE, signed');
     expect(successIdx).toBeGreaterThan(-1);
@@ -313,6 +400,64 @@ test.describe('the access route fails safely', () => {
       const at = src.indexOf(write);
       expect(src.slice(Math.max(0, at - 200), at)).toContain('if (consume)');
     }
+  });
+});
+
+test.describe('a live access token never reaches a log line', () => {
+  // The access token is stable and never rotated, so one that reaches a log is
+  // a permanent credential for /home-care/book - requesting PAID WORK at that
+  // person's address. supabaseRest interpolates the request path into what it
+  // throws, and every caller logs that, so ANY PostgREST non-2xx used to write
+  // one out: a column missing on a restored copy, a 5xx, a blip.
+  test('the thrown path has its credentials blanked, not its columns', () => {
+    const redacted = redactRestPath(`homeowners?access_token=eq.${TOKEN}&select=*&limit=1`);
+    expect(redacted).not.toContain(TOKEN);
+    expect(redacted).toContain('access_token=<redacted>');
+    expect(redacted, 'the column and the filters still have to be diagnosable').toContain('select=*');
+  });
+
+  test('a real failing lookup throws a message with no token in it', async () => {
+    // Exercised, not read: asserting on the helper alone passes green if
+    // supabaseRest ever stops calling it, which is the whole leak.
+    const stub = createServer((_req, res) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ code: '42703', message: 'column homeowners.access_token does not exist' }));
+    });
+    await new Promise<void>((r) => stub.listen(0, '127.0.0.1', r));
+    const { port } = stub.address() as AddressInfo;
+
+    const saved = [process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY];
+    process.env.NEXT_PUBLIC_SUPABASE_URL = `http://127.0.0.1:${port}`;
+    process.env.SUPABASE_SECRET_KEY = 'stub-key-not-a-real-secret';
+    try {
+      const err = await findHomeownerByAccessToken(TOKEN).then(() => null, (e: Error) => e);
+      expect(err, 'the stub must make the lookup throw').toBeTruthy();
+      expect(err!.message, 'a live token must never reach a log line').not.toContain(TOKEN);
+      expect(String(err!.stack)).not.toContain(TOKEN);
+      // Still diagnosable: which column, which status, what PostgREST said.
+      expect(err!.message).toContain('access_token=<redacted>');
+      expect(err!.message).toContain('400');
+    } finally {
+      [process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY] = saved as [string, string];
+      await new Promise<void>((r) => stub.close(() => r()));
+    }
+  });
+
+  test('every token-keyed lookup in the codebase is covered, not just this one', () => {
+    for (const param of ['access_token', 'verify_token', 'unsubscribe_token', 'confirm_token', 'preference_token', 'token']) {
+      expect(redactRestPath(`t?${param}=eq.${TOKEN}&limit=1`), `${param} must be blanked`).not.toContain(TOKEN);
+    }
+  });
+
+  test('a column list that merely NAMES a token column stays readable', () => {
+    const path = 'homeowners?select=id,first_name,unsubscribe_token,access_token&status=eq.active';
+    expect(redactRestPath(path)).toBe(path);
+  });
+
+  test('the access route logs the message, never the error object', () => {
+    const src = code('src/app/api/home-care/access/route.ts');
+    expect(src).not.toMatch(/console\.error\([^)]*failed:',\s*err\s*\)/);
+    expect(src).toMatch(/err instanceof Error \? err\.message : String\(err\)/);
   });
 });
 
@@ -338,8 +483,24 @@ test.describe('every recipient is told something true', () => {
     }
   });
 
-  test('the page renders the mapped copy rather than a hardcoded sentence', () => {
-    expect(page).toContain('ACCESS_ERRORS[sp.error] ?? ACCESS_ERROR_FALLBACK');
+  test('the page renders the mapped copy rather than a hardcoded sentence', async ({ page: browser }) => {
+    await browser.goto('/home-care?error=unsubscribed', { waitUntil: 'domcontentloaded' });
+    await expect(browser.getByText('That plan is unsubscribed', { exact: false })).toBeVisible();
+  });
+
+  test('an ?error= that names an inherited property does not take the page down', async ({ page: browser }) => {
+    // The lookup used to index an object literal with whatever was in the URL,
+    // so ?error=toString resolved to a function and ?error=__proto__ to an
+    // object - neither of which `??` rejects and neither of which React can
+    // render. A crafted URL 500'd the PUBLIC signup page.
+    for (const crafted of ['__proto__', 'toString', 'constructor', 'valueOf', 'hasOwnProperty']) {
+      const res = await browser.goto(`/home-care?error=${crafted}`, { waitUntil: 'domcontentloaded' });
+      expect(res?.status(), `?error=${crafted} must not error`).toBeLessThan(400);
+      // The signup form is the whole point of this page: it has to survive.
+      await expect(browser.locator('#get-started')).toBeVisible();
+      // And the visitor gets the fallback sentence, not "[object Object]".
+      await expect(browser.getByText('That link was invalid or expired', { exact: false })).toBeVisible();
+    }
   });
 });
 
@@ -349,11 +510,25 @@ test.describe('a tokenized email is not an invitation to hand over the portal', 
     // requesting PAID WORK at the member's address - and profile editing, for
     // 30 days. Before the token these emails carried no credential, so
     // forwarding was harmless.
-    const carriers = ['src/lib/homecare/newsletter.ts', 'src/lib/homecare/releaseEmail.ts'];
+    // Discovered, not listed - the welcome email was a carrier that still said
+    // "Forward this email" for a round because it was not on the list.
+    const carriers = ['src/lib/homecare/newsletter.ts', 'src/lib/homecare/releaseEmail.ts', 'src/lib/homecare/lifecycleEmails.ts'];
+    expect(portalEmailBuilders().length, 'a new portal email needs adding here').toBe(4);
     for (const f of carriers) {
       const src = read(f);
       expect(src, `${f} carries a token, so it must not invite forwarding`).not.toMatch(/Forward this email/i);
     }
+  });
+
+  test('the welcome email points a referral at the signup page instead', () => {
+    const { html, text } = buildWelcomeEmail({
+      firstName: 'Jordan', checklistUrl: checklistUrl(BASE, TOKEN),
+      unsubscribeUrl: `${BASE}/unsub`, baseUrl: BASE,
+    });
+    expect(html).toContain('Know someone');
+    expect(html).toContain(`${BASE}/home-care?utm_source=member_share`);
+    expect(html).not.toMatch(new RegExp(`member_share[^"']*${TOKEN}`));
+    expect(text).toContain(`${BASE}/home-care`);
   });
 
   test('the referral intent survives, pointed at the public signup page', () => {
@@ -386,9 +561,23 @@ test.describe('a homeowner created after the deploy gets a token too', () => {
     }
   });
 
-  test('a re-subscribing homeowner with no token is healed rather than left bare', () => {
-    const src = code('src/app/api/home-care/subscribe/route.ts');
-    expect(src).toMatch(/access_token:\s*existing\.access_token\s*\|\|\s*newToken\(\)/);
+  test('every existing-row path heals a null token rather than emailing bare links', () => {
+    // Three paths reach an EXISTING row and then send it an email. Each one has
+    // to top up a missing token, or the backfill is the only thing that ever
+    // did and a row that slipped past it stays broken forever.
+    const subscribe = code('src/app/api/home-care/subscribe/route.ts');
+    expect(
+      (subscribe.match(/access_token:\s*existing\.access_token\s*\|\|\s*newToken\(\)/g) ?? []).length,
+      'both the re-subscribe and the already-active branches must heal',
+    ).toBe(2);
+    expect(
+      code('src/app/api/home-care/verify/route.ts'),
+      'the welcome email is built from this row',
+    ).toMatch(/access_token:\s*(ho\.access_token\s*\|\|\s*newToken\(\)|accessToken)/);
+    expect(
+      code('src/lib/homecare/serviceScheduling.ts'),
+      'this row goes straight into the visit-scheduled email',
+    ).toMatch(/if\s*\(!row\.access_token\)\s*patch\.access_token\s*=\s*newToken\(\)/);
   });
 
   test('the column defaults in the database, so a third insert path cannot regress it', () => {

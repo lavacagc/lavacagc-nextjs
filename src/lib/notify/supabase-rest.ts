@@ -9,6 +9,38 @@ interface RestOpts {
   prefer?: string;
 }
 
+/**
+ * Query parameters whose VALUE is a credential, matched on the parameter name
+ * only - `select=id,access_token` names a column and stays readable.
+ */
+const SECRET_PARAM = /token|secret|password|api[_-]?key/i;
+
+/**
+ * The request path with any credential in it blanked, for the thrown message.
+ *
+ * Several lookups key on a secret - `homeowners?access_token=eq.<TOKEN>` above
+ * all, because that token is stable, never rotated, and buys 30 days of portal
+ * access including booking paid work at the member's address. Every caller logs
+ * what this helper throws, so a single PostgREST non-2xx (a column missing on a
+ * restored copy, a 5xx, a blip) used to write a live credential into the
+ * platform log and every drain attached to it. The column and the status, which
+ * are what make a failure diagnosable, both survive.
+ */
+export function redactRestPath(path: string): string {
+  const [route, ...rest] = path.split('?');
+  if (rest.length === 0) return path;
+  const query = rest.join('?')
+    .split('&')
+    .map((pair) => {
+      const eq = pair.indexOf('=');
+      if (eq < 0) return pair;
+      const name = pair.slice(0, eq);
+      return SECRET_PARAM.test(name) ? `${name}=<redacted>` : pair;
+    })
+    .join('&');
+  return `${route}?${query}`;
+}
+
 export async function supabaseRest<T = unknown>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
@@ -41,7 +73,7 @@ export async function supabaseRest<T = unknown>(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Supabase ${method} ${path} failed: ${res.status} ${text}`);
+    throw new Error(`Supabase ${method} ${redactRestPath(path)} failed: ${res.status} ${text}`);
   }
 
   if (headers.Prefer.includes('return=minimal')) return undefined as T;

@@ -59,7 +59,12 @@ export async function GET(request: NextRequest) {
     // A lookup that FAILED is not a bad token. Sending someone to an "invalid
     // link" page when the database blinked teaches them the link is broken.
     // Not charged either: the database blinking is not the caller's doing.
-    console.error('[home-care/access] token lookup failed:', err);
+    //
+    // The message, never the error object: this query is keyed on the token
+    // itself. `supabaseRest` blanks credentials out of what it throws, so the
+    // message names the column and the status without the value; anything else
+    // this catch might one day receive is not assumed to be as careful.
+    console.error('[home-care/access] token lookup failed:', err instanceof Error ? err.message : String(err));
     return NextResponse.redirect(new URL('/home-care?error=unavailable', origin));
   }
 

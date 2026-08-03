@@ -96,7 +96,13 @@ export async function POST(request: NextRequest) {
 
     if (existing && existing.status === 'active') {
       // Already verified — resend a fresh magic link (new device, etc.).
-      await updateHomeowner(existing.id, { verify_token: verifyToken, verify_token_expires_at: hoursFromNow(VERIFY_TOKEN_TTL_HOURS) });
+      // The access token is healed here too: this member is about to verify and
+      // be sent a welcome email whose checklist button needs one.
+      await updateHomeowner(existing.id, {
+        verify_token: verifyToken,
+        verify_token_expires_at: hoursFromNow(VERIFY_TOKEN_TTL_HOURS),
+        access_token: existing.access_token || newToken(),
+      });
       await sendHomeCareVerificationEmail({ to: normEmail, firstName: existing.first_name || first_name, verifyUrl, unsubscribeUrl: buildUnsubscribeUrl(origin, existing.unsubscribe_token) });
       return NextResponse.json({ ok: true });
     }

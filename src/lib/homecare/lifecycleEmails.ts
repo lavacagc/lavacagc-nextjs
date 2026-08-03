@@ -116,8 +116,12 @@ export function buildWelcomeEmail(args: WelcomeEmailArgs): {
       'Rather we handled it?',
       `Tap "Add to request" on anything you'd rather not do yourself, and we'll price it in one go.`,
     ),
+    // Send them the signup page, never this email. The checklist button above
+    // carries a stable access token that gates booking paid work at this
+    // member's address for 30 days, so "forward this" hands that over - and a
+    // new person needs the public signup page anyway.
     panel(
-      `Know someone who&rsquo;d want this? Forward this email - they can get their own free plan at <a href="${shareUrl}" style="color:${ORANGE_DEEP};font-weight:bold;text-decoration:none">lavacagc.com/home-care</a>.`,
+      `Know someone who&rsquo;d want this? Send them <a href="${shareUrl}" style="color:${ORANGE_DEEP};font-weight:bold;text-decoration:none">lavacagc.com/home-care</a> - they can get their own free plan there.`,
     ),
     footer({
       reason: `You're getting this because you joined La Vaca Home Care.`,
