@@ -14,6 +14,12 @@
  * Cloudflare would interstitial a server-to-server call to our own domain)
  * BEFORE writing the record, so we hold proof of consent for this sensitive
  * category. If consent can't be recorded, we don't store the data.
+ *
+ * Consent is enforced server-side, not just client-side: we store sensitive
+ * data only when this save carries consent OR the homeowner already consented
+ * (proven by a prior homeowner-authored home_records row). A save without
+ * consent and without prior consent is rejected, and consent-verification
+ * errors fail closed.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
@@ -77,7 +83,6 @@ export async function POST(request: NextRequest) {
       try {
         const consentRow: Record<string, unknown> = {
           consent_type: HOME_DETAILS_CONSENT_TYPE,
-          tcpa_consent: true,
           user_email: homeowner.email || null,
           consent_text: HOME_DETAILS_CONSENT_TEXT,
           user_agent: request.headers.get('user-agent') || null,
@@ -93,6 +98,28 @@ export async function POST(request: NextRequest) {
           { ok: false, error: 'Could not record consent. Please try again.' },
           { status: 500 },
         );
+      }
+    } else {
+      // No consent on this save: storing is allowed only if the homeowner
+      // already consented, proven by a prior homeowner-authored row. Mirrors the
+      // client's homeowner-authored-row consent signal so client and server
+      // agree, and fails safe (after the homeowner deletes all their rows, the
+      // server also requires fresh consent).
+      let priorConsent: { fact_key: string }[];
+      try {
+        priorConsent = await supabaseRest<{ fact_key: string }[]>(
+          'GET',
+          `home_records?select=fact_key&homeowner_id=eq.${access.homeownerId}&updated_by=eq.homeowner&limit=1`,
+        );
+      } catch (err) {
+        console.error('home-care record consent check failed:', err instanceof Error ? err.message : String(err));
+        return NextResponse.json(
+          { ok: false, error: 'Could not verify consent. Please try again.' },
+          { status: 500 },
+        );
+      }
+      if (!priorConsent || priorConsent.length === 0) {
+        return NextResponse.json({ ok: false, error: 'Consent required' }, { status: 403 });
       }
     }
 

@@ -22,6 +22,7 @@ import {
 import HomeCareChecklistClient, { type ChecklistTask } from '@/components/homecare/HomeCareChecklistClient';
 import UpcomingVisitCard, { type UpcomingVisit } from '@/components/homecare/UpcomingVisitCard';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { readHomeRecords } from '@/lib/homecare/homeRecords';
 import { CheckCircle2, ChevronDown, Phone, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -103,10 +104,13 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   // eslint-disable-next-line react-hooks/purity
   const nowMs = Date.now();
   const season = currentSeason();
-  const [allTasks, profileRows, doneRows] = await Promise.all([
+  const [allTasks, profileRows, doneRows, homeRecords] = await Promise.all([
     supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title,blurb,applies_to,stages,seasons,frequency,starter,diy_or_pro,bookable,est_cost_low,est_cost_high,priority&active=eq.true&order=priority.desc`),
     supabaseRest<{ systems: HomeSystems; stage: Stage | null; homeowner_type: string | null }[]>('GET', `home_profiles?select=systems,stage,homeowner_type&homeowner_id=eq.${homeowner.id}&limit=1`),
     fetchMaintenanceRows(homeowner.id),
+    // My Home Systems prefill. readHomeRecords is fail-soft (returns [] on a
+    // missing table pre-go-live or any error), so it is safe inside Promise.all.
+    readHomeRecords(homeowner.id),
   ]);
 
   // Same exposure as the newsletter cron, so the same guard: the select above
@@ -116,6 +120,19 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   if (!catalogCarriesStages(allTasks ?? [])) {
     throw new Error('maintenance_catalog select is missing `stages` - the stage gate would not apply');
   }
+
+  // Saved home facts, keyed by canonical fact_key so one saved value prefills
+  // every task row that maps to it. Prefill is built from ALL rows so a future
+  // staff-entered value still shows up for the homeowner.
+  const homeRecordPrefill = Object.fromEntries(
+    (homeRecords ?? []).map((r) => [r.fact_key, { note: r.note, detail: r.detail ?? {} }]),
+  );
+  // Consent-already-given is inferred only from a homeowner-authored row: the
+  // record route logs the homeowner's consent before storing a homeowner write,
+  // so their own saved row proves consent. A staff-entered row (updated_by =
+  // 'staff', arriving in the staff-view slice) does not imply homeowner consent,
+  // so this fails safe by re-prompting for consent on the homeowner's first save.
+  const homeDetailsConsentGiven = (homeRecords ?? []).some((r) => r.updated_by === 'homeowner');
 
   const systems = profileRows?.[0]?.systems ?? null;
   const stage: Stage | null = profileRows?.[0]?.stage ?? stageFromLegacyType(profileRows?.[0]?.homeowner_type);
@@ -252,7 +269,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
             {(tasks?.length ?? 0) === 0 ? (
               <p className="text-text-secondary">Your checklist is being prepared — check back soon.</p>
             ) : (
-              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} dismissedKeys={dismissedKeys} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} autoAddKey={autoAddKey} lavacaCompleted={lavacaCompleted} />
+              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} dismissedKeys={dismissedKeys} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} autoAddKey={autoAddKey} lavacaCompleted={lavacaCompleted} homeRecordPrefill={homeRecordPrefill} homeDetailsConsentGiven={homeDetailsConsentGiven} />
             )}
           </div>
         </section>
