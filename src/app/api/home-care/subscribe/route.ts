@@ -112,6 +112,9 @@ export async function POST(request: NextRequest) {
         verify_token: verifyToken,
         verify_token_expires_at: hoursFromNow(VERIFY_TOKEN_TTL_HOURS),
         unsubscribe_token: unsubToken,
+        // Same self-heal as the unsubscribe token above: a row that predates the
+        // backfill gets one here rather than emailing bare links forever.
+        access_token: existing.access_token || newToken(),
         unsubscribed_at: null,
         source: 'home-care',
       });
@@ -131,6 +134,9 @@ export async function POST(request: NextRequest) {
       verify_token: verifyToken,
       verify_token_expires_at: hoursFromNow(VERIFY_TOKEN_TTL_HOURS),
       unsubscribe_token: unsubToken,
+      // Stable portal token, set alongside the unsubscribe one. Without it
+      // every emailed checklist link this member ever receives is bare.
+      access_token: newToken(),
       source: 'home-care',
       consent_ip: ip,
       consent_user_agent: userAgent,

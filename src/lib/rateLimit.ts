@@ -50,11 +50,27 @@ export function getClientIp(request: Request): string {
   return 'unknown';
 }
 
+export interface RateLimitOptions {
+  /**
+   * Whether this call spends one unit of the budget. Default true.
+   *
+   * `false` peeks: it reports whether the bucket is already exhausted without
+   * counting against it, so a caller can charge only the attempts it wants to
+   * limit. /api/home-care/access uses this to keep genuine emailed link clicks
+   * from consuming a budget meant for token guessing - recipients behind one
+   * corporate proxy or carrier NAT share an IP, and a throttled real recipient
+   * lands on the exact error page the tokenized links exist to prevent.
+   */
+  consume?: boolean;
+}
+
 export async function checkRateLimit(
   bucket: string,
   limit: number,
-  windowMs: number
+  windowMs: number,
+  options: RateLimitOptions = {}
 ): Promise<RateLimitResult> {
+  const consume = options.consume !== false;
   const secretKey = process.env.SUPABASE_SECRET_KEY;
   if (!secretKey || !SUPABASE_URL) return { allowed: true }; // fail open
 
@@ -78,9 +94,11 @@ export async function checkRateLimit(
 
     // No prior window — start one.
     if (!existing) {
-      await supabase
-        .from('rate_limits')
-        .insert({ ip_address: bucket, count: 1, last_reset: new Date(now).toISOString() });
+      if (consume) {
+        await supabase
+          .from('rate_limits')
+          .insert({ ip_address: bucket, count: 1, last_reset: new Date(now).toISOString() });
+      }
       return { allowed: true };
     }
 
@@ -88,10 +106,12 @@ export async function checkRateLimit(
 
     // Window expired — reset the counter.
     if (now >= windowEnd) {
-      await supabase
-        .from('rate_limits')
-        .update({ count: 1, last_reset: new Date(now).toISOString() })
-        .eq('id', existing.id);
+      if (consume) {
+        await supabase
+          .from('rate_limits')
+          .update({ count: 1, last_reset: new Date(now).toISOString() })
+          .eq('id', existing.id);
+      }
       return { allowed: true };
     }
 
@@ -101,10 +121,12 @@ export async function checkRateLimit(
     }
 
     // Within the window and under the limit — increment.
-    await supabase
-      .from('rate_limits')
-      .update({ count: existing.count + 1 })
-      .eq('id', existing.id);
+    if (consume) {
+      await supabase
+        .from('rate_limits')
+        .update({ count: existing.count + 1 })
+        .eq('id', existing.id);
+    }
     return { allowed: true };
   } catch (err) {
     console.error('rate-limit check failed (allowing):', err);

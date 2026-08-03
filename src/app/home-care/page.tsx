@@ -39,6 +39,24 @@ const STEPS = [
   { icon: Wrench, title: 'DIY it — or book us', body: 'Knock out the easy ones yourself, and tap “Book La Vaca” on anything you’d rather hand off.' },
 ];
 
+/**
+ * What each `?error=` code tells the visitor.
+ *
+ * They are separated because the advice differs. Telling someone to request a
+ * fresh link is actively wrong for `unavailable` - that is our signing secret or
+ * our database, and a fresh link fails in exactly the same way - and wrong again
+ * for `unsubscribed`, where the link worked and the account is the problem.
+ */
+const ACCESS_ERRORS: Record<string, string> = {
+  invalid: "That link was invalid or expired. Enter your email below and we'll send a fresh one.",
+  expired: "That link was invalid or expired. Enter your email below and we'll send a fresh one.",
+  unavailable: "We couldn't open your plan just now - that one is on us, not your link. Please try the same link again in a few minutes.",
+  error: "We couldn't open your plan just now - that one is on us, not your link. Please try the same link again in a few minutes.",
+  unsubscribed: "That plan is unsubscribed, so the link no longer opens it. Re-join below and your checklist comes straight back.",
+  busy: "We're seeing a lot of requests from your network right now. Please try the same link again in a few minutes.",
+};
+const ACCESS_ERROR_FALLBACK = ACCESS_ERRORS.invalid;
+
 export default async function HomeCarePage({ searchParams }: { searchParams: Promise<{ error?: string; unsub?: string }> }) {
   const sp = await searchParams;
 
@@ -72,7 +90,7 @@ export default async function HomeCarePage({ searchParams }: { searchParams: Pro
           <div className="bg-secondary/10 text-center text-sm py-3 px-4 text-text-secondary">You&apos;ve been unsubscribed from La Vaca Home Care. You can re-join anytime below.</div>
         )}
         {sp?.error && (
-          <div className="bg-destructive/10 text-center text-sm py-3 px-4 text-destructive">That confirmation link was invalid or expired. Enter your email below and we&apos;ll send a fresh one.</div>
+          <div className="bg-destructive/10 text-center text-sm py-3 px-4 text-destructive">{ACCESS_ERRORS[sp.error] ?? ACCESS_ERROR_FALLBACK}</div>
         )}
 
         <section className="py-10 md:py-16 bg-gradient-subtle">

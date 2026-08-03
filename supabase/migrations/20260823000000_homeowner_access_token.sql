@@ -21,6 +21,16 @@
 
 ALTER TABLE public.homeowners ADD COLUMN IF NOT EXISTS access_token text;
 
+-- A DEFAULT as well as the application setting it on insert, deliberately.
+-- Both insert paths (the subscribe route and ensureServiceHomeowner) set the
+-- token themselves, but the failure mode when one forgets is SILENT - the link
+-- helper degrades to the bare URL rather than erroring, so the email still sends
+-- and still does not work. This makes a third insert path added later safe by
+-- default. Url-safe from the start, matching the cleanup applied below.
+ALTER TABLE public.homeowners
+  ALTER COLUMN access_token
+  SET DEFAULT replace(replace(replace(encode(gen_random_bytes(32), 'base64'), '+', '-'), '/', '_'), '=', '');
+
 -- Backfill every existing homeowner, or their next email is still broken.
 UPDATE public.homeowners
    SET access_token = encode(gen_random_bytes(32), 'base64')

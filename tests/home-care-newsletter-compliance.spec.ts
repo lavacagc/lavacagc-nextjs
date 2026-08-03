@@ -97,8 +97,15 @@ test('sender identity is accurate and replies reach a monitored mailbox', () => 
 });
 
 test('suppression: only active members are mailed, and opt-outs are skipped at send', () => {
-  // The cron only ever selects active homeowners...
-  expect(cron).toContain('homeowners?select=id,first_name,email,unsubscribe_token,last_newsletter_at&status=eq.active');
+  // The cron only ever selects active homeowners. Asserted as the select's
+  // parts rather than one literal string: the column list grows (access_token
+  // joined it so emailed links open the portal), and pinning the exact spelling
+  // turns any addition into a failure about column order, not about suppression.
+  const select = cron.match(/homeowners\?select=([^&]+)&([^`'"]*)/)!;
+  for (const column of ['id', 'first_name', 'email', 'unsubscribe_token', 'last_newsletter_at']) {
+    expect(select[1].split(','), `the cron must still select ${column}`).toContain(column);
+  }
+  expect(select[2]).toContain('status=eq.active');
   // ...and sendTrackedEmail independently skips anyone who opted out of the stream.
   expect(sendEmail).toContain('if (pref[input.preferenceStream] === false)');
 });

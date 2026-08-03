@@ -12,6 +12,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { findHomeownerByAccessToken } from '@/lib/homecare/homeowners';
+import { safeDestination } from '@/lib/homecare/emailLinks';
 import {
   HC_ACCESS_COOKIE,
   HC_KNOWN_COOKIE,
@@ -29,37 +30,27 @@ export const runtime = 'nodejs';
 const RATE_LIMIT_MAX = 30;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
-/**
- * Where the link may send them.
- *
- * An open redirect on a route that just handed out a session cookie would be a
- * genuinely bad combination, so this is an allow-list of paths rather than any
- * attempt to sanitise an arbitrary URL. Query strings on those paths survive,
- * because the newsletter's "Add to plan" buttons carry `?add=<task>`.
- */
-const ALLOWED_PATHS = ['/home-care/checklist', '/home-care/guides', '/home-care/whats-new', '/home-care'];
-
-export function safeDestination(raw: string | null): string {
-  if (!raw) return '/home-care/checklist';
-  // Reject anything that could leave the site: protocol-relative, absolute,
-  // or backslash-escaped.
-  if (!raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\')) return '/home-care/checklist';
-  const path = raw.split('?')[0].split('#')[0];
-  const ok = ALLOWED_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
-  return ok ? raw : '/home-care/checklist';
-}
-
 export async function GET(request: NextRequest) {
   const origin = request.nextUrl.origin;
   const token = request.nextUrl.searchParams.get('token');
   const to = safeDestination(request.nextUrl.searchParams.get('to'));
 
-  const rl = await checkRateLimit(`hc-access:${getClientIp(request)}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
-  if (!rl.allowed) {
+  // Only FAILED lookups are charged to the bucket, so a real recipient's click
+  // never spends budget meant for token guessing. Whole streets share one
+  // carrier NAT and whole offices one proxy egress; charging successes would
+  // throttle them onto the very error page these links exist to prevent. The
+  // token is 32 random bytes, so guessing was never the realistic threat.
+  const bucket = `hc-access:${getClientIp(request)}`;
+  const peek = await checkRateLimit(bucket, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS, { consume: false });
+  if (!peek.allowed) {
     return NextResponse.redirect(new URL('/home-care?error=busy', origin));
   }
+  const chargeFailure = () => checkRateLimit(bucket, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
 
-  if (!token) return NextResponse.redirect(new URL('/home-care?error=invalid', origin));
+  if (!token) {
+    await chargeFailure();
+    return NextResponse.redirect(new URL('/home-care?error=invalid', origin));
+  }
 
   let homeowner;
   try {
@@ -67,11 +58,15 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     // A lookup that FAILED is not a bad token. Sending someone to an "invalid
     // link" page when the database blinked teaches them the link is broken.
+    // Not charged either: the database blinking is not the caller's doing.
     console.error('[home-care/access] token lookup failed:', err);
     return NextResponse.redirect(new URL('/home-care?error=unavailable', origin));
   }
 
-  if (!homeowner) return NextResponse.redirect(new URL('/home-care?error=invalid', origin));
+  if (!homeowner) {
+    await chargeFailure();
+    return NextResponse.redirect(new URL('/home-care?error=invalid', origin));
+  }
   if (homeowner.status === 'unsubscribed') {
     return NextResponse.redirect(new URL('/home-care?error=unsubscribed', origin));
   }

@@ -70,7 +70,7 @@ export function buildReleaseEmail(args: ReleaseEmailArgs): { subject: string; ht
     `  <tr><td class="px" style="padding:26px 40px 0 40px">${features.map(featureBlock).join('')}</td></tr>`,
     cta('Open my checklist', portalUrl,
       `<a href="${baseUrl}/home-care/whats-new?utm_source=release_email&amp;utm_medium=email&amp;utm_campaign=home_care_release" style="color:${MUTED};text-decoration:underline">Browse every update we've shipped</a>`),
-    panel(`Know someone who&rsquo;d want this? Forward this email - they can get their own free plan at <a href="${baseUrl}/home-care?utm_source=member_share&amp;utm_medium=email&amp;utm_campaign=home_care_share" style="color:${ORANGE_DEEP};font-weight:bold;text-decoration:none">lavacagc.com/home-care</a>.`),
+    panel(`Know someone who&rsquo;d want this? Send them <a href="${baseUrl}/home-care?utm_source=member_share&amp;utm_medium=email&amp;utm_campaign=home_care_share" style="color:${ORANGE_DEEP};font-weight:bold;text-decoration:none">lavacagc.com/home-care</a> - they can get their own free plan there.`),
     footer({
       reason: `You're receiving this because you joined La Vaca Home Care.`,
       unsubscribeUrl,

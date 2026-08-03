@@ -65,6 +65,8 @@ interface HomeownerRow {
   first_name: string | null;
   email: string;
   unsubscribe_token: string;
+  /** Null only for a row created before the backfill migration ran. */
+  access_token: string | null;
 }
 
 export async function POST(request: NextRequest) {
@@ -116,6 +118,9 @@ export async function POST(request: NextRequest) {
         firstName: null,
         features: queued,
         baseUrl,
+        // The test send goes to the admin, who is not a member - there is no
+        // token to carry, so the button is the bare portal URL.
+        accessToken: null,
         unsubscribeUrl: `${baseUrl}/home-care`,
         preferencesUrl: undefined,
         assetVersion,
@@ -152,7 +157,7 @@ export async function POST(request: NextRequest) {
 
     const homeowners = (await supabaseRest<HomeownerRow[]>(
       'GET',
-      'homeowners?select=id,first_name,email,unsubscribe_token&status=eq.active',
+      'homeowners?select=id,first_name,email,unsubscribe_token,access_token&status=eq.active',
     )) ?? [];
     const recipients = homeowners.slice(0, RECIPIENT_CAP);
     const truncated = homeowners.length - recipients.length;
@@ -200,6 +205,9 @@ export async function POST(request: NextRequest) {
         firstName: h.first_name,
         features: queued,
         baseUrl,
+        // Or the "Open my checklist" button lands on the signup page for anyone
+        // whose 30-day portal cookie has lapsed.
+        accessToken: h.access_token,
         unsubscribeUrl: `${baseUrl}/api/home-care/unsubscribe?token=${encodeURIComponent(h.unsubscribe_token)}`,
         preferencesUrl,
         assetVersion,

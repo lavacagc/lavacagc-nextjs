@@ -99,6 +99,10 @@ export async function ensureServiceHomeowner(args: {
     status: 'pending',
     source: 'service_quote',
     unsubscribe_token: newToken(),
+    // Set here, not left to the backfill: this row is created and emailed in
+    // the same request, so a brand-new service customer's visit-scheduled email
+    // would otherwise carry the bare link the branch exists to fix.
+    access_token: newToken(),
   }]);
   return created?.[0] ?? null;
 }
