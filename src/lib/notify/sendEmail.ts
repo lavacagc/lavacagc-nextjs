@@ -11,9 +11,10 @@ const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lava
  * Before this, ~11 helpers in src/lib/notify/* each constructed their own
  * `new Resend(...)` and none (except the estimate tool) recorded what they
  * sent. `sendTrackedEmail` sends via Resend AND writes one audit row to
- * public.email_log so the admin can see every email + the exact HTML that
- * went out. Delivered/opened/clicked/bounced events are backfilled later by
- * the Resend webhook (Phase 2), which matches on resend_message_id.
+ * public.email_log so the admin can see every email + the HTML that went out,
+ * minus the credentials in its links (see `redactEmailBody`) and minus
+ * attachment bytes. Delivered/opened/clicked/bounced events are backfilled
+ * later by the Resend webhook (Phase 2), which matches on resend_message_id.
  *
  * Contract: logging is BEST-EFFORT. A failed email_log insert is swallowed and
  * never changes the send result — the actual email must go out regardless.
@@ -150,6 +151,44 @@ function toArray(v: string | string[] | undefined): string[] {
 }
 
 /**
+ * A credential-bearing query parameter inside a rendered email body.
+ *
+ * Matched on the parameter NAME, the same rule `redactRestPath` applies to the
+ * REST path - `?token=`, `&access_token=`, and the entity-escaped `&amp;token=`
+ * an HTML href carries. The value runs to whatever ends it: the next parameter,
+ * the quote closing an href, or the whitespace ending a plain-text URL.
+ */
+const BODY_CREDENTIAL = /([?&](?:amp;)?[a-z0-9_-]*token=)[^&"'<>\s]+/gi;
+
+/** What replaces the value, so the admin still sees the link's shape. */
+const REDACTED = 'REDACTED';
+
+/**
+ * The body with its credentials blanked, for the email_log copy ONLY.
+ *
+ * Every Home Care portal email now carries the homeowner's access token in
+ * every link. That token is stable, never rotated, and buys 30 days of portal
+ * access including booking paid work at the member's address - so writing the
+ * rendered body verbatim put a permanent credential into a second table for
+ * every newsletter, release, reminder, visit-scheduled and welcome send, with
+ * no retention limit and a viewer that reads it back. That is the same leak
+ * `redactRestPath` closed on the application log, on the durable path.
+ *
+ * The unsubscribe, preference and verify tokens sit in the same bodies and are
+ * blanked by the same rule - matching on the name costs nothing extra and the
+ * alternative is a list that a fifth token shape falls off.
+ *
+ * Applied here, at the single point that persists, rather than in each builder:
+ * the same reasoning that keeps attachment bytes out of email_log. WHAT WAS
+ * SENT IS UNTOUCHED - the recipient's link still works. Nothing re-sends from a
+ * stored body (the admin routes only read email_log, and the Resend webhook only
+ * patches delivery status), so a redacted copy cannot become a delivered one.
+ */
+export function redactEmailBody(body: string): string {
+  return body.replace(BODY_CREDENTIAL, `$1${REDACTED}`);
+}
+
+/**
  * Write the audit row. Best-effort: any failure is logged and swallowed so it
  * can never affect the send outcome. Not exported — callers use sendTrackedEmail.
  */
@@ -172,8 +211,9 @@ async function writeEmailLog(
       // array above; this is only what the admin reads back.
       reply_to: Array.isArray(input.replyTo) ? input.replyTo.join(', ') : input.replyTo ?? null,
       subject: input.subject,
-      html: input.html ?? null,
-      text: input.text ?? null,
+      // Bodies are stored with their tokens blanked - see redactEmailBody.
+      html: input.html == null ? null : redactEmailBody(input.html),
+      text: input.text == null ? null : redactEmailBody(input.text),
       homeowner_id: input.homeownerId ?? null,
       subscriber_id: input.subscriberId ?? null,
       lead_id: input.leadId ?? null,

@@ -191,6 +191,15 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
   const hiText = firstName ? `Hi ${firstName},` : 'Hi there,';
   const portalUrl = checklistUrl(baseUrl, args.accessToken, { utm: NEWSLETTER_UTM });
   /**
+   * The same link, escaped for an href attribute. The tokenized links carry
+   * `?token=...&to=...` where the old bare `/home-care/checklist` carried
+   * nothing, so a raw `&` now sits inside four attributes - and `&utm_...` is
+   * one parameter name away from an HTML5 legacy named reference that a mail
+   * client would silently resolve. Same treatment `portfolioUrl` and `blogUrl`
+   * already get below.
+   */
+  const portalHref = esc(portalUrl);
+  /**
    * Standing links for the caught-up email. Tagged like the member-share line
    * so the traffic is attributable, and pointed at the index pages rather than
    * individual posts so a send needs no extra data fetch.
@@ -282,7 +291,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
     // member adds them to one request and checks out once - no per-task
     // one-off booking, so no separate owner alert per link.
     const book = t.bookable
-      ? `<div style="padding-top:10px"><a href="${checklistUrl(baseUrl, args.accessToken, { query: { add: t.key }, utm: NEWSLETTER_UTM })}" style="display:inline-block;background:${ORANGE};border-radius:8px;padding:9px 16px;font-family:${FF};font-size:13px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none">Add to plan</a></div>`
+      ? `<div style="padding-top:10px"><a href="${esc(checklistUrl(baseUrl, args.accessToken, { query: { add: t.key }, utm: NEWSLETTER_UTM }))}" style="display:inline-block;background:${ORANGE};border-radius:8px;padding:9px 16px;font-family:${FF};font-size:13px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none">Add to plan</a></div>`
       : '';
     // Top and bottom are independent: the first row tucks under the panel
     // heading, and the last row closes the panel out - unless a teaser row
@@ -294,7 +303,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%">
           <tr>
             <td width="30" valign="top" style="width:30px;font-family:${FF};font-size:20px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:${ORANGE}">${String(i + 1).padStart(2, '0')}</td>
-            <td valign="top" style="font-family:${FF};font-size:17px;line-height:24px;mso-line-height-rule:exactly;font-weight:bold;color:${INK}"><a href="${portalUrl}" style="color:${INK};text-decoration:none">${esc(t.title)}</a><div style="padding-top:4px;font-family:${FF};font-size:14px;line-height:20px;mso-line-height-rule:exactly;font-weight:normal;color:${MUTED}">${meta}</div>${guide}${book}</td>
+            <td valign="top" style="font-family:${FF};font-size:17px;line-height:24px;mso-line-height-rule:exactly;font-weight:bold;color:${INK}"><a href="${portalHref}" style="color:${INK};text-decoration:none">${esc(t.title)}</a><div style="padding-top:4px;font-family:${FF};font-size:14px;line-height:20px;mso-line-height-rule:exactly;font-weight:normal;color:${MUTED}">${meta}</div>${guide}${book}</td>
           </tr>
         </table>
       </td></tr>${
@@ -311,7 +320,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
    */
   const teaserRow = remaining
     ? `<tr><td style="padding:14px 22px 20px 22px">
-        <a href="${portalUrl}" style="display:block;font-family:${FF};font-size:15px;line-height:22px;mso-line-height-rule:exactly;font-weight:bold;color:${ORANGE_DEEP};text-decoration:none">+ ${remaining} more ${jobWord(remaining)} on your ${seasonLower} list &rarr;</a>
+        <a href="${portalHref}" style="display:block;font-family:${FF};font-size:15px;line-height:22px;mso-line-height-rule:exactly;font-weight:bold;color:${ORANGE_DEEP};text-decoration:none">+ ${remaining} more ${jobWord(remaining)} on your ${seasonLower} list &rarr;</a>
         <div style="padding-top:3px;font-family:${FF};font-size:13px;line-height:19px;mso-line-height-rule:exactly;color:${MUTED}">Open your checklist to see the rest and tick them off as you go.</div>
       </td></tr>`
     : '';
@@ -409,7 +418,7 @@ ${keepInTouch}
   <tr><td class="px" align="center" style="padding:28px 40px 0 40px">
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto">
       <tr><td align="center" bgcolor="${ORANGE}" style="background:${ORANGE};border-radius:12px;padding:17px 34px">
-        <a href="${portalUrl}" style="display:block;font-family:${FF};font-size:17px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none;letter-spacing:-0.01em">${ctaLabel}</a>
+        <a href="${portalHref}" style="display:block;font-family:${FF};font-size:17px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none;letter-spacing:-0.01em">${ctaLabel}</a>
       </td></tr>
     </table>
   </td></tr>

@@ -10,6 +10,7 @@ import { buildServiceCompletedEmail, buildVisitReminderEmail } from '../src/lib/
 import { buildReleaseEmail } from '../src/lib/homecare/releaseEmail';
 import { buildWelcomeEmail } from '../src/lib/homecare/lifecycleEmails';
 import { buildNewsletter, type NewsletterTask } from '../src/lib/homecare/newsletter';
+import { stubEmailEnv } from './helpers/stubEmailEnv';
 
 /**
  * Two live email bugs reported by the owner on 2 Aug.
@@ -22,6 +23,10 @@ import { buildNewsletter, type NewsletterTask } from '../src/lib/homecare/newsle
  *    recipients landed on the signup page. Reproduced before fixing: a bare
  *    request answered 307 to /home-care.
  */
+// One test below drives the real sender in-process. Scoped to this file so the
+// credentials cannot follow the worker into the next spec.
+stubEmailEnv();
+
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
 const code = (p: string) => read(p)
   .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -212,6 +217,31 @@ test.describe('emailed portal links carry the access token', () => {
         `${part} must carry the "Add to plan" deep link through the exchange`,
       ).toBe(true);
     }
+  });
+
+  test('the tokenized links are escaped for the attribute they sit in', () => {
+    // The link changed shape here: the old href was a bare `/home-care/checklist`
+    // and the old "Add to plan" carried one `?add=` param, so neither contained
+    // an ampersand. `?token=...&to=...&utm_source=...` does, and a raw `&` in an
+    // href is one parameter name away from an HTML5 legacy named reference that
+    // a mail client resolves silently - an email-only broken link with nothing
+    // failing anywhere it would be seen.
+    const { html, text } = buildNewsletter({
+      firstName: 'Jordan', season: 'fall', tasks: [NEWSLETTER_TASK], isSeasonal: true,
+      baseUrl: BASE, accessToken: TOKEN, unsubscribeUrl: `${BASE}/unsub`,
+    });
+    const hrefs = [...html.matchAll(/href="([^"]*\/api\/home-care\/access[^"]*)"/g)].map((m) => m[1]);
+    // The standing CTA, the task title, the teaser row and "Add to plan".
+    expect(hrefs.length, 'the newsletter must render tokenized hrefs').toBeGreaterThan(0);
+    for (const href of hrefs) {
+      expect(href, `${href} carries a raw & inside an attribute`).not.toMatch(/&(?!amp;)/);
+      expect(href, `${href} lost its separators entirely`).toContain('&amp;');
+    }
+    // Escaping belongs to the markup and only to it: the text/plain part is not
+    // HTML, and "&amp;to=" there is a dead link.
+    const plain = text.match(/\/api\/home-care\/access\?\S+/g) ?? [];
+    expect(plain.length, 'the text part must carry the same links').toBeGreaterThan(0);
+    for (const url of plain) expect(url, `${url} must not be entity-escaped`).not.toContain('&amp;');
   });
 
   test('every portal email actually RENDERS the token, not just imports the helper', () => {
@@ -622,6 +652,100 @@ test.describe('a homeowner created after the deploy gets a token too', () => {
     const def = sql.match(/SET DEFAULT([\s\S]*?);/)![1];
     expect(def).toContain('gen_random_bytes(32)');
     for (const unsafe of ["'+', '-'", "'/', '_'", "'=', ''"]) expect(def).toContain(unsafe);
+  });
+});
+
+test.describe('the audit row is not a second copy of the credential', () => {
+  // Redacting the application log left the DURABLE path open: sendTrackedEmail
+  // writes the full rendered body to email_log, there is no purge for that
+  // table, and /api/admin/emails/[id] reads it back. Every portal email now
+  // carries a stable, never-rotated token that buys 30 days of /home-care/book.
+  test('the send keeps the working link and the stored copy does not', async () => {
+    // Driven through the real sender, not read off the source: "the recipient
+    // still gets a live link" and "the row does not" are the two things that
+    // matter and neither is visible in the text of the file.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Playwright compiles specs to CJS; a native import() would bypass its TS transform and fail to load the .ts module.
+    const { sendTrackedEmail }: typeof import('../src/lib/notify/sendEmail') = require('../src/lib/notify/sendEmail');
+
+    const { subject, html, text } = buildNewsletter({
+      firstName: 'Jordan', season: 'fall', tasks: [NEWSLETTER_TASK], isSeasonal: true,
+      baseUrl: BASE, accessToken: TOKEN,
+      unsubscribeUrl: `${BASE}/api/home-care/unsubscribe?token=unsub-token-not-a-real-secret`,
+    });
+    expect(html, 'the rendered body is what the recipient gets').toContain(`token=${TOKEN}`);
+
+    const sends: string[] = [];
+    const rows: Array<Record<string, unknown>> = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = typeof init?.body === 'string' ? init.body : '';
+      if (url.includes('/rest/v1/email_log')) {
+        rows.push(JSON.parse(body) as Record<string, unknown>);
+        return new Response('', { status: 201 });
+      }
+      sends.push(body);
+      return new Response(JSON.stringify({ id: 'stub-message-id' }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    try {
+      const result = await sendTrackedEmail({
+        from: 'La Vaca Home Care <alex@email.lavaca.link>',
+        to: 'jordan@example.com',
+        subject, html, text,
+        category: 'home_care_newsletter',
+      });
+      expect(result.status, 'the send itself must still succeed').toBe('sent');
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+
+    expect(sends, 'exactly one email goes to Resend').toHaveLength(1);
+    expect(sends[0], 'the recipient must keep a link that opens the portal').toContain(TOKEN);
+
+    expect(rows, 'exactly one audit row').toHaveLength(1);
+    const [row] = rows;
+    for (const part of ['html', 'text'] as const) {
+      const stored = String(row[part]);
+      expect(stored, `the ${part} column must not hold a live access token`).not.toContain(TOKEN);
+      expect(stored, `the ${part} column must not hold the unsubscribe token either`)
+        .not.toContain('unsub-token-not-a-real-secret');
+      // Still an audit row: the admin sees which links went out, and where to.
+      expect(stored).toContain('token=REDACTED');
+      expect(stored, 'the destination is not a credential and stays readable')
+        .toMatch(/to=%2Fhome-care%2Fchecklist/);
+    }
+  });
+
+  test('the redaction is at the chokepoint, so no sender can forget it', () => {
+    // The same reasoning that keeps attachment bytes out of the table: one
+    // place that persists, not five builders that each have to remember.
+    const src = code('src/lib/notify/sendEmail.ts');
+    expect(src).toMatch(/html:\s*input\.html\s*==\s*null\s*\?\s*null\s*:\s*redactEmailBody\(input\.html\)/);
+    expect(src).toMatch(/text:\s*input\.text\s*==\s*null\s*\?\s*null\s*:\s*redactEmailBody\(input\.text\)/);
+    // And the Resend payload is built from the untouched input.
+    expect(src).toMatch(/\.\.\.\(input\.html !== undefined \? \{ html: input\.html \} : \{\}\)/);
+    expect(src).toMatch(/\.\.\.\(input\.text !== undefined \? \{ text: input\.text \} : \{\}\)/);
+  });
+
+  test('every token shape that rides in a body is blanked, not just this one', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- see above.
+    const { redactEmailBody }: typeof import('../src/lib/notify/sendEmail') = require('../src/lib/notify/sendEmail');
+    for (const param of ['token', 'access_token', 'unsubscribe_token', 'preference_token', 'verify_token']) {
+      // Plain text, an href with escaped separators, and a bare first parameter.
+      for (const body of [
+        `Open it: ${BASE}/x?${param}=${TOKEN}&to=%2Fa\n`,
+        `<a href="${BASE}/x?a=1&amp;${param}=${TOKEN}&amp;b=2">go</a>`,
+        `${BASE}/x?${param}=${TOKEN}`,
+      ]) {
+        expect(redactEmailBody(body), `${param} must be blanked in: ${body}`).not.toContain(TOKEN);
+      }
+    }
+    // A body with nothing to hide comes back byte-identical.
+    const clean = `<a href="${BASE}/home-care?utm_source=member_share&amp;utm_medium=email">signup</a>`;
+    expect(redactEmailBody(clean)).toBe(clean);
   });
 });
 
