@@ -23,9 +23,12 @@
  * the "view or delete anytime" half of the consent promise; Slice 5 lifts
  * factValueSummary (below) into this pure registry so the recap and the booking
  * owner-alert rider (readBookedHomeDetails in homeRecords.ts) render a saved
- * detail identically. Per owner decision, v1 captures locations + a few
- * appliance details (brand/model/install year/filter size) but NOT serial
- * numbers.
+ * detail identically; Slice 6 routes the staff Home Record view
+ * (api/admin/home-care/home-records) through the same HOME_FACTS +
+ * factValueSummary chokepoint, so the crew sees a saved detail exactly as the
+ * homeowner does and unknown fact_keys are skipped. Per owner decision, v1
+ * captures locations + a few appliance details (brand/model/install year/filter
+ * size) but NOT serial numbers.
  */
 
 export type FactKind = 'location' | 'appliance';
