@@ -1,7 +1,8 @@
 /**
  * Server-only read of a homeowner's saved "home facts" (My Home Systems), used
  * to prefill the inline capture panels and seed the "My Home" recap on the
- * checklist.
+ * checklist (readHomeRecords), and to attach the booked services' saved details
+ * to the booking owner-alert (readBookedHomeDetails, Slice 5).
  *
  * This lives in its own module - NOT in records.ts - on purpose: records.ts is a
  * pure registry that client components import (getFactForTask, the consent text,
@@ -15,6 +16,7 @@
  * homeowner id is the signed-in owner's, so a homeowner only ever sees their own.
  */
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { HOME_FACTS, getFactForTask, factValueSummary } from '@/lib/homecare/records';
 
 export interface HomeRecordRow {
   fact_key: string;
@@ -36,4 +38,51 @@ export async function readHomeRecords(homeownerId: string): Promise<HomeRecordRo
     // checklist must still render, just without prefill. Never throws.
     return [];
   }
+}
+
+/**
+ * The saved home details relevant to a set of booked task keys, formatted as
+ * "Label: value" lines for the booking owner-alert rider (Slice 5).
+ *
+ * The homeowner id MUST come from the caller's verified hc_access cookie, never
+ * from the client payload - a client must not be able to name someone else's
+ * home and exfiltrate their shut-off locations through the owner alert. Sensitive
+ * data is read server-side and rendered only into La Vaca's internal alert; it
+ * never reaches the browser or the leads table.
+ *
+ * Scoping: each booked task key maps to its canonical fact via getFactForTask
+ * (many aliased task keys collapse onto one fact), and only saved rows whose
+ * fact_key is in that booked set ride along - a homeowner's other saved details
+ * stay off a booking that didn't request the related service. De-duplicated by
+ * fact and emitted in registry order. Fail-soft: returns [] on no cookie, no
+ * booked tasks, no matching facts, or any Supabase error (readHomeRecords).
+ */
+export async function readBookedHomeDetails(
+  homeownerId: string,
+  bookedTaskKeys: string[],
+): Promise<string[]> {
+  if (!homeownerId || !bookedTaskKeys.length) return [];
+  const neededFactKeys = new Set<string>();
+  for (const tk of bookedTaskKeys) {
+    const fact = getFactForTask(tk);
+    if (fact) neededFactKeys.add(fact.key);
+  }
+  if (!neededFactKeys.size) return [];
+
+  const rows = await readHomeRecords(homeownerId);
+  if (!rows.length) return [];
+  const byFactKey = new Map(rows.map((r) => [r.fact_key, r]));
+
+  const lines: string[] = [];
+  // Iterate the registry so the order is stable and matches the recap, and so a
+  // single fact reached by multiple booked tasks appears at most once.
+  for (const fact of HOME_FACTS) {
+    if (!neededFactKeys.has(fact.key)) continue;
+    const row = byFactKey.get(fact.key);
+    if (!row) continue;
+    const summary = factValueSummary(fact, { note: row.note, detail: row.detail ?? {} }).trim();
+    if (!summary) continue;
+    lines.push(`${fact.label}: ${summary}`);
+  }
+  return lines;
 }

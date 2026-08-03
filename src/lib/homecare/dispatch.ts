@@ -962,6 +962,14 @@ export interface SendDispatchArgs {
   subName?: string | null;
   recipientIds?: string[] | null;
   /**
+   * The homeowner's saved My Home Systems lines ("Water main shut-off:
+   * basement, under the stairs"), already scoped by the caller to this visit's
+   * booked services (readBookedHomeDetails). Rendered into the email BODY only,
+   * never the .ics - the calendar file is forwarded, synced and stored on
+   * devices and third-party calendars this home-security data must not live on.
+   */
+  homeDetails?: string[];
+  /**
    * What happened to the customer's night-before reminder, so the email can say
    * whether one is coming instead of asserting it.
    *
@@ -1018,7 +1026,7 @@ export async function sendVisitDispatch(args: SendDispatchArgs): Promise<SendDis
   const {
     siteUrl, homeownerId, visitStart, visitEnd, customerName, customerPhone,
     address, services, visitDateLabel, timeWindow, subName, recipientIds,
-    customerReminder,
+    homeDetails, customerReminder,
   } = args;
 
   // One instant for the whole run, so two people on the same visit cannot be
@@ -1109,6 +1117,7 @@ export async function sendVisitDispatch(args: SendDispatchArgs): Promise<SendDis
       visitDateLabel,
       timeWindow,
       subName: dispatch.sub_name,
+      homeDetails,
       confirmUrl: `${siteUrl}/crew/confirm/${assignment.confirm_token}`,
       calendarUrl,
       visitStart,

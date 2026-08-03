@@ -20,9 +20,12 @@
  * prefilled via readHomeRecords in homeRecords.ts); Slice 4 adds the "My Home"
  * recap on the checklist - a collapsed summary of every saved detail with
  * view/edit/delete controls (delete via DELETE api/home-care/record), honoring
- * the "view or delete anytime" half of the consent promise. Per owner decision,
- * v1 captures locations + a few appliance details (brand/model/install year/
- * filter size) but NOT serial numbers.
+ * the "view or delete anytime" half of the consent promise; Slice 5 lifts
+ * factValueSummary (below) into this pure registry so the recap and the booking
+ * owner-alert rider (readBookedHomeDetails in homeRecords.ts) render a saved
+ * detail identically. Per owner decision, v1 captures locations + a few
+ * appliance details (brand/model/install year/filter size) but NOT serial
+ * numbers.
  */
 
 export type FactKind = 'location' | 'appliance';
@@ -171,6 +174,31 @@ export function getFactForTask(taskKey: string): HomeFact | undefined {
 /** Whether a task row should show a capture affordance. */
 export function isCaptureTask(taskKey: string): boolean {
   return BY_TASK.has(taskKey);
+}
+
+/** A saved fact's value: free-text `note` (locations) and/or structured `detail` (appliances). */
+export interface FactValue {
+  note: string | null;
+  detail?: Record<string, unknown> | null;
+}
+
+/**
+ * One-line human summary of a saved fact's value. Shared by the checklist "My
+ * Home" recap and the booking owner-alert rider (Slice 5), so both render a
+ * saved detail identically. Location facts show their note; appliance facts join
+ * their filled fields (then any note) with a middot separator. Pure - depends
+ * only on the registry and the {note, detail} shape - so it stays importable by
+ * both client and server.
+ */
+export function factValueSummary(fact: HomeFact, val: FactValue): string {
+  if (fact.kind === 'location') return val.note ?? '';
+  const parts = fact.fields
+    .map((f) => val.detail?.[f.key])
+    .filter((v) => v != null && v !== '')
+    .map(String);
+  const base = parts.join(' · ');
+  if (val.note) return base ? `${base} · ${val.note}` : val.note;
+  return base;
 }
 
 export interface FactValidation {

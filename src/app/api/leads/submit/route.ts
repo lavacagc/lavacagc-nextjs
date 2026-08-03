@@ -8,6 +8,8 @@ import { sendFormFailureAlert, FormErrorAlertPayload } from '@/lib/notify/formEr
 import { createLeadFollowUpSequence } from '@/lib/notify/leadFollowUp';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { createIntakeSession, intakePathFor } from '@/lib/intake/session';
+import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
+import { readBookedHomeDetails } from '@/lib/homecare/homeRecords';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,6 +90,11 @@ const LeadSubmitSchema = z
     // pulled out below before the lead is sanitized/inserted, so it can't trip
     // the "unknown column" alert or reach the leads table.
     services: z.array(z.string().max(200)).max(30).nullish(),
+    // Machine-readable booked task keys (catalog slugs, non-sensitive). Used
+    // server-side with the verified hc_access cookie to attach the homeowner's
+    // saved home details (My Home Systems) for ONLY the booked services to the
+    // owner alert. Like `services`, destructured out before sanitize/insert.
+    task_keys: z.array(z.string().max(80)).max(20).nullish(),
   })
   .passthrough();
 
@@ -296,12 +303,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
 
-    const { recaptchaToken, recaptchaAction, recaptchaV2Token, honeypot, services: rawServices, ...rawLeadFields } = parsed.data as {
+    const { recaptchaToken, recaptchaAction, recaptchaV2Token, honeypot, services: rawServices, task_keys: rawTaskKeys, ...rawLeadFields } = parsed.data as {
       recaptchaToken?: string;
       recaptchaAction?: string;
       recaptchaV2Token?: string;
       honeypot?: string;
       services?: string[] | null;
+      task_keys?: string[] | null;
       [key: string]: unknown;
     };
     // Structured service titles for the owner alert only. Destructured OUT of
@@ -310,6 +318,12 @@ export async function POST(request: NextRequest) {
     // the leads table. The durable record stays in the lead's `message`.
     const requestedServices = Array.isArray(rawServices)
       ? rawServices.map((s) => String(s).trim()).filter(Boolean).slice(0, 30)
+      : [];
+    // Booked task keys - also owner-alert only, also destructured out of the
+    // lead fields. Non-sensitive on their own; they only select which saved home
+    // details ride along, resolved server-side below from the verified cookie.
+    const bookedTaskKeys = Array.isArray(rawTaskKeys)
+      ? rawTaskKeys.map((k) => String(k).trim()).filter(Boolean).slice(0, 20)
       : [];
     // Normalize the payload to what public.leads actually accepts (NOT NULL
     // contact/name columns, enum CHECKs, integer/timestamp types, no unknown
@@ -501,6 +515,27 @@ export async function POST(request: NextRequest) {
     const email = (leadFields.email || '') as string;
     const phone = (leadFields.phone || '') as string;
 
+    // Booking rider (My Home Systems, Slice 5): for a Home Care booking, attach
+    // the homeowner's saved home details (shut-off locations, panel, filter
+    // sizes) for ONLY the booked services to the owner alert, so the crew arrives
+    // knowing where things are. The homeowner id comes from the verified,
+    // HMAC-signed hc_access cookie - NEVER from the client payload - so a request
+    // can only surface its own home's details. Server-side + fail-soft: any
+    // problem (no cookie, no saved details, table not live yet) just yields no
+    // rider block. The sensitive values never touch the leads table or the
+    // browser; they live only in La Vaca's internal alert.
+    let homeDetails: string[] = [];
+    if (source.startsWith('home_care') && bookedTaskKeys.length > 0) {
+      try {
+        const access = await verifyHomeAccess(request.cookies.get(HC_ACCESS_COOKIE)?.value);
+        if (access) {
+          homeDetails = await readBookedHomeDetails(access.homeownerId, bookedTaskKeys);
+        }
+      } catch {
+        homeDetails = [];
+      }
+    }
+
     // Pull the best-time fields off the payload once so both notify tasks
     // and the DB row see the same values. Cast through the known-but-loosely-
     // typed enum set; insertLead already received the raw column values.
@@ -529,6 +564,7 @@ export async function POST(request: NextRequest) {
           contactTimeDetails,
           contactTimezone,
           services: requestedServices.length ? requestedServices : undefined,
+          homeDetails: homeDetails.length ? homeDetails : undefined,
         }),
         6000,
         'telegram-lead'
@@ -548,6 +584,7 @@ export async function POST(request: NextRequest) {
           contactTimeDetails,
           contactTimezone,
           services: requestedServices.length ? requestedServices : undefined,
+          homeDetails: homeDetails.length ? homeDetails : undefined,
           leadId,
         }),
         4000,
