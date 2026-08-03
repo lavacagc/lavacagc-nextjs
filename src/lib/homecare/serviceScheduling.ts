@@ -17,6 +17,7 @@
  * drip. If they take it, the normal double opt-in flips this same row.
  */
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { redactEmailBody } from '@/lib/notify/redactEmailBody';
 import { newToken, normalizeEmail } from '@/lib/homecare/homeowners';
 import { isRowCurrent } from '@/lib/homecare/selection';
 import { escapeLikePattern } from '@/lib/notify/cancelFollowUps';
@@ -32,6 +33,12 @@ export interface HomeownerLite {
   phone: string | null;
   status: string;
   source: string | null;
+  /**
+   * Carried by every emailed portal link. Null only for a row created before
+   * the backfill migration ran, in which case the link degrades to the bare URL
+   * rather than to one with `token=null` in it.
+   */
+  access_token: string | null;
   /**
    * Every Home Care email footer is built from this. It is NOT NULL on the
    * table, so it is always there to be read - but only if the select asks for
@@ -62,7 +69,7 @@ export async function ensureServiceHomeowner(args: {
   const email = normalizeEmail(args.email);
   const existing = await supabaseRest<HomeownerLite[]>(
     'GET',
-    `homeowners?select=id,email,first_name,phone,status,source,address,city,zip,unsubscribe_token&email=eq.${encodeURIComponent(email)}&limit=1`,
+    `homeowners?select=id,email,first_name,phone,status,source,address,city,zip,unsubscribe_token,access_token&email=eq.${encodeURIComponent(email)}&limit=1`,
   );
 
   if (existing && existing.length > 0) {
@@ -75,9 +82,18 @@ export async function ensureServiceHomeowner(args: {
     if (args.zip && !row.zip) patch.zip = args.zip;
     if (args.phone && !row.phone) patch.phone = args.phone;
     if (args.firstName && !row.first_name) patch.first_name = args.firstName;
+    // Not a blank the caller supplied - one we owe them. This row goes straight
+    // into the visit-scheduled email, and a null token there sends the bare
+    // link the branch exists to fix.
+    if (!row.access_token) patch.access_token = newToken();
     if (Object.keys(patch).length > 0) {
-      await supabaseRest('PATCH', `homeowners?id=eq.${row.id}`, patch).catch(() => {});
-      return { ...row, ...patch } as HomeownerLite;
+      const persisted = await supabaseRest('PATCH', `homeowners?id=eq.${row.id}`, patch)
+        .then(() => true, () => false);
+      // A patch that did not land is not reported as though it had. That mattered
+      // little for the address blanks, and it matters for the token: one that
+      // exists only in this response fails the exchange, so the recipient is told
+      // their link expired - strictly worse than the bare URL a null degrades to.
+      if (persisted) return { ...row, ...patch } as HomeownerLite;
     }
     return row;
   }
@@ -93,6 +109,10 @@ export async function ensureServiceHomeowner(args: {
     status: 'pending',
     source: 'service_quote',
     unsubscribe_token: newToken(),
+    // Set here, not left to the backfill: this row is created and emailed in
+    // the same request, so a brand-new service customer's visit-scheduled email
+    // would otherwise carry the bare link the branch exists to fix.
+    access_token: newToken(),
   }]);
   return created?.[0] ?? null;
 }
@@ -423,6 +443,11 @@ export async function requeueVisitReminder(args: {
   try {
     // follow_up_queue has no email_text column - the cron renders text from the
     // stored HTML, same as the nurture and review sequences.
+    //
+    // Stored with its tokens blanked, like the email_log copy: this body carries
+    // the member's access token and the row outlives the visit on a table the
+    // admin screens read back. The reminder cron re-renders from the homeowner
+    // row rather than sending this, so a redacted copy costs nothing.
     await supabaseRest('POST', 'follow_up_queue', [{
       lead_email: email,
       lead_name: name,
@@ -431,7 +456,7 @@ export async function requeueVisitReminder(args: {
       visit_start: visitKey(start),
       status: 'pending',
       email_subject: subject,
-      email_body: html,
+      email_body: redactEmailBody(html),
     }]);
   } catch (err) {
     // The booking itself is already written and correct - the reminder is a

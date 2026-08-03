@@ -6,6 +6,7 @@
  * /api/admin/releases/send route — never automatically.
  */
 
+import { checklistUrl } from './emailLinks';
 import {
   homeCareEmailShell, licenceBar, brandRow, pill, headline, intro, cta, panel, footer,
   textFooter, esc, FF, INK, BODY, MUTED, HAIRLINE, PANEL_BG, ORANGE_DEEP,
@@ -23,6 +24,8 @@ export interface ReleaseEmailArgs {
   features: ReleaseFeature[];
   /** Absolute site origin for links + screenshot URLs (e.g. https://www.lavacagc.com). */
   baseUrl: string;
+  /** So the portal button opens the portal rather than the signup page. */
+  accessToken?: string | null;
   unsubscribeUrl: string;
   preferencesUrl?: string;
   /**
@@ -38,12 +41,14 @@ export interface ReleaseEmailArgs {
 
 
 export function buildReleaseEmail(args: ReleaseEmailArgs): { subject: string; html: string; text: string } {
-  const { firstName, features, baseUrl, unsubscribeUrl, preferencesUrl, assetVersion } = args;
+  const { firstName, features, baseUrl, accessToken, unsubscribeUrl, preferencesUrl, assetVersion } = args;
   const n = features.length;
   const subject = n === 1
     ? `New in your Home Care portal: ${features[0].headline}`
     : `${n} new things in your Home Care portal`;
-  const portalUrl = `${baseUrl}/home-care/checklist?utm_source=release_email&utm_medium=email&utm_campaign=home_care_release`;
+  const portalUrl = checklistUrl(baseUrl, accessToken, {
+    utm: { utm_source: 'release_email', utm_medium: 'email', utm_campaign: 'home_care_release' },
+  });
 
   const featureBlock = (f: ReleaseFeature) => `
     <table role="presentation" width="100%" style="width:100%;border-collapse:collapse;margin:0 0 16px"><tr><td style="border:1px solid ${HAIRLINE};background:${PANEL_BG};border-radius:12px;padding:18px 20px">
@@ -65,7 +70,7 @@ export function buildReleaseEmail(args: ReleaseEmailArgs): { subject: string; ht
     `  <tr><td class="px" style="padding:26px 40px 0 40px">${features.map(featureBlock).join('')}</td></tr>`,
     cta('Open my checklist', portalUrl,
       `<a href="${baseUrl}/home-care/whats-new?utm_source=release_email&amp;utm_medium=email&amp;utm_campaign=home_care_release" style="color:${MUTED};text-decoration:underline">Browse every update we've shipped</a>`),
-    panel(`Know someone who&rsquo;d want this? Forward this email - they can get their own free plan at <a href="${baseUrl}/home-care?utm_source=member_share&amp;utm_medium=email&amp;utm_campaign=home_care_share" style="color:${ORANGE_DEEP};font-weight:bold;text-decoration:none">lavacagc.com/home-care</a>.`),
+    panel(`Know someone who&rsquo;d want this? Send them <a href="${baseUrl}/home-care?utm_source=member_share&amp;utm_medium=email&amp;utm_campaign=home_care_share" style="color:${ORANGE_DEEP};font-weight:bold;text-decoration:none">lavacagc.com/home-care</a> - they can get their own free plan there.`),
     footer({
       reason: `You're receiving this because you joined La Vaca Home Care.`,
       unsubscribeUrl,

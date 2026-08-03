@@ -97,12 +97,20 @@ export function heroBand(url?: string): string {
   </td></tr>`;
 }
 
-/** Primary orange call-to-action button, with optional reassurance line under it. */
+/**
+ * Primary orange call-to-action button, with optional reassurance line under it.
+ *
+ * `url` is escaped for the attribute it sits in, the same as the label beside
+ * it. The portal links this renders carry `?token=...&to=...&utm_*`, and a raw
+ * `&` in an href is one parameter name away from an HTML5 legacy named
+ * reference a mail client resolves silently - an email-only broken link with
+ * nothing failing anywhere it would be seen.
+ */
 export function cta(label: string, url: string, subtext?: string): string {
   return `  <tr><td class="px" align="center" style="padding:28px 40px 0 40px">
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto">
       <tr><td align="center" bgcolor="${ORANGE}" style="background:${ORANGE};border-radius:12px;padding:17px 34px">
-        <a href="${url}" style="display:block;font-family:${FF};font-size:17px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none;letter-spacing:-0.01em">${esc(label)}</a>
+        <a href="${esc(url)}" style="display:block;font-family:${FF};font-size:17px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none;letter-spacing:-0.01em">${esc(label)}</a>
       </td></tr>
     </table>
   </td></tr>${

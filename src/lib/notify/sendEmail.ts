@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import { cleanEnv } from '@/lib/envClean';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { redactEmailBody } from '@/lib/notify/redactEmailBody';
 import { getOrCreateByEmail, type SuppressionKey } from '@/lib/preferences/preferences';
 
 const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lavacagc.com';
@@ -11,9 +12,10 @@ const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lava
  * Before this, ~11 helpers in src/lib/notify/* each constructed their own
  * `new Resend(...)` and none (except the estimate tool) recorded what they
  * sent. `sendTrackedEmail` sends via Resend AND writes one audit row to
- * public.email_log so the admin can see every email + the exact HTML that
- * went out. Delivered/opened/clicked/bounced events are backfilled later by
- * the Resend webhook (Phase 2), which matches on resend_message_id.
+ * public.email_log so the admin can see every email + the HTML that went out,
+ * minus the credentials in its links (see `redactEmailBody`) and minus
+ * attachment bytes. Delivered/opened/clicked/bounced events are backfilled
+ * later by the Resend webhook (Phase 2), which matches on resend_message_id.
  *
  * Contract: logging is BEST-EFFORT. A failed email_log insert is swallowed and
  * never changes the send result — the actual email must go out regardless.
@@ -172,8 +174,9 @@ async function writeEmailLog(
       // array above; this is only what the admin reads back.
       reply_to: Array.isArray(input.replyTo) ? input.replyTo.join(', ') : input.replyTo ?? null,
       subject: input.subject,
-      html: input.html ?? null,
-      text: input.text ?? null,
+      // Bodies are stored with their tokens blanked - see redactEmailBody.
+      html: input.html == null ? null : redactEmailBody(input.html),
+      text: input.text == null ? null : redactEmailBody(input.text),
       homeowner_id: input.homeownerId ?? null,
       subscriber_id: input.subscriberId ?? null,
       lead_id: input.leadId ?? null,

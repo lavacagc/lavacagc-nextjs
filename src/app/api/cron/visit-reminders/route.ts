@@ -36,7 +36,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
+import { redactEmailBody } from '@/lib/notify/redactEmailBody';
 import { HOME_CARE_FROM } from '@/lib/notify/sendHomeCareEmails';
+import { checklistUrl } from '@/lib/homecare/emailLinks';
 import { buildVisitReminderEmail, SERVICE_REPLY_TO } from '@/lib/homecare/serviceEmails';
 import {
   tomorrowEasternWindow, visitDateLabel, visitTimeWindow, visitKey, visitEndsAt, reminderSendAt,
@@ -67,6 +69,8 @@ interface OwnerRow {
   email: string;
   first_name: string | null;
   unsubscribe_token: string;
+  /** Null only for a row created before the backfill migration ran. */
+  access_token: string | null;
   address: string | null;
 }
 
@@ -112,7 +116,7 @@ export async function GET(request: NextRequest) {
     const ownerIds = [...new Set(visits.map((v) => v.homeowner_id))];
     const owners = (await supabaseRest<OwnerRow[]>(
       'GET',
-      `homeowners?select=id,email,first_name,unsubscribe_token,address&id=in.(${ownerIds.join(',')})`,
+      `homeowners?select=id,email,first_name,unsubscribe_token,access_token,address&id=in.(${ownerIds.join(',')})`,
     )) ?? [];
     const ownerById = new Map(owners.map((o) => [o.id, o]));
 
@@ -194,7 +198,12 @@ export async function GET(request: NextRequest) {
         address,
         timeWindow: visitTimeWindow(start, end),
         visitDateLabel: visitDateLabel(start),
-        portalUrl: `${SITE_URL}/home-care/checklist`,
+        // Carries their access token, or the link lands on the signup page for
+        // anyone whose 30-day portal cookie has lapsed - which is most people
+        // receiving a visit reminder.
+        portalUrl: checklistUrl(SITE_URL, owner.access_token, {
+          utm: { utm_source: 'visit_reminder', utm_medium: 'email' },
+        }),
         unsubscribeUrl: `${SITE_URL}/api/home-care/unsubscribe?token=${encodeURIComponent(owner.unsubscribe_token)}`,
         preferencesUrl,
       });
@@ -225,7 +234,9 @@ export async function GET(request: NextRequest) {
           status: 'sent',
           sent_at: claimedAt,
           email_subject: subject,
-          email_body: html,
+          // Blanked like the email_log copy - this row is the ledger, not the
+          // source of a send. `html` below is what actually goes out.
+          email_body: redactEmailBody(html),
         }]).catch(() => [] as LedgerRow[]);
         claimId = created?.[0]?.id ?? null;
         // No ledger row, no send. An unrecorded send is one that every retry and

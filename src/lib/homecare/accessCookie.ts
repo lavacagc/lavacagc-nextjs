@@ -6,6 +6,12 @@
  * Buy + Remodel `br_access` cookie, but a separate cookie name so the two
  * programs are independent. Reuses LISTINGS_ACCESS_SECRET (already configured),
  * so no new env var is required. Fail-closed when the secret is unset.
+ *
+ * Two routes issue it: `/api/home-care/verify`, when a member confirms their
+ * email, and `/api/home-care/access`, which exchanges the stable token in an
+ * emailed portal link for the same cookie. The second exists because this
+ * cookie lasts 30 days and the emails outlive it - without it, every recipient
+ * who had not opened the portal in a month landed on the signup page.
  */
 import { cleanEnv } from '@/lib/envClean';
 

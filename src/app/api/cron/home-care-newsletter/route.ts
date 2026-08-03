@@ -73,6 +73,8 @@ type CatalogTask = NewsletterTask & { stages: string[] };
 interface HomeownerRow {
   id: string;
   first_name: string | null;
+  /** Null only for a row created before the backfill migration ran. */
+  access_token: string | null;
   email: string;
   unsubscribe_token: string;
   last_newsletter_at: string | null;
@@ -169,7 +171,7 @@ export async function GET(request: NextRequest) {
     // take pending rows would silently enrol every service customer.
     const due = (await supabaseRest<HomeownerRow[]>(
       'GET',
-      `homeowners?select=id,first_name,email,unsubscribe_token,last_newsletter_at&status=eq.active&order=last_newsletter_at.asc.nullsfirst,id.asc&limit=${MAX_PER_RUN}`,
+      `homeowners?select=id,first_name,email,unsubscribe_token,access_token,last_newsletter_at&status=eq.active&order=last_newsletter_at.asc.nullsfirst,id.asc&limit=${MAX_PER_RUN}`,
     )) ?? [];
 
     // The one-per-calendar-month rule. Nothing is lost by deduping here: anyone
@@ -286,6 +288,10 @@ export async function GET(request: NextRequest) {
             tasks: state.caughtUp ? [] : resolved.outstanding,
             isSeasonal,
             baseUrl: origin,
+            // Without this every checklist link in a MONTHLY email lands on the
+            // signup page for anyone whose 30-day portal cookie has lapsed -
+            // which, at a monthly cadence, is much of the list by definition.
+            accessToken: h.access_token,
             unsubscribeUrl: `${origin}/api/home-care/unsubscribe?token=${encodeURIComponent(h.unsubscribe_token)}`,
             preferencesUrl,
             monthLabel,

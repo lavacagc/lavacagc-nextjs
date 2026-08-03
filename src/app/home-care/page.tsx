@@ -8,6 +8,7 @@ import ChecklistPreview from '@/components/homecare/ChecklistPreview';
 import { CalendarCheck, ChevronDown, ListChecks, Wrench } from 'lucide-react';
 import { HC_ACCESS_COOKIE, verifyHomeAccess } from '@/lib/homecare/accessCookie';
 import { findHomeownerById } from '@/lib/homecare/homeowners';
+import { accessErrorCopy } from '@/lib/homecare/accessErrors';
 
 export const metadata: Metadata = {
   title: 'Free Seasonal Home Maintenance Plan | La Vaca Home Care',
@@ -72,7 +73,7 @@ export default async function HomeCarePage({ searchParams }: { searchParams: Pro
           <div className="bg-secondary/10 text-center text-sm py-3 px-4 text-text-secondary">You&apos;ve been unsubscribed from La Vaca Home Care. You can re-join anytime below.</div>
         )}
         {sp?.error && (
-          <div className="bg-destructive/10 text-center text-sm py-3 px-4 text-destructive">That confirmation link was invalid or expired. Enter your email below and we&apos;ll send a fresh one.</div>
+          <div className="bg-destructive/10 text-center text-sm py-3 px-4 text-destructive">{accessErrorCopy(sp.error)}</div>
         )}
 
         <section className="py-10 md:py-16 bg-gradient-subtle">

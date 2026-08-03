@@ -4,9 +4,13 @@ import { supabaseRest } from '@/lib/notify/supabase-rest';
 /**
  * GET /api/admin/emails/[id]
  *
- * A single email_log row INCLUDING the full rendered html/text body — this is
- * what powers the "see exactly what was sent" HTML viewer. Kept separate from
- * the list route so the list stays light.
+ * A single email_log row INCLUDING the rendered html/text body - this is what
+ * powers the "see what was sent" HTML viewer. Kept separate from the list route
+ * so the list stays light.
+ *
+ * The body is the STORED copy, whose link credentials were blanked on the way
+ * in (see `redactEmailBody`), so the viewer shows the shape of every link
+ * without handing an admin screen a live portal token.
  *
  * Admin auth is enforced by middleware on /api/admin/*.
  */

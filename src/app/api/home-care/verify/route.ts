@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findHomeownerByVerifyToken, updateHomeowner } from '@/lib/homecare/homeowners';
+import { findHomeownerByVerifyToken, updateHomeowner, newToken } from '@/lib/homecare/homeowners';
+import { checklistUrl } from '@/lib/homecare/emailLinks';
 import {
   signHomeAccess,
   HC_ACCESS_COOKIE,
@@ -33,11 +34,15 @@ export async function GET(request: NextRequest) {
     }
 
     const wasPending = ho.status !== 'active';
+    // Same self-heal the subscribe route applies: a row that predates the
+    // backfill gets a token here rather than being emailed bare links forever.
+    const accessToken = ho.access_token || newToken();
     await updateHomeowner(ho.id, {
       status: 'active',
       verified_at: ho.verified_at || new Date().toISOString(),
       verify_token: null,
       verify_token_expires_at: null,
+      access_token: accessToken,
     });
 
     if (wasPending) {
@@ -56,7 +61,13 @@ export async function GET(request: NextRequest) {
       await sendHomeCareWelcomeEmail({
         to: ho.email,
         firstName: ho.first_name,
-        checklistUrl: `${origin}/home-care/checklist`,
+        // Tokenized like every other portal email. The cookie this request sets
+        // only helps in the browser that just verified: opened on their phone,
+        // or more than 30 days later, a bare link lands on the signup page -
+        // which is the reported bug, in the very first email a member gets.
+        checklistUrl: checklistUrl(origin, accessToken, {
+          utm: { utm_source: 'home_care_welcome', utm_medium: 'email' },
+        }),
         unsubscribeUrl: `${origin}/api/home-care/unsubscribe?token=${encodeURIComponent(ho.unsubscribe_token)}`,
         preferencesUrl,
         homeownerId: ho.id,

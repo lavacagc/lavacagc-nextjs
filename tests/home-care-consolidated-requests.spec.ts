@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { newLeadNotificationHtml } from '../src/lib/emailTemplates';
+import { buildNewsletter, type NewsletterTask } from '../src/lib/homecare/newsletter';
 
 /**
  * Home Care: consolidated multi-service requests.
@@ -33,6 +34,11 @@ const newLeadEmail = read('src/lib/notify/newLeadEmail.ts');
 const guides = read('src/app/home-care/guides/[season]/page.tsx');
 const newsletter = read('src/lib/homecare/newsletter.ts');
 const checklistPage = read('src/app/home-care/checklist/page.tsx');
+
+/** One bookable task, so exactly one "Add to plan" deep link renders. */
+const AC9_TASKS: NewsletterTask[] = [
+  { key: 'clean_gutters', title: 'Clean gutters', blurb: 'Clear them out.', bookable: true, diy_or_pro: 'pro', priority: 9, applies_to: ['all'] },
+];
 
 test('AC1: checklist has no per-row single-book link (the fan-out is removed)', () => {
   expect(checklist).not.toContain('book?task=');
@@ -107,13 +113,40 @@ test('AC9: guides + newsletter per-task CTAs deep-link the task via ?add=', () =
   // Per-item guide CTA carries the task key so the checklist pre-selects it.
   expect(guides).toContain('/home-care/checklist?add=${encodeURIComponent(item.key)}');
   // Newsletter "Add to plan" (HTML) and per-task text line both carry ?add=.
-  expect(newsletter).toContain('${checklistUrl}?add=${encodeURIComponent(t.key)}');
-  expect(newsletter).toContain('${checklistUrl}?add=${t.key}');
+  // Asserted from the RENDERED email rather than a source literal: the link is
+  // now built through the access-token helper, so the deep link can live behind
+  // ?to= and a source grep for "?add=" would miss it either way it is spelled.
+  const addKey = (accessToken: string | null) => {
+    const { html, text } = buildNewsletter({
+      firstName: 'Dana', season: 'fall', tasks: AC9_TASKS, isSeasonal: true,
+      baseUrl: 'https://www.lavacagc.com', accessToken,
+      unsubscribeUrl: 'https://www.lavacagc.com/u',
+    });
+    return [html, text].map((body) => {
+      const link = body.match(/https:\/\/[^\s"']*add[=%][^\s"']*/)?.[0]?.replace(/&amp;/g, '&');
+      const url = new URL(link!);
+      const dest = url.searchParams.get('to');
+      return new URL(dest ?? url.pathname + url.search, 'https://www.lavacagc.com').searchParams.get('add');
+    });
+  };
+  expect(addKey('tok-ac9'), 'tokenized links must still carry ?add=').toEqual(['clean_gutters', 'clean_gutters']);
+  expect(addKey(null), 'and so must the bare fallback').toEqual(['clean_gutters', 'clean_gutters']);
   // The full-checklist buttons stay bare (no ?add), so they open the whole plan.
-  // The label is season/month-specific since the design port ("Open My August
-  // Checklist"), so assert the bare link itself rather than the old copy.
-  expect(newsletter).toContain('<a href="${checklistUrl}" style="display:block;');
-  expect(newsletter).toContain('${ctaLabel}: ${checklistUrl}\\n');
+  // Rendered for the same reason the deep link above is: the label is
+  // season/month-specific since the design port ("Open My August Checklist"),
+  // and a source literal asserts how the builder is written rather than what it
+  // emits - it broke on a rename of a local while the emails were correct.
+  const { html, text } = buildNewsletter({
+    firstName: 'Dana', season: 'fall', tasks: AC9_TASKS, isSeasonal: true,
+    baseUrl: 'https://www.lavacagc.com', accessToken: 'tok-ac9',
+    unsubscribeUrl: 'https://www.lavacagc.com/u',
+  });
+  for (const [part, body] of [['html', html], ['text', text]] as const) {
+    const wholePlan = (body.match(/https:\/\/[^\s"']*\/api\/home-care\/access[^\s"']*/g) ?? [])
+      .map((u) => new URL(u.replace(/&amp;/g, '&')))
+      .filter((u) => !(u.searchParams.get('to') ?? '').includes('add='));
+    expect(wholePlan.length, `${part} must offer a link to the whole plan, not only ?add= deep links`).toBeGreaterThan(0);
+  }
 });
 
 test('AC10: checklist page derives autoAddKey behind a bookable/dismissed guard', () => {

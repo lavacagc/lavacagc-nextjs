@@ -309,12 +309,17 @@ const NL_TASKS: NewsletterTask[] = [
   { key: 'clean_dryer_vent', title: 'Clean the dryer vent', blurb: 'Lint buildup is a top home-fire cause.', bookable: true, diy_or_pro: 'pro', priority: 7, applies_to: ['all'] },
 ];
 
-test('seasonal newsletter HTML + text carry the forward-to-a-friend line with email UTM tags', async ({ page }) => {
+test('seasonal newsletter HTML + text carry the share line with email UTM tags', async ({ page }) => {
   const n = buildNewsletter({
     firstName: 'Dana', season: currentSeason(), tasks: NL_TASKS, isSeasonal: true,
     baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/api/home-care/unsubscribe?token=abc',
   });
-  expect(n.html).toContain('Forward this email');
+  expect(n.html).toContain('Know someone');
+  // It points a NEW person at the public signup page rather than inviting the
+  // member to forward the email itself: every portal link in here now carries
+  // a 30-day access token that gates booking paid work and editing their home
+  // profile, so a forwarded copy hands all of that to whoever receives it.
+  expect(n.html).not.toContain('Forward this email');
   expect(n.html).toContain('utm_source=member_share&amp;utm_medium=email&amp;utm_campaign=home_care_share');
   expect(n.text).toContain("Know someone who'd want this? They can get their own free plan: https://www.lavacagc.com/home-care");
   expect(n.html).not.toMatch(/\p{Extended_Pictographic}/u);
@@ -331,8 +336,8 @@ test('seasonal newsletter HTML + text carry the forward-to-a-friend line with em
   );
   await page.setViewportSize({ width: 700, height: 1200 });
   await page.setContent(n.html, { waitUntil: 'domcontentloaded' });
-  await expect(page.getByText('Forward this email')).toBeVisible();
-  await page.screenshot({ path: join(EVIDENCE_DIR, '09-newsletter-forward-line.png'), fullPage: true });
+  await expect(page.getByText('Know someone who’d want this?')).toBeVisible();
+  await page.screenshot({ path: join(EVIDENCE_DIR, '09-newsletter-share-line.png'), fullPage: true });
 });
 
 // ---------------------------------------------------------------------------

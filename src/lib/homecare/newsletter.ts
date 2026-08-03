@@ -27,6 +27,7 @@
  * CTAs for bookable jobs, seasonal guide deep-links, the member-share line,
  * and the tokenized preference-center / unsubscribe footer.
  */
+import { checklistUrl } from './emailLinks';
 import { SEASON_LABEL, type Season } from './season';
 import { hasGuideItem } from './guides';
 import { costLabel, COST_DASH } from './cost';
@@ -50,6 +51,13 @@ export interface NewsletterArgs {
   tasks: NewsletterTask[];
   isSeasonal: boolean;
   baseUrl: string;
+  /**
+   * The recipient's stable access token, so every checklist link in this email
+   * opens the checklist. Without it the links land on the signup page for
+   * anyone whose 30-day portal cookie has lapsed - which, on a MONTHLY send, is
+   * a large share of the list by definition.
+   */
+  accessToken?: string | null;
   unsubscribeUrl: string;
   /** Self-serve preference-center link (per-recipient token). Preferred footer CTA. */
   preferencesUrl?: string;
@@ -143,6 +151,14 @@ function badgeFor(t: NewsletterTask): string {
 
 const DOT = ' &nbsp;&middot;&nbsp; ';
 
+/**
+ * Campaign tagging for every portal link this email renders. One const because
+ * it was written out at each of the three call sites - the standing checklist
+ * link and the "Add to plan" deep link in both builds - so a fourth link added
+ * later could silently go untagged or drift.
+ */
+const NEWSLETTER_UTM = { utm_source: 'home_care_newsletter', utm_medium: 'email' } as const;
+
 /** Every string that varies between the caught-up, seasonal and nudge emails. */
 interface NewsletterCopy {
   subject: string;
@@ -173,14 +189,32 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
    */
   const hi = name ? `Hi ${name},` : 'Hi there,';
   const hiText = firstName ? `Hi ${firstName},` : 'Hi there,';
-  const checklistUrl = `${baseUrl}/home-care/checklist`;
+  const portalUrl = checklistUrl(baseUrl, args.accessToken, { utm: NEWSLETTER_UTM });
+  /**
+   * The same link, escaped for an href attribute. The tokenized links carry
+   * `?token=...&to=...` where the old bare `/home-care/checklist` carried
+   * nothing, so a raw `&` now sits inside four attributes - and `&utm_...` is
+   * one parameter name away from an HTML5 legacy named reference that a mail
+   * client would silently resolve. Same treatment `portfolioUrl` and `blogUrl`
+   * already get below.
+   */
+  const portalHref = esc(portalUrl);
+  /**
+   * The "Add to plan" deep link, built once for both parts. The HTML and text
+   * builders each used to construct it, they drifted, and the text one ended up
+   * concatenating "?add=" onto a URL that already carried a query - a second '?'
+   * and a dead link, shipped only in the alternative most clients read last.
+   */
+  const addToPlanUrl = (key: string) =>
+    checklistUrl(baseUrl, args.accessToken, { query: { add: key }, utm: NEWSLETTER_UTM });
   /**
    * Standing links for the caught-up email. Tagged like the member-share line
    * so the traffic is attributable, and pointed at the index pages rather than
    * individual posts so a send needs no extra data fetch.
    */
   const utm = (content: string) =>
-    `utm_source=home_care_newsletter&utm_medium=email&utm_campaign=home_care_caught_up&utm_content=${content}`;
+    `utm_source=${NEWSLETTER_UTM.utm_source}&utm_medium=${NEWSLETTER_UTM.utm_medium}` +
+    `&utm_campaign=home_care_caught_up&utm_content=${content}`;
   const portfolioUrl = `${baseUrl}/portfolio?${utm('portfolio')}`;
   const blogUrl = `${baseUrl}/blog?${utm('blog')}`;
 
@@ -265,7 +299,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
     // member adds them to one request and checks out once - no per-task
     // one-off booking, so no separate owner alert per link.
     const book = t.bookable
-      ? `<div style="padding-top:10px"><a href="${checklistUrl}?add=${encodeURIComponent(t.key)}" style="display:inline-block;background:${ORANGE};border-radius:8px;padding:9px 16px;font-family:${FF};font-size:13px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none">Add to plan</a></div>`
+      ? `<div style="padding-top:10px"><a href="${esc(addToPlanUrl(t.key))}" style="display:inline-block;background:${ORANGE};border-radius:8px;padding:9px 16px;font-family:${FF};font-size:13px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none">Add to plan</a></div>`
       : '';
     // Top and bottom are independent: the first row tucks under the panel
     // heading, and the last row closes the panel out - unless a teaser row
@@ -277,7 +311,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%">
           <tr>
             <td width="30" valign="top" style="width:30px;font-family:${FF};font-size:20px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:${ORANGE}">${String(i + 1).padStart(2, '0')}</td>
-            <td valign="top" style="font-family:${FF};font-size:17px;line-height:24px;mso-line-height-rule:exactly;font-weight:bold;color:${INK}"><a href="${checklistUrl}" style="color:${INK};text-decoration:none">${esc(t.title)}</a><div style="padding-top:4px;font-family:${FF};font-size:14px;line-height:20px;mso-line-height-rule:exactly;font-weight:normal;color:${MUTED}">${meta}</div>${guide}${book}</td>
+            <td valign="top" style="font-family:${FF};font-size:17px;line-height:24px;mso-line-height-rule:exactly;font-weight:bold;color:${INK}"><a href="${portalHref}" style="color:${INK};text-decoration:none">${esc(t.title)}</a><div style="padding-top:4px;font-family:${FF};font-size:14px;line-height:20px;mso-line-height-rule:exactly;font-weight:normal;color:${MUTED}">${meta}</div>${guide}${book}</td>
           </tr>
         </table>
       </td></tr>${
@@ -294,7 +328,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
    */
   const teaserRow = remaining
     ? `<tr><td style="padding:14px 22px 20px 22px">
-        <a href="${checklistUrl}" style="display:block;font-family:${FF};font-size:15px;line-height:22px;mso-line-height-rule:exactly;font-weight:bold;color:${ORANGE_DEEP};text-decoration:none">+ ${remaining} more ${jobWord(remaining)} on your ${seasonLower} list &rarr;</a>
+        <a href="${portalHref}" style="display:block;font-family:${FF};font-size:15px;line-height:22px;mso-line-height-rule:exactly;font-weight:bold;color:${ORANGE_DEEP};text-decoration:none">+ ${remaining} more ${jobWord(remaining)} on your ${seasonLower} list &rarr;</a>
         <div style="padding-top:3px;font-family:${FF};font-size:13px;line-height:19px;mso-line-height-rule:exactly;color:${MUTED}">Open your checklist to see the rest and tick them off as you go.</div>
       </td></tr>`
     : '';
@@ -392,7 +426,7 @@ ${keepInTouch}
   <tr><td class="px" align="center" style="padding:28px 40px 0 40px">
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto">
       <tr><td align="center" bgcolor="${ORANGE}" style="background:${ORANGE};border-radius:12px;padding:17px 34px">
-        <a href="${checklistUrl}" style="display:block;font-family:${FF};font-size:17px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none;letter-spacing:-0.01em">${ctaLabel}</a>
+        <a href="${portalHref}" style="display:block;font-family:${FF};font-size:17px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none;letter-spacing:-0.01em">${ctaLabel}</a>
       </td></tr>
     </table>
   </td></tr>
@@ -411,7 +445,7 @@ ${keepInTouch}
 
   <tr><td class="px" style="padding:20px 40px 0 40px">
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;background:${PANEL_BG};border-radius:12px">
-      <tr><td align="center" style="padding:14px 18px;font-family:${FF};font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:${MUTED}">Know someone who&rsquo;d want this? Forward this email - they can get their own free plan at <a href="${baseUrl}/home-care?utm_source=member_share&amp;utm_medium=email&amp;utm_campaign=home_care_share" style="color:${ORANGE_DEEP};font-weight:bold;text-decoration:none">lavacagc.com/home-care</a>.</td></tr>
+      <tr><td align="center" style="padding:14px 18px;font-family:${FF};font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:${MUTED}">Know someone who&rsquo;d want this? Send them <a href="${baseUrl}/home-care?utm_source=member_share&amp;utm_medium=email&amp;utm_campaign=home_care_share" style="color:${ORANGE_DEEP};font-weight:bold;text-decoration:none">lavacagc.com/home-care</a> - they can get their own free plan there.</td></tr>
     </table>
   </td></tr>
 
@@ -438,15 +472,15 @@ ${keepInTouch}
     text += `${panelHeading.toUpperCase()}\n\n`;
     list.forEach((t, i) => {
       text += `${String(i + 1).padStart(2, '0')}. ${t.title}\n    ${plainMeta(t)}\n`;
-      if (t.bookable) text += `    Add to your plan: ${checklistUrl}?add=${t.key}\n`;
+      if (t.bookable) text += `    Add to your plan: ${addToPlanUrl(t.key)}\n`;
     });
     if (remaining) {
-      text += `\n+ ${remaining} more ${jobWord(remaining)} on your ${seasonLower} list. Open your checklist to see the rest: ${checklistUrl}\n`;
+      text += `\n+ ${remaining} more ${jobWord(remaining)} on your ${seasonLower} list. Open your checklist to see the rest: ${portalUrl}\n`;
     }
   } else {
     text += `WHILE YOU'RE AHEAD\n\nTwo things worth a look this month:\n- See what we've been building: ${portfolioUrl}\n- Read our latest home guides: ${blogUrl}\n`;
   }
-  text += `\n${ctaLabel}: ${checklistUrl}\nFree · No account · Nothing to download\n\nRather we handled it? Call ${PHONE} - 24-hour response guaranteed.\n\nKnow someone who'd want this? They can get their own free plan: ${baseUrl}/home-care\n\n- The La Vaca Team\nLa Vaca General Contractors · ${BUSINESS_ADDRESS} · ${PHONE} · ${HIC}\n`;
+  text += `\n${ctaLabel}: ${portalUrl}\nFree · No account · Nothing to download\n\nRather we handled it? Call ${PHONE} - 24-hour response guaranteed.\n\nKnow someone who'd want this? They can get their own free plan: ${baseUrl}/home-care\n\n- The La Vaca Team\nLa Vaca General Contractors · ${BUSINESS_ADDRESS} · ${PHONE} · ${HIC}\n`;
   if (preferencesUrl) text += `Manage email preferences: ${preferencesUrl}\n`;
   text += `Unsubscribe: ${unsubscribeUrl}`;
 
