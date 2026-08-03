@@ -14,9 +14,10 @@
  * It mirrors the sanitize-on-write discipline of SYSTEM_QUESTIONS/sanitizeSystems
  * in profile.ts.
  *
- * Slice 1: registry + validation only. No UI, no route (those are later slices).
- * Per owner decision, v1 captures locations + a few appliance details
- * (brand/model/install year/filter size) but NOT serial numbers.
+ * Slice 1 added the registry + validation; Slice 2 adds the homeowner write
+ * route (api/home-care/record) plus the first-save consent constants below. The
+ * capture UI is a later slice. Per owner decision, v1 captures locations + a few
+ * appliance details (brand/model/install year/filter size) but NOT serial numbers.
  */
 
 export type FactKind = 'location' | 'appliance';
@@ -46,6 +47,18 @@ export interface HomeFact {
 /** Max length of a free-text location note. */
 export const MAX_NOTE = 500;
 const MIN_YEAR = 1900;
+
+/**
+ * Consent for saving sensitive home details. Logged to consent_logs on the
+ * homeowner's first save (separate from the Home Care opt-in and any marketing
+ * consent). The text is the single source of truth: the capture UI shows it and
+ * the server logs this exact string, so the recorded consent matches what the
+ * homeowner saw. v1 scope is locations + appliance makes/models (no photos, no
+ * serial numbers); update this text when the photo slice ships.
+ */
+export const HOME_DETAILS_CONSENT_TYPE = 'home_care_home_details';
+export const HOME_DETAILS_CONSENT_TEXT =
+  "I'm choosing to save details about my home, like where my water, gas, and electrical shut-offs are and my appliance makes and models, so La Vaca's team can help faster when I book service. I understand La Vaca staff who work on my home can see these details, that I can view or delete them anytime from my Home Care account, and that they're deleted when I leave the program.";
 
 // Registry. Every taskKey below is a real, verified maintenance_catalog key.
 export const HOME_FACTS: HomeFact[] = [

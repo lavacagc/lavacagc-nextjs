@@ -1,7 +1,7 @@
 # Privacy Policy
 
-**Last Updated: August 2, 2026**
-**Version: 2.5**
+**Last Updated: August 3, 2026**
+**Version: 2.6**
 
 ---
 
@@ -119,6 +119,8 @@ You receive only emails about the job itself - the quote, an appointment reminde
 If you separately choose to join the program, your record becomes an active membership in the ordinary way, by verifying your email address.
 
 This is an optional program separate from our "Buy + Remodel" listings. You can leave at any time using the **unsubscribe link** in any Home Care email, which removes you from the program, stops the seasonal emails, and clears your Home Care access cookie. You may also exercise the rights in Section 8 (including access and deletion) with respect to this information, including the service-visit information described above.
+
+**Home Details (optional).** If you choose to save **Home Details** in La Vaca Home Care, we collect information you provide about your home, which may include the **location of your water, gas, and electrical shut-offs and electrical panel** and the **brand, model, and installation year of appliances and systems** (such as your furnace, air conditioner, or water heater). We treat this as **sensitive home-security information**. We collect it only with your **explicit, separate consent** (recorded with the date, time, and your IP address as proof), use it **solely to prepare for and perform the home-maintenance services you request**, and make it visible only to the La Vaca personnel who need it to serve you. We store it privately with restricted access, do **not** sell or share it for advertising, and exclude it from analytics and marketing. We **never store alarm or lock codes, security-system configuration, spare-key locations, or occupancy schedules**. You can view or delete these details at any time from your Home Care account or by contacting us (Section 8), and we delete them when you leave the program.
 
 ### 3.7 Monthly Newsletter
 
@@ -415,6 +417,7 @@ We retain your personal information only for as long as necessary to fulfill the
 | **Communication Content** (emails, messages, inquiries) | Duration of business relationship + 7 years | Contract enforcement; dispute resolution; quality assurance; customer service |
 | **Website Usage Data and Analytics** (IP address, browsing behavior, device information) | 26 months | Website improvement; analytics (aligned with Google Analytics default); user experience optimization |
 | **Subscriber Activity Logs** (pages viewed while signed in as a Buy + Remodel subscriber, linked to your identity) | Duration of your subscription + up to 24 months, or until you unsubscribe or request deletion | Understanding subscriber interest; improving listings and communications |
+| **Home Care Home Details** (shut-off and electrical-panel locations, appliance makes/models/installation years) | Deleted when you leave the Home Care program or on request; otherwise only while your Home Care account is active | Sensitive home-security information kept only to prepare for and perform the services you request; retention is deliberately minimized |
 | **Chat and Intake Assistant Messages** (transcripts from our retired AI chat assistant, and the answers, photos, and questions you give our intake assistant) | Up to 24 months, or until you request deletion. Answers that become part of your inquiry are kept with it (see Project Details and Communication Content above) | Customer service; lead follow-up; quality and safety. Messages sent to the retired chat assistant before August 2026 were processed by OpenAI, which retains data per its own policies; intake assistant messages are not sent to any AI provider |
 | **Marketing Communications Records** | Until you opt out + 30 days to process opt-out, then deleted | Direct marketing; compliance with opt-out requests |
 | **Cookies and Tracking Technologies** | Varies by cookie type: Essential (session); Analytics (26 months); Marketing (13 months) | See Section 6 for cookie-specific retention |
@@ -758,7 +761,7 @@ If you are a California resident, you have additional rights under the Californi
 
 **Categories of Personal Information Collected:**
 - **Identifiers:** Name, email address, phone number, mailing address (including the street address of a home where we perform work), IP address, device identifiers
-- **Commercial Information:** Transaction history, service requests, scheduled service appointments (the date and time window of a booked visit and the services booked into it), service and maintenance history, payment records, project details
+- **Commercial Information:** Transaction history, service requests, scheduled service appointments (the date and time window of a booked visit and the services booked into it), service and maintenance history, payment records, project details, property and home-system details (such as the locations of utility shut-offs and electrical panels, and appliance makes and models)
 - **Internet or Network Activity:** Browsing history, search history, interactions with our Website, pages visited, links clicked
 - **Geolocation Data:** General location based on IP address (not precise geolocation)
 - **Visual Information:** Photographs of a property that you choose to upload to us (for example the photos of the space you can add in our intake assistant - see Section 3.5)
@@ -1077,7 +1080,7 @@ Before initiating any legal action, we encourage you to contact us using the inf
 
 This Privacy Policy is effective as of the "Last Updated" date indicated at the top of this document.
 
-**Last Updated:** August 2, 2026
-**Version:** 2.5
+**Last Updated:** August 3, 2026
+**Version:** 2.6
 **Original Effective Date:** November 12, 2025
 
