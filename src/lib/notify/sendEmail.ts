@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import { cleanEnv } from '@/lib/envClean';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { redactEmailBody } from '@/lib/notify/redactEmailBody';
 import { getOrCreateByEmail, type SuppressionKey } from '@/lib/preferences/preferences';
 
 const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lavacagc.com';
@@ -148,44 +149,6 @@ export interface TrackedEmailResult {
 function toArray(v: string | string[] | undefined): string[] {
   if (!v) return [];
   return Array.isArray(v) ? v : [v];
-}
-
-/**
- * A credential-bearing query parameter inside a rendered email body.
- *
- * Matched on the parameter NAME, the same rule `redactRestPath` applies to the
- * REST path - `?token=`, `&access_token=`, and the entity-escaped `&amp;token=`
- * an HTML href carries. The value runs to whatever ends it: the next parameter,
- * the quote closing an href, or the whitespace ending a plain-text URL.
- */
-const BODY_CREDENTIAL = /([?&](?:amp;)?[a-z0-9_-]*token=)[^&"'<>\s]+/gi;
-
-/** What replaces the value, so the admin still sees the link's shape. */
-const REDACTED = 'REDACTED';
-
-/**
- * The body with its credentials blanked, for the email_log copy ONLY.
- *
- * Every Home Care portal email now carries the homeowner's access token in
- * every link. That token is stable, never rotated, and buys 30 days of portal
- * access including booking paid work at the member's address - so writing the
- * rendered body verbatim put a permanent credential into a second table for
- * every newsletter, release, reminder, visit-scheduled and welcome send, with
- * no retention limit and a viewer that reads it back. That is the same leak
- * `redactRestPath` closed on the application log, on the durable path.
- *
- * The unsubscribe, preference and verify tokens sit in the same bodies and are
- * blanked by the same rule - matching on the name costs nothing extra and the
- * alternative is a list that a fifth token shape falls off.
- *
- * Applied here, at the single point that persists, rather than in each builder:
- * the same reasoning that keeps attachment bytes out of email_log. WHAT WAS
- * SENT IS UNTOUCHED - the recipient's link still works. Nothing re-sends from a
- * stored body (the admin routes only read email_log, and the Resend webhook only
- * patches delivery status), so a redacted copy cannot become a delivered one.
- */
-export function redactEmailBody(body: string): string {
-  return body.replace(BODY_CREDENTIAL, `$1${REDACTED}`);
 }
 
 /**

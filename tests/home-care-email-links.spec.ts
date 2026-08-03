@@ -730,9 +730,32 @@ test.describe('the audit row is not a second copy of the credential', () => {
     expect(src).toMatch(/\.\.\.\(input\.text !== undefined \? \{ text: input\.text \} : \{\}\)/);
   });
 
+  test('every durable store of a rendered body calls the same helper', () => {
+    // email_log was redacted first and follow_up_queue.email_body was missed,
+    // because that one is written directly rather than through the sender. Two
+    // tables hold a rendered body; both must go through the one function, so a
+    // third has something obvious to call.
+    for (const file of [
+      'src/lib/homecare/serviceScheduling.ts',
+      'src/app/api/cron/visit-reminders/route.ts',
+    ]) {
+      const src = code(file);
+      expect(src, `${file} must import the shared helper`)
+        .toMatch(/import \{ redactEmailBody \} from '@\/lib\/notify\/redactEmailBody'/);
+      expect(src, `${file} must not store a rendered body verbatim`)
+        .toMatch(/email_body:\s*redactEmailBody\(html\)/);
+    }
+    // The other queue writers are re-sent FROM email_body by send-follow-ups, so
+    // theirs stay intact - and carry no portal token, only their own unsubscribe.
+    for (const file of ['src/lib/notify/leadFollowUp.ts', 'src/app/api/feedback/create/route.ts']) {
+      expect(code(file), `${file} sends from its stored body and must not be redacted`)
+        .not.toContain('redactEmailBody');
+    }
+  });
+
   test('every token shape that rides in a body is blanked, not just this one', () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- see above.
-    const { redactEmailBody }: typeof import('../src/lib/notify/sendEmail') = require('../src/lib/notify/sendEmail');
+    const { redactEmailBody }: typeof import('../src/lib/notify/redactEmailBody') = require('../src/lib/notify/redactEmailBody');
     for (const param of ['token', 'access_token', 'unsubscribe_token', 'preference_token', 'verify_token']) {
       // Plain text, an href with escaped separators, and a bare first parameter.
       for (const body of [
@@ -746,6 +769,85 @@ test.describe('the audit row is not a second copy of the credential', () => {
     // A body with nothing to hide comes back byte-identical.
     const clean = `<a href="${BASE}/home-care?utm_source=member_share&amp;utm_medium=email">signup</a>`;
     expect(redactEmailBody(clean)).toBe(clean);
+  });
+
+  test('the queued visit reminder is a ledger row, not a second copy of the token', async () => {
+    // follow_up_queue is the OTHER durable table that holds a rendered body, and
+    // the email_log fix did not reach it: requeueVisitReminder writes the row
+    // itself. Two admin surfaces read those rows back with select=*, and the row
+    // outlives the visit. Driven through the real writer AND the real sender, so
+    // "the row is blanked" and "the customer's link still works" are both proven
+    // of the same body rather than read off the source.
+    /* eslint-disable @typescript-eslint/no-require-imports -- see above. */
+    const { requeueVisitReminder }: typeof import('../src/lib/homecare/serviceScheduling') =
+      require('../src/lib/homecare/serviceScheduling');
+    const { sendTrackedEmail }: typeof import('../src/lib/notify/sendEmail') =
+      require('../src/lib/notify/sendEmail');
+    /* eslint-enable @typescript-eslint/no-require-imports */
+
+    const { subject, html, text } = buildVisitReminderEmail({
+      recipientName: 'Jordan',
+      services: ['Clean gutters'],
+      address: '5 Cedar St',
+      timeWindow: '8:00-10:00 AM',
+      visitDateLabel: 'Tomorrow',
+      portalUrl: checklistUrl(BASE, TOKEN, { utm: { utm_source: 'visit_reminder', utm_medium: 'email' } }),
+      unsubscribeUrl: `${BASE}/api/home-care/unsubscribe?token=unsub-token-not-a-real-secret`,
+    });
+    expect(html, 'the rendered body is what the recipient gets').toContain(`token=${TOKEN}`);
+
+    const queued: Array<Record<string, unknown>> = [];
+    const sends: string[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = typeof init?.body === 'string' ? init.body : '';
+      // Nothing pending to supersede, so the cancel that runs first is a no-op.
+      if (url.includes('/rest/v1/follow_up_queue') && (init?.method ?? 'GET') === 'GET') {
+        return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/rest/v1/follow_up_queue')) {
+        queued.push(...(JSON.parse(body) as Record<string, unknown>[]));
+        return new Response('[]', { status: 201, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/rest/v1/')) return new Response('', { status: 201 });
+      sends.push(body);
+      return new Response(JSON.stringify({ id: 'stub-message-id' }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    try {
+      const outcome = await requeueVisitReminder({
+        email: 'jordan@example.com',
+        name: 'Jordan',
+        start: new Date(Date.now() + 48 * 3600_000),
+        subject,
+        html,
+      });
+      expect(outcome, 'the reminder must still be queued').toBe('queued');
+
+      const sent = await sendTrackedEmail({
+        from: 'La Vaca Home Care <alex@email.lavaca.link>',
+        to: 'jordan@example.com',
+        subject, html, text,
+        category: 'visit_reminder',
+      });
+      expect(sent.status, 'the send itself must still succeed').toBe('sent');
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+
+    expect(queued, 'exactly one ledger row').toHaveLength(1);
+    const stored = String(queued[0].email_body);
+    expect(stored, 'the ledger row must not hold a live access token').not.toContain(TOKEN);
+    expect(stored, 'nor the unsubscribe token').not.toContain('unsub-token-not-a-real-secret');
+    // Still a readable record of what was queued: the link's shape survives.
+    expect(stored).toContain('token=REDACTED');
+    expect(stored).toMatch(/to=%2Fhome-care%2Fchecklist/);
+
+    expect(sends, 'exactly one email goes to Resend').toHaveLength(1);
+    expect(sends[0], 'and the recipient keeps a link that opens the portal').toContain(TOKEN);
   });
 });
 

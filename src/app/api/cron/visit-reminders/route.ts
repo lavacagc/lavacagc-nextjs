@@ -36,6 +36,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
+import { redactEmailBody } from '@/lib/notify/redactEmailBody';
 import { HOME_CARE_FROM } from '@/lib/notify/sendHomeCareEmails';
 import { checklistUrl } from '@/lib/homecare/emailLinks';
 import { buildVisitReminderEmail, SERVICE_REPLY_TO } from '@/lib/homecare/serviceEmails';
@@ -233,7 +234,9 @@ export async function GET(request: NextRequest) {
           status: 'sent',
           sent_at: claimedAt,
           email_subject: subject,
-          email_body: html,
+          // Blanked like the email_log copy - this row is the ledger, not the
+          // source of a send. `html` below is what actually goes out.
+          email_body: redactEmailBody(html),
         }]).catch(() => [] as LedgerRow[]);
         claimId = created?.[0]?.id ?? null;
         // No ledger row, no send. An unrecorded send is one that every retry and

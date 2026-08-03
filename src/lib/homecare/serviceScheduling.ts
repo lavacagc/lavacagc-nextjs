@@ -17,6 +17,7 @@
  * drip. If they take it, the normal double opt-in flips this same row.
  */
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { redactEmailBody } from '@/lib/notify/redactEmailBody';
 import { newToken, normalizeEmail } from '@/lib/homecare/homeowners';
 import { isRowCurrent } from '@/lib/homecare/selection';
 import { escapeLikePattern } from '@/lib/notify/cancelFollowUps';
@@ -442,6 +443,11 @@ export async function requeueVisitReminder(args: {
   try {
     // follow_up_queue has no email_text column - the cron renders text from the
     // stored HTML, same as the nurture and review sequences.
+    //
+    // Stored with its tokens blanked, like the email_log copy: this body carries
+    // the member's access token and the row outlives the visit on a table the
+    // admin screens read back. The reminder cron re-renders from the homeowner
+    // row rather than sending this, so a redacted copy costs nothing.
     await supabaseRest('POST', 'follow_up_queue', [{
       lead_email: email,
       lead_name: name,
@@ -450,7 +456,7 @@ export async function requeueVisitReminder(args: {
       visit_start: visitKey(start),
       status: 'pending',
       email_subject: subject,
-      email_body: html,
+      email_body: redactEmailBody(html),
     }]);
   } catch (err) {
     // The booking itself is already written and correct - the reminder is a
