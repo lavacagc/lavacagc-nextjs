@@ -17,6 +17,8 @@ export interface Homeowner {
   verify_token: string | null;
   verify_token_expires_at: string | null;
   unsubscribe_token: string;
+  /** Stable. Exchanged at /api/home-care/access so emailed links open the portal. */
+  access_token: string | null;
   verified_at: string | null;
   unsubscribed_at: string | null;
   source: string | null;
@@ -76,6 +78,17 @@ export async function isActiveHomeCareSubscriber(email: string): Promise<boolean
 
 export function findHomeownerByVerifyToken(token: string): Promise<Homeowner | null> {
   return findOne('verify_token', token);
+}
+
+/**
+ * The token carried by every emailed checklist link.
+ *
+ * Deliberately separate from the unsubscribe token: if one link could do both,
+ * every mail-security scanner that fetches an unsubscribe URL would also be
+ * handed portal access.
+ */
+export function findHomeownerByAccessToken(token: string): Promise<Homeowner | null> {
+  return findOne('access_token', token);
 }
 
 export function findHomeownerByUnsubscribeToken(token: string): Promise<Homeowner | null> {

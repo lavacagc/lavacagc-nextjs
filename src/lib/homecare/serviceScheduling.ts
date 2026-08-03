@@ -33,6 +33,12 @@ export interface HomeownerLite {
   status: string;
   source: string | null;
   /**
+   * Carried by every emailed portal link. Null only for a row created before
+   * the backfill migration ran, in which case the link degrades to the bare URL
+   * rather than to one with `token=null` in it.
+   */
+  access_token: string | null;
+  /**
    * Every Home Care email footer is built from this. It is NOT NULL on the
    * table, so it is always there to be read - but only if the select asks for
    * it, and a missing one renders an unsubscribe link that the unsubscribe
@@ -62,7 +68,7 @@ export async function ensureServiceHomeowner(args: {
   const email = normalizeEmail(args.email);
   const existing = await supabaseRest<HomeownerLite[]>(
     'GET',
-    `homeowners?select=id,email,first_name,phone,status,source,address,city,zip,unsubscribe_token&email=eq.${encodeURIComponent(email)}&limit=1`,
+    `homeowners?select=id,email,first_name,phone,status,source,address,city,zip,unsubscribe_token,access_token&email=eq.${encodeURIComponent(email)}&limit=1`,
   );
 
   if (existing && existing.length > 0) {

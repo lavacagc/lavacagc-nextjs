@@ -27,6 +27,7 @@
  * CTAs for bookable jobs, seasonal guide deep-links, the member-share line,
  * and the tokenized preference-center / unsubscribe footer.
  */
+import { checklistUrl as portalUrl } from './emailLinks';
 import { SEASON_LABEL, type Season } from './season';
 import { hasGuideItem } from './guides';
 import { costLabel, COST_DASH } from './cost';
@@ -50,6 +51,13 @@ export interface NewsletterArgs {
   tasks: NewsletterTask[];
   isSeasonal: boolean;
   baseUrl: string;
+  /**
+   * The recipient's stable access token, so every checklist link in this email
+   * opens the checklist. Without it the links land on the signup page for
+   * anyone whose 30-day portal cookie has lapsed - which, on a MONTHLY send, is
+   * a large share of the list by definition.
+   */
+  accessToken?: string | null;
   unsubscribeUrl: string;
   /** Self-serve preference-center link (per-recipient token). Preferred footer CTA. */
   preferencesUrl?: string;
@@ -173,7 +181,9 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
    */
   const hi = name ? `Hi ${name},` : 'Hi there,';
   const hiText = firstName ? `Hi ${firstName},` : 'Hi there,';
-  const checklistUrl = `${baseUrl}/home-care/checklist`;
+  const checklistUrl = portalUrl(baseUrl, args.accessToken, {
+    utm: { utm_source: 'home_care_newsletter', utm_medium: 'email' },
+  });
   /**
    * Standing links for the caught-up email. Tagged like the member-share line
    * so the traffic is attributable, and pointed at the index pages rather than
@@ -265,7 +275,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
     // member adds them to one request and checks out once - no per-task
     // one-off booking, so no separate owner alert per link.
     const book = t.bookable
-      ? `<div style="padding-top:10px"><a href="${checklistUrl}?add=${encodeURIComponent(t.key)}" style="display:inline-block;background:${ORANGE};border-radius:8px;padding:9px 16px;font-family:${FF};font-size:13px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none">Add to plan</a></div>`
+      ? `<div style="padding-top:10px"><a href="${portalUrl(baseUrl, args.accessToken, { query: { add: t.key }, utm: { utm_source: 'home_care_newsletter', utm_medium: 'email' } })}" style="display:inline-block;background:${ORANGE};border-radius:8px;padding:9px 16px;font-family:${FF};font-size:13px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none">Add to plan</a></div>`
       : '';
     // Top and bottom are independent: the first row tucks under the panel
     // heading, and the last row closes the panel out - unless a teaser row
@@ -438,7 +448,15 @@ ${keepInTouch}
     text += `${panelHeading.toUpperCase()}\n\n`;
     list.forEach((t, i) => {
       text += `${String(i + 1).padStart(2, '0')}. ${t.title}\n    ${plainMeta(t)}\n`;
-      if (t.bookable) text += `    Add to your plan: ${checklistUrl}?add=${t.key}\n`;
+      // Built, not concatenated: checklistUrl already carries ?token=&to=, so
+      // appending "?add=" here produced a second question mark and a dead link.
+      if (t.bookable) {
+        const addUrl = portalUrl(baseUrl, args.accessToken, {
+          query: { add: t.key },
+          utm: { utm_source: 'home_care_newsletter', utm_medium: 'email' },
+        });
+        text += `    Add to your plan: ${addUrl}\n`;
+      }
     });
     if (remaining) {
       text += `\n+ ${remaining} more ${jobWord(remaining)} on your ${seasonLower} list. Open your checklist to see the rest: ${checklistUrl}\n`;

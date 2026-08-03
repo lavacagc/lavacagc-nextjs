@@ -22,6 +22,7 @@ import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { HOME_CARE_FROM } from '@/lib/notify/sendHomeCareEmails';
 import { buildServiceCompletedEmail, SERVICE_REPLY_TO } from '@/lib/homecare/serviceEmails';
+import { GOOGLE_REVIEW_URL } from '@/lib/homecare/emailLinks';
 import { cancelVisitReminder } from '@/lib/homecare/serviceScheduling';
 import { clearVisitDispatch } from '@/lib/homecare/dispatch';
 import { preferencesUrlFor, normalizeEmail } from '@/lib/preferences/preferences';
@@ -195,7 +196,10 @@ export async function POST(request: NextRequest) {
     const { subject, html, text } = buildServiceCompletedEmail({
       recipientName: owner.first_name || owner.email,
       services,
-      feedbackUrl: `${SITE_URL}/home-care/checklist`,
+      // The ask is a Google review, so the button goes to Google. It used to
+      // point at the checklist, which asked a customer who had just had work
+      // done to go and look at their chore list.
+      feedbackUrl: GOOGLE_REVIEW_URL,
       unsubscribeUrl,
       preferencesUrl,
     });

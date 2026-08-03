@@ -20,6 +20,7 @@ import {
   crossSeasonBookings, requeueVisitReminder, cancelVisitReminder, type VisitTask,
 } from '@/lib/homecare/serviceScheduling';
 import { buildVisitReminderEmail } from '@/lib/homecare/serviceEmails';
+import { checklistUrl } from '@/lib/homecare/emailLinks';
 import {
   sendVisitDispatch, clearVisitDispatch, readVisitContext,
   type SendDispatchResult, type ClearDispatchResult,
@@ -144,7 +145,9 @@ export async function POST(request: NextRequest) {
       address,
       timeWindow: visitTimeWindow(startAt, endAt),
       visitDateLabel: visitDateLabel(startAt),
-      portalUrl: `${SITE_URL}/home-care/checklist`,
+      portalUrl: checklistUrl(SITE_URL, homeowner.access_token, {
+        utm: { utm_source: 'visit_scheduled', utm_medium: 'email' },
+      }),
       unsubscribeUrl: `${SITE_URL}/api/home-care/unsubscribe?token=${encodeURIComponent(homeowner.unsubscribe_token)}`,
       preferencesUrl,
     });

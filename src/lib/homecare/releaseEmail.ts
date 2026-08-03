@@ -6,6 +6,7 @@
  * /api/admin/releases/send route — never automatically.
  */
 
+import { checklistUrl } from './emailLinks';
 import {
   homeCareEmailShell, licenceBar, brandRow, pill, headline, intro, cta, panel, footer,
   textFooter, esc, FF, INK, BODY, MUTED, HAIRLINE, PANEL_BG, ORANGE_DEEP,
@@ -23,6 +24,8 @@ export interface ReleaseEmailArgs {
   features: ReleaseFeature[];
   /** Absolute site origin for links + screenshot URLs (e.g. https://www.lavacagc.com). */
   baseUrl: string;
+  /** So the portal button opens the portal rather than the signup page. */
+  accessToken?: string | null;
   unsubscribeUrl: string;
   preferencesUrl?: string;
   /**
@@ -38,12 +41,14 @@ export interface ReleaseEmailArgs {
 
 
 export function buildReleaseEmail(args: ReleaseEmailArgs): { subject: string; html: string; text: string } {
-  const { firstName, features, baseUrl, unsubscribeUrl, preferencesUrl, assetVersion } = args;
+  const { firstName, features, baseUrl, accessToken, unsubscribeUrl, preferencesUrl, assetVersion } = args;
   const n = features.length;
   const subject = n === 1
     ? `New in your Home Care portal: ${features[0].headline}`
     : `${n} new things in your Home Care portal`;
-  const portalUrl = `${baseUrl}/home-care/checklist?utm_source=release_email&utm_medium=email&utm_campaign=home_care_release`;
+  const portalUrl = checklistUrl(baseUrl, accessToken, {
+    utm: { utm_source: 'release_email', utm_medium: 'email', utm_campaign: 'home_care_release' },
+  });
 
   const featureBlock = (f: ReleaseFeature) => `
     <table role="presentation" width="100%" style="width:100%;border-collapse:collapse;margin:0 0 16px"><tr><td style="border:1px solid ${HAIRLINE};background:${PANEL_BG};border-radius:12px;padding:18px 20px">
