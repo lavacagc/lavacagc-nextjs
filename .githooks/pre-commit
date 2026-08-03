@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook: refuse the commit if staged changes contain credentials.
+#
+# Setup (one-time, after cloning):
+#   brew install gitleaks            # macOS
+#   git config core.hooksPath .githooks
+#
+# Bypass (use sparingly, for genuine false positives):
+#   git commit --no-verify
+#
+set -euo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "⚠️  gitleaks not installed — skipping credential scan."
+  echo "   Install: brew install gitleaks  (or see https://github.com/gitleaks/gitleaks)"
+  echo "   Once installed, re-run your commit. The hook will then enforce."
+  exit 0
+fi
+
+# Scan only the staged diff. Fast (<1s on this repo) and catches the moment
+# of accidental `git add credentials.json`.
+if ! gitleaks protect --staged --no-banner --redact --verbose; then
+  echo ""
+  echo "❌ gitleaks found a potential credential in your staged changes."
+  echo "   Review the redacted output above. If a real secret was staged:"
+  echo "     1. git restore --staged <file>     # unstage it"
+  echo "     2. Add the path to .gitignore"
+  echo "     3. Rotate the secret if it was ever written to disk in this repo"
+  echo "   If it's a verified false positive, re-run with: git commit --no-verify"
+  exit 1
+fi
