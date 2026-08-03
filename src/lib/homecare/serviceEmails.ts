@@ -226,10 +226,13 @@ export interface ServiceCompletedArgs {
 /**
  * Fired by mark-complete from the admin.
  *
- * Copy order matters: "if anything isn't right, tell us and we'll come back"
- * comes BEFORE any mention of a public word. That keeps it a genuine feedback
- * request rather than review-gating, and it is the better business move - you
- * hear about a problem before Google does.
+ * The button opens the public Google review form, so the copy around it says
+ * so. Anyone with a complaint is pointed at the phone number instead - a real
+ * private channel, answered by a person - and that promise still comes BEFORE
+ * any mention of a review, so a problem reaches us rather than Google. What the
+ * copy never does is make the review ask conditional on the customer being
+ * happy; every recipient gets the same button, because filtering who is asked
+ * is review-gating and Google's policies prohibit it.
  */
 export function buildServiceCompletedEmail(args: ServiceCompletedArgs): { subject: string; html: string; text: string } {
   const { recipientName, services, feedbackUrl, unsubscribeUrl, preferencesUrl } = args;
@@ -243,10 +246,10 @@ export function buildServiceCompletedEmail(args: ServiceCompletedArgs): { subjec
     headline('Please let us know', 'how our team did.'),
     intro(
       `Hi ${first},`,
-      `We finished ${svc} at your place. <strong style="color:${INK}">If anything isn't right, tell us and we'll come back</strong> - that's the whole point of asking. And if it went well, a quick word helps other Northern NJ homeowners find us.`,
+      `We finished ${svc} at your place. <strong style="color:${INK}">If anything isn't right, call us and we'll come back</strong> - one call is all it takes. And a quick Google review helps other Northern NJ homeowners find us.`,
     ),
-    cta('Tell us how it went', feedbackUrl, 'Takes less than a minute.'),
-    callBlock('Rather just tell us directly?', `Call and you'll get a person, not a queue.`),
+    cta('Leave us a Google review', feedbackUrl, 'Takes less than a minute.'),
+    callBlock('Something not quite right?', `Call us instead - you'll get a person, not a queue, and we'll come back out.`),
     footer({
       reason: `You're getting this because La Vaca completed work at your home.`,
       unsubscribeUrl,
@@ -255,16 +258,16 @@ export function buildServiceCompletedEmail(args: ServiceCompletedArgs): { subjec
   ].join('\n');
 
   const html = homeCareEmailShell({
-    preheader: `We finished up - tell us how our team did, and we'll fix anything that isn't right.`,
+    preheader: `We finished up. Anything not right, call us and we'll come back - and a quick Google review helps us a lot.`,
     rows,
   });
 
   const text =
     `Hi ${recipientName.split(' ')[0] || recipientName},\n\n` +
     `We finished ${services.join(' and ')} at your place.\n\n` +
-    `If anything isn't right, tell us and we'll come back - that's the whole point of asking. And if it went well, a quick word helps other Northern NJ homeowners find us.\n\n` +
-    `Tell us how it went: ${feedbackUrl}\n\n` +
-    `Rather just tell us directly? Call (201) 212-4917.\n` +
+    `If anything isn't right, call us and we'll come back - one call is all it takes. And a quick Google review helps other Northern NJ homeowners find us.\n\n` +
+    `Leave us a Google review: ${feedbackUrl}\n\n` +
+    `Something not quite right? Call (201) 212-4917 instead and we'll come back out.\n` +
     textFooter(`You're getting this because La Vaca completed work at your home.`, unsubscribeUrl, preferencesUrl ?? undefined);
 
   return { subject: 'Please let us know how our team did', html, text };

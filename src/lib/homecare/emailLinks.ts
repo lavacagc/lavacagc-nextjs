@@ -12,7 +12,19 @@
  * the bare link by copying an old one.
  */
 
-/** The owner's Google review page. Supplied 2 Aug. */
+/**
+ * The owner's Google review page. Supplied 2 Aug.
+ *
+ * KNOWN DIVERGENCE, awaiting the owner. `src/components/LeaveReviewClient.tsx`
+ * and `src/lib/emailTemplates.ts` carry a DIFFERENT g.page link for the same
+ * business - `...CflitSa4DKHAEBM...` rather than the `...EAI...` here - and three
+ * live feedback-drip buttons point at it. At most one of the two is the page the
+ * owner means, and a Home Care service customer can receive both. Nothing is
+ * unified on a guess: rewriting three live drip links to the wrong place is
+ * worse than the drift. `tests/home-care-email-links.spec.ts` pins both values
+ * so a third cannot appear unnoticed, and that list must shrink to one once the
+ * owner confirms which is correct.
+ */
 export const GOOGLE_REVIEW_URL = 'https://g.page/r/CflitSa4DKHAEAI/review';
 
 export interface ChecklistLinkOptions {

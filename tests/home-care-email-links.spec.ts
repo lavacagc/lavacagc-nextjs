@@ -68,19 +68,45 @@ function portalEmailBuilders(): string[] {
   return found.sort();
 }
 
-/** Every API route that sends Home Care mail, so none can be left off a list. */
-function routeFiles(): string[] {
+/** Every TypeScript source file under a directory, for repo-wide scans. */
+function sourceFiles(root: string): string[] {
   const out: string[] = [];
   const walk = (rel: string) => {
     for (const entry of readdirSync(join(process.cwd(), rel), { withFileTypes: true })) {
       const next = join(rel, entry.name);
       if (entry.isDirectory()) walk(next);
-      else if (entry.name === 'route.ts') out.push(next);
+      else if (/\.tsx?$/.test(entry.name)) out.push(next);
     }
   };
-  walk('src/app/api');
-  return out.filter((f) => /home-care|releases|service-quote|visit-reminders/.test(f));
+  walk(root);
+  return out;
 }
+
+/** Every API route that sends Home Care mail, so none can be left off a list. */
+function routeFiles(): string[] {
+  return sourceFiles('src/app/api')
+    .filter((f) => f.endsWith('route.ts'))
+    .filter((f) => /home-care|releases|service-quote|visit-reminders/.test(f));
+}
+
+/**
+ * Every Google review URL the app is allowed to contain.
+ *
+ * KNOWN DIVERGENCE, owner-pending. The first is the link the owner supplied on
+ * 2 Aug and the one the Home Care completion email uses. The second predates
+ * this branch in `LeaveReviewClient.tsx` and `emailTemplates.ts`, where it feeds
+ * three live drip buttons. Same place blob, different trailing segment, so at
+ * most one of them is right - and rewriting three live links on a guess is
+ * worse than the drift.
+ *
+ * THIS LIST MUST SHRINK TO ONE ENTRY once the owner confirms which page is
+ * theirs. It is here to document a divergence that exists, not to bless it: a
+ * third value, or a fourth copy under a new URL, fails immediately.
+ */
+const KNOWN_REVIEW_URLS = [
+  'https://g.page/r/CflitSa4DKHAEAI/review',
+  'https://g.page/r/CflitSa4DKHAEBM/review',
+];
 
 test.describe('the completion email asks for a Google review', () => {
   test('the CTA is the owner Google review URL, not the checklist', () => {
@@ -99,9 +125,52 @@ test.describe('the completion email asks for a Google review', () => {
     expect(src).not.toContain('feedbackUrl: `${SITE_URL}/home-care/checklist`');
   });
 
-  test('the review URL is defined once, so it cannot drift', () => {
-    const hits = read('src/lib/homecare/emailLinks.ts').match(/g\.page\/r\//g) ?? [];
-    expect(hits).toHaveLength(1);
+  test('every Google review link in the app is one of the two known values', () => {
+    // The first version of this test read emailLinks.ts alone and asserted the
+    // file held exactly one g.page match - true by construction, so it passed
+    // green while two other files carried a DIFFERENT link for the same
+    // business. Drift is only visible from a repo-wide scan.
+    const found = new Map<string, string[]>();
+    for (const file of sourceFiles('src')) {
+      for (const [url] of read(file).matchAll(/https:\/\/g\.page\/r\/[A-Za-z0-9_-]+\/review/g)) {
+        found.set(url, [...(found.get(url) ?? []), file]);
+      }
+    }
+    const where = [...found].map(([u, files]) => `${u} <- ${files.join(', ')}`).join('\n');
+    expect(found.size, 'the scan found no review link at all - the pattern has drifted').toBeGreaterThan(0);
+    expect([...found.keys()].sort(), `unexpected Google review URL:\n${where}`)
+      .toEqual([...KNOWN_REVIEW_URLS].sort());
+
+    // And the owner-supplied one is the one Home Care sends.
+    expect(GOOGLE_REVIEW_URL).toBe(KNOWN_REVIEW_URLS[0]);
+    expect(found.get(GOOGLE_REVIEW_URL), `${GOOGLE_REVIEW_URL} must be defined in emailLinks.ts`)
+      .toContain('src/lib/homecare/emailLinks.ts');
+    // Defined once THERE, whatever else the repo still holds.
+    expect(read('src/lib/homecare/emailLinks.ts').match(/g\.page\/r\//g) ?? []).toHaveLength(1);
+  });
+
+  test('the copy around the button asks for the review the button opens', () => {
+    // The button went to Google while the copy asked for private feedback
+    // ("Tell us how it went", "tell us and we'll come back"), so a customer
+    // with a complaint followed the email's own instruction onto a one-star.
+    const { html, text } = buildServiceCompletedEmail({
+      recipientName: 'Jordan', services: ['Clean gutters'],
+      feedbackUrl: GOOGLE_REVIEW_URL, unsubscribeUrl: `${BASE}/unsub`,
+    });
+    for (const [part, body] of [['html', html], ['text', text]] as const) {
+      expect(body, `${part}: the button must say where it goes`).toContain('Leave us a Google review');
+      expect(body, `${part}: nothing may promise a private channel through the button`)
+        .not.toMatch(/tell us how it went/i);
+      // The one private channel is the phone, and it is named as the route for
+      // a problem rather than left to be found.
+      expect(body, `${part}: a complaint must be routed to the phone`).toMatch(/call us/i);
+    }
+    // The button's own label, not just the word somewhere in the body.
+    expect(html).toMatch(new RegExp(`href="${GOOGLE_REVIEW_URL}"[^>]*>Leave us a Google review<`));
+    // Still not review-gating: the ask is never conditioned on being happy.
+    for (const gated of ['if you were happy', 'if you are happy', '5-star', 'five star', 'positive review']) {
+      expect(html.toLowerCase(), `"${gated}" would gate the ask`).not.toContain(gated);
+    }
   });
 });
 
@@ -242,6 +311,43 @@ test.describe('emailed portal links carry the access token', () => {
     const plain = text.match(/\/api\/home-care\/access\?\S+/g) ?? [];
     expect(plain.length, 'the text part must carry the same links').toBeGreaterThan(0);
     for (const url of plain) expect(url, `${url} must not be entity-escaped`).not.toContain('&amp;');
+  });
+
+  test('the shared CTA button escapes its href too, for every portal email that uses it', () => {
+    // The newsletter builds its own anchors; every other portal email gets its
+    // button from cta(), which interpolated the url raw. Fixing it at that
+    // chokepoint covers them together rather than repeating esc() per caller.
+    const built = {
+      buildReleaseEmail: buildReleaseEmail({
+        firstName: 'Jordan', features: [RELEASE_FEATURE], baseUrl: BASE,
+        accessToken: TOKEN, unsubscribeUrl: `${BASE}/unsub`,
+      }),
+      buildVisitReminderEmail: buildVisitReminderEmail({
+        recipientName: 'Jordan', services: ['Clean gutters'], address: '14 Maple Ave',
+        timeWindow: '8:00 - 11:00am', visitDateLabel: 'Tomorrow',
+        portalUrl: checklistUrl(BASE, TOKEN), unsubscribeUrl: `${BASE}/unsub`,
+      }),
+      buildWelcomeEmail: buildWelcomeEmail({
+        firstName: 'Jordan', checklistUrl: checklistUrl(BASE, TOKEN),
+        unsubscribeUrl: `${BASE}/unsub`, baseUrl: BASE,
+      }),
+    };
+    for (const [name, { html, text }] of Object.entries(built)) {
+      const hrefs = [...html.matchAll(/href="([^"]*\/api\/home-care\/access[^"]*)"/g)].map((m) => m[1]);
+      expect(hrefs.length, `${name} must render a tokenized href`).toBeGreaterThan(0);
+      for (const href of hrefs) {
+        expect(href, `${name}: ${href} carries a raw & inside an attribute`).not.toMatch(/&(?!amp;)/);
+        expect(href, `${name}: ${href} lost its separators entirely`).toContain('&amp;');
+        // Escaped, not mangled: it still parses back to the same live link.
+        const url = new URL(href.replace(/&amp;/g, '&'));
+        expect(url.searchParams.get('token')).toBe(TOKEN);
+        expect(url.searchParams.get('to')).toContain('/home-care/');
+      }
+      // The text/plain part is not HTML, and "&amp;to=" there is a dead link.
+      for (const url of text.match(/\/api\/home-care\/access\?\S+/g) ?? []) {
+        expect(url, `${name}: ${url} must not be entity-escaped in text`).not.toContain('&amp;');
+      }
+    }
   });
 
   test('every portal email actually RENDERS the token, not just imports the helper', () => {
