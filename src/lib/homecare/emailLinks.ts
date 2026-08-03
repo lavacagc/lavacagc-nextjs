@@ -72,18 +72,61 @@ export function checklistUrl(
  *
  * Query strings survive, because the newsletter's "Add to plan" buttons carry
  * `?add=<task>` and every link carries its utm pairs.
+ *
+ * The check runs on the RESOLVED url rather than the string, so no spelling of a
+ * dot segment has to be enumerated: '..', '%2e%2e' and '%2E%2E' all collapse to
+ * the same target before anything is compared. It then keeps decoding until the
+ * path stops changing, because one resolution only undoes one layer - '..%2f'
+ * and '%252e%252e' each survive the first pass and become '..' for whatever
+ * decodes next. A destination is only accepted if it is still inside the portal
+ * at every layer.
  */
 const PORTAL_ROOT = '/home-care';
+const FALLBACK_DESTINATION = '/home-care/checklist';
+
+/** Anything that resolves off this origin left the site and is rejected. */
+const RESOLUTION_BASE = new URL('https://portal.invalid');
+
+/** Nesting deeper than this is not a real destination; treat it as hostile. */
+const MAX_DECODE_ROUNDS = 4;
+
+function resolveInPortal(candidate: string): URL | null {
+  let url: URL;
+  try {
+    url = new URL(candidate, RESOLUTION_BASE);
+  } catch {
+    return null;
+  }
+  // Catches '//evil.com', 'https://evil.com' and the backslash forms in one
+  // comparison: each resolves to a host that is not ours.
+  if (url.origin !== RESOLUTION_BASE.origin) return null;
+  if (url.pathname !== PORTAL_ROOT && !url.pathname.startsWith(`${PORTAL_ROOT}/`)) return null;
+  return url;
+}
 
 export function safeDestination(raw: string | null): string {
-  if (!raw) return '/home-care/checklist';
-  // Reject anything that could leave the site: protocol-relative, absolute, or
-  // backslash-escaped. `..` too - it passes a startsWith check and then gets
-  // normalised away, so '/home-care/../vaca-mgmt' would land outside the portal.
-  if (!raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\') || raw.includes('..')) {
-    return '/home-care/checklist';
+  if (!raw) return FALLBACK_DESTINATION;
+
+  const destination = resolveInPortal(raw);
+  if (!destination) return FALLBACK_DESTINATION;
+
+  let path = destination.pathname;
+  let settled = false;
+  for (let round = 0; round < MAX_DECODE_ROUNDS && !settled; round += 1) {
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(path);
+    } catch {
+      return FALLBACK_DESTINATION;
+    }
+    const next = resolveInPortal(decoded);
+    if (!next) return FALLBACK_DESTINATION;
+    // Compared after resolving, not before: a path carrying a legitimately
+    // encoded character re-encodes to itself and settles on the first round.
+    settled = next.pathname === path;
+    path = next.pathname;
   }
-  const path = raw.split('?')[0].split('#')[0];
-  const ok = path === PORTAL_ROOT || path.startsWith(`${PORTAL_ROOT}/`);
-  return ok ? raw : '/home-care/checklist';
+  if (!settled) return FALLBACK_DESTINATION;
+
+  return `${destination.pathname}${destination.search}${destination.hash}`;
 }

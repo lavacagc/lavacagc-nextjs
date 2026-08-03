@@ -334,18 +334,50 @@ test.describe('the access route cannot be turned into an open redirect', () => {
     expect(safeDestination('/home-care-evil')).toBe('/home-care/checklist');
   });
 
-  test('a traversal that normalises OUT of the portal does not survive', () => {
-    // These pass a naive startsWith check and are then normalised by new URL()
-    // into a path the allow-list would never have accepted. Same-origin, so
-    // never an open redirect - but the list has to constrain what it appears to.
+  test('a traversal that normalises OUT of the portal does not survive, however it is spelled', () => {
+    // Each of these starts with '/home-care/' as a string and points somewhere
+    // else once it is resolved. Same-origin, so never an open redirect - but the
+    // list has to constrain what it appears to, and it cannot do that by
+    // enumerating spellings of '..': the encoded forms are endless, and each
+    // layer of decoding produces the next one.
     for (const traversal of [
       '/home-care/../vaca-mgmt',
       '/home-care/guides/../../vaca-mgmt/send-estimate',
       '/home-care/..%2fvaca-mgmt',
+      '/home-care/%2e%2e/vaca-mgmt',
+      '/home-care/%2E%2E/vaca-mgmt',
+      '/home-care/.%2e/vaca-mgmt',
+      '/home-care/%2e./vaca-mgmt',
+      '/home-care/%2e%2e%2fvaca-mgmt',
+      '/home-care/%252e%252e/vaca-mgmt',
+      '/home-care/guides/%2e%2e/%2e%2e/vaca-mgmt/send-estimate',
     ]) {
       expect(safeDestination(traversal), `${traversal} must not survive`).toBe('/home-care/checklist');
+      expect(
+        new URL(safeDestination(traversal), BASE).pathname,
+        `${traversal} must land inside the portal`,
+      ).toBe('/home-care/checklist');
     }
-    expect(new URL(safeDestination('/home-care/../vaca-mgmt'), BASE).pathname).toBe('/home-care/checklist');
+  });
+
+  test('the double-encoded form is rejected as the route actually receives it', () => {
+    // searchParams.get() decodes once, so '%252e%252e' reaches safeDestination
+    // as '%2e%2e' - the shape that slipped past a literal '..' check. Exercised
+    // through the query rather than passed in by hand, because the decode is the
+    // whole point of the case.
+    const link = `${BASE}/api/home-care/access?token=${TOKEN}&to=%2Fhome-care%2F%252e%252e%2Fvaca-mgmt`;
+
+    const received = new URL(link).searchParams.get('to');
+    expect(received, 'one decode is what the route sees').toBe('/home-care/%2e%2e/vaca-mgmt');
+    expect(safeDestination(received)).toBe('/home-care/checklist');
+  });
+
+  test('an encoded character that is not a dot segment still survives', () => {
+    // The guard peels encodings, so it has to stop peeling on a path that simply
+    // contains one - otherwise a future guide slug with an accent or a space in
+    // it silently redirects everyone to the checklist.
+    expect(safeDestination('/home-care/guides/%C3%A9t%C3%A9')).toBe('/home-care/guides/%C3%A9t%C3%A9');
+    expect(safeDestination('/home-care/guides/spring%20clean')).toBe('/home-care/guides/spring%20clean');
   });
 });
 
