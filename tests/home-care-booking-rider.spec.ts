@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { buildDispatchEmail } from '../src/lib/homecare/dispatchEmail';
 
 /**
  * Home Care "My Home Systems" - Slice 5: the booking rider.
@@ -119,4 +120,83 @@ test('AC10: no em dashes in the new rider code (per house style)', () => {
   // The factValueSummary block added to the pure registry.
   const rec = records.slice(records.indexOf('export interface FactValue'), records.indexOf('export interface FactValue') + 900);
   expect(rec).not.toContain('—');
+});
+
+/*
+ * AC11-AC14: the crew-dispatch rider (added when #88/#89 landed the visit
+ * scheduling + crew dispatch flow). The same scoped details that decorate the
+ * booking owner-alert now ride the crew dispatch email, because "the crew
+ * arrives knowing where things are" is the fact registry's whole purpose.
+ * Same security posture: read server-side in the schedule route, scoped to the
+ * visit's booked services, rendered into internal mail only - and never into
+ * the .ics, which is forwarded and synced to calendars this data must not
+ * live on.
+ */
+
+test('AC11: crew dispatch email renders the scoped home details, escaped, in html and text', () => {
+  const args = {
+    recipientName: 'Veronica',
+    customerName: 'Rachel',
+    customerPhone: '(973) 555-0100',
+    address: '14 Maple Ave, Montclair, NJ',
+    services: ['Clean gutters & downspouts'],
+    visitDateLabel: 'Tuesday, August 11',
+    timeWindow: '8:00 - 11:00am',
+    confirmUrl: 'https://www.lavacagc.com/crew/confirm/tok',
+    calendarUrl: 'https://calendar.google.com/render',
+    visitStart: new Date('2026-08-11T12:00:00Z'),
+    now: new Date('2026-08-03T12:00:00Z'),
+    customerReminder: 'queued' as const,
+  };
+
+  const withDetails = buildDispatchEmail({
+    ...args,
+    homeDetails: ['Water main shut-off: basement, under the <stairs>'],
+  });
+  expect(withDetails.html).toContain('Home details');
+  // Escaped by esc(), so the raw angle brackets never reach the html.
+  expect(withDetails.html).toContain('basement, under the &lt;stairs&gt;');
+  expect(withDetails.html).not.toContain('under the <stairs>');
+  expect(withDetails.text).toContain('Home:     Water main shut-off: basement, under the <stairs>');
+  // Sensitive values stay out of the subject (it is visible in list views and
+  // notification previews).
+  expect(withDetails.subject).not.toContain('basement');
+
+  const without = buildDispatchEmail(args);
+  expect(without.html).not.toContain('Home details');
+  expect(without.text).not.toContain('Home:     ');
+});
+
+test('AC12: home details never reach the calendar invite', () => {
+  // buildIcs takes no home-details input at all - the invite is built from the
+  // visit facts only, so the sensitive lines cannot leak into a file that syncs
+  // to phones and third-party calendars.
+  const ics = read('src/lib/homecare/ics.ts');
+  expect(ics).not.toMatch(/homeDetails/);
+  // And dispatch.ts hands homeDetails to the email builder only.
+  const dispatch = read('src/lib/homecare/dispatch.ts');
+  const icsCalls = dispatch.split('buildIcs({');
+  for (const call of icsCalls.slice(1)) {
+    expect(call.slice(0, call.indexOf('})'))).not.toContain('homeDetails');
+  }
+  expect(dispatch).toMatch(/buildDispatchEmail\(\{[\s\S]{0,400}homeDetails,/);
+});
+
+test('AC13: schedule route reads the details server-side, scoped to the booked tasks', () => {
+  const schedule = read('src/app/api/admin/service-quote/schedule/route.ts');
+  expect(schedule).toMatch(/import\s*\{\s*readBookedHomeDetails\s*\}\s*from\s*'@\/lib\/homecare\/homeRecords'/);
+  // Scoped to this visit's task keys, from the server-side homeowner row -
+  // never anything client-supplied.
+  expect(schedule).toMatch(/readBookedHomeDetails\(homeowner\.id,\s*taskKeys\)/);
+  // Threaded into the dispatch send.
+  expect(schedule).toMatch(/sendVisitDispatch\(\{[\s\S]{0,700}homeDetails,/);
+});
+
+test('AC14: no em dashes in the crew-rider additions (per house style)', () => {
+  const dispatchEmail = read('src/lib/homecare/dispatchEmail.ts');
+  const block = dispatchEmail.slice(
+    dispatchEmail.indexOf('The homeowner\'s saved My Home Systems lines'),
+    dispatchEmail.indexOf('confirmUrl: string'),
+  );
+  expect(block).not.toContain('—');
 });

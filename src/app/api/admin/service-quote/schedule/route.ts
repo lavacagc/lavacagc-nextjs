@@ -26,6 +26,7 @@ import {
   type SendDispatchResult, type ClearDispatchResult,
 } from '@/lib/homecare/dispatch';
 import { visitDateLabel, visitTimeWindow, easternParts } from '@/lib/homecare/visitSchedule';
+import { readBookedHomeDetails } from '@/lib/homecare/homeRecords';
 import { seasonForTaskVisit } from '@/lib/homecare/season';
 import { buildIcs } from '@/lib/homecare/ics';
 import { preferencesUrlFor } from '@/lib/preferences/preferences';
@@ -159,6 +160,12 @@ export async function POST(request: NextRequest) {
       email, name, start: startAt, subject, html, supersedes,
     });
 
+    // The homeowner's saved home details (My Home Systems), scoped to this
+    // visit's booked services - the same read, same scoping, as the booking
+    // owner-alert rider. Fail-soft []: a missing table or a read error must
+    // never block the dispatch that tells the crew where to be.
+    const homeDetails = await readBookedHomeDetails(homeowner.id, taskKeys);
+
     // Tell the crew. Runs AFTER the booking is written and never throws: the
     // booking is the customer's commitment and it already succeeded, so a
     // dispatch that cannot go out is something the admin needs to be told
@@ -177,6 +184,7 @@ export async function POST(request: NextRequest) {
       timeWindow: visitTimeWindow(startAt, endAt),
       subName,
       recipientIds,
+      homeDetails,
       // The verdict this request already holds, handed on rather than left
       // behind: the email used to assert the customer gets their reminder
       // whatever this line had just answered.

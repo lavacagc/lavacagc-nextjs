@@ -54,6 +54,12 @@ export interface DispatchEmailArgs {
   timeWindow: string;
   /** Free text: who we are subbing this to, if anyone. */
   subName?: string | null;
+  /**
+   * The homeowner's saved My Home Systems lines, scoped to this visit's booked
+   * services ("Water main shut-off: basement, under the stairs"). Sensitive
+   * home-security data: body only, never the subject or the .ics.
+   */
+  homeDetails?: string[];
   confirmUrl: string;
   /** Google Calendar template link - see googleCalendarUrl. */
   calendarUrl: string;
@@ -139,7 +145,7 @@ export function buildDispatchEmail(args: DispatchEmailArgs): {
 } {
   const {
     recipientName, customerName, customerPhone, address, services,
-    visitDateLabel, timeWindow, subName, confirmUrl, calendarUrl,
+    visitDateLabel, timeWindow, subName, homeDetails = [], confirmUrl, calendarUrl,
     visitStart, now, customerReminder,
   } = args;
 
@@ -207,6 +213,7 @@ export function buildDispatchEmail(args: DispatchEmailArgs): {
         : esc(customerName))}
       ${kv('Address', esc(address))}
       ${kv('Work', services.map(esc).join('<br />'))}
+      ${homeDetails.length ? kv('Home details', homeDetails.map(esc).join('<br />')) : ''}
       ${subName ? kv('Sub', `${esc(subName)} - confirm they are booked`) : ''}
     </table>
   </td></tr>`,
@@ -253,6 +260,7 @@ export function buildDispatchEmail(args: DispatchEmailArgs): {
     `Customer: ${customerName}${customerPhone ? ` - ${customerPhone}` : ''}`,
     `Address:  ${address}`,
     `Work:     ${services.join(', ')}`,
+    ...homeDetails.map((d) => `Home:     ${d}`),
     ...(subName ? [`Sub:      ${subName} - confirm they are booked`] : []),
     '',
     // The same two sentences the HTML renders, off the same strings.
