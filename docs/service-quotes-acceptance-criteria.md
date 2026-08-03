@@ -27,6 +27,9 @@ These were settled by the owner during review; the ACs assume them.
 4. **The quote promises a 5-star finish; it never asks for a review.** The ask
    fires after the job. Wording that solicits specifically positive reviews is
    review-gating, which Google prohibits.
+   That ask is a public Google review, opened by the completion email's button
+   (CP5), and it goes to **every** customer: asking only the ones we expect to
+   be happy is the same prohibition from the other side.
 5. **Scheduling creates a lightweight homeowner record**, as `status='pending'`
    and `source='service_quote'` so it can never receive marketing.
 6. **No automated SMS.** One reminder email at 7:30pm the night before, which
@@ -416,6 +419,19 @@ still carries none.
   Cancel and complete pass the outcome back to the admin page, which says
   plainly that the reminder is still live and where to stop it.
 
+The reminder's portal link is **not** bare. It carries the homeowner's
+`access_token` through `/api/home-care/access`, or a recipient whose 30-day
+`hc_access` cookie has lapsed lands on the signup page instead of their plan -
+which is most people receiving a night-before reminder, since nothing about
+booking a gutter clean makes them open the portal in the month before it.
+The queued row's `email_body` is therefore stored with its link tokens blanked
+(`redactEmailBody`), like the `email_log` copy: that token is stable and opens
+the member's plan, the row outlives the visit on a table the admin screens read
+back, and nothing ever re-sends the stored copy - the cron renders the email it
+sends from the homeowner row, and no generic drain reads this type at all
+(**RM9**). See **Emailed portal links** in
+[`EMAIL_TRACKING_AND_PREFERENCES.md`](../EMAIL_TRACKING_AND_PREFERENCES.md).
+
 ## PT - the customer portal
 
 - **PT1** An upcoming visit renders on the checklist page above the task list,
@@ -476,10 +492,19 @@ still carries none.
 - **CP4** Mark-complete is idempotent: a second call sends no second feedback
   email. It is also opt-out-governed: a recipient who unsubscribed from
   `follow_ups` gets none at all, reported as `feedback: 'suppressed'` (**CM7**).
-- **CP5** It fires the feedback drip with **service** wording. The subject and
-  headline are "Please let us know how our team did".
-- **CP6** The body puts "if anything isn't right we'll come back" **before** any
-  mention of a public word, so it is a feedback request and not review-gating.
+- **CP5** It fires the feedback drip with **service** wording. The subject is
+  "How did we do? A quick Google review helps" and the headline is "How did we
+  do? / A quick review helps".
+  The CTA opens the owner's Google review page (`GOOGLE_REVIEW_URL`), not the
+  portal: the email asks for a review, and it used to link to
+  `/home-care/checklist`, which sent a customer who had just had work done to go
+  and look at their chore list.
+- **CP6** The body puts "if anything isn't right, call us and we'll come back"
+  **before** the review ask, with the phone number as the private channel, so a
+  problem reaches a person here rather than Google. What it never does is make
+  the ask conditional on the customer being happy - every recipient gets the same
+  button, because filtering who is asked is review-gating and Google prohibits
+  it.
 - **CP7** The service variant never uses the project copy ("your recent
   project").
 - **CP8** Completion feeds the history: a task completed today is what IN4
@@ -505,7 +530,7 @@ still carries none.
   Otherwise one tap erased an invoiced visit from the service history this
   branch exists to build - `lastDoneFor` read through `status='done'`, so the
   next quote said "no record" for work that was performed and billed, and the
-  completion email invites exactly that tap ("if anything isn't right, tell us
+  completion email invites exactly that tap ("if anything isn't right, call us
   and we'll come back"). The history is keyed on the timestamp instead (IN4), so
   preserving it is what makes it count.
   A completion of the member's **own** is still cleared: retracting it is what
@@ -540,9 +565,9 @@ still carries none.
   The **completion email is the one that promise is about**, so it carries the
   same `follow_ups` link AND is sent with `preferenceStream: 'follow_ups'`.
   Gating it is what makes the sentence true: without it a recipient who took the
-  offer the quote made in writing still received "Please let us know how our team
-  did", and a link the tokenized Home Care opt-out cannot stop either - that one
-  governs the seasonal programme this customer may never have joined. An
+  offer the quote made in writing still received "How did we do? A quick Google
+  review helps", and a link the tokenized Home Care opt-out cannot stop either -
+  that one governs the seasonal programme this customer may never have joined. An
   opted-out customer getting no review request is the correct outcome; they asked
   not to be emailed. The route reports that as `feedback: 'suppressed'`, distinct
   from `'failed'`, so the admin does not chase a retry for a send we declined to

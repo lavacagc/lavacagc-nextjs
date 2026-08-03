@@ -84,6 +84,12 @@ export function buildVerificationEmail(args: VerificationEmailArgs): {
 
 export interface WelcomeEmailArgs {
   firstName?: string | null;
+  /**
+   * Built by `checklistUrl()` so it carries the member's access token. The
+   * cookie the verify request just set only helps in the browser that verified:
+   * opened on their phone, or more than 30 days later, a bare link lands them
+   * on the signup page.
+   */
   checklistUrl: string;
   unsubscribeUrl: string;
   preferencesUrl?: string | null;
