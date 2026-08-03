@@ -52,3 +52,6 @@ supabase/.temp/
 # Lavish artifact working dir (local review surfaces)
 .lavish/
 .playwright-mcp/
+
+# Local preview renders and session scratch (never commit)
+.preview/
