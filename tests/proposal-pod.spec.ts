@@ -90,7 +90,7 @@ test('AC2d: a quoted field that closes mid-column fails loudly, never absorbs th
   expect(doubled.lines[0].title).toBe('36" wide vanity');
 });
 
-test('AC2f: padding before a quoted field is separator, not part of the value', () => {
+test('AC2f: padding around a quoted field is separator on both sides, not part of the value', () => {
   // A hand-edited file writes `a, "b, c",d`. Holding the space against it kept
   // the wrapper as data: the value shipped with stray quotes around it when it
   // had no comma, and failed on the column count when it did.
@@ -101,6 +101,37 @@ test('AC2f: padding before a quoted field is separator, not part of the value', 
   const paddedComma = parseProposalCsv('title,description,price\nTile, "a, b",100');
   expect(paddedComma.errors).toEqual([]);
   expect(paddedComma.lines[0].description).toBe('a, b');
+
+  // The mirror hand-edit, `a,"b, c" ,d`. Rejecting the whole file over one
+  // space after the closing quote - while accepting the same space before the
+  // opening one - failed the same estimate depending on which side the admin
+  // padded, and told them a value was running on when the remainder was blank.
+  const trailing = parseProposalCsv('title,description,price\nTile,"a, b" ,100');
+  expect(trailing.errors).toEqual([]);
+  expect(trailing.lines[0].description).toBe('a, b');
+  expect(trailing.lines[0].priceCents).toBe(10000);
+
+  const bothSides = parseProposalCsv('title,description,price\nTile, "a, b" ,100');
+  expect(bothSides.errors).toEqual([]);
+  expect(bothSides.lines[0].description).toBe('a, b');
+
+  // Including a quoted last column, where the padding runs to the line end.
+  const atLineEnd = parseProposalCsv('title,description,price\nTile,,"100" \nCabinets,,200');
+  expect(atLineEnd.errors).toEqual([]);
+  expect(atLineEnd.lines[0].priceCents).toBe(10000);
+  expect(atLineEnd.lines).toHaveLength(2);
+
+  // ... and at end-of-file, on a CRLF export.
+  const crlfEof = parseProposalCsv('title,description,price\r\nTile,,"100" \r\n');
+  expect(crlfEof.errors).toEqual([]);
+  expect(crlfEof.lines[0].priceCents).toBe(10000);
+
+  // Whitespace is the ONLY thing tolerated after a closing quote. Real text is
+  // the inch-mark corruption, and stays the loud failure.
+  const runsOn = parseProposalCsv('title,description,price\nTile,"a, b" x,100');
+  expect(runsOn.ok).toBe(false);
+  expect(runsOn.lines).toEqual([]);
+  expect(runsOn.errors[0]).toContain('Row 2');
 
   // The inch-mark rule is untouched: there is real text before that quote.
   const inches = parseProposalCsv('title,description,price\nTile 12" x 24" porcelain,,2900');
@@ -352,6 +383,18 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
   // JSONB column here would be one the check never reaches.
   expect(ddl).toMatch(/included_lines\s+public\.proposal_line_snapshot\s+NOT NULL/);
   expect(ddl).toMatch(/touched_lines\s+public\.proposal_line_snapshot\s*,/);
+  // The domain constrains every element but never demands one, so "[]" cleared
+  // NOT NULL and the shape check both. Since the composition is snapshotted
+  // whole, every real submission carries the locked lines: an empty array is a
+  // submission recording no agreement at all. The rule belongs to this column
+  // alone - a client who touched nothing leaves touched_lines legitimately
+  // empty, so the shared domain is the wrong place for it.
+  const included = ddl.slice(ddl.indexOf('included_lines'), ddl.indexOf('total_cents'));
+  expect(included, 'included_lines must reject an empty array')
+    .toMatch(/CHECK \(jsonb_array_length\(included_lines\) >= 1\)/);
+  const touched = ddl.slice(ddl.indexOf('touched_lines'), ddl.indexOf('ip_address'));
+  expect(touched, 'touching nothing is a legitimate submission')
+    .not.toContain('jsonb_array_length');
   // The total stays server-computed money, not a client number.
   expect(ddl).toMatch(/total_cents\s+BIGINT NOT NULL CHECK \(total_cents >= 0\)/);
 });

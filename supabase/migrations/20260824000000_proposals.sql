@@ -122,13 +122,22 @@ CREATE TABLE IF NOT EXISTS public.proposal_submissions (
   -- `optional`. A submission still cannot express ALTERING a locked line
   -- (WEB-022, enforced at the API on top of this shape) - it records them
   -- because they are most of what was agreed to.
-  included_lines    public.proposal_line_snapshot NOT NULL,
+  --
+  -- At least one element, on the column rather than the shared domain: because
+  -- the composition is snapshotted whole, every real submission carries the
+  -- locked lines, so an empty array is a submission that records no agreement
+  -- at all. NOT NULL alone does not say that, and total_cents >= 0 admits the
+  -- 0 that would come with it.
+  included_lines    public.proposal_line_snapshot NOT NULL
+                    CONSTRAINT proposal_submissions_included_lines_present
+                    CHECK (jsonb_array_length(included_lines) >= 1),
   -- Server-recomputed at submit time from the rows, never trusted from the
   -- client. What the owner alert prints.
   total_cents       BIGINT NOT NULL CHECK (total_cents >= 0),
   -- Free early telemetry (owner-approved concession toward WEB-027): which
   -- optional lines the client flipped at least once while playing. Snapshotted
-  -- the same way, checked the same way, and for the same reason.
+  -- the same way, checked the same way, and for the same reason - but empty is
+  -- a legitimate answer here: a client who touched nothing touched nothing.
   touched_lines     public.proposal_line_snapshot,
   ip_address        INET,
   user_agent        TEXT,

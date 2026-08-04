@@ -90,6 +90,15 @@ function isBlankLine(cells: string[]): boolean {
 }
 
 /**
+ * Whitespace that is not a line break: the padding a hand-edited file leaves
+ * around a quoted field. The same class `cell.trim()` recognizes on the opening
+ * side, so both ends of a field tolerate exactly the same thing.
+ */
+function isPad(ch: string): boolean {
+  return ch !== undefined && ch !== '\n' && ch !== '\r' && ch.trim() === '';
+}
+
+/**
  * RFC 4180 field splitting: quoted fields may contain commas, doubled quotes
  * and newlines. Returns rows of raw string cells. Tiny and dependency-free on
  * purpose - the contract is three known columns, not arbitrary CSV.
@@ -105,12 +114,18 @@ function isBlankLine(cells: string[]): boolean {
  * when it had no comma, and failed on the column count when it did. The padding
  * is separator, so it is dropped with the quote.
  *
- * The closing quote of a quoted field must be followed by a comma, a line
- * break, or end-of-file. `"36" wide vanity",Shaker,3400` is the same
- * corruption from the other side - a title that opens with an inch mark and
+ * That holds on BOTH sides of the field: `a,"b, c" ,d` is the same hand-edit
+ * seen from the other end, so whitespace between the closing quote and the
+ * comma or the line break is separator too, and is skipped. Whitespace is the
+ * only thing tolerated there.
+ *
+ * Anything else after the closing quote of a quoted field is the corruption
+ * this parser refuses. `"36" wide vanity",Shaker,3400` is the inch-mark
+ * corruption from the other side - a title that opens with a measurement and
  * got wrapped - and absorbing the remainder shipped `36 wide vanity"` at the
  * right price. It is reported, not repaired: only the admin knows whether the
- * quote or the wrapping was the mistake.
+ * quote or the wrapping was the mistake. The judgement is theirs because real
+ * text is genuinely ambiguous; a run of spaces never is.
  *
  * Both quoting faults are reported at the line the quote OPENED on, not where
  * the parser noticed. A field that opens a quote and never closes it runs on
@@ -143,9 +158,14 @@ function splitCsv(text: string): SplitCsvResult {
       if (ch === '"') {
         if (src[i + 1] === '"') { cell += '"'; i++; }
         else {
-          const after = src[i + 1];
+          let j = i + 1;
+          while (isPad(src[j])) j++;
+          const after = src[j];
           const closes = after === undefined || after === ',' || after === '\n' || after === '\r';
-          if (!closes && danglingAt === 0) danglingAt = quoteOpenedAt;
+          // Padding is separator: consume it so the next pass lands on the
+          // delimiter and none of it reaches the value.
+          if (closes) i = j - 1;
+          else if (danglingAt === 0) danglingAt = quoteOpenedAt;
           inQuotes = false;
         }
       } else if (ch === '\n' || ch === '\r') {
