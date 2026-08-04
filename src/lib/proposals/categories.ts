@@ -60,17 +60,19 @@
  * listed first. Structure wins, the same fail-safe direction as the
  * unknown-title default.
  *
- * THE VOCABULARY IS DELIBERATELY NON-EXHAUSTIVE. No keyword list can name every
- * phrasing an estimator writes, and this one is not trying to: a title it does
- * not recognize resolves LOCKED, and the admin flips any line's badge in the
- * import preview before the proposal is sent. Those two together are the
- * completeness backstop, by design. So a word the registry is missing is
- * operating cost - one more badge to flip - and not a defect; what IS a defect
- * is a title that matches the WRONG WAY, resolving optional when the work is
- * structural, because the fail-safe never runs and the admin sees a plausible
- * badge. Measure this registry against that line: adding vocabulary is how the
- * second kind gets fixed, and the first kind is a judgement about how much
- * flipping the admin should have to do.
+ * THE VOCABULARY IS NON-EXHAUSTIVE, AND A MISSING WORD IS NOT FREE. No keyword
+ * list can name every phrasing an estimator writes, but the locked fail-safe
+ * only catches a title that matches NOTHING, and a structural line almost
+ * always names the finish it acts on: "Strip existing tile", "Plumbing for
+ * farmhouse sink", "Level floor under tile". For those the finish noun is the
+ * only hit, so the word this registry lacks does not fall through to the
+ * fail-safe - it resolves the WRONG WAY, optional over structural work, with a
+ * plausible badge on it. That is the defect class, and every phrasing found
+ * matching that way is worth a keyword here.
+ *
+ * What makes the remainder survivable is not this file: the admin sees every
+ * imported line in the import preview and can flip any badge before a proposal
+ * is sent. That review is the guarantee; this registry is assistance for it.
  */
 
 export interface ProposalCategory {
@@ -117,6 +119,18 @@ const RELOCATION_VERBS: readonly string[] = [
 ];
 
 /**
+ * Structural work with no trade named: Layer 1's floor in the registry, and the
+ * verdict an unrecognized title falls through to. ONE literal, because those two
+ * have to say the same thing - a second copy could drift, and then the same slug
+ * would answer with two different WEB-024 icons depending on which path reached it.
+ */
+const GENERAL_LOCKED: ProposalCategoryVerdict = Object.freeze({
+  key: 'general',
+  icon: 'house',
+  optional: false,
+});
+
+/**
  * Locked categories first (structure wins ties), then the optional finish
  * categories from the approved plan, in display-priority order.
  *
@@ -129,19 +143,41 @@ const REGISTRY: ProposalCategory[] = [
   // existing tile", "Cabinet removal", "Haul away old countertops"). Every one
   // of those titles also names a finish, so a registry that knows only
   // "demolition" reads the finish and hands the client a toggle on the demo.
+  //
+  // The verbs are listed BARE, not in the particle forms an estimator happens
+  // to write: "strip out" and "strip", "tear out" and "tear off" and "tear
+  // down" are the same work, and listing only the particle forms locked
+  // "Strip out backsplash" while handing the client a toggle on "Strip
+  // existing tile". "pull" and "take" are the exception - bare they are the
+  // cabinet hardware and "take delivery", so they go in as phrases.
   {
     key: 'demolition',
     icon: 'hammer',
     optional: false,
     keywords: [
       'demolition', 'demolish', 'demolishing', 'demo', 'gut', 'gutting',
-      'tear-out', 'tearing out', 'rip out', 'ripping out',
-      'strip out', 'stripping out', 'remove', 'removal', 'removing',
-      'haul away', 'hauling away', 'haul off', 'hauling off',
-      'disposal', 'debris', 'dumpster',
+      'tear', 'tearing', 'rip', 'ripping', 'strip', 'stripping',
+      'haul', 'hauling', 'remove', 'removal', 'removing',
+      'pull out', 'pulling out', 'take out', 'taking out',
+      'take down', 'taking down',
+      'dispose', 'disposing', 'disposal', 'debris', 'dumpster',
     ],
   },
-  { key: 'prep', icon: 'layers', optional: false, keywords: ['prep', 'preparation', 'protect', 'protecting', 'protective', 'protection', 'subfloor', 'sub-floor', 'leveling', 'framing', 'blocking', 'drywall', 'insulation'] },
+  // Substrate work: what goes under or behind the finish, and it is the finish
+  // that gets named ("Level floor under tile", "Backer board for tile").
+  // Waterproofing is here rather than with rough plumbing because a shower pan
+  // membrane is substrate, not a pipe.
+  {
+    key: 'prep',
+    icon: 'layers',
+    optional: false,
+    keywords: [
+      'prep', 'preparation', 'protect', 'protecting', 'protective', 'protection',
+      'subfloor', 'sub-floor', 'level', 'leveling', 'levelling',
+      'backer board', 'cement board', 'waterproof', 'waterproofing',
+      'framing', 'blocking', 'drywall', 'insulation',
+    ],
+  },
   // Moving a service is rough work whatever it serves, and the title names what
   // it serves: "Move sink plumbing", "Relocate range gas line", "Shift toilet
   // 12 inches". Reading the fixture and skipping the verb handed the client a
@@ -154,13 +190,19 @@ const REGISTRY: ProposalCategory[] = [
   // named line runs are keywords rather than scope because "gas line" is rough
   // plumbing whether or not anything moves - and bare "line" is deliberately NOT
   // scope, or "Move dryer vent line" would take a wrench off the word "line".
+  //
+  // The trade's own name is a keyword too, and not only scope. Naming the trade
+  // plainly is the commonest way an estimator writes rough work ("Plumbing for
+  // farmhouse sink"), and a word that only licenses a verb produces no hit of
+  // its own - so the fixture in the same title answered for the whole line and
+  // the client got a toggle on the rough-in.
   {
     key: 'plumbing_rough',
     icon: 'wrench',
     optional: false,
     keywords: [
-      'rough-in', 'supply line', 'water line', 'gas line', 'drain line', 'waste line',
-      'drain', 'valve', 'waterproofing',
+      'plumbing', 'rough-in', 'supply line', 'water line', 'gas line',
+      'drain line', 'waste line', 'drain', 'valve',
     ],
     scopedKeywords: RELOCATION_VERBS,
     scope: [
@@ -174,7 +216,7 @@ const REGISTRY: ProposalCategory[] = [
     key: 'electrical_rough',
     icon: 'zap',
     optional: false,
-    keywords: ['electrical panel', 'wiring', 'circuit', 'gfci'],
+    keywords: ['electrical', 'wiring', 'circuit', 'gfci'],
     scopedKeywords: RELOCATION_VERBS,
     scope: [
       'electrical', 'wiring', 'circuit', 'gfci', 'outlet', 'receptacle',
@@ -200,14 +242,12 @@ const REGISTRY: ProposalCategory[] = [
   // Layer 1's floor, and the last locked category so every trade above claims a
   // better slug first. A verb of manner naming no trade at all still locks here:
   // "Relocate medicine cabinet" is moving a cabinet off a wall, not a selection
-  // the client may drop. It carries the unrecognized verdict's own slug and icon
-  // because it says the same thing - structural work, trade unstated.
-  {
-    key: 'general',
-    icon: 'house',
-    optional: false,
-    keywords: RELOCATION_VERBS,
-  },
+  // the client may drop. Bare "rough" sits here for the same reason - rough work
+  // is structural whatever it is roughing in, and the trades above take it off
+  // this category whenever the title names one ("Electrical rough for recessed
+  // lights"). The verdict is the unrecognized one, because it says the same
+  // thing: structural work, trade unstated.
+  { ...GENERAL_LOCKED, keywords: [...RELOCATION_VERBS, 'rough'] },
   // --- finish selections: optional ---
   { key: 'cabinets', icon: 'columns-3', optional: true, keywords: ['cabinet', 'vanity', 'vanities'] },
   { key: 'countertops', icon: 'square', optional: true, keywords: ['countertop', 'counter top', 'quartz top', 'granite top'] },
@@ -232,12 +272,11 @@ export const PROPOSAL_CATEGORIES: readonly ProposalCategory[] = Object.freeze(
   })),
 );
 
-/** The fail-safe verdict for a title nothing in the registry recognizes. */
-export const UNRECOGNIZED_CATEGORY: ProposalCategoryVerdict = Object.freeze({
-  key: 'general',
-  icon: 'house',
-  optional: false,
-});
+/**
+ * The fail-safe verdict for a title nothing in the registry recognizes: the
+ * `general` category above, and the same object, so the two can never diverge.
+ */
+export const UNRECOGNIZED_CATEGORY: ProposalCategoryVerdict = GENERAL_LOCKED;
 
 /** Down to lowercase words separated by single spaces: "Rough-In" -> "rough in". */
 function normalizeWords(value: string): string {

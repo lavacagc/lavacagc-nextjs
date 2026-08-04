@@ -311,6 +311,37 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
     'Relocate towel bar',
     'Move refrigerator',
     'Relocate dishwasher',
+    // The trade named plainly. "plumbing" and "electrical" only licensed a verb
+    // before - they produced no hit of their own - so the fixture, light or
+    // appliance in the same title answered for the whole line and the client
+    // got a toggle on the rough-in.
+    'Plumbing for farmhouse sink',
+    'Plumbing work for new vanity',
+    'New plumbing to island sink',
+    'Electrical for undercabinet lighting',
+    'Electrical rough for recessed lights',
+    'Electrical work for new range',
+    'Update electrical at backsplash outlets',
+    'Rough carpentry at soffit',
+    // The removal verbs in the particle form the estimator actually wrote.
+    // Listing only "strip out"/"rip out"/"tear-out"/"haul away" locked those
+    // exact phrasings and unlocked every neighbouring one, because the verb was
+    // then no hit at all and the finish noun was the only one left.
+    'Strip existing tile',
+    'Strip and re-tile shower surround',
+    'Rip up existing floor tile',
+    'Tear off old backsplash',
+    'Tear down existing vanity wall',
+    'Haul out old vanity',
+    'Pull out old cabinets',
+    'Take out existing countertop',
+    'Take down upper cabinets',
+    'Dispose of old tile',
+    // Substrate: what goes under or behind the finish, named after the finish.
+    'Level floor under tile',
+    'Backer board for tile',
+    'Cement board behind tile',
+    'Waterproof shower pan',
   ]) {
     expect(categorizeLine(locked).optional, `"${locked}" must stay locked`).toBe(false);
   }
@@ -320,6 +351,16 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
   expect(categorizeLine('Move sink plumbing').key).toBe('plumbing_rough');
   expect(categorizeLine('Relocate range gas line').key).toBe('plumbing_rough');
   expect(categorizeLine('Shift toilet 12 inches').key).toBe('plumbing_rough');
+  expect(categorizeLine('Plumbing for farmhouse sink').key).toBe('plumbing_rough');
+  expect(categorizeLine('Electrical for undercabinet lighting').key).toBe('electrical_rough');
+  // "rough" with no trade beside it is structural work, trade unstated - and a
+  // trade named anywhere in the title claims the better slug off it.
+  expect(categorizeLine('Rough carpentry at soffit').key).toBe(UNRECOGNIZED_CATEGORY.key);
+  expect(categorizeLine('Electrical rough for recessed lights').key).toBe('electrical_rough');
+  expect(categorizeLine('Strip existing tile').key).toBe('demolition');
+  expect(categorizeLine('Pull out old cabinets').key).toBe('demolition');
+  expect(categorizeLine('Level floor under tile').key).toBe('prep');
+  expect(categorizeLine('Waterproof shower pan').key).toBe('prep');
 });
 
 test('AC5d: a verb of manner locks on its own, and the scope noun only picks the slug', () => {
@@ -393,6 +434,12 @@ test('AC5b: matching is word-aware - a swallowed keyword drops out, fragments ne
   expect(arrange.key).toBe(UNRECOGNIZED_CATEGORY.key);
   expect(arrange.optional).toBe(false);
 
+  // The removal verbs go in bare, but "pull" and "take" bare are the cabinet
+  // hardware and "take delivery", so those two are listed as phrases. The
+  // hardware stays the client's to drop.
+  expect(categorizeLine('Cabinet pulls and knobs').optional).toBe(true);
+  expect(categorizeLine('Hardware - matte black pulls').key).toBe('hardware');
+
   // Word-aware must not cost the registry its plurals.
   expect(categorizeLine('Cabinets - shaker white').key).toBe('cabinets');
   expect(categorizeLine('Cabinet pulls and knobs').key).toBe('cabinets');
@@ -422,6 +469,17 @@ test('AC6: the registry is the only source of the WEB-024 icon', () => {
   expect(UNRECOGNIZED_CATEGORY.icon).toMatch(/^[a-z0-9-]+$/);
   // An unknown slug resolves to the same icon as the unrecognized verdict.
   expect(iconForCategory('not-a-category')).toBe(UNRECOGNIZED_CATEGORY.icon);
+
+  // The unrecognized verdict IS the registry's generic locked category, not a
+  // second literal of it. Two copies could drift, and then one slug would answer
+  // with two different icons: the registry's for "Move-in cleaning", which
+  // matched a verb, and the constant's for "Zorble calibration", which matched
+  // nothing at all.
+  const generic = PROPOSAL_CATEGORIES.find((c) => c.key === UNRECOGNIZED_CATEGORY.key);
+  expect(generic, 'the unrecognized slug must be a real registry category').toBeTruthy();
+  expect(generic.icon).toBe(UNRECOGNIZED_CATEGORY.icon);
+  expect(generic.optional).toBe(UNRECOGNIZED_CATEGORY.optional);
+  expect(categorizeLine('Move-in cleaning').icon).toBe(categorizeLine('Zorble calibration').icon);
 
   // A parsed line stores the category slug and nothing else of the verdict:
   // a second copy of the icon on the row could only drift from the registry.
