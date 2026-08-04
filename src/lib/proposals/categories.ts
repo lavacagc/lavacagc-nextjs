@@ -222,11 +222,15 @@ const REGISTRY: ProposalCategory[] = [
   // and "Reframe opening for refrigerator" is framing written as a verb.
   //
   // The trade is written under whichever form and whichever name the estimator
-  // reaches for, so the base verb is here and its inflections come free -
-  // "frame" answers for framing and framed, "insulate" for insulating - while
-  // the derived noun ("insulation") and the everyday synonym ("sheetrock" for
-  // drywall) have to be their own entries, because neither is a form of the
-  // other word.
+  // reaches for, so the BASE word is here and its inflections come free -
+  // "frame" answers for framing and framed, "insulate" for insulating, "block"
+  // for blocking - while the derived noun ("insulation") and the everyday
+  // synonym ("sheetrock" for drywall) have to be their own entries, because
+  // neither is a form of the other word. Carrying only the derived form is the
+  // same gap from the other side: "blocking" never answered for "Block wall for
+  // new vanity". A phrase inflects on its last word only, so where the
+  // qualifier is the word that names the work it goes in alone - "backer" is a
+  // backer whether or not the board is named.
   {
     key: 'prep',
     icon: 'layers',
@@ -234,8 +238,8 @@ const REGISTRY: ProposalCategory[] = [
     keywords: [
       'prep', 'preparation', 'protect', 'protective', 'protection',
       'subfloor', 'sub-floor', 'level',
-      'backer board', 'cement board', 'waterproof',
-      'frame', 'reframe', 'blocking', 'drywall', 'sheetrock',
+      'backer', 'cement board', 'waterproof',
+      'frame', 'reframe', 'block', 'drywall', 'sheetrock',
       'insulate', 'insulation', 'patch', 'repair',
     ],
   },
@@ -256,13 +260,16 @@ const REGISTRY: ProposalCategory[] = [
   // title answered for the whole line and the client got a toggle on the
   // rough-in: that was true of "plumbing" ("Plumbing for farmhouse sink") and
   // just as true of "pipe" ("Trench and pipe for island sink"). Only the
-  // FIXTURES the trade serves label without locking, below.
+  // FIXTURES the trade serves label without locking, below. The trade goes in
+  // under its base word, as everywhere else: "plumb" answers for plumbing and
+  // plumbed, while "plumbing" answered for neither "Plumb new island sink" nor
+  // anything else English makes from the verb.
   {
     key: 'plumbing_rough',
     icon: 'wrench',
     optional: false,
     keywords: [
-      'plumbing', 'rough-in', 'supply line', 'water line', 'gas line',
+      'plumb', 'rough-in', 'supply line', 'water line', 'gas line',
       'drain line', 'waste line', 'drain', 'valve', 'pipe',
     ],
     scopedKeywords: MANNER_VERBS,
@@ -391,6 +398,16 @@ function normalizeWords(value: string): string {
  *
  * The plural is the one that word forms and only that one: "-es" after a
  * sibilant ("backsplash" -> "backsplashes"), plain "-s" otherwise.
+ *
+ * The past and the participle are the ones it forms too. A word ending
+ * consonant-vowel-consonant doubles that consonant, and for a word of ONE
+ * syllable the doubled spelling is the only one English writes: "stripped" and
+ * "stripping" are the forms of "strip", while "striped" and "striping" are
+ * forms of STRIPE, a different word. Emitting both put the demolition verb on
+ * "Striped accent tile" - the same fragment match one letter further out that
+ * "stripes" was. A longer stem keeps the undoubled pair, because there it is
+ * the ordinary spelling: "leveled" beside "levelled". Both readings are taken
+ * off the LAST word, since a phrase inflects only there.
  */
 function wordForms(phrase: string, inflected: boolean): string[] {
   const forms = [phrase, phrase + (/(?:s|x|z|ch|sh)$/.test(phrase) ? 'es' : 's')];
@@ -398,14 +415,15 @@ function wordForms(phrase: string, inflected: boolean): string[] {
   if (phrase.endsWith('e')) {
     // The silent "e" survives "-d" and goes before "-ing": moved, moving.
     forms.push(`${phrase}d`, `${phrase.slice(0, -1)}ing`);
-  } else {
-    forms.push(`${phrase}ed`, `${phrase}ing`);
-    // A short consonant-vowel-consonant word doubles that consonant first:
-    // stripping, ripped, gutting, resetting, levelling.
-    if (/[^aeiou][aeiou][bdglmnprt]$/.test(phrase)) {
-      const doubled = phrase + phrase.slice(-1);
-      forms.push(`${doubled}ed`, `${doubled}ing`);
-    }
+    return forms;
+  }
+  const lastWord = phrase.slice(phrase.lastIndexOf(' ') + 1);
+  const doubles = /[^aeiou][aeiou][bdglmnprt]$/.test(lastWord);
+  const oneSyllable = (lastWord.match(/[aeiou]+/g) || []).length === 1;
+  if (!doubles || !oneSyllable) forms.push(`${phrase}ed`, `${phrase}ing`);
+  if (doubles) {
+    const doubled = phrase + phrase.slice(-1);
+    forms.push(`${doubled}ed`, `${doubled}ing`);
   }
   return forms;
 }

@@ -414,6 +414,16 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
     'New sheetrock at tile wall',
     'Sheetrock and tape behind vanity',
     'Take away old cabinets',
+    // ... and the word has to go in as its BASE, or the inflections it should
+    // hand out for free are the only forms that match. "plumbing" and
+    // "blocking" were carried in the derived form alone, so the trade locked
+    // written one way and handed the client a toggle on the rough plumbing or
+    // the structural blocking written the other. A phrase inflects on its last
+    // word only, which is the same gap: "backer board" left "Tile backer" to
+    // the tile.
+    'Plumb new island sink',
+    'Block wall for new vanity',
+    'Tile backer at shower',
     // Painting and finish carpentry: two trades on essentially every proposal,
     // and the registry had no word for either. Both follow a finish and get
     // named after it, so the finish noun was the only hit and the client got a
@@ -469,6 +479,12 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
   expect(categorizeLine('New sheetrock at tile wall').key).toBe('prep');
   expect(categorizeLine('Demoing existing tile').key).toBe('demolition');
   expect(categorizeLine('Take away old cabinets').key).toBe('demolition');
+  expect(categorizeLine('Plumb new island sink').key).toBe('plumbing_rough');
+  expect(categorizeLine('Block wall for new vanity').key).toBe('prep');
+  expect(categorizeLine('Tile backer at shower').key).toBe('prep');
+  // The base word still answers for the derived one it replaced.
+  expect(categorizeLine('Blocking at towel bar').key).toBe('prep');
+  expect(categorizeLine('Backer board for tile').key).toBe('prep');
   // Putting the toilet back is the plumber's trip, so it wears their slug.
   expect(categorizeLine('Reset toilet after tile').key).toBe('plumbing_rough');
 });
@@ -602,6 +618,24 @@ test('AC5b: matching is word-aware - a swallowed keyword drops out, fragments ne
   const stripes = categorizeLine('Tile stripes accent band');
   expect(stripes.key, '"stripes" is not the plural of "strip"').toBe('tile');
   expect(stripes.optional).toBe(true);
+
+  // The same rule on the past and the participle. A one-syllable word ending
+  // consonant-vowel-consonant doubles it - "stripped", "stripping" - and the
+  // UNDOUBLED spelling belongs to a different word: "striped" and "striping"
+  // are forms of "stripe". Emitting both read an accent stripe as demolition,
+  // one letter further out than "stripes" again.
+  const striped = categorizeLine('Striped accent tile');
+  expect(striped.key, '"striped" is a form of "stripe", not of "strip"').toBe('tile');
+  expect(striped.optional).toBe(true);
+  expect(categorizeLine('Striping at driveway').key, '"striping" is not demolition')
+    .toBe(UNRECOGNIZED_CATEGORY.key);
+  // ... while the doubled forms, which ARE the verb's, still lock.
+  expect(categorizeLine('Stripping existing tile').key).toBe('demolition');
+  expect(categorizeLine('Gutting kitchen cabinets').key).toBe('demolition');
+  // A longer stem keeps the undoubled spelling, because there it is the
+  // ordinary one: "leveled" beside "levelled".
+  expect(categorizeLine('Leveling floor under tile').key).toBe('prep');
+  expect(categorizeLine('Levelling floor under tile').key).toBe('prep');
 
   // The locked tier reads its keywords with their inflections, and that is the
   // whole of the widening: a form of the same word, never a longer word that
