@@ -66,18 +66,28 @@ interface RawRow {
   cells: string[];
 }
 
+/**
+ * A quoting fault, named at the line the offending quote OPENED on - the line
+ * to go fix, which is not necessarily the line the parser noticed on.
+ *
+ * `unterminated`: the field opened and ran to end-of-file without its closing
+ * quote. `dangling`: the field closed and the row carried on with more
+ * characters.
+ */
+interface QuoteFault {
+  kind: 'unterminated' | 'dangling';
+  lineNo: number;
+}
+
 interface SplitCsvResult {
   rows: RawRow[];
   /**
-   * A quoted field opened and ran to end-of-file without its closing quote.
-   * The line that quote OPENED on, which is the line to go fix.
+   * The EARLIEST quoting fault in the file, or null when there is none. A file
+   * can carry both kinds at once and neither is inherently first, so the choice
+   * of which to report belongs here, where the scan knows both, rather than to
+   * the order the caller happens to test them in.
    */
-  unterminatedAt: number;
-  /**
-   * A quoted field closed and the row carried on with more characters. Also
-   * the line the quote OPENED on: the field may have run across several.
-   */
-  danglingAt: number;
+  quoteFault: QuoteFault | null;
 }
 
 /**
@@ -131,6 +141,10 @@ function isPad(ch: string): boolean {
  * the parser noticed. A field that opens a quote and never closes it runs on
  * until some later stray quote ends it, and naming that later line sends the
  * admin to a row that is not the problem.
+ *
+ * A file can carry both faults at once, and only the EARLIER one is reported:
+ * the admin fixes the file top-down, and naming the later fault sends them past
+ * their first mistake and back round for a second import to find it.
  *
  * Newlines inside a quoted field normalize to \n. Excel writes CRLF (the BOM
  * handling below is there for the same exports), and a raw \r kept mid-value
@@ -195,7 +209,15 @@ function splitCsv(text: string): SplitCsvResult {
   // A trailing newline is punctuation, not a row. Interior blank lines are NOT
   // dropped: dropping them renumbered every later error.
   while (rows.length > 0 && isBlankLine(rows[rows.length - 1].cells)) rows.pop();
-  return { rows, unterminatedAt: inQuotes ? quoteOpenedAt : 0, danglingAt };
+
+  const unterminatedAt = inQuotes ? quoteOpenedAt : 0;
+  let quoteFault: QuoteFault | null = danglingAt > 0
+    ? { kind: 'dangling', lineNo: danglingAt }
+    : null;
+  if (unterminatedAt > 0 && (quoteFault === null || unterminatedAt < quoteFault.lineNo)) {
+    quoteFault = { kind: 'unterminated', lineNo: unterminatedAt };
+  }
+  return { rows, quoteFault };
 }
 
 /**
@@ -227,17 +249,17 @@ export function parseProposalCsv(text: string): ProposalCsvResult {
   const fail = (...messages: string[]): ProposalCsvResult => ({ ok: false, lines: [], errors: messages });
 
   const errors: string[] = [];
-  const { rows, unterminatedAt, danglingAt } = splitCsv(text ?? '');
-  if (unterminatedAt > 0) {
+  const { rows, quoteFault } = splitCsv(text ?? '');
+  if (quoteFault !== null) {
+    if (quoteFault.kind === 'unterminated') {
+      return fail(
+        `Row ${quoteFault.lineNo}: a quoted value opens here and is never closed. `
+        + 'Every " that opens a field needs a matching " that closes it, and a '
+        + 'quote inside a value must be doubled ("").',
+      );
+    }
     return fail(
-      `Row ${unterminatedAt}: a quoted value opens here and is never closed. `
-      + 'Every " that opens a field needs a matching " that closes it, and a '
-      + 'quote inside a value must be doubled ("").',
-    );
-  }
-  if (danglingAt > 0) {
-    return fail(
-      `Row ${danglingAt}: a quoted value ends part-way through the column and `
+      `Row ${quoteFault.lineNo}: a quoted value ends part-way through the column and `
       + 'the rest of it runs on. A " that closes a field must be followed by a '
       + 'comma or the end of the line, and a quote inside a value must be '
       + 'doubled ("") - `"36"" wide vanity"`, not `"36" wide vanity"`.',

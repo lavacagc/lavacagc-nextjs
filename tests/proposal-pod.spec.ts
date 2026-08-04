@@ -84,6 +84,16 @@ test('AC2d: a quoted field that closes mid-column fails loudly, never absorbs th
   expect(runOn.errors[0]).toContain('Row 2');
   expect(runOn.errors[0]).not.toContain('Row 4');
 
+  // A file can carry both quote faults at once, and the two are independent:
+  // row 2 closes mid-column, row 3 opens a quote that never closes. Testing
+  // "never closed" first named row 3 and walked the admin past their first
+  // mistake, costing a second fix-and-reimport round trip to find it.
+  const bothFaults = parseProposalCsv('title,description,price\nA,"36" wide vanity",100\nB,"unclosed,200');
+  expect(bothFaults.ok).toBe(false);
+  expect(bothFaults.lines).toEqual([]);
+  expect(bothFaults.errors[0]).toContain('Row 2');
+  expect(bothFaults.errors[0]).not.toContain('Row 3');
+
   // Correctly doubled, the same value is accepted and keeps its inch mark.
   const doubled = parseProposalCsv('title,description,price\n"36"" wide vanity",Shaker,3400');
   expect(doubled.errors).toEqual([]);
@@ -360,6 +370,13 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
   // once already.
   const at = ddl.indexOf('CREATE DOMAIN public.proposal_line_snapshot AS JSONB');
   expect(at, 'the snapshot shape belongs to one shared domain').toBeGreaterThan(-1);
+  // Created unconditionally: a guard that asks only whether the NAME exists
+  // cannot tell that the SHAPE moved on, so a database carrying an earlier
+  // revision of this file would keep the weaker contract while the migration
+  // tracker called it applied. Failing loudly on a second application is the
+  // outcome worth having when the schema is the layer meant to outlive the code.
+  expect(ddl, 'the snapshot domain must not be created behind an existence guard')
+    .not.toMatch(/DO \$\$|pg_type/);
   const domain = ddl.slice(at);
   expect(domain).toMatch(/jsonb_typeof\(VALUE\)\s*=\s*'array'/);
   const [filter] = domain.match(/'\$\[\*\] \? \([^']*\)'/) || [];

@@ -90,29 +90,32 @@ CREATE INDEX IF NOT EXISTS idx_proposal_lines_proposal ON public.proposal_lines 
 -- A DOMAIN rather than the same CHECK written out per column: both snapshot
 -- columns below carry exactly this contract, and a copy each is a copy each to
 -- keep in sync. NULL passes it (SQL's rule for CHECK), so nullability stays the
--- column's own business. There is no CREATE DOMAIN IF NOT EXISTS, hence the
--- guard - this file is re-runnable like the CREATE TABLEs around it.
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
-    WHERE t.typname = 'proposal_line_snapshot' AND n.nspname = 'public'
-  ) THEN
-    CREATE DOMAIN public.proposal_line_snapshot AS JSONB
-      CONSTRAINT proposal_line_snapshot_shape CHECK (
-        jsonb_typeof(VALUE) = 'array'
-        AND jsonb_array_length(jsonb_path_query_array(
-              VALUE, 'strict $[*] ? (@.type() == "object")', '{}', true
-            )) = jsonb_array_length(VALUE)
-        AND jsonb_array_length(jsonb_path_query_array(
-              VALUE,
-              '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.optional.type() == "boolean" && @.price_cents.type() == "number" && @.price_cents >= 0 && @.price_cents.floor() == @.price_cents)',
-              '{}', true
-            )) = jsonb_array_length(VALUE)
-      );
-  END IF;
-END
-$$;
+-- column's own business.
+--
+-- Created unconditionally, on purpose. A guard asking only whether the NAME
+-- exists cannot see that the SHAPE moved on: a database that ran an earlier
+-- revision of this file would keep the weaker contract while the migration
+-- tracker reported it applied, and nothing would ever surface the drift. A
+-- second application failing loudly here is the outcome worth having, because
+-- the argument for putting this contract in the schema at all is that the
+-- schema outlives the code.
+--
+-- Which makes the standing rule: once this file has landed in ANY database,
+-- it is frozen. Every further change to the proposal schema goes in a NEW
+-- migration with a later timestamp. Editing an applied migration in place is
+-- how the two would silently disagree.
+CREATE DOMAIN public.proposal_line_snapshot AS JSONB
+  CONSTRAINT proposal_line_snapshot_shape CHECK (
+    jsonb_typeof(VALUE) = 'array'
+    AND jsonb_array_length(jsonb_path_query_array(
+          VALUE, 'strict $[*] ? (@.type() == "object")', '{}', true
+        )) = jsonb_array_length(VALUE)
+    AND jsonb_array_length(jsonb_path_query_array(
+          VALUE,
+          '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.optional.type() == "boolean" && @.price_cents.type() == "number" && @.price_cents >= 0 && @.price_cents.floor() == @.price_cents)',
+          '{}', true
+        )) = jsonb_array_length(VALUE)
+  );
 
 CREATE TABLE IF NOT EXISTS public.proposal_submissions (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
