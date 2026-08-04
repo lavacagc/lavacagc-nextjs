@@ -13,9 +13,20 @@
  * Icons are lucide, per house rule - never emoji.
  *
  * Matching is on the LINE TITLE only, case-insensitive, and WORD-AWARE: a
- * keyword matches whole words (plus a simple plural), never a fragment inside
- * a longer word. Bare substring matching read "Arrange delivery" as the
- * appliance keyword "range" and handed the client a toggle on it.
+ * keyword matches whole words, never a fragment inside a longer word. Bare
+ * substring matching read "Arrange delivery" as the appliance keyword "range"
+ * and handed the client a toggle on it.
+ *
+ * The two tiers read their words differently, on purpose. A LOCKED keyword also
+ * answers for the forms English INFLECTS from it - "frame" for framing, framed
+ * and frames, "demo" for demoing, "strip" for stripping - because a trade is the
+ * same work whichever form the estimator wrote, and carrying one form at a time
+ * locked "Reframe wall for new vanity" while handing the client a toggle on
+ * "Frame new wall for refrigerator". An OPTIONAL keyword matches itself and its
+ * plural and nothing else: reading those wider could invent a client selection,
+ * which is the one direction this registry may not get wrong. A noun DERIVED
+ * rather than inflected is its own entry - "insulation" beside "insulate",
+ * "relocation" beside "relocate", "protection" beside "protect".
  *
  * Some keywords name the work itself and stand alone: "demolition", "vent",
  * "cabinet", and the removal verbs, because taking a thing out IS the demolition.
@@ -80,16 +91,20 @@
  * plausible badge on it. That is the defect class, and every phrasing found
  * matching that way is worth a keyword here.
  *
- * The locked tier is therefore stocked by TRADE rather than by phrase, and now
- * carries every trade a residential remodel line can name: demolition, prep and
- * substrate, rough plumbing, rough electrical, mechanical, compliance, painting
- * and finish carpentry. What is left of the defect class needs a title that both
- * names a trade none of those covers AND names a finish, which is the remainder
- * the review below absorbs.
+ * The locked tier is therefore stocked by TRADE rather than by phrase -
+ * demolition, prep and substrate, rough plumbing, rough electrical, mechanical,
+ * compliance, painting and finish carpentry - and its words are read with their
+ * inflections, so a trade the registry does know cannot slip through on the form
+ * the estimator happened to write. That is as far as a word list goes. It makes
+ * no claim to be complete, and a word MISSING from a trade it covers resolves
+ * the wrong way exactly as a missing trade does: "sheetrock" did, until it was
+ * added here, because the registry knew only "drywall". Every phrasing caught
+ * resolving that way is worth an entry.
  *
- * What makes that remainder survivable is not this file: the admin sees every
- * imported line in the import preview and can flip any badge before a proposal
- * is sent. That review is the guarantee; this registry is assistance for it.
+ * What makes the gaps that leaves survivable is not this file: the admin sees
+ * every imported line in the import preview and can flip any badge before a
+ * proposal is sent. That review is the guarantee; this registry is assistance
+ * for it.
  */
 
 export interface ProposalCategory {
@@ -149,9 +164,7 @@ export type ProposalCategoryVerdict = Pick<ProposalCategory, 'key' | 'icon' | 'o
  * label from there.
  */
 const MANNER_VERBS: readonly string[] = [
-  'relocate', 'relocating', 'relocation', 'reroute', 'rerouting',
-  'move', 'moving', 'shift', 'shifting',
-  'reset', 'resetting', 'reinstall', 'reinstalling',
+  'relocate', 'relocation', 'reroute', 'move', 'shift', 'reset', 'reinstall',
 ];
 
 /**
@@ -185,18 +198,18 @@ const REGISTRY: ProposalCategory[] = [
   // down" are the same work, and listing only the particle forms locked
   // "Strip out backsplash" while handing the client a toggle on "Strip
   // existing tile". "pull" and "take" are the exception - bare they are the
-  // cabinet hardware and "take delivery", so they go in as phrases.
+  // cabinet hardware and "take delivery", so they go in as phrases, and a
+  // phrase inflects on its last word only, so each one carries its own "-ing".
   {
     key: 'demolition',
     icon: 'hammer',
     optional: false,
     keywords: [
-      'demolition', 'demolish', 'demolishing', 'demo', 'gut', 'gutting',
-      'tear', 'tearing', 'rip', 'ripping', 'strip', 'stripping',
-      'haul', 'hauling', 'remove', 'removal', 'removing',
+      'demolition', 'demolish', 'demo', 'gut', 'tear', 'rip', 'strip',
+      'haul', 'remove', 'removal',
       'pull out', 'pulling out', 'take out', 'taking out',
-      'take down', 'taking down',
-      'dispose', 'disposing', 'disposal', 'debris', 'dumpster',
+      'take down', 'taking down', 'take away', 'taking away',
+      'dispose', 'disposal', 'debris', 'dumpster',
     ],
   },
   // Substrate work: what goes under or behind the finish, and it is the finish
@@ -206,18 +219,24 @@ const REGISTRY: ProposalCategory[] = [
   //
   // Making the substrate good again is the same work under a different verb:
   // "Patch and repair wall behind vanity" is the wall the demolition opened,
-  // and "Reframe opening for refrigerator" is framing written as a verb, which
-  // the noun "framing" does not match.
+  // and "Reframe opening for refrigerator" is framing written as a verb.
+  //
+  // The trade is written under whichever form and whichever name the estimator
+  // reaches for, so the base verb is here and its inflections come free -
+  // "frame" answers for framing and framed, "insulate" for insulating - while
+  // the derived noun ("insulation") and the everyday synonym ("sheetrock" for
+  // drywall) have to be their own entries, because neither is a form of the
+  // other word.
   {
     key: 'prep',
     icon: 'layers',
     optional: false,
     keywords: [
-      'prep', 'preparation', 'protect', 'protecting', 'protective', 'protection',
-      'subfloor', 'sub-floor', 'level', 'leveling', 'levelling',
-      'backer board', 'cement board', 'waterproof', 'waterproofing',
-      'framing', 'reframe', 'reframing', 'blocking', 'drywall', 'insulation',
-      'patch', 'patching', 'repair', 'repairing',
+      'prep', 'preparation', 'protect', 'protective', 'protection',
+      'subfloor', 'sub-floor', 'level',
+      'backer board', 'cement board', 'waterproof',
+      'frame', 'reframe', 'blocking', 'drywall', 'sheetrock',
+      'insulate', 'insulation', 'patch', 'repair',
     ],
   },
   // Moving a service is rough work whatever it serves, and the title names what
@@ -244,7 +263,7 @@ const REGISTRY: ProposalCategory[] = [
     optional: false,
     keywords: [
       'plumbing', 'rough-in', 'supply line', 'water line', 'gas line',
-      'drain line', 'waste line', 'drain', 'valve', 'pipe', 'piping',
+      'drain line', 'waste line', 'drain', 'valve', 'pipe',
     ],
     scopedKeywords: MANNER_VERBS,
     serves: ['sink', 'toilet'],
@@ -265,7 +284,7 @@ const REGISTRY: ProposalCategory[] = [
     icon: 'zap',
     optional: false,
     keywords: [
-      'electrical', 'wiring', 'circuit', 'gfci', 'outlet', 'receptacle',
+      'electrical', 'wire', 'circuit', 'gfci', 'outlet', 'receptacle',
       'switch', 'electrical panel', 'sub panel', 'panel upgrade',
     ],
     scopedKeywords: MANNER_VERBS,
@@ -282,11 +301,11 @@ const REGISTRY: ProposalCategory[] = [
     key: 'mechanical',
     icon: 'air-vent',
     optional: false,
-    keywords: ['vent', 'venting', 'duct', 'ductwork', 'ducting', 'exhaust', 'flue'],
+    keywords: ['vent', 'duct', 'ductwork', 'exhaust', 'flue'],
     scopedKeywords: MANNER_VERBS,
     serves: ['hood'],
   },
-  { key: 'compliance', icon: 'clipboard-check', optional: false, keywords: ['permit', 'inspection'] },
+  { key: 'compliance', icon: 'clipboard-check', optional: false, keywords: ['permit', 'inspect', 'inspection'] },
   // Painting follows the finish and is named after it ("Prime and paint walls
   // after tile", "Touch up paint at cabinets"), so with no word for the trade
   // the finish answered for the line - and dropping the tile upgrade does not
@@ -297,8 +316,7 @@ const REGISTRY: ProposalCategory[] = [
     icon: 'paint-roller',
     optional: false,
     keywords: [
-      'paint', 'painting', 'repaint', 'repainting', 'prime', 'priming', 'primer',
-      'touch up', 'coat', 'caulk', 'caulking',
+      'paint', 'repaint', 'prime', 'primer', 'touch up', 'coat', 'caulk',
     ],
   },
   // Finish carpentry, the same way: the baseboard goes back after the floor
@@ -312,7 +330,7 @@ const REGISTRY: ProposalCategory[] = [
     optional: false,
     keywords: [
       'carpentry', 'baseboard', 'base board', 'trim', 'casing', 'crown',
-      'molding', 'moulding', 'wainscot', 'wainscoting', 'shoe',
+      'molding', 'moulding', 'wainscot', 'shoe',
     ],
   },
   // Layer 1's floor, and the last locked category so every trade above claims a
@@ -360,36 +378,61 @@ function normalizeWords(value: string): string {
 }
 
 /**
- * Whole-word phrase match, tolerating a trailing plural so the registry does
- * not need both "cabinet" and "cabinets". Built once per keyword.
+ * The words one keyword answers for: itself, and the forms ENGLISH makes from
+ * it - the plural for every tier, and for the locked tier the past and the
+ * participle as well, since a trade is the same work written as a verb.
  *
- * The plural allowed is the one ENGLISH forms from that keyword, and only that
- * one: "-es" after a sibilant ("backsplash" -> "backsplashes"), plain "-s"
- * otherwise. Offering both to every keyword matched words the registry never
- * named - "strip" read "Tile stripes accent band" as demolition - which is the
- * fragment matching this whole function exists to prevent, one letter further
- * out.
+ * Each form is spelled out rather than read as a prefix. A prefix covers the
+ * same inflections in one line, but it also answers for any longer word that
+ * merely starts the same way: "strip" would be back to matching "stripes",
+ * which is a stripe, and "gut" to matching "gutter". An inflection is the same
+ * word in another form; a longer word that starts the same way is a different
+ * word, and matching one is the fragment match word-awareness exists to stop.
+ *
+ * The plural is the one that word forms and only that one: "-es" after a
+ * sibilant ("backsplash" -> "backsplashes"), plain "-s" otherwise.
+ */
+function wordForms(phrase: string, inflected: boolean): string[] {
+  const forms = [phrase, phrase + (/(?:s|x|z|ch|sh)$/.test(phrase) ? 'es' : 's')];
+  if (!inflected) return forms;
+  if (phrase.endsWith('e')) {
+    // The silent "e" survives "-d" and goes before "-ing": moved, moving.
+    forms.push(`${phrase}d`, `${phrase.slice(0, -1)}ing`);
+  } else {
+    forms.push(`${phrase}ed`, `${phrase}ing`);
+    // A short consonant-vowel-consonant word doubles that consonant first:
+    // stripping, ripped, gutting, resetting, levelling.
+    if (/[^aeiou][aeiou][bdglmnprt]$/.test(phrase)) {
+      const doubled = phrase + phrase.slice(-1);
+      forms.push(`${doubled}ed`, `${doubled}ing`);
+    }
+  }
+  return forms;
+}
+
+/**
+ * Whole-word phrase match over those forms, built once per keyword and tier.
  *
  * The leading `(?:^| )` consumes the separating space, so the keyword's own
  * span starts one character in whenever the match did not begin at the string
  * start - the containment rule below compares the keyword text, not the space.
  */
 const MATCHERS = new Map<string, RegExp>();
-function matcherFor(keyword: string): RegExp {
-  let matcher = MATCHERS.get(keyword);
+function matcherFor(keyword: string, inflected: boolean): RegExp {
+  const cacheKey = `${inflected ? 'locked' : 'optional'}:${keyword}`;
+  let matcher = MATCHERS.get(cacheKey);
   if (!matcher) {
-    const phrase = normalizeWords(keyword);
-    const plural = /(?:s|x|z|ch|sh)$/.test(phrase) ? '(?:es)?' : 's?';
-    matcher = new RegExp(`(?:^| )${phrase}${plural}(?= |$)`, 'g');
-    MATCHERS.set(keyword, matcher);
+    const forms = wordForms(normalizeWords(keyword), inflected);
+    matcher = new RegExp(`(?:^| )(?:${forms.join('|')})(?= |$)`, 'g');
+    MATCHERS.set(cacheKey, matcher);
   }
   return matcher;
 }
 
 /** Whether the title names any of these phrases as whole words. */
-function mentionsAny(haystack: string, phrases: readonly string[]): boolean {
+function mentionsAny(haystack: string, phrases: readonly string[], inflected: boolean): boolean {
   return phrases.some((phrase) => {
-    const matcher = matcherFor(phrase);
+    const matcher = matcherFor(phrase, inflected);
     matcher.lastIndex = 0;
     return matcher.test(haystack);
   });
@@ -404,7 +447,7 @@ interface KeywordHit {
 
 /** Appends every whole-word match of one keyword, in the order they occur. */
 function pushMatches(hits: KeywordHit[], haystack: string, cat: ProposalCategory, keyword: string): void {
-  const matcher = matcherFor(keyword);
+  const matcher = matcherFor(keyword, !cat.optional);
   matcher.lastIndex = 0;
   let m: RegExpExecArray;
   while ((m = matcher.exec(haystack)) !== null) {
@@ -435,7 +478,7 @@ function collectHits(haystack: string): KeywordHit[] {
     // Sitting the verb out costs the line nothing but a label: the generic
     // locked category lists the same verbs unscoped, so Layer 1 has locked it.
     const licensed = cat.scopedKeywords.length
-      && (hits.length > before || mentionsAny(haystack, cat.serves));
+      && (hits.length > before || mentionsAny(haystack, cat.serves, !cat.optional));
     if (licensed) {
       for (const keyword of cat.scopedKeywords) pushMatches(hits, haystack, cat, keyword);
     }

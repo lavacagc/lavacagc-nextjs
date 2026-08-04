@@ -385,6 +385,35 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
     'Reframe opening for refrigerator',
     'Reframe wall for new vanity',
     'Patch and repair wall behind vanity',
+    // ... and under whichever form of the word the estimator wrote it. A trade
+    // carried under one inflection covered that inflection and nothing else:
+    // "framing" the noun locked while "Frame new wall for refrigerator" handed
+    // the client a toggle on the framing, and "demo" locked while "Demoing" did
+    // not. A locked keyword now answers for the forms English makes from it.
+    'Frame new wall for refrigerator',
+    'Frame opening for range hood',
+    'Frame soffit above cabinets',
+    'Framed soffit above cabinets',
+    'Insulate exterior wall behind cabinets',
+    'Insulating wall behind new vanity',
+    'Demoing existing tile',
+    'Stripping existing tile',
+    'Ripping up existing floor tile',
+    'Gutting kitchen cabinets',
+    'Hauling away old countertops',
+    'Protecting existing cabinets during work',
+    'Leveling floor under tile',
+    'Repairing wall behind vanity',
+    'Painting after new tile',
+    'Caulking at countertop',
+    'Wiring for undercabinet lighting',
+    'Venting for range hood',
+    'Resetting toilet after tile',
+    // The everyday synonym is a different word, not a form of one, so it is its
+    // own entry: the registry knew "drywall" and read "sheetrock" as the tile.
+    'New sheetrock at tile wall',
+    'Sheetrock and tape behind vanity',
+    'Take away old cabinets',
     // Painting and finish carpentry: two trades on essentially every proposal,
     // and the registry had no word for either. Both follow a finish and get
     // named after it, so the finish noun was the only hit and the client got a
@@ -436,6 +465,10 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
   expect(categorizeLine('Trim and casing around new vanity').key).toBe('carpentry');
   expect(categorizeLine('Reframe opening for refrigerator').key).toBe('prep');
   expect(categorizeLine('Patch and repair wall behind vanity').key).toBe('prep');
+  expect(categorizeLine('Frame new wall for refrigerator').key).toBe('prep');
+  expect(categorizeLine('New sheetrock at tile wall').key).toBe('prep');
+  expect(categorizeLine('Demoing existing tile').key).toBe('demolition');
+  expect(categorizeLine('Take away old cabinets').key).toBe('demolition');
   // Putting the toilet back is the plumber's trip, so it wears their slug.
   expect(categorizeLine('Reset toilet after tile').key).toBe('plumbing_rough');
 });
@@ -569,6 +602,20 @@ test('AC5b: matching is word-aware - a swallowed keyword drops out, fragments ne
   const stripes = categorizeLine('Tile stripes accent band');
   expect(stripes.key, '"stripes" is not the plural of "strip"').toBe('tile');
   expect(stripes.optional).toBe(true);
+
+  // The locked tier reads its keywords with their inflections, and that is the
+  // whole of the widening: a form of the same word, never a longer word that
+  // merely starts the same way. Reading them as bare prefixes would cover the
+  // same inflections and take these with them - "strip" would be back on
+  // "stripes" above, "gut" on a gutter, "frame" on a frameless shower door,
+  // which is a client selection.
+  expect(categorizeLine('Framing for new wall').key).toBe('prep');
+  expect(categorizeLine('Framed opening at soffit').key).toBe('prep');
+  const frameless = categorizeLine('Frameless glass shower door');
+  expect(frameless.key, '"frameless" is not a form of "frame"').toBe('fixtures');
+  expect(frameless.optional).toBe(true);
+  expect(categorizeLine('Gutter and downspout repair').key, '"gutter" is not a form of "gut"')
+    .not.toBe('demolition');
 });
 
 test('AC5c: the registry hands out copies - a per-line override cannot poison the fail-safe', () => {
