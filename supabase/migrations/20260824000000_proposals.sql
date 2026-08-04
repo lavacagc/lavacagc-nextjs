@@ -21,15 +21,33 @@
 -- rather than a note about one afternoon. Every revision of this file is
 -- applied to a throwaway local Postgres and its constraints exercised there
 -- before that revision is called finished: a 43-character token accepted and a
--- short one rejected, a whole-composition snapshot accepted, a proposal revoked
--- out of draft accepted with no sent_at, and a fractional price_cents, a missing
--- `optional` key, an empty included_lines, a total_cents that disagrees with its
--- snapshot, a revoked_at stamped while the status still reads 'sent' and a
--- 'sent' proposal carrying no sent_at each rejected by the constraint that names
--- them. The PR's Supabase Preview check then replays every migration on a real
--- database before merge, and production is hand-applied at go-live.
+-- short one rejected, a whole-composition snapshot accepted, whole cents written
+-- with a scale and a price_cents at the cap exactly both accepted, a proposal
+-- revoked out of draft accepted with no sent_at, and a fractional price_cents,
+-- one past the cap, a missing `optional` key, an empty included_lines, a
+-- total_cents that disagrees with its snapshot, a revoked_at stamped while the
+-- status still reads 'sent' and a 'sent' proposal carrying no sent_at each
+-- rejected by the constraint that names them. The PR's Supabase Preview check
+-- then replays every migration on a real database before merge, and production
+-- is hand-applied at go-live.
+--
+-- Nothing here is created behind an existence guard - not the tables, not the
+-- indexes, not the domain. A guard asks only whether the NAME exists and cannot
+-- see that the SHAPE moved on, so a database holding an earlier revision would
+-- keep the weaker contract - no token recipe, no lifecycle rules, no snapshot
+-- shape - while the migration tracker called this file applied and nothing ever
+-- surfaced the drift. Re-applying it is meant to fail loudly, because the whole
+-- argument for putting these rules in the schema is that the schema outlives the
+-- code.
+--
+-- Which makes the standing rule: once this file has landed in a database that
+-- KEEPS it - production, or the preview branch - it is frozen. Every further
+-- change to the proposal schema goes in a NEW migration with a later timestamp.
+-- Editing an applied migration in place is how the two would silently disagree.
+-- A local verification stack is not that database: it is rebuilt from these
+-- files, so it can only ever hold what they currently say.
 
-CREATE TABLE IF NOT EXISTS public.proposals (
+CREATE TABLE public.proposals (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   -- 32 random bytes, base64url - same recipe as the intake chat session token.
   -- UNIQUE gives the lookup index; unknown tokens get a generic dead end.
@@ -77,9 +95,9 @@ CREATE TABLE IF NOT EXISTS public.proposals (
     CHECK (status <> 'sent' OR sent_at IS NOT NULL)
 );
 
-CREATE INDEX IF NOT EXISTS idx_proposals_lead ON public.proposals (lead_id);
+CREATE INDEX idx_proposals_lead ON public.proposals (lead_id);
 
-CREATE TABLE IF NOT EXISTS public.proposal_lines (
+CREATE TABLE public.proposal_lines (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   proposal_id  UUID NOT NULL REFERENCES public.proposals(id) ON DELETE CASCADE,
   -- CSV order, preserved: the page renders the estimate in the order it was
@@ -128,30 +146,22 @@ CREATE TABLE IF NOT EXISTS public.proposal_lines (
 -- subquery is not allowed in a CHECK, so the elements that satisfy the filter
 -- are counted against the elements that are there.
 --
--- JSONB is the one place agreed money is stored outside BIGINT, so the whole
--- number is required here explicitly: `floor() == itself` is what BIGINT does
--- for every other cents column. Without it 1999.5 is a legal snapshot, and the
--- browser's sum and the server's re-sum stop agreeing to the cent.
+-- JSONB is the one place agreed money is stored outside BIGINT, so what BIGINT
+-- would have given for free is asked for here explicitly. The whole number:
+-- `floor() == itself`, without which 1999.5 is a legal snapshot and the
+-- browser's sum and the server's re-sum stop agreeing to the cent. And the
+-- magnitude, bounded at the 1_000_000_000 cents the CSV parser already caps a
+-- line at (MAX_PRICE_CENTS - $10,000,000, above any job La Vaca prices through
+-- this page), so the two layers cannot disagree about what a line may cost.
+-- Unbounded, a value past BIGINT was a domain-valid element that the total's
+-- sum below then rejected with a bare `bigint out of range` naming no
+-- constraint - the same unnamed rejection the NUMERIC cast was added to close
+-- on the scale side, left open on the magnitude side.
 --
 -- A DOMAIN rather than the same CHECK written out per column: both snapshot
 -- columns below carry exactly this contract, and a copy each is a copy each to
 -- keep in sync. NULL passes it (SQL's rule for CHECK), so nullability stays the
 -- column's own business.
---
--- Created unconditionally, on purpose. A guard asking only whether the NAME
--- exists cannot see that the SHAPE moved on: a database that ran an earlier
--- revision of this file would keep the weaker contract while the migration
--- tracker reported it applied, and nothing would ever surface the drift. A
--- second application failing loudly here is the outcome worth having, because
--- the argument for putting this contract in the schema at all is that the
--- schema outlives the code.
---
--- Which makes the standing rule: once this file has landed in a database that
--- KEEPS it - production, or the preview branch - it is frozen. Every further
--- change to the proposal schema goes in a NEW migration with a later timestamp.
--- Editing an applied migration in place is how the two would silently disagree.
--- A local verification stack is not that database: it is rebuilt from these
--- files, so it can only ever hold what they currently say.
 CREATE DOMAIN public.proposal_line_snapshot AS JSONB
   CONSTRAINT proposal_line_snapshot_shape CHECK (
     jsonb_typeof(VALUE) = 'array'
@@ -160,7 +170,7 @@ CREATE DOMAIN public.proposal_line_snapshot AS JSONB
         )) = jsonb_array_length(VALUE)
     AND jsonb_array_length(jsonb_path_query_array(
           VALUE,
-          '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.optional.type() == "boolean" && @.price_cents.type() == "number" && @.price_cents >= 0 && @.price_cents.floor() == @.price_cents)',
+          '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.optional.type() == "boolean" && @.price_cents.type() == "number" && @.price_cents >= 0 && @.price_cents <= 1000000000 && @.price_cents.floor() == @.price_cents)',
           '{}', true
         )) = jsonb_array_length(VALUE)
   );
@@ -214,7 +224,7 @@ CREATE FUNCTION public.proposal_snapshot_total(snapshot JSONB) RETURNS BIGINT
 REVOKE EXECUTE ON FUNCTION public.proposal_snapshot_total(JSONB) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.proposal_snapshot_total(JSONB) TO service_role;
 
-CREATE TABLE IF NOT EXISTS public.proposal_submissions (
+CREATE TABLE public.proposal_submissions (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   proposal_id       UUID NOT NULL REFERENCES public.proposals(id) ON DELETE CASCADE,
   -- The exact configuration the client committed, snapshotted whole: every
@@ -247,7 +257,7 @@ CREATE TABLE IF NOT EXISTS public.proposal_submissions (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_proposal_submissions_proposal
+CREATE INDEX idx_proposal_submissions_proposal
   ON public.proposal_submissions (proposal_id);
 
 -- Deny-by-default on all three. The service-role key bypasses RLS for

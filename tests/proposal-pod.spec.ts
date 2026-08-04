@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { parseProposalCsv, parsePriceCents, MAX_LINES } from '../src/lib/proposals/csv';
+import {
+  parseProposalCsv, parsePriceCents, MAX_LINES, MAX_PRICE_CENTS,
+} from '../src/lib/proposals/csv';
 import {
   categorizeLine, iconForCategory, PROPOSAL_CATEGORIES, UNRECOGNIZED_CATEGORY,
 } from '../src/lib/proposals/categories';
@@ -722,13 +724,21 @@ test('AC6: the registry is the only source of the WEB-024 icon', () => {
 test('AC7: all three tables are deny-by-default - RLS on, zero policies, cents-only money', () => {
   const sql = read(MIGRATION);
   for (const t of ['proposals', 'proposal_lines', 'proposal_submissions']) {
-    expect(sql).toContain(`CREATE TABLE IF NOT EXISTS public.${t}`);
+    expect(sql).toContain(`CREATE TABLE public.${t}`);
     expect(sql).toContain(`ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY`);
   }
   expect(sql).not.toMatch(/CREATE\s+POLICY/i);
   // Money is integer cents; a float/numeric money column must never appear.
   // Comments discuss those types by name, so only DDL lines are checked.
   const ddl = migrationDdl();
+  // Nothing is created behind an existence guard - not a table, not an index,
+  // not the domain. A guard asks only whether the NAME exists and cannot see
+  // that the SHAPE moved on, so a database holding an earlier revision would
+  // keep the weaker contract while the tracker called this file applied. Failing
+  // loudly on re-application is the outcome worth having when the schema is the
+  // layer meant to outlive the code.
+  expect(ddl, 'no object here may be created behind an existence guard')
+    .not.toMatch(/IF NOT EXISTS/i);
   expect(ddl).toMatch(/price_cents\s+BIGINT/);
   expect(ddl).toMatch(/total_cents\s+BIGINT/);
   // The rule is about STORED types, so the dollar-quoted function body is read
@@ -780,6 +790,12 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
   // snapshot and the browser's sum stops matching the server's re-sum.
   expect(filter, 'the domain must reject a fractional price_cents such as 1999.5')
     .toContain('@.price_cents.floor() == @.price_cents');
+  // And bounded above at the cap the CSV parser already enforces per line, so
+  // the two layers cannot disagree about what a line may cost. Unbounded, a
+  // magnitude past BIGINT was a domain-valid element that the total's sum then
+  // rejected with a bare `bigint out of range` naming no constraint.
+  expect(filter, 'the domain must reject a price_cents past the parser cap')
+    .toContain(`@.price_cents <= ${MAX_PRICE_CENTS}`);
   // Both snapshot columns take the domain, so both carry the contract. A plain
   // JSONB column here would be one the check never reaches.
   expect(ddl).toMatch(/included_lines\s+public\.proposal_line_snapshot\s+NOT NULL/);
@@ -837,9 +853,9 @@ test('AC7c: revocation IS the status column, and the timestamps cannot contradic
   // Read out of the proposals table's own definition. A CHECK sitting on any
   // other table would satisfy a match run across the whole file just as well,
   // and this rule means nothing anywhere but here.
-  const at = ddl.indexOf('CREATE TABLE IF NOT EXISTS public.proposals');
+  const at = ddl.indexOf('CREATE TABLE public.proposals');
   expect(at, 'the proposals table must be readable on its own').toBeGreaterThan(-1);
-  const table = ddl.slice(at, ddl.indexOf('CREATE TABLE IF NOT EXISTS public.proposal_lines'));
+  const table = ddl.slice(at, ddl.indexOf('CREATE TABLE public.proposal_lines'));
   // `status` is the whole kill switch: RLS denies the anon key and the token
   // carries no lifetime of its own, so the lookup asks this column and nothing
   // else. Independent columns let a writer set revoked_at = now() and leave
