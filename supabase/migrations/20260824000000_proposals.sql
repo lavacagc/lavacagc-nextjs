@@ -24,13 +24,15 @@
 -- short one rejected, a whole-composition snapshot accepted, whole cents written
 -- with a scale and a price_cents at the cap exactly both accepted on the
 -- snapshot and on a line row, a proposal revoked out of draft accepted with no
--- sent_at, and a fractional price_cents, a price above the cap on either the
--- line row or the snapshot, a missing `optional` key, an empty included_lines, a
--- total_cents that disagrees with its snapshot, a revoked_at stamped while the
--- status still reads 'sent' and a 'sent' proposal carrying no sent_at each
--- rejected by the constraint that names them. The PR's Supabase Preview check
--- then replays every migration on a real database before merge, and production
--- is hand-applied at go-live.
+-- sent_at, an UPDATE that names no timestamp still moving updated_at past
+-- created_at, a proposal carrying a submission refusing to delete until that
+-- submission is deleted first, and a fractional price_cents, a price above the
+-- cap on either the line row or the snapshot, a missing `optional` key, an empty
+-- included_lines, a total_cents that disagrees with its snapshot, a revoked_at
+-- stamped while the status still reads 'sent' and a 'sent' proposal carrying no
+-- sent_at each rejected by the constraint that names them. The PR's Supabase
+-- Preview check then replays every migration on a real database before merge,
+-- and production is hand-applied at go-live.
 --
 -- Nothing here is created behind an existence guard - not the tables, not the
 -- indexes, not the domain. A guard asks only whether the NAME exists and cannot
@@ -97,6 +99,32 @@ CREATE TABLE public.proposals (
 );
 
 CREATE INDEX idx_proposals_lead ON public.proposals (lead_id);
+
+-- updated_at is maintained here, not asked of every writer. A DEFAULT fires
+-- once, at INSERT, so without this the column stays equal to created_at for the
+-- life of the row while reading as authoritative - the admin UI sorts a
+-- re-imported estimate as untouched since the day it was created, and nothing
+-- says otherwise. That is the same silent-when-forgotten shape the token recipe,
+-- the lifecycle rules and the total-is-the-sum check are all in this file to
+-- close, and the same argument applies: nothing in this slice writes the column,
+-- so the schema is the only thing that can keep it honest.
+--
+-- PostgREST does not publish a function returning trigger, so unlike the sum
+-- function below this one is not reachable as an RPC and needs no revoke.
+CREATE FUNCTION public.proposals_set_updated_at() RETURNS TRIGGER
+  LANGUAGE plpgsql
+  SET search_path = ''
+  AS $$
+  BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+  END;
+  $$;
+
+CREATE TRIGGER proposals_set_updated_at
+  BEFORE UPDATE ON public.proposals
+  FOR EACH ROW
+  EXECUTE FUNCTION public.proposals_set_updated_at();
 
 CREATE TABLE public.proposal_lines (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -238,7 +266,17 @@ GRANT EXECUTE ON FUNCTION public.proposal_snapshot_total(JSONB) TO service_role;
 
 CREATE TABLE public.proposal_submissions (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  proposal_id       UUID NOT NULL REFERENCES public.proposals(id) ON DELETE CASCADE,
+  -- RESTRICT, where proposal_lines cascades. Lines belong to the proposal and
+  -- are replaced wholesale by every re-import; a submission does not belong to
+  -- it in that sense. Owner decision D4 makes each one THE record of what a
+  -- client agreed to, which is what the snapshot below exists to keep readable
+  -- after the rows it was built from are gone - and none of that survives the
+  -- parent row being deleted. So deleting a proposal that carries submissions
+  -- fails loudly and the admin deletes the submissions first, deliberately, in
+  -- two steps. lead_id makes the same call in the shape its own nullability
+  -- allows: there the priced record survives the lead, here the record IS the
+  -- child row, so SET NULL is not available without giving up NOT NULL.
+  proposal_id       UUID NOT NULL REFERENCES public.proposals(id) ON DELETE RESTRICT,
   -- The exact configuration the client committed, snapshotted whole: every
   -- locked line plus the optional lines they kept, each element marked
   -- `optional`. A submission still cannot express ALTERING a locked line

@@ -722,15 +722,19 @@ test('AC6: the registry is the only source of the WEB-024 icon', () => {
 });
 
 test('AC7: all three tables are deny-by-default - RLS on, zero policies, cents-only money', () => {
-  const sql = read(MIGRATION);
-  for (const t of ['proposals', 'proposal_lines', 'proposal_submissions']) {
-    expect(sql).toContain(`CREATE TABLE public.${t}`);
-    expect(sql).toContain(`ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY`);
-  }
-  expect(sql).not.toMatch(/CREATE\s+POLICY/i);
-  // Money is integer cents; a float/numeric money column must never appear.
-  // Comments discuss those types by name, so only DDL lines are checked.
+  // Read with comments stripped, like every other schema AC. This one is the
+  // reason the rule exists: a `-- ALTER TABLE ... ENABLE ROW LEVEL SECURITY`
+  // commented out while debugging leaves the string in the file, so the raw text
+  // satisfies every assertion below while the table is readable and writable
+  // with the publishable key - the one outcome this file says may never happen.
+  // It cuts the other way too: the header warns against adding a permissive anon
+  // policy, so a reworded comment could fail the negative against correct DDL.
   const ddl = migrationDdl();
+  for (const t of ['proposals', 'proposal_lines', 'proposal_submissions']) {
+    expect(ddl).toContain(`CREATE TABLE public.${t}`);
+    expect(ddl).toContain(`ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY`);
+  }
+  expect(ddl).not.toMatch(/CREATE\s+POLICY/i);
   // Nothing is created behind an existence guard - not a table, not an index,
   // not the domain. A guard asks only whether the NAME exists and cannot see
   // that the SHAPE moved on, so a database holding an earlier revision would
@@ -739,6 +743,7 @@ test('AC7: all three tables are deny-by-default - RLS on, zero policies, cents-o
   // layer meant to outlive the code.
   expect(ddl, 'no object here may be created behind an existence guard')
     .not.toMatch(/IF NOT EXISTS/i);
+  // Money is integer cents; a float/numeric money column must never appear.
   expect(ddl).toMatch(/price_cents\s+BIGINT/);
   expect(ddl).toMatch(/total_cents\s+BIGINT/);
   // The rule is about STORED types, so the dollar-quoted function body is read
@@ -769,6 +774,24 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
   const ddl = migrationDdl();
   // Bare line ids would dangle the moment a CSV re-import replaces the rows.
   expect(ddl).not.toContain('included_line_ids');
+  // And nothing below survives the parent row being deleted, so that delete has
+  // to fail. proposal_lines cascades because lines belong to the proposal and
+  // every re-import replaces them wholesale; a submission is D4's record of what
+  // one client agreed to, and CASCADE undoes in a single statement everything
+  // the snapshot is here to keep readable. Read out of each table's own
+  // definition, since one file-wide match cannot tell the two FKs apart.
+  const submissions = ddl.slice(
+    ddl.indexOf('CREATE TABLE public.proposal_submissions'),
+    ddl.indexOf('CREATE INDEX idx_proposal_submissions_proposal'),
+  );
+  expect(submissions, 'deleting a proposal must not silently destroy its submissions')
+    .toMatch(/proposal_id\s+UUID NOT NULL REFERENCES public\.proposals\(id\) ON DELETE RESTRICT/);
+  const lineRows = ddl.slice(
+    ddl.indexOf('CREATE TABLE public.proposal_lines'),
+    ddl.indexOf('CREATE DOMAIN public.proposal_line_snapshot'),
+  );
+  expect(lineRows, 'lines do belong to the proposal and go with it')
+    .toMatch(/proposal_id\s+UUID NOT NULL REFERENCES public\.proposals\(id\) ON DELETE CASCADE/);
   // The {id, title, price_cents} element shape is CHECKed per element by ONE
   // domain, so the API cannot persist a bare id and the two snapshot columns
   // cannot drift apart when the contract is next tightened. The clauses are read
@@ -881,6 +904,15 @@ test('AC7c: revocation IS the status column, and the timestamps cannot contradic
   // revoked after sending (both stamped) each stay legal.
   expect(table, "a 'sent' proposal must carry its sent_at")
     .toMatch(/CHECK \(status <> 'sent' OR sent_at IS NOT NULL\)/);
+  // updated_at is the schema's job too. Its DEFAULT fires once, at INSERT, so a
+  // column left to every future writer to remember stays equal to created_at for
+  // the life of the row while reading as authoritative: a re-imported estimate
+  // sorts as untouched since the day it was created. Same silent-when-forgotten
+  // shape as the rules above, and nothing in this slice writes the column.
+  expect(table, 'updated_at must not be left to each writer to remember')
+    .toMatch(/CREATE TRIGGER proposals_set_updated_at\s+BEFORE UPDATE ON public\.proposals\s+FOR EACH ROW\s+EXECUTE FUNCTION public\.proposals_set_updated_at\(\)/);
+  expect(table, 'the trigger has to actually move the column')
+    .toMatch(/NEW\.updated_at = now\(\)/);
   // The composite UNIQUE leads on proposal_id, so it already serves both shapes
   // proposal_lines is ever queried by - one proposal's lines, in position order.
   // A second btree on proposal_id alone is maintenance on every import for a
