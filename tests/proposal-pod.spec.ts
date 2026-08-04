@@ -76,6 +76,14 @@ test('AC2d: a quoted field that closes mid-column fails loudly, never absorbs th
   expect(vanity.ok).toBe(false);
   expect(vanity.errors[0]).toContain('Row 3');
 
+  // A field that opens a quote and never closes it runs on until some later
+  // stray quote ends it. The row to go fix is the one the quote OPENED on
+  // (2), not the line the parser happened to notice on (4).
+  const runOn = parseProposalCsv('title,description,price\nA,"unclosed,1000\nB,,2000\nC,"x",3000');
+  expect(runOn.ok).toBe(false);
+  expect(runOn.errors[0]).toContain('Row 2');
+  expect(runOn.errors[0]).not.toContain('Row 4');
+
   // Correctly doubled, the same value is accepted and keeps its inch mark.
   const doubled = parseProposalCsv('title,description,price\n"36"" wide vanity",Shaker,3400');
   expect(doubled.errors).toEqual([]);
@@ -270,28 +278,31 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
   const ddl = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
   // Bare line ids would dangle the moment a CSV re-import replaces the rows.
   expect(ddl).not.toContain('included_line_ids');
-  expect(ddl).toMatch(/included_lines\s+JSONB\s+NOT NULL/);
-  expect(ddl).toMatch(/jsonb_typeof\(included_lines\)\s*=\s*'array'/);
-  // The {id, title, price_cents} element shape is CHECKed per element, on both
-  // snapshot columns, so the API cannot persist a bare id. The clauses are read
+  // The {id, title, price_cents} element shape is CHECKed per element by ONE
+  // domain, so the API cannot persist a bare id and the two snapshot columns
+  // cannot drift apart when the contract is next tightened. The clauses are read
   // out of the jsonpath the constraint actually runs, not matched loosely across
   // the file: a comment promising the shape is what let bare ids stay green here
   // once already.
-  for (const col of ['included_lines', 'touched_lines']) {
-    const at = ddl.indexOf(`CONSTRAINT proposal_submissions_${col}_snapshot CHECK (`);
-    expect(at, `${col} needs a per-element snapshot CHECK`).toBeGreaterThan(-1);
-    const [filter] = ddl.slice(at).match(/'\$\[\*\] \? \([^']*\)'/) || [];
-    expect(filter, `${col} needs a per-element jsonpath filter`).toBeTruthy();
-    expect(filter).toContain('@.id.type() == "string"');
-    expect(filter).toContain('@.title.type() == "string"');
-    expect(filter).toContain('@.price_cents.type() == "number"');
-    expect(filter).toContain('@.price_cents >= 0');
-    // JSONB is the one place agreed money escapes BIGINT, so the whole number is
-    // demanded here too: without this clause {"price_cents": 1999.5} is a legal
-    // snapshot and the browser's sum stops matching the server's re-sum.
-    expect(filter, `${col} must reject a fractional price_cents such as 1999.5`)
-      .toContain('@.price_cents.floor() == @.price_cents');
-  }
+  const at = ddl.indexOf('CREATE DOMAIN public.proposal_line_snapshot AS JSONB');
+  expect(at, 'the snapshot shape belongs to one shared domain').toBeGreaterThan(-1);
+  const domain = ddl.slice(at);
+  expect(domain).toMatch(/jsonb_typeof\(VALUE\)\s*=\s*'array'/);
+  const [filter] = domain.match(/'\$\[\*\] \? \([^']*\)'/) || [];
+  expect(filter, 'the domain needs a per-element jsonpath filter').toBeTruthy();
+  expect(filter).toContain('@.id.type() == "string"');
+  expect(filter).toContain('@.title.type() == "string"');
+  expect(filter).toContain('@.price_cents.type() == "number"');
+  expect(filter).toContain('@.price_cents >= 0');
+  // JSONB is the one place agreed money escapes BIGINT, so the whole number is
+  // demanded here too: without this clause {"price_cents": 1999.5} is a legal
+  // snapshot and the browser's sum stops matching the server's re-sum.
+  expect(filter, 'the domain must reject a fractional price_cents such as 1999.5')
+    .toContain('@.price_cents.floor() == @.price_cents');
+  // Both snapshot columns take the domain, so both carry the contract. A plain
+  // JSONB column here would be one the check never reaches.
+  expect(ddl).toMatch(/included_lines\s+public\.proposal_line_snapshot\s+NOT NULL/);
+  expect(ddl).toMatch(/touched_lines\s+public\.proposal_line_snapshot\s*,/);
   // The total stays server-computed money, not a client number.
   expect(ddl).toMatch(/total_cents\s+BIGINT NOT NULL CHECK \(total_cents >= 0\)/);
 });
@@ -311,12 +322,14 @@ test('AC9: caps hold - line count, title and description length', () => {
   expect(parseProposalCsv(longTitle).ok).toBe(false);
 });
 
-test('AC10: no em dashes in the slice-1 modules (house style)', () => {
+test('AC10: no em dashes in the slice-1 modules or the tracked prose (house style)', () => {
   for (const p of [
     'src/lib/proposals/categories.ts',
     'src/lib/proposals/csv.ts',
     'src/lib/proposals/token.ts',
     'supabase/migrations/20260824000000_proposals.sql',
+    // The standing instruction set every session loads; the rule holds there too.
+    'CLAUDE.md',
   ]) {
     expect(read(p), `${p} must not contain an em dash`).not.toContain('—');
   }

@@ -68,9 +68,15 @@ interface RawRow {
 
 interface SplitCsvResult {
   rows: RawRow[];
-  /** A quoted field opened and ran to end-of-file without its closing quote. */
+  /**
+   * A quoted field opened and ran to end-of-file without its closing quote.
+   * The line that quote OPENED on, which is the line to go fix.
+   */
   unterminatedAt: number;
-  /** A quoted field closed and the row carried on with more characters. */
+  /**
+   * A quoted field closed and the row carried on with more characters. Also
+   * the line the quote OPENED on: the field may have run across several.
+   */
   danglingAt: number;
 }
 
@@ -100,6 +106,11 @@ function isBlankLine(cells: string[]): boolean {
  * right price. It is reported, not repaired: only the admin knows whether the
  * quote or the wrapping was the mistake.
  *
+ * Both quoting faults are reported at the line the quote OPENED on, not where
+ * the parser noticed. A field that opens a quote and never closes it runs on
+ * until some later stray quote ends it, and naming that later line sends the
+ * admin to a row that is not the problem.
+ *
  * Newlines inside a quoted field normalize to \n. Excel writes CRLF (the BOM
  * handling below is there for the same exports), and a raw \r kept mid-value
  * renders as a stray character on the client page.
@@ -128,7 +139,7 @@ function splitCsv(text: string): SplitCsvResult {
         else {
           const after = src[i + 1];
           const closes = after === undefined || after === ',' || after === '\n' || after === '\r';
-          if (!closes && danglingAt === 0) danglingAt = lineNo;
+          if (!closes && danglingAt === 0) danglingAt = quoteOpenedAt;
           inQuotes = false;
         }
       } else if (ch === '\n' || ch === '\r') {

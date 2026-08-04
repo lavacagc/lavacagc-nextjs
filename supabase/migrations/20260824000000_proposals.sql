@@ -58,65 +58,69 @@ CREATE TABLE IF NOT EXISTS public.proposal_lines (
 
 CREATE INDEX IF NOT EXISTS idx_proposal_lines_proposal ON public.proposal_lines (proposal_id);
 
+-- What a submission stores of the lines it agreed to: an array whose every
+-- element is a SNAPSHOT, {"id", "title", "price_cents"}, not a bare id.
+--
+-- A CSV re-import replaces proposal_lines wholesale, so the ids in older
+-- submissions stop resolving the first time an admin corrects the estimate, and
+-- there is no FK to hold them (arrays cannot express one). Owner decision D4
+-- keeps every submission as THE record of what was agreed, so the record has to
+-- stay readable without the rows it was built from.
+--
+-- The shape is CHECKed, not just documented: a comment does not stop the API
+-- from persisting bare ids, and the schema is the only layer that outlives the
+-- re-import. Every element must be an object carrying all three keys, at the
+-- right types; extra keys are welcome. The paired counts are the "every" - a
+-- subquery is not allowed in a CHECK, so the elements that satisfy the filter
+-- are counted against the elements that are there.
+--
+-- JSONB is the one place agreed money is stored outside BIGINT, so the whole
+-- number is required here explicitly: `floor() == itself` is what BIGINT does
+-- for every other cents column. Without it 1999.5 is a legal snapshot, and the
+-- browser's sum and the server's re-sum stop agreeing to the cent.
+--
+-- A DOMAIN rather than the same CHECK written out per column: both snapshot
+-- columns below carry exactly this contract, and a copy each is a copy each to
+-- keep in sync. NULL passes it (SQL's rule for CHECK), so nullability stays the
+-- column's own business. There is no CREATE DOMAIN IF NOT EXISTS, hence the
+-- guard - this file is re-runnable like the CREATE TABLEs around it.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE t.typname = 'proposal_line_snapshot' AND n.nspname = 'public'
+  ) THEN
+    CREATE DOMAIN public.proposal_line_snapshot AS JSONB
+      CONSTRAINT proposal_line_snapshot_shape CHECK (
+        jsonb_typeof(VALUE) = 'array'
+        AND jsonb_array_length(jsonb_path_query_array(
+              VALUE, 'strict $[*] ? (@.type() == "object")', '{}', true
+            )) = jsonb_array_length(VALUE)
+        AND jsonb_array_length(jsonb_path_query_array(
+              VALUE,
+              '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.price_cents.type() == "number" && @.price_cents >= 0 && @.price_cents.floor() == @.price_cents)',
+              '{}', true
+            )) = jsonb_array_length(VALUE)
+      );
+  END IF;
+END
+$$;
+
 CREATE TABLE IF NOT EXISTS public.proposal_submissions (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   proposal_id       UUID NOT NULL REFERENCES public.proposals(id) ON DELETE CASCADE,
-  -- The exact configuration the client committed: array of the INCLUDED
-  -- optional lines. Locked lines are always in scope and deliberately absent
-  -- here - a submission cannot even express altering one (WEB-022, enforced at
-  -- the API on top of this shape).
-  --
-  -- Each element is a SNAPSHOT, {"id", "title", "price_cents"}, not a bare id.
-  -- A CSV re-import replaces proposal_lines wholesale, so the ids in older
-  -- submissions stop resolving the first time an admin corrects the estimate,
-  -- and there is no FK to hold them (arrays cannot express one). Owner decision
-  -- D4 keeps every submission as THE record of what was agreed, so the record
-  -- has to stay readable without the rows it was built from.
-  --
-  -- The shape is CHECKed, not just documented: a comment does not stop the API
-  -- from persisting bare ids, and the schema is the only layer that outlives
-  -- the re-import. Every element must be an object carrying all three keys, at
-  -- the right types; extra keys are welcome. The paired counts are the "every"
-  -- - a subquery is not allowed in a CHECK, so the elements that satisfy the
-  -- filter are counted against the elements that are there.
-  --
-  -- JSONB is the one place agreed money is stored outside BIGINT, so the whole
-  -- number is required here explicitly: `floor() == itself` is what BIGINT does
-  -- for every other cents column. Without it 1999.5 is a legal snapshot, and
-  -- the browser's sum and the server's re-sum stop agreeing to the cent.
-  included_lines    JSONB NOT NULL
-    CONSTRAINT proposal_submissions_included_lines_snapshot CHECK (
-      jsonb_typeof(included_lines) = 'array'
-      AND jsonb_array_length(jsonb_path_query_array(
-            included_lines, 'strict $[*] ? (@.type() == "object")', '{}', true
-          )) = jsonb_array_length(included_lines)
-      AND jsonb_array_length(jsonb_path_query_array(
-            included_lines,
-            '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.price_cents.type() == "number" && @.price_cents >= 0 && @.price_cents.floor() == @.price_cents)',
-            '{}', true
-          )) = jsonb_array_length(included_lines)
-    ),
+  -- The exact configuration the client committed: the INCLUDED optional lines,
+  -- snapshotted. Locked lines are always in scope and deliberately absent here
+  -- - a submission cannot even express altering one (WEB-022, enforced at the
+  -- API on top of this shape).
+  included_lines    public.proposal_line_snapshot NOT NULL,
   -- Server-recomputed at submit time from the rows, never trusted from the
   -- client. What the owner alert prints.
   total_cents       BIGINT NOT NULL CHECK (total_cents >= 0),
   -- Free early telemetry (owner-approved concession toward WEB-027): which
   -- optional lines the client flipped at least once while playing. Snapshotted
   -- the same way, checked the same way, and for the same reason.
-  touched_lines     JSONB
-    CONSTRAINT proposal_submissions_touched_lines_snapshot CHECK (
-      touched_lines IS NULL
-      OR (
-        jsonb_typeof(touched_lines) = 'array'
-        AND jsonb_array_length(jsonb_path_query_array(
-              touched_lines, 'strict $[*] ? (@.type() == "object")', '{}', true
-            )) = jsonb_array_length(touched_lines)
-        AND jsonb_array_length(jsonb_path_query_array(
-              touched_lines,
-              '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.price_cents.type() == "number" && @.price_cents >= 0 && @.price_cents.floor() == @.price_cents)',
-              '{}', true
-            )) = jsonb_array_length(touched_lines)
-      )
-    ),
+  touched_lines     public.proposal_line_snapshot,
   ip_address        INET,
   user_agent        TEXT,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
