@@ -15,14 +15,17 @@
 -- the client page sums these in the browser (WEB-023) and the server re-sums
 -- them at submit time, and the two must agree to the cent.
 --
--- Applied and constraint-exercised against a local Postgres on 2026-08-04: a
--- 43-character token accepted and 'short' rejected, a whole-composition
--- snapshot accepted, and a fractional price_cents, a missing `optional` key and
--- an empty included_lines each rejected by the constraint that names them.
--- Nothing else in the pipeline reads this file as SQL - the gate runs lint and
--- tsc, and the acceptance tests assert over its TEXT - so the DDL gets its only
--- real reading from a database. The PR's Supabase Preview check replays every
--- migration on one before merge, and production is hand-applied at go-live.
+-- Nothing else in the pipeline reads this file as SQL: the gate runs lint and
+-- tsc, and the acceptance tests assert over its TEXT, so the DDL gets its only
+-- real reading from a database. What follows from that is a standing rule
+-- rather than a note about one afternoon. Every revision of this file is
+-- applied to a throwaway local Postgres and its constraints exercised there
+-- before that revision is called finished: a 43-character token accepted and a
+-- short one rejected, a whole-composition snapshot accepted, and a fractional
+-- price_cents, a missing `optional` key, an empty included_lines and a
+-- total_cents that disagrees with its snapshot each rejected by the constraint
+-- that names them. The PR's Supabase Preview check then replays every migration
+-- on a real database before merge, and production is hand-applied at go-live.
 
 CREATE TABLE IF NOT EXISTS public.proposals (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -154,6 +157,14 @@ CREATE DOMAIN public.proposal_line_snapshot AS JSONB
 -- IMMUTABLE because the same array always sums to the same cents. search_path
 -- is pinned empty and everything the body touches is pg_catalog's own, so the
 -- constraint cannot be made to mean something else by a schema in front of it.
+--
+-- The text reaches BIGINT through NUMERIC because jsonb keeps the scale it was
+-- handed: 1999.0 is whole cents and the domain above accepts it, but ->>
+-- renders it '1999.0', which BIGINT will not parse. Casting straight across
+-- rejected that row with a bare syntax error naming no constraint, in a file
+-- whose whole discipline is that a rejection says which rule was broken. The
+-- whole-cents rule stays the domain's, and the domain runs first: this step
+-- only reads a number it has already vouched for.
 CREATE FUNCTION public.proposal_snapshot_total(snapshot JSONB) RETURNS BIGINT
   LANGUAGE sql
   IMMUTABLE
@@ -161,9 +172,23 @@ CREATE FUNCTION public.proposal_snapshot_total(snapshot JSONB) RETURNS BIGINT
   PARALLEL SAFE
   SET search_path = ''
   AS $$
-    SELECT COALESCE(SUM((line ->> 'price_cents')::BIGINT), 0)::BIGINT
+    SELECT COALESCE(SUM(((line ->> 'price_cents')::NUMERIC)::BIGINT), 0)::BIGINT
     FROM jsonb_array_elements(snapshot) AS line;
   $$;
+
+-- PostgREST publishes every scalar function in `public`, and Supabase's
+-- bootstrap ALTER DEFAULT PRIVILEGES grants EXECUTE on new ones to anon and
+-- authenticated, so without this the function answers
+-- POST /rest/v1/rpc/proposal_snapshot_total for anyone holding the publishable
+-- key. It reads only its argument and touches no table, so there is nothing to
+-- disclose, but this file's posture is that the anon key gets nothing, and an
+-- anon caller can still hand it an arbitrarily large array to sum.
+--
+-- service_role keeps EXECUTE, explicitly rather than by inheritance: Postgres
+-- checks EXECUTE at INSERT time for a function a CHECK calls, so a revoke that
+-- reached the role writing proposal_submissions would break every submission.
+REVOKE EXECUTE ON FUNCTION public.proposal_snapshot_total(JSONB) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.proposal_snapshot_total(JSONB) TO service_role;
 
 CREATE TABLE IF NOT EXISTS public.proposal_submissions (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),

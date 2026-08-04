@@ -722,7 +722,13 @@ test('AC7: all three tables are deny-by-default - RLS on, zero policies, cents-o
   const ddl = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
   expect(ddl).toMatch(/price_cents\s+BIGINT/);
   expect(ddl).toMatch(/total_cents\s+BIGINT/);
-  expect(ddl).not.toMatch(/NUMERIC|DECIMAL|FLOAT|REAL|MONEY/i);
+  // The rule is about STORED types, so the dollar-quoted function body is read
+  // out with the comments: a column cannot be declared inside one, and the sum
+  // function passes through NUMERIC on its way to BIGINT to read a whole-cents
+  // value jsonb renders as '1999.0'. That is arithmetic in flight, not money at
+  // rest, and AC7b pins the exact expression it is allowed to be.
+  const stored = ddl.replace(/\$\$[\s\S]*?\$\$/g, '');
+  expect(stored).not.toMatch(/NUMERIC|DECIMAL|FLOAT|REAL|MONEY/i);
 });
 
 test('AC7b: a submission snapshots the composition it agreed to (D4 survives a re-import)', () => {
@@ -794,11 +800,28 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
   // A CHECK cannot aggregate, so the sum is a function it calls. IMMUTABLE and
   // reading only its argument is what makes it legal there; a body that reached
   // for a table would be a constraint the planner is entitled to skip.
+  // Read out of the function's own declaration, not from its first line to the
+  // end of the file: an assertion that may match anything downstream is one the
+  // whole proposal_submissions table and the RLS block can satisfy for it.
   const fn = ddl.slice(ddl.indexOf('CREATE FUNCTION public.proposal_snapshot_total'));
-  expect(fn, 'the snapshot sum belongs to a function the CHECK can call').toContain('RETURNS BIGINT');
-  expect(fn.slice(0, fn.indexOf('$$;'))).toMatch(/IMMUTABLE/);
-  expect(fn).toMatch(/SUM\(\(line ->> 'price_cents'\)::BIGINT\)/);
-  expect(fn).toMatch(/FROM jsonb_array_elements\(snapshot\)/);
+  const decl = fn.slice(0, fn.indexOf('$$;'));
+  expect(decl, 'the snapshot sum belongs to a function the CHECK can call').toContain('RETURNS BIGINT');
+  expect(decl).toMatch(/IMMUTABLE/);
+  // Through NUMERIC on the way to BIGINT: jsonb keeps the scale it was handed,
+  // so the whole-cents 1999.0 the domain accepts renders as '1999.0', which
+  // BIGINT will not parse. Casting straight across rejected that row with a
+  // bare syntax error naming no constraint.
+  expect(decl, "a domain-valid '1999.0' must sum rather than raise a bare cast error")
+    .toMatch(/SUM\(\(\(line ->> 'price_cents'\)::NUMERIC\)::BIGINT\)/);
+  expect(decl).toMatch(/FROM jsonb_array_elements\(snapshot\)/);
+  // PostgREST publishes scalar functions in `public` and Supabase's bootstrap
+  // grants EXECUTE on new ones to anon, so the revoke is the whole of what
+  // keeps this off /rest/v1/rpc. service_role keeps it because Postgres checks
+  // EXECUTE at insert time for a function a CHECK calls.
+  expect(ddl, 'the sum function must not be left as an anon-callable RPC')
+    .toContain('REVOKE EXECUTE ON FUNCTION public.proposal_snapshot_total(JSONB) FROM PUBLIC, anon, authenticated;');
+  expect(ddl, 'the role that writes submissions must keep EXECUTE')
+    .toContain('GRANT EXECUTE ON FUNCTION public.proposal_snapshot_total(JSONB) TO service_role;');
 });
 
 test('AC8: the token is 32 random bytes base64url, the intake recipe', () => {
