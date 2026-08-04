@@ -273,16 +273,24 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
   expect(ddl).toMatch(/included_lines\s+JSONB\s+NOT NULL/);
   expect(ddl).toMatch(/jsonb_typeof\(included_lines\)\s*=\s*'array'/);
   // The {id, title, price_cents} element shape is CHECKed per element, on both
-  // snapshot columns, so the API cannot persist a bare id.
+  // snapshot columns, so the API cannot persist a bare id. The clauses are read
+  // out of the jsonpath the constraint actually runs, not matched loosely across
+  // the file: a comment promising the shape is what let bare ids stay green here
+  // once already.
   for (const col of ['included_lines', 'touched_lines']) {
-    const constraint = new RegExp(
-      `CONSTRAINT proposal_submissions_${col}_snapshot CHECK \\(`
-      + `[\\s\\S]*?jsonb_path_query_array\\(\\s*\\n?\\s*${col},[\\s\\S]*?`
-      + `@\\.id\\.type\\(\\) == "string"[\\s\\S]*?`
-      + `@\\.title\\.type\\(\\) == "string"[\\s\\S]*?`
-      + `@\\.price_cents\\.type\\(\\) == "number"`,
-    );
-    expect(ddl, `${col} needs a per-element snapshot CHECK`).toMatch(constraint);
+    const at = ddl.indexOf(`CONSTRAINT proposal_submissions_${col}_snapshot CHECK (`);
+    expect(at, `${col} needs a per-element snapshot CHECK`).toBeGreaterThan(-1);
+    const [filter] = ddl.slice(at).match(/'\$\[\*\] \? \([^']*\)'/) || [];
+    expect(filter, `${col} needs a per-element jsonpath filter`).toBeTruthy();
+    expect(filter).toContain('@.id.type() == "string"');
+    expect(filter).toContain('@.title.type() == "string"');
+    expect(filter).toContain('@.price_cents.type() == "number"');
+    expect(filter).toContain('@.price_cents >= 0');
+    // JSONB is the one place agreed money escapes BIGINT, so the whole number is
+    // demanded here too: without this clause {"price_cents": 1999.5} is a legal
+    // snapshot and the browser's sum stops matching the server's re-sum.
+    expect(filter, `${col} must reject a fractional price_cents such as 1999.5`)
+      .toContain('@.price_cents.floor() == @.price_cents');
   }
   // The total stays server-computed money, not a client number.
   expect(ddl).toMatch(/total_cents\s+BIGINT NOT NULL CHECK \(total_cents >= 0\)/);

@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS public.proposal_submissions (
   -- the right types; extra keys are welcome. The paired counts are the "every"
   -- - a subquery is not allowed in a CHECK, so the elements that satisfy the
   -- filter are counted against the elements that are there.
+  --
+  -- JSONB is the one place agreed money is stored outside BIGINT, so the whole
+  -- number is required here explicitly: `floor() == itself` is what BIGINT does
+  -- for every other cents column. Without it 1999.5 is a legal snapshot, and
+  -- the browser's sum and the server's re-sum stop agreeing to the cent.
   included_lines    JSONB NOT NULL
     CONSTRAINT proposal_submissions_included_lines_snapshot CHECK (
       jsonb_typeof(included_lines) = 'array'
@@ -87,7 +92,7 @@ CREATE TABLE IF NOT EXISTS public.proposal_submissions (
           )) = jsonb_array_length(included_lines)
       AND jsonb_array_length(jsonb_path_query_array(
             included_lines,
-            '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.price_cents.type() == "number" && @.price_cents >= 0)',
+            '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.price_cents.type() == "number" && @.price_cents >= 0 && @.price_cents.floor() == @.price_cents)',
             '{}', true
           )) = jsonb_array_length(included_lines)
     ),
@@ -107,7 +112,7 @@ CREATE TABLE IF NOT EXISTS public.proposal_submissions (
             )) = jsonb_array_length(touched_lines)
         AND jsonb_array_length(jsonb_path_query_array(
               touched_lines,
-              '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.price_cents.type() == "number" && @.price_cents >= 0)',
+              '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.price_cents.type() == "number" && @.price_cents >= 0 && @.price_cents.floor() == @.price_cents)',
               '{}', true
             )) = jsonb_array_length(touched_lines)
       )
