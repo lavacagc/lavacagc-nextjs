@@ -61,17 +61,25 @@ CREATE INDEX IF NOT EXISTS idx_proposal_lines_proposal ON public.proposal_lines 
 CREATE TABLE IF NOT EXISTS public.proposal_submissions (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   proposal_id       UUID NOT NULL REFERENCES public.proposals(id) ON DELETE CASCADE,
-  -- The exact configuration the client committed: array of INCLUDED optional
-  -- line ids. Locked lines are always in scope and deliberately absent here -
-  -- a submission cannot even express altering one (WEB-022, enforced at the
-  -- API on top of this shape).
-  included_line_ids JSONB NOT NULL,
+  -- The exact configuration the client committed: array of the INCLUDED
+  -- optional lines. Locked lines are always in scope and deliberately absent
+  -- here - a submission cannot even express altering one (WEB-022, enforced at
+  -- the API on top of this shape).
+  --
+  -- Each element is a SNAPSHOT, {"id", "title", "price_cents"}, not a bare id.
+  -- A CSV re-import replaces proposal_lines wholesale, so the ids in older
+  -- submissions stop resolving the first time an admin corrects the estimate,
+  -- and there is no FK to hold them (arrays cannot express one). Owner decision
+  -- D4 keeps every submission as THE record of what was agreed, so the record
+  -- has to stay readable without the rows it was built from.
+  included_lines    JSONB NOT NULL CHECK (jsonb_typeof(included_lines) = 'array'),
   -- Server-recomputed at submit time from the rows, never trusted from the
   -- client. What the owner alert prints.
   total_cents       BIGINT NOT NULL CHECK (total_cents >= 0),
   -- Free early telemetry (owner-approved concession toward WEB-027): which
-  -- optional lines the client flipped at least once while playing.
-  touched_line_ids  JSONB,
+  -- optional lines the client flipped at least once while playing. Snapshotted
+  -- the same way and for the same reason.
+  touched_lines     JSONB CHECK (touched_lines IS NULL OR jsonb_typeof(touched_lines) = 'array'),
   ip_address        INET,
   user_agent        TEXT,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()

@@ -45,6 +45,40 @@ test('AC2: RFC 4180 quoting survives - embedded commas and doubled quotes', () =
   expect(res.lines[3].description).toBe('60" semi-custom, quartz top');
 });
 
+test('AC2b: a quote mid-field is data, not a wrapper - inch marks survive intact', () => {
+  // The corruption this guards: treating the inch marks as field quoting parsed
+  // to a clean 3-column row, deleted both quotes, and reported ok.
+  const res = parseProposalCsv('title,description,price\nTile 12" x 24" porcelain,Sets in thinset,2900');
+  expect(res.errors).toEqual([]);
+  expect(res.lines[0].title).toBe('Tile 12" x 24" porcelain');
+  expect(res.lines[0].priceCents).toBe(290000);
+
+  // A field that really does open with a quote and never closes it fails loudly
+  // rather than swallowing the rest of the file.
+  const unterminated = parseProposalCsv('title,description,price\n"Cabinets,,1000\nTile,,2000');
+  expect(unterminated.ok).toBe(false);
+  expect(unterminated.errors[0]).toContain('Row 2');
+  expect(unterminated.errors[0]).toContain('never closed');
+});
+
+test('AC2c: blank and empty rows fail with the row number the admin sees in their editor', () => {
+  // Interior blank line on file line 3; the bad price is on file line 4.
+  const res = parseProposalCsv('title,description,price\nCabinets,,1000\n\nTile,,TBD\n');
+  expect(res.ok).toBe(false);
+  expect(res.errors.some((e) => e.startsWith('Row 3') && e.includes('blank'))).toBe(true);
+  expect(res.errors.some((e) => e.startsWith('Row 4') && e.includes('TBD'))).toBe(true);
+
+  // ",," is a malformed data row, not whitespace: dropping it silently is the
+  // dropped line this parser exists to prevent.
+  const empty = parseProposalCsv('title,description,price\nCabinets,,1000\n,,\n');
+  expect(empty.ok).toBe(false);
+  expect(empty.errors[0]).toContain('Row 3');
+  expect(empty.errors[0]).toContain('empty title');
+
+  // A trailing newline is still punctuation, not a row.
+  expect(parseProposalCsv('title,description,price\nCabinets,,1000\n\n').ok).toBe(true);
+});
+
 test('AC3: money is string-split, never floated, and dirty prices fail with their row number', () => {
   // The parseFloat trap this guards against: 19.99 * 100 === 1998.9999999...
   expect(parsePriceCents('19.99')).toBe(1999);
@@ -86,6 +120,43 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
   expect(categorizeLine('Demolition of old cabinets').optional).toBe(false);
 });
 
+test('AC5b: matching is word-aware - the most specific keyword wins, fragments never match', () => {
+  // "disposal" is a demolition keyword; "garbage disposal" is the appliance,
+  // and being longer it wins. Locking it would strip the client's toggle.
+  const disposal = categorizeLine('Garbage disposal - InSinkErator');
+  expect(disposal.key).toBe('appliances');
+  expect(disposal.optional).toBe(true);
+  // ... while debris disposal is still demolition, and still locked.
+  expect(categorizeLine('Disposal of demo debris').key).toBe('demolition');
+  expect(categorizeLine('Disposal of demo debris').optional).toBe(false);
+
+  // A keyword must never match inside a longer word: "range" is not "Arrange",
+  // so this falls through to the locked fail-safe.
+  const arrange = categorizeLine('Arrange delivery of materials');
+  expect(arrange.key).toBe(UNRECOGNIZED_CATEGORY.key);
+  expect(arrange.optional).toBe(false);
+
+  // Word-aware must not cost the registry its plurals.
+  expect(categorizeLine('Cabinets - shaker white').key).toBe('cabinets');
+  expect(categorizeLine('Cabinet pulls and knobs').key).toBe('cabinets');
+  expect(categorizeLine('Backsplashes - subway').key).toBe('tile');
+});
+
+test('AC5c: the registry hands out copies - a per-line override cannot poison the fail-safe', () => {
+  const verdict = categorizeLine('Zorble calibration');
+  expect(verdict).not.toBe(UNRECOGNIZED_CATEGORY);
+  // The documented consumer pattern: the admin flips one line in the preview.
+  (verdict as { optional: boolean }).optional = true;
+  // Every later unknown line must still come back locked.
+  expect(categorizeLine('Blorp installation').optional).toBe(false);
+  expect(UNRECOGNIZED_CATEGORY.optional).toBe(false);
+  expect(categorizeLine('Vanity - double sink')).not.toBe(categorizeLine('Vanity - double sink'));
+  // The registry itself is not a scratch object either.
+  expect(Object.isFrozen(PROPOSAL_CATEGORIES)).toBe(true);
+  expect(Object.isFrozen(PROPOSAL_CATEGORIES[0])).toBe(true);
+  expect(Object.isFrozen(UNRECOGNIZED_CATEGORY)).toBe(true);
+});
+
 test('AC6: every category carries a lucide icon key for WEB-024', () => {
   for (const cat of PROPOSAL_CATEGORIES) {
     expect(cat.icon, `category ${cat.key} needs an icon`).toMatch(/^[a-z0-9-]+$/);
@@ -106,6 +177,17 @@ test('AC7: all three tables are deny-by-default - RLS on, zero policies, cents-o
   expect(ddl).toMatch(/price_cents\s+BIGINT/);
   expect(ddl).toMatch(/total_cents\s+BIGINT/);
   expect(ddl).not.toMatch(/NUMERIC|DECIMAL|FLOAT|REAL|MONEY/i);
+});
+
+test('AC7b: a submission snapshots the composition it agreed to (D4 survives a re-import)', () => {
+  const sql = read('supabase/migrations/20260824000000_proposals.sql');
+  // Bare line ids would dangle the moment a CSV re-import replaces the rows.
+  expect(sql).not.toContain('included_line_ids');
+  expect(sql).toMatch(/included_lines\s+JSONB\s+NOT NULL/);
+  expect(sql).toMatch(/jsonb_typeof\(included_lines\)\s*=\s*'array'/);
+  expect(sql).toMatch(/"id", "title", "price_cents"/);
+  // The total stays server-computed money, not a client number.
+  expect(sql).toMatch(/total_cents\s+BIGINT NOT NULL CHECK \(total_cents >= 0\)/);
 });
 
 test('AC8: the token is 32 random bytes base64url, the intake recipe', () => {

@@ -60,6 +60,9 @@ supabase/.temp/
 # (A gate run requires a clean tree; these are session scratch, owner notes,
 # and local tooling config - commit any of them deliberately if that changes.)
 /claude.md
+# macOS checkouts set core.ignorecase, which makes /claude.md swallow the
+# tracked project CLAUDE.md while Linux CI tracks it normally. Never silently.
+!/CLAUDE.md
 /legal/
 /*.png
 /*.jpeg
