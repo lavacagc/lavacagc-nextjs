@@ -32,13 +32,23 @@
  *      only when a plumbing noun sat beside it - handed the client a toggle on
  *      every one of those, because the finish noun was then the only hit left.
  *   LAYER 2, LABELING. Which locked category the line wears - its slug and its
- *      WEB-024 icon - is cosmetic, and THAT is what the scope vocabulary picks:
- *      plumbing nouns label it rough plumbing, wiring nouns electrical, duct and
- *      vent nouns mechanical, and a title naming none of them takes the generic
- *      locked slug. The scope word may sit anywhere in the title, not beside the
- *      verb, so a line naming two trades takes the first of them in registry
+ *      WEB-024 icon - is cosmetic, and THAT is what a trade's subject vocabulary
+ *      picks: plumbing nouns label it rough plumbing, wiring nouns electrical,
+ *      duct and vent nouns mechanical, and a title naming none of them takes the
+ *      generic locked slug. The word may sit anywhere in the title, not beside
+ *      the verb, so a line naming two trades takes the first of them in registry
  *      order. A cosmetic label is the most this layer can get wrong, and the
  *      admin sees the line in the import preview either way.
+ *
+ * A trade's subject vocabulary is its own `keywords` plus the finishes it
+ * `serves`, folded in code. It is NOT a list of its own, and that is load-
+ * bearing: a separate one held words that name the work itself - "outlet",
+ * "receptacle", "pipe" - which licensed a verb but produced no hit, so a title
+ * like "New outlets at backsplash" had the finish noun as its only hit and the
+ * client got a toggle on the circuit. Words that name work are keywords, and
+ * lock. Words that only label are the finishes, and every one of them is a
+ * keyword of an OPTIONAL category, so labeling without locking is possible only
+ * for the client's own selections.
  *
  * The cost of Layer 1 is a line like "Move-in cleaning", which locks on the verb
  * and wears the generic slug. That is the fail-safe pointing the safe way: one
@@ -85,8 +95,9 @@ export interface ProposalCategory {
   /** Whole-word (case-insensitive) phrases of the line title that select this category on their own. */
   readonly keywords: readonly string[];
   /**
-   * Phrases that select this category ONLY when the title also names one of
-   * `scope`. This is Layer 2, labeling, and nothing else: a verb of manner
+   * Phrases that select this category ONLY when the title also names the
+   * category's subject - its own `keywords`, or one of the finishes it
+   * `serves`. This is Layer 2, labeling, and nothing else: a verb of manner
    * always locks the line through RELOCATION_VERBS below, and these entries
    * only decide which locked category it wears. Moving a gas line reads as
    * rough plumbing here; moving an outlet reads as electrical instead, and
@@ -94,10 +105,20 @@ export interface ProposalCategory {
    */
   readonly scopedKeywords?: readonly string[];
   /**
-   * The vocabulary a `scopedKeywords` phrase has to co-occur with before it
-   * labels the line. Anywhere in the title counts - adjacency is not checked.
+   * The FINISHES this trade acts on, for labeling only: "Shift toilet 12
+   * inches" is rough plumbing because a toilet is what plumbing serves.
+   * Anywhere in the title counts - adjacency is not checked.
+   *
+   * Every entry here must be a keyword of an OPTIONAL category, and AC5e
+   * asserts it. That is the whole guard: a word that labels without locking is
+   * safe only when it names a client selection. A word that names the WORK -
+   * "outlet", "pipe", "duct" - must be a `keyword` instead, or the finish noun
+   * beside it answers for the line and the client gets a toggle on a circuit.
+   * There is deliberately no third list: the vocabulary that licenses a verb is
+   * `keywords` plus `serves`, folded in code, so a word cannot sit in a locked
+   * category and quietly fail to lock.
    */
-  readonly scope?: readonly string[];
+  readonly serves?: readonly string[];
 }
 
 /** What the registry answers with: a category's verdict, without its keywords. */
@@ -107,7 +128,8 @@ export type ProposalCategoryVerdict = Pick<ProposalCategory, 'key' | 'icon' | 'o
  * The verbs of manner (Layer 1). Each one locks the line wherever it appears as
  * a whole word: they are listed on the generic locked category below, so the
  * lock is structural rather than a rule applied on top, and repeated as
- * `scopedKeywords` on the trades that can claim a better slug for them.
+ * `scopedKeywords` on the trades that can claim a better slug for them, where
+ * they label only and never decide the lock.
  *
  * The removal verbs - remove, strip out, haul away, gut, tear out - are not
  * here: they name demolition itself, so they sit in that category's own
@@ -186,42 +208,48 @@ const REGISTRY: ProposalCategory[] = [
   //
   // The verbs are listed here as SCOPED because they are true of any trade, and
   // this is only the claim on the slug: taking them as plumbing on their own put
-  // a wrench icon on "Relocate outlet and wiring" and on "Move-in cleaning". The
-  // named line runs are keywords rather than scope because "gas line" is rough
-  // plumbing whether or not anything moves - and bare "line" is deliberately NOT
-  // scope, or "Move dryer vent line" would take a wrench off the word "line".
+  // a wrench icon on "Relocate outlet and wiring" and on "Move-in cleaning".
+  // Bare "line" is in no list at all, or "Move dryer vent line" would take a
+  // wrench off the word "line"; the named runs carry it instead.
   //
-  // The trade's own name is a keyword too, and not only scope. Naming the trade
-  // plainly is the commonest way an estimator writes rough work ("Plumbing for
-  // farmhouse sink"), and a word that only licenses a verb produces no hit of
-  // its own - so the fixture in the same title answered for the whole line and
-  // the client got a toggle on the rough-in.
+  // The trade's own name is a keyword too, and so is its pipework. A word that
+  // only licenses a verb produces no hit of its own, so the fixture in the same
+  // title answered for the whole line and the client got a toggle on the
+  // rough-in: that was true of "plumbing" ("Plumbing for farmhouse sink") and
+  // just as true of "pipe" ("Trench and pipe for island sink"). Only the
+  // FIXTURES the trade serves label without locking, below.
   {
     key: 'plumbing_rough',
     icon: 'wrench',
     optional: false,
     keywords: [
       'plumbing', 'rough-in', 'supply line', 'water line', 'gas line',
-      'drain line', 'waste line', 'drain', 'valve',
+      'drain line', 'waste line', 'drain', 'valve', 'pipe', 'piping',
     ],
     scopedKeywords: RELOCATION_VERBS,
-    scope: [
-      'plumbing', 'pipe', 'piping', 'gas', 'water', 'waste', 'drain',
-      'supply', 'sink', 'toilet', 'tub', 'bathtub', 'shower',
-    ],
+    serves: ['sink', 'toilet'],
   },
   // Moving an outlet, a circuit or a light is rough electrical, and the title
-  // names the fitting rather than the trade ("Move backsplash outlet").
+  // names the fitting rather than the trade ("Move backsplash outlet"). The
+  // fittings are keywords for the same reason the pipework is: a receptacle or
+  // a switch is never a client selection, and leaving them label-only handed
+  // the client a toggle on "New outlets at backsplash".
+  //
+  // The panel goes in as phrases, not bare: a bare "panel" is the shaker door
+  // and the panel-ready refrigerator, which are selections. "switch" does go in
+  // bare, and locks "Switch to matte black hardware" with it - the safe
+  // direction, and one badge for the admin, against reading "Switch and dimmer
+  // for recessed lights" as a light the client may drop.
   {
     key: 'electrical_rough',
     icon: 'zap',
     optional: false,
-    keywords: ['electrical', 'wiring', 'circuit', 'gfci'],
-    scopedKeywords: RELOCATION_VERBS,
-    scope: [
+    keywords: [
       'electrical', 'wiring', 'circuit', 'gfci', 'outlet', 'receptacle',
-      'switch', 'panel', 'light', 'lighting', 'sconce', 'chandelier',
+      'switch', 'electrical panel', 'sub panel', 'panel upgrade',
     ],
+    scopedKeywords: RELOCATION_VERBS,
+    serves: ['light', 'lighting', 'sconce', 'chandelier'],
   },
   // Venting and ducting are a roof or wall penetration and a run through the
   // framing, so they are never the client's to remove - but the title almost
@@ -236,7 +264,7 @@ const REGISTRY: ProposalCategory[] = [
     optional: false,
     keywords: ['vent', 'venting', 'duct', 'ductwork', 'ducting', 'exhaust', 'flue'],
     scopedKeywords: RELOCATION_VERBS,
-    scope: ['vent', 'venting', 'duct', 'ductwork', 'ducting', 'exhaust', 'flue', 'hood'],
+    serves: ['hood'],
   },
   { key: 'compliance', icon: 'clipboard-check', optional: false, keywords: ['permit', 'inspection'] },
   // Layer 1's floor, and the last locked category so every trade above claims a
@@ -253,7 +281,7 @@ const REGISTRY: ProposalCategory[] = [
   { key: 'countertops', icon: 'square', optional: true, keywords: ['countertop', 'counter top', 'quartz top', 'granite top'] },
   { key: 'tile', icon: 'grid-3x3', optional: true, keywords: ['tile', 'backsplash'] },
   { key: 'fixtures', icon: 'shower-head', optional: true, keywords: ['fixture', 'faucet', 'shower door', 'toilet', 'sink'] },
-  { key: 'lighting', icon: 'lamp', optional: true, keywords: ['lighting', 'sconce', 'chandelier', 'recessed light'] },
+  { key: 'lighting', icon: 'lamp', optional: true, keywords: ['lighting', 'light', 'sconce', 'chandelier', 'recessed light'] },
   { key: 'hardware', icon: 'grip', optional: true, keywords: ['hardware', 'pull', 'knob', 'towel bar'] },
   { key: 'appliances', icon: 'refrigerator', optional: true, keywords: ['appliance', 'garbage disposal', 'range hood', 'vent hood', 'range', 'dishwasher', 'refrigerator', 'microwave', 'hood'] },
 ];
@@ -268,7 +296,7 @@ export const PROPOSAL_CATEGORIES: readonly ProposalCategory[] = Object.freeze(
     ...cat,
     keywords: Object.freeze([...cat.keywords]),
     scopedKeywords: Object.freeze([...(cat.scopedKeywords || [])]),
-    scope: Object.freeze([...(cat.scope || [])]),
+    serves: Object.freeze([...(cat.serves || [])]),
   })),
 );
 
@@ -330,12 +358,16 @@ function collectHits(haystack: string): KeywordHit[] {
   const hits: KeywordHit[] = [];
   for (const cat of PROPOSAL_CATEGORIES) {
     // A verb of manner claims THIS category's slug only when the title also
-    // names its scope, anywhere in the title. Sitting the verb out here costs
-    // the line nothing but a label: the generic locked category lists the same
-    // verbs unscoped, so Layer 1 has already locked it.
-    const keywords = cat.scopedKeywords.length && mentionsAny(haystack, cat.scope)
-      ? [...cat.keywords, ...cat.scopedKeywords]
-      : cat.keywords;
+    // names the category's subject - its own keywords, or a finish it serves -
+    // anywhere in the title. The two lists are folded HERE rather than written
+    // out as a third one, so every word that licenses a verb either locks on
+    // its own or is a client selection, and there is no third state.
+    //
+    // Sitting the verb out costs the line nothing but a label: the generic
+    // locked category lists the same verbs unscoped, so Layer 1 has locked it.
+    const licensed = cat.scopedKeywords.length
+      && (mentionsAny(haystack, cat.keywords) || mentionsAny(haystack, cat.serves));
+    const keywords = licensed ? [...cat.keywords, ...cat.scopedKeywords] : cat.keywords;
     for (const keyword of keywords) {
       const matcher = matcherFor(keyword);
       matcher.lastIndex = 0;

@@ -64,6 +64,13 @@ export const MAX_PRICE_CENTS = 1_000_000_000;
 interface RawRow {
   lineNo: number;
   cells: string[];
+  /**
+   * Whether any field on this row opened a quote. `""` is an empty value that
+   * was WRITTEN, not an empty line, and the two are otherwise indistinguishable
+   * once the quotes are consumed - so this is what keeps a `""` row out of the
+   * blank-line handling below and gets it validated like the data row it is.
+   */
+  quoted: boolean;
 }
 
 /**
@@ -93,12 +100,14 @@ interface SplitCsvResult {
 }
 
 /**
- * A row that is a blank file line: one cell, nothing in it. A `,,` row is NOT
- * this - it has the column count of real data and an empty title, and it has to
- * reach validation rather than vanish.
+ * A row that is a blank file line: one cell, nothing written on the line at all.
+ * A `,,` row is NOT this - it has the column count of real data and an empty
+ * title, and it has to reach validation rather than vanish. Neither is a `""`
+ * row: the quotes are an empty value the admin typed, so it is a one-column data
+ * row and must fail on the column count like any other.
  */
-function isBlankLine(cells: string[]): boolean {
-  return cells.length === 1 && cells[0].trim() === '';
+function isBlankLine(row: RawRow): boolean {
+  return !row.quoted && row.cells.length === 1 && row.cells[0].trim() === '';
 }
 
 /**
@@ -167,6 +176,7 @@ function splitCsv(text: string): SplitCsvResult {
   let inQuotes = false;
   let lineNo = 1;
   let rowLineNo = 1;
+  let rowQuoted = false;
   let quoteOpenedAt = 0;
   let danglingAt = 0;
   // Normalize BOM away so the header check does not fail on an Excel export.
@@ -197,23 +207,33 @@ function splitCsv(text: string): SplitCsvResult {
     } else if (ch === '"' && cell.trim() === '') {
       inQuotes = true;
       cell = '';
+      rowQuoted = true;
       quoteOpenedAt = lineNo;
     } else if (ch === ',') {
       cells.push(cell); cell = '';
     } else if (ch === '\n' || ch === '\r') {
       if (ch === '\r' && src[i + 1] === '\n') i++;
       cells.push(cell); cell = '';
-      rows.push({ lineNo: rowLineNo, cells }); cells = [];
+      rows.push({ lineNo: rowLineNo, cells, quoted: rowQuoted }); cells = [];
+      rowQuoted = false;
       lineNo++;
       rowLineNo = lineNo;
     } else {
       cell += ch;
     }
   }
-  if (cell.length > 0 || cells.length > 0) { cells.push(cell); rows.push({ lineNo: rowLineNo, cells }); }
+  // `rowQuoted` is what makes the last line a row when it is only `""`. Testing
+  // the buffers alone missed it - a quoted empty field leaves both empty, so the
+  // row was never pushed and the file imported one line short, silently. The
+  // three together say whether the line exists at all; the guard is only here to
+  // keep a trailing newline, which resets all of them, from inventing a row.
+  if (cell.length > 0 || cells.length > 0 || rowQuoted) {
+    cells.push(cell);
+    rows.push({ lineNo: rowLineNo, cells, quoted: rowQuoted });
+  }
   // A trailing newline is punctuation, not a row. Interior blank lines are NOT
   // dropped: dropping them renumbered every later error.
-  while (rows.length > 0 && isBlankLine(rows[rows.length - 1].cells)) rows.pop();
+  while (rows.length > 0 && isBlankLine(rows[rows.length - 1])) rows.pop();
 
   // Dangling first, and unconditionally: it cannot be the later of the two.
   const quoteFault: QuoteFault | null = danglingAt > 0
@@ -287,8 +307,9 @@ export function parseProposalCsv(text: string): ProposalCsvResult {
   }
 
   const lines: ParsedProposalLine[] = [];
-  dataRows.forEach(({ lineNo: rowNo, cells }) => {
-    if (isBlankLine(cells)) {
+  dataRows.forEach((row) => {
+    const { lineNo: rowNo, cells } = row;
+    if (isBlankLine(row)) {
       errors.push(`Row ${rowNo}: blank line. Remove it - every row must be ${expected.join(',')}.`);
       return;
     }

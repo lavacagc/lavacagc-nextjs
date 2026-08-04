@@ -184,6 +184,26 @@ test('AC2c: blank and empty rows fail with the row number the admin sees in thei
 
   // A trailing newline is still punctuation, not a row.
   expect(parseProposalCsv('title,description,price\nCabinets,,1000\n\n').ok).toBe(true);
+
+  // `""` is an empty value the admin WROTE, so it is a one-column data row and
+  // must fail on the column count exactly as a bare `x` there does. A quoted
+  // empty field leaves both scanner buffers empty, so testing those alone
+  // dropped the row entirely and the file imported one line short - silently,
+  // which is the one outcome this parser exists to refuse.
+  const quotedEmptyLast = parseProposalCsv('title,description,price\nTile,,100\n""');
+  expect(quotedEmptyLast.ok, 'a `""` last row is data, not a blank line').toBe(false);
+  expect(quotedEmptyLast.lines).toHaveLength(0);
+  expect(quotedEmptyLast.errors[0]).toContain('Row 3');
+  expect(quotedEmptyLast.errors[0]).toContain('got 1');
+  // Same row, same verdict, wherever it sits and however it is padded.
+  expect(parseProposalCsv('title,description,price\nTile,,100\n"" ').errors[0]).toContain('Row 3');
+  const quotedEmptyInterior = parseProposalCsv('title,description,price\n""\nTile,,100');
+  expect(quotedEmptyInterior.ok).toBe(false);
+  expect(quotedEmptyInterior.errors[0]).toContain('Row 2');
+  // ... while a quoted empty CELL in a well-formed row is just an empty value.
+  const quotedCell = parseProposalCsv('title,description,price\nTile,"",100');
+  expect(quotedCell.ok).toBe(true);
+  expect(quotedCell.lines[0].description).toBe('');
 });
 
 test('AC3: money is string-split, never floated, and dirty prices fail with their row number', () => {
@@ -323,6 +343,22 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
     'Electrical work for new range',
     'Update electrical at backsplash outlets',
     'Rough carpentry at soffit',
+    // The fittings and the pipework, named without the trade. These words sat
+    // in a second list that licensed a verb but produced no hit of its own, so
+    // the finish noun in the same title answered for the whole line and the
+    // client got a toggle that deletes a circuit, a receptacle or a pipe run.
+    'New outlets at backsplash',
+    'Add outlet for microwave',
+    'Outlet and switch at vanity',
+    'Receptacle above countertop',
+    'Switch and dimmer for recessed lights',
+    'Panel upgrade for new appliances',
+    'New gas piping to range',
+    'Pipe new water supply to island sink',
+    'Trench and pipe for island sink',
+    'Dedicated circuit for range',
+    'Wire new dishwasher circuit',
+    'Vanity plumbing connections',
     // The removal verbs in the particle form the estimator actually wrote.
     // Listing only "strip out"/"rip out"/"tear-out"/"haul away" locked those
     // exact phrasings and unlocked every neighbouring one, because the verb was
@@ -361,9 +397,54 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
   expect(categorizeLine('Pull out old cabinets').key).toBe('demolition');
   expect(categorizeLine('Level floor under tile').key).toBe('prep');
   expect(categorizeLine('Waterproof shower pan').key).toBe('prep');
+  expect(categorizeLine('New outlets at backsplash').key).toBe('electrical_rough');
+  expect(categorizeLine('Receptacle above countertop').key).toBe('electrical_rough');
+  expect(categorizeLine('Panel upgrade for new appliances').key).toBe('electrical_rough');
+  expect(categorizeLine('Trench and pipe for island sink').key).toBe('plumbing_rough');
+  expect(categorizeLine('New gas piping to range').key).toBe('plumbing_rough');
 });
 
-test('AC5d: a verb of manner locks on its own, and the scope noun only picks the slug', () => {
+test('AC5e: a locked word either locks or names a client selection - there is no third state', () => {
+  // The defect this closes, structurally. A locked category used to carry a
+  // SECOND vocabulary list beside its keywords, and that list decided nothing
+  // but the slug. Words that name the work itself sat in it - "outlet",
+  // "receptacle", "pipe" - so they licensed a verb and produced no hit, and a
+  // title like "New outlets at backsplash" had the finish noun as its only
+  // surviving hit. The client got a toggle on the circuit.
+  //
+  // There is no second list now: the vocabulary that licenses a verb is
+  // `keywords` plus `serves`, folded in code. `keywords` lock. `serves` is
+  // label-only, and is safe to be label-only for exactly one reason - every
+  // entry names a CLIENT SELECTION, which is what the optional categories exist
+  // to hand over. This is that reason, asserted rather than left to review.
+  const optionalKeywords = new Set<string>();
+  for (const cat of PROPOSAL_CATEGORIES) {
+    if (cat.optional) for (const keyword of cat.keywords) optionalKeywords.add(keyword);
+  }
+  let labelOnly = 0;
+  for (const cat of PROPOSAL_CATEGORIES) {
+    for (const finish of cat.serves) {
+      labelOnly++;
+      expect(
+        optionalKeywords.has(finish),
+        `"${finish}" labels ${cat.key} without locking, so it must be an optional category's `
+        + 'keyword - a word that names WORK belongs in `keywords`, or the finish beside it '
+        + 'answers for the line',
+      ).toBe(true);
+    }
+  }
+  expect(labelOnly, 'the label-only vocabulary should not quietly empty out').toBeGreaterThan(0);
+  // Nothing licenses a verb on an OPTIONAL category: a verb of manner locks
+  // (Layer 1), so a category that could not lock has no business claiming one.
+  for (const cat of PROPOSAL_CATEGORIES) {
+    if (cat.optional) {
+      expect(cat.scopedKeywords, `${cat.key} is optional and must not claim a verb`).toHaveLength(0);
+      expect(cat.serves, `${cat.key} is optional and serves nothing`).toHaveLength(0);
+    }
+  }
+});
+
+test('AC5d: a verb of manner locks on its own, and the subject noun only picks the slug', () => {
   // The two layers, and the whole point is that they are independent.
   //
   // LAYER 1 is the lock, and nothing gates it: every one of these is locked in
@@ -379,9 +460,9 @@ test('AC5d: a verb of manner locks on its own, and the scope noun only picks the
   expect(categorizeLine('Move sink plumbing').key).toBe('plumbing_rough');
   expect(categorizeLine('Shift toilet 12 inches').key).toBe('plumbing_rough');
   expect(categorizeLine('Relocate vent hood').key).toBe('mechanical');
-  // Bare "line" is not plumbing scope, or the word alone would put a wrench on
-  // a duct run. The named runs - "gas line", "water line" - are keywords, so
-  // they still answer plumbing without it.
+  // Bare "line" is in no plumbing list at all, or the word alone would put a
+  // wrench on a duct run. The named runs - "gas line", "water line" - are
+  // keywords, so they still answer plumbing without it.
   expect(categorizeLine('Move dryer vent line').key).toBe('mechanical');
   expect(categorizeLine('Relocate range gas line').key).toBe('plumbing_rough');
   // A verb naming no trade at all still LOCKS, and takes the generic slug - the
@@ -393,12 +474,12 @@ test('AC5d: a verb of manner locks on its own, and the scope noun only picks the
     'Relocate medicine cabinet', 'Move existing vanity', 'Relocate towel bar',
   ]) {
     const verdict = categorizeLine(generic);
-    expect(verdict.key, `"${generic}" names no trade scope`).toBe(UNRECOGNIZED_CATEGORY.key);
+    expect(verdict.key, `"${generic}" names no trade at all`).toBe(UNRECOGNIZED_CATEGORY.key);
     expect(verdict.optional, `"${generic}" still locks on the verb`).toBe(false);
   }
-  // Scope is read anywhere in the title, not beside the verb, so a line naming
-  // two trades takes the first in registry order. A wrong slug is the most this
-  // layer can cost, and the line is locked either way.
+  // The subject noun is read anywhere in the title, not beside the verb, so a
+  // line naming two trades takes the first in registry order. A wrong slug is
+  // the most this layer can cost, and the line is locked either way.
   expect(categorizeLine('Install new sink and relocate lighting').optional).toBe(false);
   // A verb that is not scoped to any trade lets the real category answer:
   // rerouting ductwork is mechanical.
