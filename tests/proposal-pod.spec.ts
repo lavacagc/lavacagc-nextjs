@@ -23,6 +23,15 @@ import { newProposalToken } from '../src/lib/proposals/token';
 const root = join(__dirname, '..');
 const read = (p: string) => readFileSync(join(root, p), 'utf8');
 
+const MIGRATION = 'supabase/migrations/20260824000000_proposals.sql';
+// The migration's comments discuss by name the very types and shapes its DDL is
+// asserted to be free of, so every schema AC reads it with them stripped. That
+// step is load-bearing rather than cosmetic - a comment promising the snapshot
+// shape is what let bare ids stay green here once already - so it lives in one
+// place instead of being copied into each AC that needs it.
+const migrationDdl = () =>
+  read(MIGRATION).split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+
 const VALID_CSV = [
   'title,description,price',
   'Demolition & prep,"Gut to studs, disposal, protection",4800',
@@ -711,7 +720,7 @@ test('AC6: the registry is the only source of the WEB-024 icon', () => {
 });
 
 test('AC7: all three tables are deny-by-default - RLS on, zero policies, cents-only money', () => {
-  const sql = read('supabase/migrations/20260824000000_proposals.sql');
+  const sql = read(MIGRATION);
   for (const t of ['proposals', 'proposal_lines', 'proposal_submissions']) {
     expect(sql).toContain(`CREATE TABLE IF NOT EXISTS public.${t}`);
     expect(sql).toContain(`ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY`);
@@ -719,7 +728,7 @@ test('AC7: all three tables are deny-by-default - RLS on, zero policies, cents-o
   expect(sql).not.toMatch(/CREATE\s+POLICY/i);
   // Money is integer cents; a float/numeric money column must never appear.
   // Comments discuss those types by name, so only DDL lines are checked.
-  const ddl = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+  const ddl = migrationDdl();
   expect(ddl).toMatch(/price_cents\s+BIGINT/);
   expect(ddl).toMatch(/total_cents\s+BIGINT/);
   // The rule is about STORED types, so the dollar-quoted function body is read
@@ -732,10 +741,9 @@ test('AC7: all three tables are deny-by-default - RLS on, zero policies, cents-o
 });
 
 test('AC7b: a submission snapshots the composition it agreed to (D4 survives a re-import)', () => {
-  const sql = read('supabase/migrations/20260824000000_proposals.sql');
   // Only DDL: a comment promising the snapshot is what let bare ids stay green
   // here while the schema went on accepting them.
-  const ddl = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+  const ddl = migrationDdl();
   // Bare line ids would dangle the moment a CSV re-import replaces the rows.
   expect(ddl).not.toContain('included_line_ids');
   // The {id, title, price_cents} element shape is CHECKed per element by ONE
@@ -825,8 +833,7 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
 });
 
 test('AC7c: revocation IS the status column, and the timestamps cannot contradict it', () => {
-  const sql = read('supabase/migrations/20260824000000_proposals.sql');
-  const ddl = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+  const ddl = migrationDdl();
   // Read out of the proposals table's own definition. A CHECK sitting on any
   // other table would satisfy a match run across the whole file just as well,
   // and this rule means nothing anywhere but here.
@@ -864,8 +871,7 @@ test('AC8: the token is 32 random bytes base64url, the intake recipe', () => {
   // access control for a proposal - RLS denies the anon key outright - so plain
   // TEXT, which accepts '' and 'abc', leaves a guessable proposal one careless
   // writer away, and nothing in this slice writes the column yet.
-  const ddl = read('supabase/migrations/20260824000000_proposals.sql')
-    .split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+  const ddl = migrationDdl();
   expect(ddl, 'a short or empty token must not be storable')
     .toMatch(/CHECK \(token ~ '\^\[A-Za-z0-9_-\]\{43\}\$'\)/);
 });
@@ -885,7 +891,7 @@ test('AC10: no em dashes in the slice-1 modules or the tracked prose (house styl
     'src/lib/proposals/categories.ts',
     'src/lib/proposals/csv.ts',
     'src/lib/proposals/token.ts',
-    'supabase/migrations/20260824000000_proposals.sql',
+    MIGRATION,
     // The standing instruction set every session loads; the rule holds there too.
     'CLAUDE.md',
   ]) {

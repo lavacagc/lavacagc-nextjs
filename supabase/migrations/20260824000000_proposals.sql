@@ -21,11 +21,13 @@
 -- rather than a note about one afternoon. Every revision of this file is
 -- applied to a throwaway local Postgres and its constraints exercised there
 -- before that revision is called finished: a 43-character token accepted and a
--- short one rejected, a whole-composition snapshot accepted, and a fractional
--- price_cents, a missing `optional` key, an empty included_lines and a
--- total_cents that disagrees with its snapshot each rejected by the constraint
--- that names them. The PR's Supabase Preview check then replays every migration
--- on a real database before merge, and production is hand-applied at go-live.
+-- short one rejected, a whole-composition snapshot accepted, a proposal revoked
+-- out of draft accepted with no sent_at, and a fractional price_cents, a missing
+-- `optional` key, an empty included_lines, a total_cents that disagrees with its
+-- snapshot, a revoked_at stamped while the status still reads 'sent' and a
+-- 'sent' proposal carrying no sent_at each rejected by the constraint that names
+-- them. The PR's Supabase Preview check then replays every migration on a real
+-- database before merge, and production is hand-applied at go-live.
 
 CREATE TABLE IF NOT EXISTS public.proposals (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
