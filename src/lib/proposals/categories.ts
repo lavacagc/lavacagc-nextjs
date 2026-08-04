@@ -17,6 +17,16 @@
  * a longer word. Bare substring matching read "Arrange delivery" as the
  * appliance keyword "range" and handed the client a toggle on it.
  *
+ * Some keywords name the work itself and stand alone: "demolition", "vent",
+ * "cabinet", and the removal verbs, because taking a thing out IS the demolition.
+ * Others name only a MANNER - "relocate", "move", "shift", "reroute" - and say
+ * nothing about what is being moved. Those are listed apart, as `scopedKeywords`,
+ * and count only when the title also names their category's own scope: moving a
+ * gas line is rough plumbing, moving an outlet is not. On their own they are
+ * evidence of nothing, so "Relocate outlet and wiring" reads as electrical and
+ * "Move-in cleaning" falls through to the locked fail-safe, instead of both
+ * taking a plumbing slug and a wrench icon off the back of the verb alone.
+ *
  * When several keywords hit, two rules settle it, in this order:
  *
  *   1. A hit whose matched text sits entirely INSIDE a longer hit is not
@@ -53,8 +63,17 @@ export interface ProposalCategory {
   readonly icon: string;
   /** Whether lines in this category default to a client-movable toggle. */
   readonly optional: boolean;
-  /** Whole-word (case-insensitive) phrases of the line title that select this category. */
+  /** Whole-word (case-insensitive) phrases of the line title that select this category on their own. */
   readonly keywords: readonly string[];
+  /**
+   * Phrases that select this category ONLY when the title also names one of
+   * `scope`. For a verb of manner - relocate, move, shift, reroute - the scope
+   * word is the whole of the evidence; without it the verb belongs to no
+   * category at all.
+   */
+  readonly scopedKeywords?: readonly string[];
+  /** The vocabulary a `scopedKeywords` phrase has to co-occur with before it counts. */
+  readonly scope?: readonly string[];
 }
 
 /** What the registry answers with: a category's verdict, without its keywords. */
@@ -88,6 +107,11 @@ const REGISTRY: ProposalCategory[] = [
   // 12 inches". Reading the fixture and skipping the verb handed the client a
   // toggle that deletes a drain relocation. The named line runs are here for the
   // same reason - "supply line" alone missed "water line" and "gas line".
+  //
+  // The verbs are scoped, because they are true of any trade: taking them as
+  // plumbing on their own put a wrench icon on "Relocate outlet and wiring" and
+  // on "Move-in cleaning", replacing an honest fallback with a confident wrong
+  // answer. It is the plumbing noun beside the verb that makes it plumbing.
   {
     key: 'plumbing_rough',
     icon: 'wrench',
@@ -95,8 +119,14 @@ const REGISTRY: ProposalCategory[] = [
     keywords: [
       'rough-in', 'supply line', 'water line', 'gas line', 'drain line', 'waste line',
       'drain', 'valve', 'waterproofing',
+    ],
+    scopedKeywords: [
       'relocate', 'relocating', 'relocation', 'reroute', 'rerouting',
       'move', 'moving', 'shift', 'shifting',
+    ],
+    scope: [
+      'plumbing', 'pipe', 'piping', 'line', 'gas', 'water', 'waste', 'drain',
+      'supply', 'sink', 'toilet', 'tub', 'bathtub', 'shower',
     ],
   },
   { key: 'electrical_rough', icon: 'zap', optional: false, keywords: ['electrical panel', 'wiring', 'circuit', 'gfci'] },
@@ -130,7 +160,12 @@ const REGISTRY: ProposalCategory[] = [
  * for every line the server categorizes afterwards.
  */
 export const PROPOSAL_CATEGORIES: readonly ProposalCategory[] = Object.freeze(
-  REGISTRY.map((cat) => Object.freeze({ ...cat, keywords: Object.freeze([...cat.keywords]) })),
+  REGISTRY.map((cat) => Object.freeze({
+    ...cat,
+    keywords: Object.freeze([...cat.keywords]),
+    scopedKeywords: Object.freeze([...(cat.scopedKeywords || [])]),
+    scope: Object.freeze([...(cat.scope || [])]),
+  })),
 );
 
 /** The fail-safe verdict for a title nothing in the registry recognizes. */
@@ -163,6 +198,15 @@ function matcherFor(keyword: string): RegExp {
   return matcher;
 }
 
+/** Whether the title names any of these phrases as whole words. */
+function mentionsAny(haystack: string, phrases: readonly string[]): boolean {
+  return phrases.some((phrase) => {
+    const matcher = matcherFor(phrase);
+    matcher.lastIndex = 0;
+    return matcher.test(haystack);
+  });
+}
+
 /** Where one keyword matched the title, and which category claimed it. */
 interface KeywordHit {
   cat: ProposalCategory;
@@ -173,7 +217,12 @@ interface KeywordHit {
 function collectHits(haystack: string): KeywordHit[] {
   const hits: KeywordHit[] = [];
   for (const cat of PROPOSAL_CATEGORIES) {
-    for (const keyword of cat.keywords) {
+    // A verb of manner is only this category's evidence when the title also
+    // names its scope, so those keywords join the search or sit it out.
+    const keywords = mentionsAny(haystack, cat.scope)
+      ? [...cat.keywords, ...cat.scopedKeywords]
+      : cat.keywords;
+    for (const keyword of keywords) {
       const matcher = matcherFor(keyword);
       matcher.lastIndex = 0;
       let m: RegExpExecArray;

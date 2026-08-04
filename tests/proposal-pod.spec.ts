@@ -300,6 +300,35 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
   expect(categorizeLine('Protect existing cabinets during work').key).toBe('prep');
   expect(categorizeLine('Range hood vent to exterior').key).toBe('mechanical');
   expect(categorizeLine('Move sink plumbing').key).toBe('plumbing_rough');
+  expect(categorizeLine('Relocate range gas line').key).toBe('plumbing_rough');
+  expect(categorizeLine('Shift toilet 12 inches').key).toBe('plumbing_rough');
+});
+
+test('AC5d: a verb of manner is plumbing only when the title names plumbing scope', () => {
+  // "Relocate"/"move"/"shift"/"reroute" are true of every trade, so taking them
+  // as plumbing on their own put the plumbing slug and its wrench icon on work
+  // that is not plumbing at all. The category drives the WEB-024 imagery on the
+  // client page, and the admin's documented override in the import preview is
+  // the optional/locked badge, not the category - so a confidently wrong label
+  // is not something the workflow catches downstream.
+  const outlet = categorizeLine('Relocate outlet and wiring');
+  expect(outlet.key, 'relocating wiring is electrical, not plumbing').toBe('electrical_rough');
+  expect(outlet.optional).toBe(false);
+  // With no scope at all the verb is evidence of nothing, and an honest
+  // fallback beats a plausible wrong answer: these fall to the locked fail-safe
+  // rather than taking a category off the back of the verb.
+  for (const neither of ['Move-in cleaning', 'Moving and storage of furniture']) {
+    const verdict = categorizeLine(neither);
+    expect(verdict.key, `"${neither}" names no plumbing scope`).toBe(UNRECOGNIZED_CATEGORY.key);
+    expect(verdict.optional).toBe(false);
+  }
+  // The scope noun beside the verb is what makes it plumbing, and it is still
+  // the whole reason these stay locked: the fixture noun alone reads optional.
+  expect(categorizeLine('Move sink plumbing').optional).toBe(false);
+  expect(categorizeLine('Shift toilet 12 inches').optional).toBe(false);
+  // ... and a verb the registry now leaves alone lets the real category answer:
+  // rerouting ductwork is mechanical.
+  expect(categorizeLine('Ductwork rerouting').key).toBe('mechanical');
 });
 
 test('AC5b: matching is word-aware - a swallowed keyword drops out, fragments never match', () => {
