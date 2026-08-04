@@ -80,7 +80,14 @@
  * plausible badge on it. That is the defect class, and every phrasing found
  * matching that way is worth a keyword here.
  *
- * What makes the remainder survivable is not this file: the admin sees every
+ * The locked tier is therefore stocked by TRADE rather than by phrase, and now
+ * carries every trade a residential remodel line can name: demolition, prep and
+ * substrate, rough plumbing, rough electrical, mechanical, compliance, painting
+ * and finish carpentry. What is left of the defect class needs a title that both
+ * names a trade none of those covers AND names a finish, which is the remainder
+ * the review below absorbs.
+ *
+ * What makes that remainder survivable is not this file: the admin sees every
  * imported line in the import preview and can flip any badge before a proposal
  * is sent. That review is the guarantee; this registry is assistance for it.
  */
@@ -98,7 +105,7 @@ export interface ProposalCategory {
    * Phrases that select this category ONLY when the title also names the
    * category's subject - its own `keywords`, or one of the finishes it
    * `serves`. This is Layer 2, labeling, and nothing else: a verb of manner
-   * always locks the line through RELOCATION_VERBS below, and these entries
+   * always locks the line through MANNER_VERBS below, and these entries
    * only decide which locked category it wears. Moving a gas line reads as
    * rough plumbing here; moving an outlet reads as electrical instead, and
    * moving something the registry cannot place still reads as locked.
@@ -131,13 +138,20 @@ export type ProposalCategoryVerdict = Pick<ProposalCategory, 'key' | 'icon' | 'o
  * `scopedKeywords` on the trades that can claim a better slug for them, where
  * they label only and never decide the lock.
  *
- * The removal verbs - remove, strip out, haul away, gut, tear out - are not
- * here: they name demolition itself, so they sit in that category's own
- * keywords and lock AND label from there.
+ * Putting a thing back is a verb of manner too. "Reset toilet after tile" and
+ * "Reinstall toilet after new tile" are the plumber's return trip, priced
+ * because the tile went in; the tile is the selection and the return trip is
+ * not, so reading the fixture and skipping the verb handed the client a toggle
+ * on it.
+ *
+ * The removal verbs - remove, strip, haul, gut, tear - are not here: they name
+ * demolition itself, so they sit in that category's own keywords and lock AND
+ * label from there.
  */
-const RELOCATION_VERBS: readonly string[] = [
+const MANNER_VERBS: readonly string[] = [
   'relocate', 'relocating', 'relocation', 'reroute', 'rerouting',
   'move', 'moving', 'shift', 'shifting',
+  'reset', 'resetting', 'reinstall', 'reinstalling',
 ];
 
 /**
@@ -189,6 +203,11 @@ const REGISTRY: ProposalCategory[] = [
   // that gets named ("Level floor under tile", "Backer board for tile").
   // Waterproofing is here rather than with rough plumbing because a shower pan
   // membrane is substrate, not a pipe.
+  //
+  // Making the substrate good again is the same work under a different verb:
+  // "Patch and repair wall behind vanity" is the wall the demolition opened,
+  // and "Reframe opening for refrigerator" is framing written as a verb, which
+  // the noun "framing" does not match.
   {
     key: 'prep',
     icon: 'layers',
@@ -197,7 +216,8 @@ const REGISTRY: ProposalCategory[] = [
       'prep', 'preparation', 'protect', 'protecting', 'protective', 'protection',
       'subfloor', 'sub-floor', 'level', 'leveling', 'levelling',
       'backer board', 'cement board', 'waterproof', 'waterproofing',
-      'framing', 'blocking', 'drywall', 'insulation',
+      'framing', 'reframe', 'reframing', 'blocking', 'drywall', 'insulation',
+      'patch', 'patching', 'repair', 'repairing',
     ],
   },
   // Moving a service is rough work whatever it serves, and the title names what
@@ -226,7 +246,7 @@ const REGISTRY: ProposalCategory[] = [
       'plumbing', 'rough-in', 'supply line', 'water line', 'gas line',
       'drain line', 'waste line', 'drain', 'valve', 'pipe', 'piping',
     ],
-    scopedKeywords: RELOCATION_VERBS,
+    scopedKeywords: MANNER_VERBS,
     serves: ['sink', 'toilet'],
   },
   // Moving an outlet, a circuit or a light is rough electrical, and the title
@@ -248,7 +268,7 @@ const REGISTRY: ProposalCategory[] = [
       'electrical', 'wiring', 'circuit', 'gfci', 'outlet', 'receptacle',
       'switch', 'electrical panel', 'sub panel', 'panel upgrade',
     ],
-    scopedKeywords: RELOCATION_VERBS,
+    scopedKeywords: MANNER_VERBS,
     serves: ['light', 'lighting', 'sconce', 'chandelier'],
   },
   // Venting and ducting are a roof or wall penetration and a run through the
@@ -263,10 +283,38 @@ const REGISTRY: ProposalCategory[] = [
     icon: 'air-vent',
     optional: false,
     keywords: ['vent', 'venting', 'duct', 'ductwork', 'ducting', 'exhaust', 'flue'],
-    scopedKeywords: RELOCATION_VERBS,
+    scopedKeywords: MANNER_VERBS,
     serves: ['hood'],
   },
   { key: 'compliance', icon: 'clipboard-check', optional: false, keywords: ['permit', 'inspection'] },
+  // Painting follows the finish and is named after it ("Prime and paint walls
+  // after tile", "Touch up paint at cabinets"), so with no word for the trade
+  // the finish answered for the line - and dropping the tile upgrade does not
+  // stop the walls needing paint. Caulking is here rather than with the tile
+  // because it is the painter's bead along the trim and the countertop.
+  {
+    key: 'painting',
+    icon: 'paint-roller',
+    optional: false,
+    keywords: [
+      'paint', 'painting', 'repaint', 'repainting', 'prime', 'priming', 'primer',
+      'touch up', 'coat', 'caulk', 'caulking',
+    ],
+  },
+  // Finish carpentry, the same way: the baseboard goes back after the floor
+  // tile and the casing goes around the new vanity, so both titles name the
+  // selection they follow. Bare "trim" and "shoe" also read a trim kit and a
+  // shoe cabinet as carpentry - the safe direction, one badge for the admin,
+  // against a toggle that deletes the base the client never chose separately.
+  {
+    key: 'carpentry',
+    icon: 'ruler',
+    optional: false,
+    keywords: [
+      'carpentry', 'baseboard', 'base board', 'trim', 'casing', 'crown',
+      'molding', 'moulding', 'wainscot', 'wainscoting', 'shoe',
+    ],
+  },
   // Layer 1's floor, and the last locked category so every trade above claims a
   // better slug first. A verb of manner naming no trade at all still locks here:
   // "Relocate medicine cabinet" is moving a cabinet off a wall, not a selection
@@ -275,7 +323,7 @@ const REGISTRY: ProposalCategory[] = [
   // this category whenever the title names one ("Electrical rough for recessed
   // lights"). The verdict is the unrecognized one, because it says the same
   // thing: structural work, trade unstated.
-  { ...GENERAL_LOCKED, keywords: [...RELOCATION_VERBS, 'rough'] },
+  { ...GENERAL_LOCKED, keywords: [...MANNER_VERBS, 'rough'] },
   // --- finish selections: optional ---
   { key: 'cabinets', icon: 'columns-3', optional: true, keywords: ['cabinet', 'vanity', 'vanities'] },
   { key: 'countertops', icon: 'square', optional: true, keywords: ['countertop', 'counter top', 'quartz top', 'granite top'] },
@@ -354,32 +402,42 @@ interface KeywordHit {
   end: number;
 }
 
+/** Appends every whole-word match of one keyword, in the order they occur. */
+function pushMatches(hits: KeywordHit[], haystack: string, cat: ProposalCategory, keyword: string): void {
+  const matcher = matcherFor(keyword);
+  matcher.lastIndex = 0;
+  let m: RegExpExecArray;
+  while ((m = matcher.exec(haystack)) !== null) {
+    hits.push({
+      cat,
+      start: m.index + (m[0].charAt(0) === ' ' ? 1 : 0),
+      end: m.index + m[0].length,
+    });
+    if (matcher.lastIndex === m.index) matcher.lastIndex++;
+  }
+}
+
 function collectHits(haystack: string): KeywordHit[] {
   const hits: KeywordHit[] = [];
   for (const cat of PROPOSAL_CATEGORIES) {
+    const before = hits.length;
+    for (const keyword of cat.keywords) pushMatches(hits, haystack, cat, keyword);
     // A verb of manner claims THIS category's slug only when the title also
     // names the category's subject - its own keywords, or a finish it serves -
     // anywhere in the title. The two lists are folded HERE rather than written
     // out as a third one, so every word that licenses a verb either locks on
     // its own or is a client selection, and there is no third state.
     //
+    // "Its own keywords matched" IS the hits just collected, so the licence is
+    // read off them rather than scanning the same list a second time: one pass,
+    // and the two paths cannot disagree about what counts as a hit.
+    //
     // Sitting the verb out costs the line nothing but a label: the generic
     // locked category lists the same verbs unscoped, so Layer 1 has locked it.
     const licensed = cat.scopedKeywords.length
-      && (mentionsAny(haystack, cat.keywords) || mentionsAny(haystack, cat.serves));
-    const keywords = licensed ? [...cat.keywords, ...cat.scopedKeywords] : cat.keywords;
-    for (const keyword of keywords) {
-      const matcher = matcherFor(keyword);
-      matcher.lastIndex = 0;
-      let m: RegExpExecArray;
-      while ((m = matcher.exec(haystack)) !== null) {
-        hits.push({
-          cat,
-          start: m.index + (m[0].charAt(0) === ' ' ? 1 : 0),
-          end: m.index + m[0].length,
-        });
-        if (matcher.lastIndex === m.index) matcher.lastIndex++;
-      }
+      && (hits.length > before || mentionsAny(haystack, cat.serves));
+    if (licensed) {
+      for (const keyword of cat.scopedKeywords) pushMatches(hits, haystack, cat, keyword);
     }
   }
   return hits;

@@ -343,6 +343,7 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
     'Electrical work for new range',
     'Update electrical at backsplash outlets',
     'Rough carpentry at soffit',
+    'Rough opening at soffit',
     // The fittings and the pipework, named without the trade. These words sat
     // in a second list that licensed a verb but produced no hit of its own, so
     // the finish noun in the same title answered for the whole line and the
@@ -378,6 +379,32 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
     'Backer board for tile',
     'Cement board behind tile',
     'Waterproof shower pan',
+    // ... including making it good again, which is the same work written as a
+    // verb: "framing" the noun never matched "Reframe", and nothing at all
+    // matched a patch or a repair.
+    'Reframe opening for refrigerator',
+    'Reframe wall for new vanity',
+    'Patch and repair wall behind vanity',
+    // Painting and finish carpentry: two trades on essentially every proposal,
+    // and the registry had no word for either. Both follow a finish and get
+    // named after it, so the finish noun was the only hit and the client got a
+    // toggle on work that happens whatever they choose - dropping the tile
+    // upgrade does not stop the walls needing paint or the base going back on.
+    'Prime and paint walls after tile',
+    'Painting - two coats after tile',
+    'Repaint bathroom after new tile',
+    'Paint vanity and trim',
+    'Touch up paint at cabinets',
+    'Skim coat walls behind cabinets',
+    'Caulk and seal at countertop',
+    'Baseboard after floor tile',
+    'Trim and casing around new vanity',
+    'Crown molding at cabinets',
+    'Shoe molding after tile',
+    // Putting a fixture back is the tradesman's return trip, priced because the
+    // finish went in. The finish is the selection; the return trip is not.
+    'Reset toilet after tile',
+    'Reinstall toilet after new tile',
   ]) {
     expect(categorizeLine(locked).optional, `"${locked}" must stay locked`).toBe(false);
   }
@@ -391,8 +418,9 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
   expect(categorizeLine('Electrical for undercabinet lighting').key).toBe('electrical_rough');
   // "rough" with no trade beside it is structural work, trade unstated - and a
   // trade named anywhere in the title claims the better slug off it.
-  expect(categorizeLine('Rough carpentry at soffit').key).toBe(UNRECOGNIZED_CATEGORY.key);
+  expect(categorizeLine('Rough opening at soffit').key).toBe(UNRECOGNIZED_CATEGORY.key);
   expect(categorizeLine('Electrical rough for recessed lights').key).toBe('electrical_rough');
+  expect(categorizeLine('Rough carpentry at soffit').key).toBe('carpentry');
   expect(categorizeLine('Strip existing tile').key).toBe('demolition');
   expect(categorizeLine('Pull out old cabinets').key).toBe('demolition');
   expect(categorizeLine('Level floor under tile').key).toBe('prep');
@@ -402,6 +430,14 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
   expect(categorizeLine('Panel upgrade for new appliances').key).toBe('electrical_rough');
   expect(categorizeLine('Trench and pipe for island sink').key).toBe('plumbing_rough');
   expect(categorizeLine('New gas piping to range').key).toBe('plumbing_rough');
+  expect(categorizeLine('Prime and paint walls after tile').key).toBe('painting');
+  expect(categorizeLine('Caulk and seal at countertop').key).toBe('painting');
+  expect(categorizeLine('Baseboard after floor tile').key).toBe('carpentry');
+  expect(categorizeLine('Trim and casing around new vanity').key).toBe('carpentry');
+  expect(categorizeLine('Reframe opening for refrigerator').key).toBe('prep');
+  expect(categorizeLine('Patch and repair wall behind vanity').key).toBe('prep');
+  // Putting the toilet back is the plumber's trip, so it wears their slug.
+  expect(categorizeLine('Reset toilet after tile').key).toBe('plumbing_rough');
 });
 
 test('AC5e: a locked word either locks or names a client selection - there is no third state', () => {
