@@ -287,6 +287,13 @@ function normalizeWords(value: string): string {
  * Whole-word phrase match, tolerating a trailing plural so the registry does
  * not need both "cabinet" and "cabinets". Built once per keyword.
  *
+ * The plural allowed is the one ENGLISH forms from that keyword, and only that
+ * one: "-es" after a sibilant ("backsplash" -> "backsplashes"), plain "-s"
+ * otherwise. Offering both to every keyword matched words the registry never
+ * named - "strip" read "Tile stripes accent band" as demolition - which is the
+ * fragment matching this whole function exists to prevent, one letter further
+ * out.
+ *
  * The leading `(?:^| )` consumes the separating space, so the keyword's own
  * span starts one character in whenever the match did not begin at the string
  * start - the containment rule below compares the keyword text, not the space.
@@ -295,7 +302,9 @@ const MATCHERS = new Map<string, RegExp>();
 function matcherFor(keyword: string): RegExp {
   let matcher = MATCHERS.get(keyword);
   if (!matcher) {
-    matcher = new RegExp(`(?:^| )${normalizeWords(keyword)}(?:e?s)?(?= |$)`, 'g');
+    const phrase = normalizeWords(keyword);
+    const plural = /(?:s|x|z|ch|sh)$/.test(phrase) ? '(?:es)?' : 's?';
+    matcher = new RegExp(`(?:^| )${phrase}${plural}(?= |$)`, 'g');
     MATCHERS.set(keyword, matcher);
   }
   return matcher;

@@ -444,6 +444,14 @@ test('AC5b: matching is word-aware - a swallowed keyword drops out, fragments ne
   expect(categorizeLine('Cabinets - shaker white').key).toBe('cabinets');
   expect(categorizeLine('Cabinet pulls and knobs').key).toBe('cabinets');
   expect(categorizeLine('Backsplashes - subway').key).toBe('tile');
+
+  // ... and the plural it tolerates is the one English forms from the keyword,
+  // never a different word that happens to start with it. Offering every
+  // keyword an "-es" as well as an "-s" read "stripes" as the demolition verb
+  // "strip", which is fragment matching one letter further out.
+  const stripes = categorizeLine('Tile stripes accent band');
+  expect(stripes.key, '"stripes" is not the plural of "strip"').toBe('tile');
+  expect(stripes.optional).toBe(true);
 });
 
 test('AC5c: the registry hands out copies - a per-line override cannot poison the fail-safe', () => {
