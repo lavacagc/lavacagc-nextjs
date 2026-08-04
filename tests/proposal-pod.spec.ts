@@ -824,6 +824,37 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
     .toContain('GRANT EXECUTE ON FUNCTION public.proposal_snapshot_total(JSONB) TO service_role;');
 });
 
+test('AC7c: revocation IS the status column, and the timestamps cannot contradict it', () => {
+  const sql = read('supabase/migrations/20260824000000_proposals.sql');
+  const ddl = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+  // Read out of the proposals table's own definition. A CHECK sitting on any
+  // other table would satisfy a match run across the whole file just as well,
+  // and this rule means nothing anywhere but here.
+  const at = ddl.indexOf('CREATE TABLE IF NOT EXISTS public.proposals');
+  expect(at, 'the proposals table must be readable on its own').toBeGreaterThan(-1);
+  const table = ddl.slice(at, ddl.indexOf('CREATE TABLE IF NOT EXISTS public.proposal_lines'));
+  // `status` is the whole kill switch: RLS denies the anon key and the token
+  // carries no lifetime of its own, so the lookup asks this column and nothing
+  // else. Independent columns let a writer set revoked_at = now() and leave
+  // status at 'sent' - a proposal the admin UI renders as revoked that goes on
+  // serving private prices. The biconditional is what makes that unstorable.
+  expect(table, "revoked_at must not be settable while status stays 'sent'")
+    .toMatch(/CHECK \(\(status = 'revoked'\) = \(revoked_at IS NOT NULL\)\)/);
+  // Sending is one-way and so is its rule: 'sent' has to carry its timestamp,
+  // while a proposal revoked out of draft (revoked_at, never a sent_at) and one
+  // revoked after sending (both stamped) each stay legal.
+  expect(table, "a 'sent' proposal must carry its sent_at")
+    .toMatch(/CHECK \(status <> 'sent' OR sent_at IS NOT NULL\)/);
+  // The composite UNIQUE leads on proposal_id, so it already serves both shapes
+  // proposal_lines is ever queried by - one proposal's lines, in position order.
+  // A second btree on proposal_id alone is maintenance on every import for a
+  // plan the planner reaches without it.
+  expect(ddl, 'UNIQUE (proposal_id, position) already indexes the only lookup')
+    .toContain('CONSTRAINT proposal_lines_position UNIQUE (proposal_id, position)');
+  expect(ddl, 'an index on proposal_id alone is covered by that composite')
+    .not.toContain('idx_proposal_lines_proposal');
+});
+
 test('AC8: the token is 32 random bytes base64url, the intake recipe', () => {
   const src = read('src/lib/proposals/token.ts');
   expect(src).toMatch(/randomBytes\(32\)\.toString\('base64url'\)/);

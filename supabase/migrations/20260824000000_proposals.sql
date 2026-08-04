@@ -54,7 +54,25 @@ CREATE TABLE IF NOT EXISTS public.proposals (
   sent_at       TIMESTAMPTZ,
   revoked_at    TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- The kill switch and its timestamps say the same thing, or the row does not
+  -- exist. `status` is the whole of what stops a link serving: RLS denies the
+  -- anon key, the token carries no lifetime of its own (token.ts), and D3 makes
+  -- revocation an explicit admin act, so the lookup's only question is this
+  -- column. Left independent, the three let a writer stamp revoked_at and leave
+  -- status 'sent' - a row the admin UI renders as revoked that goes on serving
+  -- private prices, silent in exactly the way a short token would be. Nothing in
+  -- this slice writes them, which is why the schema is the only guard there is.
+  --
+  -- Revocation is the biconditional: revoked_at is set when, and only when, the
+  -- status says revoked. Sending is one-way and so is its rule - a proposal
+  -- revoked out of draft never had a sent_at, and one revoked after sending
+  -- keeps the sent_at it earned - so that side asks only that 'sent' carry its
+  -- timestamp, and says nothing about the rows that have moved past it.
+  CONSTRAINT proposals_revoked_at_matches_status
+    CHECK ((status = 'revoked') = (revoked_at IS NOT NULL)),
+  CONSTRAINT proposals_sent_at_present_when_sent
+    CHECK (status <> 'sent' OR sent_at IS NOT NULL)
 );
 
 CREATE INDEX IF NOT EXISTS idx_proposals_lead ON public.proposals (lead_id);
@@ -75,10 +93,14 @@ CREATE TABLE IF NOT EXISTS public.proposal_lines (
   -- Registry category slug ('cabinets', 'tile', ... or 'general'), which
   -- drives the WEB-024 icon on the client page.
   category     TEXT NOT NULL DEFAULT 'general',
+  -- This also carries the lookup. Both shapes the client page and the import
+  -- issue - the lines of one proposal, in position order - are served by the
+  -- index UNIQUE builds, because proposal_id leads it and the ordering comes
+  -- free from the second column. A standalone index on proposal_id alone would
+  -- be a second btree to maintain on every insert and on the delete-and-recreate
+  -- a CSV re-import performs, for a plan the planner already reaches.
   CONSTRAINT proposal_lines_position UNIQUE (proposal_id, position)
 );
-
-CREATE INDEX IF NOT EXISTS idx_proposal_lines_proposal ON public.proposal_lines (proposal_id);
 
 -- What a submission stores of the lines it agreed to: an array whose every
 -- element is a SNAPSHOT, {"id", "title", "price_cents", "optional"}, not a bare
