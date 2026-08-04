@@ -94,10 +94,16 @@ function isBlankLine(cells: string[]): boolean {
  * and newlines. Returns rows of raw string cells. Tiny and dependency-free on
  * purpose - the contract is three known columns, not arbitrary CSV.
  *
- * A `"` is special ONLY as the first character of a field (RFC 4180 section 2).
- * Anywhere else it is data: `Tile 12" x 24" porcelain` is a line title this
+ * A `"` opens a field only where the field so far is blank. Once there is text
+ * in it the quote is data: `Tile 12" x 24" porcelain` is a line title this
  * business writes constantly, and treating its inch marks as field quoting
  * silently deleted them and shipped a corrupted title at the right price.
+ *
+ * Blank means whitespace, not strictly empty as RFC 4180 reads it. `a, "b, c",d`
+ * is what a hand-edited file looks like, and holding the padding against it kept
+ * the quote characters as data - the value shipped with stray quotes around it
+ * when it had no comma, and failed on the column count when it did. The padding
+ * is separator, so it is dropped with the quote.
  *
  * The closing quote of a quoted field must be followed by a comma, a line
  * break, or end-of-file. `"36" wide vanity",Shaker,3400` is the same
@@ -149,8 +155,9 @@ function splitCsv(text: string): SplitCsvResult {
       } else {
         cell += ch;
       }
-    } else if (ch === '"' && cell === '') {
+    } else if (ch === '"' && cell.trim() === '') {
       inQuotes = true;
+      cell = '';
       quoteOpenedAt = lineNo;
     } else if (ch === ',') {
       cells.push(cell); cell = '';
@@ -194,52 +201,45 @@ export function parsePriceCents(raw: string): number | null {
 }
 
 export function parseProposalCsv(text: string): ProposalCsvResult {
+  // Every failure exit goes through here, so `lines` is empty on all of them by
+  // construction. A partially parsed estimate is the wrong money this module
+  // exists to refuse, and one exit forgetting `lines: []` would ship it.
+  const fail = (...messages: string[]): ProposalCsvResult => ({ ok: false, lines: [], errors: messages });
+
   const errors: string[] = [];
   const { rows, unterminatedAt, danglingAt } = splitCsv(text ?? '');
   if (unterminatedAt > 0) {
-    return {
-      ok: false,
-      lines: [],
-      errors: [
-        `Row ${unterminatedAt}: a quoted value opens here and is never closed. `
-        + 'Every " that opens a field needs a matching " that closes it, and a '
-        + 'quote inside a value must be doubled ("").',
-      ],
-    };
+    return fail(
+      `Row ${unterminatedAt}: a quoted value opens here and is never closed. `
+      + 'Every " that opens a field needs a matching " that closes it, and a '
+      + 'quote inside a value must be doubled ("").',
+    );
   }
   if (danglingAt > 0) {
-    return {
-      ok: false,
-      lines: [],
-      errors: [
-        `Row ${danglingAt}: a quoted value ends part-way through the column and `
-        + 'the rest of it runs on. A " that closes a field must be followed by a '
-        + 'comma or the end of the line, and a quote inside a value must be '
-        + 'doubled ("") - `"36"" wide vanity"`, not `"36" wide vanity"`.',
-      ],
-    };
+    return fail(
+      `Row ${danglingAt}: a quoted value ends part-way through the column and `
+      + 'the rest of it runs on. A " that closes a field must be followed by a '
+      + 'comma or the end of the line, and a quote inside a value must be '
+      + 'doubled ("") - `"36"" wide vanity"`, not `"36" wide vanity"`.',
+    );
   }
-  if (rows.length === 0) return { ok: false, lines: [], errors: ['The file is empty.'] };
+  if (rows.length === 0) return fail('The file is empty.');
 
   const header = rows[0].cells.map((c) => c.trim().toLowerCase());
   const expected = PROPOSAL_CSV_HEADER;
   const headerOk = header.length === expected.length && expected.every((h, i) => header[i] === h);
   if (!headerOk) {
-    return {
-      ok: false,
-      lines: [],
-      errors: [
-        `Unexpected header "${rows[0].cells.join(', ')}". This importer takes the estimator's `
-        + `proposal export with exactly the columns: ${expected.join(', ')}. `
-        + 'The internal cost-sheet export is deliberately not accepted here.',
-      ],
-    };
+    return fail(
+      `Unexpected header "${rows[0].cells.join(', ')}". This importer takes the estimator's `
+      + `proposal export with exactly the columns: ${expected.join(', ')}. `
+      + 'The internal cost-sheet export is deliberately not accepted here.',
+    );
   }
 
   const dataRows = rows.slice(1);
-  if (dataRows.length === 0) return { ok: false, lines: [], errors: ['No lines after the header.'] };
+  if (dataRows.length === 0) return fail('No lines after the header.');
   if (dataRows.length > MAX_LINES) {
-    return { ok: false, lines: [], errors: [`${dataRows.length} lines - the cap is ${MAX_LINES}. Is this the right file?`] };
+    return fail(`${dataRows.length} lines - the cap is ${MAX_LINES}. Is this the right file?`);
   }
 
   const lines: ParsedProposalLine[] = [];
@@ -272,6 +272,6 @@ export function parseProposalCsv(text: string): ProposalCsvResult {
     });
   });
 
-  if (errors.length > 0) return { ok: false, lines: [], errors };
+  if (errors.length > 0) return fail(...errors);
   return { ok: true, lines, errors: [] };
 }

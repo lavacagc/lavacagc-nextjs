@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS public.proposal_lines (
 CREATE INDEX IF NOT EXISTS idx_proposal_lines_proposal ON public.proposal_lines (proposal_id);
 
 -- What a submission stores of the lines it agreed to: an array whose every
--- element is a SNAPSHOT, {"id", "title", "price_cents"}, not a bare id.
+-- element is a SNAPSHOT, {"id", "title", "price_cents", "optional"}, not a bare
+-- id.
 --
 -- A CSV re-import replaces proposal_lines wholesale, so the ids in older
 -- submissions stop resolving the first time an admin corrects the estimate, and
@@ -67,9 +68,16 @@ CREATE INDEX IF NOT EXISTS idx_proposal_lines_proposal ON public.proposal_lines 
 -- keeps every submission as THE record of what was agreed, so the record has to
 -- stay readable without the rows it was built from.
 --
+-- "What was agreed" is the WHOLE composition, not the client's toggles alone.
+-- The locked lines are the bones of the job and most of the money, so leaving
+-- them out left the agreement half-recorded: everything but an implied
+-- subtraction from total_cents. They travel in the same array, each element
+-- marked `optional`, so the record still says which of them the client could
+-- move and which were never theirs to.
+--
 -- The shape is CHECKed, not just documented: a comment does not stop the API
 -- from persisting bare ids, and the schema is the only layer that outlives the
--- re-import. Every element must be an object carrying all three keys, at the
+-- re-import. Every element must be an object carrying all four keys, at the
 -- right types; extra keys are welcome. The paired counts are the "every" - a
 -- subquery is not allowed in a CHECK, so the elements that satisfy the filter
 -- are counted against the elements that are there.
@@ -98,7 +106,7 @@ BEGIN
             )) = jsonb_array_length(VALUE)
         AND jsonb_array_length(jsonb_path_query_array(
               VALUE,
-              '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.price_cents.type() == "number" && @.price_cents >= 0 && @.price_cents.floor() == @.price_cents)',
+              '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.optional.type() == "boolean" && @.price_cents.type() == "number" && @.price_cents >= 0 && @.price_cents.floor() == @.price_cents)',
               '{}', true
             )) = jsonb_array_length(VALUE)
       );
@@ -109,10 +117,11 @@ $$;
 CREATE TABLE IF NOT EXISTS public.proposal_submissions (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   proposal_id       UUID NOT NULL REFERENCES public.proposals(id) ON DELETE CASCADE,
-  -- The exact configuration the client committed: the INCLUDED optional lines,
-  -- snapshotted. Locked lines are always in scope and deliberately absent here
-  -- - a submission cannot even express altering one (WEB-022, enforced at the
-  -- API on top of this shape).
+  -- The exact configuration the client committed, snapshotted whole: every
+  -- locked line plus the optional lines they kept, each element marked
+  -- `optional`. A submission still cannot express ALTERING a locked line
+  -- (WEB-022, enforced at the API on top of this shape) - it records them
+  -- because they are most of what was agreed to.
   included_lines    public.proposal_line_snapshot NOT NULL,
   -- Server-recomputed at submit time from the rows, never trusted from the
   -- client. What the owner alert prints.

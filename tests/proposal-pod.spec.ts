@@ -90,6 +90,30 @@ test('AC2d: a quoted field that closes mid-column fails loudly, never absorbs th
   expect(doubled.lines[0].title).toBe('36" wide vanity');
 });
 
+test('AC2f: padding before a quoted field is separator, not part of the value', () => {
+  // A hand-edited file writes `a, "b, c",d`. Holding the space against it kept
+  // the wrapper as data: the value shipped with stray quotes around it when it
+  // had no comma, and failed on the column count when it did.
+  const padded = parseProposalCsv('title,description,price\nCabinets, "Shaker white soft close",1000');
+  expect(padded.errors).toEqual([]);
+  expect(padded.lines[0].description).toBe('Shaker white soft close');
+
+  const paddedComma = parseProposalCsv('title,description,price\nTile, "a, b",100');
+  expect(paddedComma.errors).toEqual([]);
+  expect(paddedComma.lines[0].description).toBe('a, b');
+
+  // The inch-mark rule is untouched: there is real text before that quote.
+  const inches = parseProposalCsv('title,description,price\nTile 12" x 24" porcelain,,2900');
+  expect(inches.errors).toEqual([]);
+  expect(inches.lines[0].title).toBe('Tile 12" x 24" porcelain');
+
+  // And a padded field that closes mid-column is still the loud failure.
+  const ambiguous = parseProposalCsv('title,description,price\n "36" wide vanity",Shaker,3400');
+  expect(ambiguous.ok).toBe(false);
+  expect(ambiguous.lines).toEqual([]);
+  expect(ambiguous.errors[0]).toContain('Row 2');
+});
+
 test('AC2e: newlines inside a quoted field normalize, so a CRLF export carries no stray CR', () => {
   const res = parseProposalCsv('title,description,price\r\nCabinets,"Shaker white\r\nsoft-close",1000\r\n');
   expect(res.errors).toEqual([]);
@@ -192,9 +216,28 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
     'Demo old counter top',
     'Valve and faucet replacement',
     'Refrigerator water supply line',
+    // Taking-out work is written as a verb at least as often as a noun, and
+    // every one of these titles also names a finish. A registry that knew only
+    // "demolition" read the finish and handed the client a toggle on the demo.
+    'Remove existing tile',
+    'Removal of existing vanity',
+    'Remove old cabinets',
+    'Cabinet removal',
+    'Removing old backsplash',
+    'Strip out backsplash',
+    'Rip out shower door',
+    'Haul away old countertops',
+    'Existing sink removal',
+    'Tear out vanity',
+    'Demolish existing wall',
+    // Protection is prep, and it is the finish it protects that gets named.
+    'Protect existing cabinets during work',
+    'Protective covering over countertops',
   ]) {
     expect(categorizeLine(locked).optional, `"${locked}" must stay locked`).toBe(false);
   }
+  expect(categorizeLine('Cabinet removal').key).toBe('demolition');
+  expect(categorizeLine('Protect existing cabinets during work').key).toBe('prep');
 });
 
 test('AC5b: matching is word-aware - a swallowed keyword drops out, fragments never match', () => {
@@ -294,6 +337,12 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
   expect(filter).toContain('@.title.type() == "string"');
   expect(filter).toContain('@.price_cents.type() == "number"');
   expect(filter).toContain('@.price_cents >= 0');
+  // The agreed composition is snapshotted WHOLE - every locked line as well as
+  // the optional ones the client kept - so each element has to say which it was.
+  // Without the marker the record cannot be read back apart, and without the
+  // locked lines it was most of the money short of what was agreed.
+  expect(filter, 'each snapshot element must mark whether the line was optional')
+    .toContain('@.optional.type() == "boolean"');
   // JSONB is the one place agreed money escapes BIGINT, so the whole number is
   // demanded here too: without this clause {"price_cents": 1999.5} is a legal
   // snapshot and the browser's sum stops matching the server's re-sum.

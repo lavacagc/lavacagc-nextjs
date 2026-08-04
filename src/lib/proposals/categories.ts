@@ -54,8 +54,23 @@ export type ProposalCategoryVerdict = Pick<ProposalCategory, 'key' | 'icon' | 'o
  */
 const REGISTRY: ProposalCategory[] = [
   // --- structure: locked ---
-  { key: 'demolition', icon: 'hammer', optional: false, keywords: ['demolition', 'demo', 'gut', 'tear-out', 'disposal', 'debris', 'dumpster'] },
-  { key: 'prep', icon: 'layers', optional: false, keywords: ['prep', 'preparation', 'protection', 'subfloor', 'sub-floor', 'leveling', 'framing', 'blocking', 'drywall', 'insulation'] },
+  // Taking-out work is written as a verb at least as often as a noun ("Remove
+  // existing tile", "Cabinet removal", "Haul away old countertops"). Every one
+  // of those titles also names a finish, so a registry that knows only
+  // "demolition" reads the finish and hands the client a toggle on the demo.
+  {
+    key: 'demolition',
+    icon: 'hammer',
+    optional: false,
+    keywords: [
+      'demolition', 'demolish', 'demolishing', 'demo', 'gut', 'gutting',
+      'tear-out', 'tearing out', 'rip out', 'ripping out',
+      'strip out', 'stripping out', 'remove', 'removal', 'removing',
+      'haul away', 'hauling away', 'haul off', 'hauling off',
+      'disposal', 'debris', 'dumpster',
+    ],
+  },
+  { key: 'prep', icon: 'layers', optional: false, keywords: ['prep', 'preparation', 'protect', 'protecting', 'protective', 'protection', 'subfloor', 'sub-floor', 'leveling', 'framing', 'blocking', 'drywall', 'insulation'] },
   { key: 'plumbing_rough', icon: 'wrench', optional: false, keywords: ['rough-in', 'supply line', 'drain', 'valve', 'waterproofing'] },
   { key: 'electrical_rough', icon: 'zap', optional: false, keywords: ['electrical panel', 'wiring', 'circuit', 'gfci'] },
   { key: 'compliance', icon: 'clipboard-check', optional: false, keywords: ['permit', 'inspection'] },
