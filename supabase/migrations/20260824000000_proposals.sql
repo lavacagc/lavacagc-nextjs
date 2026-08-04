@@ -72,14 +72,46 @@ CREATE TABLE IF NOT EXISTS public.proposal_submissions (
   -- and there is no FK to hold them (arrays cannot express one). Owner decision
   -- D4 keeps every submission as THE record of what was agreed, so the record
   -- has to stay readable without the rows it was built from.
-  included_lines    JSONB NOT NULL CHECK (jsonb_typeof(included_lines) = 'array'),
+  --
+  -- The shape is CHECKed, not just documented: a comment does not stop the API
+  -- from persisting bare ids, and the schema is the only layer that outlives
+  -- the re-import. Every element must be an object carrying all three keys, at
+  -- the right types; extra keys are welcome. The paired counts are the "every"
+  -- - a subquery is not allowed in a CHECK, so the elements that satisfy the
+  -- filter are counted against the elements that are there.
+  included_lines    JSONB NOT NULL
+    CONSTRAINT proposal_submissions_included_lines_snapshot CHECK (
+      jsonb_typeof(included_lines) = 'array'
+      AND jsonb_array_length(jsonb_path_query_array(
+            included_lines, 'strict $[*] ? (@.type() == "object")', '{}', true
+          )) = jsonb_array_length(included_lines)
+      AND jsonb_array_length(jsonb_path_query_array(
+            included_lines,
+            '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.price_cents.type() == "number" && @.price_cents >= 0)',
+            '{}', true
+          )) = jsonb_array_length(included_lines)
+    ),
   -- Server-recomputed at submit time from the rows, never trusted from the
   -- client. What the owner alert prints.
   total_cents       BIGINT NOT NULL CHECK (total_cents >= 0),
   -- Free early telemetry (owner-approved concession toward WEB-027): which
   -- optional lines the client flipped at least once while playing. Snapshotted
-  -- the same way and for the same reason.
-  touched_lines     JSONB CHECK (touched_lines IS NULL OR jsonb_typeof(touched_lines) = 'array'),
+  -- the same way, checked the same way, and for the same reason.
+  touched_lines     JSONB
+    CONSTRAINT proposal_submissions_touched_lines_snapshot CHECK (
+      touched_lines IS NULL
+      OR (
+        jsonb_typeof(touched_lines) = 'array'
+        AND jsonb_array_length(jsonb_path_query_array(
+              touched_lines, 'strict $[*] ? (@.type() == "object")', '{}', true
+            )) = jsonb_array_length(touched_lines)
+        AND jsonb_array_length(jsonb_path_query_array(
+              touched_lines,
+              '$[*] ? (@.id.type() == "string" && @.title.type() == "string" && @.price_cents.type() == "number" && @.price_cents >= 0)',
+              '{}', true
+            )) = jsonb_array_length(touched_lines)
+      )
+    ),
   ip_address        INET,
   user_agent        TEXT,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()

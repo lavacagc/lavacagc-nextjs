@@ -30,8 +30,13 @@ export interface ParsedProposalLine {
   priceCents: number;
   /** Registry verdict; the admin can override per line in the import preview. */
   optional: boolean;
+  /**
+   * Registry category slug, the only thing proposal_lines stores of the
+   * verdict. The icon is NOT copied here: it is derived from this slug through
+   * `iconForCategory` where it is rendered, so there is one source of truth to
+   * drift from.
+   */
   category: string;
-  icon: string;
 }
 
 /**
@@ -65,6 +70,8 @@ interface SplitCsvResult {
   rows: RawRow[];
   /** A quoted field opened and ran to end-of-file without its closing quote. */
   unterminatedAt: number;
+  /** A quoted field closed and the row carried on with more characters. */
+  danglingAt: number;
 }
 
 /**
@@ -86,6 +93,17 @@ function isBlankLine(cells: string[]): boolean {
  * business writes constantly, and treating its inch marks as field quoting
  * silently deleted them and shipped a corrupted title at the right price.
  *
+ * The closing quote of a quoted field must be followed by a comma, a line
+ * break, or end-of-file. `"36" wide vanity",Shaker,3400` is the same
+ * corruption from the other side - a title that opens with an inch mark and
+ * got wrapped - and absorbing the remainder shipped `36 wide vanity"` at the
+ * right price. It is reported, not repaired: only the admin knows whether the
+ * quote or the wrapping was the mistake.
+ *
+ * Newlines inside a quoted field normalize to \n. Excel writes CRLF (the BOM
+ * handling below is there for the same exports), and a raw \r kept mid-value
+ * renders as a stray character on the client page.
+ *
  * Rows carry the 1-based file line they START on - counted across newlines
  * inside quoted fields too - because the admin fixes the file, not the
  * importer, and a row number that does not match their editor sends them to
@@ -99,6 +117,7 @@ function splitCsv(text: string): SplitCsvResult {
   let lineNo = 1;
   let rowLineNo = 1;
   let quoteOpenedAt = 0;
+  let danglingAt = 0;
   // Normalize BOM away so the header check does not fail on an Excel export.
   const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
   for (let i = 0; i < src.length; i++) {
@@ -106,9 +125,17 @@ function splitCsv(text: string): SplitCsvResult {
     if (inQuotes) {
       if (ch === '"') {
         if (src[i + 1] === '"') { cell += '"'; i++; }
-        else inQuotes = false;
+        else {
+          const after = src[i + 1];
+          const closes = after === undefined || after === ',' || after === '\n' || after === '\r';
+          if (!closes && danglingAt === 0) danglingAt = lineNo;
+          inQuotes = false;
+        }
+      } else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && src[i + 1] === '\n') i++;
+        lineNo++;
+        cell += '\n';
       } else {
-        if (ch === '\n') lineNo++;
         cell += ch;
       }
     } else if (ch === '"' && cell === '') {
@@ -130,19 +157,25 @@ function splitCsv(text: string): SplitCsvResult {
   // A trailing newline is punctuation, not a row. Interior blank lines are NOT
   // dropped: dropping them renumbered every later error.
   while (rows.length > 0 && isBlankLine(rows[rows.length - 1].cells)) rows.pop();
-  return { rows, unterminatedAt: inQuotes ? quoteOpenedAt : 0 };
+  return { rows, unterminatedAt: inQuotes ? quoteOpenedAt : 0, danglingAt };
 }
 
 /**
  * "$12,345.67" -> 1234567. Null when the value is not clean money.
  * String arithmetic only: parseFloat('19.99') * 100 is 1998.9999999999998,
  * and this table stores the number a client will be quoted.
+ *
+ * Thousands separators are validated BEFORE they are stripped: they must group
+ * the dollars in exact threes, or there must be none at all. Stripping every
+ * comma first read "3,00" as $300.00 and "12,34.56" as $1234.56 - a hand-typed
+ * slip in the file silently becoming a different, plausible number is exactly
+ * the wrong-money-as-right-money failure the rest of this parser refuses.
  */
 export function parsePriceCents(raw: string): number | null {
-  const cleaned = raw.trim().replace(/^\$/, '').replace(/,/g, '');
-  const m = /^(\d+)(?:\.(\d{1,2}))?$/.exec(cleaned);
+  const cleaned = raw.trim().replace(/^\$/, '').trim();
+  const m = /^(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?$/.exec(cleaned);
   if (!m) return null;
-  const dollars = m[1];
+  const dollars = m[1].replace(/,/g, '');
   const centsPart = (m[2] ?? '').padEnd(2, '0');
   const cents = Number(dollars) * 100 + Number(centsPart);
   if (!Number.isSafeInteger(cents)) return null;
@@ -151,7 +184,7 @@ export function parsePriceCents(raw: string): number | null {
 
 export function parseProposalCsv(text: string): ProposalCsvResult {
   const errors: string[] = [];
-  const { rows, unterminatedAt } = splitCsv(text ?? '');
+  const { rows, unterminatedAt, danglingAt } = splitCsv(text ?? '');
   if (unterminatedAt > 0) {
     return {
       ok: false,
@@ -160,6 +193,18 @@ export function parseProposalCsv(text: string): ProposalCsvResult {
         `Row ${unterminatedAt}: a quoted value opens here and is never closed. `
         + 'Every " that opens a field needs a matching " that closes it, and a '
         + 'quote inside a value must be doubled ("").',
+      ],
+    };
+  }
+  if (danglingAt > 0) {
+    return {
+      ok: false,
+      lines: [],
+      errors: [
+        `Row ${danglingAt}: a quoted value ends part-way through the column and `
+        + 'the rest of it runs on. A " that closes a field must be followed by a '
+        + 'comma or the end of the line, and a quote inside a value must be '
+        + 'doubled ("") - `"36"" wide vanity"`, not `"36" wide vanity"`.',
       ],
     };
   }
@@ -213,7 +258,6 @@ export function parseProposalCsv(text: string): ProposalCsvResult {
       priceCents,
       optional: verdict.optional,
       category: verdict.key,
-      icon: verdict.icon,
     });
   });
 

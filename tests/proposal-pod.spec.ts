@@ -2,7 +2,9 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { parseProposalCsv, parsePriceCents, MAX_LINES } from '../src/lib/proposals/csv';
-import { categorizeLine, PROPOSAL_CATEGORIES, UNRECOGNIZED_CATEGORY } from '../src/lib/proposals/categories';
+import {
+  categorizeLine, iconForCategory, PROPOSAL_CATEGORIES, UNRECOGNIZED_CATEGORY,
+} from '../src/lib/proposals/categories';
 
 /**
  * Proposal Page Pod - Slice 1: schema + CSV contract + category registry
@@ -61,6 +63,37 @@ test('AC2b: a quote mid-field is data, not a wrapper - inch marks survive intact
   expect(unterminated.errors[0]).toContain('never closed');
 });
 
+test('AC2d: a quoted field that closes mid-column fails loudly, never absorbs the rest', () => {
+  // The same corruption from the other side: a title that OPENS with an inch
+  // mark and got wrapped. Absorbing the remainder shipped `3/4 plywood
+  // subfloor"` in a clean 3-column row, at the right price, reporting ok.
+  const subfloor = parseProposalCsv('title,description,price\n"3/4" plywood subfloor",Sets flat,2900');
+  expect(subfloor.ok).toBe(false);
+  expect(subfloor.lines).toEqual([]);
+  expect(subfloor.errors[0]).toContain('Row 2');
+
+  const vanity = parseProposalCsv('title,description,price\nCabinets,,1000\n"36" wide vanity",Shaker,3400');
+  expect(vanity.ok).toBe(false);
+  expect(vanity.errors[0]).toContain('Row 3');
+
+  // Correctly doubled, the same value is accepted and keeps its inch mark.
+  const doubled = parseProposalCsv('title,description,price\n"36"" wide vanity",Shaker,3400');
+  expect(doubled.errors).toEqual([]);
+  expect(doubled.lines[0].title).toBe('36" wide vanity');
+});
+
+test('AC2e: newlines inside a quoted field normalize, so a CRLF export carries no stray CR', () => {
+  const res = parseProposalCsv('title,description,price\r\nCabinets,"Shaker white\r\nsoft-close",1000\r\n');
+  expect(res.errors).toEqual([]);
+  expect(res.lines[0].description).toBe('Shaker white\nsoft-close');
+  expect(res.lines[0].description).not.toContain('\r');
+
+  // The row counter still tracks the file, so a later error names the real line.
+  const later = parseProposalCsv('title,description,price\r\nCabinets,"one\r\ntwo",1000\r\nTile,,TBD\r\n');
+  expect(later.ok).toBe(false);
+  expect(later.errors[0]).toContain('Row 4');
+});
+
 test('AC2c: blank and empty rows fail with the row number the admin sees in their editor', () => {
   // Interior blank line on file line 3; the bad price is on file line 4.
   const res = parseProposalCsv('title,description,price\nCabinets,,1000\n\nTile,,TBD\n');
@@ -93,6 +126,26 @@ test('AC3: money is string-split, never floated, and dirty prices fail with thei
   expect(res.errors[0]).toContain('Row 2');
 });
 
+test('AC3b: malformed thousands grouping fails, it is never reinterpreted', () => {
+  // Stripping every comma first read each of these as a different, plausible
+  // number: "3,00" as $300.00 - a 100x misread of $3.00 - and "12,34.56" as
+  // $1234.56. A typo in a hand-corrected file must reach the admin, not a client.
+  expect(parsePriceCents('3,00')).toBeNull();
+  expect(parsePriceCents('12,34.56')).toBeNull();
+  expect(parsePriceCents('1,0,0')).toBeNull();
+  expect(parsePriceCents(',100')).toBeNull();
+  expect(parsePriceCents('1,')).toBeNull();
+
+  // Correct grouping, and no grouping at all, both still parse.
+  expect(parsePriceCents('12,345.67')).toBe(1234567);
+  expect(parsePriceCents('1,234,567.89')).toBe(123456789);
+  expect(parsePriceCents('1234567')).toBe(123456700);
+
+  const res = parseProposalCsv('title,description,price\nCabinets,,"3,00"');
+  expect(res.ok).toBe(false);
+  expect(res.errors[0]).toContain('Row 2');
+});
+
 test('AC4: the internal cost sheet is rejected loudly - the wrong-file guard', () => {
   // Header shaped like the estimator's internal export (crew/day-rate columns).
   const costSheet = 'Task,Scope,Name,Qty,Unit,Days,Crew,DayRate,Materials,Labor,Total,Notes\n'
@@ -116,16 +169,37 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
   const unknown = categorizeLine('Zorble calibration');
   expect(unknown.optional).toBe(false);
   expect(unknown.key).toBe(UNRECOGNIZED_CATEGORY.key);
-  // Structure wins ties: a line that names both demo and a finish stays locked.
-  expect(categorizeLine('Demolition of old cabinets').optional).toBe(false);
+
+  // STRUCTURE WINS whenever a structural keyword is there as a whole word, no
+  // matter how short it is against the finish noun beside it. Ranking keywords
+  // by length instead unlocked every one of these, because "demo"/"gut"/
+  // "debris"/"valve" are shorter than "cabinet"/"countertop"/"backsplash"/
+  // "faucet"/"refrigerator" - the client got a toggle on the demolition.
+  for (const locked of [
+    'Demolition of old cabinets',
+    'Gut kitchen cabinets',
+    'Demo of existing vanity',
+    'Debris removal - old countertops',
+    'Demo backsplash',
+    'Demo old counter top',
+    'Valve and faucet replacement',
+    'Refrigerator water supply line',
+  ]) {
+    expect(categorizeLine(locked).optional, `"${locked}" must stay locked`).toBe(false);
+  }
 });
 
-test('AC5b: matching is word-aware - the most specific keyword wins, fragments never match', () => {
-  // "disposal" is a demolition keyword; "garbage disposal" is the appliance,
-  // and being longer it wins. Locking it would strip the client's toggle.
+test('AC5b: matching is word-aware - a swallowed keyword drops out, fragments never match', () => {
+  // "disposal" is a demolition keyword, but here it is INSIDE the appliance
+  // phrase "garbage disposal", so it is not evidence of demolition at all.
+  // Locking this would strip the client's toggle on a kitchen appliance.
   const disposal = categorizeLine('Garbage disposal - InSinkErator');
   expect(disposal.key).toBe('appliances');
   expect(disposal.optional).toBe(true);
+  // Containment is the whole exception: a structural keyword standing on its
+  // own next to a longer finish phrase still wins.
+  expect(categorizeLine('Demo of shower door').key).toBe('demolition');
+  expect(categorizeLine('Refrigerator water supply line').key).toBe('plumbing_rough');
   // ... while debris disposal is still demolition, and still locked.
   expect(categorizeLine('Disposal of demo debris').key).toBe('demolition');
   expect(categorizeLine('Disposal of demo debris').optional).toBe(false);
@@ -157,11 +231,21 @@ test('AC5c: the registry hands out copies - a per-line override cannot poison th
   expect(Object.isFrozen(UNRECOGNIZED_CATEGORY)).toBe(true);
 });
 
-test('AC6: every category carries a lucide icon key for WEB-024', () => {
+test('AC6: the registry is the only source of the WEB-024 icon', () => {
   for (const cat of PROPOSAL_CATEGORIES) {
     expect(cat.icon, `category ${cat.key} needs an icon`).toMatch(/^[a-z0-9-]+$/);
+    expect(iconForCategory(cat.key)).toBe(cat.icon);
   }
   expect(UNRECOGNIZED_CATEGORY.icon).toMatch(/^[a-z0-9-]+$/);
+  // An unknown slug resolves to the same icon as the unrecognized verdict.
+  expect(iconForCategory('not-a-category')).toBe(UNRECOGNIZED_CATEGORY.icon);
+
+  // A parsed line stores the category slug and nothing else of the verdict:
+  // a second copy of the icon on the row could only drift from the registry.
+  const line = parseProposalCsv('title,description,price\nVanity - double sink,,3400').lines[0];
+  expect(line.category).toBe('cabinets');
+  expect(line).not.toHaveProperty('icon');
+  expect(iconForCategory(line.category)).toBe('columns-3');
 });
 
 test('AC7: all three tables are deny-by-default - RLS on, zero policies, cents-only money', () => {
@@ -181,13 +265,27 @@ test('AC7: all three tables are deny-by-default - RLS on, zero policies, cents-o
 
 test('AC7b: a submission snapshots the composition it agreed to (D4 survives a re-import)', () => {
   const sql = read('supabase/migrations/20260824000000_proposals.sql');
+  // Only DDL: a comment promising the snapshot is what let bare ids stay green
+  // here while the schema went on accepting them.
+  const ddl = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
   // Bare line ids would dangle the moment a CSV re-import replaces the rows.
-  expect(sql).not.toContain('included_line_ids');
-  expect(sql).toMatch(/included_lines\s+JSONB\s+NOT NULL/);
-  expect(sql).toMatch(/jsonb_typeof\(included_lines\)\s*=\s*'array'/);
-  expect(sql).toMatch(/"id", "title", "price_cents"/);
+  expect(ddl).not.toContain('included_line_ids');
+  expect(ddl).toMatch(/included_lines\s+JSONB\s+NOT NULL/);
+  expect(ddl).toMatch(/jsonb_typeof\(included_lines\)\s*=\s*'array'/);
+  // The {id, title, price_cents} element shape is CHECKed per element, on both
+  // snapshot columns, so the API cannot persist a bare id.
+  for (const col of ['included_lines', 'touched_lines']) {
+    const constraint = new RegExp(
+      `CONSTRAINT proposal_submissions_${col}_snapshot CHECK \\(`
+      + `[\\s\\S]*?jsonb_path_query_array\\(\\s*\\n?\\s*${col},[\\s\\S]*?`
+      + `@\\.id\\.type\\(\\) == "string"[\\s\\S]*?`
+      + `@\\.title\\.type\\(\\) == "string"[\\s\\S]*?`
+      + `@\\.price_cents\\.type\\(\\) == "number"`,
+    );
+    expect(ddl, `${col} needs a per-element snapshot CHECK`).toMatch(constraint);
+  }
   // The total stays server-computed money, not a client number.
-  expect(sql).toMatch(/total_cents\s+BIGINT NOT NULL CHECK \(total_cents >= 0\)/);
+  expect(ddl).toMatch(/total_cents\s+BIGINT NOT NULL CHECK \(total_cents >= 0\)/);
 });
 
 test('AC8: the token is 32 random bytes base64url, the intake recipe', () => {

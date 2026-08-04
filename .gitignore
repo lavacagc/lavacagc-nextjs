@@ -59,10 +59,12 @@ supabase/.temp/
 # Local working files that live in the repo dir but never belong in git.
 # (A gate run requires a clean tree; these are session scratch, owner notes,
 # and local tooling config - commit any of them deliberately if that changes.)
+# No `!/CLAUDE.md` negation here: macOS checkouts set core.ignorecase, so an
+# uppercase negation also matches this lowercase pattern and, being later,
+# cancels it - the scratch file came back into `git status` on the one platform
+# this is written for. Project instructions belong to a tracked CLAUDE.md, and
+# ignore rules never apply to a tracked file.
 /claude.md
-# macOS checkouts set core.ignorecase, which makes /claude.md swallow the
-# tracked project CLAUDE.md while Linux CI tracks it normally. Never silently.
-!/CLAUDE.md
 /legal/
 /*.png
 /*.jpeg

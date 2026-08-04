@@ -17,13 +17,21 @@
  * a longer word. Bare substring matching read "Arrange delivery" as the
  * appliance keyword "range" and handed the client a toggle on it.
  *
- * When several keywords hit, the MOST SPECIFIC one wins - the longest keyword,
- * measured in characters. That is what separates "Garbage disposal", a kitchen
- * appliance, from the demolition keyword "disposal" it contains. Ties go to
- * the earlier category, and the locked categories are listed first, so a title
- * that reads as both structure and finish stays locked: "Demolition of old
- * cabinets" matches "demolition" (10) over "cabinet" (7). Structure wins,
- * the same fail-safe direction as the unknown-title default.
+ * When several keywords hit, two rules settle it, in this order:
+ *
+ *   1. A hit whose matched text sits entirely INSIDE a longer hit is not
+ *      evidence of its own category and is dropped. This is what separates
+ *      "Garbage disposal", a kitchen appliance, from the demolition keyword
+ *      "disposal" it contains.
+ *   2. Of what survives, STRUCTURE WINS - any locked category beats any
+ *      optional one, whatever the keyword lengths are. "Demo old counter top"
+ *      is demolition; "Refrigerator water supply line" is rough plumbing.
+ *      Comparing keyword lengths globally instead handed the client a toggle
+ *      on the demolition, because "demo" is shorter than "counter top".
+ *
+ * Ties inside a tier go to the earlier category, and the locked categories are
+ * listed first. Structure wins, the same fail-safe direction as the
+ * unknown-title default.
  */
 
 export interface ProposalCategory {
@@ -85,15 +93,52 @@ function normalizeWords(value: string): string {
 /**
  * Whole-word phrase match, tolerating a trailing plural so the registry does
  * not need both "cabinet" and "cabinets". Built once per keyword.
+ *
+ * The leading `(?:^| )` consumes the separating space, so the keyword's own
+ * span starts one character in whenever the match did not begin at the string
+ * start - the containment rule below compares the keyword text, not the space.
  */
 const MATCHERS = new Map<string, RegExp>();
 function matcherFor(keyword: string): RegExp {
   let matcher = MATCHERS.get(keyword);
   if (!matcher) {
-    matcher = new RegExp(`(?:^| )${normalizeWords(keyword)}(?:e?s)?(?= |$)`);
+    matcher = new RegExp(`(?:^| )${normalizeWords(keyword)}(?:e?s)?(?= |$)`, 'g');
     MATCHERS.set(keyword, matcher);
   }
   return matcher;
+}
+
+/** Where one keyword matched the title, and which category claimed it. */
+interface KeywordHit {
+  cat: ProposalCategory;
+  start: number;
+  end: number;
+}
+
+function collectHits(haystack: string): KeywordHit[] {
+  const hits: KeywordHit[] = [];
+  for (const cat of PROPOSAL_CATEGORIES) {
+    for (const keyword of cat.keywords) {
+      const matcher = matcherFor(keyword);
+      matcher.lastIndex = 0;
+      let m: RegExpExecArray;
+      while ((m = matcher.exec(haystack)) !== null) {
+        hits.push({
+          cat,
+          start: m.index + (m[0].charAt(0) === ' ' ? 1 : 0),
+          end: m.index + m[0].length,
+        });
+        if (matcher.lastIndex === m.index) matcher.lastIndex++;
+      }
+    }
+  }
+  return hits;
+}
+
+/** True when a strictly longer hit covers this one: "disposal" in "garbage disposal". */
+function isSwallowed(hit: KeywordHit, hits: KeywordHit[]): boolean {
+  return hits.some((other) => other.end - other.start > hit.end - hit.start
+    && other.start <= hit.start && other.end >= hit.end);
 }
 
 /**
@@ -105,22 +150,21 @@ function matcherFor(keyword: string): RegExp {
  */
 export function categorizeLine(title: string): ProposalCategoryVerdict {
   const haystack = normalizeWords(title);
-  let best: ProposalCategory = null;
-  let bestSpecificity = 0;
-  if (haystack) {
-    for (const cat of PROPOSAL_CATEGORIES) {
-      for (const keyword of cat.keywords) {
-        // Strictly longer to win, so an equally specific tie keeps the earlier
-        // (structural) category.
-        const specificity = normalizeWords(keyword).length;
-        if (specificity <= bestSpecificity) continue;
-        if (matcherFor(keyword).test(haystack)) {
-          best = cat;
-          bestSpecificity = specificity;
-        }
-      }
-    }
-  }
+  if (!haystack) return { ...UNRECOGNIZED_CATEGORY };
+  const hits = collectHits(haystack).filter((hit, _i, all) => !isSwallowed(hit, all));
+  // Hits arrive in registry order, locked categories first, so the first
+  // structural survivor is the answer whenever there is one.
+  const best = hits.find((hit) => !hit.cat.optional) || hits[0];
   if (!best) return { ...UNRECOGNIZED_CATEGORY };
-  return { key: best.key, icon: best.icon, optional: best.optional };
+  return { key: best.cat.key, icon: best.cat.icon, optional: best.cat.optional };
+}
+
+/**
+ * The lucide icon a category renders with (WEB-024). The registry is the one
+ * source of truth for it: nothing downstream stores a second copy that can
+ * drift. Unknown slugs get the same icon as the unrecognized verdict.
+ */
+export function iconForCategory(key: string): string {
+  const cat = PROPOSAL_CATEGORIES.find((c) => c.key === key);
+  return cat ? cat.icon : UNRECOGNIZED_CATEGORY.icon;
 }
