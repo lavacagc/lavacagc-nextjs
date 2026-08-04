@@ -55,3 +55,23 @@ supabase/.temp/
 
 # Local preview renders and session scratch (never commit)
 .preview/
+
+# Local working files that live in the repo dir but never belong in git.
+# (A gate run requires a clean tree; these are session scratch, owner notes,
+# and local tooling config - commit any of them deliberately if that changes.)
+# Nothing named claude.md belongs here: macOS checkouts set core.ignorecase, so
+# a lowercase pattern also hides the conventional CLAUDE.md, and no negation can
+# separate the two on this platform. The project instructions are tracked as
+# CLAUDE.md instead.
+/legal/
+/*.png
+/*.jpeg
+/*.jpg
+/.githooks/
+/.gitleaks.toml
+/supabase/config.toml
+/supabase/.gitignore
+/scripts/crew-dispatch-live-test.ts
+/scripts/crew-dispatch-preview.ts
+/scripts/newsletter-samples.ts
+/scripts/seo-live-check.ts
