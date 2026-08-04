@@ -748,6 +748,19 @@ test('AC7: all three tables are deny-by-default - RLS on, zero policies, cents-o
   // rest, and AC7b pins the exact expression it is allowed to be.
   const stored = ddl.replace(/\$\$[\s\S]*?\$\$/g, '');
   expect(stored).not.toMatch(/NUMERIC|DECIMAL|FLOAT|REAL|MONEY/i);
+  // One cap, three layers: the parser, the line column and the snapshot domain
+  // all read MAX_PRICE_CENTS. Read out of the proposal_lines table's own
+  // definition, since the domain below carries the same number and would satisfy
+  // a match run across the whole file. Left open on the column the snapshot is
+  // built FROM, any writer but the parser could store a line the client page
+  // rendered and summed, and the submit insert then failed against the snapshot
+  // domain, naming a rule on another table rather than the offending row.
+  const lines = ddl.slice(
+    ddl.indexOf('CREATE TABLE public.proposal_lines'),
+    ddl.indexOf('CREATE DOMAIN public.proposal_line_snapshot'),
+  );
+  expect(lines, 'a stored line may not cost more than the parser lets one cost')
+    .toMatch(new RegExp(`CHECK \\(price_cents >= 0 AND price_cents <= ${MAX_PRICE_CENTS}\\)`));
 });
 
 test('AC7b: a submission snapshots the composition it agreed to (D4 survives a re-import)', () => {

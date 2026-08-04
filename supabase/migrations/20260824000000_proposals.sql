@@ -22,9 +22,10 @@
 -- applied to a throwaway local Postgres and its constraints exercised there
 -- before that revision is called finished: a 43-character token accepted and a
 -- short one rejected, a whole-composition snapshot accepted, whole cents written
--- with a scale and a price_cents at the cap exactly both accepted, a proposal
--- revoked out of draft accepted with no sent_at, and a fractional price_cents,
--- one past the cap, a missing `optional` key, an empty included_lines, a
+-- with a scale and a price_cents at the cap exactly both accepted on the
+-- snapshot and on a line row, a proposal revoked out of draft accepted with no
+-- sent_at, and a fractional price_cents, a price above the cap on either the
+-- line row or the snapshot, a missing `optional` key, an empty included_lines, a
 -- total_cents that disagrees with its snapshot, a revoked_at stamped while the
 -- status still reads 'sent' and a 'sent' proposal carrying no sent_at each
 -- rejected by the constraint that names them. The PR's Supabase Preview check
@@ -105,7 +106,17 @@ CREATE TABLE public.proposal_lines (
   position     INT NOT NULL,
   title        TEXT NOT NULL,
   description  TEXT NOT NULL DEFAULT '',
-  price_cents  BIGINT NOT NULL CHECK (price_cents >= 0),
+  -- Bounded above at the 1_000_000_000 cents the CSV parser caps a line at
+  -- (MAX_PRICE_CENTS, $10,000,000) and the snapshot domain below repeats, so all
+  -- three layers say one thing about what a line may cost. This is the column
+  -- the snapshot is built FROM, and it is the one that was left open: a writer
+  -- other than the parser - an admin price edit, a data correction, the import
+  -- API before its own guard - could store a line the client page then rendered
+  -- and summed, and the submit insert failed against the snapshot domain, naming
+  -- a rule on another table rather than the row that was actually wrong.
+  price_cents  BIGINT NOT NULL
+               CONSTRAINT proposal_lines_price_range
+               CHECK (price_cents >= 0 AND price_cents <= 1000000000),
   -- The category registry's verdict, after any per-line admin override in the
   -- import preview. false = locked. The fail-safe lives in code: a title the
   -- registry does not recognize imports as locked.
@@ -152,7 +163,8 @@ CREATE TABLE public.proposal_lines (
 -- browser's sum and the server's re-sum stop agreeing to the cent. And the
 -- magnitude, bounded at the 1_000_000_000 cents the CSV parser already caps a
 -- line at (MAX_PRICE_CENTS - $10,000,000, above any job La Vaca prices through
--- this page), so the two layers cannot disagree about what a line may cost.
+-- this page) and proposal_lines.price_cents now repeats, so none of the three
+-- layers a price passes through can disagree about what a line may cost.
 -- Unbounded, a value past BIGINT was a domain-valid element that the total's
 -- sum below then rejected with a bare `bigint out of range` naming no
 -- constraint - the same unnamed rejection the NUMERIC cast was added to close
