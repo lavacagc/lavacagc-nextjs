@@ -19,7 +19,17 @@ CREATE TABLE IF NOT EXISTS public.proposals (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   -- 32 random bytes, base64url - same recipe as the intake chat session token.
   -- UNIQUE gives the lookup index; unknown tokens get a generic dead end.
-  token         TEXT NOT NULL UNIQUE,
+  --
+  -- CHECKed against that recipe, not merely documented as it. This token is the
+  -- WHOLE access control for the row: RLS denies the anon key outright, so the
+  -- only thing between a client's private prices and the public is the length of
+  -- this string. Plain TEXT accepts '' and 'abc', nothing in this slice writes
+  -- the column yet, and the failure when a future writer gets it wrong is
+  -- silent - the proposal simply becomes guessable. 43 characters is what 32
+  -- bytes encode to in unpadded base64url, and the class is base64url's own.
+  token         TEXT NOT NULL UNIQUE
+                CONSTRAINT proposals_token_recipe
+                CHECK (token ~ '^[A-Za-z0-9_-]{43}$'),
   client_name   TEXT NOT NULL,
   client_email  TEXT,
   title         TEXT NOT NULL,

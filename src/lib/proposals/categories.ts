@@ -32,6 +32,18 @@
  * Ties inside a tier go to the earlier category, and the locked categories are
  * listed first. Structure wins, the same fail-safe direction as the
  * unknown-title default.
+ *
+ * THE VOCABULARY IS DELIBERATELY NON-EXHAUSTIVE. No keyword list can name every
+ * phrasing an estimator writes, and this one is not trying to: a title it does
+ * not recognize resolves LOCKED, and the admin flips any line's badge in the
+ * import preview before the proposal is sent. Those two together are the
+ * completeness backstop, by design. So a word the registry is missing is
+ * operating cost - one more badge to flip - and not a defect; what IS a defect
+ * is a title that matches the WRONG WAY, resolving optional when the work is
+ * structural, because the fail-safe never runs and the admin sees a plausible
+ * badge. Measure this registry against that line: adding vocabulary is how the
+ * second kind gets fixed, and the first kind is a judgement about how much
+ * flipping the admin should have to do.
  */
 
 export interface ProposalCategory {
@@ -71,8 +83,36 @@ const REGISTRY: ProposalCategory[] = [
     ],
   },
   { key: 'prep', icon: 'layers', optional: false, keywords: ['prep', 'preparation', 'protect', 'protecting', 'protective', 'protection', 'subfloor', 'sub-floor', 'leveling', 'framing', 'blocking', 'drywall', 'insulation'] },
-  { key: 'plumbing_rough', icon: 'wrench', optional: false, keywords: ['rough-in', 'supply line', 'drain', 'valve', 'waterproofing'] },
+  // Moving a service is rough work whatever it serves, and the title names what
+  // it serves: "Move sink plumbing", "Relocate range gas line", "Shift toilet
+  // 12 inches". Reading the fixture and skipping the verb handed the client a
+  // toggle that deletes a drain relocation. The named line runs are here for the
+  // same reason - "supply line" alone missed "water line" and "gas line".
+  {
+    key: 'plumbing_rough',
+    icon: 'wrench',
+    optional: false,
+    keywords: [
+      'rough-in', 'supply line', 'water line', 'gas line', 'drain line', 'waste line',
+      'drain', 'valve', 'waterproofing',
+      'relocate', 'relocating', 'relocation', 'reroute', 'rerouting',
+      'move', 'moving', 'shift', 'shifting',
+    ],
+  },
   { key: 'electrical_rough', icon: 'zap', optional: false, keywords: ['electrical panel', 'wiring', 'circuit', 'gfci'] },
+  // Venting and ducting are a roof or wall penetration and a run through the
+  // framing, so they are never the client's to remove - but the title almost
+  // always names the appliance they serve ("Range hood vent to exterior"), and
+  // an appliance keyword alone read that as a toggle. The appliance itself stays
+  // optional through the containment rule: "vent" inside the phrase "vent hood"
+  // is the appliance's own name, not evidence of duct work, exactly as
+  // "disposal" inside "garbage disposal" is not evidence of demolition.
+  {
+    key: 'mechanical',
+    icon: 'air-vent',
+    optional: false,
+    keywords: ['vent', 'venting', 'duct', 'ductwork', 'ducting', 'exhaust', 'flue'],
+  },
   { key: 'compliance', icon: 'clipboard-check', optional: false, keywords: ['permit', 'inspection'] },
   // --- finish selections: optional ---
   { key: 'cabinets', icon: 'columns-3', optional: true, keywords: ['cabinet', 'vanity', 'vanities'] },
@@ -81,7 +121,7 @@ const REGISTRY: ProposalCategory[] = [
   { key: 'fixtures', icon: 'shower-head', optional: true, keywords: ['fixture', 'faucet', 'shower door', 'toilet', 'sink'] },
   { key: 'lighting', icon: 'lamp', optional: true, keywords: ['lighting', 'sconce', 'chandelier', 'recessed light'] },
   { key: 'hardware', icon: 'grip', optional: true, keywords: ['hardware', 'pull', 'knob', 'towel bar'] },
-  { key: 'appliances', icon: 'refrigerator', optional: true, keywords: ['appliance', 'garbage disposal', 'range', 'dishwasher', 'refrigerator', 'microwave', 'hood'] },
+  { key: 'appliances', icon: 'refrigerator', optional: true, keywords: ['appliance', 'garbage disposal', 'range hood', 'vent hood', 'range', 'dishwasher', 'refrigerator', 'microwave', 'hood'] },
 ];
 
 /**

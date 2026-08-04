@@ -5,6 +5,7 @@ import { parseProposalCsv, parsePriceCents, MAX_LINES } from '../src/lib/proposa
 import {
   categorizeLine, iconForCategory, PROPOSAL_CATEGORIES, UNRECOGNIZED_CATEGORY,
 } from '../src/lib/proposals/categories';
+import { newProposalToken } from '../src/lib/proposals/token';
 
 /**
  * Proposal Page Pod - Slice 1: schema + CSV contract + category registry
@@ -274,11 +275,31 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
     // Protection is prep, and it is the finish it protects that gets named.
     'Protect existing cabinets during work',
     'Protective covering over countertops',
+    // Mechanical scope: a duct run, a roof penetration, a gas line, a drain
+    // relocation. Every one of these titles also names the appliance or fixture
+    // the work serves, and a registry with no word for venting, ducting or
+    // moving a service read that noun and handed the client a toggle that
+    // deletes the hole in the roof.
+    'Range hood vent to exterior',
+    'Hood ductwork through roof',
+    'Vent hood exhaust duct',
+    'Bath exhaust vent to roof',
+    'Ductwork rerouting',
+    'Vent stack rework',
+    'Flue liner replacement',
+    'Refrigerator water line',
+    'Relocate range gas line',
+    'Move gas line for range',
+    'Move sink plumbing',
+    'Shift toilet 12 inches',
+    'Reroute waste line in ceiling',
   ]) {
     expect(categorizeLine(locked).optional, `"${locked}" must stay locked`).toBe(false);
   }
   expect(categorizeLine('Cabinet removal').key).toBe('demolition');
   expect(categorizeLine('Protect existing cabinets during work').key).toBe('prep');
+  expect(categorizeLine('Range hood vent to exterior').key).toBe('mechanical');
+  expect(categorizeLine('Move sink plumbing').key).toBe('plumbing_rough');
 });
 
 test('AC5b: matching is word-aware - a swallowed keyword drops out, fragments never match', () => {
@@ -288,10 +309,18 @@ test('AC5b: matching is word-aware - a swallowed keyword drops out, fragments ne
   const disposal = categorizeLine('Garbage disposal - InSinkErator');
   expect(disposal.key).toBe('appliances');
   expect(disposal.optional).toBe(true);
+  // The same rule keeps the appliance a toggle where "vent" is part of its own
+  // name: inside "vent hood" it is not evidence of duct work.
+  const hood = categorizeLine('Vent hood - 36 inch stainless');
+  expect(hood.key).toBe('appliances');
+  expect(hood.optional).toBe(true);
+  expect(categorizeLine('Range hood - stainless').key).toBe('appliances');
   // Containment is the whole exception: a structural keyword standing on its
   // own next to a longer finish phrase still wins.
   expect(categorizeLine('Demo of shower door').key).toBe('demolition');
   expect(categorizeLine('Refrigerator water supply line').key).toBe('plumbing_rough');
+  // ... so the duct that same hood needs is structure, not a toggle.
+  expect(categorizeLine('Vent hood ductwork to roof').optional).toBe(false);
   // ... while debris disposal is still demolition, and still locked.
   expect(categorizeLine('Disposal of demo debris').key).toBe('demolition');
   expect(categorizeLine('Disposal of demo debris').optional).toBe(false);
@@ -419,6 +448,16 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
 test('AC8: the token is 32 random bytes base64url, the intake recipe', () => {
   const src = read('src/lib/proposals/token.ts');
   expect(src).toMatch(/randomBytes\(32\)\.toString\('base64url'\)/);
+  expect(newProposalToken()).toMatch(/^[A-Za-z0-9_-]{43}$/);
+
+  // The column is CHECKed against that same recipe. The token is the whole
+  // access control for a proposal - RLS denies the anon key outright - so plain
+  // TEXT, which accepts '' and 'abc', leaves a guessable proposal one careless
+  // writer away, and nothing in this slice writes the column yet.
+  const ddl = read('supabase/migrations/20260824000000_proposals.sql')
+    .split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+  expect(ddl, 'a short or empty token must not be storable')
+    .toMatch(/CHECK \(token ~ '\^\[A-Za-z0-9_-\]\{43\}\$'\)/);
 });
 
 test('AC9: caps hold - line count, title and description length', () => {

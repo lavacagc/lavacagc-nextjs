@@ -83,9 +83,11 @@ interface SplitCsvResult {
   rows: RawRow[];
   /**
    * The EARLIEST quoting fault in the file, or null when there is none. A file
-   * can carry both kinds at once and neither is inherently first, so the choice
-   * of which to report belongs here, where the scan knows both, rather than to
-   * the order the caller happens to test them in.
+   * can carry both kinds at once, and then the dangling one is always the
+   * earlier: the scan leaves quote mode where a field closes mid-column, so any
+   * field left unterminated afterwards can only have OPENED at or after that
+   * line. Dangling therefore wins outright, and the choice belongs here, where
+   * the scan knows both, rather than to the order the caller tests them in.
    */
   quoteFault: QuoteFault | null;
 }
@@ -142,9 +144,12 @@ function isPad(ch: string): boolean {
  * until some later stray quote ends it, and naming that later line sends the
  * admin to a row that is not the problem.
  *
- * A file can carry both faults at once, and only the EARLIER one is reported:
- * the admin fixes the file top-down, and naming the later fault sends them past
- * their first mistake and back round for a second import to find it.
+ * A file can carry both faults at once, and then the DANGLING one is reported,
+ * because it is always the earlier of the two: quote mode ends where a field
+ * closes mid-column, so a field left unterminated later in the file can only
+ * have opened at or after the line the dangling one opened on. The admin fixes
+ * the file top-down, and naming the later fault would send them past their
+ * first mistake and back round for a second import to find it.
  *
  * Newlines inside a quoted field normalize to \n. Excel writes CRLF (the BOM
  * handling below is there for the same exports), and a raw \r kept mid-value
@@ -210,13 +215,10 @@ function splitCsv(text: string): SplitCsvResult {
   // dropped: dropping them renumbered every later error.
   while (rows.length > 0 && isBlankLine(rows[rows.length - 1].cells)) rows.pop();
 
-  const unterminatedAt = inQuotes ? quoteOpenedAt : 0;
-  let quoteFault: QuoteFault | null = danglingAt > 0
+  // Dangling first, and unconditionally: it cannot be the later of the two.
+  const quoteFault: QuoteFault | null = danglingAt > 0
     ? { kind: 'dangling', lineNo: danglingAt }
-    : null;
-  if (unterminatedAt > 0 && (quoteFault === null || unterminatedAt < quoteFault.lineNo)) {
-    quoteFault = { kind: 'unterminated', lineNo: unterminatedAt };
-  }
+    : inQuotes ? { kind: 'unterminated', lineNo: quoteOpenedAt } : null;
   return { rows, quoteFault };
 }
 
