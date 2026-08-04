@@ -293,6 +293,24 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
     'Move sink plumbing',
     'Shift toilet 12 inches',
     'Reroute waste line in ceiling',
+    // LAYER 1: a verb of manner locks on its own, whatever it names. Gating the
+    // lock on plumbing scope - so the verb only counted beside a plumbing noun -
+    // left the finish noun as the only surviving hit and handed the client a
+    // toggle on every one of these. Moving an outlet is electrical rough-in,
+    // relocating a hood is a duct run and a hole in the roof, moving a vanity is
+    // moving the drain. None of them is the client's to drop.
+    'Move backsplash outlet',
+    'Relocate outlet above countertop',
+    'Relocate recessed lighting',
+    'Relocate vent hood',
+    'Relocate hood',
+    'Move existing vanity',
+    'Relocate medicine cabinet',
+    'Move countertop slab',
+    'Moving cabinets to garage',
+    'Relocate towel bar',
+    'Move refrigerator',
+    'Relocate dishwasher',
   ]) {
     expect(categorizeLine(locked).optional, `"${locked}" must stay locked`).toBe(false);
   }
@@ -304,29 +322,44 @@ test('AC5: finish keywords go optional, structure stays locked, unknown fails sa
   expect(categorizeLine('Shift toilet 12 inches').key).toBe('plumbing_rough');
 });
 
-test('AC5d: a verb of manner is plumbing only when the title names plumbing scope', () => {
-  // "Relocate"/"move"/"shift"/"reroute" are true of every trade, so taking them
-  // as plumbing on their own put the plumbing slug and its wrench icon on work
-  // that is not plumbing at all. The category drives the WEB-024 imagery on the
-  // client page, and the admin's documented override in the import preview is
-  // the optional/locked badge, not the category - so a confidently wrong label
-  // is not something the workflow catches downstream.
+test('AC5d: a verb of manner locks on its own, and the scope noun only picks the slug', () => {
+  // The two layers, and the whole point is that they are independent.
+  //
+  // LAYER 1 is the lock, and nothing gates it: every one of these is locked in
+  // AC5 above on the strength of the verb alone. LAYER 2 is only which locked
+  // category the line wears, because that slug drives the WEB-024 imagery on
+  // the client page and the admin's documented override in the import preview
+  // is the optional/locked badge, not the category.
   const outlet = categorizeLine('Relocate outlet and wiring');
   expect(outlet.key, 'relocating wiring is electrical, not plumbing').toBe('electrical_rough');
   expect(outlet.optional).toBe(false);
-  // With no scope at all the verb is evidence of nothing, and an honest
-  // fallback beats a plausible wrong answer: these fall to the locked fail-safe
-  // rather than taking a category off the back of the verb.
-  for (const neither of ['Move-in cleaning', 'Moving and storage of furniture']) {
-    const verdict = categorizeLine(neither);
-    expect(verdict.key, `"${neither}" names no plumbing scope`).toBe(UNRECOGNIZED_CATEGORY.key);
-    expect(verdict.optional).toBe(false);
+  expect(categorizeLine('Move backsplash outlet').key).toBe('electrical_rough');
+  expect(categorizeLine('Relocate recessed lighting').key).toBe('electrical_rough');
+  expect(categorizeLine('Move sink plumbing').key).toBe('plumbing_rough');
+  expect(categorizeLine('Shift toilet 12 inches').key).toBe('plumbing_rough');
+  expect(categorizeLine('Relocate vent hood').key).toBe('mechanical');
+  // Bare "line" is not plumbing scope, or the word alone would put a wrench on
+  // a duct run. The named runs - "gas line", "water line" - are keywords, so
+  // they still answer plumbing without it.
+  expect(categorizeLine('Move dryer vent line').key).toBe('mechanical');
+  expect(categorizeLine('Relocate range gas line').key).toBe('plumbing_rough');
+  // A verb naming no trade at all still LOCKS, and takes the generic slug - the
+  // same one the unrecognized verdict carries, because it says the same thing.
+  // "Move-in cleaning" locking is the accepted cost of Layer 1: one badge for
+  // the admin to flip, against a toggle that deletes a gas line.
+  for (const generic of [
+    'Move-in cleaning', 'Moving and storage of furniture',
+    'Relocate medicine cabinet', 'Move existing vanity', 'Relocate towel bar',
+  ]) {
+    const verdict = categorizeLine(generic);
+    expect(verdict.key, `"${generic}" names no trade scope`).toBe(UNRECOGNIZED_CATEGORY.key);
+    expect(verdict.optional, `"${generic}" still locks on the verb`).toBe(false);
   }
-  // The scope noun beside the verb is what makes it plumbing, and it is still
-  // the whole reason these stay locked: the fixture noun alone reads optional.
-  expect(categorizeLine('Move sink plumbing').optional).toBe(false);
-  expect(categorizeLine('Shift toilet 12 inches').optional).toBe(false);
-  // ... and a verb the registry now leaves alone lets the real category answer:
+  // Scope is read anywhere in the title, not beside the verb, so a line naming
+  // two trades takes the first in registry order. A wrong slug is the most this
+  // layer can cost, and the line is locked either way.
+  expect(categorizeLine('Install new sink and relocate lighting').optional).toBe(false);
+  // A verb that is not scoped to any trade lets the real category answer:
   // rerouting ductwork is mechanical.
   expect(categorizeLine('Ductwork rerouting').key).toBe('mechanical');
 });

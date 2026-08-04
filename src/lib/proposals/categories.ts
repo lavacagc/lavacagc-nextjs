@@ -20,12 +20,29 @@
  * Some keywords name the work itself and stand alone: "demolition", "vent",
  * "cabinet", and the removal verbs, because taking a thing out IS the demolition.
  * Others name only a MANNER - "relocate", "move", "shift", "reroute" - and say
- * nothing about what is being moved. Those are listed apart, as `scopedKeywords`,
- * and count only when the title also names their category's own scope: moving a
- * gas line is rough plumbing, moving an outlet is not. On their own they are
- * evidence of nothing, so "Relocate outlet and wiring" reads as electrical and
- * "Move-in cleaning" falls through to the locked fail-safe, instead of both
- * taking a plumbing slug and a wrench icon off the back of the verb alone.
+ * nothing about what is being moved. Those are read in TWO LAYERS, and the two
+ * must not be confused, because gating one on the other reversed the fail-safe:
+ *
+ *   LAYER 1, LOCKING. A verb of manner present as a whole word ALWAYS locks the
+ *      line, on its own, with nothing else required. Moving or taking out a
+ *      thing is structural work whatever the thing is: moving an outlet is
+ *      electrical rough-in, relocating a vent hood is a duct run and a hole in
+ *      the roof, moving a vanity is moving the drain. A finish noun in the same
+ *      title NEVER overrides this. Scoping the lock instead - counting the verb
+ *      only when a plumbing noun sat beside it - handed the client a toggle on
+ *      every one of those, because the finish noun was then the only hit left.
+ *   LAYER 2, LABELING. Which locked category the line wears - its slug and its
+ *      WEB-024 icon - is cosmetic, and THAT is what the scope vocabulary picks:
+ *      plumbing nouns label it rough plumbing, wiring nouns electrical, duct and
+ *      vent nouns mechanical, and a title naming none of them takes the generic
+ *      locked slug. The scope word may sit anywhere in the title, not beside the
+ *      verb, so a line naming two trades takes the first of them in registry
+ *      order. A cosmetic label is the most this layer can get wrong, and the
+ *      admin sees the line in the import preview either way.
+ *
+ * The cost of Layer 1 is a line like "Move-in cleaning", which locks on the verb
+ * and wears the generic slug. That is the fail-safe pointing the safe way: one
+ * badge for the admin to flip, against a toggle that deletes a gas line.
  *
  * When several keywords hit, two rules settle it, in this order:
  *
@@ -67,12 +84,17 @@ export interface ProposalCategory {
   readonly keywords: readonly string[];
   /**
    * Phrases that select this category ONLY when the title also names one of
-   * `scope`. For a verb of manner - relocate, move, shift, reroute - the scope
-   * word is the whole of the evidence; without it the verb belongs to no
-   * category at all.
+   * `scope`. This is Layer 2, labeling, and nothing else: a verb of manner
+   * always locks the line through RELOCATION_VERBS below, and these entries
+   * only decide which locked category it wears. Moving a gas line reads as
+   * rough plumbing here; moving an outlet reads as electrical instead, and
+   * moving something the registry cannot place still reads as locked.
    */
   readonly scopedKeywords?: readonly string[];
-  /** The vocabulary a `scopedKeywords` phrase has to co-occur with before it counts. */
+  /**
+   * The vocabulary a `scopedKeywords` phrase has to co-occur with before it
+   * labels the line. Anywhere in the title counts - adjacency is not checked.
+   */
   readonly scope?: readonly string[];
 }
 
@@ -80,8 +102,26 @@ export interface ProposalCategory {
 export type ProposalCategoryVerdict = Pick<ProposalCategory, 'key' | 'icon' | 'optional'>;
 
 /**
+ * The verbs of manner (Layer 1). Each one locks the line wherever it appears as
+ * a whole word: they are listed on the generic locked category below, so the
+ * lock is structural rather than a rule applied on top, and repeated as
+ * `scopedKeywords` on the trades that can claim a better slug for them.
+ *
+ * The removal verbs - remove, strip out, haul away, gut, tear out - are not
+ * here: they name demolition itself, so they sit in that category's own
+ * keywords and lock AND label from there.
+ */
+const RELOCATION_VERBS: readonly string[] = [
+  'relocate', 'relocating', 'relocation', 'reroute', 'rerouting',
+  'move', 'moving', 'shift', 'shifting',
+];
+
+/**
  * Locked categories first (structure wins ties), then the optional finish
  * categories from the approved plan, in display-priority order.
+ *
+ * Order decides Layer 2 only: the first locked hit names the line, so the
+ * trades come before the generic locked slug that catches a verb naming none.
  */
 const REGISTRY: ProposalCategory[] = [
   // --- structure: locked ---
@@ -108,10 +148,12 @@ const REGISTRY: ProposalCategory[] = [
   // toggle that deletes a drain relocation. The named line runs are here for the
   // same reason - "supply line" alone missed "water line" and "gas line".
   //
-  // The verbs are scoped, because they are true of any trade: taking them as
-  // plumbing on their own put a wrench icon on "Relocate outlet and wiring" and
-  // on "Move-in cleaning", replacing an honest fallback with a confident wrong
-  // answer. It is the plumbing noun beside the verb that makes it plumbing.
+  // The verbs are listed here as SCOPED because they are true of any trade, and
+  // this is only the claim on the slug: taking them as plumbing on their own put
+  // a wrench icon on "Relocate outlet and wiring" and on "Move-in cleaning". The
+  // named line runs are keywords rather than scope because "gas line" is rough
+  // plumbing whether or not anything moves - and bare "line" is deliberately NOT
+  // scope, or "Move dryer vent line" would take a wrench off the word "line".
   {
     key: 'plumbing_rough',
     icon: 'wrench',
@@ -120,16 +162,25 @@ const REGISTRY: ProposalCategory[] = [
       'rough-in', 'supply line', 'water line', 'gas line', 'drain line', 'waste line',
       'drain', 'valve', 'waterproofing',
     ],
-    scopedKeywords: [
-      'relocate', 'relocating', 'relocation', 'reroute', 'rerouting',
-      'move', 'moving', 'shift', 'shifting',
-    ],
+    scopedKeywords: RELOCATION_VERBS,
     scope: [
-      'plumbing', 'pipe', 'piping', 'line', 'gas', 'water', 'waste', 'drain',
+      'plumbing', 'pipe', 'piping', 'gas', 'water', 'waste', 'drain',
       'supply', 'sink', 'toilet', 'tub', 'bathtub', 'shower',
     ],
   },
-  { key: 'electrical_rough', icon: 'zap', optional: false, keywords: ['electrical panel', 'wiring', 'circuit', 'gfci'] },
+  // Moving an outlet, a circuit or a light is rough electrical, and the title
+  // names the fitting rather than the trade ("Move backsplash outlet").
+  {
+    key: 'electrical_rough',
+    icon: 'zap',
+    optional: false,
+    keywords: ['electrical panel', 'wiring', 'circuit', 'gfci'],
+    scopedKeywords: RELOCATION_VERBS,
+    scope: [
+      'electrical', 'wiring', 'circuit', 'gfci', 'outlet', 'receptacle',
+      'switch', 'panel', 'light', 'lighting', 'sconce', 'chandelier',
+    ],
+  },
   // Venting and ducting are a roof or wall penetration and a run through the
   // framing, so they are never the client's to remove - but the title almost
   // always names the appliance they serve ("Range hood vent to exterior"), and
@@ -142,8 +193,21 @@ const REGISTRY: ProposalCategory[] = [
     icon: 'air-vent',
     optional: false,
     keywords: ['vent', 'venting', 'duct', 'ductwork', 'ducting', 'exhaust', 'flue'],
+    scopedKeywords: RELOCATION_VERBS,
+    scope: ['vent', 'venting', 'duct', 'ductwork', 'ducting', 'exhaust', 'flue', 'hood'],
   },
   { key: 'compliance', icon: 'clipboard-check', optional: false, keywords: ['permit', 'inspection'] },
+  // Layer 1's floor, and the last locked category so every trade above claims a
+  // better slug first. A verb of manner naming no trade at all still locks here:
+  // "Relocate medicine cabinet" is moving a cabinet off a wall, not a selection
+  // the client may drop. It carries the unrecognized verdict's own slug and icon
+  // because it says the same thing - structural work, trade unstated.
+  {
+    key: 'general',
+    icon: 'house',
+    optional: false,
+    keywords: RELOCATION_VERBS,
+  },
   // --- finish selections: optional ---
   { key: 'cabinets', icon: 'columns-3', optional: true, keywords: ['cabinet', 'vanity', 'vanities'] },
   { key: 'countertops', icon: 'square', optional: true, keywords: ['countertop', 'counter top', 'quartz top', 'granite top'] },
@@ -217,9 +281,11 @@ interface KeywordHit {
 function collectHits(haystack: string): KeywordHit[] {
   const hits: KeywordHit[] = [];
   for (const cat of PROPOSAL_CATEGORIES) {
-    // A verb of manner is only this category's evidence when the title also
-    // names its scope, so those keywords join the search or sit it out.
-    const keywords = mentionsAny(haystack, cat.scope)
+    // A verb of manner claims THIS category's slug only when the title also
+    // names its scope, anywhere in the title. Sitting the verb out here costs
+    // the line nothing but a label: the generic locked category lists the same
+    // verbs unscoped, so Layer 1 has already locked it.
+    const keywords = cat.scopedKeywords.length && mentionsAny(haystack, cat.scope)
       ? [...cat.keywords, ...cat.scopedKeywords]
       : cat.keywords;
     for (const keyword of keywords) {
