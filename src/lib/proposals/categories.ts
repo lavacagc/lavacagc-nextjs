@@ -136,6 +136,9 @@ export interface ProposalCategory {
    * safe only when it names a client selection. A word that names the WORK -
    * "outlet", "pipe", "duct" - must be a `keyword` instead, or the finish noun
    * beside it answers for the line and the client gets a toggle on a circuit.
+   * Read with the OPTIONAL tier's morphology for the same reason: these are
+   * that tier's words, so "sink" answers here for exactly what it answers for
+   * there - itself and its plural - and never for "sinking".
    * There is deliberately no third list: the vocabulary that licenses a verb is
    * `keywords` plus `serves`, folded in code, so a word cannot sit in a locked
    * category and quietly fail to lock.
@@ -496,7 +499,7 @@ function collectHits(haystack: string): KeywordHit[] {
     // Sitting the verb out costs the line nothing but a label: the generic
     // locked category lists the same verbs unscoped, so Layer 1 has locked it.
     const licensed = cat.scopedKeywords.length
-      && (hits.length > before || mentionsAny(haystack, cat.serves, !cat.optional));
+      && (hits.length > before || mentionsAny(haystack, cat.serves, false));
     if (licensed) {
       for (const keyword of cat.scopedKeywords) pushMatches(hits, haystack, cat, keyword);
     }

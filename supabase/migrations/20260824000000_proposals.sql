@@ -14,6 +14,15 @@
 -- Money is INTEGER CENTS (BIGINT). Never float, never numeric-with-rounding:
 -- the client page sums these in the browser (WEB-023) and the server re-sums
 -- them at submit time, and the two must agree to the cent.
+--
+-- Applied and constraint-exercised against a local Postgres on 2026-08-04: a
+-- 43-character token accepted and 'short' rejected, a whole-composition
+-- snapshot accepted, and a fractional price_cents, a missing `optional` key and
+-- an empty included_lines each rejected by the constraint that names them.
+-- Nothing else in the pipeline reads this file as SQL - the gate runs lint and
+-- tsc, and the acceptance tests assert over its TEXT - so the DDL gets its only
+-- real reading from a database. The PR's Supabase Preview check replays every
+-- migration on one before merge, and production is hand-applied at go-live.
 
 CREATE TABLE IF NOT EXISTS public.proposals (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -110,10 +119,12 @@ CREATE INDEX IF NOT EXISTS idx_proposal_lines_proposal ON public.proposal_lines 
 -- the argument for putting this contract in the schema at all is that the
 -- schema outlives the code.
 --
--- Which makes the standing rule: once this file has landed in ANY database,
--- it is frozen. Every further change to the proposal schema goes in a NEW
--- migration with a later timestamp. Editing an applied migration in place is
--- how the two would silently disagree.
+-- Which makes the standing rule: once this file has landed in a database that
+-- KEEPS it - production, or the preview branch - it is frozen. Every further
+-- change to the proposal schema goes in a NEW migration with a later timestamp.
+-- Editing an applied migration in place is how the two would silently disagree.
+-- A local verification stack is not that database: it is rebuilt from these
+-- files, so it can only ever hold what they currently say.
 CREATE DOMAIN public.proposal_line_snapshot AS JSONB
   CONSTRAINT proposal_line_snapshot_shape CHECK (
     jsonb_typeof(VALUE) = 'array'
@@ -126,6 +137,33 @@ CREATE DOMAIN public.proposal_line_snapshot AS JSONB
           '{}', true
         )) = jsonb_array_length(VALUE)
   );
+
+-- The total IS the snapshot's arithmetic, and the schema is where that is said.
+--
+-- included_lines records the whole agreed composition, so total_cents is by
+-- construction the sum of its price_cents. "By construction" was a claim about
+-- an API this slice does not ship: a writer that summed proposal_lines while
+-- assembling the snapshot from a different set - the locked lines in one and not
+-- the other - satisfied every check above, and the owner alert then printed a
+-- number the client never agreed to, with nothing left to say which of the two
+-- was the record. Every other part of that record is CHECKed; the money is the
+-- part worth checking most.
+--
+-- A CHECK may not aggregate, so the sum lives in a function the constraint
+-- calls. It reads only its argument, which is what makes it legal there, and
+-- IMMUTABLE because the same array always sums to the same cents. search_path
+-- is pinned empty and everything the body touches is pg_catalog's own, so the
+-- constraint cannot be made to mean something else by a schema in front of it.
+CREATE FUNCTION public.proposal_snapshot_total(snapshot JSONB) RETURNS BIGINT
+  LANGUAGE sql
+  IMMUTABLE
+  STRICT
+  PARALLEL SAFE
+  SET search_path = ''
+  AS $$
+    SELECT COALESCE(SUM((line ->> 'price_cents')::BIGINT), 0)::BIGINT
+    FROM jsonb_array_elements(snapshot) AS line;
+  $$;
 
 CREATE TABLE IF NOT EXISTS public.proposal_submissions (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -145,8 +183,11 @@ CREATE TABLE IF NOT EXISTS public.proposal_submissions (
                     CONSTRAINT proposal_submissions_included_lines_present
                     CHECK (jsonb_array_length(included_lines) >= 1),
   -- Server-recomputed at submit time from the rows, never trusted from the
-  -- client. What the owner alert prints.
-  total_cents       BIGINT NOT NULL CHECK (total_cents >= 0),
+  -- client. What the owner alert prints, and tied to the composition above so
+  -- the two cannot tell different stories about what was agreed.
+  total_cents       BIGINT NOT NULL CHECK (total_cents >= 0)
+                    CONSTRAINT proposal_submissions_total_is_snapshot_sum
+                    CHECK (total_cents = public.proposal_snapshot_total(included_lines)),
   -- Free early telemetry (owner-approved concession toward WEB-027): which
   -- optional lines the client flipped at least once while playing. Snapshotted
   -- the same way, checked the same way, and for the same reason - but empty is

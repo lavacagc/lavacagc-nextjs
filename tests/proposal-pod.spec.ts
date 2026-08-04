@@ -519,6 +519,21 @@ test('AC5e: a locked word either locks or names a client selection - there is no
     }
   }
   expect(labelOnly, 'the label-only vocabulary should not quietly empty out').toBeGreaterThan(0);
+  // And they are READ as that tier's words. An optional keyword matches itself
+  // and its plural and nothing else, precisely so a wider reading cannot invent
+  // a client selection - so licensing a verb off "sinking" or "lighted" claimed
+  // a trade's slug on a form that trade's own category will never match. Layer 1
+  // has locked all four of these on the verb; what moves is the icon they wear.
+  for (const [title, key] of [
+    ['Move sinking floor joist', UNRECOGNIZED_CATEGORY.key],
+    ['Relocate lighted mirror', UNRECOGNIZED_CATEGORY.key],
+    ['Move sinks and vanity', 'plumbing_rough'],
+    ['Relocate lights over island', 'electrical_rough'],
+  ] as const) {
+    const verdict = categorizeLine(title);
+    expect(verdict.key, `"${title}" reads its finish with the optional tier's forms`).toBe(key);
+    expect(verdict.optional, `"${title}" locks on the verb whatever slug it wears`).toBe(false);
+  }
   // Nothing licenses a verb on an OPTIONAL category: a verb of manner locks
   // (Layer 1), so a category that could not lock has no business claiming one.
   for (const cat of PROPOSAL_CATEGORIES) {
@@ -769,6 +784,21 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
     .not.toContain('jsonb_array_length');
   // The total stays server-computed money, not a client number.
   expect(ddl).toMatch(/total_cents\s+BIGINT NOT NULL CHECK \(total_cents >= 0\)/);
+  // And it is the snapshot's own arithmetic, checked rather than asserted in a
+  // comment: the composition is snapshotted whole, so the total IS the sum of
+  // included_lines. Left to the API, a total summed from proposal_lines while
+  // the snapshot came from a different set passed every check above, and the
+  // owner alert printed a number the client never agreed to.
+  expect(ddl, 'total_cents must be tied to the composition it claims to total')
+    .toMatch(/CHECK \(total_cents = public\.proposal_snapshot_total\(included_lines\)\)/);
+  // A CHECK cannot aggregate, so the sum is a function it calls. IMMUTABLE and
+  // reading only its argument is what makes it legal there; a body that reached
+  // for a table would be a constraint the planner is entitled to skip.
+  const fn = ddl.slice(ddl.indexOf('CREATE FUNCTION public.proposal_snapshot_total'));
+  expect(fn, 'the snapshot sum belongs to a function the CHECK can call').toContain('RETURNS BIGINT');
+  expect(fn.slice(0, fn.indexOf('$$;'))).toMatch(/IMMUTABLE/);
+  expect(fn).toMatch(/SUM\(\(line ->> 'price_cents'\)::BIGINT\)/);
+  expect(fn).toMatch(/FROM jsonb_array_elements\(snapshot\)/);
 });
 
 test('AC8: the token is 32 random bytes base64url, the intake recipe', () => {
