@@ -34,6 +34,21 @@ const MIGRATION = 'supabase/migrations/20260824000000_proposals.sql';
 const migrationDdl = () =>
   read(MIGRATION).split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
 
+// A rule is read out of the region of the file that rule belongs to: one match
+// run across the whole file cannot tell two tables' FKs apart, and the domain
+// carries numbers the line column also carries. That bounding is load-bearing
+// too, so it is one helper rather than a slice hand-rolled per assertion - a
+// marker that has been renamed, or an end marker that has moved above its start,
+// silently yields an empty region, and `expect('').not.toContain(...)` passes
+// for nothing. Here it throws instead.
+const ddlRegion = (haystack: string, from: string, to: string) => {
+  const start = haystack.indexOf(from);
+  const end = haystack.indexOf(to, start + 1);
+  if (start < 0) throw new Error(`migration region starts nowhere: ${from}`);
+  if (end < 0) throw new Error(`migration region ends nowhere: ${to} (after ${from})`);
+  return haystack.slice(start, end);
+};
+
 const VALID_CSV = [
   'title,description,price',
   'Demolition & prep,"Gut to studs, disposal, protection",4800',
@@ -760,10 +775,7 @@ test('AC7: all three tables are deny-by-default - RLS on, zero policies, cents-o
   // built FROM, any writer but the parser could store a line the client page
   // rendered and summed, and the submit insert then failed against the snapshot
   // domain, naming a rule on another table rather than the offending row.
-  const lines = ddl.slice(
-    ddl.indexOf('CREATE TABLE public.proposal_lines'),
-    ddl.indexOf('CREATE DOMAIN public.proposal_line_snapshot'),
-  );
+  const lines = ddlRegion(ddl, 'CREATE TABLE public.proposal_lines', 'CREATE DOMAIN public.proposal_line_snapshot');
   expect(lines, 'a stored line may not cost more than the parser lets one cost')
     .toMatch(new RegExp(`CHECK \\(price_cents >= 0 AND price_cents <= ${MAX_PRICE_CENTS}\\)`));
 });
@@ -780,16 +792,10 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
   // one client agreed to, and CASCADE undoes in a single statement everything
   // the snapshot is here to keep readable. Read out of each table's own
   // definition, since one file-wide match cannot tell the two FKs apart.
-  const submissions = ddl.slice(
-    ddl.indexOf('CREATE TABLE public.proposal_submissions'),
-    ddl.indexOf('CREATE INDEX idx_proposal_submissions_proposal'),
-  );
+  const submissions = ddlRegion(ddl, 'CREATE TABLE public.proposal_submissions', 'CREATE INDEX idx_proposal_submissions_proposal');
   expect(submissions, 'deleting a proposal must not silently destroy its submissions')
     .toMatch(/proposal_id\s+UUID NOT NULL REFERENCES public\.proposals\(id\) ON DELETE RESTRICT/);
-  const lineRows = ddl.slice(
-    ddl.indexOf('CREATE TABLE public.proposal_lines'),
-    ddl.indexOf('CREATE DOMAIN public.proposal_line_snapshot'),
-  );
+  const lineRows = ddlRegion(ddl, 'CREATE TABLE public.proposal_lines', 'CREATE DOMAIN public.proposal_line_snapshot');
   expect(lineRows, 'lines do belong to the proposal and go with it')
     .toMatch(/proposal_id\s+UUID NOT NULL REFERENCES public\.proposals\(id\) ON DELETE CASCADE/);
   // The {id, title, price_cents} element shape is CHECKed per element by ONE
@@ -798,8 +804,6 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
   // out of the jsonpath the constraint actually runs, not matched loosely across
   // the file: a comment promising the shape is what let bare ids stay green here
   // once already.
-  const at = ddl.indexOf('CREATE DOMAIN public.proposal_line_snapshot AS JSONB');
-  expect(at, 'the snapshot shape belongs to one shared domain').toBeGreaterThan(-1);
   // Created unconditionally: a guard that asks only whether the NAME exists
   // cannot tell that the SHAPE moved on, so a database carrying an earlier
   // revision of this file would keep the weaker contract while the migration
@@ -807,7 +811,7 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
   // outcome worth having when the schema is the layer meant to outlive the code.
   expect(ddl, 'the snapshot domain must not be created behind an existence guard')
     .not.toMatch(/DO \$\$|pg_type/);
-  const domain = ddl.slice(at);
+  const domain = ddlRegion(ddl, 'CREATE DOMAIN public.proposal_line_snapshot AS JSONB', 'CREATE FUNCTION public.proposal_snapshot_total');
   expect(domain).toMatch(/jsonb_typeof\(VALUE\)\s*=\s*'array'/);
   const [filter] = domain.match(/'\$\[\*\] \? \([^']*\)'/) || [];
   expect(filter, 'the domain needs a per-element jsonpath filter').toBeTruthy();
@@ -842,10 +846,10 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
   // submission recording no agreement at all. The rule belongs to this column
   // alone - a client who touched nothing leaves touched_lines legitimately
   // empty, so the shared domain is the wrong place for it.
-  const included = ddl.slice(ddl.indexOf('included_lines'), ddl.indexOf('total_cents'));
+  const included = ddlRegion(ddl, 'included_lines', 'total_cents');
   expect(included, 'included_lines must reject an empty array')
     .toMatch(/CHECK \(jsonb_array_length\(included_lines\) >= 1\)/);
-  const touched = ddl.slice(ddl.indexOf('touched_lines'), ddl.indexOf('ip_address'));
+  const touched = ddlRegion(ddl, 'touched_lines', 'ip_address');
   expect(touched, 'touching nothing is a legitimate submission')
     .not.toContain('jsonb_array_length');
   // The total stays server-computed money, not a client number.
@@ -863,8 +867,7 @@ test('AC7b: a submission snapshots the composition it agreed to (D4 survives a r
   // Read out of the function's own declaration, not from its first line to the
   // end of the file: an assertion that may match anything downstream is one the
   // whole proposal_submissions table and the RLS block can satisfy for it.
-  const fn = ddl.slice(ddl.indexOf('CREATE FUNCTION public.proposal_snapshot_total'));
-  const decl = fn.slice(0, fn.indexOf('$$;'));
+  const decl = ddlRegion(ddl, 'CREATE FUNCTION public.proposal_snapshot_total', '$$;');
   expect(decl, 'the snapshot sum belongs to a function the CHECK can call').toContain('RETURNS BIGINT');
   expect(decl).toMatch(/IMMUTABLE/);
   // Through NUMERIC on the way to BIGINT: jsonb keeps the scale it was handed,
@@ -889,9 +892,7 @@ test('AC7c: revocation IS the status column, and the timestamps cannot contradic
   // Read out of the proposals table's own definition. A CHECK sitting on any
   // other table would satisfy a match run across the whole file just as well,
   // and this rule means nothing anywhere but here.
-  const at = ddl.indexOf('CREATE TABLE public.proposals');
-  expect(at, 'the proposals table must be readable on its own').toBeGreaterThan(-1);
-  const table = ddl.slice(at, ddl.indexOf('CREATE TABLE public.proposal_lines'));
+  const table = ddlRegion(ddl, 'CREATE TABLE public.proposals', 'CREATE TABLE public.proposal_lines');
   // `status` is the whole kill switch: RLS denies the anon key and the token
   // carries no lifetime of its own, so the lookup asks this column and nothing
   // else. Independent columns let a writer set revoked_at = now() and leave
@@ -906,13 +907,28 @@ test('AC7c: revocation IS the status column, and the timestamps cannot contradic
     .toMatch(/CHECK \(status <> 'sent' OR sent_at IS NOT NULL\)/);
   // updated_at is the schema's job too. Its DEFAULT fires once, at INSERT, so a
   // column left to every future writer to remember stays equal to created_at for
-  // the life of the row while reading as authoritative: a re-imported estimate
-  // sorts as untouched since the day it was created. Same silent-when-forgotten
-  // shape as the rules above, and nothing in this slice writes the column.
+  // the life of the row while reading as authoritative: an edited proposal sorts
+  // as untouched since the day it was created. Same silent-when-forgotten shape
+  // as the rules above, and nothing in this slice writes the column.
   expect(table, 'updated_at must not be left to each writer to remember')
     .toMatch(/CREATE TRIGGER proposals_set_updated_at\s+BEFORE UPDATE ON public\.proposals\s+FOR EACH ROW\s+EXECUTE FUNCTION public\.proposals_set_updated_at\(\)/);
   expect(table, 'the trigger has to actually move the column')
     .toMatch(/NEW\.updated_at = now\(\)/);
+  // That covers an UPDATE of the proposals row. The case the argument is made
+  // from is the other one: a CSV re-import replaces proposal_lines wholesale, a
+  // DELETE and an INSERT on the CHILD table, and never writes the proposals row
+  // at all - so the trigger above cannot fire, and the estimate the admin has
+  // just corrected still reads as untouched. Asking the import API to remember
+  // is the dependency these triggers exist to remove, so the child table carries
+  // its own, and the parent is read off the row on whichever side it survives:
+  // PL/pgSQL leaves OLD unassigned on an INSERT and NEW on a DELETE.
+  const lineRows = ddlRegion(ddl, 'CREATE TABLE public.proposal_lines', 'CREATE DOMAIN public.proposal_line_snapshot');
+  expect(lineRows, 'a re-import must move the parent proposal updated_at')
+    .toMatch(/CREATE TRIGGER proposal_lines_touch_proposal\s+AFTER INSERT OR UPDATE OR DELETE ON public\.proposal_lines\s+FOR EACH ROW\s+EXECUTE FUNCTION public\.proposal_lines_touch_proposal\(\)/);
+  expect(lineRows, 'a deleted line has to touch the proposal it is leaving')
+    .toMatch(/IF TG_OP <> 'INSERT' THEN\s+UPDATE public\.proposals SET updated_at = now\(\) WHERE id = OLD\.proposal_id;/);
+  expect(lineRows, 'an inserted line has to touch the proposal it is joining')
+    .toMatch(/IF TG_OP <> 'DELETE' THEN\s+UPDATE public\.proposals SET updated_at = now\(\) WHERE id = NEW\.proposal_id;/);
   // The composite UNIQUE leads on proposal_id, so it already serves both shapes
   // proposal_lines is ever queried by - one proposal's lines, in position order.
   // A second btree on proposal_id alone is maintenance on every import for a

@@ -25,12 +25,14 @@
 -- with a scale and a price_cents at the cap exactly both accepted on the
 -- snapshot and on a line row, a proposal revoked out of draft accepted with no
 -- sent_at, an UPDATE that names no timestamp still moving updated_at past
--- created_at, a proposal carrying a submission refusing to delete until that
--- submission is deleted first, and a fractional price_cents, a price above the
--- cap on either the line row or the snapshot, a missing `optional` key, an empty
--- included_lines, a total_cents that disagrees with its snapshot, a revoked_at
--- stamped while the status still reads 'sent' and a 'sent' proposal carrying no
--- sent_at each rejected by the constraint that names them. The PR's Supabase
+-- created_at, a line inserted, changed and deleted each moving its proposal's
+-- updated_at with no write to that row at all, a proposal carrying a submission
+-- refusing to delete until that submission is deleted first, and a fractional
+-- price_cents, a price above the cap on either the line row or the snapshot, a
+-- missing `optional` key, an empty included_lines, a total_cents that disagrees
+-- with its snapshot, a revoked_at stamped while the status still reads 'sent'
+-- and a 'sent' proposal carrying no sent_at each rejected by the constraint that
+-- names them. The PR's Supabase
 -- Preview check then replays every migration on a real database before merge,
 -- and production is hand-applied at go-live.
 --
@@ -102,15 +104,19 @@ CREATE INDEX idx_proposals_lead ON public.proposals (lead_id);
 
 -- updated_at is maintained here, not asked of every writer. A DEFAULT fires
 -- once, at INSERT, so without this the column stays equal to created_at for the
--- life of the row while reading as authoritative - the admin UI sorts a
--- re-imported estimate as untouched since the day it was created, and nothing
--- says otherwise. That is the same silent-when-forgotten shape the token recipe,
--- the lifecycle rules and the total-is-the-sum check are all in this file to
--- close, and the same argument applies: nothing in this slice writes the column,
--- so the schema is the only thing that can keep it honest.
+-- life of the row while reading as authoritative - the admin UI sorts an edited
+-- proposal as untouched since the day it was created, and nothing says
+-- otherwise. That is the same silent-when-forgotten shape the token recipe, the
+-- lifecycle rules and the total-is-the-sum check are all in this file to close,
+-- and the same argument applies: nothing in this slice writes the column, so the
+-- schema is the only thing that can keep it honest.
+--
+-- This one covers an UPDATE of the proposals row itself; the re-import is the
+-- other half, and proposal_lines carries its own trigger for it below.
 --
 -- PostgREST does not publish a function returning trigger, so unlike the sum
--- function below this one is not reachable as an RPC and needs no revoke.
+-- function below neither of the two here is reachable as an RPC, and neither
+-- needs a revoke.
 CREATE FUNCTION public.proposals_set_updated_at() RETURNS TRIGGER
   LANGUAGE plpgsql
   SET search_path = ''
@@ -160,6 +166,42 @@ CREATE TABLE public.proposal_lines (
   -- a CSV re-import performs, for a plan the planner already reaches.
   CONSTRAINT proposal_lines_position UNIQUE (proposal_id, position)
 );
+
+-- The other half of updated_at, and the half the argument for it was made from.
+-- A CSV re-import replaces this table's rows wholesale - a DELETE and an INSERT
+-- on the CHILD table - and never writes the proposals row at all, so the trigger
+-- above cannot fire: the estimate the admin has just corrected goes on reading
+-- as untouched since the day it was created. Leaving that to the import API to
+-- remember is exactly the dependency the trigger above exists to remove, and
+-- nothing in this slice writes either column, so the schema is again the only
+-- thing that can keep the timestamp honest.
+--
+-- FOR EACH ROW, because the parent is read off the row: NEW's proposal_id, or
+-- OLD's when the row is going away, and both when a line moves between
+-- proposals. TG_OP is what selects them - PL/pgSQL leaves OLD unassigned on an
+-- INSERT and NEW on a DELETE, so neither may be read unconditionally. The cost
+-- is bounded by the parser's own cap, MAX_LINES: a re-import is at most 200 rows
+-- out and 200 back in. A cascade delete of the proposal itself finds no parent
+-- left to touch, which is the right answer there rather than an error.
+CREATE FUNCTION public.proposal_lines_touch_proposal() RETURNS TRIGGER
+  LANGUAGE plpgsql
+  SET search_path = ''
+  AS $$
+  BEGIN
+    IF TG_OP <> 'INSERT' THEN
+      UPDATE public.proposals SET updated_at = now() WHERE id = OLD.proposal_id;
+    END IF;
+    IF TG_OP <> 'DELETE' THEN
+      UPDATE public.proposals SET updated_at = now() WHERE id = NEW.proposal_id;
+    END IF;
+    RETURN NULL;
+  END;
+  $$;
+
+CREATE TRIGGER proposal_lines_touch_proposal
+  AFTER INSERT OR UPDATE OR DELETE ON public.proposal_lines
+  FOR EACH ROW
+  EXECUTE FUNCTION public.proposal_lines_touch_proposal();
 
 -- What a submission stores of the lines it agreed to: an array whose every
 -- element is a SNAPSHOT, {"id", "title", "price_cents", "optional"}, not a bare
