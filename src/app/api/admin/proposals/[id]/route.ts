@@ -116,9 +116,34 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           campaign: { proposal_id: proposal.id },
         });
         if (res.status !== 'sent') {
-          return NextResponse.json({ error: `Email did not send (${res.status}${res.error ? `: ${res.error}` : ''})` }, { status: 502 });
+          // Both fields, like the sibling send routes: a hard failure fills
+          // `error`, but the likeliest outcome here - RESEND_API_KEY missing -
+          // is a skip that fills only `reason`, and an admin told just
+          // "(skipped)" has been told nothing.
+          const detail = res.error || res.reason;
+          return NextResponse.json({ error: `Email did not send (${res.status}${detail ? `: ${detail}` : ''})` }, { status: 502 });
         }
-        await markSent(id);
+        // The email is out; the status write is what makes the record agree
+        // with the client's inbox. Send stays FIRST (a failed send must never
+        // leave a proposal reading 'sent'), which means this step can fail on
+        // its own - and it must not report as an ordinary failed action, or the
+        // admin retries believing nothing was delivered. Retrying IS the repair,
+        // the owner accepts the duplicate email it may cost, and a proposal
+        // still reading 'revoked' behind a link a client is holding is the one
+        // outcome that is not acceptable.
+        try {
+          await markSent(id);
+        } catch (err) {
+          console.error(
+            `proposal ${id} was delivered (email ${res.emailId ?? 'unknown'}) but its status could not be updated:`,
+            err instanceof Error ? err.message : String(err),
+          );
+          return NextResponse.json({
+            error: `The email WAS delivered, but the status could not be updated - this proposal still reads `
+              + `"${proposal.status}". Press Send again to repair it; the client may receive a second copy.`,
+            delivered: true,
+          }, { status: 500 });
+        }
         return NextResponse.json({ ok: true, status: 'sent' });
       }
     }

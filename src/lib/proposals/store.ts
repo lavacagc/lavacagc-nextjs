@@ -14,7 +14,7 @@
  * constraint name.
  */
 import { z } from 'zod';
-import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { supabaseRest, supabaseRestCounted } from '@/lib/notify/supabase-rest';
 import { newProposalToken } from './token';
 import { MAX_LINES, MAX_TITLE_CHARS, MAX_DESCRIPTION_CHARS, MAX_PRICE_CENTS } from './csv';
 
@@ -223,10 +223,41 @@ export interface Roster {
   proposals: RosterEntry[];
   /** False when the counts could not be read; the lifecycle controls still work. */
   counts_available: boolean;
+  /**
+   * Proposals matching the search, ignoring the page cap - so the page can say
+   * how many it is NOT showing. Null when the total could not be read.
+   */
+  total: number | null;
 }
 
 /** How many proposals the roster shows; also the bound on the counts request. */
 export const ROSTER_LIMIT = 200;
+
+/** Longest search term the roster sends: this is a filter, not a document. */
+export const MAX_SEARCH_CHARS = 80;
+
+/**
+ * A search term as a PostgREST ilike pattern.
+ *
+ * Everything that is GRAMMAR to the filter parser becomes the wildcard it
+ * stands in place of: the comma that separates or() branches, the parens that
+ * bound them, the quote and backslash that quote a value. So "Smith, Jane"
+ * still finds its row, and no term can reach the parser as syntax. % and _ go
+ * the same way - they are LIKE's own wildcards, and an admin typing one means
+ * the character rather than "anything".
+ */
+export function searchPattern(term: string): string {
+  return `*${term.trim().slice(0, MAX_SEARCH_CHARS).replace(/[,()"\\%_]/g, '*')}*`;
+}
+
+/** The or() filter behind the roster's search box, ready to append to a path. */
+function searchFilter(term: string): string {
+  if (!term) return '';
+  const p = searchPattern(term);
+  return `&or=${encodeURIComponent(
+    `(client_name.ilike.${p},client_email.ilike.${p},title.ilike.${p})`,
+  )}`;
+}
 
 interface RosterCountRow {
   proposal_id: string;
@@ -252,12 +283,22 @@ interface RosterCountRow {
  * go-live) or simply failing must not take those buttons down with it. The
  * failure is logged server-side and reported to the page, which says the counts
  * are unavailable instead of showing zeros it cannot stand behind.
+ *
+ * The page itself is capped at ROSTER_LIMIT, so the response carries the exact
+ * total as well and the caller can SEARCH past the cap. Without both, the
+ * oldest-updated proposals simply vanished off the end of the list with nothing
+ * saying so - and Copy link, Re-import and Revoke are rendered per row, so a
+ * proposal that falls off the page is one whose live client link can no longer
+ * be killed. The search is server-side (client name, email, title) precisely so
+ * that reachability does not depend on where a proposal sits in the order.
  */
-export async function listProposals(): Promise<Roster> {
-  const proposals = (await supabaseRest<ProposalRow[]>(
-    'GET', `proposals?select=*&order=updated_at.desc&limit=${ROSTER_LIMIT}`,
-  )) ?? [];
-  if (proposals.length === 0) return { proposals: [], counts_available: true };
+export async function listProposals(search?: string | null): Promise<Roster> {
+  const term = (search ?? '').trim();
+  const { rows, total } = await supabaseRestCounted<ProposalRow>(
+    `proposals?select=*${searchFilter(term)}&order=updated_at.desc&limit=${ROSTER_LIMIT}`,
+  );
+  const proposals = rows ?? [];
+  if (proposals.length === 0) return { proposals: [], counts_available: true, total };
 
   let counts: RosterCountRow[] | null = null;
   try {
@@ -276,6 +317,7 @@ export async function listProposals(): Promise<Roster> {
         ...p, line_count: null, submission_count: null, latest_total_cents: null,
       })),
       counts_available: false,
+      total,
     };
   }
 
@@ -291,15 +333,29 @@ export async function listProposals(): Promise<Roster> {
       };
     }),
     counts_available: true,
+    total,
   };
 }
 
-/** Revoke: the explicit admin kill switch (owner decision D3). */
+/**
+ * Revoke: the explicit admin kill switch (owner decision D3).
+ *
+ * updated_at is not written here for the reason replaceLines gives above:
+ * proposals_set_updated_at owns that column, and a value sent from this module
+ * is overwritten before the row is written.
+ */
 export async function revokeProposal(proposalId: string): Promise<void> {
   await supabaseRest('PATCH', `proposals?id=eq.${proposalId}`, {
     status: 'revoked',
     revoked_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+  }, { prefer: 'return=minimal' });
+}
+
+async function patchSent(proposalId: string): Promise<void> {
+  await supabaseRest('PATCH', `proposals?id=eq.${proposalId}`, {
+    status: 'sent',
+    sent_at: new Date().toISOString(),
+    revoked_at: null,
   }, { prefer: 'return=minimal' });
 }
 
@@ -307,12 +363,22 @@ export async function revokeProposal(proposalId: string): Promise<void> {
  * Mark sent (also the un-revoke path: sending a revoked proposal revives it).
  * The lifecycle CHECK requires revoked_at to clear when status leaves
  * 'revoked', and sent_at to exist while status is 'sent'.
+ *
+ * The caller reaches here only AFTER the client's inbox already holds the
+ * tokenized link, so this write is what keeps the record and the inbox saying
+ * the same thing: a proposal left at 'revoked' behind a link a client just
+ * received is the dead end CLIENT_PAGE_LIVE exists to prevent, arriving through
+ * the back door. A PATCH by id is idempotent, so a transient failure is retried
+ * once here rather than costing the admin a second email.
  */
 export async function markSent(proposalId: string): Promise<void> {
-  await supabaseRest('PATCH', `proposals?id=eq.${proposalId}`, {
-    status: 'sent',
-    sent_at: new Date().toISOString(),
-    revoked_at: null,
-    updated_at: new Date().toISOString(),
-  }, { prefer: 'return=minimal' });
+  try {
+    await patchSent(proposalId);
+  } catch (err) {
+    console.error(
+      `proposal ${proposalId} status write failed after delivery, retrying once:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    await patchSent(proposalId);
+  }
 }

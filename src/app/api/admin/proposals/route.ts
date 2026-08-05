@@ -15,13 +15,17 @@ import { CreateProposalSchema, bundleSumError, createProposal, listProposals } f
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     // counts_available travels with the rows: the roster degrades to "counts
     // unknown" rather than to an outage, so the lifecycle buttons stay reachable
-    // when only the aggregate is down.
-    const { proposals, counts_available } = await listProposals();
-    return NextResponse.json({ proposals, counts_available });
+    // when only the aggregate is down. `total` travels too, because the page is
+    // capped: without it a roster that ends at the cap is indistinguishable from
+    // one that ends at the estate, and ?search reaches whatever the cap hides.
+    const { proposals, counts_available, total } = await listProposals(
+      request.nextUrl.searchParams.get('search'),
+    );
+    return NextResponse.json({ proposals, counts_available, total });
   } catch (err) {
     console.error('proposal roster read failed:', err instanceof Error ? err.message : String(err));
     return NextResponse.json({ error: 'Could not load proposals' }, { status: 500 });

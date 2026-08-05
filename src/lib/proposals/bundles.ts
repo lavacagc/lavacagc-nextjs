@@ -74,6 +74,22 @@ export function composeBundle(inputs: BundleInput[], name?: string): ComposedBun
 }
 
 /**
+ * The members a client would gain the power to decline if this bundle were
+ * flipped optional by hand.
+ *
+ * composeBundle's fail-safe locks a bundle the moment any input is locked, and
+ * the admin's per-line override can undo that - deliberately, it is the
+ * designed backstop - but a bundle names only itself on screen, so the override
+ * otherwise hides which structural work it just put behind a client toggle.
+ * The verdict is re-derived from the registry, exactly as restoreMembers does
+ * it: bundle_members carries titles and prices only, so the title is all there
+ * is to judge by, and an unrecognized title counts as locked.
+ */
+export function lockedMemberTitles(members: PreviewBundleMember[]): string[] {
+  return members.filter((m) => !categorizeLine(m.title).optional).map((m) => m.title);
+}
+
+/**
  * Restore a bundle's members as standalone lines, re-badged by the registry
  * (the member title is all the CLIENT-facing contract kept, so its verdict is
  * recomputed - same fail-safe: unknown restores locked). The description comes

@@ -28,11 +28,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import {
-  RefreshCw, Link2, Send, Ban, Upload, Boxes, X, FileUp, Undo2,
+  RefreshCw, Link2, Send, Ban, Upload, Boxes, X, FileUp, Undo2, Search,
 } from 'lucide-react';
 import { parseProposalCsv, type ParsedProposalLine } from '@/lib/proposals/csv';
 import {
-  composeBundle, restoreMembers, toStoredMembers, type PreviewBundleMember,
+  composeBundle, lockedMemberTitles, restoreMembers, toStoredMembers, type PreviewBundleMember,
 } from '@/lib/proposals/bundles';
 import { CLIENT_PAGE_LIVE, CLIENT_PAGE_NOT_LIVE_MESSAGE } from '@/lib/proposals/clientPage';
 
@@ -80,20 +80,29 @@ export default function ProposalsAdminPage() {
   const [rosterError, setRosterError] = useState<string | null>(null);
   /** False when the server served the roster without its counts. */
   const [countsAvailable, setCountsAvailable] = useState(true);
-  const loadRoster = useCallback(async () => {
+  /** What the search box holds, and the term the roster on screen answers. */
+  const [search, setSearch] = useState('');
+  const [activeSearch, setActiveSearch] = useState('');
+  /** Matching proposals in total, so a page that stops at the cap says so. */
+  const [rosterTotal, setRosterTotal] = useState<number | null>(null);
+
+  const loadRoster = useCallback(async (term: string) => {
     setRosterError(null);
+    const q = term.trim();
     try {
-      const res = await fetch('/api/admin/proposals');
+      const res = await fetch(`/api/admin/proposals${q ? `?search=${encodeURIComponent(q)}` : ''}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();
       setRoster(body.proposals);
       setCountsAvailable(body.counts_available !== false);
+      setRosterTotal(typeof body.total === 'number' ? body.total : null);
+      setActiveSearch(q);
     } catch {
       // A failed read is an outage message, never an empty roster.
       setRosterError('Could not load proposals - refresh to retry.');
     }
   }, []);
-  useEffect(() => { loadRoster(); }, [loadRoster]);
+  useEffect(() => { loadRoster(''); }, [loadRoster]);
 
   // ---- import preview state ----
   const [rows, setRows] = useState<PreviewRow[]>([]);
@@ -197,9 +206,25 @@ export default function ProposalsAdminPage() {
     });
   }, []);
 
+  /**
+   * Flip a row's badge. The override is intended - it is the admin's backstop
+   * over the registry - but on a BUNDLE that composeBundle locked, turning it
+   * optional hands the client one all-or-nothing toggle over structural work
+   * whose names the bundle no longer shows. So that one direction names those
+   * members and asks first; every other flip is unchanged.
+   */
   const toggleOptional = useCallback((key: string) => {
+    const row = rows.find((r) => r.key === key);
+    if (row?.members && !row.optional) {
+      const locked = lockedMemberTitles(row.members);
+      if (locked.length > 0 && !window.confirm(
+        `"${row.title}" is locked because it contains work the client is not meant to be able to decline:\n\n`
+        + `${locked.map((t) => `  - ${t}`).join('\n')}\n\n`
+        + 'Making the bundle optional gives them one toggle over all of it. Continue?',
+      )) return;
+    }
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, optional: !r.optional } : r)));
-  }, []);
+  }, [rows]);
 
   /**
    * Renaming stays free while the admin types - including through empty, which
@@ -316,7 +341,7 @@ export default function ProposalsAdminPage() {
       resetImporter();
       setClientName(''); setClientEmail(''); setProposalTitle('');
       setReimportTarget(null);
-      await loadRoster();
+      await loadRoster(activeSearch);
     } catch (err) {
       toast({ title: 'Could not save', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
     } finally {
@@ -336,7 +361,7 @@ export default function ProposalsAdminPage() {
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
       toast({ title: action === 'send' ? 'Sent' : 'Revoked', description: p.client_name });
-      await loadRoster();
+      await loadRoster(activeSearch);
     } catch (err) {
       toast({ title: 'Action failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
     } finally {
@@ -378,17 +403,60 @@ export default function ProposalsAdminPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/*
+            The roster is capped, so search is how every proposal stays
+            reachable: the lifecycle buttons - Revoke above all - live inside a
+            row, and a row that falls off the end of the page takes them with it.
+          */}
+          <form
+            className="mb-3 flex flex-wrap items-center gap-2"
+            onSubmit={(e) => { e.preventDefault(); loadRoster(search); }}
+          >
+            <Input
+              className="h-11 min-w-48 flex-1"
+              type="search"
+              placeholder="Search by client name, email or proposal title"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search proposals"
+              data-testid="roster-search"
+            />
+            <Button type="submit" variant="outline" size="sm" data-testid="roster-search-btn">
+              <Search className="mr-1 h-4 w-4" />Search
+            </Button>
+            {activeSearch ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => { setSearch(''); loadRoster(''); }}
+                data-testid="roster-search-clear"
+              >
+                <X className="mr-1 h-4 w-4" />Clear
+              </Button>
+            ) : null}
+          </form>
           {rosterError ? (
             <div className="flex items-center justify-between rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
               <span>{rosterError}</span>
-              <Button size="sm" variant="outline" onClick={loadRoster}><RefreshCw className="mr-1 h-4 w-4" />Retry</Button>
+              <Button size="sm" variant="outline" onClick={() => loadRoster(activeSearch)}><RefreshCw className="mr-1 h-4 w-4" />Retry</Button>
             </div>
           ) : roster === null ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : roster.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No proposals yet - import a CSV below to create the first one.</p>
+            <p className="text-sm text-muted-foreground">
+              {activeSearch
+                ? `No proposals match "${activeSearch}". Clear the search to see the whole roster.`
+                : 'No proposals yet - import a CSV below to create the first one.'}
+            </p>
           ) : (
             <div className="space-y-2">
+              {rosterTotal != null && rosterTotal > roster.length ? (
+                <p className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground" data-testid="roster-truncated">
+                  Showing {roster.length} of {rosterTotal}{activeSearch ? ' matching' : ''} proposals, most recently
+                  updated first. Search by client name, email or title to reach any of the rest - every proposal stays revocable.
+                </p>
+              ) : null}
               {countsAvailable ? null : (
                 <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900" data-testid="counts-unavailable">
                   Line and submission counts could not be read just now, so they are shown as unknown. Everything else on this roster - Copy link, Re-import, Revoke - still works.

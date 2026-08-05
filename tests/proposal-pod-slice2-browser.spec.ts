@@ -14,22 +14,33 @@ import { test, expect, type BrowserContext, type Page } from '@playwright/test';
  * stub playwright.config.ts runs for the whole suite.
  */
 
-const ROSTER = {
-  proposals: [
-    {
-      id: '11111111-1111-1111-1111-111111111111',
-      client_name: 'Rachel Morales',
-      client_email: 'rachel@example.com',
-      title: 'Your bathroom remodel',
-      status: 'draft',
-      token: 'a'.repeat(43),
-      line_count: 4,
-      submission_count: 0,
-      latest_total_cents: null,
-      updated_at: '2026-08-04T12:00:00.000Z',
-    },
-  ],
+const RACHEL = {
+  id: '11111111-1111-1111-1111-111111111111',
+  client_name: 'Rachel Morales',
+  client_email: 'rachel@example.com',
+  title: 'Your bathroom remodel',
+  status: 'draft',
+  token: 'a'.repeat(43),
+  line_count: 4,
+  submission_count: 0,
+  latest_total_cents: null,
+  updated_at: '2026-08-04T12:00:00.000Z',
 };
+
+/** The proposal the 200-row cap hides: reachable only through the search. */
+const OFF_THE_PAGE = {
+  ...RACHEL,
+  id: '22222222-2222-2222-2222-222222222222',
+  client_name: 'Zeta Vanterpool',
+  client_email: 'zeta@example.com',
+  title: 'Kitchen gut renovation',
+  status: 'sent',
+  token: 'b'.repeat(43),
+  updated_at: '2025-01-01T00:00:00.000Z',
+};
+
+/** One page of one, out of an estate of 312 - the truncated shape. */
+const ROSTER = { proposals: [RACHEL], counts_available: true, total: 312 };
 
 const CSV = [
   'title,description,price',
@@ -56,9 +67,14 @@ async function signInAsAdmin(context: BrowserContext, baseURL: string) {
 
 async function openProposals(page: Page, context: BrowserContext, baseURL: string) {
   await signInAsAdmin(context, baseURL);
-  await page.route('**/api/admin/proposals', async (route) => {
-    if (route.request().method() === 'GET') { await route.fulfill({ json: ROSTER }); return; }
-    await route.fulfill({ json: { ok: true } });
+  // The glob keeps the query string in scope - the roster read carries ?search.
+  await page.route('**/api/admin/proposals*', async (route) => {
+    if (route.request().method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
+    const term = new URL(route.request().url()).searchParams.get('search');
+    if (!term) { await route.fulfill({ json: ROSTER }); return; }
+    const hit = [RACHEL, OFF_THE_PAGE].filter((p) =>
+      [p.client_name, p.client_email, p.title].some((f) => f.toLowerCase().includes(term.toLowerCase())));
+    await route.fulfill({ json: { proposals: hit, counts_available: true, total: hit.length } });
   });
   await page.goto('/vaca-mgmt/proposals');
   await expect(page.getByTestId('proposals-admin')).toBeVisible();
@@ -165,6 +181,61 @@ test.describe('proposals admin, in the browser', () => {
     const combine = page.getByTestId('combine-btn');
     await expect(combine).toBeDisabled();
     await expect(combine).toContainText('(select 2+)');
+  });
+
+  test('B6: a proposal past the roster cap is still reachable - and revocable - by search', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+
+    // The page stops at the cap and says so rather than reading as the estate.
+    await expect(page.getByTestId('roster-truncated')).toContainText('of 312');
+    await expect(page.getByText('Zeta Vanterpool')).toHaveCount(0);
+
+    // Search reaches it, and its lifecycle controls come with the row.
+    await page.getByTestId('roster-search').fill('Zeta');
+    await page.getByTestId('roster-search-btn').click();
+    const row = page.getByTestId('proposal-22222222-2222-2222-2222-222222222222');
+    await expect(row).toBeVisible();
+    await expect(row.getByRole('button', { name: /revoke/i })).toBeEnabled();
+    await expect(page.getByText('Rachel Morales')).toHaveCount(0);
+    // One match is the whole result, so nothing claims to be truncated.
+    await expect(page.getByTestId('roster-truncated')).toHaveCount(0);
+
+    // Searching the email column finds it too.
+    await page.getByTestId('roster-search').fill('zeta@example.com');
+    await page.getByTestId('roster-search-btn').click();
+    await expect(row).toBeVisible();
+
+    // Clear puts the whole roster back.
+    await page.getByTestId('roster-search-clear').click();
+    await expect(page.getByText('Rachel Morales')).toBeVisible();
+  });
+
+  test('B7: making a locked bundle optional asks first and names the locked work', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await pasteCsv(page, CSV);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+
+    // Demolition (locked) + a vanity (optional): composeBundle's fail-safe locks
+    // the bundle, and the override is what could undo that.
+    await page.getByLabel('Select Demolition & prep').check();
+    await page.getByLabel('Select Vanity - double sink').check();
+    await page.getByTestId('combine-btn').click();
+    const bundle = page.getByTestId('bundle-row');
+    // The badge, not any button label that happens to carry the same word.
+    const badge = (word: string) => bundle.getByText(word, { exact: true });
+    await expect(badge('locked')).toBeVisible();
+
+    // Dismissed: the badge does not move.
+    let asked = '';
+    page.once('dialog', (d) => { asked = d.message(); d.dismiss(); });
+    await bundle.getByRole('button', { name: /make .* optional/i }).click();
+    expect(asked).toContain('Demolition & prep');
+    await expect(badge('locked')).toBeVisible();
+
+    // Accepted: the override still works - it is the designed backstop.
+    page.once('dialog', (d) => d.accept());
+    await bundle.getByRole('button', { name: /make .* optional/i }).click();
+    await expect(badge('optional')).toBeVisible();
   });
 
   test('B5: the Parse button re-imports on demand, and clearing the box clears the preview', async ({ page, context, baseURL }) => {

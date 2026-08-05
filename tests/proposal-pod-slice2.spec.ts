@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { composeBundle, restoreMembers, toStoredMembers } from '../src/lib/proposals/bundles';
+import {
+  composeBundle, lockedMemberTitles, restoreMembers, toStoredMembers,
+} from '../src/lib/proposals/bundles';
 import {
   CreateProposalSchema, ProposalLinesSchema, ProposalConflictError, bundleSumError,
 } from '../src/lib/proposals/store';
@@ -360,6 +362,138 @@ test('AC6h: a counts outage costs the roster its numbers, never its lifecycle co
   expect(page).toContain('p.line_count == null || p.submission_count == null');
 });
 
+test('AC6j: every proposal stays reachable past the roster cap, by search and by count', async () => {
+  const proposal = (id: string, name: string) => ({
+    id, token: 'a'.repeat(43), client_name: name, client_email: `${id}@example.com`,
+    title: 'Your bathroom remodel', status: 'sent', lead_id: null, sent_at: null,
+    revoked_at: null, created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-04T00:00:00Z',
+  });
+  const env = { ...process.env };
+  const realFetch = globalThis.fetch;
+  process.env.SUPABASE_SECRET_KEY = 'stub-key';
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://postgrest.stub';
+  const seen: string[] = [];
+
+  // An estate of 312, of which the roster page can hold 200. The 312th by
+  // updated_at is NOT on the unfiltered page - only a search reaches it.
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = decodeURIComponent(String(input));
+    seen.push(url);
+    if (url.includes('/rpc/')) return new Response('[]', { status: 500 });
+    const searching = url.includes('or=(');
+    const rows = searching
+      ? [proposal('deadbeef', 'Zeta Vanterpool')]
+      : Array.from({ length: 200 }, (_, i) => proposal(`p${i}`, `Client ${i}`));
+    return new Response(JSON.stringify(rows), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Content-Range': `0-${rows.length - 1}/${searching ? 1 : 312}` },
+    });
+  }) as typeof fetch;
+
+  try {
+    const { listProposals, ROSTER_LIMIT, searchPattern } = await import('../src/lib/proposals/store');
+
+    // Unfiltered: a full page, and the exact total that says it is not everything.
+    const page = await listProposals();
+    expect(page.proposals).toHaveLength(ROSTER_LIMIT);
+    expect(page.total).toBe(312);
+    expect(page.total! > page.proposals.length, 'the page is truncated and says so').toBe(true);
+    expect(page.proposals.some((p) => p.id === 'deadbeef')).toBe(false);
+
+    // Searched: the proposal the cap hid comes back, so Revoke reaches it.
+    const found = await listProposals('Zeta');
+    expect(found.proposals.map((p) => p.id)).toEqual(['deadbeef']);
+    expect(found.total).toBe(1);
+    // All three searchable columns, server-side.
+    const searchUrl = seen.filter((u) => u.includes('/proposals?')).pop()!;
+    expect(searchUrl).toContain('client_name.ilike.*Zeta*');
+    expect(searchUrl).toContain('client_email.ilike.*Zeta*');
+    expect(searchUrl).toContain('title.ilike.*Zeta*');
+
+    // A term carrying PostgREST's own grammar cannot reach the parser as syntax.
+    expect(searchPattern('Smith, Jane')).toBe('*Smith* Jane*');
+    expect(searchPattern('a)b(c"d\\e')).toBe('*a*b*c*d*e*');
+    expect(searchPattern('100%_off')).toBe('*100**off*');
+    // An email still matches literally: dots are data inside a filter value.
+    expect(searchPattern('rachel@example.com')).toBe('*rachel@example.com*');
+    // Bounded: a filter, not a document.
+    expect(searchPattern('x'.repeat(500)).length).toBeLessThanOrEqual(82);
+  } finally {
+    globalThis.fetch = realFetch;
+    process.env = env;
+  }
+
+  // And the page offers the search and says how much it is not showing.
+  const pageSrc = read('src/app/vaca-mgmt/proposals/page.tsx');
+  expect(pageSrc).toContain('data-testid="roster-search"');
+  expect(pageSrc).toContain('data-testid="roster-truncated"');
+  expect(pageSrc).toContain('?search=${encodeURIComponent(q)}');
+  expect(pageSrc).toContain('rosterTotal != null && rosterTotal > roster.length');
+  expect(read('src/app/api/admin/proposals/route.ts'))
+    .toContain(`request.nextUrl.searchParams.get('search')`);
+});
+
+test('AC6k: a delivered email whose status write fails is reported as delivered, and retried', async () => {
+  const env = { ...process.env };
+  const realFetch = globalThis.fetch;
+  process.env.SUPABASE_SECRET_KEY = 'stub-key';
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://postgrest.stub';
+  const patches: string[] = [];
+  /** failures = how many PATCHes fail before one succeeds. */
+  const stub = (failures: number) => {
+    let seen = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method ?? 'GET') === 'PATCH') {
+        patches.push(String(input));
+        seen += 1;
+        if (seen <= failures) return new Response('{"message":"boom"}', { status: 503 });
+      }
+      return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }) as typeof fetch;
+  };
+
+  try {
+    const { markSent } = await import('../src/lib/proposals/store');
+    // The email is already out by the time markSent runs, so a transient failure
+    // is retried rather than costing the admin a second delivery.
+    stub(1);
+    await markSent('p1');
+    expect(patches).toHaveLength(2);
+
+    // A durable failure still surfaces - it must not be swallowed into "sent".
+    patches.length = 0;
+    stub(99);
+    await expect(markSent('p1')).rejects.toThrow(/failed: 503/);
+  } finally {
+    globalThis.fetch = realFetch;
+    process.env = env;
+  }
+
+  const route = read('src/app/api/admin/proposals/[id]/route.ts');
+  // Send stays FIRST: a failed send must never leave a proposal reading 'sent'.
+  expect(route.indexOf('sendTrackedEmail({')).toBeLessThan(route.indexOf('await markSent(id)'));
+  // But its failure is its own event, not the generic action failure - the
+  // admin has to know a client is already holding the link.
+  expect(route).toContain('The email WAS delivered');
+  expect(route).toContain('Press Send again to repair it');
+  expect(route).toContain('delivered: true');
+  // And a non-send names its cause: a missing RESEND_API_KEY fills `reason`
+  // only, so reading `error` alone reported "(skipped)" and nothing else.
+  expect(route).toContain('const detail = res.error || res.reason');
+});
+
+test('AC6l: no lifecycle writer hand-maintains updated_at - the trigger owns it', () => {
+  const store = read('src/lib/proposals/store.ts');
+  // proposals_set_updated_at (20260824000000) overwrites anything sent from
+  // here, so a hand-written value is dead payload in every one of these paths.
+  expect(store).not.toContain('updated_at: new Date().toISOString()');
+  // The lifecycle columns these two DO own are still written.
+  expect(store).toContain(`status: 'revoked'`);
+  expect(store).toContain('revoked_at: new Date().toISOString()');
+  expect(store).toContain(`status: 'sent'`);
+  expect(store).toContain('sent_at: new Date().toISOString()');
+});
+
 test('AC6i: a rejected action names the rule and the line, not just "Invalid action"', () => {
   const route = read('src/app/api/admin/proposals/[id]/route.ts');
   // The sibling create route's shape: a flattened detail alongside the message.
@@ -488,6 +622,35 @@ test('AC10h: a bundle cannot be sent with its name deleted', () => {
     { title: 'B', priceCents: 200, optional: true, category: 'tile' },
   ])!;
   expect(b.title).toBe('Bundle (2 items)');
+});
+
+test('AC10i: turning a locked bundle optional asks first, and names what it would expose', () => {
+  // The override itself stays - it is the admin's designed backstop over the
+  // registry - but a bundle shows only its own name, so flipping one composed
+  // from structural work hands the client an all-or-nothing toggle over work
+  // whose titles are no longer on screen.
+  const b = composeBundle([
+    { title: 'Demolition & prep', priceCents: 480000, optional: false, category: 'demolition' },
+    { title: 'Vanity - double sink', priceCents: 340000, optional: true, category: 'cabinets' },
+  ])!;
+  expect(b.optional).toBe(false);
+  expect(lockedMemberTitles(b.members)).toEqual(['Demolition & prep']);
+  // Re-derived from the registry, same fail-safe as restoreMembers: a title the
+  // registry does not recognize counts as locked.
+  expect(lockedMemberTitles([{ title: 'Zorble calibration', price_cents: 1 }]))
+    .toEqual(['Zorble calibration']);
+  // An all-optional bundle is the negotiation posture and asks nothing.
+  const allOptional = composeBundle([
+    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true, category: 'tile' },
+    { title: 'Vanity - double sink', priceCents: 340000, optional: true, category: 'cabinets' },
+  ])!;
+  expect(lockedMemberTitles(allOptional.members)).toEqual([]);
+
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  expect(page).toContain('lockedMemberTitles(row.members)');
+  expect(page).toMatch(/locked\.length > 0 && !window\.confirm\(/);
+  // Only that direction, and only for bundles: locking anything is never a risk.
+  expect(page).toContain('if (row?.members && !row.optional)');
 });
 
 test('AC10e: Send is refused while the client page does not exist; Copy link is not', () => {
