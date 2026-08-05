@@ -154,6 +154,13 @@ export async function createProposal(input: CreateProposalInput): Promise<Propos
  * compensation posture as createProposal, which deletes the parent when its
  * lines fail. A proposal with zero lines is a broken artifact, and a SENT one
  * is a live client link pointing at nothing.
+ *
+ * updated_at is NOT written here. proposal_lines_touch_proposal (20260824000000)
+ * fires on every one of the deletes and inserts below and moves the parent's
+ * updated_at itself, and proposals_set_updated_at would overwrite anything this
+ * module sent anyway. A PATCH on top is a round trip that can only add a failure
+ * mode: throwing after the lines are already correctly replaced, which sends the
+ * admin to re-import a proposal that was never wrong.
  */
 export async function replaceLines(proposalId: string, lines: ProposalLineInput[]): Promise<void> {
   const existing = await supabaseRest<{ id: string; status: string }[]>(
@@ -179,9 +186,6 @@ export async function replaceLines(proposalId: string, lines: ProposalLineInput[
     await restorePreviousLines(proposalId, previous);
     throw err;
   }
-  await supabaseRest('PATCH', `proposals?id=eq.${proposalId}`, {
-    updated_at: new Date().toISOString(),
-  }, { prefer: 'return=minimal' });
 }
 
 /**
@@ -204,10 +208,21 @@ async function restorePreviousLines(proposalId: string, previous: StoredLine[]):
   }
 }
 
+/**
+ * A roster row. The three counts are NULLABLE, and null means "not known right
+ * now" rather than zero: when the counts aggregate cannot be read, the roster
+ * still serves and says so instead of printing a confident 0.
+ */
 export interface RosterEntry extends ProposalRow {
-  line_count: number;
-  submission_count: number;
+  line_count: number | null;
+  submission_count: number | null;
   latest_total_cents: number | null;
+}
+
+export interface Roster {
+  proposals: RosterEntry[];
+  /** False when the counts could not be read; the lifecycle controls still work. */
+  counts_available: boolean;
 }
 
 /** How many proposals the roster shows; also the bound on the counts request. */
@@ -229,25 +244,54 @@ interface RosterCountRow {
  * both reads, so PostgREST's max-rows cap would quietly truncate it once the
  * estate grew past a few full proposals and the admin would read a wrong count
  * as data loss. This response is bounded by the number of proposals asked for.
+ *
+ * The counts DEGRADE rather than blind the roster. They are a decoration on a
+ * panel whose real job is Copy link, Re-import and above all Revoke - the D3
+ * kill switch on a live client link - so an aggregate that is missing (the
+ * window between this code deploying and its migration being hand-applied at
+ * go-live) or simply failing must not take those buttons down with it. The
+ * failure is logged server-side and reported to the page, which says the counts
+ * are unavailable instead of showing zeros it cannot stand behind.
  */
-export async function listProposals(): Promise<RosterEntry[]> {
+export async function listProposals(): Promise<Roster> {
   const proposals = (await supabaseRest<ProposalRow[]>(
     'GET', `proposals?select=*&order=updated_at.desc&limit=${ROSTER_LIMIT}`,
   )) ?? [];
-  if (proposals.length === 0) return [];
-  const counts = (await supabaseRest<RosterCountRow[]>(
-    'POST', 'rpc/proposal_roster_counts', { proposal_ids: proposals.map((p) => p.id) },
-  )) ?? [];
-  const byId = new Map(counts.map((c) => [c.proposal_id, c]));
-  return proposals.map((p) => {
-    const c = byId.get(p.id);
+  if (proposals.length === 0) return { proposals: [], counts_available: true };
+
+  let counts: RosterCountRow[] | null = null;
+  try {
+    counts = (await supabaseRest<RosterCountRow[]>(
+      'POST', 'rpc/proposal_roster_counts', { proposal_ids: proposals.map((p) => p.id) },
+    )) ?? [];
+  } catch (err) {
+    console.error(
+      'proposal roster counts unavailable (serving the roster without them):',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+  if (!counts) {
     return {
-      ...p,
-      line_count: c?.line_count ?? 0,
-      submission_count: c?.submission_count ?? 0,
-      latest_total_cents: c?.latest_total_cents ?? null,
+      proposals: proposals.map((p) => ({
+        ...p, line_count: null, submission_count: null, latest_total_cents: null,
+      })),
+      counts_available: false,
     };
-  });
+  }
+
+  const byId = new Map(counts.map((c) => [c.proposal_id, c]));
+  return {
+    proposals: proposals.map((p) => {
+      const c = byId.get(p.id);
+      return {
+        ...p,
+        line_count: c?.line_count ?? 0,
+        submission_count: c?.submission_count ?? 0,
+        latest_total_cents: c?.latest_total_cents ?? null,
+      };
+    }),
+    counts_available: true,
+  };
 }
 
 /** Revoke: the explicit admin kill switch (owner decision D3). */

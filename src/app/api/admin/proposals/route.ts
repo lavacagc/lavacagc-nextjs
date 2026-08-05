@@ -17,7 +17,11 @@ export const runtime = 'nodejs';
 
 export async function GET() {
   try {
-    return NextResponse.json({ proposals: await listProposals() });
+    // counts_available travels with the rows: the roster degrades to "counts
+    // unknown" rather than to an outage, so the lifecycle buttons stay reachable
+    // when only the aggregate is down.
+    const { proposals, counts_available } = await listProposals();
+    return NextResponse.json({ proposals, counts_available });
   } catch (err) {
     console.error('proposal roster read failed:', err instanceof Error ? err.message : String(err));
     return NextResponse.json({ error: 'Could not load proposals' }, { status: 500 });

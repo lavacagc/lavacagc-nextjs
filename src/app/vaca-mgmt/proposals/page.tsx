@@ -59,8 +59,9 @@ interface RosterEntry {
   title: string;
   status: 'draft' | 'sent' | 'revoked';
   token: string;
-  line_count: number;
-  submission_count: number;
+  /** Null when the counts aggregate could not be read - unknown, not zero. */
+  line_count: number | null;
+  submission_count: number | null;
   latest_total_cents: number | null;
   updated_at: string;
 }
@@ -77,12 +78,16 @@ export default function ProposalsAdminPage() {
   // ---- roster ----
   const [roster, setRoster] = useState<RosterEntry[] | null>(null);
   const [rosterError, setRosterError] = useState<string | null>(null);
+  /** False when the server served the roster without its counts. */
+  const [countsAvailable, setCountsAvailable] = useState(true);
   const loadRoster = useCallback(async () => {
     setRosterError(null);
     try {
       const res = await fetch('/api/admin/proposals');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setRoster((await res.json()).proposals);
+      const body = await res.json();
+      setRoster(body.proposals);
+      setCountsAvailable(body.counts_available !== false);
     } catch {
       // A failed read is an outage message, never an empty roster.
       setRosterError('Could not load proposals - refresh to retry.');
@@ -196,8 +201,28 @@ export default function ProposalsAdminPage() {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, optional: !r.optional } : r)));
   }, []);
 
+  /**
+   * Renaming stays free while the admin types - including through empty, which
+   * is how anyone replaces a name - but an empty box is never a title. The last
+   * non-empty name is remembered here and put back on blur, so a cleared field
+   * cannot reach the API as `title: ''` for the schema to reject with a message
+   * about a line the admin never sees.
+   */
+  const lastBundleName = useRef<Map<string, string>>(new Map());
+
   const renameBundle = useCallback((key: string, title: string) => {
+    if (title.trim()) lastBundleName.current.set(key, title);
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, title } : r)));
+  }, []);
+
+  const commitBundleName = useCallback((key: string) => {
+    setRows((prev) => prev.map((r) => {
+      if (r.key !== key || r.title.trim()) return r;
+      return {
+        ...r,
+        title: lastBundleName.current.get(key) ?? `Bundle (${r.members?.length ?? 0} items)`,
+      };
+    }));
   }, []);
 
   /**
@@ -207,6 +232,12 @@ export default function ProposalsAdminPage() {
    */
   const selectedRows = useMemo(() => rows.filter((r) => selected.has(r.key)), [rows, selected]);
 
+  /**
+   * A row with no title cannot be written - the schema's `.min(1)` rejects it -
+   * so the button refuses first, while the empty box is still on screen.
+   */
+  const hasUnnamedRow = useMemo(() => rows.some((r) => !r.title.trim()), [rows]);
+
   const toggleSelected = useCallback((key: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -214,6 +245,33 @@ export default function ProposalsAdminPage() {
       return next;
     });
   }, []);
+
+  /**
+   * Arm a re-import, and empty the importer while doing it.
+   *
+   * Re-import REPLACES a proposal's lines and is not undoable by the admin (the
+   * snapshot restore in replaceLines answers a failed insert, not a mis-aimed
+   * one). Leaving whatever preview happened to be loaded meant the rows built
+   * for one client - or for a proposal that was never created - silently became
+   * the payload for whichever roster row was clicked, at the same moment the
+   * client fields that identified them were hidden. So the corrected CSV is
+   * parsed fresh, against a target the card names on every screen.
+   */
+  const resetImporter = useCallback(() => {
+    setRows([]); setSelected(new Set()); setCsvErrors([]); setCsvText('');
+    lastParsed.current = '';
+  }, []);
+
+  const armReimport = useCallback((p: RosterEntry) => {
+    resetImporter();
+    setReimportTarget(p);
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  }, [resetImporter]);
+
+  const cancelReimport = useCallback(() => {
+    setReimportTarget(null);
+    resetImporter();
+  }, [resetImporter]);
 
   // ---- create / reimport / lifecycle ----
   // toStoredMembers, not r.members: the preview carries each member's
@@ -255,8 +313,8 @@ export default function ProposalsAdminPage() {
         if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
         toast({ title: 'Proposal created (draft)', description: 'Send it or copy the link from the roster.' });
       }
-      setRows([]); setSelected(new Set()); setClientName(''); setClientEmail(''); setProposalTitle('');
-      setCsvText(''); lastParsed.current = '';
+      resetImporter();
+      setClientName(''); setClientEmail(''); setProposalTitle('');
       setReimportTarget(null);
       await loadRoster();
     } catch (err) {
@@ -331,6 +389,11 @@ export default function ProposalsAdminPage() {
             <p className="text-sm text-muted-foreground">No proposals yet - import a CSV below to create the first one.</p>
           ) : (
             <div className="space-y-2">
+              {countsAvailable ? null : (
+                <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900" data-testid="counts-unavailable">
+                  Line and submission counts could not be read just now, so they are shown as unknown. Everything else on this roster - Copy link, Re-import, Revoke - still works.
+                </p>
+              )}
               {roster.map((p) => (
                 <div key={p.id} className="flex flex-wrap items-center gap-2 rounded-lg border p-3" data-testid={`proposal-${p.id}`}>
                   <div className="min-w-0 flex-1">
@@ -340,13 +403,19 @@ export default function ProposalsAdminPage() {
                       {statusBadge(p.status)}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {p.line_count} lines · {p.submission_count} submission{p.submission_count === 1 ? '' : 's'}
-                      {p.latest_total_cents != null ? ` · latest ${dollars(p.latest_total_cents)}` : ''}
+                      {p.line_count == null || p.submission_count == null ? (
+                        'Counts unavailable'
+                      ) : (
+                        <>
+                          {p.line_count} lines · {p.submission_count} submission{p.submission_count === 1 ? '' : 's'}
+                          {p.latest_total_cents != null ? ` · latest ${dollars(p.latest_total_cents)}` : ''}
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" variant="outline" onClick={() => copyLink(p)}><Link2 className="mr-1 h-4 w-4" />Copy link</Button>
-                    <Button size="sm" variant="outline" disabled={busy} onClick={() => { setReimportTarget(p); window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }}>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => armReimport(p)}>
                       <FileUp className="mr-1 h-4 w-4" />Re-import
                     </Button>
                     {p.status !== 'revoked' ? (
@@ -377,11 +446,23 @@ export default function ProposalsAdminPage() {
               ? 'Same link, corrected lines. Past submissions keep their own snapshots.'
               : 'Drop the estimator’s proposal export (title, description, price). Nothing is created until you press Create; nothing is emailed until you press Send.'}
             {reimportTarget ? (
-              <Button size="sm" variant="ghost" className="ml-2" onClick={() => setReimportTarget(null)}><X className="mr-1 h-4 w-4" />Cancel re-import</Button>
+              <Button size="sm" variant="ghost" className="ml-2" onClick={cancelReimport}><X className="mr-1 h-4 w-4" />Cancel re-import</Button>
             ) : null}
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {reimportTarget ? (
+            <div className="mb-4 rounded-lg border border-primary/40 bg-primary/5 p-4 text-sm" data-testid="reimport-armed">
+              <p>
+                Replacing the lines on <span className="font-semibold">{reimportTarget.client_name}</span>
+                {' - '}<span className="font-semibold">{reimportTarget.title}</span>.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                The importer was emptied when you armed this, so what you load below is what this proposal will hold. Its
+                {reimportTarget.line_count == null ? ' current lines are' : ` ${reimportTarget.line_count} current lines are`} replaced outright, and that cannot be undone from here.
+              </p>
+            </div>
+          ) : null}
           <div
             className="mb-4 rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground"
             onDragOver={(e) => e.preventDefault()}
@@ -464,6 +545,7 @@ export default function ProposalsAdminPage() {
                         value={r.title}
                         aria-label="Bundle name"
                         onChange={(e) => renameBundle(r.key, e.target.value)}
+                        onBlur={() => commitBundleName(r.key)}
                       />
                     ) : (
                       <span className="min-w-0 flex-1 truncate font-medium">{r.title}</span>
@@ -508,12 +590,14 @@ export default function ProposalsAdminPage() {
 
               <Button
                 className="w-full sm:w-auto"
-                disabled={busy || rows.length === 0 || (!reimportTarget && (!clientName.trim() || !proposalTitle.trim()))}
+                disabled={busy || rows.length === 0 || hasUnnamedRow
+                  || (!reimportTarget && (!clientName.trim() || !proposalTitle.trim()))}
+                title={hasUnnamedRow ? 'Every line and bundle needs a name' : undefined}
                 onClick={create}
                 data-testid="create-btn"
               >
                 <Upload className="mr-1 h-4 w-4" />
-                {reimportTarget ? 'Replace lines on this proposal' : 'Create proposal (draft)'}
+                {reimportTarget ? `Replace ${reimportTarget.client_name}'s lines` : 'Create proposal (draft)'}
               </Button>
             </div>
           )}

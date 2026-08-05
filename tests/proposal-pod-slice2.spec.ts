@@ -241,8 +241,13 @@ test('AC6d: a re-import that cannot insert restores the lines it deleted', async
   expect(restore!.body).toEqual(previous);
   // The snapshot read is bounded, so it cannot silently under-restore.
   expect(calls.find((c) => c.url.includes('/proposal_lines?select='))!.url).toContain('limit=200');
-  // And the proposal is never marked updated - a failed re-import is not an update.
+  // And the proposal is never marked updated - a failed re-import is not an
+  // update. Nor is a SUCCESSFUL one written by hand: proposal_lines_touch_
+  // proposal moves updated_at from the trigger, so the module writes no PATCH
+  // at all and cannot fail after the lines are already correct.
   expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+  expect(read('src/lib/proposals/store.ts'))
+    .not.toMatch(/PATCH', `proposals\?id=eq\.\$\{proposalId\}`, \{\s*\n?\s*updated_at/);
 });
 
 test('AC6e: a refused transition is a typed conflict, not a matched substring', () => {
@@ -274,6 +279,99 @@ test('AC6f: the roster counts in Postgres, bounded, instead of counting fetched 
   expect(ddl).toMatch(/jsonb_array_length\(bundle_members\) <= 200/);
   expect(read('supabase/migrations/20260825000000_proposal_bundles.sql'))
     .not.toContain('bundle_member_cap');
+});
+
+test('AC6g: both pod functions keep service_role EXECUTE and an empty search_path', () => {
+  const sql = read('supabase/migrations/20260826000000_proposal_roster_counts.sql');
+  const ddl = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+  // A REVOKE without the paired GRANT relies on Supabase's bootstrap default
+  // privileges, which a self-hosted stack or a restored database may never have
+  // applied - and there the revoke removes service_role's last path in.
+  expect(ddl).toMatch(/GRANT EXECUTE ON FUNCTION public\.proposal_roster_counts\(UUID\[\]\) TO service_role/);
+  // proposal_bundle_total sits inside a CHECK, where EXECUTE is tested at INSERT
+  // time: without this, a bundled line cannot be written at all.
+  expect(ddl).toMatch(/GRANT EXECUTE ON FUNCTION public\.proposal_bundle_total\(JSONB\) TO service_role/);
+  // Pinned search_path on both, per 20260824000000's stated rule. 20260825000000
+  // has landed in a database, so its function is pinned by ALTER from here.
+  expect(ddl).toMatch(/CREATE FUNCTION public\.proposal_roster_counts[\s\S]*?SET search_path = ''[\s\S]*?AS \$\$/);
+  expect(ddl).toMatch(/ALTER FUNCTION public\.proposal_bundle_total\(JSONB\) SET search_path = ''/);
+  expect(read('supabase/migrations/20260825000000_proposal_bundles.sql'))
+    .not.toContain('service_role');
+});
+
+test('AC6h: a counts outage costs the roster its numbers, never its lifecycle controls', async () => {
+  const proposal = {
+    id: 'p1', token: 'a'.repeat(43), client_name: 'Rachel Morales', client_email: null,
+    title: 'Your bathroom remodel', status: 'sent', lead_id: null, sent_at: '2026-08-04T00:00:00Z',
+    revoked_at: null, created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-04T00:00:00Z',
+  };
+  const env = { ...process.env };
+  const realFetch = globalThis.fetch;
+  process.env.SUPABASE_SECRET_KEY = 'stub-key';
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://postgrest.stub';
+  const json = (payload: unknown, status = 200) =>
+    new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } });
+
+  /** countsStatus 404 = the migration has not been hand-applied yet. */
+  const stub = (countsStatus: number) => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/rpc/proposal_roster_counts')) {
+        return countsStatus === 200
+          ? json([{ proposal_id: 'p1', line_count: 7, submission_count: 2, latest_total_cents: 630050 }])
+          : json({ message: 'Not Found' }, countsStatus);
+      }
+      if (url.includes('/proposals?')) return json([proposal]);
+      return json([]);
+    }) as typeof fetch;
+  };
+
+  try {
+    const { listProposals } = await import('../src/lib/proposals/store');
+
+    stub(404);
+    const degraded = await listProposals();
+    expect(degraded.counts_available).toBe(false);
+    // The row survives - Copy link, Re-import and above all Revoke stay reachable.
+    expect(degraded.proposals).toHaveLength(1);
+    expect(degraded.proposals[0].id).toBe('p1');
+    expect(degraded.proposals[0].token).toBe(proposal.token);
+    // Unknown, not a confident zero.
+    expect(degraded.proposals[0].line_count).toBeNull();
+    expect(degraded.proposals[0].submission_count).toBeNull();
+    expect(degraded.proposals[0].latest_total_cents).toBeNull();
+
+    stub(500);
+    expect((await listProposals()).counts_available).toBe(false);
+
+    stub(200);
+    const healthy = await listProposals();
+    expect(healthy.counts_available).toBe(true);
+    expect(healthy.proposals[0].line_count).toBe(7);
+    expect(healthy.proposals[0].latest_total_cents).toBe(630050);
+  } finally {
+    globalThis.fetch = realFetch;
+    process.env = env;
+  }
+
+  // And the page renders the degraded state rather than printing zeros.
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  expect(page).toContain('data-testid="counts-unavailable"');
+  expect(page).toContain('p.line_count == null || p.submission_count == null');
+});
+
+test('AC6i: a rejected action names the rule and the line, not just "Invalid action"', () => {
+  const route = read('src/app/api/admin/proposals/[id]/route.ts');
+  // The sibling create route's shape: a flattened detail alongside the message.
+  expect(route).toContain('details: parsed.error.flatten()');
+  expect(route).toContain(`issue.path.join('.')`);
+  // An empty bundle name is the reachable case, and the path names which line.
+  const bad = ProposalLinesSchema.safeParse([
+    { title: 'Demo', description: '', price_cents: 100, optional: false, category: 'general' },
+    { title: '', description: '', price_cents: 100, optional: false, category: 'general' },
+  ]);
+  expect(bad.success).toBe(false);
+  if (!bad.success) expect(bad.error.issues[0].path.join('.')).toBe('1.title');
 });
 
 test('AC7: the delivery email carries the private link, warm sender, booking slot only when configured', () => {
@@ -356,6 +454,40 @@ test('AC10d: the fire-and-forget async paths report failure instead of vanishing
   // An unreadable dropped file must not fail as a preview that simply never appears.
   expect(page).toContain(`title: 'Could not read that file'`);
   expect(page).toMatch(/f\.text\(\)[\s\S]*?\.catch\(/);
+});
+
+test('AC10g: arming a re-import empties the importer and names its target', () => {
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  // The old shape only set the target, so a preview built for a DIFFERENT
+  // client stayed loaded and became the payload for whichever row was clicked -
+  // at the same moment the client fields that identified it were hidden.
+  expect(page).not.toContain('onClick={() => { setReimportTarget(p);');
+  expect(page).toContain('onClick={() => armReimport(p)}');
+  expect(page).toMatch(/const armReimport = useCallback\(\(p: RosterEntry\) => \{\s*\n\s*resetImporter\(\);/);
+  // Cancel restores a clean importer rather than leaving the armed preview up.
+  expect(page).toContain('onClick={cancelReimport}');
+  expect(page).toMatch(/const cancelReimport = useCallback\(\(\) => \{[\s\S]*?resetImporter\(\);/);
+  // And the target is named where the admin is working, not only in the title.
+  expect(page).toContain('data-testid="reimport-armed"');
+  expect(page).toContain(`Replace ${'${reimportTarget.client_name}'}'s lines`);
+});
+
+test('AC10h: a bundle cannot be sent with its name deleted', () => {
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  // Typing through empty is allowed; leaving the box empty is not - the last
+  // non-empty name comes back on blur, and composeBundle's default backs it.
+  expect(page).toContain('onBlur={() => commitBundleName(r.key)}');
+  expect(page).toContain('lastBundleName.current.get(key)');
+  expect(page).toContain('`Bundle (${r.members?.length ?? 0} items)`');
+  // Belt and braces: the button refuses while an empty name is still on screen.
+  expect(page).toContain('const hasUnnamedRow = useMemo(');
+  expect(page).toContain('hasUnnamedRow');
+  // The default name the fallback restores is the one composeBundle gives.
+  const b = composeBundle([
+    { title: 'A', priceCents: 100, optional: true, category: 'tile' },
+    { title: 'B', priceCents: 200, optional: true, category: 'tile' },
+  ])!;
+  expect(b.title).toBe('Bundle (2 items)');
 });
 
 test('AC10e: Send is refused while the client page does not exist; Copy link is not', () => {

@@ -45,7 +45,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ error: 'Bad id' }, { status: 400 });
 
   const parsed = ActionSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+  if (!parsed.success) {
+    // The reimport branch validates a whole line array here, so a bare
+    // 'Invalid action' named neither the rule that failed nor the line that
+    // broke it. The first issue's path does both, and the flattened detail
+    // travels alongside it exactly as the sibling create route sends it.
+    const issue = parsed.error.issues[0];
+    const where = issue && issue.path.length > 0 ? issue.path.join('.') : null;
+    return NextResponse.json({
+      error: where ? `Invalid action: ${where} - ${issue.message}` : 'Invalid action',
+      details: parsed.error.flatten(),
+    }, { status: 400 });
+  }
 
   const rows = await supabaseRest<ProposalRow[]>('GET', `proposals?select=*&id=eq.${id}&limit=1`).catch(() => null);
   const proposal = rows?.[0];
