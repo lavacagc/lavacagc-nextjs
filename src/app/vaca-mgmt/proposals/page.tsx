@@ -657,7 +657,7 @@ export default function ProposalsAdminPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-semibold">{p.client_name}</span>
-                      <span className="truncate text-sm text-muted-foreground">{p.title}</span>
+                      <span className="line-clamp-2 text-sm text-muted-foreground">{p.title}</span>
                       {statusBadge(p.status)}
                     </div>
                     <div className="text-xs text-muted-foreground">
@@ -953,8 +953,16 @@ export default function ProposalsAdminPage() {
                         floor makes the name the item that forces the wrap, so
                         the price and toggle drop to their own line first and
                         every name reads the same width either way.
+
+                        line-clamp-2, not truncate: a line's TITLE is what the
+                        admin picks it by when ticking rows to combine, and at
+                        390px truncate ellipsised most of them on one line
+                        ("Matte black faucet pa..."), leaving two faucet lines
+                        that read identically. Two lines is enough for every
+                        title the estimator exports, and desktop widths fit one
+                        line anyway, so this only changes the narrow case.
                       */
-                      <span className="min-w-40 flex-1 truncate font-medium">{r.title}</span>
+                      <span className="min-w-40 flex-1 line-clamp-2 break-words font-medium">{r.title}</span>
                     )}
                     <div className="flex items-center gap-3">
                       <span className="font-semibold tabular-nums">{dollars(r.priceCents)}</span>
@@ -971,7 +979,7 @@ export default function ProposalsAdminPage() {
                     </div>
                   )}
                   {!r.members && r.description ? (
-                    <p className="mt-1 truncate pl-8 text-xs text-muted-foreground">{r.description}</p>
+                    <p className="mt-1 line-clamp-2 pl-8 text-xs text-muted-foreground">{r.description}</p>
                   ) : null}
                 </div>
               ))}
