@@ -707,19 +707,66 @@ test('AC10c: the paste box parses on paste and an explicit button - never on a k
   // and moving focus is not a decision to re-import.
   expect(page).not.toContain('onBlur={(e) => parsePastedText(e.target.value)}');
   expect(page).not.toMatch(/onBlur=\{[^}]*parsePastedText/);
-  // Emptying the box clears the preview rather than leaving a stale one up.
-  expect(page).toContain('if (!text.trim()) clearPreview(text)');
-  // Every remaining door into a re-parse asks first when there is composed work
-  // to lose, so the discard can never be silent whichever one it comes through.
+  // EVERY door into a discard asks first when there is composed work to lose, so
+  // the loss can never be silent whichever one it comes through.
   expect(page).toContain('const previewHasEdits = useMemo(');
   expect(page).toContain('r.members != null || r.optional !== categorizeLine(r.title).optional');
-  expect(page).toMatch(/const confirmReparse = useCallback\(\(\) => !previewHasEdits \|\| window\.confirm\(/);
-  expect(page).toMatch(/const reparse = useCallback\(\(text: string\) => \{\s*\n\s*if \(!confirmReparse\(\)\) return;/);
+  expect(page).toMatch(/const confirmDiscard = useCallback\(\(\) => !previewHasEdits \|\| window\.confirm\(/);
+  expect(page).toMatch(/const reparse = useCallback\(\(text: string\) => \{\s*\n\s*if \(!confirmDiscard\(\)\) return;/);
   expect(page).toContain('onClick={() => reparse(csvText)}');
   expect(page).not.toContain('onClick={() => ingestCsv(csvText)}');
   // The paste and the dropped file are the same discard, so they ask too.
   expect(page).toMatch(/parsePastedText = useCallback[\s\S]*?reparse\(text\);/);
-  expect(page).toMatch(/f\.text\(\)\.then\(\(text\) => \{\s*\n\s*if \(!confirmReparse\(\)\) return;/);
+  expect(page).toMatch(/f\.text\(\)\.then\(\(text\) => \{\s*\n\s*if \(!confirmDiscard\(\)\) return;/);
+  // Emptying the box clears the preview rather than leaving a stale one up -
+  // and THAT is a discard too, through the same door. It was the one path that
+  // wiped bundles with no question, which also disarmed the confirm for the
+  // re-paste that naturally followed (nothing left to lose by then).
+  expect(page).toMatch(/const clearPreview = useCallback\(\(text: string\) => \{\s*\n\s*if \(!confirmDiscard\(\)\) return false;/);
+  expect(page).toContain('if (!text.trim() && !clearPreview(text)) return;');
+  expect(page).not.toContain('if (!text.trim()) clearPreview(text);');
+  // Declined, the box keeps the text its surviving preview was built from -
+  // committing the empty value would leave exactly the mismatch (a cleared box
+  // beside a live preview) that clearing the preview exists to prevent.
+  expect(page).toMatch(/if \(!text\.trim\(\) && !clearPreview\(text\)\) return;\s*\n\s*setCsvText\(text\);/);
+});
+
+test('AC10c2: re-picking the same file always re-fires, so a declined confirm is not a dead end', () => {
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  // A file input remembers its selection and emits no change event for the same
+  // file twice. With the discard confirm in front of it, an admin who cancels to
+  // think it over and then picks that same file again would get nothing at all.
+  expect(page).toContain(`onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }}`);
+  expect(page).not.toContain('onChange={(e) => onFile(e.target.files?.[0])}');
+});
+
+test('AC10c3: combine takes only the keys - the name it used to forward had no source', () => {
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  // Naming is renameBundle writing r.title after the fact; neither call site
+  // (the Combine button, the drag drop) ever passed a name.
+  expect(page).toContain('const combine = useCallback((keys: string[]) => {');
+  expect(page).toContain('const composed = composeBundle(chosen);');
+  expect(page).not.toMatch(/combine = useCallback\(\(keys: string\[\], name/);
+  // composeBundle itself keeps the parameter - it is a real part of the pure
+  // module's surface, and the AC fixtures above compose named bundles with it.
+  const bundles = read('src/lib/proposals/bundles.ts');
+  expect(bundles).toContain('export function composeBundle(inputs: BundleInput[], name?: string)');
+});
+
+test('AC10c4: the selection checkbox meets the house 44px touch target', () => {
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  // globals.css enforces 44px for WCAG AAA, but its selector list is buttons
+  // only - a checkbox is not one, so nothing bumped the primary control of the
+  // path the plan calls mobile-first. The padded label is the target; the box
+  // itself stays 20px, so the hit area grows and the visual does not.
+  const css = read('src/app/globals.css');
+  expect(css).toContain('min-height: 44px');
+  expect(css).not.toMatch(/input\[type="checkbox"\][\s\S]{0,80}min-height: 44px/);
+  expect(page).toMatch(/<label\s*\n\s*className="[^"]*h-11 w-11[^"]*"\s*\n\s*data-testid="row-select-target"/);
+  expect(page).toContain('className="h-5 w-5 accent-primary"');
+  // The accessible name stays on the input, so "Select <title>" still resolves
+  // to the control itself rather than to the wrapper.
+  expect(page).toContain('aria-label={`Select ${r.title}`}');
 });
 
 test('AC10d: the fire-and-forget async paths report failure instead of vanishing', () => {

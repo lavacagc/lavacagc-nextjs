@@ -18,7 +18,9 @@
  * bundle shows one name (admin-chosen), ONE summed price, and its member
  * titles; member prices stay admin-side only.
  *
- * House rule honored: buttons keep the global 44px touch minimum.
+ * House rule honored: every control keeps the global 44px touch minimum -
+ * buttons through globals.css, and the row's selection checkbox through the
+ * padded label around it, since that base rule does not reach checkboxes.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -153,12 +155,6 @@ export default function ProposalsAdminPage() {
     })));
   }, []);
 
-  /** Clear the preview outright - what an emptied paste box should mean. */
-  const clearPreview = useCallback((text: string) => {
-    lastParsed.current = text;
-    setRows([]); setSelected(new Set()); setCsvErrors([]);
-  }, []);
-
   /**
    * Does the preview hold work a re-parse would throw away? A composed bundle,
    * or a badge the admin flipped off what the registry said. Derived from the
@@ -171,20 +167,33 @@ export default function ProposalsAdminPage() {
   );
 
   /**
-   * Ask before rebuilding a preview that holds composed work. EVERY re-parse
+   * Ask before throwing away a preview that holds composed work. EVERY discard
    * goes through here - the Parse button, a paste into a box that already
-   * imported, a dropped file - because the loss is the same whichever door it
-   * arrives through, and it is invisible: fresh keys, no bundles, no overrides.
+   * imported, a dropped file, emptying the box - because the loss is the same
+   * whichever door it arrives through, and it is invisible either way: no
+   * bundles, no overrides, no undo. One door, no exceptions.
    */
-  const confirmReparse = useCallback(() => !previewHasEdits || window.confirm(
-    'Parsing this CSV rebuilds the preview from scratch: the bundles you composed and any '
-    + 'locked/optional badges you set by hand are discarded. Continue?',
+  const confirmDiscard = useCallback(() => !previewHasEdits || window.confirm(
+    'This discards the current preview: the bundles you composed and any '
+    + 'locked/optional badges you set by hand go with it. Continue?',
   ), [previewHasEdits]);
 
+  /**
+   * Clear the preview outright - what an emptied paste box should mean. Behind
+   * the same confirm as a re-parse, and reports whether it ran so the caller can
+   * leave the box holding the text the surviving preview was built from.
+   */
+  const clearPreview = useCallback((text: string) => {
+    if (!confirmDiscard()) return false;
+    lastParsed.current = text;
+    setRows([]); setSelected(new Set()); setCsvErrors([]);
+    return true;
+  }, [confirmDiscard]);
+
   const reparse = useCallback((text: string) => {
-    if (!confirmReparse()) return;
+    if (!confirmDiscard()) return;
     ingestCsv(text);
-  }, [confirmReparse, ingestCsv]);
+  }, [confirmDiscard, ingestCsv]);
 
   /** Re-parse only when the text actually changed since the last import. */
   const parsePastedText = useCallback((text: string) => {
@@ -196,7 +205,7 @@ export default function ProposalsAdminPage() {
   const onFile = useCallback((f: File | undefined | null) => {
     if (!f) return;
     f.text().then((text) => {
-      if (!confirmReparse()) return;
+      if (!confirmDiscard()) return;
       setCsvText(text);
       ingestCsv(text);
     }).catch(() => {
@@ -206,13 +215,19 @@ export default function ProposalsAdminPage() {
         variant: 'destructive',
       });
     });
-  }, [confirmReparse, ingestCsv, toast]);
+  }, [confirmDiscard, ingestCsv, toast]);
 
   // ---- bundling ----
-  const combine = useCallback((keys: string[], name?: string) => {
+  /**
+   * Compose the picked rows into a bundle. No name is passed: composeBundle's
+   * generated one lands in the row's editable title, and renameBundle is what
+   * changes it from there - so a name threaded through here would have no
+   * reader, and on the drag path no source either.
+   */
+  const combine = useCallback((keys: string[]) => {
     setRows((prev) => {
       const chosen = prev.filter((r) => keys.includes(r.key));
-      const composed = composeBundle(chosen, name);
+      const composed = composeBundle(chosen);
       if (!composed) return prev;
       const bundle: PreviewRow = { key: rowKey(), description: '', ...composed };
       const at = prev.findIndex((r) => r.key === chosen[0].key);
@@ -596,8 +611,15 @@ export default function ProposalsAdminPage() {
           >
             Drop the CSV here, or
             <Button variant="link" className="px-1" onClick={() => fileInput.current?.click()}>choose a file</Button>
+            {/*
+              The value is cleared after every pick so choosing the SAME file
+              again still fires: the confirm below can be declined, and an input
+              that remembers the file it is holding emits no change event for it
+              a second time - leaving the admin's only ways forward a different
+              file or the paste box.
+            */}
             <input ref={fileInput} type="file" accept=".csv,text/csv" className="hidden" data-testid="csv-file-input"
-              onChange={(e) => onFile(e.target.files?.[0])} />
+              onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
             <Textarea
               className="mt-3 font-mono text-xs"
               placeholder="…or paste the CSV text here"
@@ -610,12 +632,17 @@ export default function ProposalsAdminPage() {
               // typo in here used to cost - on the next click ANYWHERE, since
               // that is what blurs a textarea. Re-importing is the Parse
               // button's job, and it asks first when there is work to lose.
+              //
               // Emptying the box does clear the preview, because a cleared box
-              // that still shows one reads as though the text is still loaded.
+              // that still shows one reads as though the text is still loaded -
+              // but that is a discard like any other, so it asks the same
+              // question. Declining keeps the preview AND the text it was built
+              // from, since a box left empty beside a live preview is the very
+              // mismatch clearing exists to prevent.
               onChange={(e) => {
                 const text = e.target.value;
+                if (!text.trim() && !clearPreview(text)) return;
                 setCsvText(text);
-                if (!text.trim()) clearPreview(text);
               }}
               onPaste={(e) => {
                 const el = e.currentTarget;
@@ -659,13 +686,26 @@ export default function ProposalsAdminPage() {
                   data-testid={r.members ? 'bundle-row' : 'line-row'}
                 >
                   <div className="flex flex-wrap items-center gap-3">
-                    <input
-                      type="checkbox"
-                      className="h-5 w-5 accent-primary"
-                      checked={selected.has(r.key)}
-                      onChange={() => toggleSelected(r.key)}
-                      aria-label={`Select ${r.title}`}
-                    />
+                    {/*
+                      The tick is the mobile-first path's primary control, so it
+                      carries the house 44px target - but globals.css only bumps
+                      buttons, and a checkbox is not one. The padded label is the
+                      target (the sibling send-service-quote page's pattern); the
+                      box itself stays 20px, so the hit area grows and the visual
+                      does not.
+                    */}
+                    <label
+                      className="-mx-1.5 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center"
+                      data-testid="row-select-target"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-5 w-5 accent-primary"
+                        checked={selected.has(r.key)}
+                        onChange={() => toggleSelected(r.key)}
+                        aria-label={`Select ${r.title}`}
+                      />
+                    </label>
                     <Badge variant={r.optional ? 'default' : 'secondary'}>{r.optional ? 'optional' : 'locked'}</Badge>
                     {r.members ? (
                       <Input

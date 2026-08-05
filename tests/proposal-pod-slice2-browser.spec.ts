@@ -386,8 +386,64 @@ test.describe('proposals admin, in the browser', () => {
     await expect(page.getByTestId('line-row')).toHaveCount(3);
 
     // Emptying the box empties the preview - it used to leave the old one up.
+    // Nothing composed survives here, so it asks nothing.
     await page.getByTestId('csv-paste').fill('');
     await expect(page.getByTestId('preview')).toHaveCount(0);
     await expect(page.getByTestId('parse-btn')).toBeDisabled();
+  });
+
+  test('B11: emptying the box is a discard like any other - it asks, and Cancel keeps both', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await pasteCsv(page, CSV);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+
+    await page.getByLabel('Select Tile - heated floor upgrade').check();
+    await page.getByLabel('Select Vanity - double sink').check();
+    await page.getByTestId('combine-btn').click();
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+
+    // Select-all-and-delete in the box, to paste a corrected export over it.
+    // This was the one door that discarded without asking - and because it left
+    // nothing to lose, the paste that naturally followed never asked either.
+    let question = '';
+    page.once('dialog', (d) => { question = d.message(); d.dismiss(); });
+    await page.getByTestId('csv-paste').fill('');
+    expect(question).toContain('bundles you composed');
+
+    // Cancelled: the bundle stays, and so does the text it was built from - a
+    // box left empty beside a live preview is the mismatch clearing prevents.
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+    await expect(page.getByTestId('csv-paste')).toHaveValue(CSV);
+
+    // Accepted: the preview goes, as an emptied box should mean.
+    page.once('dialog', (d) => d.accept());
+    await page.getByTestId('csv-paste').fill('');
+    await expect(page.getByTestId('preview')).toHaveCount(0);
+    await expect(page.getByTestId('csv-paste')).toHaveValue('');
+  });
+
+  test('B12: the row checkbox clears the house 44px touch target', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await pasteCsv(page, CSV);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+
+    // The mobile-first path's primary control, at the width the owner's mobile
+    // note calls for. globals.css bumps buttons only, so this one was 20x20.
+    await page.setViewportSize({ width: 390, height: 844 });
+    const target = page.getByTestId('row-select-target').first();
+    await target.scrollIntoViewIfNeeded();
+    const box = await target.boundingBox();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+
+    // The visual stayed compact - the label grew, not the box.
+    const input = target.getByRole('checkbox');
+    const inner = await input.boundingBox();
+    expect(inner!.width).toBeLessThanOrEqual(24);
+
+    // And a tap on the padding, well outside the 20px box, selects the row -
+    // the target is the whole 44px, not just what is painted.
+    await page.mouse.click(box!.x + 3, box!.y + 3);
+    await expect(input).toBeChecked();
   });
 });
