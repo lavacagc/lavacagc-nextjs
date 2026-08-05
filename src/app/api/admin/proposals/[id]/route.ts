@@ -44,6 +44,10 @@ const ActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('send') }),
   z.object({ action: z.literal('revoke') }),
   z.object({ action: z.literal('restore') }),
+  // Move a DRAFT's link window forward without mailing anybody. Copy link
+  // sends this before it copies, so what an admin pastes into a text message
+  // resolves for the full window rather than however much of it was left.
+  z.object({ action: z.literal('refresh') }),
   // The same bound the create path and the CSV parser hold: re-import is a
   // replacement, not a second door with a wider frame.
   z.object({ action: z.literal('reimport'), lines: ProposalLinesSchema }),
@@ -103,6 +107,35 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         // it can be corrected and sent when Slice 3 lands.
         await restoreProposal(id);
         return NextResponse.json({ ok: true, status: 'draft' });
+      }
+      case 'refresh': {
+        // Copy link's companion, and the remedy for a draft whose window has
+        // run out. Before this existed, an admin hand-delivering a link (a text
+        // message, a WhatsApp, reading it down the phone) had no way to make a
+        // stale draft resolve again except Send, which mails the client, or
+        // Re-import, which needs a CSV they may not have to hand.
+        //
+        // Draft only, and refused rather than ignored on anything else: a sent
+        // proposal's link has no expiry under D3 so there is no window to move,
+        // and a revoked one must not be quietly revived by a button whose whole
+        // promise is that it changes nothing a client can see. Both would
+        // otherwise "succeed" while doing nothing the admin asked for.
+        if (proposal.status !== 'draft') {
+          return NextResponse.json({
+            error: proposal.status === 'revoked'
+              ? 'This proposal is revoked - restore it to draft before refreshing its link.'
+              : 'A sent proposal\'s link does not expire, so there is nothing to refresh.',
+          }, { status: 409 });
+        }
+        // Best effort, and reported honestly. The link may already be dead, and
+        // an admin told "refreshed" over a failed write would paste it anyway.
+        const moved = await touchProposal(id, 'draft');
+        if (!moved) {
+          return NextResponse.json({
+            error: `Could not refresh this link - it may still be expired. Try again before sharing it.`,
+          }, { status: 502 });
+        }
+        return NextResponse.json({ ok: true, window_hours: DRAFT_WINDOW_HOURS });
       }
       case 'reimport': {
         const sumError = bundleSumError(parsed.data.lines);

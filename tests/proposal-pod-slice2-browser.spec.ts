@@ -20,6 +20,17 @@ import { test, expect, type BrowserContext, type Page } from '@playwright/test';
  * stub playwright.config.ts runs for the whole suite.
  */
 
+/**
+ * A timestamp inside the draft link window, computed per run.
+ *
+ * It was a hard-coded date, which is fine until behaviour starts depending on
+ * how old a row is: the slice-3 follow-up renders an "link expired" hint on a
+ * draft past its window, so a fixed date would have quietly grown an extra line
+ * in every geometry assertion below the moment it aged past 24 hours. These
+ * tests are about the action buttons, not the window.
+ */
+const FRESH = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
 const RACHEL = {
   id: '11111111-1111-1111-1111-111111111111',
   client_name: 'Rachel Morales',
@@ -30,7 +41,7 @@ const RACHEL = {
   line_count: 4,
   submission_count: 0,
   latest_total_cents: null,
-  updated_at: '2026-08-04T12:00:00.000Z',
+  updated_at: FRESH,
 };
 
 /** The proposal the 200-row cap hides: reachable only through the search. */
@@ -296,6 +307,74 @@ async function pasteCsv(page: Page, text: string) {
 
 test.describe('proposals admin, in the browser', () => {
   test.use({ viewport: { width: 1280, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
+
+  /**
+   * The stale-draft follow-up (Aug 2026), owned here because the roster only
+   * exists once React is mounted.
+   *
+   * A draft's link stops resolving 24 hours after its updated_at. Before this,
+   * nothing on the roster said so, and Copy link handed over a URL that had
+   * already stopped opening - the admin found out when the client said the link
+   * was broken.
+   */
+  test('B33: a stale draft says its link expired, and Copy link refreshes it before copying', async ({ page, context, baseURL }) => {
+    const STALE = {
+      ...RACHEL,
+      updated_at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    };
+    const refreshes: unknown[] = [];
+    await signInAsAdmin(context, baseURL!);
+    // The lifecycle POST goes to /api/admin/proposals/<id>, and Playwright's `*`
+    // does not cross a `/`, so the roster glob below never sees it. Its own
+    // route, registered first.
+    await page.route('**/api/admin/proposals/*', async (route) => {
+      const body = route.request().postDataJSON();
+      if (body?.action === 'refresh') refreshes.push(body);
+      await route.fulfill({ json: { ok: true } });
+    });
+    await page.route('**/api/admin/proposals*', async (route) => {
+      const req = route.request();
+      if (req.method() !== 'GET') {
+        await route.fulfill({ json: { ok: true } });
+        return;
+      }
+      // Once refreshed, the roster re-read must answer with the moved row, or
+      // the hint would go on describing state the copy just fixed.
+      await route.fulfill({
+        json: {
+          proposals: [refreshes.length > 0 ? RACHEL : STALE],
+          counts_available: true, total: 1, truncated: false,
+        },
+      });
+    });
+    await page.goto('/vaca-mgmt/proposals');
+    await expect(page.getByTestId('proposals-admin')).toBeVisible();
+
+    // The row says it, in words, before anybody copies anything.
+    const hint = page.getByTestId('link-expired-hint');
+    await expect(hint).toBeVisible();
+    await expect(hint).toContainText(/expired/i);
+
+    await page.getByRole('button', { name: /copy link/i }).click();
+
+    // The refresh went out, and the toast promises the link opens.
+    await expect.poll(() => refreshes.length).toBe(1);
+    // `.first()`: the toast primitive renders its description in the visible
+    // toast AND in an aria-live region, so a bare text match is two nodes and
+    // strict mode fails - intermittently, since it depends on which is mounted
+    // when the assertion runs.
+    await expect(page.getByText(/opens for the next 24 hours/i).first()).toBeVisible();
+
+    // And the hint clears, because the roster was re-read.
+    await expect(hint).toHaveCount(0);
+  });
+
+  test('B34: a FRESH draft is not labelled expired', async ({ page, context, baseURL }) => {
+    await openRoster(page, context, baseURL!, {
+      proposals: [RACHEL], counts_available: true, total: 1, truncated: false,
+    });
+    await expect(page.getByTestId('link-expired-hint')).toHaveCount(0);
+  });
 
   test('B1 (AC10e): Send is live on a draft with an address; Copy link still works', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);

@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { NextRequest } from 'next/server';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { draftLinkHasExpired } from '../src/lib/proposals/linkWindow';
 import {
   lookupPublicProposal, proposalLinkIsLive, DRAFT_LINK_LIFETIME_MS, PROPOSAL_TOKEN_RE,
   type ProposalStatus,
@@ -1052,6 +1053,7 @@ test('house style: no em dashes in anything this slice ships', () => {
     'src/lib/proposals/ownerAlert.ts',
     'src/lib/proposals/money.ts',
     'src/lib/proposals/clientPage.ts',
+    'src/lib/proposals/linkWindow.ts',
     'src/app/proposal/[token]/page.tsx',
     'src/app/proposal/[token]/ProposalView.tsx',
     'src/app/api/proposal/[token]/submit/route.ts',
@@ -1062,4 +1064,114 @@ test('house style: no em dashes in anything this slice ships', () => {
   for (const f of files) {
     expect(read(f), `${f} must not use an em dash`).not.toContain('—');
   }
+});
+
+// ------------------------------------------- STALE DRAFT LINK (follow-up fix)
+
+test('AC-S3-21: the window rule is one pure module, reachable without the server client', () => {
+  // The roster runs in a browser and has to ask the same question the server
+  // doors ask. Importing it from publicView would have pulled the secret-key
+  // REST client into the client bundle to reach a function that does
+  // arithmetic on a timestamp, so the rule lives in a module that imports
+  // nothing.
+  const win = read('src/lib/proposals/linkWindow.ts');
+  expect(win, 'linkWindow must import nothing').not.toMatch(/^\s*import\s/m);
+  expect(win).toContain('export const DRAFT_LINK_LIFETIME_MS');
+  // And there is still exactly one of it: publicView re-exports rather than
+  // restating, so the two doors and the roster cannot drift apart.
+  const view = read('src/lib/proposals/publicView.ts');
+  expect(view).toContain("from './linkWindow'");
+  expect(view).not.toMatch(/export const DRAFT_LINK_LIFETIME_MS\s*=/);
+  expect(DRAFT_LINK_LIFETIME_MS).toBe(24 * 60 * 60 * 1000);
+});
+
+test('AC-S3-22: draftLinkHasExpired describes only a stale DRAFT, never a revoked row', () => {
+  const fresh = new Date(Date.now() - 60_000).toISOString();
+  const stale = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+
+  expect(draftLinkHasExpired({ status: 'draft', updated_at: stale })).toBe(true);
+  expect(draftLinkHasExpired({ status: 'draft', updated_at: fresh })).toBe(false);
+  // A sent link has no expiry (D3), so it is never "expired".
+  expect(draftLinkHasExpired({ status: 'sent', updated_at: stale })).toBe(false);
+  // And a revoked row is a DIFFERENT situation with a different remedy - the
+  // roster already renders it as revoked, and must not also call it expired.
+  expect(draftLinkHasExpired({ status: 'revoked', updated_at: stale })).toBe(false);
+  expect(proposalLinkIsLive({ status: 'revoked', updated_at: fresh })).toBe(false);
+  // An unreadable timestamp closes the window rather than opening it.
+  expect(draftLinkHasExpired({ status: 'draft', updated_at: null })).toBe(true);
+});
+
+test('AC-S3-23: refresh moves a draft window, and is refused on anything else', async () => {
+  const action = (id: string, body: unknown) => proposalAction(
+    new NextRequest(`http://localhost/api/admin/proposals/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+    { params: Promise.resolve({ id }) },
+  );
+
+  // A draft: the write is a PATCH filtered on the status it writes back, so
+  // proposals_set_updated_at owns the column and no lifecycle CHECK can reject
+  // it, and a concurrent status change updates nothing rather than reverting.
+  await withPostgrest(
+    () => restJson([proposalRow({ status: 'draft' })]),
+    async (calls) => {
+      const res = await action(PROPOSAL_ID, { action: 'refresh' });
+      expect(res.status).toBe(200);
+      const patch = calls.find((c) => c.method === 'PATCH');
+      expect(patch?.url).toContain('status=eq.draft');
+      expect(patch?.body).toEqual({ status: 'draft' });
+      // Nothing was mailed: this is the door that refreshes WITHOUT sending.
+      expect(calls.some((c) => c.url.includes('api.resend.com'))).toBe(false);
+    },
+  );
+
+  // A sent proposal has no window to move, and a revoked one must not be
+  // quietly revived by a button that promises to change nothing a client sees.
+  for (const status of ['sent', 'revoked'] as const) {
+    await withPostgrest(
+      () => restJson([proposalRow({
+        status,
+        sent_at: status === 'sent' ? '2026-08-05T00:00:00Z' : null,
+        revoked_at: status === 'revoked' ? '2026-08-05T00:00:00Z' : null,
+      })]),
+      async (calls) => {
+        const res = await action(PROPOSAL_ID, { action: 'refresh' });
+        expect(res.status).toBe(409);
+        expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+      },
+    );
+  }
+
+  // A refresh whose write fails is reported, never claimed as done: an admin
+  // told "refreshed" over a failed write pastes the link anyway.
+  await withPostgrest(
+    (call) => (call.method === 'PATCH'
+      ? restJson({ message: 'down' }, 500)
+      : restJson([proposalRow({ status: 'draft' })])),
+    async () => {
+      const res = await action(PROPOSAL_ID, { action: 'refresh' });
+      expect(res.status).toBe(502);
+      expect((await res.json()).error).toMatch(/may still be expired/i);
+    },
+  );
+});
+
+test('AC-S3-24: Copy link refreshes a draft BEFORE it copies, and still copies if that fails', () => {
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  const copy = page.slice(page.indexOf('const copyLink'), page.indexOf('return (', page.indexOf('const copyLink')));
+  // The refresh is awaited ahead of the clipboard write. Copying first and
+  // refreshing behind it hands over a link that is live only if a request the
+  // admin never saw happened to succeed.
+  expect(copy.indexOf("action: 'refresh'")).toBeLessThan(copy.indexOf('clipboard.writeText'));
+  // A failed refresh still copies - the URL is what was asked for - but the
+  // toast stops promising the link opens.
+  expect(copy).toContain('refreshed = false');
+  expect(copy).toContain('could not be refreshed');
+  // Only a draft is refreshed; a sent link has no window to move.
+  expect(copy).toContain("p.status === 'draft'");
+  // The roster is re-read, so the expiry hint stops describing state this copy
+  // just fixed.
+  expect(copy).toContain('loadRoster(search)');
 });

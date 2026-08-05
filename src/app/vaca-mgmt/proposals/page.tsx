@@ -33,13 +33,14 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import {
-  RefreshCw, Link2, Send, Ban, Upload, Boxes, X, FileUp, Undo2, Search, RotateCcw,
+  RefreshCw, Link2, Send, Ban, Upload, Boxes, X, FileUp, Undo2, Search, RotateCcw, Clock3,
 } from 'lucide-react';
 import { parseProposalCsv, type ParsedProposalLine } from '@/lib/proposals/csv';
 import {
   composeBundle, lockedMemberTitles, restoreMembers, toStoredMembers, type PreviewBundleMember,
 } from '@/lib/proposals/bundles';
 import { CLIENT_PAGE_LIVE, CLIENT_PAGE_NOT_LIVE_MESSAGE } from '@/lib/proposals/clientPage';
+import { DRAFT_LINK_LIFETIME_MS, draftLinkHasExpired } from '@/lib/proposals/linkWindow';
 import { cn } from '@/lib/utils';
 
 /** One preview row: an imported line, or a bundle the admin composed. */
@@ -116,6 +117,9 @@ const CONFIRMS: Record<LifecycleAction, ((p: RosterEntry) => string) | null> = {
 const DONE: Record<LifecycleAction, string> = {
   send: 'Sent', revoke: 'Revoked', restore: 'Restored to draft',
 };
+
+/** The draft link window in the unit an admin reads, from the constant that owns it. */
+const DRAFT_WINDOW_HOURS = Math.round(DRAFT_LINK_LIFETIME_MS / (60 * 60 * 1000));
 
 const dollars = (cents: number) =>
   (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -640,8 +644,45 @@ export default function ProposalsAdminPage() {
     }
   };
 
+  /**
+   * Copy the client's link - and on a DRAFT, make it resolve for a full window
+   * first.
+   *
+   * Copying this link is the act of handing it to somebody: it is how a client
+   * with no email address, or one who would rather have it by text, gets their
+   * proposal. A draft's link only resolves for `DRAFT_LINK_LIFETIME_MS` from
+   * its `updated_at`, so before this the button could silently put a URL on the
+   * clipboard that had already stopped working - and the admin found out when
+   * the client said the link was broken.
+   *
+   * So the refresh runs FIRST and the copy waits for it. The alternative,
+   * copying immediately and refreshing behind it, hands over a link that is
+   * live only if a request the admin never saw happened to succeed.
+   *
+   * A refresh that FAILS still copies. The link is the thing being asked for,
+   * an expired one is still the right URL for a proposal that can be revived by
+   * Send or Re-import, and refusing to copy would leave an admin with no way to
+   * get it at all. What changes is what the toast promises.
+   */
   const copyLink = async (p: RosterEntry) => {
     const url = `${window.location.origin}/proposal/${p.token}`;
+    let refreshed = p.status !== 'draft';
+    if (p.status === 'draft') {
+      try {
+        const res = await fetch(`/api/admin/proposals/${p.id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'refresh' }),
+        });
+        refreshed = res.ok;
+      } catch {
+        refreshed = false;
+      }
+      // The row's own updated_at moved server-side, so the roster has to catch
+      // up or the "link expired" hint below would go on describing the state
+      // this copy just fixed.
+      if (refreshed) void loadRoster(search);
+    }
     try {
       // Denied permission or a non-secure context rejects here, and an admin
       // who thinks a private link is on their clipboard when it is not will
@@ -655,7 +696,15 @@ export default function ProposalsAdminPage() {
       });
       return;
     }
-    toast({ title: 'Link copied', description: 'Private to this client - share deliberately.' });
+    toast({
+      title: 'Link copied',
+      description: p.status !== 'draft'
+        ? 'Private to this client - share deliberately.'
+        : refreshed
+          ? `Private to this client - share deliberately. It opens for the next ${DRAFT_WINDOW_HOURS} hours.`
+          : 'Copied, but the link could not be refreshed - it may not open. Send or re-import the proposal, then copy it again.',
+      variant: refreshed ? undefined : 'destructive',
+    });
   };
 
   const statusBadge = (s: RosterEntry['status']) =>
@@ -799,6 +848,30 @@ export default function ProposalsAdminPage() {
                           </>
                         )}
                       </div>
+                      {/*
+                        A draft whose window has run out. Said on the ROW rather
+                        than left for the client to discover, because this is
+                        the state in which a link already handed out - texted,
+                        read down the phone - has silently stopped opening, and
+                        nothing else on this screen distinguishes it from a
+                        draft made ten minutes ago.
+
+                        It names the remedy, and Copy link performs that remedy
+                        itself, so the hint is a fact about links already out
+                        there rather than an obstacle to sharing this one.
+                      */}
+                      {draftLinkHasExpired(p) ? (
+                        <div
+                          className="mt-1 flex items-start gap-1.5 text-xs font-medium text-amber-700"
+                          data-testid="link-expired-hint"
+                        >
+                          <Clock3 className="mt-[1px] h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          <span>
+                            Link expired after {DRAFT_WINDOW_HOURS}h - any copy already shared has
+                            stopped opening. Copying it again refreshes it.
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
                     <div className="shrink-0 md:order-2">{statusBadge(p.status)}</div>
                   </div>

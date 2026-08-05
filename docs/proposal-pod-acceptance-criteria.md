@@ -277,7 +277,14 @@ This is the half of the pod a client touches, and it is what makes the admin's S
   The window is one named constant, `DRAFT_LINK_LIFETIME_MS` in `publicView.ts`, and one predicate, `proposalLinkIsLive`, which BOTH doors call - `lookupPublicProposal` and `submitProposal` - so the submit route can never accept an answer on a link the page has stopped serving.
   A **sent** proposal is unaffected: D3 governs that link (no hard expiry, revocable from the admin) and still does.
   Application logic only, no migration: `status` and `updated_at` already exist.
-  **The consequence to know about:** Copy link on a draft older than 24 hours hands over a link that no longer resolves, and nothing in the admin roster says so.
+  **The consequence this created, and how it was closed (follow-up, 5 Aug 2026):** Copy link on a draft older than 24 hours handed over a link that no longer resolved, and nothing in the admin roster said so.
+  A warning alone would not have been enough, because an admin hand-delivering a link had no cheap way to make a stale draft resolve again: Send mails the client, and Re-import needs a CSV they may not have.
+  So the fix is both halves.
+  The roster row states it (`link-expired-hint`), naming the remedy; and **Copy link refreshes the window before it copies**, so what an admin pastes into a text message opens for a full window rather than however much of it was left.
+  A new `refresh` lifecycle action does that work - draft only, refused with 409 on a sent proposal (no window to move under D3) and on a revoked one (a button that promises to change nothing a client sees must not revive a killed link).
+  A refresh that fails still copies, because the URL is what was asked for, but the toast stops promising the link opens.
+  The window rule moved into `src/lib/proposals/linkWindow.ts`, a module that imports nothing, so the roster's browser can ask the same question the server doors ask without pulling the secret-key REST client into the client bundle; `publicView` re-exports it, so there is still exactly one rule.
+  Covered by `AC-S3-21` through `AC-S3-24` and by `B33`/`B34` in the roster browser suite.
   Re-importing the proposal's lines, or sending it, makes the link live again.
 - **Send refreshes the window before it delivers.** The second consequence of the draft window, and the one it needed code for.
   The send route delivers the email FIRST and writes the status second, deliberately - a failed send must never leave a proposal reading "sent" - and it already handles `markSent` failing after delivery.
