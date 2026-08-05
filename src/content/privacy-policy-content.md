@@ -1,7 +1,7 @@
 # Privacy Policy
 
-**Last Updated: August 3, 2026**
-**Version: 2.6**
+**Last Updated: August 4, 2026**
+**Version: 2.7**
 
 ---
 
@@ -418,6 +418,7 @@ We retain your personal information only for as long as necessary to fulfill the
 | **Website Usage Data and Analytics** (IP address, browsing behavior, device information) | 26 months | Website improvement; analytics (aligned with Google Analytics default); user experience optimization |
 | **Subscriber Activity Logs** (pages viewed while signed in as a Buy + Remodel subscriber, linked to your identity) | Duration of your subscription + up to 24 months, or until you unsubscribe or request deletion | Understanding subscriber interest; improving listings and communications |
 | **Home Care Home Details** (shut-off and electrical-panel locations, appliance makes/models/installation years) | Deleted when you leave the Home Care program or on request; otherwise only while your Home Care account is active | Sensitive home-security information kept only to prepare for and perform the services you request; retention is deliberately minimized |
+| **Proposal Records** (your name and email, the priced proposal lines we prepared for you, and any configuration you submit back to us) | While the proposal stands and for the project record thereafter; deleted with the proposal on request | Preparing, delivering and honoring your project proposal; the configuration you submit is the record of what was agreed |
 | **Chat and Intake Assistant Messages** (transcripts from our retired AI chat assistant, and the answers, photos, and questions you give our intake assistant) | Up to 24 months, or until you request deletion. Answers that become part of your inquiry are kept with it (see Project Details and Communication Content above) | Customer service; lead follow-up; quality and safety. Messages sent to the retired chat assistant before August 2026 were processed by OpenAI, which retains data per its own policies; intake assistant messages are not sent to any AI provider |
 | **Marketing Communications Records** | Until you opt out + 30 days to process opt-out, then deleted | Direct marketing; compliance with opt-out requests |
 | **Cookies and Tracking Technologies** | Varies by cookie type: Essential (session); Analytics (26 months); Marketing (13 months) | See Section 6 for cookie-specific retention |
@@ -1080,7 +1081,7 @@ Before initiating any legal action, we encourage you to contact us using the inf
 
 This Privacy Policy is effective as of the "Last Updated" date indicated at the top of this document.
 
-**Last Updated:** August 3, 2026
-**Version:** 2.6
+**Last Updated:** August 4, 2026
+**Version:** 2.7
 **Original Effective Date:** November 12, 2025
 

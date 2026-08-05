@@ -44,6 +44,8 @@ export type EmailCategory =
   | 'crew_dispatch'
   /** Internal: the METHOD:CANCEL that takes a retired visit off the crew's calendar. */
   | 'crew_dispatch_cancelled'
+  /** The client's tokenized proposal link (proposal pod slice 2). Transactional. */
+  | 'proposal_delivery'
   | 'other';
 
 interface TrackedEmailBase {
