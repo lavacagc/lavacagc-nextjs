@@ -125,6 +125,54 @@ let nextKey = 0;
 const rowKey = () => `row-${nextKey++}`;
 
 /**
+ * A roster action as a square icon button that grows its label on hover.
+ *
+ * Owner's call, from the mobile review: the four lifecycle buttons bunched into
+ * an unreadable block of pills on a phone, so they are icons there and Send
+ * moves out to its own full-width button. On a pointer the label slides open on
+ * hover, which is the only place a hover affordance means anything.
+ *
+ * The label is never the accessible name - `aria-label` carries it whether the
+ * label is open, closed, or (on a phone) never rendered at all, so a screen
+ * reader and Playwright both read the same button they always did. `title` is
+ * the pointer tooltip; a caller passing an explanation for a DISABLED button
+ * wants that shown instead, so it wins.
+ *
+ * 44px square: the house minimum, and globals.css only guarantees the height.
+ */
+function IconAction({
+  icon: Icon, label, title, onClick, disabled, testId,
+}: {
+  icon: typeof Link2;
+  label: string;
+  title?: string;
+  onClick: () => void;
+  disabled?: boolean;
+  testId?: string;
+}) {
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="group h-11 w-11 shrink-0 justify-center overflow-hidden p-0 transition-[width,padding] duration-200 sm:hover:w-auto sm:hover:px-3 sm:focus-visible:w-auto sm:focus-visible:px-3"
+      aria-label={label}
+      title={title ?? label}
+      disabled={disabled}
+      onClick={onClick}
+      data-testid={testId}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span
+        className="hidden max-w-0 whitespace-nowrap opacity-0 transition-[max-width,margin,opacity] duration-200 sm:inline sm:group-hover:ml-2 sm:group-hover:max-w-40 sm:group-hover:opacity-100 sm:group-focus-visible:ml-2 sm:group-focus-visible:max-w-40 sm:group-focus-visible:opacity-100"
+        aria-hidden="true"
+      >
+        {label}
+      </span>
+    </Button>
+  );
+}
+
+/**
  * POST to an admin proposals endpoint, and turn a failure into a line an admin
  * can act on.
  *
@@ -609,20 +657,29 @@ export default function ProposalsAdminPage() {
               aria-label="Search proposals"
               data-testid="roster-search"
             />
-            <Button type="submit" variant="outline" size="sm" data-testid="roster-search-btn">
-              <Search className="mr-1 h-4 w-4" />Search
-            </Button>
-            {activeSearch ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => { setSearch(''); loadRoster(''); }}
-                data-testid="roster-search-clear"
-              >
-                <X className="mr-1 h-4 w-4" />Clear
+            {/*
+              The buttons travel together. Once the field claims the whole line -
+              which it does from about 360px down - they share the line beneath
+              it and split it between them, rather than each dropping to a line
+              of its own at half width, looking left behind rather than placed.
+            */}
+            <div className="flex w-full gap-2 sm:w-auto">
+              <Button type="submit" variant="outline" size="sm" className="h-11 flex-1 sm:flex-none" data-testid="roster-search-btn">
+                <Search className="mr-1 h-4 w-4" />Search
               </Button>
-            ) : null}
+              {activeSearch ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-11 flex-1 sm:flex-none"
+                  onClick={() => { setSearch(''); loadRoster(''); }}
+                  data-testid="roster-search-clear"
+                >
+                  <X className="mr-1 h-4 w-4" />Clear
+                </Button>
+              ) : null}
+            </div>
           </form>
           {rosterError ? (
             <div className="flex items-center justify-between rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
@@ -653,26 +710,43 @@ export default function ProposalsAdminPage() {
                 </p>
               )}
               {roster.map((p) => (
-                <div key={p.id} className="flex flex-wrap items-center gap-2 rounded-lg border p-3" data-testid={`proposal-${p.id}`}>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold">{p.client_name}</span>
-                      <span className="line-clamp-2 text-sm text-muted-foreground">{p.title}</span>
-                      {statusBadge(p.status)}
+                <div key={p.id} className="rounded-lg border p-3" data-testid={`proposal-${p.id}`}>
+                  {/*
+                    Same two shapes as a preview row, same breakpoint.
+
+                    Below md: identity first, status pinned top-right, actions
+                    underneath. The old single wrapping row put a four-button
+                    block beside the name, which at 390px collapsed into the
+                    bunched-up grid the owner called out.
+
+                    md and up: one line - identity, status, actions - which is
+                    the desktop that was already working. `md:contents` dissolves
+                    the identity+status wrapper there so all three sit in the
+                    outer row, and the name and title go back to sharing a line
+                    since they comfortably fit at that width.
+                  */}
+                  <div className="md:flex md:items-center md:gap-3">
+                  <div className="flex items-start gap-2 md:contents">
+                    <div className="min-w-0 flex-1">
+                      <div className="md:flex md:flex-wrap md:items-baseline md:gap-2">
+                        <div className="font-semibold">{p.client_name}</div>
+                        <div className="line-clamp-2 text-sm text-muted-foreground">{p.title}</div>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {p.line_count == null || p.submission_count == null ? (
+                          'Counts unavailable'
+                        ) : (
+                          <>
+                            {p.line_count} {plural(p.line_count, 'line')} · {p.submission_count} {plural(p.submission_count, 'submission')}
+                            {p.latest_total_cents != null ? ` · latest ${dollars(p.latest_total_cents)}` : ''}
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {p.line_count == null || p.submission_count == null ? (
-                        'Counts unavailable'
-                      ) : (
-                        <>
-                          {p.line_count} {plural(p.line_count, 'line')} · {p.submission_count} {plural(p.submission_count, 'submission')}
-                          {p.latest_total_cents != null ? ` · latest ${dollars(p.latest_total_cents)}` : ''}
-                        </>
-                      )}
-                    </div>
+                    <div className="shrink-0 md:order-2">{statusBadge(p.status)}</div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => copyLink(p)}><Link2 className="mr-1 h-4 w-4" />Copy link</Button>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 md:order-3 md:mt-0 md:shrink-0">
+                    <IconAction icon={Link2} label="Copy link" onClick={() => copyLink(p)} />
                     {/*
                       replaceLines refuses a revoked proposal outright (409), so
                       the row's own status can say so now rather than after the
@@ -684,20 +758,18 @@ export default function ProposalsAdminPage() {
                       off for every row until the client page ships, so telling
                       an admin to press it left the row frozen with no way out.
                     */}
-                    <Button
-                      size="sm"
-                      variant="outline"
+                    <IconAction
+                      icon={FileUp}
+                      label="Re-import"
                       disabled={busy || p.status === 'revoked'}
                       title={p.status === 'revoked'
                         ? 'Revoked - restore it to draft before re-importing its lines'
                         : undefined}
                       onClick={() => armReimport(p)}
-                      data-testid="reimport-btn"
-                    >
-                      <FileUp className="mr-1 h-4 w-4" />Re-import
-                    </Button>
+                      testId="reimport-btn"
+                    />
                     {p.status !== 'revoked' ? (
-                      <Button size="sm" variant="outline" disabled={busy} onClick={() => act(p, 'revoke')}><Ban className="mr-1 h-4 w-4" />Revoke</Button>
+                      <IconAction icon={Ban} label="Revoke" disabled={busy} onClick={() => act(p, 'revoke')} />
                     ) : (
                       /*
                         The way back. Revoking has always been reversible, but
@@ -707,19 +779,25 @@ export default function ProposalsAdminPage() {
                         had exactly one control left - Copy link - and a tooltip
                         pointing at a button that could not be pressed.
                       */
-                      <Button
-                        size="sm"
-                        variant="outline"
+                      <IconAction
+                        icon={RotateCcw}
+                        label="Restore to draft"
                         disabled={busy}
                         title="Back to draft, so its lines can be corrected and it can be sent again"
                         onClick={() => act(p, 'restore')}
-                        data-testid="restore-btn"
-                      >
-                        <RotateCcw className="mr-1 h-4 w-4" />Restore to draft
-                      </Button>
+                        testId="restore-btn"
+                      />
                     )}
+                    {/*
+                      Send keeps its words. It is the only action here that
+                      spends something - it mails a client - so it stays a
+                      labelled button rather than a glyph, full width under the
+                      icons on a phone and pushed to the row's right edge on a
+                      pointer. Owner's call from the mobile review.
+                    */}
                     <Button
                       size="sm"
+                      className="h-11 w-full sm:ml-auto sm:w-auto"
                       disabled={busy || !CLIENT_PAGE_LIVE || !p.client_email}
                       title={!CLIENT_PAGE_LIVE ? CLIENT_PAGE_NOT_LIVE_MESSAGE : p.client_email ? undefined : 'No client email - use Copy link'}
                       onClick={() => act(p, 'send')}
@@ -727,6 +805,7 @@ export default function ProposalsAdminPage() {
                     >
                       <Send className="mr-1 h-4 w-4" />{p.status === 'revoked' ? 'Re-send' : 'Send'}
                     </Button>
+                  </div>
                   </div>
                 </div>
               ))}
@@ -910,10 +989,27 @@ export default function ProposalsAdminPage() {
                     dragKey.current = null;
                     if (from && from !== r.key) combine([from, r.key]);
                   }}
-                  className={`rounded-lg border p-3 ${r.members ? 'border-primary bg-primary/5' : ''}`}
+                  className={`rounded-lg border px-3 py-2.5 ${r.members ? 'border-primary bg-primary/5' : ''}`}
                   data-testid={r.members ? 'bundle-row' : 'line-row'}
                 >
-                  <div className="flex flex-wrap items-center gap-3">
+                  {/*
+                    Two shapes, one breakpoint, both the owner's call.
+
+                    Below md (tablet and phone): tick and name on one line with
+                    the locked/optional badge pinned top-right, price and its
+                    toggle on the line below. That replaced a single wrapping
+                    row that at 390px broke three different ways depending on
+                    title length and read as "all over the place".
+
+                    md and up: everything back on ONE line - tick, badge, name,
+                    price, toggle - which is the desktop the owner approved.
+                    `md:contents` dissolves the identity wrapper at that width so
+                    its three children become items of the outer row directly,
+                    and the order utilities put the badge back in front of the
+                    name where it reads as a column of statuses down the list.
+                  */}
+                  <div className="md:flex md:items-center md:gap-3">
+                  <div className="flex flex-wrap items-center gap-2 md:contents">
                     {/*
                       The tick is the mobile-first path's primary control, so it
                       carries the house 44px target - but globals.css only bumps
@@ -923,7 +1019,7 @@ export default function ProposalsAdminPage() {
                       does not.
                     */}
                     <label
-                      className="-mx-1.5 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center"
+                      className="-mx-1.5 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center md:order-1"
                       data-testid="row-select-target"
                     >
                       <input
@@ -934,10 +1030,17 @@ export default function ProposalsAdminPage() {
                         aria-label={`Select ${r.title}`}
                       />
                     </label>
-                    <Badge variant={r.optional ? 'default' : 'secondary'}>{r.optional ? 'optional' : 'locked'}</Badge>
                     {r.members ? (
+                      /*
+                        A bundle's name is the one thing on this screen the admin
+                        TYPES, and at 320px sharing the line with the tick and the
+                        badge left it about thirteen characters wide. Below sm it
+                        drops to its own full-width line under them (order-last,
+                        so the badge keeps the top line); from sm up it sits
+                        inline again, where there is room for it.
+                      */
                       <Input
-                        className="h-11 w-auto min-w-40 flex-1 font-semibold"
+                        className="order-last h-11 w-auto min-w-0 flex-1 basis-full font-semibold sm:order-none sm:basis-auto md:order-3"
                         value={r.title}
                         aria-label="Bundle name"
                         onChange={(e) => renameBundle(r.key, e.target.value)}
@@ -945,14 +1048,11 @@ export default function ProposalsAdminPage() {
                       />
                     ) : (
                       /*
-                        min-w-40, not min-w-0: with a zero basis the name is the
-                        only thing on the row that can shrink, so at 390px a line
-                        whose price and toggle happen to fit beside it kept them
-                        and left the name a 10px box reading "M", while the row
-                        below - whose longer toggle wrapped - got 100px. The
-                        floor makes the name the item that forces the wrap, so
-                        the price and toggle drop to their own line first and
-                        every name reads the same width either way.
+                        min-w-0 is safe again now that the price and its toggle
+                        have their own line: the name is the only thing on this
+                        one, so nothing competes with it for the width and it
+                        cannot be squeezed to the 10px box the old single-row
+                        layout produced.
 
                         line-clamp-2, not truncate: a line's TITLE is what the
                         admin picks it by when ticking rows to combine, and at
@@ -962,24 +1062,32 @@ export default function ProposalsAdminPage() {
                         title the estimator exports, and desktop widths fit one
                         line anyway, so this only changes the narrow case.
                       */
-                      <span className="min-w-40 flex-1 line-clamp-2 break-words font-medium" data-testid="line-title">{r.title}</span>
+                      <span className="min-w-0 flex-1 line-clamp-2 break-words font-medium md:order-3" data-testid="line-title">{r.title}</span>
                     )}
-                    <div className="flex items-center gap-3">
-                      <span className="font-semibold tabular-nums">{dollars(r.priceCents)}</span>
-                      <Button size="sm" variant="ghost" onClick={() => toggleOptional(r.key)} aria-label={`Make ${r.title} ${r.optional ? 'locked' : 'optional'}`}>
-                        <Undo2 className="mr-1 h-4 w-4" />{r.optional ? 'Lock' : 'Make optional'}
-                      </Button>
-                    </div>
+                    {/*
+                      self-start, not centred: the row's height comes from the
+                      44px tick target, so on a two-line title a centred badge
+                      floats between the lines. Pinned to the top it reads as
+                      the row's status, which is where the owner asked for it.
+                    */}
+                    <Badge className="mt-1.5 shrink-0 self-start md:order-2 md:mt-0 md:self-auto" variant={r.optional ? 'default' : 'secondary'}>{r.optional ? 'optional' : 'locked'}</Badge>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 md:order-4 md:shrink-0">
+                    <span className="font-semibold tabular-nums">{dollars(r.priceCents)}</span>
+                    <Button size="sm" variant="ghost" onClick={() => toggleOptional(r.key)} aria-label={`Make ${r.title} ${r.optional ? 'locked' : 'optional'}`}>
+                      <Undo2 className="mr-1 h-4 w-4" />{r.optional ? 'Lock' : 'Make optional'}
+                    </Button>
+                  </div>
                   </div>
                   {r.members && (
-                    <div className="mt-2 flex flex-wrap items-center gap-2 pl-8 text-xs text-muted-foreground">
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <span>Includes: {r.members.map((m) => m.title).join(' · ')}</span>
                       <span className="text-muted-foreground/70">(client sees names, never member prices)</span>
                       <Button size="sm" variant="outline" onClick={() => unbundle(r.key)}><Boxes className="mr-1 h-4 w-4" />Unbundle</Button>
                     </div>
                   )}
                   {!r.members && r.description ? (
-                    <p className="mt-1 line-clamp-2 pl-8 text-xs text-muted-foreground">{r.description}</p>
+                    <p className="line-clamp-2 text-xs text-muted-foreground">{r.description}</p>
                   ) : null}
                 </div>
               ))}
