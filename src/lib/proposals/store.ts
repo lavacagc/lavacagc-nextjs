@@ -502,6 +502,36 @@ export async function restoreProposal(proposalId: string): Promise<void> {
   }
 }
 
+/**
+ * Move a proposal's `updated_at` forward, changing nothing else.
+ *
+ * A draft's link is live for `DRAFT_LINK_LIFETIME_MS` measured from that column
+ * (publicView.ts), and the send route calls this BEFORE it hands the email to
+ * the mailer. That ordering is the point: the write that was supposed to move
+ * the timestamp is `markSent`, and the case worth covering is `markSent`
+ * FAILING after a client's inbox already holds the link. Touching first makes a
+ * delivered link live for the whole window whatever fails behind it, instead of
+ * re-running the same kind of write in the same outage.
+ *
+ * The payload is the status the caller just read, filtered on that same status,
+ * for two reasons. `proposals_set_updated_at` owns `updated_at` and overwrites
+ * anything this module sends for it, so what is needed is any successful UPDATE
+ * on the row rather than a value. And writing back a status that is still the
+ * stored one cannot trip a lifecycle CHECK, while the filter means a status
+ * changed by somebody else in between updates nothing at all rather than being
+ * quietly reverted.
+ */
+export async function touchProposal(
+  proposalId: string,
+  status: ProposalRow['status'],
+): Promise<void> {
+  await supabaseRest(
+    'PATCH', `proposals?id=eq.${proposalId}&status=eq.${status}`,
+    { status },
+    { prefer: 'return=minimal' },
+  );
+}
+
 async function patchSent(proposalId: string): Promise<void> {
   await supabaseRest('PATCH', `proposals?id=eq.${proposalId}`, {
     status: 'sent',

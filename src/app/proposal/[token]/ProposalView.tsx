@@ -285,7 +285,7 @@ export default function ProposalView({ token, proposal, bookingUrl }: Props) {
             </div>
             <div className="mt-1 text-xs text-text-secondary">
               {includedLines.length} line{includedLines.length === 1 ? '' : 's'}
-              {proposal.lockedTotalCents > 0
+              {locked.length > 0
                 ? `, including ${usd(proposal.lockedTotalCents)} of structural work`
                 : ''}.
             </div>
@@ -379,8 +379,13 @@ export default function ProposalView({ token, proposal, bookingUrl }: Props) {
               {usd(totalCents)}
             </span>
           </div>
+          {/* Whether there ARE locked lines, not what they come to: a locked
+              line priced at zero is real (a no-charge dumpster, permits carried
+              by the owner), and the sentence must not tell a client every line
+              is theirs to choose while a section they cannot touch sits above
+              it. */}
           <p className="mt-[3px] text-[11.5px] text-text-secondary/80">
-            {proposal.lockedTotalCents > 0
+            {locked.length > 0
               ? `Includes ${usd(proposal.lockedTotalCents)} of structural work`
               : 'Every line here is yours to choose'}
             {optional.length > 0 ? ` and ${chosenCount} of your ${optional.length} choices` : ''}.

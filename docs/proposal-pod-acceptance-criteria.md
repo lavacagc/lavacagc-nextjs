@@ -275,8 +275,18 @@ This is the half of the pod a client touches, and it is what makes the admin's S
   The window is one named constant, `DRAFT_LINK_LIFETIME_MS` in `publicView.ts`, and one predicate, `proposalLinkIsLive`, which BOTH doors call - `lookupPublicProposal` and `submitProposal` - so the submit route can never accept an answer on a link the page has stopped serving.
   A **sent** proposal is unaffected: D3 governs that link (no hard expiry, revocable from the admin) and still does.
   Application logic only, no migration: `status` and `updated_at` already exist.
-  **The one consequence to know about:** Copy link on a draft older than 24 hours hands over a link that no longer resolves, and nothing in the admin roster says so.
+  **The consequence to know about:** Copy link on a draft older than 24 hours hands over a link that no longer resolves, and nothing in the admin roster says so.
   Re-importing the proposal's lines, or sending it, makes the link live again.
+- **Send refreshes the window before it delivers.** The second consequence of the draft window, and the one it needed code for.
+  The send route delivers the email FIRST and writes the status second, deliberately - a failed send must never leave a proposal reading "sent" - and it already handles `markSent` failing after delivery.
+  In that state the proposal is still a draft and its `updated_at` was never moved, because the failed write is the one that would have moved it, so a proposal built earlier in the week is past its window the moment it is delivered: the client opens the email they were just sent and gets the generic dead end.
+  That is exactly the outcome `CLIENT_PAGE_LIVE` exists to prevent, arriving through the back door.
+  The owner's call was to move `updated_at` forward at the START of the send, before the email is handed to the mailer (`touchProposal` in `store.ts`, called from the send action).
+  **Before rather than in the failure branch**, because the write that was supposed to move the timestamp is the write that failed: touching first means a link that has actually reached a client is live for the full window whatever fails behind it, instead of re-running the same kind of write in the same outage.
+  The refresh writes the status back unchanged, filtered on that same status, so `proposals_set_updated_at` owns the column (slice 2's AC6l), no lifecycle CHECK can reject it, and a status changed by somebody else in between updates nothing rather than being reverted.
+  It is **best effort**: a refresh that fails is logged and the send carries on, exactly like the `sentBy` lookup - the lifetime of a link is not a precondition for delivering a proposal the admin asked to send.
+  The post-delivery failure message now also tells the admin what the client sees in the meantime, so the retry reads as a deadline rather than tidy-up.
+  Ordering, best-effort behaviour and the still-resolving link are driven by `AC-S3-21`; the delivery-before-status-write ordering it sits in front of stays pinned by slice 2's `AC10e`.
 - **Nothing selected is not a thing to send.** A finish-only proposal can be all-optional, and a client who declines every line has an empty composition.
   `ProposalSubmitSchema` requires at least one id and `proposal_submissions_included_lines_present` CHECKs the stored snapshot is non-empty, so the database cannot hold that record - which means the page must not offer to send it.
   Send is disabled in that state with a line saying why ("Turn at least one choice on, or call us on (201) 212-4917 and we will talk through a different scope"), rather than a button whose only possible answer is a refusal about an unreadable payload for a payload the page itself produced.
@@ -299,6 +309,7 @@ This is the half of the pod a client touches, and it is what makes the admin's S
 - `src/lib/proposals/money.ts` - one formatter, shared by the page, the alert and the tests.
 - `src/lib/privatePages.ts` - the one list of token-reached routes, and the four widgets that now consult it.
 - `src/lib/proposals/clientPage.ts` - `CLIENT_PAGE_LIVE` flipped to true, in the same commit as the route.
+- `src/lib/proposals/store.ts` + `src/app/api/admin/proposals/[id]/route.ts` - `touchProposal`, and the send action's link-window refresh in front of the delivery.
 - `src/lib/notify/sendEmail.ts` + `src/app/vaca-mgmt/emails/page.tsx` - one added `EmailCategory`, and the audit filter that a `Record` over the union forces to keep up.
 - `src/middleware.ts` - `/api/proposal/` registered PUBLIC, alongside the other tokenized APIs.
 - `tests/proposal-pod-slice3.spec.ts` and `tests/proposal-pod-slice3-e2e.spec.ts`.

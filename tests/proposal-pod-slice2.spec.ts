@@ -8,7 +8,7 @@ import {
 } from '../src/lib/proposals/bundles';
 import {
   CreateProposalSchema, ProposalLinesSchema, ProposalConflictError, bundleSumError,
-  listProposals, markSent, replaceLines, restoreProposal, revokeProposal, searchPattern,
+  listProposals, markSent, replaceLines, restoreProposal, revokeProposal, searchPattern, touchProposal,
   ROSTER_LIMIT,
 } from '../src/lib/proposals/store';
 import { MAX_LINES } from '../src/lib/proposals/csv';
@@ -884,11 +884,15 @@ test('AC6l: no lifecycle writer hand-maintains updated_at - the trigger owns it'
     await revokeProposal(PROPOSAL_ID);
     await restoreProposal(PROPOSAL_ID);
     await markSent(PROPOSAL_ID);
+    // The link-window refresh is a writer too, and the one whose whole purpose
+    // is to move updated_at - so it is the one most likely to be written by
+    // hand. It sends the status back unchanged and lets the trigger do it.
+    await touchProposal(PROPOSAL_ID, 'draft');
 
     const bodies = calls.filter((c) => c.method === 'PATCH')
       .map((c) => c.body as Record<string, unknown>);
-    expect(bodies).toHaveLength(3);
-    const [revoked, restored, sent] = bodies;
+    expect(bodies).toHaveLength(4);
+    const [revoked, restored, sent, touched] = bodies;
 
     expect(revoked.status).toBe('revoked');
     expect(typeof revoked.revoked_at).toBe('string');
@@ -896,6 +900,7 @@ test('AC6l: no lifecycle writer hand-maintains updated_at - the trigger owns it'
     expect(sent.status).toBe('sent');
     expect(typeof sent.sent_at).toBe('string');
     expect(sent.revoked_at).toBeNull();
+    expect(touched).toEqual({ status: 'draft' });
 
     for (const body of bodies) expect(Object.keys(body)).not.toContain('updated_at');
   });
@@ -1472,7 +1477,13 @@ test('AC10e: the Send guard is still the thing that decides, now that it says ye
         const res = await lifecycle(PROPOSAL_ID, { action: 'send' });
         expect(res.status).toBe(200);
         const delivery = calls.findIndex((c) => c.url.includes('api.resend.com'));
-        const patch = calls.findIndex((c) => c.method === 'PATCH' && c.url.includes('proposals?id='));
+        // The STATUS write specifically, by its payload rather than by being
+        // the first PATCH on the row: slice 3 put a link-window refresh in
+        // front of the delivery, which is a PATCH on the same row and is
+        // asserted by that slice's AC-S3-21.
+        const patch = calls.findIndex((c) => c.method === 'PATCH'
+          && c.url.includes('proposals?id=')
+          && (c.body as { status?: string } | undefined)?.status === 'sent');
         expect(delivery, 'the email was sent').toBeGreaterThan(-1);
         expect(patch, 'the status was written').toBeGreaterThan(-1);
         expect(patch, 'delivery comes first').toBeGreaterThan(delivery);

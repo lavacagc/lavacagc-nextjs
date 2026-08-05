@@ -26,15 +26,19 @@ import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { cleanEnv } from '@/lib/envClean';
 import {
   ProposalLinesSchema, ProposalConflictError, bundleSumError, markSent, replaceLines,
-  restoreProposal, revokeProposal, type ProposalRow,
+  restoreProposal, revokeProposal, touchProposal, type ProposalRow,
 } from '@/lib/proposals/store';
 import { CLIENT_PAGE_LIVE, CLIENT_PAGE_NOT_LIVE_MESSAGE } from '@/lib/proposals/clientPage';
+import { DRAFT_LINK_LIFETIME_MS } from '@/lib/proposals/publicView';
 import { buildProposalDeliveryEmail, PROPOSAL_FROM } from '@/lib/proposals/deliveryEmail';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lavacagc.com';
+
+/** The draft window in the unit an admin reads, from the one constant that owns it. */
+const DRAFT_WINDOW_HOURS = Math.round(DRAFT_LINK_LIFETIME_MS / (60 * 60 * 1000));
 
 const ActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('send') }),
@@ -119,6 +123,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         if (!proposal.client_email) {
           return NextResponse.json({ error: 'No client email on this proposal - use Copy link instead.' }, { status: 400 });
         }
+        // FIRST, before anything is delivered: move the row's updated_at, which
+        // is what the client link's draft window is measured from. A draft
+        // built earlier in the week is already past that window when Send is
+        // pressed, and the write that would have moved it - markSent - is
+        // exactly the write whose failure below leaves the proposal reading
+        // 'draft' behind a link the client is now holding. Doing it here means
+        // a delivered link is live for the full window whatever fails after it.
+        //
+        // Best effort, like the sentBy lookup: an admin who asked to send a
+        // proposal must not be refused because the lifetime of the link could
+        // not be improved.
+        try {
+          await touchProposal(id, proposal.status);
+        } catch (err) {
+          console.error(
+            `proposal ${id} link-window refresh failed before delivery:`,
+            err instanceof Error ? err.message : String(err),
+          );
+        }
         // Middleware already confirmed the admin session; this is purely the
         // audit row's sent_by, per the sibling admin send routes.
         let sentBy: string | null = null;
@@ -170,9 +193,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             `proposal ${id} was delivered (email ${res.emailId ?? 'unknown'}) but its status could not be updated:`,
             err instanceof Error ? err.message : String(err),
           );
+          // What the CLIENT sees while it is unrepaired, because the retry has a
+          // deadline on it rather than being tidy-up: the refresh above bought
+          // the delivered link one draft window, and a proposal still reading
+          // 'revoked' has no window at all.
+          const clientImpact = proposal.status === 'revoked'
+            ? `Their link does NOT open while it reads that way - repair it now.`
+            : `Their link opens for ${DRAFT_WINDOW_HOURS} hours from this send and then stops opening `
+              + `until the status is repaired.`;
           return NextResponse.json({
             error: `The email WAS delivered, but the status could not be updated - this proposal still reads `
-              + `"${proposal.status}". Press Send again to repair it; the client may receive a second copy.`,
+              + `"${proposal.status}". ${clientImpact} Press Send again to repair it; the client may `
+              + `receive a second copy.`,
             delivered: true,
           }, { status: 500 });
         }

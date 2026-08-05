@@ -484,6 +484,12 @@ test('AC-S3-20: an empty selection is never offered, and is refused if it is sen
   expect(view).toContain('disabled={phase === \'sending\' || nothingChosen}');
   expect(view).toContain('Turn at least one choice on');
   expect(view).toContain('(201) 212-4917');
+  // The sentence beside it asks whether there ARE locked lines, not what they
+  // come to: proposal_lines_price_range permits a zero-priced locked line (a
+  // no-charge dumpster, permits carried by the owner), and 'every line here is
+  // yours to choose' is false while a section nobody can touch sits above it.
+  expect(view).toContain('locked.length > 0');
+  expect(view).not.toContain('lockedTotalCents > 0');
 
   // And the server keeps every guard it had. The UI is the explanation, not the
   // enforcement: the schema refuses an empty array...
@@ -497,6 +503,102 @@ test('AC-S3-20: an empty selection is never offered, and is refused if it is sen
   // ...and the table itself could not hold one.
   expect(read('supabase/migrations/20260824000000_proposals.sql'))
     .toContain('proposal_submissions_included_lines_present');
+});
+
+test('AC-S3-21: Send refreshes the link window BEFORE it delivers, and never fails on it', async () => {
+  const env = { ...process.env };
+  process.env.RESEND_API_KEY = 'stub';
+
+  const sendAction = () => proposalAction(
+    new NextRequest(`http://localhost/api/admin/proposals/${PROPOSAL_ID}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'send' }),
+    }),
+    { params: Promise.resolve({ id: PROPOSAL_ID }) },
+  );
+  const isDelivery = (c: RestCall) => c.url.includes('api.resend.com');
+  const isRefresh = (c: RestCall) => c.method === 'PATCH' && c.url.includes('status=eq.');
+  const isStatusWrite = (c: RestCall) => c.method === 'PATCH'
+    && c.url.includes('proposals?id=') && !c.url.includes('status=eq.');
+
+  try {
+    // The refresh is issued FIRST, and the delivery-before-status-write
+    // ordering behind it is untouched.
+    await withPostgrest(
+      (call) => (isDelivery(call)
+        ? restJson({ id: 'stub-email-id' })
+        : serveProposal({ updated_at: agoIso(25 * HOUR_MS) })(call)),
+      async (calls) => {
+        expect((await sendAction()).status).toBe(200);
+        const refresh = calls.findIndex(isRefresh);
+        const delivery = calls.findIndex(isDelivery);
+        const status = calls.findIndex(isStatusWrite);
+        expect(refresh, 'the window was refreshed').toBeGreaterThan(-1);
+        expect(delivery, 'the refresh comes before the delivery').toBeGreaterThan(refresh);
+        expect(status, 'the status write still comes after the delivery').toBeGreaterThan(delivery);
+        // It moves the timestamp by writing back the status it read, and lets
+        // proposals_set_updated_at own the column (slice 2's AC6l).
+        expect(calls[refresh].body).toEqual({ status: 'draft' });
+        expect(calls[refresh].url).toContain('status=eq.draft');
+      },
+    );
+
+    // A refresh that FAILS is not a reason to refuse an admin who asked to send
+    // a proposal: the delivery happens and the status is still written.
+    await withPostgrest(
+      (call) => {
+        if (isRefresh(call)) return restJson({ message: 'nope' }, 500);
+        if (isDelivery(call)) return restJson({ id: 'stub-email-id' });
+        return serveProposal()(call);
+      },
+      async (calls) => {
+        const res = await sendAction();
+        expect(res.status).toBe(200);
+        expect((await res.json()).status).toBe('sent');
+        expect(calls.some(isDelivery), 'it still delivered').toBe(true);
+        expect(calls.some(isStatusWrite), 'it still marked sent').toBe(true);
+      },
+    );
+
+    // The case the refresh exists for: the status write fails after the email
+    // is already in the client's inbox. The proposal still reads 'draft', and
+    // its link has to open anyway.
+    let live = proposalRow({ updated_at: agoIso(25 * HOUR_MS) });
+    await withPostgrest(
+      (call) => {
+        if (isDelivery(call)) return restJson({ id: 'stub-email-id' });
+        if (isRefresh(call)) {
+          live = { ...live, updated_at: new Date().toISOString() };
+          return restJson([]);
+        }
+        if (isStatusWrite(call)) return restJson({ message: 'down' }, 500);
+        if (call.url.includes('/proposals?')) return restJson([live]);
+        if (call.url.includes('/proposal_lines?')) return restJson(LINES);
+        return restJson([]);
+      },
+      async () => {
+        // A draft last touched 25 hours ago: before the send, its link is dead.
+        expect((await lookupPublicProposal(TOKEN)).state).toBe('missing');
+
+        const res = await sendAction();
+        expect(res.status).toBe(500);
+        const body = await res.json();
+        expect(body.delivered).toBe(true);
+        expect(body.error).toContain('The email WAS delivered');
+        // The admin is told what the client sees, and that the retry has a
+        // deadline on it.
+        expect(body.error).toContain('24 hours from this send');
+        expect(body.error).toContain('Press Send again');
+
+        // And the client holding that email opens their proposal rather than
+        // the generic dead end.
+        expect((await lookupPublicProposal(TOKEN)).state).toBe('ok');
+      },
+    );
+  } finally {
+    process.env = env;
+  }
 });
 
 test('AC-S3-2: a malformed token is answered without a database round trip', async () => {
