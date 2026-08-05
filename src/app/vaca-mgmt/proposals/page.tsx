@@ -20,8 +20,10 @@
  * titles; member prices stay admin-side only.
  *
  * House rule honored: every control keeps the global 44px touch minimum -
- * buttons through globals.css, and the row's selection checkbox through the
- * padded label around it, since that base rule does not reach checkboxes.
+ * buttons through globals.css, and the controls that base rule does not reach
+ * explicitly: the row's selection checkbox through the padded label around it,
+ * and the two text fields on the touch path - roster search, and a bundle's
+ * name - sized to it directly.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -121,6 +123,29 @@ const plural = (n: number, one: string, many = `${one}s`) => (n === 1 ? one : ma
 
 let nextKey = 0;
 const rowKey = () => `row-${nextKey++}`;
+
+/**
+ * POST to an admin proposals endpoint, and turn a failure into a line an admin
+ * can act on.
+ *
+ * The status is read BEFORE the body. The routes answer JSON on every path they
+ * own, but a platform failure does not: a function timeout or a gateway error
+ * while Supabase is unreachable answers HTML, and parsing that first makes the
+ * toast read `Unexpected token 'A', "An error o"... is not valid JSON`. That is
+ * the toast Revoke - the kill switch - would show in precisely the outage it
+ * exists for. So the API's own `error` is used when the body has one, and the
+ * status carries the message when it does not.
+ */
+async function postProposalAction(url: string, payload: unknown): Promise<void> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (res.ok) return;
+  const body: { error?: unknown } | null = await res.json().catch(() => null);
+  throw new Error(typeof body?.error === 'string' ? body.error : `HTTP ${res.status}`);
+}
 
 export default function ProposalsAdminPage() {
   const { toast } = useToast();
@@ -491,27 +516,18 @@ export default function ProposalsAdminPage() {
     const wasReimport = reimportTarget != null;
     try {
       if (reimportTarget) {
-        const res = await fetch(`/api/admin/proposals/${reimportTarget.id}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'reimport', lines: linesPayload() }),
+        await postProposalAction(`/api/admin/proposals/${reimportTarget.id}`, {
+          action: 'reimport',
+          lines: linesPayload(),
         });
-        const body = await res.json();
-        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
         toast({ title: 'Proposal updated', description: `${reimportTarget.client_name} - same link, new lines.` });
       } else {
-        const res = await fetch('/api/admin/proposals', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            client_name: clientName.trim(),
-            client_email: clientEmail.trim() || null,
-            title: proposalTitle.trim(),
-            lines: linesPayload(),
-          }),
+        await postProposalAction('/api/admin/proposals', {
+          client_name: clientName.trim(),
+          client_email: clientEmail.trim() || null,
+          title: proposalTitle.trim(),
+          lines: linesPayload(),
         });
-        const body = await res.json();
-        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
         toast({ title: 'Proposal created (draft)', description: 'Send it or copy the link from the roster.' });
       }
       resetImporter();
@@ -531,13 +547,7 @@ export default function ProposalsAdminPage() {
     if (ask && !window.confirm(ask(p))) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/admin/proposals/${p.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      await postProposalAction(`/api/admin/proposals/${p.id}`, { action });
       toast({ title: DONE[action], description: p.client_name });
       await loadRoster(activeSearch);
     } catch (err) {
@@ -927,7 +937,7 @@ export default function ProposalsAdminPage() {
                     <Badge variant={r.optional ? 'default' : 'secondary'}>{r.optional ? 'optional' : 'locked'}</Badge>
                     {r.members ? (
                       <Input
-                        className="h-9 w-auto min-w-40 flex-1 font-semibold"
+                        className="h-11 w-auto min-w-40 flex-1 font-semibold"
                         value={r.title}
                         aria-label="Bundle name"
                         onChange={(e) => renameBundle(r.key, e.target.value)}
