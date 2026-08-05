@@ -846,12 +846,24 @@ export default function ProposalsAdminPage() {
                         onBlur={() => commitBundleName(r.key)}
                       />
                     ) : (
-                      <span className="min-w-0 flex-1 truncate font-medium">{r.title}</span>
+                      /*
+                        min-w-40, not min-w-0: with a zero basis the name is the
+                        only thing on the row that can shrink, so at 390px a line
+                        whose price and toggle happen to fit beside it kept them
+                        and left the name a 10px box reading "M", while the row
+                        below - whose longer toggle wrapped - got 100px. The
+                        floor makes the name the item that forces the wrap, so
+                        the price and toggle drop to their own line first and
+                        every name reads the same width either way.
+                      */
+                      <span className="min-w-40 flex-1 truncate font-medium">{r.title}</span>
                     )}
-                    <span className="font-semibold tabular-nums">{dollars(r.priceCents)}</span>
-                    <Button size="sm" variant="ghost" onClick={() => toggleOptional(r.key)} aria-label={`Make ${r.title} ${r.optional ? 'locked' : 'optional'}`}>
-                      <Undo2 className="mr-1 h-4 w-4" />{r.optional ? 'Lock' : 'Make optional'}
-                    </Button>
+                    <div className="flex items-center gap-3">
+                      <span className="font-semibold tabular-nums">{dollars(r.priceCents)}</span>
+                      <Button size="sm" variant="ghost" onClick={() => toggleOptional(r.key)} aria-label={`Make ${r.title} ${r.optional ? 'locked' : 'optional'}`}>
+                        <Undo2 className="mr-1 h-4 w-4" />{r.optional ? 'Lock' : 'Make optional'}
+                      </Button>
+                    </div>
                   </div>
                   {r.members && (
                     <div className="mt-2 flex flex-wrap items-center gap-2 pl-8 text-xs text-muted-foreground">

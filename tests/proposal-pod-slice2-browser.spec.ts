@@ -659,4 +659,27 @@ test.describe('proposals admin, in the browser', () => {
     await page.mouse.click(box!.x + 3, box!.y + 3);
     await expect(input).toBeChecked();
   });
+
+  test('B18: at 390px a line name keeps its width whether or not the toggle wrapped', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await pasteCsv(page, CSV_NESTED);
+    await expect(page.getByTestId('line-row')).toHaveCount(4);
+
+    // The width the owner's mobile note calls out. The name used to be the only
+    // flexible item on the row, so a line whose price and short "Lock" toggle
+    // fit beside it collapsed to a single letter while its neighbours - whose
+    // longer "Make optional" wrapped - kept ~100px.
+    await page.setViewportSize({ width: 390, height: 844 });
+    const widths = await page.getByTestId('line-row').evaluateAll((els) => els.map((el) => {
+      const name = el.querySelector('span.truncate') as HTMLElement;
+      return Math.round(name.getBoundingClientRect().width);
+    }));
+    expect(widths).toHaveLength(4);
+    for (const w of widths) expect(w).toBeGreaterThanOrEqual(150);
+
+    // Buying that floor must not push the row off the side of the phone.
+    const overflow = await page.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBe(0);
+  });
 });
