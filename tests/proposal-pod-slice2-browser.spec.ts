@@ -39,6 +39,18 @@ const OFF_THE_PAGE = {
   updated_at: '2025-01-01T00:00:00.000Z',
 };
 
+/** A revoked proposal: re-importing onto one is refused, so its row says so. */
+const REVOKED = {
+  ...RACHEL,
+  id: '33333333-3333-3333-3333-333333333333',
+  client_name: 'Yusuf Adeyemi',
+  client_email: 'yusuf@example.com',
+  title: 'Primary suite addition',
+  status: 'revoked',
+  token: 'c'.repeat(43),
+  updated_at: '2025-06-01T00:00:00.000Z',
+};
+
 /**
  * One page of one, out of an estate of 312 - the truncated shape, carrying the
  * server's own `truncated` flag because that flag alone gates the notice.
@@ -78,7 +90,7 @@ async function openProposals(page: Page, context: BrowserContext, baseURL: strin
     if (route.request().method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
     const term = new URL(route.request().url()).searchParams.get('search');
     if (!term) { await route.fulfill({ json: ROSTER }); return; }
-    const hit = [RACHEL, OFF_THE_PAGE].filter((p) =>
+    const hit = [RACHEL, OFF_THE_PAGE, REVOKED].filter((p) =>
       [p.client_name, p.client_email, p.title].some((f) => f.toLowerCase().includes(term.toLowerCase())));
     // A match set that fits on the page is genuinely untruncated - the server
     // sends the flag either way, so the stub does too.
@@ -97,12 +109,18 @@ async function openProposals(page: Page, context: BrowserContext, baseURL: strin
  */
 const toastTitle = (page: Page, text: string) => page.getByText(text, { exact: true });
 
-/** Paste text into the CSV box the way a human does, so onPaste is what fires. */
+/**
+ * Paste text into the CSV box the way a human does, so onPaste is what fires.
+ * Select-all first, so a paste over an existing import REPLACES it the way
+ * pasting a corrected export does, rather than splicing at the caret.
+ */
 async function pasteCsv(page: Page, text: string) {
   const box = page.getByTestId('csv-paste');
   await box.click();
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await page.keyboard.press(`${mod}+A`);
   await page.evaluate((t) => navigator.clipboard.writeText(t), text);
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V');
+  await page.keyboard.press(`${mod}+V`);
 }
 
 test.describe('proposals admin, in the browser', () => {
@@ -420,6 +438,105 @@ test.describe('proposals admin, in the browser', () => {
     await page.getByTestId('csv-paste').fill('');
     await expect(page.getByTestId('preview')).toHaveCount(0);
     await expect(page.getByTestId('csv-paste')).toHaveValue('');
+  });
+
+  test('B13: arming a re-import is a discard like any other - it asks, and Cancel keeps the preview', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await pasteCsv(page, CSV);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+
+    await page.getByLabel('Select Tile - heated floor upgrade').check();
+    await page.getByLabel('Select Vanity - double sink').check();
+    await page.getByTestId('combine-btn').click();
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+
+    // Re-import is a small outline button up in the roster, scroll-lengths away
+    // from the preview it empties. It used to take every bundle, name and
+    // override the moment it was clicked - no dialog, no toast, no undo.
+    let question = '';
+    page.once('dialog', (d) => { question = d.message(); d.dismiss(); });
+    await page.getByTestId('reimport-btn').first().click();
+    expect(question).toContain('bundles you composed');
+
+    // Declined: the preview stands AND the re-import is not armed - a half-armed
+    // importer would be its own mismatch.
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+    await expect(page.getByTestId('reimport-armed')).toHaveCount(0);
+
+    // Accepted: it arms and empties, which is what the armed card promises.
+    page.once('dialog', (d) => d.accept());
+    await page.getByTestId('reimport-btn').first().click();
+    await expect(page.getByTestId('reimport-armed')).toBeVisible();
+    await expect(page.getByTestId('preview')).toHaveCount(0);
+    await expect(page.getByTestId('csv-paste')).toHaveValue('');
+
+    // And Cancel is the same door one step later - on a preview composed FOR
+    // the armed target, which makes it worth more, not less.
+    await pasteCsv(page, CSV);
+    await page.getByLabel('Select Tile - heated floor upgrade').check();
+    await page.getByLabel('Select Vanity - double sink').check();
+    await page.getByTestId('combine-btn').click();
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+
+    question = '';
+    page.once('dialog', (d) => { question = d.message(); d.dismiss(); });
+    await page.getByRole('button', { name: /cancel re-import/i }).click();
+    expect(question).toContain('bundles you composed');
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+    await expect(page.getByTestId('reimport-armed')).toBeVisible();
+  });
+
+  test('B14: a declined paste leaves the box and the preview agreeing', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await pasteCsv(page, CSV);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+
+    await page.getByLabel('Select Tile - heated floor upgrade').check();
+    await page.getByLabel('Select Vanity - double sink').check();
+    await page.getByTestId('combine-btn').click();
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+
+    // Paste a corrected export over it, then think better of it. The box used to
+    // commit the new text before the confirm ran, so cancelling left the
+    // corrected CSV on screen above a preview built from the OLD one - and
+    // Create wrote the old rows, with nothing saying the two panes disagreed.
+    let question = '';
+    page.once('dialog', (d) => { question = d.message(); d.dismiss(); });
+    await pasteCsv(page, CSV_NESTED);
+    expect(question).toContain('bundles you composed');
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+    await expect(page.getByTestId('line-row')).toHaveCount(1);
+    await expect(page.getByTestId('csv-paste')).toHaveValue(CSV);
+
+    // Accepted, the paste imports and the box is the text behind it.
+    page.once('dialog', (d) => d.accept());
+    await pasteCsv(page, CSV_NESTED);
+    await expect(page.getByTestId('bundle-row')).toHaveCount(0);
+    await expect(page.getByTestId('line-row')).toHaveCount(4);
+    await expect(page.getByTestId('csv-paste')).toHaveValue(CSV_NESTED);
+  });
+
+  test('B15: Re-import is refused on a revoked row before any work is composed', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await page.getByTestId('roster-search').fill('Yusuf');
+    await page.getByTestId('roster-search-btn').click();
+    const row = page.getByTestId('proposal-33333333-3333-3333-3333-333333333333');
+    await expect(row).toBeVisible();
+    await expect(row.getByText('revoked', { exact: true })).toBeVisible();
+
+    // replaceLines refuses a revoked proposal outright (409). The row already
+    // carries the status, so the refusal is knowable now rather than after the
+    // admin has pasted the corrected CSV and composed it.
+    const reimport = row.getByTestId('reimport-btn');
+    await expect(reimport).toBeDisabled();
+    await expect(reimport).toHaveAttribute('title', /re-send this proposal before re-importing/i);
+
+    // Re-send is the way back, and it is still offered.
+    await expect(row.getByTestId('send-btn')).toContainText('Re-send');
+
+    // A live proposal is unaffected.
+    await page.getByTestId('roster-search-clear').click();
+    await expect(page.getByTestId('reimport-btn').first()).toBeEnabled();
   });
 
   test('B12: the row checkbox clears the house 44px touch target', async ({ page, context, baseURL }) => {

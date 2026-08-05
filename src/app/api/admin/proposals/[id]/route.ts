@@ -58,11 +58,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }, { status: 400 });
   }
 
-  const rows = await supabaseRest<ProposalRow[]>('GET', `proposals?select=*&id=eq.${id}&limit=1`).catch(() => null);
-  const proposal = rows?.[0];
-  if (!proposal) return NextResponse.json({ error: 'No such proposal' }, { status: 404 });
-
   try {
+    // Inside the try, deliberately. supabaseRest throws on every non-2xx, and
+    // catching that into `null` reported an outage - Supabase unreachable, a
+    // missing SUPABASE_SECRET_KEY, a PostgREST 5xx - as 'No such proposal', on
+    // the D3 kill switch, to an admin looking at the row on their roster. That
+    // reads as data loss and leaves no log line to correct it. An outage falls
+    // through to the catch below (logged, generic 500); 404 now means only what
+    // it says, an empty result for an id that is not there.
+    const rows = await supabaseRest<ProposalRow[]>('GET', `proposals?select=*&id=eq.${id}&limit=1`);
+    const proposal = rows?.[0];
+    if (!proposal) return NextResponse.json({ error: 'No such proposal' }, { status: 404 });
+
     switch (parsed.data.action) {
       case 'revoke': {
         await revokeProposal(id);

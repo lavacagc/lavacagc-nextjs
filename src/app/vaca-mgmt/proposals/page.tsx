@@ -129,6 +129,8 @@ export default function ProposalsAdminPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   /** The text the current preview was built from, so a re-paste of it re-keys nothing. */
   const lastParsed = useRef<string>('');
+  /** Set by onPaste so the change event that follows knows it is an import, not typing. */
+  const pasting = useRef(false);
 
   const total = useMemo(() => rows.reduce((a, r) => a + r.priceCents, 0), [rows]);
 
@@ -191,15 +193,21 @@ export default function ProposalsAdminPage() {
   }, [confirmDiscard]);
 
   const reparse = useCallback((text: string) => {
-    if (!confirmDiscard()) return;
+    if (!confirmDiscard()) return false;
     ingestCsv(text);
+    return true;
   }, [confirmDiscard, ingestCsv]);
 
-  /** Re-parse only when the text actually changed since the last import. */
+  /**
+   * Re-parse only when the text actually changed since the last import, and
+   * report whether the new text may be committed to the box. Declining leaves
+   * the old preview standing, so the box has to keep the text THAT preview was
+   * built from - the same rule the clear path follows, in the other direction.
+   */
   const parsePastedText = useCallback((text: string) => {
-    if (text === lastParsed.current) return;
-    if (!text.trim()) { clearPreview(text); return; }
-    reparse(text);
+    if (text === lastParsed.current) return true;
+    if (!text.trim()) return clearPreview(text);
+    return reparse(text);
   }, [clearPreview, reparse]);
 
   const onFile = useCallback((f: File | undefined | null) => {
@@ -344,6 +352,13 @@ export default function ProposalsAdminPage() {
    * the payload for whichever roster row was clicked, at the same moment the
    * client fields that identified them were hidden. So the corrected CSV is
    * parsed fresh, against a target the card names on every screen.
+   *
+   * Emptying it is still a discard, so it goes through the same door as every
+   * other one: Re-import is a small outline button up in the roster, two
+   * scroll-lengths away from the preview it would throw out, and arming one by
+   * mistake must not cost composed work without a word. Cancel is the same
+   * shape one step later - by then the preview was composed FOR the armed
+   * target, which makes it more valuable, not less.
    */
   const resetImporter = useCallback(() => {
     setRows([]); setSelected(new Set()); setCsvErrors([]); setCsvText('');
@@ -351,15 +366,17 @@ export default function ProposalsAdminPage() {
   }, []);
 
   const armReimport = useCallback((p: RosterEntry) => {
+    if (!confirmDiscard()) return;
     resetImporter();
     setReimportTarget(p);
     window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-  }, [resetImporter]);
+  }, [confirmDiscard, resetImporter]);
 
   const cancelReimport = useCallback(() => {
+    if (!confirmDiscard()) return;
     setReimportTarget(null);
     resetImporter();
-  }, [resetImporter]);
+  }, [confirmDiscard, resetImporter]);
 
   // ---- create / reimport / lifecycle ----
   // toStoredMembers, not r.members: the preview carries each member's
@@ -556,7 +573,23 @@ export default function ProposalsAdminPage() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" variant="outline" onClick={() => copyLink(p)}><Link2 className="mr-1 h-4 w-4" />Copy link</Button>
-                    <Button size="sm" variant="outline" disabled={busy} onClick={() => armReimport(p)}>
+                    {/*
+                      replaceLines refuses a revoked proposal outright (409), so
+                      the row's own status can say so now rather than after the
+                      admin has emptied the importer, pasted the corrected CSV
+                      and composed it. Send is gated in the UI for exactly this
+                      reason, with the server as the backstop.
+                    */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy || p.status === 'revoked'}
+                      title={p.status === 'revoked'
+                        ? 'Revoked - re-send this proposal before re-importing its lines'
+                        : undefined}
+                      onClick={() => armReimport(p)}
+                      data-testid="reimport-btn"
+                    >
                       <FileUp className="mr-1 h-4 w-4" />Re-import
                     </Button>
                     {p.status !== 'revoked' ? (
@@ -639,15 +672,33 @@ export default function ProposalsAdminPage() {
               // question. Declining keeps the preview AND the text it was built
               // from, since a box left empty beside a live preview is the very
               // mismatch clearing exists to prevent.
+              //
+              // A paste IS a deliberate import, so it parses - here rather than
+              // from onPaste, because the change event is the first moment the
+              // pasted text exists in the value. It commits that text only once
+              // the discard is accepted: committing first and asking afterwards
+              // left the box holding a corrected CSV above a preview built from
+              // the old one, with Create writing the old rows and nothing on
+              // screen saying the two panes disagreed. Returning without
+              // setCsvText leaves this a controlled value React puts straight
+              // back, so declining restores the box the surviving preview owns.
               onChange={(e) => {
                 const text = e.target.value;
+                if (pasting.current) {
+                  pasting.current = false;
+                  if (!parsePastedText(text)) return;
+                  setCsvText(text);
+                  return;
+                }
                 if (!text.trim() && !clearPreview(text)) return;
                 setCsvText(text);
               }}
-              onPaste={(e) => {
-                const el = e.currentTarget;
-                // After the paste has landed in the value, not before.
-                window.setTimeout(() => parsePastedText(el.value), 0);
+              onPaste={() => {
+                pasting.current = true;
+                // Never leave the flag armed: a paste that changes nothing
+                // fires no change event at all, and the keystroke after it must
+                // not be mistaken for an import.
+                window.setTimeout(() => { pasting.current = false; }, 0);
               }}
             />
             <Button

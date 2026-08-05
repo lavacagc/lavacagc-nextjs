@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { NextRequest } from 'next/server';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
@@ -11,6 +12,7 @@ import {
 import { MAX_LINES } from '../src/lib/proposals/csv';
 import { CLIENT_PAGE_LIVE } from '../src/lib/proposals/clientPage';
 import { buildProposalDeliveryEmail, PROPOSAL_FROM } from '../src/lib/proposals/deliveryEmail';
+import { POST as proposalAction } from '../src/app/api/admin/proposals/[id]/route';
 
 /**
  * Proposal Pod - Slice 2 ACs (owner-approved plan of 2026-08-04, incl the
@@ -712,7 +714,7 @@ test('AC10c: the paste box parses on paste and an explicit button - never on a k
   expect(page).toContain('const previewHasEdits = useMemo(');
   expect(page).toContain('r.members != null || r.optional !== categorizeLine(r.title).optional');
   expect(page).toMatch(/const confirmDiscard = useCallback\(\(\) => !previewHasEdits \|\| window\.confirm\(/);
-  expect(page).toMatch(/const reparse = useCallback\(\(text: string\) => \{\s*\n\s*if \(!confirmDiscard\(\)\) return;/);
+  expect(page).toMatch(/const reparse = useCallback\(\(text: string\) => \{\s*\n\s*if \(!confirmDiscard\(\)\) return false;/);
   expect(page).toContain('onClick={() => reparse(csvText)}');
   expect(page).not.toContain('onClick={() => ingestCsv(csvText)}');
   // The paste and the dropped file are the same discard, so they ask too.
@@ -729,6 +731,16 @@ test('AC10c: the paste box parses on paste and an explicit button - never on a k
   // committing the empty value would leave exactly the mismatch (a cleared box
   // beside a live preview) that clearing the preview exists to prevent.
   expect(page).toMatch(/if \(!text\.trim\(\) && !clearPreview\(text\)\) return;\s*\n\s*setCsvText\(text\);/);
+  // The paste path holds the same invariant in the other direction: the box's
+  // new text is committed only AFTER the discard is accepted. Committing first
+  // (setCsvText in onChange, the parse a tick later) left a declined paste
+  // showing the corrected CSV above a preview built from the old one, with
+  // Create writing the old rows and nothing saying the panes disagreed.
+  expect(page).toMatch(/if \(pasting\.current\) \{\s*\n\s*pasting\.current = false;\s*\n\s*if \(!parsePastedText\(text\)\) return;\s*\n\s*setCsvText\(text\);/);
+  expect(page).not.toMatch(/onPaste=\{\(e\) => \{[\s\S]*?setTimeout\(\(\) => parsePastedText/);
+  // Which means both discard paths report whether they ran, rather than
+  // returning void and leaving the caller to guess.
+  expect(page).toMatch(/const parsePastedText = useCallback\(\(text: string\) => \{[\s\S]*?return clearPreview\(text\);\s*\n\s*return reparse\(text\);/);
 });
 
 test('AC10c2: re-picking the same file always re-fires, so a declined confirm is not a dead end', () => {
@@ -786,13 +798,94 @@ test('AC10g: arming a re-import empties the importer and names its target', () =
   // at the same moment the client fields that identified it were hidden.
   expect(page).not.toContain('onClick={() => { setReimportTarget(p);');
   expect(page).toContain('onClick={() => armReimport(p)}');
-  expect(page).toMatch(/const armReimport = useCallback\(\(p: RosterEntry\) => \{\s*\n\s*resetImporter\(\);/);
+  expect(page).toMatch(/const armReimport = useCallback\(\(p: RosterEntry\) => \{\s*\n\s*if \(!confirmDiscard\(\)\) return;\s*\n\s*resetImporter\(\);/);
   // Cancel restores a clean importer rather than leaving the armed preview up.
   expect(page).toContain('onClick={cancelReimport}');
+  expect(page).toMatch(/const cancelReimport = useCallback\(\(\) => \{\s*\n\s*if \(!confirmDiscard\(\)\) return;/);
   expect(page).toMatch(/const cancelReimport = useCallback\(\(\) => \{[\s\S]*?resetImporter\(\);/);
+  // Emptying it is a discard like every other, so it goes through the one door.
+  // Re-import is a small outline button up in the roster, scroll-lengths from
+  // the preview it throws out; arming one by mistake used to cost every bundle,
+  // name and override with no dialog, no toast and no undo. Cancel is the same
+  // shape one step later, on a preview composed FOR the armed target.
+  expect(page).not.toMatch(/const armReimport = useCallback\(\(p: RosterEntry\) => \{\s*\n\s*resetImporter\(\);/);
+  expect(page).not.toMatch(/const cancelReimport = useCallback\(\(\) => \{\s*\n\s*setReimportTarget\(null\);/);
   // And the target is named where the admin is working, not only in the title.
   expect(page).toContain('data-testid="reimport-armed"');
   expect(page).toContain(`Replace ${'${reimportTarget.client_name}'}'s lines`);
+});
+
+test('AC10k: Re-import is refused on a revoked proposal by the row, not only by the server', () => {
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  const store = read('src/lib/proposals/store.ts');
+  // replaceLines refuses outright while a proposal is revoked, so a dead link
+  // can never be repointed. That refusal is knowable the moment the button is
+  // clicked - the row already carries status - instead of after the admin has
+  // emptied the importer, pasted the corrected CSV and composed it.
+  expect(store).toContain(`throw new ProposalConflictError('proposal is revoked - re-send it before re-importing')`);
+  expect(page).toContain(`disabled={busy || p.status === 'revoked'}`);
+  expect(page).toContain('Revoked - re-send this proposal before re-importing its lines');
+  expect(page).not.toContain('<Button size="sm" variant="outline" disabled={busy} onClick={() => armReimport(p)}>');
+});
+
+test('AC10l: a failed proposal read is an outage, never "No such proposal"', () => {
+  const route = read('src/app/api/admin/proposals/[id]/route.ts');
+  // The pre-flight read swallowed EVERY failure into null and reported it as a
+  // 404 - so an unreachable Supabase, an unset SUPABASE_SECRET_KEY or a
+  // PostgREST 5xx told an admin looking at the row on their roster that their
+  // proposal did not exist, on the D3 kill switch, with nothing logged to
+  // correct them. supabaseRest throws on any non-2xx, so the throw now falls
+  // through to the catch that logs and returns the generic 500.
+  expect(route).not.toContain(`&limit=1\`).catch(() => null)`);
+  expect(route).toMatch(/try \{[\s\S]*?const rows = await supabaseRest<ProposalRow\[\]>\('GET', `proposals\?select=\*&id=eq\.\$\{id\}&limit=1`\);/);
+  // 404 is reserved for a genuinely empty result.
+  expect(route).toMatch(/if \(!proposal\) return NextResponse\.json\(\{ error: 'No such proposal' \}, \{ status: 404 \}\);/);
+  expect(route).toContain(`console.error(\`proposal \${parsed.data.action} failed:\`, message)`);
+  expect(route).toContain(`{ error: 'Could not complete that action' }, { status: 500 }`);
+});
+
+test('AC10l2: driven - a revoke during an outage answers 500, and only a missing row answers 404', async () => {
+  const env = { ...process.env };
+  const realFetch = globalThis.fetch;
+  const realError = console.error;
+  process.env.SUPABASE_SECRET_KEY = 'stub-key';
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://postgrest.stub';
+  const logged: string[] = [];
+  console.error = (...args: unknown[]) => { logged.push(args.map(String).join(' ')); };
+  const id = '11111111-1111-1111-1111-111111111111';
+
+  try {
+    const revoke = () => proposalAction(
+      new NextRequest(`http://localhost/api/admin/proposals/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'revoke' }),
+      }),
+      { params: Promise.resolve({ id }) },
+    );
+
+    // The outage: Supabase answers 503, so supabaseRest throws. This used to be
+    // swallowed into null and reported as 'No such proposal' - to an admin
+    // pressing the kill switch on a row that is plainly on their roster.
+    globalThis.fetch = (async () => new Response('{"message":"boom"}', { status: 503 })) as typeof fetch;
+    const outage = await revoke();
+    expect(outage.status).toBe(500);
+    expect((await outage.json()).error).toBe('Could not complete that action');
+    // And it is diagnosable, which the silent catch never was.
+    expect(logged.join('\n')).toMatch(/proposal revoke failed:[\s\S]*503/);
+
+    // Absence: the read succeeds and the row genuinely is not there.
+    logged.length = 0;
+    globalThis.fetch = (async () =>
+      new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })) as typeof fetch;
+    const missing = await revoke();
+    expect(missing.status).toBe(404);
+    expect((await missing.json()).error).toBe('No such proposal');
+  } finally {
+    globalThis.fetch = realFetch;
+    console.error = realError;
+    process.env = env;
+  }
 });
 
 test('AC10h: a bundle cannot be sent with its name deleted', () => {
