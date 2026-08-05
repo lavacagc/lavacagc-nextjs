@@ -77,12 +77,17 @@ function isLockedMember(member: PreviewBundleMember): boolean {
   return !(member.optional ?? categorizeLine(member.title).optional);
 }
 
+/**
+ * A row the admin picked, as composeBundle needs to read it. No category: the
+ * composed bundle's label is derived from the registry off the member that
+ * decided the badge, so a category carried in here would be a field with no
+ * reader - and on a nested bundle, a stale one describing a different package.
+ */
 export interface BundleInput {
   title: string;
   description?: string;
   priceCents: number;
   optional: boolean;
-  category: string;
   members?: PreviewBundleMember[];
 }
 

@@ -37,7 +37,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const parsed = CreateProposalSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid proposal', details: parsed.error.flatten() }, { status: 400 });
+    // Same construction as the sibling [id] route's reimport branch. A bare
+    // 'Invalid proposal' is what the admin's toast reads, and this is reachable
+    // without malformed input: the importer's client fields are not inside a
+    // <form>, so a half-typed address reaches .email() here and the admin - who
+    // is holding a fully composed preview - was told neither the field nor the
+    // rule. The flattened detail still travels alongside it.
+    const issue = parsed.error.issues[0];
+    const where = issue && issue.path.length > 0 ? issue.path.join('.') : null;
+    return NextResponse.json({
+      error: where ? `Invalid proposal: ${where} - ${issue.message}` : 'Invalid proposal',
+      details: parsed.error.flatten(),
+    }, { status: 400 });
   }
   const sumError = bundleSumError(parsed.data.lines);
   if (sumError) return NextResponse.json({ error: sumError }, { status: 400 });

@@ -31,6 +31,7 @@ import {
   RefreshCw, Link2, Send, Ban, Upload, Boxes, X, FileUp, Undo2, Search,
 } from 'lucide-react';
 import { parseProposalCsv, type ParsedProposalLine } from '@/lib/proposals/csv';
+import { categorizeLine } from '@/lib/proposals/categories';
 import {
   composeBundle, lockedMemberTitles, restoreMembers, toStoredMembers, type PreviewBundleMember,
 } from '@/lib/proposals/bundles';
@@ -124,7 +125,7 @@ export default function ProposalsAdminPage() {
   const [reimportTarget, setReimportTarget] = useState<RosterEntry | null>(null);
   const dragKey = useRef<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  /** The text the current preview was built from, so blur cannot re-key it for nothing. */
+  /** The text the current preview was built from, so a re-paste of it re-keys nothing. */
   const lastParsed = useRef<string>('');
 
   const total = useMemo(() => rows.reduce((a, r) => a + r.priceCents, 0), [rows]);
@@ -132,8 +133,9 @@ export default function ProposalsAdminPage() {
   /**
    * Parse text into a fresh preview. This DISCARDS the current preview - new
    * keys, no bundles, no per-line overrides - so it runs only on a deliberate
-   * import (a file, a paste, leaving the box, the Parse button), never on a
-   * keystroke.
+   * import (a file, a paste, the Parse button), never on a keystroke and never
+   * on leaving the box: focus moving is not a decision to re-import, and a
+   * click anywhere - the Combine bar, a checkbox, the client name - moves it.
    */
   const ingestCsv = useCallback((text: string) => {
     lastParsed.current = text;
@@ -157,23 +159,54 @@ export default function ProposalsAdminPage() {
     setRows([]); setSelected(new Set()); setCsvErrors([]);
   }, []);
 
+  /**
+   * Does the preview hold work a re-parse would throw away? A composed bundle,
+   * or a badge the admin flipped off what the registry said. Derived from the
+   * rows rather than tracked by a flag, so a row Unbundle put back carrying an
+   * override still counts as one.
+   */
+  const previewHasEdits = useMemo(
+    () => rows.some((r) => r.members != null || r.optional !== categorizeLine(r.title).optional),
+    [rows],
+  );
+
+  /**
+   * Ask before rebuilding a preview that holds composed work. EVERY re-parse
+   * goes through here - the Parse button, a paste into a box that already
+   * imported, a dropped file - because the loss is the same whichever door it
+   * arrives through, and it is invisible: fresh keys, no bundles, no overrides.
+   */
+  const confirmReparse = useCallback(() => !previewHasEdits || window.confirm(
+    'Parsing this CSV rebuilds the preview from scratch: the bundles you composed and any '
+    + 'locked/optional badges you set by hand are discarded. Continue?',
+  ), [previewHasEdits]);
+
+  const reparse = useCallback((text: string) => {
+    if (!confirmReparse()) return;
+    ingestCsv(text);
+  }, [confirmReparse, ingestCsv]);
+
   /** Re-parse only when the text actually changed since the last import. */
   const parsePastedText = useCallback((text: string) => {
     if (text === lastParsed.current) return;
     if (!text.trim()) { clearPreview(text); return; }
-    ingestCsv(text);
-  }, [clearPreview, ingestCsv]);
+    reparse(text);
+  }, [clearPreview, reparse]);
 
   const onFile = useCallback((f: File | undefined | null) => {
     if (!f) return;
-    f.text().then((text) => { setCsvText(text); ingestCsv(text); }).catch(() => {
+    f.text().then((text) => {
+      if (!confirmReparse()) return;
+      setCsvText(text);
+      ingestCsv(text);
+    }).catch(() => {
       toast({
         title: 'Could not read that file',
         description: 'Try choosing it again, or paste the CSV text instead.',
         variant: 'destructive',
       });
     });
-  }, [ingestCsv, toast]);
+  }, [confirmReparse, ingestCsv, toast]);
 
   // ---- bundling ----
   const combine = useCallback((keys: string[], name?: string) => {
@@ -571,11 +604,14 @@ export default function ProposalsAdminPage() {
               rows={3}
               data-testid="csv-paste"
               value={csvText}
-              // Typing never re-imports: a fresh parse re-keys every row and
-              // would throw away the bundles and overrides the admin composed,
-              // which is exactly what fixing a typo in this box used to do.
-              // Emptying it does clear the preview, because a cleared box that
-              // still shows a preview reads as though the text is still loaded.
+              // Typing never re-imports, and neither does leaving the box: a
+              // fresh parse re-keys every row and throws away the bundles and
+              // overrides the admin composed, which is exactly what fixing a
+              // typo in here used to cost - on the next click ANYWHERE, since
+              // that is what blurs a textarea. Re-importing is the Parse
+              // button's job, and it asks first when there is work to lose.
+              // Emptying the box does clear the preview, because a cleared box
+              // that still shows one reads as though the text is still loaded.
               onChange={(e) => {
                 const text = e.target.value;
                 setCsvText(text);
@@ -586,14 +622,13 @@ export default function ProposalsAdminPage() {
                 // After the paste has landed in the value, not before.
                 window.setTimeout(() => parsePastedText(el.value), 0);
               }}
-              onBlur={(e) => parsePastedText(e.target.value)}
             />
             <Button
               variant="outline"
               size="sm"
               className="mt-2"
               disabled={!csvText.trim()}
-              onClick={() => ingestCsv(csvText)}
+              onClick={() => reparse(csvText)}
               data-testid="parse-btn"
             >
               <FileUp className="mr-1 h-4 w-4" />Parse pasted CSV

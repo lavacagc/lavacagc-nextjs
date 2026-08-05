@@ -141,7 +141,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(page.getByText(/Copy it by hand: http.*\/proposal\/aaa/).first()).toBeVisible();
   });
 
-  test('B3: pasting imports; typing afterwards does not destroy the composed bundle', async ({ page, context, baseURL }) => {
+  test('B3: pasting imports; typing and clicking away afterwards leave the bundle alone', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await pasteCsv(page, CSV);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
@@ -156,10 +156,27 @@ test.describe('proposals admin, in the browser', () => {
 
     // Now type in the paste box - the natural reaction to a parse complaint.
     // This used to re-key every row and silently throw the bundle away.
+    const asked: string[] = [];
+    const spy = (d: { message(): string; dismiss(): Promise<void> }) => {
+      asked.push(d.message()); void d.dismiss();
+    };
+    page.on('dialog', spy);
     await page.getByTestId('csv-paste').click();
     await page.keyboard.type('\n# note to self');
     await expect(page.getByTestId('bundle-row')).toHaveCount(1);
     await expect(page.getByTestId('line-row')).toHaveCount(1);
+
+    // And then click away, which is the half the typing guarantee never covered:
+    // the box parsed on BLUR, so the very next click anywhere - this field, the
+    // Combine bar, a checkbox - rebuilt the preview from the edited text and
+    // took the bundle, its name and every override with it, silently. Moving
+    // focus is not a decision to re-import, so nothing happens and nothing asks.
+    await page.getByTestId('client-name').click();
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+    await expect(page.getByTestId('bundle-row')).toContainText('$6,300.50');
+    await expect(page.getByTestId('line-row')).toHaveCount(1);
+    expect(asked).toEqual([]);
+    page.off('dialog', spy);
   });
 
   test('B4: unbundle restores descriptions and frees the tick it was holding', async ({ page, context, baseURL }) => {
@@ -334,16 +351,36 @@ test.describe('proposals admin, in the browser', () => {
     page.off('dialog', spy);
   });
 
-  test('B5: the Parse button re-imports on demand, and clearing the box clears the preview', async ({ page, context, baseURL }) => {
+  test('B5: the Parse button re-imports on demand, asking first when that discards composed work', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await pasteCsv(page, CSV);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
 
-    // Bundle, then Parse: an explicit re-import is allowed to reset the preview.
+    // A pristine preview has nothing to lose, so Parse just re-imports.
+    const asked: string[] = [];
+    const spy = (d: { message(): string; dismiss(): Promise<void> }) => {
+      asked.push(d.message()); void d.dismiss();
+    };
+    page.on('dialog', spy);
+    await page.getByTestId('parse-btn').click();
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+    expect(asked).toEqual([]);
+    page.off('dialog', spy);
+
     await page.getByLabel('Select Tile - heated floor upgrade').check();
     await page.getByLabel('Select Vanity - double sink').check();
     await page.getByTestId('combine-btn').click();
     await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+
+    // Now it would discard the bundle, so it says so. Dismissed: nothing moves.
+    let question = '';
+    page.once('dialog', (d) => { question = d.message(); d.dismiss(); });
+    await page.getByTestId('parse-btn').click();
+    expect(question).toContain('bundles you composed');
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+
+    // Accepted: an explicit re-import is allowed to reset the preview.
+    page.once('dialog', (d) => d.accept());
     await page.getByTestId('parse-btn').click();
     await expect(page.getByTestId('bundle-row')).toHaveCount(0);
     await expect(page.getByTestId('line-row')).toHaveCount(3);

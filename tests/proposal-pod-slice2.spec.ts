@@ -68,8 +68,8 @@ test('AC-R3: the new admin content tab mounts without touching other tabs', () =
 
 test('AC1: a bundle is the members sum, named by the admin, in integer cents', () => {
   const b = composeBundle([
-    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true, category: 'tile' },
-    { title: 'Vanity - double sink', priceCents: 340000, optional: true, category: 'cabinets' },
+    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true },
+    { title: 'Vanity - double sink', priceCents: 340000, optional: true },
   ], 'Complete spa bathroom package');
   expect(b).not.toBeNull();
   expect(b!.priceCents).toBe(630050);
@@ -82,8 +82,8 @@ test('AC1: a bundle is the members sum, named by the admin, in integer cents', (
 
 test('AC2: any locked member locks the bundle - the fail-safe direction', () => {
   const b = composeBundle([
-    { title: 'Demolition & prep', priceCents: 480000, optional: false, category: 'demolition' },
-    { title: 'Vanity - double sink', priceCents: 340000, optional: true, category: 'cabinets' },
+    { title: 'Demolition & prep', priceCents: 480000, optional: false },
+    { title: 'Vanity - double sink', priceCents: 340000, optional: true },
   ]);
   expect(b!.optional).toBe(false);
   // The label follows structure too.
@@ -92,12 +92,12 @@ test('AC2: any locked member locks the bundle - the fail-safe direction', () => 
 
 test('AC3: bundling a bundle flattens - sums never double-count', () => {
   const inner = composeBundle([
-    { title: 'A', priceCents: 100, optional: true, category: 'tile' },
-    { title: 'B', priceCents: 200, optional: true, category: 'tile' },
+    { title: 'A', priceCents: 100, optional: true },
+    { title: 'B', priceCents: 200, optional: true },
   ])!;
   const outer = composeBundle([
-    { title: inner.title, priceCents: inner.priceCents, optional: inner.optional, category: inner.category, members: inner.members },
-    { title: 'C', priceCents: 300, optional: true, category: 'fixtures' },
+    { title: inner.title, priceCents: inner.priceCents, optional: inner.optional, members: inner.members },
+    { title: 'C', priceCents: 300, optional: true },
   ])!;
   expect(outer.priceCents).toBe(600);
   expect(outer.members).toHaveLength(3);
@@ -117,8 +117,8 @@ test('AC4: unbundle restores members re-badged by the registry, fail-safe locked
 
 test('AC4b: unbundle is lossless in the preview, and descriptions never reach storage', () => {
   const b = composeBundle([
-    { title: 'Tile - heated floor upgrade', description: 'Ditra Heat under porcelain', priceCents: 290050, optional: true, category: 'tile' },
-    { title: 'Vanity - double sink', description: '72in walnut, quartz top', priceCents: 340000, optional: true, category: 'cabinets' },
+    { title: 'Tile - heated floor upgrade', description: 'Ditra Heat under porcelain', priceCents: 290050, optional: true },
+    { title: 'Vanity - double sink', description: '72in walnut, quartz top', priceCents: 340000, optional: true },
   ], 'Complete spa bathroom package')!;
 
   // In-memory: bundle, change your mind, unbundle - the CSV's descriptions survive.
@@ -138,7 +138,7 @@ test('AC4b: unbundle is lossless in the preview, and descriptions never reach st
 
 test('AC5: a single row cannot be a bundle, and mismatched sums are rejected by name', () => {
   expect(composeBundle([
-    { title: 'A', priceCents: 100, optional: true, category: 'tile' },
+    { title: 'A', priceCents: 100, optional: true },
   ])).toBeNull();
   const err = bundleSumError([{
     title: 'Bad bundle', description: '', price_cents: 500, optional: true, category: 'tile',
@@ -411,14 +411,27 @@ test('AC6j: every proposal stays reachable past the roster cap, by search and by
     expect(searchUrl).toContain('client_email.ilike.*Zeta*');
     expect(searchUrl).toContain('title.ilike.*Zeta*');
 
-    // A term carrying PostgREST's own grammar cannot reach the parser as syntax.
-    expect(searchPattern('Smith, Jane')).toBe('*Smith* Jane*');
-    expect(searchPattern('a)b(c"d\\e')).toBe('*a*b*c*d*e*');
-    expect(searchPattern('100%_off')).toBe('*100**off*');
+    // A term carrying PostgREST's own grammar cannot reach the parser as
+    // syntax, and each neutralized character stands for exactly ONE character,
+    // so the term keeps the shape the admin typed instead of widening.
+    expect(searchPattern('Smith, Jane')).toBe('*Smith_ Jane*');
+    expect(searchPattern('a)b(c"d\\e')).toBe('*a_b_c_d_e*');
+    expect(searchPattern('100%_off')).toBe('*100__off*');
+    // The asterisk above all: PostgREST turns it INTO %, so leaving it live
+    // meant the only wildcard reaching the matcher was one an admin typed.
+    expect(searchPattern('Kitchen *phase 2*')).toBe('*Kitchen _phase 2_*');
     // An email still matches literally: dots are data inside a filter value.
     expect(searchPattern('rachel@example.com')).toBe('*rachel@example.com*');
     // Bounded: a filter, not a document.
     expect(searchPattern('x'.repeat(500)).length).toBeLessThanOrEqual(82);
+
+    // And a term of nothing but wildcards matches NOTHING rather than the whole
+    // estate - a search box that silently means "everything" is the opposite of
+    // the one thing this one is for.
+    await listProposals('***');
+    const wildcardUrl = seen.filter((u) => u.includes('/proposals?')).pop()!;
+    expect(wildcardUrl).toContain('id=is.null');
+    expect(wildcardUrl).not.toContain('or=(');
   } finally {
     globalThis.fetch = realFetch;
     process.env = env;
@@ -591,9 +604,9 @@ test('AC6l: no lifecycle writer hand-maintains updated_at - the trigger owns it'
   expect(store).toContain('sent_at: new Date().toISOString()');
 });
 
-test('AC6i: a rejected action names the rule and the line, not just "Invalid action"', () => {
+test('AC6i: a rejected write names the rule and the field, not just "Invalid <verb>"', () => {
   const route = read('src/app/api/admin/proposals/[id]/route.ts');
-  // The sibling create route's shape: a flattened detail alongside the message.
+  // A flattened detail alongside a message that names the failing path.
   expect(route).toContain('details: parsed.error.flatten()');
   expect(route).toContain(`issue.path.join('.')`);
   // An empty bundle name is the reachable case, and the path names which line.
@@ -603,6 +616,23 @@ test('AC6i: a rejected action names the rule and the line, not just "Invalid act
   ]);
   expect(bad.success).toBe(false);
   if (!bad.success) expect(bad.error.issues[0].path.join('.')).toBe('1.title');
+
+  // The create route holds the SAME rule - the page renders body.error and
+  // nothing else, so a bare verdict there is just as blind. Its own reachable
+  // case needs no malformed input either: the client fields are not inside a
+  // <form>, so `type="email"` never validates natively and a half-typed address
+  // goes to the wire with a fully composed preview behind it.
+  const create = read('src/app/api/admin/proposals/route.ts');
+  expect(create).toContain('details: parsed.error.flatten()');
+  expect(create).toContain(`issue.path.join('.')`);
+  expect(create).toContain('`Invalid proposal: ${where} - ${issue.message}`');
+  expect(create).not.toContain(`{ error: 'Invalid proposal', details: parsed.error.flatten() }`);
+  const halfTyped = CreateProposalSchema.safeParse({
+    client_name: 'Rachel', client_email: 'rachel@', title: 'Your bathroom remodel',
+    lines: [{ title: 'Demo', description: '', price_cents: 100, optional: false, category: 'general' }],
+  });
+  expect(halfTyped.success).toBe(false);
+  if (!halfTyped.success) expect(halfTyped.error.issues[0].path.join('.')).toBe('client_email');
 });
 
 test('AC7: the delivery email carries the private link, warm sender, booking slot only when configured', () => {
@@ -666,15 +696,30 @@ test('AC10b: Combine reads the rows a tick resolves to, and unbundle prunes its 
   expect(page).toMatch(/setSelected\(\(prev\) => \{\s*\n\s*if \(!prev\.has\(key\)\)/);
 });
 
-test('AC10c: the paste box parses on paste, blur and an explicit button - never on a keystroke', () => {
+test('AC10c: the paste box parses on paste and an explicit button - never on a keystroke or a click away', () => {
   const page = read('src/app/vaca-mgmt/proposals/page.tsx');
   expect(page).toContain('data-testid="parse-btn"');
   expect(page).toContain('onPaste=');
-  expect(page).toContain('onBlur={(e) => parsePastedText(e.target.value)}');
   // The old shape re-parsed (and re-keyed every row) on every change.
   expect(page).not.toContain('if (e.target.value.trim()) ingestCsv(e.target.value)');
+  // And then on every blur, which is any click at all: the Combine bar, a
+  // checkbox, the client name field. Typing was safe only until focus moved,
+  // and moving focus is not a decision to re-import.
+  expect(page).not.toContain('onBlur={(e) => parsePastedText(e.target.value)}');
+  expect(page).not.toMatch(/onBlur=\{[^}]*parsePastedText/);
   // Emptying the box clears the preview rather than leaving a stale one up.
   expect(page).toContain('if (!text.trim()) clearPreview(text)');
+  // Every remaining door into a re-parse asks first when there is composed work
+  // to lose, so the discard can never be silent whichever one it comes through.
+  expect(page).toContain('const previewHasEdits = useMemo(');
+  expect(page).toContain('r.members != null || r.optional !== categorizeLine(r.title).optional');
+  expect(page).toMatch(/const confirmReparse = useCallback\(\(\) => !previewHasEdits \|\| window\.confirm\(/);
+  expect(page).toMatch(/const reparse = useCallback\(\(text: string\) => \{\s*\n\s*if \(!confirmReparse\(\)\) return;/);
+  expect(page).toContain('onClick={() => reparse(csvText)}');
+  expect(page).not.toContain('onClick={() => ingestCsv(csvText)}');
+  // The paste and the dropped file are the same discard, so they ask too.
+  expect(page).toMatch(/parsePastedText = useCallback[\s\S]*?reparse\(text\);/);
+  expect(page).toMatch(/f\.text\(\)\.then\(\(text\) => \{\s*\n\s*if \(!confirmReparse\(\)\) return;/);
 });
 
 test('AC10d: the fire-and-forget async paths report failure instead of vanishing', () => {
@@ -715,8 +760,8 @@ test('AC10h: a bundle cannot be sent with its name deleted', () => {
   expect(page).toContain('hasUnnamedRow');
   // The default name the fallback restores is the one composeBundle gives.
   const b = composeBundle([
-    { title: 'A', priceCents: 100, optional: true, category: 'tile' },
-    { title: 'B', priceCents: 200, optional: true, category: 'tile' },
+    { title: 'A', priceCents: 100, optional: true },
+    { title: 'B', priceCents: 200, optional: true },
   ])!;
   expect(b.title).toBe('Bundle (2 items)');
 });
@@ -727,8 +772,8 @@ test('AC10i: turning a locked bundle optional asks first, and names what it woul
   // from structural work hands the client an all-or-nothing toggle over work
   // whose titles are no longer on screen.
   const b = composeBundle([
-    { title: 'Demolition & prep', priceCents: 480000, optional: false, category: 'demolition' },
-    { title: 'Vanity - double sink', priceCents: 340000, optional: true, category: 'cabinets' },
+    { title: 'Demolition & prep', priceCents: 480000, optional: false },
+    { title: 'Vanity - double sink', priceCents: 340000, optional: true },
   ])!;
   expect(b.optional).toBe(false);
   expect(lockedMemberTitles(b.members)).toEqual(['Demolition & prep']);
@@ -739,8 +784,8 @@ test('AC10i: turning a locked bundle optional asks first, and names what it woul
   // to read the same flag - asking off the registry instead returned [] and let
   // the flip through with nothing asked, in the one case it was written for.
   const adminLocked = composeBundle([
-    { title: 'Vanity - double sink', priceCents: 340000, optional: false, category: 'cabinets' },
-    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true, category: 'tile' },
+    { title: 'Vanity - double sink', priceCents: 340000, optional: false },
+    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true },
   ])!;
   expect(adminLocked.optional).toBe(false);
   expect(lockedMemberTitles(adminLocked.members)).toEqual(['Vanity - double sink']);
@@ -778,8 +823,8 @@ test('AC10i: turning a locked bundle optional asks first, and names what it woul
 
   // An all-optional bundle is the negotiation posture and asks nothing.
   const allOptional = composeBundle([
-    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true, category: 'tile' },
-    { title: 'Vanity - double sink', priceCents: 340000, optional: true, category: 'cabinets' },
+    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true },
+    { title: 'Vanity - double sink', priceCents: 340000, optional: true },
   ])!;
   expect(lockedMemberTitles(allOptional.members)).toEqual([]);
 
@@ -802,8 +847,8 @@ test('AC10j: a bundle owns its badge; its members own their verdicts', () => {
     ({ ...b, optional: !b.optional });
 
   const inner = composeBundle([
-    { title: 'Demolition & prep', priceCents: 480000, optional: false, category: 'demolition' },
-    { title: 'Vanity - double sink', priceCents: 340000, optional: true, category: 'cabinets' },
+    { title: 'Demolition & prep', priceCents: 480000, optional: false },
+    { title: 'Vanity - double sink', priceCents: 340000, optional: true },
   ], 'Bathroom package')!;
   expect(inner.optional).toBe(false);
   expect(lockedMemberTitles(inner.members)).toEqual(['Demolition & prep']);
@@ -824,8 +869,8 @@ test('AC10j: a bundle owns its badge; its members own their verdicts', () => {
   // The same reading in the other direction: locking an all-optional package
   // cannot quietly strip the selections the estimator marked optional.
   const allOptional = composeBundle([
-    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true, category: 'tile' },
-    { title: 'Vanity - double sink', priceCents: 340000, optional: true, category: 'cabinets' },
+    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true },
+    { title: 'Vanity - double sink', priceCents: 340000, optional: true },
   ])!;
   expect(restoreMembers(flip(allOptional).members).map((m) => m.optional)).toEqual([true, true]);
 
@@ -841,8 +886,8 @@ test('AC10j: a bundle owns its badge; its members own their verdicts', () => {
   // for the package actually being sent rather than answered once, elsewhere,
   // about a different one.
   const nested = composeBundle([
-    { title: opened.title, priceCents: opened.priceCents, optional: opened.optional, category: opened.category, members: opened.members },
-    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true, category: 'tile' },
+    { title: opened.title, priceCents: opened.priceCents, optional: opened.optional, members: opened.members },
+    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true },
   ])!;
   expect(lockedMemberTitles(nested.members)).toEqual(['Demolition & prep']);
   expect(nested.optional, 'a locked member locks the bundle it is nested into').toBe(false);
@@ -851,8 +896,8 @@ test('AC10j: a bundle owns its badge; its members own their verdicts', () => {
   // a structural slug (nor the reverse) while the badge says otherwise.
   expect(nested.category).toBe('demolition');
   expect(composeBundle([
-    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true, category: 'tile' },
-    { title: 'Vanity - double sink', priceCents: 340000, optional: true, category: 'cabinets' },
+    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true },
+    { title: 'Vanity - double sink', priceCents: 340000, optional: true },
   ])!.category).toBe('tile');
   // Money still flattens rather than double-counting, at either depth.
   expect(nested.priceCents).toBe(480000 + 340000 + 290050);
@@ -870,6 +915,12 @@ test('AC10j: a bundle owns its badge; its members own their verdicts', () => {
   // inside a bundle among them.
   expect(bundles).not.toContain('optional: inputs.every((r) => r.optional)');
   expect(bundles).not.toContain('inputs.find((r) => !r.optional)');
+  // Nothing reads a category handed IN any more, so the input shape stopped
+  // carrying one: threaded through every call site to be discarded, and on a
+  // nested bundle it was a stale label for a package it no longer described.
+  expect(bundles.match(/export interface BundleInput \{[\s\S]*?\n\}/)![0]).not.toContain('category');
+  // The COMPOSED bundle still has one - derived here, off the registry.
+  expect(bundles.match(/export interface ComposedBundle \{[\s\S]*?\n\}/)![0]).toContain('category: string;');
 });
 
 test('AC10e: Send is refused while the client page does not exist; Copy link is not', () => {

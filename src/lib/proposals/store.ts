@@ -249,22 +249,41 @@ export const ROSTER_LIMIT = 200;
 export const MAX_SEARCH_CHARS = 80;
 
 /**
+ * The characters a search term cannot carry through literally: what is GRAMMAR
+ * to the filter parser - the comma that separates or() branches, the parens
+ * that bound them, the quote and backslash that quote a value - and what is a
+ * WILDCARD to the matcher underneath it: LIKE's own % and _, and the * that
+ * PostgREST itself translates into %.
+ *
+ * The last one is the one that actually reaches the pattern, so leaving it live
+ * while neutralizing the rest meant the only wildcard the matcher ever saw was
+ * one an admin typed by hand.
+ */
+const SEARCH_UNSENDABLE = /[,()"\\%_*]/g;
+
+/**
  * A search term as a PostgREST ilike pattern.
  *
- * Everything that is GRAMMAR to the filter parser becomes the wildcard it
- * stands in place of: the comma that separates or() branches, the parens that
- * bound them, the quote and backslash that quote a value. So "Smith, Jane"
- * still finds its row, and no term can reach the parser as syntax. % and _ go
- * the same way - they are LIKE's own wildcards, and an admin typing one means
- * the character rather than "anything".
+ * Every unsendable character stands in as `_`, ONE character rather than a run,
+ * so the term keeps the shape the admin typed: "Smith, Jane" still finds its
+ * row, no term can reach the parser as syntax, and a title holding a literal
+ * asterisk finds itself instead of most of the estate.
  */
 export function searchPattern(term: string): string {
-  return `*${term.trim().slice(0, MAX_SEARCH_CHARS).replace(/[,()"\\%_]/g, '*')}*`;
+  return `*${term.trim().slice(0, MAX_SEARCH_CHARS).replace(SEARCH_UNSENDABLE, '_')}*`;
 }
 
 /** The or() filter behind the roster's search box, ready to append to a path. */
 function searchFilter(term: string): string {
   if (!term) return '';
+  // A term of nothing BUT unsendable characters ("***") carries no information,
+  // and the pattern it makes matches every row - a filter that quietly means
+  // "everything" on a roster whose search exists to reach one proposal. It
+  // matches nothing instead (id is the primary key, so it is never null), and
+  // the page says no proposal matched rather than pretending they all did.
+  if (!term.slice(0, MAX_SEARCH_CHARS).replace(SEARCH_UNSENDABLE, '').trim()) {
+    return '&id=is.null';
+  }
   const p = searchPattern(term);
   return `&or=${encodeURIComponent(
     `(client_name.ilike.${p},client_email.ilike.${p},title.ilike.${p})`,
