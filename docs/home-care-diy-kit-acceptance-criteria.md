@@ -115,6 +115,14 @@ So a link-health checker that reads 404 as "this product is delisted" would mark
 That is the concrete version of the rule already written into the slice 2 design: a block is inconclusive, it is never a strike, and only a positive signal of unavailability may retire a product.
 Anything else empties the shelves on a bad afternoon and nobody finds out until a member does.
 
+**Open item, deliberately parked (owner, 5 Aug 2026): move photos onto PA-API once the account qualifies.**
+Manual upload is accepted as the interim, and the reminder lives in three places so it cannot quietly become permanent.
+A standing panel on the Home Care Shop screen, which sharpens once ten products have been uploaded by hand.
+This paragraph.
+And the project memory, so the next session raises it rather than waiting to be asked.
+The trigger to act is a qualifying sale, not a date: PA-API access opens on the Associates account's first sales, and nothing else unlocks it.
+When it does, `parseAmazonListing` is the only seam that changes - the route above it already treats an empty image list as normal.
+
 **The manual upload is the primary path today, not the fallback.**
 The parse route still fills in the ASIN from any pasted URL, which is most of the tedium.
 Photos come from the upload box until either Amazon stops blocking us or PA-API access opens.

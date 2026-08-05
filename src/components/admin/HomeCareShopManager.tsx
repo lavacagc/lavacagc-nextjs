@@ -29,7 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import {
-  Check, ChevronLeft, ChevronRight, ExternalLink, Image as ImageIcon, Library, Link2, Loader2, Lock,
+  Check, ChevronLeft, ChevronRight, ExternalLink, Image as ImageIcon, Info, Library, Link2, Loader2, Lock,
   Package, Plus, RefreshCw, Search, Trash2, Upload, X,
 } from 'lucide-react';
 import {
@@ -561,6 +561,8 @@ export function HomeCareShopManager() {
         </div>
       </div>
 
+      <PaApiReminder productCount={products.length} />
+
       {view === 'tasks' && (
         <>
           <div className="flex gap-2 flex-wrap">
@@ -649,6 +651,41 @@ export function HomeCareShopManager() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The standing reminder to move photos onto Amazon's API.
+ *
+ * Amazon blocks the listing fetch from a server, so photos are uploaded by hand
+ * today (owner, 5 Aug 2026: "let's do it manually in the meantime but put a
+ * reminder so I don't forget to then use the API at some point"). This lives on
+ * the shop screen rather than in a doc because this is the screen where the
+ * manual work is felt - the reminder should arrive while the cost of not having
+ * the API is being paid, not in a file nobody opens.
+ *
+ * It gets more insistent as the library grows, since the case for the API is
+ * exactly "how many photos have I uploaded by hand". Product Advertising API
+ * access opens after the Associates account refers its first qualifying sales,
+ * which is why the trigger to act on this is a sale, not a date.
+ */
+function PaApiReminder({ productCount }: { productCount: number }) {
+  const earned = productCount >= 10;
+  return (
+    <div className={`rounded-xl border px-4 py-3 text-sm ${earned ? 'border-amber-300 bg-amber-50' : 'border-border bg-muted/40'}`}>
+      <div className="flex gap-2 items-start">
+        <Info className={`h-4 w-4 mt-0.5 shrink-0 ${earned ? 'text-amber-700' : 'text-muted-foreground'}`} />
+        <div className="min-w-0">
+          <b className="font-bold">Photos are manual for now.</b>{' '}
+          <span className="text-muted-foreground">
+            Amazon blocks automatic photo pulls from a server. Once the Associates account has referred its first
+            qualifying sales, Product Advertising API access opens and photos, titles and stock status come through it
+            instead - no uploads, and the link checker gets a real answer about what is still buyable.
+            {earned && ` You have uploaded photos for ${productCount} products by hand. Worth checking whether the API is available yet.`}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
