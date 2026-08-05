@@ -1,0 +1,740 @@
+import { test, expect } from '@playwright/test';
+import { NextRequest } from 'next/server';
+import { readFileSync, readdirSync } from 'fs';
+import { join } from 'path';
+import { lookupPublicProposal, PROPOSAL_TOKEN_RE } from '../src/lib/proposals/publicView';
+import { submitProposal, ProposalSubmitSchema, type SubmissionRecord } from '../src/lib/proposals/submit';
+import {
+  buildProposalSubmissionEmail, buildProposalSubmissionTelegram, alertOwnerOfSubmission,
+  PROPOSAL_ALERT_FROM,
+} from '../src/lib/proposals/ownerAlert';
+import { usd } from '../src/lib/proposals/money';
+import { CLIENT_PAGE_LIVE } from '../src/lib/proposals/clientPage';
+import { PROPOSAL_CATEGORIES } from '../src/lib/proposals/categories';
+import { isPrivateTokenPage, PRIVATE_TOKEN_PATHS } from '../src/lib/privatePages';
+import { POST as proposalSubmit } from '../src/app/api/proposal/[token]/submit/route';
+import { POST as proposalAction } from '../src/app/api/admin/proposals/[id]/route';
+
+/**
+ * Proposal Pod - Slice 3 ACs (owner decisions of 5 Aug 2026: one slice
+ * including submit-back, drafts resolve, confirm-then-adjust, analytics left
+ * as-is).
+ *
+ * Two halves, the same contract as slice 2:
+ *  - REGRESSION (AC-R): nothing that works today is lost. This slice flips a
+ *    constant four admin controls read, punches a public route through a
+ *    catch-all middleware, extends an email union shared by every send, and
+ *    starts writing a table the roster already counts. Each is a place
+ *    something could quietly break, and each has a test here.
+ *  - NEW CAPABILITY (AC-S3): the lookup's three states, the WEB-022 refusals,
+ *    the server re-sum, the member-price contract, and the owner alert.
+ *
+ * WHAT IS ASSERTED, AND HOW - inherited from slice 2 and worth restating.
+ * Behaviour is DRIVEN: the modules are called, and the routes run against a
+ * PostgREST stubbed at the fetch boundary, so what these tests observe is the
+ * request the product would really have sent. Reading source text is reserved
+ * for what has no runtime to observe here: the middleware's route lists, the
+ * page's static metadata, the icon map inside a client component, the
+ * migrations directory, and the analytics files this slice must NOT touch.
+ *
+ * Everything that only exists once React is mounted - the switches, the running
+ * total, the zero-network guarantee, the 390px geometry - is owned by
+ * tests/proposal-pod-slice3-e2e.spec.ts, which drives a real browser against a
+ * real Next server. Its test titles carry the AC ids it owns.
+ */
+
+const root = join(__dirname, '..');
+const read = (p: string) => readFileSync(join(root, p), 'utf8');
+
+interface RestCall { method: string; url: string; body: unknown }
+
+const restJson = (payload: unknown, status = 200, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(payload), {
+    status, headers: { 'Content-Type': 'application/json', ...headers },
+  });
+
+/** Run `body` with every outbound fetch answered by `respond`. */
+async function withPostgrest(
+  respond: (call: RestCall) => Response,
+  body: (calls: RestCall[]) => Promise<void>,
+): Promise<void> {
+  const env = { ...process.env };
+  const realFetch = globalThis.fetch;
+  process.env.SUPABASE_SECRET_KEY = 'stub-key';
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://postgrest.stub';
+  const calls: RestCall[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const call: RestCall = {
+      method: init?.method ?? 'GET',
+      url: decodeURIComponent(String(input)),
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    };
+    calls.push(call);
+    return respond(call);
+  }) as typeof fetch;
+  try {
+    await body(calls);
+  } finally {
+    globalThis.fetch = realFetch;
+    process.env = env;
+  }
+}
+
+const TOKEN = 'a'.repeat(43);
+const PROPOSAL_ID = '44444444-4444-4444-4444-444444444444';
+const L = (n: number) => `${n}${n}${n}${n}${n}${n}${n}${n}-${n}${n}${n}${n}-4${n}${n}${n}-8${n}${n}${n}-${n.toString().repeat(12)}`;
+
+/** Two locked lines and two optional ones, one of which is a bundle. */
+const LINES = [
+  {
+    id: L(1), position: 0, title: 'Demolition and debris removal', description: 'Strip to studs.',
+    price_cents: 340000, optional: false, category: 'demolition', bundle_members: null,
+  },
+  {
+    id: L(2), position: 1, title: 'Rough plumbing relocation', description: '',
+    price_cents: 480000, optional: false, category: 'plumbing_rough', bundle_members: null,
+  },
+  {
+    id: L(3), position: 2, title: 'Porcelain floor and wall tile', description: 'Large format.',
+    price_cents: 680000, optional: true, category: 'tile', bundle_members: null,
+  },
+  {
+    id: L(4), position: 3, title: 'Designer fixture package', description: 'Priced as one package.',
+    price_cents: 430000, optional: true, category: 'fixtures',
+    bundle_members: [
+      { title: 'Rain shower head', price_cents: 250000 },
+      { title: 'Freestanding tub filler', price_cents: 180000 },
+    ],
+  },
+];
+
+const LOCKED_TOTAL = 340000 + 480000;
+const FULL_TOTAL = LOCKED_TOTAL + 680000 + 430000;
+
+const proposalRow = (over: Record<string, unknown> = {}) => ({
+  id: PROPOSAL_ID, token: TOKEN, client_name: 'Sarah Whitfield',
+  client_email: 'sarah@example.com', title: 'Primary bath remodel', status: 'draft',
+  lead_id: null, sent_at: null, revoked_at: null,
+  created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-05T00:00:00Z',
+  ...over,
+});
+
+/** Answer the reads the client page and the submit route make, in order. */
+const serveProposal = (over: Record<string, unknown> = {}) => (call: RestCall): Response => {
+  if (call.url.includes('/proposals?')) return restJson([proposalRow(over)]);
+  if (call.url.includes('/proposal_lines?')) return restJson(LINES);
+  if (call.url.includes('/proposal_submissions?')) return restJson([]);
+  if (call.url.includes('/rate_limits')) return restJson([]);
+  return restJson([]);
+};
+
+const submitRequest = (token: string, payload: unknown) => proposalSubmit(
+  new NextRequest(`http://localhost/api/proposal/${token}/submit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'user-agent': 'spec-agent' },
+    body: JSON.stringify(payload),
+  }),
+  { params: Promise.resolve({ token }) },
+);
+
+const record = (over: Partial<SubmissionRecord> = {}): SubmissionRecord => ({
+  proposalId: PROPOSAL_ID,
+  clientName: 'Sarah Whitfield',
+  proposalTitle: 'Primary bath remodel',
+  leadId: null,
+  totalCents: FULL_TOTAL,
+  included: LINES.map((l) => ({
+    id: l.id, title: l.title, price_cents: l.price_cents, optional: l.optional,
+  })),
+  declined: [],
+  touched: [],
+  isRevision: false,
+  priorSubmissions: 0,
+  ...over,
+});
+
+// ---------------------------------------------------------------- REGRESSION
+
+test('AC-R1: every pre-slice admin sidebar capability is still present', () => {
+  const sidebar = read('src/components/admin/AdminSidebar.tsx');
+  const before = [
+    'dashboard', 'diagnostics', 'ai',
+    'blog', 'pages', 'services', 'service-areas', 'projects', 'listings', 'banners',
+    'seo', 'seo-suggestions', 'analytics', 'gmb',
+    'leads', 'subscribers', 'home-records', 'follow-ups', 'send-estimate',
+    'send-service-quote', 'crew', 'estimate-log', 'emails', 'preferences', 'releases',
+    'proposals',
+  ];
+  for (const id of before) {
+    expect(sidebar, `sidebar must keep '${id}'`).toContain(`id: '${id}'`);
+  }
+});
+
+test('AC-R2: the admin gate is untouched, and the client route is registered PUBLIC', () => {
+  const middleware = read('src/middleware.ts');
+  // The gates that existed before this slice.
+  expect(middleware).toContain(`'/vaca-mgmt'`);
+  expect(middleware).toContain('/api/admin/');
+  // The client submit route is self-guarded by its token, and says so in the
+  // PUBLIC list rather than relying on not matching an admin prefix - so a
+  // later broad rule cannot sweep it into the admin gate.
+  expect(middleware).toContain(`'/api/proposal/',`);
+  const adminBlock = middleware.slice(
+    middleware.indexOf('const ADMIN_AUTH_ROUTES'),
+    middleware.indexOf('const CRON_AUTH_ROUTES'),
+  );
+  expect(adminBlock).not.toContain('proposal');
+});
+
+test('AC-R3: the admin content tabs are unchanged', () => {
+  const content = read('src/components/AdminContent.tsx');
+  for (const tab of ['proposals', 'home-records', 'preferences', 'crew']) {
+    expect(content).toContain(`<TabsContent value="${tab}">`);
+  }
+});
+
+test('AC-R4: Send is live now, and every OTHER refusal it had still holds', async () => {
+  expect(CLIENT_PAGE_LIVE).toBe(true);
+
+  // A proposal with no client email is still a 400, not a silent no-op.
+  await withPostgrest(
+    () => restJson([proposalRow({ client_email: null })]),
+    async () => {
+      const res = await proposalAction(
+        new NextRequest(`http://localhost/api/admin/proposals/${PROPOSAL_ID}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'send' }),
+        }),
+        { params: Promise.resolve({ id: PROPOSAL_ID }) },
+      );
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain('No client email');
+    },
+  );
+
+  // Re-import onto a revoked proposal is still refused with a typed 409.
+  await withPostgrest(
+    () => restJson([proposalRow({ status: 'revoked', revoked_at: '2026-08-05T00:00:00Z' })]),
+    async () => {
+      const res = await proposalAction(
+        new NextRequest(`http://localhost/api/admin/proposals/${PROPOSAL_ID}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'reimport',
+            lines: [{ title: 'Demo', description: '', price_cents: 100, optional: false, category: 'demolition' }],
+          }),
+        }),
+        { params: Promise.resolve({ id: PROPOSAL_ID }) },
+      );
+      expect(res.status).toBe(409);
+    },
+  );
+});
+
+test('AC-R5: the importer keeps the guard that produced its not-live notice', () => {
+  // The sentence is conditional on the flag, so flipping the flag removed it
+  // from the screen without touching the page - and putting the flag back would
+  // bring both the notice and the refusal back together.
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  expect(page).toContain('CLIENT_PAGE_LIVE ? null :');
+  expect(page).toContain('CLIENT_PAGE_NOT_LIVE_MESSAGE');
+  const route = read('src/app/api/admin/proposals/[id]/route.ts');
+  expect(route).toContain('if (!CLIENT_PAGE_LIVE)');
+});
+
+test('AC-R6: every prior email category survives, and the audit filter offers the new one', () => {
+  const sendEmail = read('src/lib/notify/sendEmail.ts');
+  const before = [
+    'verification', 'welcome', 'estimate', 'lead_followup', 'lead_notification',
+    'home_care_newsletter', 'buy_remodel', 'seo_report', 'staged_draft', 'rollback_digest',
+    'form_error', 'feedback_request', 'broadcast', 'release', 'service_quote',
+    'visit_reminder', 'crew_dispatch', 'crew_dispatch_cancelled', 'proposal_delivery', 'other',
+  ];
+  for (const c of before) {
+    expect(sendEmail, `EmailCategory must keep '${c}'`).toContain(`| '${c}'`);
+  }
+  expect(sendEmail).toContain(`| 'proposal_submission'`);
+  // The admin filter is a Record over the union, so it fails the build when it
+  // drifts; this pins that it was updated rather than widened.
+  const emailsPage = read('src/app/vaca-mgmt/emails/page.tsx');
+  expect(emailsPage).toContain('proposal_submission: true');
+  expect(emailsPage).toContain('proposal_delivery: true');
+});
+
+test('AC-R7: analytics is left exactly as it was (owner decision, 5 Aug 2026)', () => {
+  const layout = read('src/app/layout.tsx');
+  // Both tags, and the GPC guard that is the only thing gating them today.
+  expect(layout).toContain('clarity.ms/tag/');
+  expect(layout).toContain("fbq('init'");
+  expect(layout.match(/navigator\.globalPrivacyControl/g)?.length).toBe(2);
+  // Neither analytics file learned about proposals or about the chrome helper:
+  // the decision was to leave the third-party tags alone, and a test is how it
+  // stays left alone.
+  expect(layout).not.toContain('privatePages');
+  const analytics = read('src/components/Analytics.tsx');
+  expect(analytics).toContain("pathname.startsWith('/admin')");
+  expect(analytics).toContain("pathname.startsWith('/vaca-mgmt')");
+  expect(analytics).toContain("pathname.startsWith('/auth')");
+  expect(analytics).not.toContain('proposal');
+  expect(analytics).not.toContain('privatePages');
+});
+
+test('AC-R8: no migration is added - a prod database at 20260827000000 runs this slice', () => {
+  const files = readdirSync(join(root, 'supabase/migrations')).filter((f) => f.endsWith('.sql'));
+  const newest = files.map((f) => f.slice(0, 14)).sort().at(-1);
+  expect(newest).toBe('20260827000000');
+});
+
+test('AC-R9: the security headers are unchanged', () => {
+  const config = read('next.config.ts');
+  expect(config).toContain("key: 'Referrer-Policy'");
+  expect(config).toContain("value: 'strict-origin-when-cross-origin'");
+  expect(config).toContain("key: 'Content-Security-Policy'");
+  expect(config).toContain("key: 'X-Content-Type-Options'");
+});
+
+test('AC-R10: the new rate-limit buckets are namespaced away from every existing one', () => {
+  const view = read('src/app/proposal/[token]/page.tsx');
+  const submit = read('src/app/api/proposal/[token]/submit/route.ts');
+  expect(view).toContain('`proposal-view:${');
+  expect(submit).toContain('`proposal-submit:${');
+  // Buckets already spent by other features, which must keep their own budgets.
+  for (const taken of ['hc-access:', 'lead-submit:', 'chat:']) {
+    expect(view).not.toContain(taken);
+    expect(submit).not.toContain(taken);
+  }
+});
+
+test('AC-R11: chrome suppression ADDS to each widget without removing what it already hid', () => {
+  const sticky = read('src/components/StickyCTA.tsx');
+  expect(sticky).toContain("pathname.startsWith('/home-care')");
+  expect(sticky).toContain("pathname.startsWith('/vaca-mgmt')");
+  expect(sticky).toContain('isPrivateTokenPage(pathname)');
+  for (const p of ['/contact', '/services', '/home-services', '/commercial-services', '/request-estimate']) {
+    expect(sticky).toContain(`'${p}'`);
+  }
+  const exit = read('src/components/ExitIntentPopup.tsx');
+  for (const p of ['/admin', '/vaca-mgmt', '/auth', '/blog', '/do-not-sell', '/privacy-policy', '/terms-and-conditions', '/home-care']) {
+    expect(exit).toContain(`pathname.startsWith('${p}')`);
+  }
+  expect(exit).toContain('isPrivateTokenPage(pathname)');
+  const toast = read('src/components/ReviewToast.tsx');
+  expect(toast).toContain('isHighIntentRoute');
+  expect(toast).toContain('isAdminSession');
+  expect(toast).toContain('isPrivateTokenPage(pathname)');
+  const banner = read('src/components/SmartBanner.tsx');
+  expect(banner).toContain("pathname.startsWith('/home-care')");
+  expect(banner).toContain('isPrivateTokenPage(pathname)');
+});
+
+test('AC-R12: the private-page list covers the tokenized routes and nothing adjacent', () => {
+  expect([...PRIVATE_TOKEN_PATHS]).toEqual(['/proposal', '/intake', '/crew']);
+  expect(isPrivateTokenPage('/proposal/abc')).toBe(true);
+  expect(isPrivateTokenPage('/intake/abc')).toBe(true);
+  expect(isPrivateTokenPage('/crew/confirm/abc')).toBe(true);
+  // A marketing page that merely starts with the same letters keeps its chrome.
+  expect(isPrivateTokenPage('/proposals-explained')).toBe(false);
+  expect(isPrivateTokenPage('/')).toBe(false);
+  expect(isPrivateTokenPage(null)).toBe(false);
+});
+
+// ---------------------------------------------------------- NEW CAPABILITY
+
+test('AC-S3-1: the lookup keeps its three states apart, and revoked reads as missing', async () => {
+  await withPostgrest(serveProposal(), async () => {
+    const ok = await lookupPublicProposal(TOKEN);
+    expect(ok.state).toBe('ok');
+  });
+  // A draft resolves (owner decision, 5 Aug 2026) and so does a sent proposal.
+  for (const status of ['draft', 'sent']) {
+    await withPostgrest(serveProposal({ status }), async () => {
+      expect((await lookupPublicProposal(TOKEN)).state).toBe('ok');
+    });
+  }
+  // Revoked gets the SAME answer as a token that was never ours.
+  await withPostgrest(serveProposal({ status: 'revoked' }), async () => {
+    expect((await lookupPublicProposal(TOKEN)).state).toBe('missing');
+  });
+  await withPostgrest(() => restJson([]), async () => {
+    expect((await lookupPublicProposal(TOKEN)).state).toBe('missing');
+  });
+  // A database we could not read is NOT a verdict about anybody's token.
+  await withPostgrest(() => restJson({ message: 'boom' }, 500), async () => {
+    expect((await lookupPublicProposal(TOKEN)).state).toBe('unreadable');
+  });
+  // Neither is a proposal that resolved but holds no lines.
+  await withPostgrest(
+    (call) => (call.url.includes('/proposals?') ? restJson([proposalRow()]) : restJson([])),
+    async () => {
+      expect((await lookupPublicProposal(TOKEN)).state).toBe('unreadable');
+    },
+  );
+});
+
+test('AC-S3-2: a malformed token is answered without a database round trip', async () => {
+  await withPostgrest(() => restJson([]), async (calls) => {
+    for (const bad of ['', 'abc', 'a'.repeat(42), 'a'.repeat(44), `${'a'.repeat(42)}!`]) {
+      expect((await lookupPublicProposal(bad)).state).toBe('missing');
+    }
+    expect(calls).toHaveLength(0);
+  });
+  // The regex is the schema's own recipe, not a looser guess.
+  expect(PROPOSAL_TOKEN_RE.source).toBe('^[A-Za-z0-9_-]{43}$');
+  expect(read('supabase/migrations/20260824000000_proposals.sql'))
+    .toContain("token ~ '^[A-Za-z0-9_-]{43}$'");
+});
+
+test('AC-S3-7: the client projection carries member TITLES and never member prices', async () => {
+  await withPostgrest(serveProposal(), async () => {
+    const found = await lookupPublicProposal(TOKEN);
+    if (found.state !== 'ok') throw new Error('expected ok');
+    const bundle = found.proposal.lines.find((l) => l.includes.length > 0);
+    expect(bundle?.includes).toEqual(['Rain shower head', 'Freestanding tub filler']);
+    // What the server component serializes into the page is this object, so the
+    // absence has to hold over the whole of it rather than over one field.
+    const serialized = JSON.stringify(found.proposal);
+    expect(serialized).not.toContain('250000');
+    expect(serialized).not.toContain('180000');
+    expect(serialized).not.toContain('price_cents":250000');
+    // And nothing the page never renders travels either.
+    expect(serialized).not.toContain(TOKEN);
+    expect(serialized).not.toContain('lead_id');
+    expect(serialized).not.toContain('client_email');
+  });
+});
+
+test('AC-S3-5: the locked subtotal and the full total are the lines arithmetic', async () => {
+  await withPostgrest(serveProposal(), async () => {
+    const found = await lookupPublicProposal(TOKEN);
+    if (found.state !== 'ok') throw new Error('expected ok');
+    expect(found.proposal.lockedTotalCents).toBe(LOCKED_TOTAL);
+    expect(found.proposal.lines.reduce((a, l) => a + l.price_cents, 0)).toBe(FULL_TOTAL);
+  });
+  expect(usd(FULL_TOTAL)).toBe('$19,300.00');
+  expect(usd(0)).toBe('$0.00');
+  expect(usd(1)).toBe('$0.01');
+});
+
+test('AC-S3-6: every icon the registry can name has a glyph on the client page', () => {
+  const view = read('src/app/proposal/[token]/ProposalView.tsx');
+  const map = view.slice(view.indexOf('const ICONS'), view.indexOf('function LineIcon'));
+  for (const cat of PROPOSAL_CATEGORIES) {
+    const key = /^[a-z]+$/.test(cat.icon) ? `${cat.icon}:` : `'${cat.icon}':`;
+    expect(map, `ICONS must draw '${cat.icon}'`).toContain(key);
+  }
+  // The unrecognized-category fallback is the same house the registry uses.
+  expect(view).toContain('ICONS[name] ?? House');
+});
+
+test('AC-S3-9: a submission that drops a locked line, or names a foreign one, is refused', async () => {
+  await withPostgrest(serveProposal(), async (calls) => {
+    const dropped = await submitProposal({
+      token: TOKEN,
+      // Only the optional lines: both locked lines dropped.
+      input: { included_line_ids: [L(3), L(4)], touched_line_ids: [] },
+      ipAddress: null, userAgent: null,
+    });
+    expect(dropped.status).toBe('refused');
+    expect(calls.some((c) => c.method === 'POST' && c.url.includes('proposal_submissions'))).toBe(false);
+  });
+
+  await withPostgrest(serveProposal(), async (calls) => {
+    const foreign = await submitProposal({
+      token: TOKEN,
+      input: {
+        included_line_ids: [...LINES.map((l) => l.id), '99999999-9999-4999-8999-999999999999'],
+        touched_line_ids: [],
+      },
+      ipAddress: null, userAgent: null,
+    });
+    expect(foreign.status).toBe('refused');
+    expect(calls.some((c) => c.method === 'POST' && c.url.includes('proposal_submissions'))).toBe(false);
+  });
+
+  // A revoked proposal accepts nothing, and says only what a dead link says.
+  await withPostgrest(serveProposal({ status: 'revoked' }), async () => {
+    const res = await submitProposal({
+      token: TOKEN,
+      input: { included_line_ids: LINES.map((l) => l.id), touched_line_ids: [] },
+      ipAddress: null, userAgent: null,
+    });
+    expect(res.status).toBe('missing');
+  });
+});
+
+test('AC-S3-10: the stored snapshot and total are built from the ROWS, not the payload', async () => {
+  await withPostgrest(serveProposal(), async (calls) => {
+    const res = await submitProposal({
+      token: TOKEN,
+      // The client declines the tile; everything else stays. Ids repeated on
+      // purpose: a doubled switch must not double-count.
+      input: { included_line_ids: [L(1), L(2), L(4), L(4)], touched_line_ids: [L(3)] },
+      ipAddress: '203.0.113.9', userAgent: 'x'.repeat(900),
+    });
+    expect(res.status).toBe('ok');
+    if (res.status !== 'ok') return;
+
+    const expected = LOCKED_TOTAL + 430000;
+    expect(res.record.totalCents).toBe(expected);
+    expect(res.record.included.map((l) => l.id)).toEqual([L(1), L(2), L(4)]);
+    expect(res.record.declined.map((l) => l.title)).toEqual(['Porcelain floor and wall tile']);
+
+    const write = calls.find((c) => c.method === 'POST' && c.url.includes('proposal_submissions'));
+    const row = (write?.body as Record<string, unknown>[])[0];
+    expect(row.total_cents).toBe(expected);
+    // The snapshot shape the domain requires, on every element.
+    for (const el of row.included_lines as Record<string, unknown>[]) {
+      expect(Object.keys(el).sort()).toEqual(['id', 'optional', 'price_cents', 'title']);
+      expect(Number.isInteger(el.price_cents)).toBe(true);
+    }
+    // Which is also what the schema's CHECK recomputes.
+    expect((row.included_lines as { price_cents: number }[])
+      .reduce((a, l) => a + l.price_cents, 0)).toBe(row.total_cents);
+    // The whole composition, locked lines included - not the toggles alone.
+    expect((row.included_lines as { optional: boolean }[]).filter((l) => !l.optional))
+      .toHaveLength(2);
+    // An attacker-length user agent is bounded before it reaches a TEXT column.
+    expect(String(row.user_agent)).toHaveLength(500);
+    expect(row.ip_address).toBe('203.0.113.9');
+  });
+});
+
+test('AC-S3-12: touched telemetry is filtered to optional lines that exist', async () => {
+  await withPostgrest(serveProposal(), async () => {
+    const res = await submitProposal({
+      token: TOKEN,
+      input: {
+        included_line_ids: LINES.map((l) => l.id),
+        // A locked line and a stranger, alongside one real optional line.
+        touched_line_ids: [L(1), L(3), '99999999-9999-4999-8999-999999999999'],
+      },
+      ipAddress: null, userAgent: null,
+    });
+    expect(res.status).toBe('ok');
+    if (res.status !== 'ok') return;
+    expect(res.record.touched.map((l) => l.id)).toEqual([L(3)]);
+  });
+  // An empty array is a legitimate answer, and the schema accepts it.
+  expect(ProposalSubmitSchema.parse({ included_line_ids: [L(1)] }).touched_line_ids).toEqual([]);
+});
+
+test('AC-S3-11: a re-submit is stored alongside the first and counted as a revision', async () => {
+  await withPostgrest(
+    (call) => {
+      if (call.url.includes('/proposals?')) return restJson([proposalRow({ status: 'sent' })]);
+      if (call.url.includes('/proposal_lines?')) return restJson(LINES);
+      // One prior submission, reported through Content-Range as PostgREST does.
+      if (call.url.includes('/proposal_submissions?')) {
+        return restJson([{ id: 'prior' }], 200, { 'content-range': '0-0/1' });
+      }
+      return restJson([]);
+    },
+    async (calls) => {
+      const res = await submitProposal({
+        token: TOKEN,
+        input: { included_line_ids: LINES.map((l) => l.id), touched_line_ids: [] },
+        ipAddress: null, userAgent: null,
+      });
+      expect(res.status).toBe('ok');
+      if (res.status !== 'ok') return;
+      expect(res.record.priorSubmissions).toBe(1);
+      expect(res.record.isRevision).toBe(true);
+      // Stored, never overwritten: an INSERT, with no filter naming an old row.
+      const write = calls.find((c) => c.method === 'POST' && c.url.includes('proposal_submissions'));
+      expect(write).toBeDefined();
+      expect(calls.some((c) => c.method === 'PATCH' && c.url.includes('proposal_submissions'))).toBe(false);
+      expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+      // And the alert says "revised" rather than announcing a first answer.
+      expect(buildProposalSubmissionEmail(record({ isRevision: true, priorSubmissions: 1 })).subject)
+        .toContain('Proposal revised');
+    },
+  );
+});
+
+test('AC-S3-13: the owner alert is itemized, sent on both channels, and never self-fetches', async () => {
+  const email = buildProposalSubmissionEmail(record({
+    declined: [{ id: L(3), title: 'Porcelain floor and wall tile', price_cents: 680000, optional: true }],
+    touched: [{ id: L(3), title: 'Porcelain floor and wall tile', price_cents: 680000, optional: true }],
+  }));
+  expect(email.subject).toBe('Proposal accepted: Sarah Whitfield - $19,300.00');
+  for (const line of LINES) {
+    expect(email.html, `email must itemize '${line.title}'`).toContain(line.title);
+    expect(email.text).toContain(line.title);
+  }
+  expect(email.html).toContain('$19,300.00');
+  expect(email.text).toContain('They turned down (1)');
+  // Internal mail keeps the noreply identity; the warm sender is the client's.
+  expect(PROPOSAL_ALERT_FROM).toContain('noreply@');
+
+  const telegram = buildProposalSubmissionTelegram(record());
+  expect(telegram).toContain('Proposal accepted');
+  expect(telegram).toContain('$19,300.00');
+  expect(telegram.length).toBeLessThanOrEqual(4096);
+  // A 200-line estimate clips the ITEMS, never the total in the header.
+  const huge = buildProposalSubmissionTelegram(record({
+    included: Array.from({ length: 200 }, (_, i) => ({
+      id: L(1), title: `Line item number ${i} with a deliberately long title`, price_cents: 100000, optional: false,
+    })),
+  }));
+  expect(huge.length).toBeLessThanOrEqual(4096);
+  expect(huge).toContain('$19,300.00');
+
+  // Both channels are attempted, and nothing is addressed at our own origin.
+  const env = { ...process.env };
+  process.env.RESEND_API_KEY = 'stub';
+  process.env.TELEGRAM_BOT_TOKEN = 'stub-bot';
+  process.env.TELEGRAM_CHAT_ID = '999';
+  process.env.NEXT_PUBLIC_SITE_URL = 'https://www.lavacagc.com';
+  try {
+    await withPostgrest(() => restJson({ id: 'stub-email-id' }), async (calls) => {
+      const outcome = await alertOwnerOfSubmission(record());
+      expect(outcome.email).toBe('sent');
+      expect(outcome.telegram).toBe('sent');
+      const hosts = calls.map((c) => new URL(c.url).host);
+      expect(hosts).toContain('api.resend.com');
+      expect(hosts).toContain('api.telegram.org');
+      // Cloudflare 403s a deployment's requests to itself - the notify modules
+      // are imported in-process, and this is what proves it stayed that way.
+      expect(hosts.some((h) => h.includes('lavacagc.com'))).toBe(false);
+      expect(hosts.some((h) => h.includes('localhost'))).toBe(false);
+    });
+  } finally {
+    process.env = env;
+  }
+});
+
+test('AC-S3-13b: a failed alert is logged and never turns a stored agreement into an error', async () => {
+  const env = { ...process.env };
+  delete process.env.RESEND_API_KEY;
+  delete process.env.TELEGRAM_BOT_TOKEN;
+  try {
+    await withPostgrest(() => restJson([]), async () => {
+      const outcome = await alertOwnerOfSubmission(record());
+      expect(outcome.email).not.toBe('sent');
+      expect(outcome.telegram).toBe('not_configured');
+    });
+  } finally {
+    process.env = env;
+  }
+});
+
+test('AC-S3-14: the route answers each failure as itself, and charges its own bucket', async () => {
+  // The happy path, end to end through the handler.
+  const env = { ...process.env };
+  delete process.env.RESEND_API_KEY;
+  delete process.env.TELEGRAM_BOT_TOKEN;
+  try {
+    await withPostgrest(serveProposal(), async (calls) => {
+      const res = await submitRequest(TOKEN, {
+        included_line_ids: LINES.map((l) => l.id), touched_line_ids: [],
+      });
+      expect(res.status).toBe(200);
+      expect((await res.json()).total_cents).toBe(FULL_TOTAL);
+      // The submission itself is written, and nothing else's bucket is spent.
+      expect(calls.some((c) => c.method === 'POST' && c.url.includes('proposal_submissions'))).toBe(true);
+      expect(calls.some((c) => c.url.includes('hc-access:'))).toBe(false);
+      // The bucket the limiter charges is NOT observable here: rateLimit.ts
+      // reads NEXT_PUBLIC_SUPABASE_URL at module scope, so in this process it
+      // is already fixed by the time the stub sets one, and the limiter fails
+      // open without issuing a request. That is its designed behaviour (it is
+      // availability-protective, not an auth gate) and it is exactly why the
+      // real bucket is asserted where a real server has a real URL: AC-R10
+      // pins the strings, and the e2e spec reads the row back off the stub.
+    });
+
+    // Unknown token: the generic dead end, and the identical answer a revoked
+    // proposal gets - nothing here tells one from the other.
+    await withPostgrest(() => restJson([]), async () => {
+      const unknown = await submitRequest('z'.repeat(43), { included_line_ids: [L(1)] });
+      expect(unknown.status).toBe(404);
+      const unknownBody = await unknown.json();
+      await withPostgrest(serveProposal({ status: 'revoked' }), async () => {
+        const revoked = await submitRequest(TOKEN, { included_line_ids: LINES.map((l) => l.id) });
+        expect(revoked.status).toBe(404);
+        expect((await revoked.json()).error).toBe(unknownBody.error);
+      });
+    });
+
+    // A malformed body is the caller's 400.
+    await withPostgrest(serveProposal(), async () => {
+      const res = await submitRequest(TOKEN, { included_line_ids: 'not-an-array' });
+      expect(res.status).toBe(400);
+    });
+
+    // WEB-022 at the API is a 400 with a sentence, not a constraint name.
+    await withPostgrest(serveProposal(), async () => {
+      const res = await submitRequest(TOKEN, { included_line_ids: [L(3)] });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain('not optional');
+    });
+
+    // Our outage is a 503 and is never reported as a bad link.
+    await withPostgrest(
+      (call) => (call.url.includes('rate_limits')
+        ? restJson([])
+        : restJson({ message: 'down' }, 500)),
+      async () => {
+        const res = await submitRequest(TOKEN, { included_line_ids: [L(1)] });
+        expect(res.status).toBe(503);
+        expect((await res.json()).error).toContain('our end');
+      },
+    );
+  } finally {
+    process.env = env;
+  }
+});
+
+test('AC-S3-16: the page is noindex, and its metadata names no client', () => {
+  const page = read('src/app/proposal/[token]/page.tsx');
+  expect(page).toContain('robots: { index: false, follow: false }');
+  expect(page).toContain("export const dynamic = 'force-dynamic'");
+  expect(page).toContain("title: 'Your proposal | La Vaca General Contractors'");
+  // The sitemap has never enumerated a tokenized route, and must not start.
+  expect(read('src/app/sitemap.ts')).not.toContain('proposal');
+});
+
+test('AC-S3-3: locked lines reach the page with nothing to flip', () => {
+  // The DOM half of this is owned by the e2e spec; what belongs here is that
+  // the component has no control to render for a locked line in the first
+  // place - LockedLine takes no toggle and is given none.
+  const view = read('src/app/proposal/[token]/ProposalView.tsx');
+  const locked = view.slice(view.indexOf('function LockedLine'), view.indexOf('function OptionalLine'));
+  expect(locked).not.toContain('input');
+  expect(locked).not.toContain('onToggle');
+  expect(locked).not.toContain('<button');
+});
+
+test('AC-S3-15: the booking line renders only when the booking URL is configured', () => {
+  const view = read('src/app/proposal/[token]/ProposalView.tsx');
+  expect(view).toContain('bookingUrl ?');
+  const page = read('src/app/proposal/[token]/page.tsx');
+  expect(page).toContain('NEXT_PUBLIC_BOOKING_URL');
+  // cleanEnv, like every other read of a dashboard-pasted value.
+  expect(page).toContain('cleanEnv(process.env.NEXT_PUBLIC_BOOKING_URL)');
+});
+
+test('AC-S3-17: the confirmation states what was sent and offers to send again', () => {
+  const view = read('src/app/proposal/[token]/ProposalView.tsx');
+  expect(view).toContain('Sent to Alex');
+  expect(view).toContain('Change something and send again');
+  expect(view).toContain('What you sent');
+});
+
+test('house style: no em dashes in anything this slice ships', () => {
+  const files = [
+    'src/lib/privatePages.ts',
+    'src/lib/proposals/publicView.ts',
+    'src/lib/proposals/submit.ts',
+    'src/lib/proposals/ownerAlert.ts',
+    'src/lib/proposals/money.ts',
+    'src/lib/proposals/clientPage.ts',
+    'src/app/proposal/[token]/page.tsx',
+    'src/app/proposal/[token]/ProposalView.tsx',
+    'src/app/api/proposal/[token]/submit/route.ts',
+  ];
+  for (const f of files) {
+    expect(read(f), `${f} must not use an em dash`).not.toContain('—');
+  }
+});

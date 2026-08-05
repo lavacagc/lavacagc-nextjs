@@ -255,3 +255,89 @@ npx playwright test tests/proposal-pod-slice2-browser.spec.ts    # the importer 
 - `/proposal/[token]` itself, its toggles and its running total, and the submit route (WEB-022, WEB-023). Slice 3, which also flips `CLIENT_PAGE_LIVE`.
 - Client-facing analytics (WEB-027).
 - Retention of the records this slice creates is disclosed in the privacy policy (v2.7, `src/content/privacy-policy-content.md`), which owns it.
+
+## Slice 3 - the client page, the submit-back, and the flag flip
+
+Approved from the plan artifact of 5 Aug 2026 (`.lavish/proposal-pod-slice3-plan.html`), with four owner decisions taken in that review.
+This is the half of the pod a client touches, and it is what makes the admin's Send button real.
+
+### Decisions taken on the slice 3 plan
+
+- **One slice, including submit-back.** The original four-slice plan put the page in S3 and the submit route in S4.
+  The delivery email shipped in slice 2 already promises "when it reads right, send it back to us from the page" (`deliveryEmail.ts`), so flipping `CLIENT_PAGE_LIVE` over a read-only page would have put an email that lies in a client's inbox.
+  Folding them together also costs no migration: slice 1 built `proposal_submissions`, the snapshot domain and the total-is-the-sum CHECK, and nothing had written to them.
+- **A draft resolves.** Copy link is offered on a draft in the roster, so the link has to open - it is how an estimate is proof-read from the client's side before Send.
+  Only `revoked` dead-ends.
+- **Confirm, then allow adjusting.** D4 stores every submission; the page confirms with what was sent and offers a quiet way back to the switches.
+  Every revision alerts, and the roster reports the latest total.
+- **Analytics is left exactly as it is.** The scoping pass found that `layout.tsx` loads Microsoft Clarity and the Meta Pixel on every page of `www.lavacagc.com` gated only on GPC, and that `Analytics.tsx` excludes only `/admin`, `/vaca-mgmt` and `/auth` from GA4 - so a proposal page sends its own token to three third parties, and Clarity session-records a page of private pricing.
+  The owner's call was to leave it and carry the finding as a known issue.
+  **AC-S3-16 is written to match that**: it asserts noindex, no site chrome and no cross-origin request of the page's own, and deliberately does NOT assert analytics silence, because an AC claiming otherwise would go green while the token was in flight.
+  AC-R7 asserts the two analytics files are untouched, so the decision stays a decision rather than drifting.
+
+### Slice 3 - what ships here
+
+- `src/app/proposal/[token]/page.tsx` - the server component: three states, `force-dynamic`, noindex, rate-limited lookup.
+- `src/app/proposal/[token]/ProposalView.tsx` - the switches, the running total, the submit and the confirmation.
+- `src/lib/proposals/publicView.ts` - the token lookup and the client-safe projection that strips member prices before anything is serialized.
+- `src/app/api/proposal/[token]/submit/route.ts` - the one write a client can make.
+- `src/lib/proposals/submit.ts` - the WEB-022 guard, the server re-sum, and the insert.
+- `src/lib/proposals/ownerAlert.ts` - the itemized owner email and the Telegram message.
+- `src/lib/proposals/money.ts` - one formatter, shared by the page, the alert and the tests.
+- `src/lib/privatePages.ts` - the one list of token-reached routes, and the four widgets that now consult it.
+- `src/lib/proposals/clientPage.ts` - `CLIENT_PAGE_LIVE` flipped to true, in the same commit as the route.
+- `src/lib/notify/sendEmail.ts` + `src/app/vaca-mgmt/emails/page.tsx` - one added `EmailCategory`, and the audit filter that a `Record` over the union forces to keep up.
+- `src/middleware.ts` - `/api/proposal/` registered PUBLIC, alongside the other tokenized APIs.
+- `tests/proposal-pod-slice3.spec.ts` and `tests/proposal-pod-slice3-e2e.spec.ts`.
+- **No migration.** A production database at `20260827000000` runs this slice untouched, which AC-R8 asserts.
+
+### The three states, and why they are three
+
+`ok` is a proposal we found and may serve.
+`missing` is a token that is not ours, a token that is malformed, or a proposal that is revoked - ONE answer for all three, because a page that told them apart would let anyone test whether a token is live.
+`unreadable` is a database we could not ask, and it is a different page: telling somebody holding a good link that it is invalid sends them away for good, and this link is holding prices they were invited to answer.
+A proposal that resolves but holds no lines is `unreadable` too, not `missing` - both write paths guarantee at least one line, so reaching that state means something went wrong on our side.
+
+### What the client cannot do, and where that is enforced
+
+- **Alter a locked line.** The page renders locked lines with no control at all - not a disabled one - and the API refuses a payload that omits a locked id (WEB-022).
+- **Send us a price.** The payload is line ids and nothing else. Every number in the stored record is re-read from `proposal_lines` under the secret key and re-summed server-side, so a tampered payload can only name a different set of optional ids, which is what the switches are for.
+- **See a member price.** `publicView` reduces `bundle_members` to titles before the projection exists, and the browser AC searches the rendered HTML for every member price with digit boundaries.
+- **Reach another proposal's lines.** An id that is not part of this proposal is refused rather than dropped.
+
+### The owner alert
+
+Two channels, awaited through `Promise.allSettled` before the response returns - Vercel freezes the instance once a response is sent, so a fire-and-forget alert simply never happens.
+The notify modules are imported in-process and never self-fetched, because Cloudflare 403s a deployment's requests to itself.
+Internal mail, so the `noreply@` identity per the house from-address convention; the warm `alex@` sender stays with the client's own delivery email.
+A failed alert is logged loudly and never turns a stored agreement into an error on the client's screen.
+
+**"Revised" is its own recorded fact, not a count.** The prior-submission read asks for one row with `count=exact`; the exact total arrives on `Content-Range`, which a proxy can strip and which PostgREST answers with `*` when it did not count.
+A row coming back is proof of a prior submission whether or not the header says how many, so `isRevision` and `priorSubmissions` are recorded separately.
+Folding them together announced a genuine revision to the owner as a first answer, which the browser AC caught.
+
+### Two defects the browser suite caught, both worth reusing
+
+- **A visually hidden checkbox has no hit target.** The switch's input was `sr-only`, which is a 1px clipped box, so the only thing that could ever be clicked was the label around it and anything addressing the control itself - assistive tech, an automated check, a stylus tap landing on the switch rather than the row - hit a full-stop-sized box or the section behind it.
+  The input now fills its 44px target at `opacity: 0`.
+- **Suppressing a widget's RENDER does not stop its FETCH.** `ReviewToast` still queried Supabase for marketing copy and `SmartBanner` still fetched `/api/banners` on a page neither could show - on admin screens as well as this one.
+  Both now return before the request rather than after it.
+
+### Where the slice 3 ACs live, and how to run them
+
+```sh
+npx playwright test tests/proposal-pod-slice3.spec.ts          # modules, route, guards, regression pins
+```
+
+- `tests/proposal-pod-slice3.spec.ts` drives the modules and the route against a PostgREST stubbed at the fetch boundary, and holds the regression half (`AC-R1` to `AC-R12`).
+- `tests/proposal-pod-slice3-e2e.spec.ts` owns every AC that only exists once React is mounted, and is OFF unless `PROPOSAL_E2E=1`: it needs a Next server started against `tests/helpers/intake-stub.mjs`, which the gate cannot provide.
+  Its run recipe is in the file header.
+  `RESEND_API_KEY` is blanked there deliberately, so the alert path runs for real and the email is skipped rather than delivered.
+- A **production** build cannot be repointed at the stub by exporting `NEXT_PUBLIC_SUPABASE_URL`: Next inlines every `process.env.NEXT_PUBLIC_*` at build time, in server code as well as client.
+  `tests/helpers/outbound-fetch.cjs` gained an opt-in `STUB_REWRITE_ORIGIN` that redirects the baked origin at the stub, so an E2E run needs neither a rebuild nor the developer's own dev server.
+
+### Out of scope for slice 3
+
+- Third-party analytics suppression on tokenized pages (owner decision above). The finding stands; the fix is about twenty lines and one spec whenever it is wanted.
+- WEB-026 visual catalog and WEB-027 telemetry proper. `touched_lines` is the approved partial.
+- Surfacing on the roster that a proposal with submissions has been re-imported. The old submission stays readable through its own snapshot, but the client's live page then shows a composition their submission no longer matches.

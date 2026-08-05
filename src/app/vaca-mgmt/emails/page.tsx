@@ -63,6 +63,7 @@ const FILTERABLE: Record<EmailCategory, true> = {
   crew_dispatch: true,
   crew_dispatch_cancelled: true,
   proposal_delivery: true,
+  proposal_submission: true,
   other: true,
 };
 

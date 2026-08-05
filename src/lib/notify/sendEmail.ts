@@ -46,6 +46,8 @@ export type EmailCategory =
   | 'crew_dispatch_cancelled'
   /** The client's tokenized proposal link (proposal pod slice 2). Transactional. */
   | 'proposal_delivery'
+  /** Internal: the client answered their proposal (slice 3). Never customer-facing. */
+  | 'proposal_submission'
   | 'other';
 
 interface TrackedEmailBase {

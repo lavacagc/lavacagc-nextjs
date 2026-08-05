@@ -6,6 +6,7 @@ import { Phone, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { trackEvent, trackPhoneClick } from '@/services/analyticsManager';
 import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
+import { isPrivateTokenPage } from '@/lib/privatePages';
 
 export default function StickyCTA() {
   const pathname = usePathname();
@@ -40,10 +41,16 @@ export default function StickyCTA() {
   // the screen, so the bar lands on top of them - a lead tapping the last price
   // option would hit "Free Estimate" and be sent to /contact mid-conversation.
   // This lead already asked us to call them; there is nothing left to sell.
+  //
+  // And on every private tokenized page (isPrivateTokenPage): /proposal pins
+  // this bar over the proposal's own "Send this back to Alex" button on a
+  // phone, so the one action the page exists for is underneath a marketing CTA
+  // aimed at somebody we have already won. /intake was the same argument and is
+  // now covered by the shared list rather than by its own clause.
   const isSuppressed = SUPPRESSED_PATHS.includes(pathname)
     || pathname.startsWith('/home-care')
     || pathname.startsWith('/vaca-mgmt')
-    || pathname.startsWith('/intake');
+    || isPrivateTokenPage(pathname);
 
   useEffect(() => {
     if (isSuppressed) return;

@@ -102,6 +102,7 @@ const PUBLIC_ROUTES = [
   '/api/newsletter/',      // Monthly-newsletter signup (rate-limited, self-guarded)
   '/api/consent/',         // TCPA consent logging (rate-limited, self-guarded)
   '/api/crew/',            // Crew visit confirm — auth is the per-assignment token
+  '/api/proposal/',        // Client proposal submit — auth is the per-proposal token, self-guarded
 ];
 
 function isPublicRoute(pathname: string): boolean {

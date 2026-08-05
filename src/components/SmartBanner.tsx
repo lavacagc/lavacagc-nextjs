@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
+import { isPrivateTokenPage } from '@/lib/privatePages';
 import { X, Phone, ArrowRight, Eye, MessageCircle } from 'lucide-react';
 import { useVisitor } from '@/hooks/useVisitor';
 import { type BannerRule } from '@/lib/bannerRules';
@@ -387,6 +388,11 @@ function SmartBannerInner() {
 
   // Fetch banner rules from DB
   useEffect(() => {
+    // Not on a private tokenized page, where this component returns null below
+    // whatever the rules say: fetching them there is a request issued to
+    // decide something already decided, on a page whose whole job is to be
+    // quiet. `rulesLoaded` stays false, which is the "nothing to show" state.
+    if (isPrivateTokenPage(pathname)) return;
     // If previewing, fetch ALL banners (including disabled) so we can find the preview target
     const url = previewId ? '/api/banners/admin' : '/api/banners';
     fetch(url)
@@ -396,7 +402,7 @@ function SmartBannerInner() {
         setRulesLoaded(true);
       })
       .catch(() => setRulesLoaded(true));
-  }, [previewId]);
+  }, [previewId, pathname]);
 
   const findMatchingRule = useCallback(() => {
     if (!rulesLoaded || rules.length === 0) return null;
@@ -481,6 +487,11 @@ function SmartBannerInner() {
 
   // Keep the Home Care portal chrome-free (matches StickyCTA / ExitIntentPopup).
   if (pathname.startsWith('/home-care')) return null;
+  // And the private tokenized pages. This one needs a CODE-level guard rather
+  // than a banner rule: `evaluateRule` only filters on `show_on_paths` when the
+  // rule sets one, so every promotion with an empty path list matches every
+  // path - including a page showing one client's private pricing.
+  if (isPrivateTokenPage(pathname)) return null;
   if (!visible || !activeRule) return null;
 
   const bannerElement = (() => {

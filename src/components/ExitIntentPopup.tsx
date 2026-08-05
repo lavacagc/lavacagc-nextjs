@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { usePathname } from 'next/navigation';
+import { isPrivateTokenPage } from '@/lib/privatePages';
 import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
 import { readHcKnown } from '@/lib/homecare/knownClient';
 import { trackEvent } from '@/services/analyticsManager';
@@ -50,7 +51,12 @@ const ExitIntentPopup = () => {
       pathname.startsWith('/do-not-sell') ||
       pathname.startsWith('/privacy-policy') ||
       pathname.startsWith('/terms-and-conditions') ||
-      pathname.startsWith('/home-care')
+      pathname.startsWith('/home-care') ||
+      // Private tokenized pages. Somebody reading their own priced proposal is
+      // already a customer, and this fires exactly when they move to leave -
+      // which on /proposal is the moment they are closing a page we asked them
+      // to answer. A newsletter signup is the wrong thing to say there.
+      isPrivateTokenPage(pathname)
     ) {
       return false;
     }
