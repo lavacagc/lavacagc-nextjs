@@ -48,7 +48,7 @@ export function buildProposalDeliveryEmail(args: DeliveryEmailArgs): {
     `  <tr><td class="px" align="center" style="padding:26px 40px 0 40px">
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%">
       <tr><td align="center" bgcolor="${ORANGE}" style="background:${ORANGE};border-radius:12px;padding:16px 24px">
-        <a href="${proposalUrl}" style="display:block;font-family:${FF};font-size:16px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none">Open my proposal</a>
+        <a href="${esc(proposalUrl)}" style="display:block;font-family:${FF};font-size:16px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none">Open my proposal</a>
       </td></tr>
     </table>
   </td></tr>`,
@@ -59,7 +59,7 @@ export function buildProposalDeliveryEmail(args: DeliveryEmailArgs): {
       ? [`  <tr><td class="px" style="padding:20px 40px 0 40px">
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;background:${PANEL_BG};border-radius:12px">
       <tr><td style="padding:16px 18px;font-family:${FF};font-size:13.5px;line-height:20px;mso-line-height-rule:exactly;color:${MUTED}">
-        <strong style="color:${INK}">Want to talk it through?</strong> <a href="${bookingUrl}" style="color:${ORANGE_DEEP};font-weight:bold;text-decoration:underline">Book a time that suits you</a> and we&rsquo;ll walk the proposal together.
+        <strong style="color:${INK}">Want to talk it through?</strong> <a href="${esc(bookingUrl)}" style="color:${ORANGE_DEEP};font-weight:bold;text-decoration:underline">Book a time that suits you</a> and we&rsquo;ll walk the proposal together.
       </td></tr>
     </table>
   </td></tr>`]

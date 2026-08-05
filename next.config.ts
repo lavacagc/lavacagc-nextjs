@@ -134,9 +134,14 @@ const nextConfig: NextConfig = {
               //   (GPC still suppresses all of these — the ad-tech gates in analyticsManager
               //   are independent of the CSP allowlist.)
               // In development only, the local Supabase stack (auth + REST on
-              // 127.0.0.1) joins connect-src so browser-level admin E2E can run
-              // against it - the slice-2 AC contract requires those runs. The
-              // production header is byte-identical to before.
+              // 127.0.0.1) joins connect-src, so an interactive `next dev`
+              // session can drive the admin surfaces against it - the pre-gate
+              // admin run-throughs. This does NOT cover the checked-in
+              // Playwright suite: Next resolves these headers at BUILD time and
+              // playwright.config.ts serves `npm run start` (a production
+              // build), so the exception is absent from those runs - which stub
+              // the network with page.route and never need it. The production
+              // header is byte-identical to before.
               `connect-src 'self' data: blob: ${process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:* http://localhost:* ' : ''}https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://api.ipify.org https://www.google.com https://www.recaptcha.net https://recaptcha.google.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://stats.g.doubleclick.net https://ad.doubleclick.net https://*.a.run.app https://*.on.aws`,
               "worker-src 'self' blob:",
               "frame-src 'self' https://www.googletagmanager.com https://www.google.com https://www.recaptcha.net https://recaptcha.google.com",

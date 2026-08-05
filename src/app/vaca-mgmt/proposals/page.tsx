@@ -117,6 +117,8 @@ const DONE: Record<LifecycleAction, string> = {
 const dollars = (cents: number) =>
   (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
+const plural = (n: number, one: string, many = `${one}s`) => (n === 1 ? one : many);
+
 let nextKey = 0;
 const rowKey = () => `row-${nextKey++}`;
 
@@ -653,7 +655,7 @@ export default function ProposalsAdminPage() {
                         'Counts unavailable'
                       ) : (
                         <>
-                          {p.line_count} lines · {p.submission_count} submission{p.submission_count === 1 ? '' : 's'}
+                          {p.line_count} {plural(p.line_count, 'line')} · {p.submission_count} {plural(p.submission_count, 'submission')}
                           {p.latest_total_cents != null ? ` · latest ${dollars(p.latest_total_cents)}` : ''}
                         </>
                       )}
@@ -744,7 +746,9 @@ export default function ProposalsAdminPage() {
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 The importer was emptied when you armed this, so what you load below is what this proposal will hold. Its
-                {reimportTarget.line_count == null ? ' current lines are' : ` ${reimportTarget.line_count} current lines are`} replaced outright, and that cannot be undone from here.
+                {reimportTarget.line_count == null
+                  ? ' current lines are'
+                  : ` ${reimportTarget.line_count} current ${plural(reimportTarget.line_count, 'line is', 'lines are')}`} replaced outright, and that cannot be undone from here.
               </p>
             </div>
           ) : null}

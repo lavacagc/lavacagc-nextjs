@@ -713,6 +713,28 @@ test.describe('proposals admin, in the browser', () => {
     await expect(row.getByRole('button', { name: /revoke/i })).toBeEnabled();
   });
 
+  test('B19b: a one-line proposal counts in the singular, in the roster and on the armed card', async ({ page, context, baseURL }) => {
+    // Two halves of one sentence disagreeing about grammar ("1 lines - 1
+    // submission") reads as a rendering bug in a panel whose whole job is to be
+    // trusted about a real client's proposal.
+    await openRoster(page, context, baseURL!, {
+      proposals: [{ ...RACHEL, line_count: 1, submission_count: 1, latest_total_cents: 120000 }],
+      counts_available: true,
+      total: 1,
+      truncated: false,
+    });
+
+    const row = page.getByTestId(`proposal-${RACHEL.id}`);
+    await expect(row).toContainText('1 line · 1 submission');
+    await expect(row).not.toContainText('1 lines');
+    await expect(row).not.toContainText('1 submissions');
+
+    // The armed card carries the same count, so it agrees with the row above it.
+    page.once('dialog', (d) => d.accept());
+    await page.getByTestId('reimport-btn').first().click();
+    await expect(page.getByTestId('reimport-armed')).toContainText('Its 1 current line is replaced outright');
+  });
+
   test('B20 (AC6m): a truncated roster says so even when the exact total is unreadable', async ({ page, context, baseURL }) => {
     // Content-Range can go missing three ways (no header, PostgREST's uncounted
     // `*`, a proxy that mangles it), and a page that stopped at the cap with

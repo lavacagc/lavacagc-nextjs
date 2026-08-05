@@ -950,6 +950,27 @@ test('AC7: the delivery email carries the private link, warm sender, booking slo
     clientName: 'Rachel', proposalTitle: 'T', proposalUrl: 'https://x/proposal/t',
   });
   expect(without.html).not.toContain('Book a time');
+
+  // Both hrefs are escaped for the attribute they sit in, the same as the
+  // shell's cta() does. A booking URL normally carries a query string, and a
+  // raw & there is one parameter name away from a legacy named reference a
+  // mail client resolves silently - a broken link only the recipient sees.
+  const query = buildProposalDeliveryEmail({
+    clientName: 'Rachel', proposalTitle: 'T',
+    proposalUrl: 'https://www.lavacagc.com/proposal/tok123?utm_source=email&utm_medium=proposal',
+    bookingUrl: 'https://cal.example/lavaca?hide_gdpr_banner=1&primary_color=ff6a1a',
+  });
+  expect(query.html).toContain('href="https://cal.example/lavaca?hide_gdpr_banner=1&amp;primary_color=ff6a1a"');
+  expect(query.html).toContain('href="https://www.lavacagc.com/proposal/tok123?utm_source=email&amp;utm_medium=proposal"');
+  // The plain text copy is not markup - it carries the URLs verbatim.
+  expect(query.text).toContain('?hide_gdpr_banner=1&primary_color=ff6a1a');
+
+  // A quote cannot break out of the attribute and hang new markup off it.
+  const hostile = buildProposalDeliveryEmail({
+    clientName: 'Rachel', proposalTitle: 'T', proposalUrl: 'https://x/p" onmouseover="alert(1)',
+  });
+  expect(hostile.html).not.toContain('onmouseover="alert(1)"');
+  expect(hostile.html).toContain('&quot; onmouseover=&quot;alert(1)');
   // Warm customer-facing sender, per the house From convention.
   expect(PROPOSAL_FROM).toContain('Alex from La Vaca GC');
   expect(PROPOSAL_FROM).toContain('alex@email.lavaca.link');
