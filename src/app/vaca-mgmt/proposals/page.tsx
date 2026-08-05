@@ -83,8 +83,14 @@ export default function ProposalsAdminPage() {
   /** What the search box holds, and the term the roster on screen answers. */
   const [search, setSearch] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
-  /** Matching proposals in total, so a page that stops at the cap says so. */
+  /** Matching proposals in total; null when the count could not be read. */
   const [rosterTotal, setRosterTotal] = useState<number | null>(null);
+  /**
+   * Whether this page stopped at the server's cap. Separate from the total
+   * because the total can be unreadable, and a truncated roster that says
+   * nothing is exactly the silent cut-off the search box exists to answer.
+   */
+  const [rosterTruncated, setRosterTruncated] = useState(false);
 
   const loadRoster = useCallback(async (term: string) => {
     setRosterError(null);
@@ -96,6 +102,7 @@ export default function ProposalsAdminPage() {
       setRoster(body.proposals);
       setCountsAvailable(body.counts_available !== false);
       setRosterTotal(typeof body.total === 'number' ? body.total : null);
+      setRosterTruncated(body.truncated === true);
       setActiveSearch(q);
     } catch {
       // A failed read is an outage message, never an empty roster.
@@ -313,6 +320,13 @@ export default function ProposalsAdminPage() {
 
   const create = async () => {
     setBusy(true);
+    // Re-import lands on a row already in view, so its filter is left alone. A
+    // NEW proposal has no such guarantee: reloading under the term that happened
+    // to be in the box hid it entirely, and a create that appears to have done
+    // nothing is one an admin presses again - a duplicate proposal for a real
+    // client. So a create clears the search and comes back to the whole roster,
+    // where the row it just made is at the top.
+    const wasReimport = reimportTarget != null;
     try {
       if (reimportTarget) {
         const res = await fetch(`/api/admin/proposals/${reimportTarget.id}`, {
@@ -341,7 +355,8 @@ export default function ProposalsAdminPage() {
       resetImporter();
       setClientName(''); setClientEmail(''); setProposalTitle('');
       setReimportTarget(null);
-      await loadRoster(activeSearch);
+      if (!wasReimport) setSearch('');
+      await loadRoster(wasReimport ? activeSearch : '');
     } catch (err) {
       toast({ title: 'Could not save', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
     } finally {
@@ -451,10 +466,12 @@ export default function ProposalsAdminPage() {
             </p>
           ) : (
             <div className="space-y-2">
-              {rosterTotal != null && rosterTotal > roster.length ? (
+              {rosterTruncated ? (
                 <p className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground" data-testid="roster-truncated">
-                  Showing {roster.length} of {rosterTotal}{activeSearch ? ' matching' : ''} proposals, most recently
-                  updated first. Search by client name, email or title to reach any of the rest - every proposal stays revocable.
+                  {rosterTotal != null && rosterTotal > roster.length
+                    ? `Showing ${roster.length} of ${rosterTotal}${activeSearch ? ' matching' : ''} proposals, most recently updated first.`
+                    : `Showing the first ${roster.length}${activeSearch ? ' matching' : ''} proposals, most recently updated first.`}
+                  {' '}Search by client name, email or title to reach any of the rest - every proposal stays revocable.
                 </p>
               ) : null}
               {countsAvailable ? null : (

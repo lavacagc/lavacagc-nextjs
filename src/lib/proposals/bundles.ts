@@ -26,14 +26,24 @@ export interface BundleMember {
 }
 
 /**
- * The member as the admin's browser holds it: the persisted shape plus the
- * description the CSV supplied. The description exists so that unbundling is
- * lossless in the preview - it is NEVER persisted (toStoredMembers strips it,
- * and the store's schema would strip it again), because the storage contract
- * for bundle_members is titles and prices only.
+ * The member as the admin's browser holds it: the persisted shape plus the two
+ * things the preview knows and storage deliberately does not.
+ *
+ * `description` makes unbundling lossless. `optional` is the member's EFFECTIVE
+ * verdict at the moment it was bundled - the registry's, or the admin's own
+ * per-line override on top of it - and it is the single source of truth for
+ * what "locked member" means, because it is the same value composeBundle reads
+ * to decide whether the bundle itself is locked. Re-deriving that verdict from
+ * the title instead lets the two disagree exactly where it matters: a line the
+ * admin locked by hand still reads optional in the registry.
+ *
+ * Neither field is EVER persisted (toStoredMembers strips both, and the store's
+ * schema would strip them again): the storage contract for bundle_members is
+ * titles and prices only.
  */
 export interface PreviewBundleMember extends BundleMember {
   description?: string;
+  optional?: boolean;
 }
 
 /** Narrow preview members to the shape bundle_members is allowed to store. */
@@ -63,7 +73,13 @@ export function composeBundle(inputs: BundleInput[], name?: string): ComposedBun
   const members = inputs.flatMap((r) =>
     r.members && r.members.length > 0
       ? r.members
-      : [{ title: r.title, price_cents: r.priceCents, description: r.description }]);
+      : [{
+        title: r.title,
+        price_cents: r.priceCents,
+        description: r.description,
+        // The SAME flag the bundle's own verdict is computed from below.
+        optional: r.optional,
+      }]);
   return {
     title: name ?? `Bundle (${members.length} items)`,
     priceCents: members.reduce((a, m) => a + m.price_cents, 0),
@@ -81,20 +97,33 @@ export function composeBundle(inputs: BundleInput[], name?: string): ComposedBun
  * the admin's per-line override can undo that - deliberately, it is the
  * designed backstop - but a bundle names only itself on screen, so the override
  * otherwise hides which structural work it just put behind a client toggle.
- * The verdict is re-derived from the registry, exactly as restoreMembers does
- * it: bundle_members carries titles and prices only, so the title is all there
- * is to judge by, and an unrecognized title counts as locked.
+ *
+ * The verdict read here is the member's own effective flag: the exact value
+ * composeBundle summed to decide the bundle was locked in the first place, so
+ * the guard cannot disagree with the badge it is guarding. Re-deriving it from
+ * the registry silently missed the case the guard exists for - a line the admin
+ * locked BY HAND, which the registry still calls optional, locking the bundle
+ * and then flipping it with nothing asked. The registry is the fallback only
+ * for members with no flag (a bundle read back from storage, which kept titles
+ * and prices only), and there an unrecognized title still counts as locked.
  */
 export function lockedMemberTitles(members: PreviewBundleMember[]): string[] {
-  return members.filter((m) => !categorizeLine(m.title).optional).map((m) => m.title);
+  return members
+    .filter((m) => !(m.optional ?? categorizeLine(m.title).optional))
+    .map((m) => m.title);
 }
 
 /**
- * Restore a bundle's members as standalone lines, re-badged by the registry
- * (the member title is all the CLIENT-facing contract kept, so its verdict is
- * recomputed - same fail-safe: unknown restores locked). The description comes
- * back when the preview still carries it; a bundle read back from storage has
- * none, so it restores empty.
+ * Restore a bundle's members as standalone lines.
+ *
+ * A member the preview still holds comes back exactly as it went in, override
+ * and all: bundling and unbundling is a round trip the admin should be able to
+ * take without losing the verdicts they set by hand. Only a member with no flag
+ * - a bundle read back from storage, where the CLIENT-facing contract kept
+ * titles and prices alone - is re-badged by the registry, on the same fail-safe:
+ * unknown restores locked. The category always comes from the registry, which
+ * is the only thing that ever set it. The description comes back when the
+ * preview still carries it, and restores empty when it does not.
  */
 export function restoreMembers(members: PreviewBundleMember[]): {
   title: string; description: string; priceCents: number; optional: boolean; category: string;
@@ -105,7 +134,7 @@ export function restoreMembers(members: PreviewBundleMember[]): {
       title: m.title,
       description: m.description ?? '',
       priceCents: m.price_cents,
-      optional: verdict.optional,
+      optional: m.optional ?? verdict.optional,
       category: verdict.key,
     };
   });

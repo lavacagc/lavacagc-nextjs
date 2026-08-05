@@ -433,6 +433,86 @@ test('AC6j: every proposal stays reachable past the roster cap, by search and by
     .toContain(`request.nextUrl.searchParams.get('search')`);
 });
 
+test('AC6m: a truncated roster says so even when the exact total is unreadable', async () => {
+  const proposal = (id: string) => ({
+    id, token: 'a'.repeat(43), client_name: `Client ${id}`, client_email: null,
+    title: 'Your bathroom remodel', status: 'sent', lead_id: null, sent_at: null,
+    revoked_at: null, created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-04T00:00:00Z',
+  });
+  const env = { ...process.env };
+  const realFetch = globalThis.fetch;
+  process.env.SUPABASE_SECRET_KEY = 'stub-key';
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://postgrest.stub';
+
+  /** range = whatever Content-Range the stack returns, or none at all. */
+  const stub = (count: number, range: string | null) => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      if (String(input).includes('/rpc/')) return new Response('[]', { status: 500 });
+      return new Response(JSON.stringify(Array.from({ length: count }, (_, i) => proposal(`p${i}`))), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(range ? { 'Content-Range': range } : {}),
+        },
+      });
+    }) as typeof fetch;
+  };
+
+  try {
+    const { listProposals, ROSTER_LIMIT } = await import('../src/lib/proposals/store');
+
+    // The three ways the count goes missing: no header, PostgREST's uncounted
+    // `*`, and a proxy that mangles it. A full page must still say it is full.
+    for (const range of [null, '0-199/*', '0-199/not-a-number']) {
+      stub(ROSTER_LIMIT, range);
+      const page = await listProposals();
+      expect(page.total, `range ${String(range)} yields no total`).toBeNull();
+      expect(page.truncated, `range ${String(range)} must still report truncation`).toBe(true);
+    }
+
+    // Counted and truncated: both signals agree.
+    stub(ROSTER_LIMIT, `0-199/312`);
+    const counted = await listProposals();
+    expect(counted.total).toBe(312);
+    expect(counted.truncated).toBe(true);
+
+    // A short page is NOT truncated, with or without a count.
+    stub(3, '0-2/3');
+    expect((await listProposals()).truncated).toBe(false);
+    stub(3, null);
+    expect((await listProposals()).truncated).toBe(false);
+    stub(0, null);
+    expect((await listProposals()).truncated).toBe(false);
+  } finally {
+    globalThis.fetch = realFetch;
+    process.env = env;
+  }
+
+  // The page renders the notice off the flag, so neither case is silent, and
+  // the total only fills in the number when it is known.
+  const pageSrc = read('src/app/vaca-mgmt/proposals/page.tsx');
+  expect(pageSrc).toContain('{rosterTruncated ? (');
+  expect(pageSrc).toContain('setRosterTruncated(body.truncated === true)');
+  expect(pageSrc).toContain('Showing the first ${roster.length}');
+  expect(read('src/app/api/admin/proposals/route.ts'))
+    .toContain('counts_available, total, truncated });');
+});
+
+test('AC6n: a created proposal is visible on the roster, never hidden by the search that was open', () => {
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  // Reloading under whatever term happened to be in the box hid the brand new
+  // proposal entirely, and a create that looks like it did nothing gets pressed
+  // again - a duplicate proposal for a real client.
+  expect(page).toContain('const wasReimport = reimportTarget != null;');
+  expect(page).toContain("if (!wasReimport) setSearch('');");
+  expect(page).toContain("await loadRoster(wasReimport ? activeSearch : '');");
+  // The old shape reloaded under the active term unconditionally.
+  expect(page).not.toContain('setReimportTarget(null);\n      await loadRoster(activeSearch);');
+  // Re-import keeps its filter: that row already matches, and it is the row the
+  // admin is working on.
+  expect(page).toContain('await loadRoster(activeSearch);');
+});
+
 test('AC6k: a delivered email whose status write fails is reported as delivered, and retried', async () => {
   const env = { ...process.env };
   const realFetch = globalThis.fetch;
@@ -635,10 +715,37 @@ test('AC10i: turning a locked bundle optional asks first, and names what it woul
   ])!;
   expect(b.optional).toBe(false);
   expect(lockedMemberTitles(b.members)).toEqual(['Demolition & prep']);
-  // Re-derived from the registry, same fail-safe as restoreMembers: a title the
-  // registry does not recognize counts as locked.
-  expect(lockedMemberTitles([{ title: 'Zorble calibration', price_cents: 1 }]))
-    .toEqual(['Zorble calibration']);
+
+  // The case a registry re-derivation silently missed: BOTH lines are
+  // registry-optional, and the admin locked one BY HAND before combining. The
+  // bundle is locked because composeBundle read that override, so the guard has
+  // to read the same flag - asking off the registry instead returned [] and let
+  // the flip through with nothing asked, in the one case it was written for.
+  const adminLocked = composeBundle([
+    { title: 'Vanity - double sink', priceCents: 340000, optional: false, category: 'cabinets' },
+    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true, category: 'tile' },
+  ])!;
+  expect(adminLocked.optional).toBe(false);
+  expect(lockedMemberTitles(adminLocked.members)).toEqual(['Vanity - double sink']);
+  // One source of truth: whatever locks the BUNDLE is what the guard names.
+  expect(adminLocked.optional).toBe(lockedMemberTitles(adminLocked.members).length === 0);
+
+  // And that override survives the round trip instead of being re-badged away.
+  expect(restoreMembers(adminLocked.members).map((m) => [m.title, m.optional])).toEqual([
+    ['Vanity - double sink', false], ['Tile - heated floor upgrade', true],
+  ]);
+  // It is preview-only: the persisted contract is still titles and prices.
+  for (const m of toStoredMembers(adminLocked.members)) {
+    expect(Object.keys(m).sort()).toEqual(['price_cents', 'title']);
+  }
+
+  // A bundle read back from STORAGE carries no flags, so there the registry is
+  // the fallback - same fail-safe: an unrecognized title counts as locked.
+  expect(lockedMemberTitles([
+    { title: 'Zorble calibration', price_cents: 1 },
+    { title: 'Vanity - double sink', price_cents: 2 },
+  ])).toEqual(['Zorble calibration']);
+
   // An all-optional bundle is the negotiation posture and asks nothing.
   const allOptional = composeBundle([
     { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true, category: 'tile' },
@@ -651,6 +758,11 @@ test('AC10i: turning a locked bundle optional asks first, and names what it woul
   expect(page).toMatch(/locked\.length > 0 && !window\.confirm\(/);
   // Only that direction, and only for bundles: locking anything is never a risk.
   expect(page).toContain('if (row?.members && !row.optional)');
+  // The flag the guard reads is set where the bundle's own verdict is decided,
+  // so the two cannot drift apart again.
+  const bundles = read('src/lib/proposals/bundles.ts');
+  expect(bundles).toContain('optional: r.optional');
+  expect(bundles).toContain('m.optional ?? categorizeLine(m.title).optional');
 });
 
 test('AC10e: Send is refused while the client page does not exist; Copy link is not', () => {

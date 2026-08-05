@@ -228,6 +228,17 @@ export interface Roster {
    * how many it is NOT showing. Null when the total could not be read.
    */
   total: number | null;
+  /**
+   * True when this page stopped at the cap rather than at the estate.
+   *
+   * `total` alone was not enough to know that: it is read off Content-Range,
+   * which a missing header, PostgREST's uncounted `*`, or a proxy that strips
+   * the header all reduce to null - and a truncated page with no total rendered
+   * with no notice at all, which is the silent truncation the count exists to
+   * remove. The server knows without the header, so it says so directly and the
+   * total only fills in the number.
+   */
+  truncated: boolean;
 }
 
 /** How many proposals the roster shows; also the bound on the counts request. */
@@ -298,7 +309,12 @@ export async function listProposals(search?: string | null): Promise<Roster> {
     `proposals?select=*${searchFilter(term)}&order=updated_at.desc&limit=${ROSTER_LIMIT}`,
   );
   const proposals = rows ?? [];
-  if (proposals.length === 0) return { proposals: [], counts_available: true, total };
+  // Either signal is enough: a full page means the cap cut it, and a total
+  // above the page means so too when the header did arrive.
+  const truncated = proposals.length >= ROSTER_LIMIT || (total != null && total > proposals.length);
+  if (proposals.length === 0) {
+    return { proposals: [], counts_available: true, total, truncated };
+  }
 
   let counts: RosterCountRow[] | null = null;
   try {
@@ -318,6 +334,7 @@ export async function listProposals(search?: string | null): Promise<Roster> {
       })),
       counts_available: false,
       total,
+      truncated,
     };
   }
 
@@ -334,6 +351,7 @@ export async function listProposals(search?: string | null): Promise<Roster> {
     }),
     counts_available: true,
     total,
+    truncated,
   };
 }
 
