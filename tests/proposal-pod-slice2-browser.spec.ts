@@ -246,30 +246,42 @@ test.describe('proposals admin, in the browser', () => {
     page.once('dialog', (d) => d.accept());
     await bundle.getByRole('button', { name: /make .* optional/i }).click();
     await expect(badge('optional')).toBeVisible();
+
+    // What the admin agreed to is ONE toggle over this package - not an
+    // individual client toggle on the demolition. Unbundling gives every member
+    // back the verdict it was combined with, so the structural line comes back
+    // locked and only the vanity stays the client's to decline.
+    await bundle.getByRole('button', { name: /unbundle/i }).click();
+    await expect(page.getByTestId('bundle-row')).toHaveCount(0);
+    const row = (title: string) => page.getByTestId('line-row').filter({ hasText: title });
+    await expect(row('Demolition & prep').getByText('locked', { exact: true })).toBeVisible();
+    await expect(row('Vanity - double sink').getByText('optional', { exact: true })).toBeVisible();
   });
 
-  test('B8: a badge the admin set by hand survives being bundled again', async ({ page, context, baseURL }) => {
+  test('B8: a badge the admin set on a LINE survives being bundled again', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await pasteCsv(page, CSV_NESTED);
     await expect(page.getByTestId('line-row')).toHaveCount(4);
     const badge = (row: ReturnType<Page['getByTestId']>, word: string) =>
       row.getByText(word, { exact: true });
 
-    // Two registry-optional lines compose an optional bundle...
+    // The admin overrules the registry on ONE LINE, where it is on screen under
+    // its own name. That verdict is the member's own, and it is what every
+    // later reading of it sees.
+    const tile = page.getByTestId('line-row').filter({ hasText: 'Tile - heated floor upgrade' });
+    await tile.getByRole('button', { name: /make .* locked/i }).click();
+    await expect(badge(tile, 'locked')).toBeVisible();
+
+    // Combining reads that flag, not the registry's: the package is locked
+    // because a line inside it was locked by hand.
     await page.getByLabel('Select Tile - heated floor upgrade').check();
     await page.getByLabel('Select Vanity - double sink').check();
     await page.getByTestId('combine-btn').click();
     const inner = page.getByTestId('bundle-row');
-    await expect(badge(inner, 'optional')).toBeVisible();
-
-    // ...which the admin then locks by hand. Locking asks nothing - only the
-    // other direction can expose work - but it has to STICK.
-    await inner.getByRole('button', { name: /make .* locked/i }).click();
     await expect(badge(inner, 'locked')).toBeVisible();
 
-    // Bundling that bundle must not launder the lock away. The new bundle is
-    // judged on the flattened members, and the flip above cascaded into them,
-    // so the admin's verdict is what the next composition reads.
+    // Bundling that bundle must not launder the lock away: the new package is
+    // initialized from the flattened members, so it is locked too.
     await inner.getByRole('checkbox').check();
     await page.getByLabel('Select Faucet - matte black').check();
     await page.getByTestId('combine-btn').click();
@@ -278,14 +290,48 @@ test.describe('proposals admin, in the browser', () => {
     await expect(outer).toContainText('Includes: Tile - heated floor upgrade');
     await expect(badge(outer, 'locked')).toBeVisible();
 
-    // And one level up the guard still names what a flip would expose, instead
-    // of finding nothing locked and letting it through unasked.
+    // And one level up the guard names exactly the work a flip would expose -
+    // the hand-locked line, and not the two beside it that nothing calls
+    // structural.
     let asked = '';
     page.once('dialog', (d) => { asked = d.message(); d.dismiss(); });
     await outer.getByRole('button', { name: /make .* optional/i }).click();
     expect(asked).toContain('Tile - heated floor upgrade');
-    expect(asked).toContain('Vanity - double sink');
+    expect(asked).not.toContain('Vanity - double sink');
+    expect(asked).not.toContain('Faucet - matte black');
     await expect(badge(outer, 'locked')).toBeVisible();
+  });
+
+  test('B9: locking a package and changing your mind asks nothing', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await pasteCsv(page, CSV);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+
+    // Two registry-optional finishes: the all-or-nothing negotiation posture.
+    await page.getByLabel('Select Tile - heated floor upgrade').check();
+    await page.getByLabel('Select Vanity - double sink').check();
+    await page.getByTestId('combine-btn').click();
+    const bundle = page.getByTestId('bundle-row');
+    const badge = (word: string) => bundle.getByText(word, { exact: true });
+    await expect(badge('optional')).toBeVisible();
+
+    // Locking asks nothing - only the other direction can expose work.
+    const asked: string[] = [];
+    const spy = (d: { message(): string; dismiss(): Promise<void> }) => {
+      asked.push(d.message()); void d.dismiss();
+    };
+    page.on('dialog', spy);
+    await bundle.getByRole('button', { name: /make .* locked/i }).click();
+    await expect(badge('locked')).toBeVisible();
+
+    // And changing your mind straight back asks nothing either: nothing inside
+    // this package is structural, whatever its own badge came to read. A guard
+    // that fires falsely on an undo is what trains an admin to click through
+    // the dialog that protects the demolition.
+    await bundle.getByRole('button', { name: /make .* optional/i }).click();
+    await expect(badge('optional')).toBeVisible();
+    expect(asked).toEqual([]);
+    page.off('dialog', spy);
   });
 
   test('B5: the Parse button re-imports on demand, and clearing the box clears the preview', async ({ page, context, baseURL }) => {

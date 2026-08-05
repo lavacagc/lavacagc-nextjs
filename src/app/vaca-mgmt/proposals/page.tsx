@@ -220,13 +220,13 @@ export default function ProposalsAdminPage() {
    * whose names the bundle no longer shows. So that one direction names those
    * members and asks first; every other flip is unchanged.
    *
-   * A flip on a bundle CASCADES into its members, because composeBundle reads
-   * those member flags to judge any bundle this one is nested into. Without the
-   * cascade the two drifted one step down: a bundle flipped optional here kept
-   * members that still read locked, so combining it again composed an OPTIONAL
-   * package over that same structural work - and the guard, which only asks on
-   * a locked bundle, never fired. Cascading also makes the override survive
-   * Unbundle, which is what restoreMembers already promised.
+   * A flip on a bundle writes THAT ROW ONLY. Its members keep the intrinsic
+   * verdicts they were combined with, which is what Unbundle gives back and
+   * what any bundle this one is nested into is judged on - so the demolition
+   * inside a package the admin opened up comes back locked, and re-bundling
+   * asks about it again rather than carrying the answer somewhere it was never
+   * given. A per-line override is how a member's own verdict changes, and it is
+   * set before combining, where the line is on screen under its own name.
    */
   const toggleOptional = useCallback((key: string) => {
     const row = rows.find((r) => r.key === key);
@@ -238,13 +238,7 @@ export default function ProposalsAdminPage() {
         + 'Making the bundle optional gives them one toggle over all of it. Continue?',
       )) return;
     }
-    setRows((prev) => prev.map((r) => {
-      if (r.key !== key) return r;
-      const optional = !r.optional;
-      return r.members
-        ? { ...r, optional, members: r.members.map((m) => ({ ...m, optional })) }
-        : { ...r, optional };
-    }));
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, optional: !r.optional } : r)));
   }, [rows]);
 
   /**

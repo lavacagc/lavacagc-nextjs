@@ -744,10 +744,23 @@ test('AC10i: turning a locked bundle optional asks first, and names what it woul
   ])!;
   expect(adminLocked.optional).toBe(false);
   expect(lockedMemberTitles(adminLocked.members)).toEqual(['Vanity - double sink']);
-  // One source of truth: whatever locks the BUNDLE is what the guard names.
-  expect(adminLocked.optional).toBe(lockedMemberTitles(adminLocked.members).length === 0);
 
-  // And that override survives the round trip instead of being re-badged away.
+  // One source of truth, read at ONE moment: composeBundle INITIALIZES the
+  // badge from the members it just flattened. That is where the two agree, and
+  // it is not a standing invariant - the next line is the admin taking the
+  // badge over, which is the whole point of the confirm.
+  for (const composed of [b, adminLocked]) {
+    expect(composed.optional).toBe(lockedMemberTitles(composed.members).length === 0);
+  }
+  // The confirmed flip, as the page performs it: THAT ROW and nothing else. The
+  // members still name the structural work, so every later reading of them -
+  // Unbundle, re-bundling, the guard itself - still sees it.
+  const opened = { ...b, optional: true };
+  expect(lockedMemberTitles(opened.members)).toEqual(['Demolition & prep']);
+
+  // And a PER-LINE override survives the round trip instead of being re-badged
+  // away. It is the one thing that changes a member's own verdict, and it is
+  // set before combining, while the line is on screen under its own name.
   expect(restoreMembers(adminLocked.members).map((m) => [m.title, m.optional])).toEqual([
     ['Vanity - double sink', false], ['Tile - heated floor upgrade', true],
   ]);
@@ -775,63 +788,88 @@ test('AC10i: turning a locked bundle optional asks first, and names what it woul
   expect(page).toMatch(/locked\.length > 0 && !window\.confirm\(/);
   // Only that direction, and only for bundles: locking anything is never a risk.
   expect(page).toContain('if (row?.members && !row.optional)');
-  // The flag the guard reads is set where the bundle's own verdict is decided,
-  // so the two cannot drift apart again.
+  // ONE predicate decides what "locked member" means, so the badge, the guard
+  // and Unbundle cannot drift apart.
   const bundles = read('src/lib/proposals/bundles.ts');
   expect(bundles).toContain('optional: r.optional');
-  expect(bundles).toContain('m.optional ?? categorizeLine(m.title).optional');
+  expect(bundles).toContain('member.optional ?? categorizeLine(member.title).optional');
+  expect(bundles.match(/\?\? categorizeLine\(/g)).toHaveLength(1);
 });
 
-test('AC10j: nesting keeps the invariant - locked work cannot ride into an optional package', () => {
-  /** The one rule, at every depth: optional means nothing inside is locked. */
-  const invariant = (b: { optional: boolean; members: PreviewBundleMember[] }) =>
-    expect(b.optional).toBe(lockedMemberTitles(b.members).length === 0);
+test('AC10j: a bundle owns its badge; its members own their verdicts', () => {
+  /** The page's flip: THAT ROW, never the members underneath it. */
+  const flip = <T extends { optional: boolean; members: PreviewBundleMember[] }>(b: T): T =>
+    ({ ...b, optional: !b.optional });
 
   const inner = composeBundle([
     { title: 'Demolition & prep', priceCents: 480000, optional: false, category: 'demolition' },
     { title: 'Vanity - double sink', priceCents: 340000, optional: true, category: 'cabinets' },
   ], 'Bathroom package')!;
   expect(inner.optional).toBe(false);
-  invariant(inner);
+  expect(lockedMemberTitles(inner.members)).toEqual(['Demolition & prep']);
 
-  // The fail-safe, from the wrong side: a bundle whose own flag says optional
-  // while a member still says locked. composeBundle judges the FLATTENED
-  // members, so the nested package is locked and the confirm guard - which only
-  // asks on a locked bundle - is reached. Reading the top-level inputs instead
-  // handed the client one all-or-nothing toggle over the demolition, with
-  // nothing asked, because every input read optional.
+  // The admin reads the confirm naming the demolition and accepts: ONE
+  // all-or-nothing toggle over this package is what they agreed to.
+  const opened = flip(inner);
+  expect(opened.optional).toBe(true);
+
+  // UNBUNDLE gives every member back its own verdict, not the package's. The
+  // demolition is the line the registry fail-safe is written to protect, and an
+  // individual client toggle on it is exactly the cherry-picking the bundle
+  // posture exists to prevent - which is not what "one toggle over all of it"
+  // asked for.
+  expect(restoreMembers(opened.members).map((m) => [m.title, m.optional])).toEqual([
+    ['Demolition & prep', false], ['Vanity - double sink', true],
+  ]);
+  // The same reading in the other direction: locking an all-optional package
+  // cannot quietly strip the selections the estimator marked optional.
+  const allOptional = composeBundle([
+    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true, category: 'tile' },
+    { title: 'Vanity - double sink', priceCents: 340000, optional: true, category: 'cabinets' },
+  ])!;
+  expect(restoreMembers(flip(allOptional).members).map((m) => m.optional)).toEqual([true, true]);
+
+  // A LOCK-THEN-UNLOCK round trip on that package asks nothing. Nothing inside
+  // is structural; the badge reads locked only because the admin clicked Lock
+  // one action earlier, and a guard that fires falsely on an undo is what
+  // trains an admin to click through the dialog that protects the demolition.
+  expect(lockedMemberTitles(flip(allOptional).members)).toEqual([]);
+
+  // NESTING flattens the intrinsic verdicts and initializes the new package
+  // from them, so the demolition inside `opened` locks whatever it is combined
+  // into - and the guard, which only asks on a locked bundle, is reached again
+  // for the package actually being sent rather than answered once, elsewhere,
+  // about a different one.
   const nested = composeBundle([
-    { title: inner.title, priceCents: inner.priceCents, optional: true, category: inner.category, members: inner.members },
+    { title: opened.title, priceCents: opened.priceCents, optional: opened.optional, category: opened.category, members: opened.members },
     { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true, category: 'tile' },
   ])!;
   expect(lockedMemberTitles(nested.members)).toEqual(['Demolition & prep']);
   expect(nested.optional, 'a locked member locks the bundle it is nested into').toBe(false);
-  invariant(nested);
-
-  // The page's own path: a confirmed flip CASCADES into the members, so what
-  // the admin decided is what the next composition reads.
-  const cascadedMembers = inner.members.map((m) => ({ ...m, optional: true }));
-  const afterCascade = composeBundle([
-    { title: inner.title, priceCents: inner.priceCents, optional: true, category: inner.category, members: cascadedMembers },
+  expect(nested.optional).toBe(lockedMemberTitles(nested.members).length === 0);
+  // The label comes off that same member, so an optional package can never wear
+  // a structural slug (nor the reverse) while the badge says otherwise.
+  expect(nested.category).toBe('demolition');
+  expect(composeBundle([
     { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true, category: 'tile' },
-  ])!;
-  expect(lockedMemberTitles(afterCascade.members)).toEqual([]);
-  expect(afterCascade.optional).toBe(true);
-  invariant(afterCascade);
-  // Money still flattens rather than double-counting, either way round.
-  expect(afterCascade.priceCents).toBe(480000 + 340000 + 290050);
-  expect(nested.priceCents).toBe(afterCascade.priceCents);
-
-  // The cascade is what makes the override survive Unbundle, as restoreMembers
-  // promises: the admin is not re-asked about work they already decided on.
-  expect(restoreMembers(cascadedMembers).map((m) => m.optional)).toEqual([true, true]);
+    { title: 'Vanity - double sink', priceCents: 340000, optional: true, category: 'cabinets' },
+  ])!.category).toBe('tile');
+  // Money still flattens rather than double-counting, at either depth.
+  expect(nested.priceCents).toBe(480000 + 340000 + 290050);
+  expect(nested.members).toHaveLength(3);
 
   const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  expect(page).toContain('members: r.members.map((m) => ({ ...m, optional }))');
+  // The cascade: a bundle-level answer written onto every member as if it had
+  // been given about each of them one at a time.
+  expect(page).not.toContain('members: r.members.map((m) => ({ ...m, optional }))');
+  expect(page).toContain('(r.key === key ? { ...r, optional: !r.optional } : r)');
   const bundles = read('src/lib/proposals/bundles.ts');
-  expect(bundles).toContain('optional: lockedMemberTitles(members).length === 0');
-  // The shape that could disagree with the guard one level down.
+  expect(bundles).toContain('optional: locked.length === 0');
+  expect(bundles).toContain('categorizeLine((locked[0] ?? members[0]).title).key');
+  // The shapes that read the top-level inputs, which say nothing about what is
+  // inside a bundle among them.
   expect(bundles).not.toContain('optional: inputs.every((r) => r.optional)');
+  expect(bundles).not.toContain('inputs.find((r) => !r.optional)');
 });
 
 test('AC10e: Send is refused while the client page does not exist; Copy link is not', () => {
