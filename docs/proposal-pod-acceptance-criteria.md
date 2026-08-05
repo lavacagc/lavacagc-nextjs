@@ -1,14 +1,14 @@
 # Proposal page pod - acceptance criteria
 
 The proposal page pod, from section 3 of the website spec (`02-website-nextjs.md` - the owner's spec, held outside this repo, so this file is the tracked record of what the pod was built to).
-One section per slice: **slice 1** (WEB-020 and WEB-021, the schema and the import contract) runs to "Out of scope for slice 1", and **slice 2** (the admin import preview, bundles, and delivery) follows it at the foot of the file.
+One section per slice, in the order they shipped: **slice 1** (WEB-020 and WEB-021, the schema and the import contract) runs to "Out of scope for slice 1", then **slice 2** (the admin import preview, bundles, and delivery), then **slice 3** (the client page, the submit-back, and the flag flip) at the foot of the file.
 
 Slice 1 was approved from the plan artifact of 3 Aug 2026, with five owner decisions taken on it before any code was written.
 
 ## Slice 1 - what ships here, and what deliberately does not
 
 Schema, the CSV import contract, and the category registry.
-**No UI and no route.** The client proposal page, the admin import preview and the submit path are later slices - the import preview has since landed in slice 2, below.
+**No UI and no route.** The client proposal page, the admin import preview and the submit path are later slices - the import preview has since landed in slice 2, and the page and the submit path in slice 3, both below.
 
 - `supabase/migrations/20260824000000_proposals.sql` - `proposals`, `proposal_lines`, `proposal_submissions`, the shared snapshot domain, and the sum function the submission total is checked against.
 - `src/lib/proposals/csv.ts` - the estimator import contract: `parseProposalCsv`, `parsePriceCents`, and the caps all three layers share.
@@ -138,9 +138,9 @@ Slice 2 is where the browser half of the pod's acceptance begins.
 
 ## Out of scope for slice 1
 
-- The client proposal page, its toggles and its running total (WEB-022, WEB-023). Altering a locked line is refused at the API, on top of the snapshot shape defined here. Still out of scope after slice 2 - it is slice 3.
+- The client proposal page, its toggles and its running total (WEB-022, WEB-023). Altering a locked line is refused at the API, on top of the snapshot shape defined here. **Shipped in slice 3.**
 - The admin import preview, where a per-line category badge is overridden before a proposal is sent. Every gap the registry leaves is answered there. **Shipped in slice 2.**
-- The submit route, and the owner alert that prints `total_cents`. Slice 3, with the page that submits.
+- The submit route, and the owner alert that prints `total_cents`. **Shipped in slice 3**, with the page that submits.
 - The booking-link slot (D5). Slice 2 renders it in the delivery email when `NEXT_PUBLIC_BOOKING_URL` is set.
 - Client-facing analytics (WEB-027). `touched_lines` is the free early telemetry the schema reserves for it.
 
@@ -150,7 +150,7 @@ Slice 2 is where the browser half of the pod's acceptance begins.
 
 Approved from the plan artifact of 4 Aug 2026, carrying the owner's mid-review bundle request and the mobile-first note, with the in-design decisions delegated.
 This is the admin half of the pod: the estimator's CSV becomes a reviewed, priced proposal with a private link, and the lifecycle that link has.
-The client-facing page it links to is **slice 3** and does not exist yet, which is why Send is refused rather than offered.
+The client-facing page it links to did not exist while this slice was the head of the pod, which is why Send was refused rather than offered; **slice 3 shipped that page and flipped `CLIENT_PAGE_LIVE`**, so Send is live now (see the slice 3 section below).
 
 ### Slice 2 - what ships here
 
@@ -173,7 +173,9 @@ The client-facing page it links to is **slice 3** and does not exist yet, which 
 - **Mobile-first bundling.** Tick rows and press Combine is the primary gesture; dragging one row onto another is a desktop nicety on top of it. Every control keeps the house 44px touch minimum.
   A line's **title** is what the admin picks it by when ticking rows to combine, so at phone widths titles wrap to two lines rather than ellipsising to a fragment that reads identically on two different lines - the owner's mobile note, and the 390px evidence capture is what surfaced it.
   The capture only surfaced it; the checked-in browser suite is what holds it, and it asserts the rendered result rather than the utility class that produces it: at 390px a name too long for one line renders two, with nothing clipped below the clamp or cut off the side of it.
-- **Send is refused until the page it links to exists.** `CLIENT_PAGE_LIVE` is a constant, not an env var, and slice 3 flips it in the same commit that adds `/proposal/[token]`, so the code that claims the page exists ships with the page. Copy link stays available throughout.
+- **Send is refused until the page it links to exists.** `CLIENT_PAGE_LIVE` is a constant, not an env var, and slice 3 flipped it in the same commit that added `/proposal/[token]`, so the code that claims the page exists shipped with the page.
+  The guard itself was kept rather than deleted along with its reason, so a slice that ever takes the page down again gets every refusal back by changing one line.
+  Copy link stays available throughout.
 - **Restore to draft** is the way back from Revoke while re-sending cannot be one, and stays the right door afterwards: a proposal whose lines are wrong is repaired as a draft rather than re-sent to earn the right to fix it.
 - **One door for discarding a preview.** Every path that would destroy composed work asks the same confirm, and Cancel leaves the box and the preview agreeing.
 
@@ -252,6 +254,120 @@ npx playwright test tests/proposal-pod-slice2-browser.spec.ts    # the importer 
 
 ### Out of scope for slice 2
 
-- `/proposal/[token]` itself, its toggles and its running total, and the submit route (WEB-022, WEB-023). Slice 3, which also flips `CLIENT_PAGE_LIVE`.
+- `/proposal/[token]` itself, its toggles and its running total, and the submit route (WEB-022, WEB-023). **Shipped in slice 3**, below, which also flipped `CLIENT_PAGE_LIVE`.
 - Client-facing analytics (WEB-027).
 - Retention of the records this slice creates is disclosed in the privacy policy (v2.7, `src/content/privacy-policy-content.md`), which owns it.
+
+## Slice 3 - the client page, the submit-back, and the flag flip
+
+Approved from the plan artifact of 5 Aug 2026 (`.lavish/proposal-pod-slice3-plan.html`), with four owner decisions taken in that review.
+This is the half of the pod a client touches, and it is what makes the admin's Send button real.
+
+### Decisions taken on the slice 3 plan
+
+- **One slice, including submit-back.** The original four-slice plan put the page in S3 and the submit route in S4.
+  The delivery email shipped in slice 2 already promises "when it reads right, send it back to us from the page" (`deliveryEmail.ts`), so flipping `CLIENT_PAGE_LIVE` over a read-only page would have put an email that lies in a client's inbox.
+  Folding them together also costs no migration: slice 1 built `proposal_submissions`, the snapshot domain and the total-is-the-sum CHECK, and nothing had written to them.
+- **A draft resolves, for 24 hours.** Copy link is offered on a draft in the roster, so the link has to open - it is how an estimate is proof-read from the client's side, and how an admin hands a proposal over in a text message before Send.
+  Preview-only was considered and rejected for exactly that reason: the client on the other end of that message has to be able to answer.
+  What the openness costs is an accidental tap recording a real `proposal_submissions` row - and an owner alert reading "Proposal accepted" - on a proposal nobody ever sent, which then drives the roster's `submission_count` and `latest_total_cents`.
+  The owner's call was to bound the window rather than close the door: a draft resolves only while `now()` is within 24 hours of its `updated_at`.
+  `updated_at` rather than `created_at`, deliberately - `proposal_lines_touch_proposal` moves it on every re-import, so correcting a draft's lines reopens its proof-reading window, and an untouched draft still expires 24 hours after creation because the two columns are equal then.
+  An expired draft returns the identical generic answer an unknown or revoked token gets, for the same reason those two share one: a different answer lets somebody test whether a token is live.
+  The window is one named constant, `DRAFT_LINK_LIFETIME_MS` in `publicView.ts`, and one predicate, `proposalLinkIsLive`, which BOTH doors call - `lookupPublicProposal` and `submitProposal` - so the submit route can never accept an answer on a link the page has stopped serving.
+  A **sent** proposal is unaffected: D3 governs that link (no hard expiry, revocable from the admin) and still does.
+  Application logic only, no migration: `status` and `updated_at` already exist.
+  **The consequence to know about:** Copy link on a draft older than 24 hours hands over a link that no longer resolves, and nothing in the admin roster says so.
+  Re-importing the proposal's lines, or sending it, makes the link live again.
+- **Send refreshes the window before it delivers.** The second consequence of the draft window, and the one it needed code for.
+  The send route delivers the email FIRST and writes the status second, deliberately - a failed send must never leave a proposal reading "sent" - and it already handles `markSent` failing after delivery.
+  In that state the proposal is still a draft and its `updated_at` was never moved, because the failed write is the one that would have moved it, so a proposal built earlier in the week is past its window the moment it is delivered: the client opens the email they were just sent and gets the generic dead end.
+  That is exactly the outcome `CLIENT_PAGE_LIVE` exists to prevent, arriving through the back door.
+  The owner's call was to move `updated_at` forward at the START of the send, before the email is handed to the mailer (`touchProposal` in `store.ts`, called from the send action).
+  **Before rather than in the failure branch**, because the write that was supposed to move the timestamp is the write that failed: touching first means a link that has actually reached a client is live for the full window whatever fails behind it, instead of re-running the same kind of write in the same outage.
+  The refresh writes the status back unchanged, filtered on that same status, so `proposals_set_updated_at` owns the column (slice 2's AC6l), no lifecycle CHECK can reject it, and a status changed by somebody else in between updates nothing rather than being reverted.
+  It is **best effort**: a refresh that fails is logged and the send carries on, exactly like the `sentBy` lookup - the lifetime of a link is not a precondition for delivering a proposal the admin asked to send.
+  The post-delivery failure message now also tells the admin what the client sees in the meantime, so the retry reads as a deadline rather than tidy-up.
+  That sentence is chosen from what the code actually established - `touchProposal` reports whether it landed - rather than from the status alone: a sent link has no expiry to announce (D3), a refreshed draft has the full window, and a draft whose refresh failed too is told plainly that the client may be holding a link that does not open right now.
+  The refresh and the status write are PATCHes on the same row seconds apart, so the outage that produces this branch is the one most likely to have taken both, and on the screen that decides whether somebody picks the phone up a false reassurance is worse than an admission of uncertainty.
+  All four wordings are driven by `AC-S3-22`.
+  Ordering, best-effort behaviour and the still-resolving link are driven by `AC-S3-21`; the delivery-before-status-write ordering it sits in front of stays pinned by slice 2's `AC10e`.
+- **Nothing selected is not a thing to send.** A finish-only proposal can be all-optional, and a client who declines every line has an empty composition.
+  `ProposalSubmitSchema` requires at least one id and `proposal_submissions_included_lines_present` CHECKs the stored snapshot is non-empty, so the database cannot hold that record - which means the page must not offer to send it.
+  Send is disabled in that state with a line saying why ("Turn at least one choice on, or call us on (201) 212-4917 and we will talk through a different scope"), rather than a button whose only possible answer is a refusal about an unreadable payload for a payload the page itself produced.
+  Both server guards stay exactly where they were: the disabled button is the explanation, not the enforcement.
+- **Confirm, then allow adjusting.** D4 stores every submission; the page confirms with what was sent and offers a quiet way back to the switches.
+  Every revision alerts, and the roster reports the latest total.
+- **Analytics is left exactly as it is.** The scoping pass found that `layout.tsx` loads Microsoft Clarity and the Meta Pixel on every page of `www.lavacagc.com` gated only on GPC, and that `Analytics.tsx` excludes only `/admin`, `/vaca-mgmt` and `/auth` from GA4 - so a proposal page sends its own token to three third parties, and Clarity session-records a page of private pricing.
+  The owner's call was to leave it and carry the finding as a known issue.
+  **AC-S3-16 is written to match that**: it asserts noindex, no site chrome and no cross-origin request of the page's own, and deliberately does NOT assert analytics silence, because an AC claiming otherwise would go green while the token was in flight.
+  AC-R7 asserts the two analytics files are untouched, so the decision stays a decision rather than drifting.
+
+### Slice 3 - what ships here
+
+- `src/app/proposal/[token]/page.tsx` - the server component: three states, `force-dynamic`, noindex, rate-limited lookup.
+- `src/app/proposal/[token]/ProposalView.tsx` - the switches, the running total, the submit and the confirmation.
+- `src/lib/proposals/publicView.ts` - the token lookup, the draft-link window (`DRAFT_LINK_LIFETIME_MS` and `proposalLinkIsLive`, shared with the submit route), and the client-safe projection that strips member prices before anything is serialized.
+- `src/app/api/proposal/[token]/submit/route.ts` - the one write a client can make.
+- `src/lib/proposals/submit.ts` - the WEB-022 guard, the server re-sum, and the insert.
+- `src/lib/proposals/ownerAlert.ts` - the itemized owner email and the Telegram message.
+- `src/lib/proposals/money.ts` - one formatter, shared by the page, the alert and the tests.
+- `src/lib/privatePages.ts` - the one list of token-reached routes, and the four widgets that now consult it.
+- `src/lib/rateLimit.ts` - `clientIpFromHeaders`, a pure extraction (`getClientIp` delegates to it) so a Server Component holding `headers()` and the route holding a `Request` cannot drift on the trusted-header order.
+- `src/lib/proposals/clientPage.ts` - `CLIENT_PAGE_LIVE` flipped to true, in the same commit as the route.
+- `src/lib/proposals/store.ts` + `src/app/api/admin/proposals/[id]/route.ts` - `touchProposal`, and the send action's link-window refresh in front of the delivery.
+- `src/lib/notify/sendEmail.ts` + `src/app/vaca-mgmt/emails/page.tsx` - one added `EmailCategory`, and the audit filter that a `Record` over the union forces to keep up.
+- `src/middleware.ts` - `/api/proposal/` registered PUBLIC, alongside the other tokenized APIs.
+- `tests/proposal-pod-slice3.spec.ts` and `tests/proposal-pod-slice3-e2e.spec.ts`.
+- **No migration.** A production database at `20260827000000` runs this slice untouched, which AC-R8 asserts.
+
+### The three states, and why they are three
+
+`ok` is a proposal we found and may serve.
+`missing` is a token that is not ours, a token that is malformed, a proposal that is revoked, or a draft past its 24-hour window - ONE answer for all four, because a page that told them apart would let anyone test whether a token is live.
+`unreadable` is a database we could not ask, and it is a different page: telling somebody holding a good link that it is invalid sends them away for good, and this link is holding prices they were invited to answer.
+A proposal that resolves but holds no lines is `unreadable` too, not `missing` - both write paths guarantee at least one line, so reaching that state means something went wrong on our side.
+
+### What the client cannot do, and where that is enforced
+
+- **Alter a locked line.** The page renders locked lines with no control at all - not a disabled one - and the API refuses a payload that omits a locked id (WEB-022).
+- **Send us a price.** The payload is line ids and nothing else. Every number in the stored record is re-read from `proposal_lines` under the secret key and re-summed server-side, so a tampered payload can only name a different set of optional ids, which is what the switches are for.
+- **See a member price.** `publicView` reduces `bundle_members` to titles before the projection exists, and the browser AC searches the rendered HTML for every member price with digit boundaries.
+- **Reach another proposal's lines.** An id that is not part of this proposal is refused rather than dropped.
+
+### The owner alert
+
+Two channels, awaited through `Promise.allSettled` before the response returns - Vercel freezes the instance once a response is sent, so a fire-and-forget alert simply never happens.
+The notify modules are imported in-process and never self-fetched, because Cloudflare 403s a deployment's requests to itself.
+Internal mail, so the `noreply@` identity per the house from-address convention; the warm `alex@` sender stays with the client's own delivery email.
+A failed alert is logged loudly and never turns a stored agreement into an error on the client's screen.
+
+**"Revised" is its own recorded fact, not a count.** The prior-submission read asks for one row with `count=exact`; the exact total arrives on `Content-Range`, which a proxy can strip and which PostgREST answers with `*` when it did not count.
+A row coming back is proof of a prior submission whether or not the header says how many, so `isRevision` and `priorSubmissions` are recorded separately.
+Folding them together announced a genuine revision to the owner as a first answer, which the browser AC caught.
+
+### Two defects the browser suite caught, both worth reusing
+
+- **A visually hidden checkbox has no hit target.** The switch's input was `sr-only`, which is a 1px clipped box, so the only thing that could ever be clicked was the label around it and anything addressing the control itself - assistive tech, an automated check, a stylus tap landing on the switch rather than the row - hit a full-stop-sized box or the section behind it.
+  The input now fills its 44px target at `opacity: 0`.
+- **Suppressing a widget's RENDER does not stop its FETCH.** `ReviewToast` still queried Supabase for marketing copy and `SmartBanner` still fetched `/api/banners` on a page neither could show - on admin screens as well as this one.
+  Both now return before the request rather than after it.
+
+### Where the slice 3 ACs live, and how to run them
+
+```sh
+npx playwright test tests/proposal-pod-slice3.spec.ts          # modules, route, guards, regression pins
+```
+
+- `tests/proposal-pod-slice3.spec.ts` drives the modules and the route against a PostgREST stubbed at the fetch boundary, and holds the regression half (`AC-R1` to `AC-R12`).
+- `tests/proposal-pod-slice3-e2e.spec.ts` owns every AC that only exists once React is mounted, and is OFF unless `PROPOSAL_E2E=1`: it needs a Next server started against `tests/helpers/intake-stub.mjs`, which the gate cannot provide.
+  Its run recipe is in the file header.
+  `RESEND_API_KEY` is blanked there deliberately, so the alert path runs for real and the email is skipped rather than delivered.
+- A **production** build cannot be repointed at the stub by exporting `NEXT_PUBLIC_SUPABASE_URL`: Next inlines every `process.env.NEXT_PUBLIC_*` at build time, in server code as well as client.
+  `tests/helpers/outbound-fetch.cjs` gained an opt-in `STUB_REWRITE_ORIGIN` that redirects the baked origin at the stub, so an E2E run needs neither a rebuild nor the developer's own dev server.
+
+### Out of scope for slice 3
+
+- Third-party analytics suppression on tokenized pages (owner decision above). The finding stands; the fix is about twenty lines and one spec whenever it is wanted.
+- WEB-026 visual catalog and WEB-027 telemetry proper. `touched_lines` is the approved partial.
+- Surfacing on the roster that a proposal with submissions has been re-imported. The old submission stays readable through its own snapshot, but the client's live page then shows a composition their submission no longer matches.

@@ -16,7 +16,10 @@
   Home Care upsell CTA
 - ✅ Only shows once per session (sessionStorage flag)
 - ✅ Only shows on service pages and homepage (excludes admin, blog, legal pages)
-- ✅ Suppressed while the smart banner is showing and on `/home-care` pages
+- ✅ Suppressed while the smart banner is showing, on `/home-care` pages, and on
+  the private token-reached pages (`src/lib/privatePages.ts`, the one list
+  StickyCTA, ReviewToast and SmartBanner also consult). The component's own
+  guard is the authoritative list; this bullet is a snapshot of Phase 3
 - ✅ Known Home Care members (readable `hc_known` cookie) never see it
 - ✅ Fires `newsletter_promo_view` on open and `newsletter_signup` on successful
   subscribe; the Home Care links fire `home_care_promo_click` (placement `exit_intent`)

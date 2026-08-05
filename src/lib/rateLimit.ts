@@ -41,11 +41,23 @@ export interface RateLimitResult {
  * fallback is never reached because (1) is always set.
  */
 export function getClientIp(request: Request): string {
-  const cf = request.headers.get('cf-connecting-ip');
+  return clientIpFromHeaders(request.headers);
+}
+
+/**
+ * The same decision, from a bare header bag.
+ *
+ * A Server Component has `headers()` and no Request, and duplicating the
+ * precedence above is how the trusted-header order silently diverges between
+ * the page that rate-limits a lookup and the route that rate-limits the write
+ * it leads to. `getClientIp` delegates here, so there is one order.
+ */
+export function clientIpFromHeaders(headers: Headers): string {
+  const cf = headers.get('cf-connecting-ip');
   if (cf) return cf.trim();
-  const real = request.headers.get('x-real-ip');
+  const real = headers.get('x-real-ip');
   if (real) return real.trim();
-  const xff = request.headers.get('x-forwarded-for');
+  const xff = headers.get('x-forwarded-for');
   if (xff) return xff.split(',')[0].trim();
   return 'unknown';
 }

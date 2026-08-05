@@ -8,7 +8,7 @@ import {
 } from '../src/lib/proposals/bundles';
 import {
   CreateProposalSchema, ProposalLinesSchema, ProposalConflictError, bundleSumError,
-  listProposals, markSent, replaceLines, restoreProposal, revokeProposal, searchPattern,
+  listProposals, markSent, replaceLines, restoreProposal, revokeProposal, searchPattern, touchProposal,
   ROSTER_LIMIT,
 } from '../src/lib/proposals/store';
 import { MAX_LINES } from '../src/lib/proposals/csv';
@@ -135,13 +135,26 @@ test('AC-R1: every pre-slice admin sidebar capability is still present', () => {
   expect(sidebar).toContain(`id: 'proposals'`);
 });
 
-test('AC-R2: the admin auth gate is unchanged - proposals ride the existing /api/admin prefix', () => {
+test('AC-R2: the admin auth gate is unchanged - the ADMIN proposal routes ride the existing /api/admin prefix', () => {
   const middleware = read('src/middleware.ts');
-  // No proposals-specific carve-outs, allowlists, or public exceptions.
-  expect(middleware).not.toContain('proposal');
   // The existing gate that covers /api/admin/* and /vaca-mgmt is still there.
   expect(middleware).toContain(`'/vaca-mgmt'`);
   expect(middleware).toContain('/api/admin/');
+  // No proposals-specific carve-out in the ADMIN list: the admin routes are
+  // gated by the prefix they already sat behind, not by a name of their own.
+  //
+  // NARROWED BY SLICE 3, which added the client-facing /api/proposal/ to
+  // PUBLIC_ROUTES - a token-guarded route with no admin session at all, and the
+  // house pattern every other tokenized API follows (/api/intake/, /api/crew/).
+  // The original form of this assertion was "the middleware does not mention
+  // proposals anywhere", which was true of slice 2 and is a different claim
+  // from the one it was written to protect. Slice 3's AC-R2 owns the public
+  // registration; this one keeps owning the admin gate.
+  const adminBlock = middleware.slice(
+    middleware.indexOf('const ADMIN_AUTH_ROUTES'),
+    middleware.indexOf('const CRON_AUTH_ROUTES'),
+  );
+  expect(adminBlock).not.toContain('proposal');
 });
 
 test('AC-R3: the new admin content tab mounts without touching other tabs', () => {
@@ -871,11 +884,15 @@ test('AC6l: no lifecycle writer hand-maintains updated_at - the trigger owns it'
     await revokeProposal(PROPOSAL_ID);
     await restoreProposal(PROPOSAL_ID);
     await markSent(PROPOSAL_ID);
+    // The link-window refresh is a writer too, and the one whose whole purpose
+    // is to move updated_at - so it is the one most likely to be written by
+    // hand. It sends the status back unchanged and lets the trigger do it.
+    await touchProposal(PROPOSAL_ID, 'draft');
 
     const bodies = calls.filter((c) => c.method === 'PATCH')
       .map((c) => c.body as Record<string, unknown>);
-    expect(bodies).toHaveLength(3);
-    const [revoked, restored, sent] = bodies;
+    expect(bodies).toHaveLength(4);
+    const [revoked, restored, sent, touched] = bodies;
 
     expect(revoked.status).toBe('revoked');
     expect(typeof revoked.revoked_at).toBe('string');
@@ -883,6 +900,7 @@ test('AC6l: no lifecycle writer hand-maintains updated_at - the trigger owns it'
     expect(sent.status).toBe('sent');
     expect(typeof sent.sent_at).toBe('string');
     expect(sent.revoked_at).toBeNull();
+    expect(touched).toEqual({ status: 'draft' });
 
     for (const body of bodies) expect(Object.keys(body)).not.toContain('updated_at');
   });
@@ -1422,25 +1440,56 @@ test('AC10j: a bundle owns its badge; its members own their verdicts', () => {
   // B7, and the nesting round trip in B8.
 });
 
-test('AC10e: Send is refused while the client page does not exist', async () => {
-  // Slice 2 ships the admin side only. Flipping this constant is Slice 3's job,
-  // in the same commit that adds /proposal/[token].
-  expect(CLIENT_PAGE_LIVE).toBe(false);
+test('AC10e: the Send guard is still the thing that decides, now that it says yes', async () => {
+  // RETIRED BY SLICE 3, deliberately, and rewritten rather than deleted.
+  //
+  // Through slice 2 this asserted `CLIENT_PAGE_LIVE === false` and drove the
+  // 409: /proposal/[token] did not exist, so a mis-click, a stale tab or a
+  // hand-made request must not be able to put a link that 404s into a client's
+  // inbox. Slice 3 added the route and flipped the constant in the same commit,
+  // which is what the constant is FOR, so the refusal it produced is gone by
+  // design and an AC still demanding it would be demanding a regression.
+  //
+  // What survives is the invariant underneath it, and that is what this now
+  // asserts: the send path is still GATED on the constant rather than having
+  // had its guard deleted along with its reason, so a slice that ever takes the
+  // page down again gets every refusal back by changing one line. The live
+  // behaviour on the other side of the flip - Send delivering, and every OTHER
+  // refusal it had still holding - is owned by slice 3's AC-R4 and AC-R5.
+  expect(CLIENT_PAGE_LIVE).toBe(true);
+  const route = read('src/app/api/admin/proposals/[id]/route.ts');
+  expect(route).toContain('if (!CLIENT_PAGE_LIVE)');
+  expect(route).toContain('CLIENT_PAGE_NOT_LIVE_MESSAGE');
+  expect(route).toContain('status: 409');
 
-  // Driven, because the UI's disabled button is not the guard: a mis-click, a
-  // stale tab or a hand-made request must not be able to put a link that 404s
-  // into a client's inbox. The route refuses before anything reaches the
-  // mailer, and it refuses a proposal that is otherwise perfectly sendable.
+  // Driven: with the page live, a sendable proposal is DELIVERED and only then
+  // marked sent. Delivery before the status write is the slice-2 ordering that
+  // must survive the flip - a failed send can never leave a proposal reading
+  // 'sent'.
   await withPostgrest(
-    () => restJson([proposalRow({ client_email: 'rachel@example.com' })]),
+    (call) => (call.url.includes('api.resend.com')
+      ? restJson({ id: 'stub-email-id' })
+      : restJson([proposalRow({ client_email: 'rachel@example.com' })])),
     async (calls) => {
-      const res = await lifecycle(PROPOSAL_ID, { action: 'send' });
-      expect(res.status).toBe(409);
-      expect((await res.json()).error).toMatch(/not live yet/i);
-      // Nothing was written either: the proposal does not come back reading
-      // 'sent' behind an email that was never sent.
-      expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
-      expect(calls.some((c) => c.url.includes('email')), 'no delivery was attempted').toBe(false);
+      const env = { ...process.env };
+      process.env.RESEND_API_KEY = 'stub';
+      try {
+        const res = await lifecycle(PROPOSAL_ID, { action: 'send' });
+        expect(res.status).toBe(200);
+        const delivery = calls.findIndex((c) => c.url.includes('api.resend.com'));
+        // The STATUS write specifically, by its payload rather than by being
+        // the first PATCH on the row: slice 3 put a link-window refresh in
+        // front of the delivery, which is a PATCH on the same row and is
+        // asserted by that slice's AC-S3-21.
+        const patch = calls.findIndex((c) => c.method === 'PATCH'
+          && c.url.includes('proposals?id=')
+          && (c.body as { status?: string } | undefined)?.status === 'sent');
+        expect(delivery, 'the email was sent').toBeGreaterThan(-1);
+        expect(patch, 'the status was written').toBeGreaterThan(-1);
+        expect(patch, 'delivery comes first').toBeGreaterThan(delivery);
+      } finally {
+        process.env = env;
+      }
     },
   );
 

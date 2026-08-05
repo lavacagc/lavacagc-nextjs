@@ -7,6 +7,7 @@ import { Star, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
 import { useAuth } from '@/hooks/useAuth';
+import { isPrivateTokenPage } from '@/lib/privatePages';
 
 const REVIEW_COOLDOWN_KEY = 'lavaca_review_toast_cooldown';
 
@@ -60,7 +61,10 @@ export default function ReviewToast() {
   // live site while logged in). In this app any authenticated session === admin.
   const isAdminSession =
     pathname.startsWith('/vaca-mgmt') || pathname.startsWith('/auth') || !!session;
-  const suppressed = isMobile || isHighIntentRoute || isAdminSession;
+  // Private tokenized pages: asking for a Google review on top of a proposal
+  // the client has not agreed to yet is asking for a verdict on work that has
+  // not started.
+  const suppressed = isMobile || isHighIntentRoute || isAdminSession || isPrivateTokenPage(pathname);
 
   // Listen for SmartBanner visibility + set cooldown when banner is dismissed
   useEffect(() => {
@@ -91,8 +95,14 @@ export default function ReviewToast() {
     return () => clearTimeout(timer);
   }, [coolingDown]);
 
-  // Fetch real 5-star Google reviews from Supabase
+  // Fetch real 5-star Google reviews from Supabase.
+  //
+  // Not on a page this toast is suppressed on. Suppression stopped it
+  // RENDERING and the query went out anyway, so an admin screen and a client's
+  // private proposal page both still asked Supabase for marketing copy neither
+  // of them can show - work nobody sees, on a page that should be quiet.
   useEffect(() => {
+    if (suppressed) return;
     const fetchReviews = async () => {
       const { data, error } = await supabase
         .from('google_reviews')
@@ -118,7 +128,7 @@ export default function ReviewToast() {
       }
     };
     fetchReviews();
-  }, []);
+  }, [suppressed]);
 
   const showNext = useCallback(() => {
     if (!isDismissed) {

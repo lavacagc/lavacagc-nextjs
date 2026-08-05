@@ -25,6 +25,8 @@ const fs = require('fs');
 const STUB = process.env.INTAKE_STUB_URL || 'http://127.0.0.1:9416';
 const LOG = process.env.INTAKE_FETCH_LOG;
 const TELEGRAM = 'https://api.telegram.org/';
+/** Origin to redirect at the stub, for a production build - see below. */
+const REWRITE_FROM = (process.env.STUB_REWRITE_ORIGIN || '').replace(/\/$/, '');
 
 const original = globalThis.fetch;
 
@@ -45,6 +47,22 @@ globalThis.fetch = function patchedFetch(input, init) {
   if (url.startsWith(TELEGRAM)) {
     record(url);
     return original(`${STUB}/telegram/${url.slice(TELEGRAM.length)}`, init);
+  }
+
+  // Point a PRODUCTION build's Supabase at the stub.
+  //
+  // `next dev` reads NEXT_PUBLIC_SUPABASE_URL from the environment on every
+  // call, so a dev server is repointed by exporting it. A production build is
+  // not: Next INLINES every `process.env.NEXT_PUBLIC_*` at build time, in
+  // server code as well as client, so `supabaseRest` in a built server carries
+  // the URL it was compiled with whatever the environment says afterwards.
+  //
+  // Rebuilding with the stub URL baked in would work and costs a full build
+  // per run; rewriting the origin out here costs nothing and leaves whatever
+  // dev server the developer already has running alone. Opt-in by env var, so
+  // a run that does not set it behaves exactly as before.
+  if (REWRITE_FROM && url.startsWith(REWRITE_FROM)) {
+    return original(`${STUB}${url.slice(REWRITE_FROM.length)}`, init);
   }
 
   // Only outbound calls are interesting. The stub is the test harness itself.

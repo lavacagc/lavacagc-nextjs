@@ -91,8 +91,8 @@ const CRON_AUTH_ROUTES = [
 // Routes that are always public (no auth needed)
 const PUBLIC_ROUTES = [
   '/api/leads/webhook',
-  '/api/webhooks/resend',   // Resend delivery events — auth is the Svix signature
-  '/api/preferences',       // Self-service preference center — auth is the token
+  '/api/webhooks/resend',   // Resend delivery events - auth is the Svix signature
+  '/api/preferences',       // Self-service preference center - auth is the token
   '/api/leads/submit',
   '/api/banners',          // Public banner retrieval (GET without /admin)
   '/api/referrals',
@@ -101,7 +101,8 @@ const PUBLIC_ROUTES = [
   '/api/buy-and-remodel/', // Newsletter signup / email-verify / unsubscribe (self-guarded)
   '/api/newsletter/',      // Monthly-newsletter signup (rate-limited, self-guarded)
   '/api/consent/',         // TCPA consent logging (rate-limited, self-guarded)
-  '/api/crew/',            // Crew visit confirm — auth is the per-assignment token
+  '/api/crew/',            // Crew visit confirm - auth is the per-assignment token
+  '/api/proposal/',        // Client proposal submit - auth is the per-proposal token, self-guarded
 ];
 
 function isPublicRoute(pathname: string): boolean {
@@ -128,7 +129,7 @@ function requiresCronAuth(pathname: string): boolean {
 // be gated (else an infinite redirect loop). The slug `unlock` is reserved.
 //
 // Security: match the unlock page EXACTLY (with optional trailing slash), not by
-// prefix — a `startsWith('/buy-and-remodel/unlock')` would also exempt any listing
+// prefix - a `startsWith('/buy-and-remodel/unlock')` would also exempt any listing
 // slug beginning with "unlock" (e.g. /buy-and-remodel/unlocked-colonial), serving
 // it ungated.
 function requiresEmailGate(pathname: string): boolean {
@@ -139,7 +140,7 @@ function requiresEmailGate(pathname: string): boolean {
 
 // Authoritative, per-navigation check that the subscriber behind a valid access
 // cookie is still 'active'. This is what makes unsubscribe revoke access
-// immediately — a signed cookie alone would stay valid until expiry. One indexed
+// immediately - a signed cookie alone would stay valid until expiry. One indexed
 // PostgREST lookup via the service key. Fails CLOSED (any error → not allowed),
 // so a backend hiccup never leaks gated content.
 async function subscriberIsActive(subscriberId: string): Promise<boolean> {
@@ -246,7 +247,7 @@ export async function middleware(request: NextRequest) {
   const ua = request.headers.get('user-agent') || '';
   const pathname = request.nextUrl.pathname;
 
-  // 301 redirect non-www to www (permanent — tells Google to consolidate)
+  // 301 redirect non-www to www (permanent - tells Google to consolidate)
   if (host === 'lavacagc.com') {
     const destination = `https://www.lavacagc.com${request.nextUrl.pathname}${request.nextUrl.search}`;
     return NextResponse.redirect(destination, { status: 301 });
