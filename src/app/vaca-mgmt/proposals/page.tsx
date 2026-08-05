@@ -730,7 +730,7 @@ export default function ProposalsAdminPage() {
                 : 'No proposals yet - import a CSV below to create the first one.'}
             </p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2" data-testid="roster">
               {rosterTruncated ? (
                 <p className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground" data-testid="roster-truncated">
                   {rosterTotal != null && rosterTotal > roster.length
@@ -765,14 +765,24 @@ export default function ProposalsAdminPage() {
                     {/*
                       The client's name is what this row is FOR, so from lg -
                       where the actions start reserving room for an opening
-                      label - it holds a readable floor of its own. The two
-                      floors are sized to coexist: at the narrowest lg viewport
-                      the shell leaves ~876px of row, and 15rem + 31rem + the
-                      status badge and the gaps come to ~853px of it. If a
-                      future change to the shell's chrome ever breaks that
-                      arithmetic the row overflows and the suite's own
-                      no-overflow check fails loudly, rather than the name being
-                      silently squeezed to a few characters the way it was.
+                      label - it holds a readable floor of its own.
+
+                      The two floors are sized to coexist, and the numbers are
+                      measured rather than derived: at the narrowest lg viewport
+                      a row has 852px of CONTENT (1024 less the shell's 64px
+                      rail, the container's 32px, the card's border and 48px of
+                      padding, and this row's own border and 24px of padding),
+                      against 240 + 496 for the two floors, 69 for the widest
+                      status badge ("revoked") and 24 for the two gaps - 829,
+                      so 23px of slack. Thin on purpose: the floors are what a
+                      name and a label each need, not round numbers.
+
+                      Nothing here is self-enforcing, so the browser suite holds
+                      the arithmetic instead - B31 pins the measured column
+                      widths and B29 the rest-versus-hover equality, and both
+                      check the row against the box that clips it rather than
+                      asking the document for a scrollbar this shell can never
+                      grow. B32 is the proof that check can fail.
                     */}
                     <div className="min-w-0 flex-1 lg:min-w-[15rem]" data-testid="roster-identity">
                       <div className="md:flex md:flex-wrap md:items-baseline md:gap-2">

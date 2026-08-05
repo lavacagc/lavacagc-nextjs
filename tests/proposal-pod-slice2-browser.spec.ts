@@ -190,9 +190,88 @@ async function openProposalsTab(
   await page.waitForTimeout(700);
 }
 
-/** The page's own horizontal overflow, which the house rule pins at zero. */
-const overflowOf = (page: Page) => page.evaluate(() =>
-  document.documentElement.scrollWidth - document.documentElement.clientWidth);
+/**
+ * Horizontal overrun, measured where it is observable on THIS surface.
+ *
+ * Asking the document for a scrollbar proves nothing here, and that is not a
+ * theory: AdminContent clips horizontally three times over (`overflow-x-hidden`
+ * on the shell, on the content column and on the container) and globals.css
+ * puts `overflow-x: clip` on html and body, which stops the document being a
+ * scroll container at all. Measured on this shell at 1024px, a 1200px spacer
+ * dropped into a roster row hangs 348px past the row's content edge and pushes
+ * the container's scrollWidth 294px past its clientWidth - and
+ * `documentElement.scrollWidth - clientWidth` still reads 0. Every assertion
+ * written against the document was therefore incapable of failing, which reads
+ * as coverage while guarding nothing.
+ *
+ * So this reads the two places the overrun is real:
+ *  - every ancestor that genuinely IS a scroll container, via its own
+ *    scrollWidth (an `overflow-x: hidden` box still reports what it hides);
+ *  - every row against the box that holds it, and everything inside a row
+ *    against that row's content box - the technique B30 already uses.
+ *
+ * Returns one line per overrun so a failure names the element and the pixels.
+ * B32 injects exactly the overrun above and requires a non-empty answer, so
+ * this cannot quietly go inert again.
+ */
+async function overrunsOn(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const overruns: string[] = [];
+    const name = (el: Element) => {
+      const testid = (el as HTMLElement).dataset?.testid;
+      if (testid) return `[${testid}]`;
+      const first = (el.className || '').toString().trim().split(/\s+/)[0];
+      return `${el.tagName.toLowerCase()}${first ? `.${first}` : ''}`;
+    };
+    const contentBox = (el: Element) => {
+      const s = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return {
+        right: r.right - parseFloat(s.borderRightWidth) - parseFloat(s.paddingRight),
+      };
+    };
+
+    const root = document.querySelector('[data-testid="proposals-admin"]');
+    if (!root) return ['the proposals page is not on screen'];
+
+    for (let el: Element | null = root; el; el = el.parentElement) {
+      const overflowX = getComputedStyle(el).overflowX;
+      if (overflowX !== 'hidden' && overflowX !== 'auto' && overflowX !== 'scroll') continue;
+      const over = el.scrollWidth - el.clientWidth;
+      if (over > 1) overruns.push(`${name(el)} clips ${Math.round(over)}px of its own content`);
+    }
+
+    // Roster rows are the direct children of the roster list (its notices are
+    // <p>); preview rows carry their own shape as a test id.
+    const rows = root.querySelectorAll(
+      '[data-testid="roster"] > div, [data-testid="line-row"], [data-testid="bundle-row"]',
+    );
+    rows.forEach((row) => {
+      const holder = row.parentElement!;
+      const past = row.getBoundingClientRect().right - contentBox(holder).right;
+      if (past > 1) {
+        overruns.push(`${name(row)} sticks ${Math.round(past)}px past ${name(holder)}`);
+      }
+      const edge = contentBox(row).right;
+      let worst = 0;
+      let culprit = '';
+      row.querySelectorAll('*').forEach((child) => {
+        const box = child.getBoundingClientRect();
+        // display:contents wrappers and closed labels have no box of their own.
+        if (box.width === 0 && box.height === 0) return;
+        if (box.right - edge > worst) {
+          worst = box.right - edge;
+          culprit = name(child);
+        }
+      });
+      if (worst > 1) {
+        overruns.push(`${culprit} sticks ${Math.round(worst)}px past ${name(row)}'s content box`);
+      }
+    });
+
+    return overruns;
+  });
+}
 
 /**
  * A toast's visible title. Exact, because the toaster also renders an
@@ -1130,7 +1209,7 @@ test.describe('proposals admin, in the browser', () => {
     for (const w of widths) expect(w).toBeGreaterThanOrEqual(150);
 
     // Buying that floor must not push the row off the side of the phone.
-    expect(await overflowOf(page)).toBe(0);
+    expect(await overrunsOn(page)).toEqual([]);
   });
 
   test('B27: at 390px a name too long for one line takes a second one, whole', async ({ page, context, baseURL }) => {
@@ -1239,6 +1318,17 @@ test.describe('proposals admin, in the browser', () => {
   });
 
   test('B31: at the tablet break the client name and title keep a readable width', async ({ page, context, baseURL }) => {
+    /**
+     * What the identity column actually measures on the admin shell, per
+     * viewport and row shape. Pinned as values rather than floors so a layout
+     * regression has to MOVE one of them - the 30rem reservation that squeezed
+     * this column to 43px sailed through a floor-shaped assertion.
+     */
+    const IDENTITY_WIDTHS: Record<number, Record<string, number>> = {
+      768: { [RACHEL.id]: 266, [REVOKED.id]: 144 },
+      900: { [RACHEL.id]: 398, [REVOKED.id]: 276 },
+    };
+
     await openProposalsTab(page, context, baseURL!, BOTH_SHAPES);
 
     /**
@@ -1282,13 +1372,17 @@ test.describe('proposals admin, in the browser', () => {
       await page.waitForTimeout(250);
       for (const id of [RACHEL.id, REVOKED.id]) {
         const seen = await measure(id);
-        // The coarse tripwire, well under what the layout actually gives
-        // (~288px on a live row, ~144px on the revoked one, which spends the
-        // difference on Re-import's disabled label) and far above the 43px and
-        // 23px the reservation used to leave.
-        expect(seen.identityWidth,
-          `${width}px: "${seen.name.text}" keeps a column to live in (got ${seen.identityWidth}px)`)
-          .toBeGreaterThanOrEqual(120);
+        // The measured width, not a floor a regression could slide under: a
+        // roster row has 596px of content at 768 and 728px at 900, and what is
+        // left after the actions (256px) and the status badge (50px live, 69px
+        // revoked) and two 12px gaps is the column below. The revoked row is
+        // the narrower of the two because it spends 103px more on Re-import's
+        // always-visible disabled label. The bug this replaces left 43px and
+        // 23px, and a floor-style assertion is what let that read as passing.
+        const expected = IDENTITY_WIDTHS[width][id];
+        expect(Math.abs(seen.identityWidth - expected),
+          `${width}px: "${seen.name.text}" holds its measured column - expected ~${expected}px, got ${seen.identityWidth}px`)
+          .toBeLessThanOrEqual(12);
         // The claim that matters: a client's name reads as a name.
         expect(seen.name.lines,
           `${width}px: the client name "${seen.name.text}" is not broken across lines`)
@@ -1303,7 +1397,8 @@ test.describe('proposals admin, in the browser', () => {
           `${width}px: the title wraps rather than being clipped sideways`)
           .toBeLessThanOrEqual(seen.title.clientWidth + 1);
       }
-      expect(await overflowOf(page), `${width}px: the row still fits the viewport`).toBe(0);
+      expect(await overrunsOn(page), `${width}px: the row still fits the box that holds it`)
+        .toEqual([]);
     }
   });
 
@@ -1384,7 +1479,8 @@ test.describe('proposals admin, in the browser', () => {
         expect(await measure(id), `${width}px: the row returns to exactly where it rested`)
           .toEqual(rest);
       }
-      expect(await overflowOf(page), `${width}px: reserving the room cost no overflow`).toBe(0);
+      expect(await overrunsOn(page), `${width}px: reserving the room cost no overrun`)
+        .toEqual([]);
     }
   });
 
@@ -1423,5 +1519,39 @@ test.describe('proposals admin, in the browser', () => {
           .toBeLessThanOrEqual(1);
       }
     }
+  });
+
+  test('B32: the overrun check can fail - and the document-level one it replaced cannot', async ({ page, context, baseURL }) => {
+    await openProposalsTab(page, context, baseURL!, BOTH_SHAPES);
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await page.waitForTimeout(250);
+    expect(await overrunsOn(page), 'the page starts clean').toEqual([]);
+
+    // Force exactly the failure the roster's two width floors are guarded
+    // against - a row wider than the box that holds it - and read both checks.
+    const documentSaw = await page.evaluate(() => {
+      const row = document.querySelector('[data-testid="roster"] > div') as HTMLElement;
+      const spacer = document.createElement('div');
+      spacer.dataset.testid = 'overrun-probe';
+      spacer.style.cssText = 'width:1200px;height:8px;flex:none';
+      row.appendChild(spacer);
+      return document.documentElement.scrollWidth - document.documentElement.clientWidth;
+    });
+
+    // The assertion this file used to make, kept as the thing being disproved.
+    // Three `overflow-x-hidden` ancestors and `overflow-x: clip` on html mean
+    // the document never grows a scrolling area, so it reads zero even with a
+    // row hanging 348px out of its container. That is why it had to go.
+    expect(documentSaw,
+      'a document-level check cannot see a row overflow on this shell, however large')
+      .toBe(0);
+
+    // What replaced it does see it, in both of the places it is real.
+    const seen = (await overrunsOn(page)).join('\n');
+    expect(seen, 'the element that overruns its row is named').toMatch(/overrun-probe/);
+    expect(seen, 'and so is the ancestor quietly clipping it').toMatch(/clips \d+px of its own content/);
+
+    await page.evaluate(() => document.querySelector('[data-testid="overrun-probe"]')?.remove());
+    expect(await overrunsOn(page), 'and it goes quiet once the row fits again').toEqual([]);
   });
 });
