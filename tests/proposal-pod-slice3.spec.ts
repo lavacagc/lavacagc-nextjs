@@ -1055,6 +1055,9 @@ test('house style: no em dashes in anything this slice ships', () => {
     'src/app/proposal/[token]/page.tsx',
     'src/app/proposal/[token]/ProposalView.tsx',
     'src/app/api/proposal/[token]/submit/route.ts',
+    // This slice registers /api/proposal/ in PUBLIC_ROUTES, so middleware is a
+    // file the slice ships and the house rule covers it like any other.
+    'src/middleware.ts',
   ];
   for (const f of files) {
     expect(read(f), `${f} must not use an em dash`).not.toContain('—');
