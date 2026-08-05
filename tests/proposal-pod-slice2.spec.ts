@@ -996,29 +996,43 @@ test('AC8b: a non-array bundle_members is the shape CHECK to refuse, not a 22023
   // call with no escape in front of it. No bad data ever landed either way -
   // what was defective is the backstop's answer to a writer that skipped zod.
   //
+  // All THREE constraints are pinned, not just the two that raised. The shape
+  // CHECK was only observed standing down, on the strength of a leading AND
+  // operand - the very thing the repair refuses to trust for the other two.
+  //
   // Read as text, like every other DDL assertion here, so a future edit cannot
   // quietly drop the guard.
   const sql = read('supabase/migrations/20260827000000_proposal_bundle_check_guards.sql');
   const ddl = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
 
-  for (const name of ['proposal_lines_bundle_member_cap', 'proposal_lines_bundle_sum']) {
+  // The shape CHECK owns the rejection, so it alone answers FALSE for a
+  // non-array; the other two have nothing to say about it and stand down.
+  const verdicts = {
+    proposal_lines_bundle_shape: 'FALSE',
+    proposal_lines_bundle_member_cap: 'TRUE',
+    proposal_lines_bundle_sum: 'TRUE',
+  };
+  for (const [name, verdict] of Object.entries(verdicts)) {
     // Same name, dropped and re-added: a rename would leave the old constraint
     // standing in every database that already has it.
     expect(ddl, `${name} is re-added under its own name`)
       .toMatch(new RegExp(`DROP CONSTRAINT ${name}[\\s\\S]*?ADD CONSTRAINT ${name} CHECK \\(`));
     // The escape itself, ahead of the array call it protects.
     const body = ddl.split(`ADD CONSTRAINT ${name} CHECK (`)[1].split(');')[0];
-    expect(body, `${name} stands down on a non-array`)
-      .toContain("WHEN jsonb_typeof(bundle_members) <> 'array' THEN TRUE");
+    expect(body, `${name} answers ${verdict} on a non-array`)
+      .toContain(`WHEN jsonb_typeof(bundle_members) <> 'array' THEN ${verdict}`);
     // NULL is the ordinary non-bundle line and must reach neither call.
     expect(body, `${name} still passes a NULL bundle_members`)
       .toContain('WHEN bundle_members IS NULL THEN TRUE');
-    // CASE, not a leading OR: Postgres may reorder Boolean operands, which is
-    // how an unguarded array call surfaced in the first place.
+    // CASE, not a leading AND/OR: Postgres may reorder Boolean operands, which
+    // is how an unguarded array call surfaced in the first place.
     expect(body, `${name} forces evaluation order with CASE`).toContain('CASE');
   }
 
-  // The array semantics both constraints exist for are unchanged.
+  // The array semantics all three constraints exist for are unchanged.
+  expect(ddl).toMatch(/jsonb_array_length\(bundle_members\) >= 2$/m);
+  expect(ddl).toContain('@.price_cents <= 1000000000');
+  expect(ddl).toContain('@.price_cents.floor() == @.price_cents');
   expect(ddl).toMatch(/jsonb_array_length\(bundle_members\) <= 200/);
   expect(ddl).toMatch(/proposal_bundle_total\(bundle_members\) = price_cents/);
 
