@@ -73,6 +73,18 @@ const CSV = [
 /** The same estimate plus a second optional finish, so a bundle can be re-bundled. */
 const CSV_NESTED = [CSV, 'Faucet - matte black,Widespread lav faucet,900.00'].join('\n');
 
+/**
+ * Two names either side of a phone's width: one that fits on a single line at
+ * 390px, and the one from the owner's mobile note - the title that ellipsised
+ * to "Matte black faucet pa..." beside a second faucet line reading the same.
+ * The short one is the ruler a line's height is measured in.
+ */
+const CSV_WRAPPING = [
+  'title,description,price',
+  'Demolition,Strip to studs,4800.00',
+  'Matte black faucet package,Widespread lav faucets and shower trim,900.00',
+].join('\n');
+
 async function signInAsAdmin(context: BrowserContext, baseURL: string) {
   const session = {
     access_token: 'stub-access-token',
@@ -1064,5 +1076,49 @@ test.describe('proposals admin, in the browser', () => {
     const overflow = await page.evaluate(() =>
       document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBe(0);
+  });
+
+  test('B27: at 390px a name too long for one line takes a second one, whole', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await pasteCsv(page, CSV_WRAPPING);
+    await expect(page.getByTestId('line-row')).toHaveCount(2);
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    /** What the name's box is actually doing, in the units the box itself sets. */
+    const measure = (row: number) => page.getByTestId('line-row').nth(row)
+      .getByTestId('line-title').evaluate((el) => ({
+        text: (el.textContent || '').trim(),
+        clientHeight: el.clientHeight,
+        scrollHeight: el.scrollHeight,
+        clientWidth: el.clientWidth,
+        scrollWidth: el.scrollWidth,
+      }));
+    // The short name is the ruler: one line, measured rather than assumed, so
+    // this says nothing about font size, viewport or which utility class the
+    // row happens to spell the clamp with.
+    const one = await measure(0);
+    const long = await measure(1);
+    expect(one.text, 'row 0 is the single-line ruler').toBe('Demolition');
+    expect(long.text, 'row 1 is the name the owner reported').toBe('Matte black faucet package');
+
+    // The regression: this name used to ellipsise to "Matte black faucet pa..."
+    // on ONE line, beside a second faucet line that read identically. Two
+    // lines, and no more - the claim is that two is enough for what the
+    // estimator exports, so a third would be as wrong as none.
+    expect(long.clientHeight,
+      `a name that needs two lines must render two (ruler ${one.clientHeight}px)`)
+      .toBeGreaterThanOrEqual(one.clientHeight * 2 - 1);
+    expect(long.clientHeight,
+      `and no more than two (ruler ${one.clientHeight}px)`)
+      .toBeLessThanOrEqual(one.clientHeight * 2 + 1);
+
+    // And nothing is cut off in either direction: not below the clamp, and not
+    // off the side, which is the shape an ellipsis leaves behind.
+    expect(long.scrollHeight,
+      'the whole name fits inside the box - nothing is clipped below it')
+      .toBeLessThanOrEqual(long.clientHeight + 1);
+    expect(long.scrollWidth,
+      'the name wraps rather than overflowing its box sideways')
+      .toBeLessThanOrEqual(long.clientWidth + 1);
   });
 });
