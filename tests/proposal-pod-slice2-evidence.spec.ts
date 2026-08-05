@@ -188,7 +188,7 @@ test.describe('Proposal Pod slice 2 - evidence capture', () => {
     // The BADGE, not the row text - every row also carries a "Make optional" button.
     const verdicts = await page.getByTestId('line-row').evaluateAll((rows) => rows.map((r) => {
       const badge = r.querySelector('div.inline-flex')?.textContent ?? '?';
-      const title = r.querySelector('span.font-medium')?.textContent ?? '';
+      const title = r.querySelector('[data-testid="line-title"]')?.textContent ?? '';
       return `  ${badge.padEnd(9)} ${title}`;
     }));
     note('Registry verdict on every imported line:\n' + verdicts.join('\n'));
@@ -320,10 +320,13 @@ test.describe('Proposal Pod slice 2 - evidence capture', () => {
       document.documentElement.scrollWidth - document.documentElement.clientWidth);
     // How much of each line's name actually survives at this width.
     const titles = await page.getByTestId('line-row').evaluateAll((els) => els.map((el) => {
-      const span = el.querySelector('span.truncate') as HTMLElement | null;
-      if (!span) return '    n/a';
+      const span = el.querySelector('[data-testid="line-title"]') as HTMLElement | null;
+      // Loudly, not as an "n/a" row: a capture that cannot find the name is the
+      // one thing this evidence is for, so it must not pass as a green run.
+      if (!span) throw new Error('line-row carries no [data-testid="line-title"] to measure');
+      // The name clamps to two lines now, so what gets cut is height, not width.
       return `  ${String(Math.round(span.getBoundingClientRect().width)).padStart(4)}px `
-        + `${span.scrollWidth > span.clientWidth + 1 ? 'CLIPPED' : 'full   '} `
+        + `${span.scrollHeight > span.clientHeight + 1 ? 'CLIPPED' : 'full   '} `
         + `"${(span.textContent || '').trim()}"`;
     }));
     appendFileSync(join(OUT, 'walkthrough-notes.txt'),

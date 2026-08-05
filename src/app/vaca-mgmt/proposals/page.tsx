@@ -962,7 +962,7 @@ export default function ProposalsAdminPage() {
                         title the estimator exports, and desktop widths fit one
                         line anyway, so this only changes the narrow case.
                       */
-                      <span className="min-w-40 flex-1 line-clamp-2 break-words font-medium">{r.title}</span>
+                      <span className="min-w-40 flex-1 line-clamp-2 break-words font-medium" data-testid="line-title">{r.title}</span>
                     )}
                     <div className="flex items-center gap-3">
                       <span className="font-semibold tabular-nums">{dollars(r.priceCents)}</span>

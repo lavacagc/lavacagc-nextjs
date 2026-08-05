@@ -1054,8 +1054,8 @@ test.describe('proposals admin, in the browser', () => {
     // longer "Make optional" wrapped - kept ~100px.
     await page.setViewportSize({ width: 390, height: 844 });
     const widths = await page.getByTestId('line-row').evaluateAll((els) => els.map((el) => {
-      const name = el.querySelector('span.truncate') as HTMLElement;
-      return Math.round(name.getBoundingClientRect().width);
+      const name = el.querySelector('[data-testid="line-title"]') as HTMLElement | null;
+      return name ? Math.round(name.getBoundingClientRect().width) : -1;
     }));
     expect(widths).toHaveLength(4);
     for (const w of widths) expect(w).toBeGreaterThanOrEqual(150);
