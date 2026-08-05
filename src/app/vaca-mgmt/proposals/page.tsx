@@ -133,6 +133,14 @@ const rowKey = () => `row-${nextKey++}`;
  * moves out to its own full-width button. On a pointer the label slides open on
  * hover, which is the only place a hover affordance means anything.
  *
+ * The label opens from `lg` up ONLY, and that is a width decision rather than an
+ * input one. An opening label has to be paid for in row width, and the width has
+ * to be reserved or the label steals it from the client's name; the admin shell
+ * this page ships inside spends 64px on the sidebar rail plus its container and
+ * card padding, so at a 768px tablet there is no room to reserve and the icons
+ * stay plain 44px squares with nothing to reserve and no reflow to prevent. See
+ * the roster row's actions container for the reservation itself.
+ *
  * The label is never the accessible name - `aria-label` carries it whether the
  * label is open, closed, or (on a phone) never rendered at all, so a screen
  * reader and Playwright both read the same button they always did.
@@ -174,7 +182,7 @@ function IconAction({
           'group h-11 shrink-0 justify-center overflow-hidden transition-[width,padding] duration-200',
           explained
             ? 'w-auto px-3'
-            : 'w-11 p-0 sm:hover:w-auto sm:hover:px-3 sm:focus-visible:w-auto sm:focus-visible:px-3',
+            : 'w-11 p-0 lg:hover:w-auto lg:hover:px-3 lg:focus-visible:w-auto lg:focus-visible:px-3',
         )}
         aria-label={label}
         title={tooltip}
@@ -188,7 +196,7 @@ function IconAction({
             'whitespace-nowrap',
             explained
               ? 'ml-2'
-              : 'hidden max-w-0 opacity-0 transition-[max-width,margin,opacity] duration-200 sm:inline sm:group-hover:ml-2 sm:group-hover:max-w-40 sm:group-hover:opacity-100 sm:group-focus-visible:ml-2 sm:group-focus-visible:max-w-40 sm:group-focus-visible:opacity-100',
+              : 'hidden max-w-0 opacity-0 transition-[max-width,margin,opacity] duration-200 lg:inline lg:group-hover:ml-2 lg:group-hover:max-w-40 lg:group-hover:opacity-100 lg:group-focus-visible:ml-2 lg:group-focus-visible:max-w-40 lg:group-focus-visible:opacity-100',
           )}
           aria-hidden="true"
         >
@@ -754,7 +762,19 @@ export default function ProposalsAdminPage() {
                   */}
                   <div className="md:flex md:items-center md:gap-3">
                   <div className="flex items-start gap-2 md:contents">
-                    <div className="min-w-0 flex-1" data-testid="roster-identity">
+                    {/*
+                      The client's name is what this row is FOR, so from lg -
+                      where the actions start reserving room for an opening
+                      label - it holds a readable floor of its own. The two
+                      floors are sized to coexist: at the narrowest lg viewport
+                      the shell leaves ~876px of row, and 15rem + 31rem + the
+                      status badge and the gaps come to ~853px of it. If a
+                      future change to the shell's chrome ever breaks that
+                      arithmetic the row overflows and the suite's own
+                      no-overflow check fails loudly, rather than the name being
+                      silently squeezed to a few characters the way it was.
+                    */}
+                    <div className="min-w-0 flex-1 lg:min-w-[15rem]" data-testid="roster-identity">
                       <div className="md:flex md:flex-wrap md:items-baseline md:gap-2">
                         <div className="font-semibold">{p.client_name}</div>
                         <div className="line-clamp-2 text-sm text-muted-foreground">{p.title}</div>
@@ -773,8 +793,8 @@ export default function ProposalsAdminPage() {
                     <div className="shrink-0 md:order-2">{statusBadge(p.status)}</div>
                   </div>
                   {/*
-                    md and up, the actions reserve their own widest width and
-                    hang off the right of it.
+                    From lg the actions reserve their own widest width and hang
+                    off the right of it.
 
                     The hover label used to open IN FLOW inside a row whose only
                     flexible item was the identity column, so every pass of the
@@ -789,10 +809,18 @@ export default function ProposalsAdminPage() {
                     grow into it; Send loses its auto margin here because the
                     whole cluster is now right-aligned.
 
-                    Below md the actions have a full line to themselves, with
-                    slack the label opens into for free - so no floor there.
+                    lg and not md, because a reservation is only honest where
+                    there is room for it. This page ships inside the dashboard's
+                    admin shell, which spends 64px on the sidebar rail before
+                    the container and card padding, so a 768px tablet has ~620px
+                    of row to divide - reserving 30rem of it left the client's
+                    name 43px wide, and 23px on a revoked row. The reservation
+                    and the label that needs it are gated on the SAME breakpoint
+                    now, so below lg the icons are plain 44px squares: nothing
+                    grows, nothing has to be reserved, and the single-line md row
+                    the owner asked for keeps its full width.
                   */}
-                  <div className="mt-2 flex flex-wrap items-center gap-2 md:order-3 md:mt-0 md:min-w-[30rem] md:shrink-0 md:justify-end">
+                  <div className="mt-2 flex flex-wrap items-center gap-2 md:order-3 md:mt-0 md:shrink-0 lg:min-w-[31rem] lg:justify-end">
                     <IconAction icon={Link2} label="Copy link" onClick={() => copyLink(p)} />
                     {/*
                       replaceLines refuses a revoked proposal outright (409), so
@@ -847,7 +875,7 @@ export default function ProposalsAdminPage() {
                     */}
                     <Button
                       size="sm"
-                      className="h-11 w-full sm:ml-auto sm:w-auto md:ml-0"
+                      className="h-11 w-full sm:ml-auto sm:w-auto lg:ml-0"
                       disabled={busy || !CLIENT_PAGE_LIVE || !p.client_email}
                       title={!CLIENT_PAGE_LIVE ? CLIENT_PAGE_NOT_LIVE_MESSAGE : p.client_email ? undefined : 'No client email - use Copy link'}
                       onClick={() => act(p, 'send')}

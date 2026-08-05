@@ -63,6 +63,16 @@ const REVOKED = {
  */
 const ROSTER = { proposals: [RACHEL], counts_available: true, total: 312, truncated: true };
 
+/**
+ * Both roster shapes on one page: a live row, and the revoked one that spends
+ * width on Re-import's disabled label and owns the longest action label of the
+ * set, "Restore to draft". Together they are the widest and the narrowest the
+ * actions ever rest at, which is what the geometry assertions need.
+ */
+const BOTH_SHAPES = {
+  proposals: [RACHEL, REVOKED], counts_available: true, total: 2, truncated: false,
+};
+
 const CSV = [
   'title,description,price',
   'Demolition & prep,Strip to studs,4800.00',
@@ -136,6 +146,53 @@ async function openProposals(page: Page, context: BrowserContext, baseURL: strin
   await page.goto('/vaca-mgmt/proposals');
   await expect(page.getByTestId('proposals-admin')).toBeVisible();
 }
+
+/**
+ * The surface an admin actually reaches: the dashboard at /vaca-mgmt, opened
+ * through its Customers -> Proposals sidebar entry, with the shell's chrome
+ * around the page.
+ *
+ * EVERY geometry assertion belongs here rather than on the bare
+ * /vaca-mgmt/proposals route, because that route renders this page with no
+ * shell at all - src/app/vaca-mgmt/layout.tsx returns its children unchanged -
+ * while the dashboard spends 64px on the sidebar rail (AdminContent's `ml-16`,
+ * the rail being `fixed`) plus the container's px-2/md:px-4 before the card's
+ * own padding. A roster row measured on the bare route is therefore ~150px
+ * wider at 768px than the one any admin has ever seen, and a layout that is
+ * broken in the product measures clean in the suite. It did exactly that: the
+ * actions reserved 30rem from md up, which on this surface left the client's
+ * name 43px wide at 768px and 23px on a revoked row, and every bare-route
+ * assertion still passed.
+ *
+ * Behaviour tests stay on the bare route - it is the same React tree and it
+ * mounts in a fraction of the time. Only widths and heights need the chrome.
+ */
+async function openProposalsTab(
+  page: Page, context: BrowserContext, baseURL: string, roster: unknown,
+) {
+  await signInAsAdmin(context, baseURL);
+  await page.route('**/api/admin/proposals*', async (route) => {
+    if (route.request().method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
+    await route.fulfill({ json: roster });
+  });
+  await page.goto('/vaca-mgmt');
+  await expect(page.getByText('Content Management')).toBeVisible();
+  // The rail is collapsed to icons and opens on hover; there is no other way to
+  // reach a leaf entry.
+  await page.mouse.move(30, 400);
+  await page.getByRole('button', { name: 'Customers' }).click();
+  await page.getByRole('button', { name: 'Proposals' }).click();
+  await expect(page.getByTestId('proposals-admin')).toBeVisible();
+  // Back off the rail so it collapses to the 64px it occupies in use, and let
+  // its 500ms transition finish before anything is measured.
+  const size = page.viewportSize()!;
+  await page.mouse.move(size.width - 40, size.height - 40);
+  await page.waitForTimeout(700);
+}
+
+/** The page's own horizontal overflow, which the house rule pins at zero. */
+const overflowOf = (page: Page) => page.evaluate(() =>
+  document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
 /**
  * A toast's visible title. Exact, because the toaster also renders an
@@ -1056,7 +1113,7 @@ test.describe('proposals admin, in the browser', () => {
   });
 
   test('B18: at 390px a line name keeps its width whether or not the toggle wrapped', async ({ page, context, baseURL }) => {
-    await openProposals(page, context, baseURL!);
+    await openProposalsTab(page, context, baseURL!, ROSTER);
     await pasteCsv(page, CSV_NESTED);
     await expect(page.getByTestId('line-row')).toHaveCount(4);
 
@@ -1073,13 +1130,11 @@ test.describe('proposals admin, in the browser', () => {
     for (const w of widths) expect(w).toBeGreaterThanOrEqual(150);
 
     // Buying that floor must not push the row off the side of the phone.
-    const overflow = await page.evaluate(() =>
-      document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    expect(overflow).toBe(0);
+    expect(await overflowOf(page)).toBe(0);
   });
 
   test('B27: at 390px a name too long for one line takes a second one, whole', async ({ page, context, baseURL }) => {
-    await openProposals(page, context, baseURL!);
+    await openProposalsTab(page, context, baseURL!, ROSTER);
     await pasteCsv(page, CSV_WRAPPING);
     await expect(page.getByTestId('line-row')).toHaveCount(2);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -1123,9 +1178,7 @@ test.describe('proposals admin, in the browser', () => {
   });
 
   test('B28 (AC10k): a disabled Re-import is never a wordless glyph - its reason is reachable at every width', async ({ page, context, baseURL }) => {
-    await openProposals(page, context, baseURL!);
-    await page.getByTestId('roster-search').fill('Yusuf');
-    await page.getByTestId('roster-search-btn').click();
+    await openProposalsTab(page, context, baseURL!, BOTH_SHAPES);
     const row = page.getByTestId(`proposal-${REVOKED.id}`);
     await expect(row).toBeVisible();
     const reimport = row.getByTestId('reimport-btn');
@@ -1179,20 +1232,86 @@ test.describe('proposals admin, in the browser', () => {
     // label stays shut until it is hovered. The words are the refusal's, not
     // every icon's.
     await page.setViewportSize({ width: 1280, height: 900 });
-    await page.getByTestId('roster-search-clear').click();
-    const live = page.getByTestId('reimport-btn').first();
+    const live = page.getByTestId(`proposal-${RACHEL.id}`).getByTestId('reimport-btn');
     await expect(live).toBeEnabled();
     expect(await live.evaluate((el) => Math.round(el.getBoundingClientRect().width)),
       'an available action is still a square glyph').toBe(44);
+  });
+
+  test('B31: at the tablet break the client name and title keep a readable width', async ({ page, context, baseURL }) => {
+    await openProposalsTab(page, context, baseURL!, BOTH_SHAPES);
+
+    /**
+     * The identity column and the two lines inside it that name the proposal.
+     *
+     * `lines` counts real line boxes rather than dividing heights by a guessed
+     * line-height: a Range over an element's contents returns one client rect
+     * per line the text actually took, so "the client's name is not broken in
+     * half" is asked of the rendering rather than of a font metric.
+     */
+    const measure = (id: string) => page.getByTestId(`proposal-${id}`).evaluate((row) => {
+      const identity = row.querySelector('[data-testid="roster-identity"]') as HTMLElement;
+      const [name, title] = Array.from(identity.firstElementChild!.children) as HTMLElement[];
+      const read = (el: HTMLElement) => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        return {
+          text: (el.textContent || '').trim(),
+          lines: range.getClientRects().length,
+          clientWidth: el.clientWidth,
+          scrollWidth: el.scrollWidth,
+          clientHeight: el.clientHeight,
+          scrollHeight: el.scrollHeight,
+        };
+      };
+      return {
+        identityWidth: Math.round(identity.getBoundingClientRect().width),
+        name: read(name),
+        title: read(title),
+      };
+    });
+
+    // 768 is the width the owner named as the tablet breaking point, and the
+    // one the 30rem reservation destroyed: the shell leaves ~620px of row here
+    // (768 viewport - 64 sidebar rail - 32 container px-4 - 48 CardContent p-6
+    // - 24 row p-3), so reserving 480px of it left 43px for the client's name
+    // and 23px on a revoked row. 900 is the top of the same band, still below
+    // the lg where the reservation is allowed to exist.
+    for (const width of [768, 900]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.waitForTimeout(250);
+      for (const id of [RACHEL.id, REVOKED.id]) {
+        const seen = await measure(id);
+        // The coarse tripwire, well under what the layout actually gives
+        // (~288px on a live row, ~144px on the revoked one, which spends the
+        // difference on Re-import's disabled label) and far above the 43px and
+        // 23px the reservation used to leave.
+        expect(seen.identityWidth,
+          `${width}px: "${seen.name.text}" keeps a column to live in (got ${seen.identityWidth}px)`)
+          .toBeGreaterThanOrEqual(120);
+        // The claim that matters: a client's name reads as a name.
+        expect(seen.name.lines,
+          `${width}px: the client name "${seen.name.text}" is not broken across lines`)
+          .toBe(1);
+        expect(seen.title.lines,
+          `${width}px: the title "${seen.title.text}" stays inside its two-line clamp`)
+          .toBeLessThanOrEqual(2);
+        expect(seen.title.scrollHeight,
+          `${width}px: and the whole of it is rendered, not clipped below the clamp`)
+          .toBeLessThanOrEqual(seen.title.clientHeight + 1);
+        expect(seen.title.scrollWidth,
+          `${width}px: the title wraps rather than being clipped sideways`)
+          .toBeLessThanOrEqual(seen.title.clientWidth + 1);
+      }
+      expect(await overflowOf(page), `${width}px: the row still fits the viewport`).toBe(0);
+    }
   });
 
   test('B29: the hover label opens into reserved room - it never moves the row it is in', async ({ page, context, baseURL }) => {
     // Both roster shapes at once: a live row, and the revoked row that already
     // spends width on Re-import's disabled label and carries the longest label
     // of the set, "Restore to draft".
-    await openRoster(page, context, baseURL!, {
-      proposals: [RACHEL, REVOKED], counts_available: true, total: 2, truncated: false,
-    });
+    await openProposalsTab(page, context, baseURL!, BOTH_SHAPES);
 
     /** Everything the expanding label used to be able to shove. */
     const measure = (id: string) => page.getByTestId(`proposal-${id}`).evaluate((row) => {
@@ -1215,11 +1334,20 @@ test.describe('proposals admin, in the browser', () => {
       [REVOKED.id]: ['Copy link', 'Restore to draft'],
     };
 
-    // Either side of the tablet break: below it the actions have their own
-    // line, which is where an opening label would push Send onto a second one;
-    // at and above it they share the row with the name the label used to steal
-    // from.
-    for (const width of [640, 700, 768, 1024, 1280]) {
+    /**
+     * Two claims, one sweep, because they are the same guarantee read from
+     * either side of `lg`.
+     *
+     * Below lg there is no room in the shell to reserve, so the affordance is
+     * off entirely: the glyph must stay 44px under the cursor. That is what
+     * makes "nothing to reserve" true rather than merely intended - a label
+     * that quietly opened here would be taking its width straight off the
+     * client's name again.
+     *
+     * At lg and up it opens, and must open into room that was already there.
+     */
+    for (const width of [640, 700, 768, 900, 1024, 1280, 1440]) {
+      const opens = width >= 1024;
       await page.setViewportSize({ width, height: 900 });
       for (const id of [RACHEL.id, REVOKED.id]) {
         const row = page.getByTestId(`proposal-${id}`);
@@ -1232,15 +1360,22 @@ test.describe('proposals admin, in the browser', () => {
         for (const label of HOVERS[id]) {
           const button = row.getByRole('button', { name: label, exact: true });
           const shut = await button.evaluate((el) => Math.round(el.getBoundingClientRect().width));
+          expect(shut, `${width}px / ${label}: an idle glyph is a 44px square`).toBe(44);
           await button.hover();
           await page.waitForTimeout(300);
           const open = await button.evaluate((el) => Math.round(el.getBoundingClientRect().width));
-          // Without this the rest of the test would pass on a label that never
-          // opened, which is exactly the regression nobody would notice.
-          expect(open, `${width}px / ${label}: the label actually opened (${shut}px -> ${open}px)`)
-            .toBeGreaterThan(shut);
+          if (opens) {
+            // Without this the rest of the test would pass on a label that never
+            // opened, which is exactly the regression nobody would notice.
+            expect(open, `${width}px / ${label}: the label opened (${shut}px -> ${open}px)`)
+              .toBeGreaterThan(shut);
+          } else {
+            expect(open,
+              `${width}px / ${label}: below lg there is no reserved room, so nothing opens`)
+              .toBe(shut);
+          }
           expect(await measure(id),
-            `${width}px / ${label}: opening the label moved the row it is in`)
+            `${width}px / ${label}: hovering it moved the row it is in`)
             .toEqual(rest);
         }
 
@@ -1249,11 +1384,12 @@ test.describe('proposals admin, in the browser', () => {
         expect(await measure(id), `${width}px: the row returns to exactly where it rested`)
           .toEqual(rest);
       }
+      expect(await overflowOf(page), `${width}px: reserving the room cost no overflow`).toBe(0);
     }
   });
 
   test('B30: below sm every status badge sits on one right edge, bundle rows included', async ({ page, context, baseURL }) => {
-    await openProposals(page, context, baseURL!);
+    await openProposalsTab(page, context, baseURL!, ROSTER);
     await pasteCsv(page, CSV);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
     await page.getByLabel('Select Tile - heated floor upgrade').check();
