@@ -879,7 +879,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(row('Vanity - double sink').getByText('optional', { exact: true })).toBeVisible();
   });
 
-  test('B24 (AC10n): the drop zone takes a dropped file, and lets a dragged text reach the paste box', async ({ page, context, baseURL }) => {
+  test('B24 (AC10n): the drop zone takes a dropped file, and a dragged text imports through the paste door', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
 
     /** Drop something on an element, and report whether the default was taken away. */
@@ -895,23 +895,88 @@ test.describe('proposals admin, in the browser', () => {
         return ev.defaultPrevented;
       }, { selector, payload });
 
+    /**
+     * Drop text into the paste box the way a browser does it: the drop event,
+     * then the insert its default action performs and the input event that
+     * announces it - all in one task, which is the ordering the import flag is
+     * armed and dropped by. A synthetic event performs no native insert, so
+     * this stands in for it; the value it writes is the whole dropped text,
+     * which is what a drop into an EMPTY box produces.
+     *
+     * Reports whether the drop kept its default, since a cancelled one is a
+     * cancelled insert and nothing after it would happen at all.
+     */
+    const dropTextIntoBox = (text: string) =>
+      page.evaluate((t) => {
+        const box = document.querySelector('[data-testid="csv-paste"]') as HTMLTextAreaElement;
+        const dt = new DataTransfer();
+        dt.setData('text/plain', t);
+        const ev = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt });
+        box.dispatchEvent(ev);
+        if (ev.defaultPrevented) return false;
+        const setValue = Object.getOwnPropertyDescriptor(
+          window.HTMLTextAreaElement.prototype, 'value',
+        )!.set!;
+        setValue.call(box, t);
+        box.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      }, text);
+
     // A CSV dropped on the dashed box imports, and the browser's own handling
     // of it - navigating away from the page, preview and all - is cancelled.
     expect(await dropOn('zone', { file: CSV }), 'a dropped file is ours to handle').toBe(true);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
 
-    // Text dragged INTO the paste box is the browser's to insert. The zone
-    // wraps the box, so it used to cancel that drop on the way past and the one
-    // drag path carrying a CSV as text did nothing at all: no insert, no
-    // preview, no message. (A synthetic event performs no native insert, so
-    // what is asserted is the cancellation the insert depends on.)
-    expect(await dropOn('box', { text: 'title,description,price\nX,,1.00' }),
-      'a text drop into the box is the browser\'s to insert').toBe(false);
-
-    // Released on the zone AROUND the box it is still stopped, so a dragged
-    // link cannot navigate the importer away with the preview still in it.
+    // Released on the zone AROUND the box a text drop is still stopped, so a
+    // dragged link cannot navigate the importer away with the preview still in it.
     expect(await dropOn('zone', { text: 'https://example.com/estimate.csv' })).toBe(true);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
+
+    // Into the BOX it keeps its default - the insert is the browser's to
+    // perform, and cancelling it was the one drag path that failed with no
+    // file, no preview and no word. Composed work first, because a drop is an
+    // import and the one-door rule says an import asks before taking it.
+    await page.getByLabel('Select Demolition & prep').check();
+    await page.getByLabel('Select Tile - heated floor upgrade').check();
+    await page.getByTestId('combine-btn').click();
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+
+    let question = '';
+    page.once('dialog', (d) => { question = d.message(); d.dismiss(); });
+    expect(await dropTextIntoBox(CSV_NESTED), 'a text drop into the box is the browser\'s to insert')
+      .toBe(true);
+    expect(question, 'a dropped CSV asks before discarding composed work').toContain('bundles you composed');
+    // Declined: the bundle stands, and the box is put back to the text THAT
+    // preview was built from - never the dropped text above a stale preview.
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+    await expect(page.getByTestId('csv-paste')).toHaveValue(CSV);
+
+    // Accepted, the dropped text is what the preview and the box both hold -
+    // the same end state a paste of it reaches, through the other door.
+    page.once('dialog', (d) => d.accept());
+    expect(await dropTextIntoBox(CSV_NESTED)).toBe(true);
+    await expect(page.getByTestId('bundle-row')).toHaveCount(0);
+    await expect(page.getByTestId('line-row')).toHaveCount(4);
+    await expect(page.getByTestId('csv-paste')).toHaveValue(CSV_NESTED);
+
+    // And the keystroke AFTER a drop is still typing: the flag a drop arms is
+    // dropped on the next task either way, so an edit here neither re-imports
+    // nor asks to. Composed work again, so a stray re-import would have to.
+    await page.getByLabel('Select Demolition & prep').check();
+    await page.getByLabel('Select Faucet - matte black').check();
+    await page.getByTestId('combine-btn').click();
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+
+    const asked: string[] = [];
+    const spy = (d: { message(): string; dismiss(): Promise<void> }) => {
+      asked.push(d.message()); void d.dismiss();
+    };
+    page.on('dialog', spy);
+    await page.getByTestId('csv-paste').click();
+    await page.keyboard.type('\n# note to self');
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+    expect(asked, 'the keystroke after a drop is typing, not an import').toEqual([]);
+    page.off('dialog', spy);
   });
 
   test('B25: a slow search that lands last never overwrites the search that replaced it', async ({ page, context, baseURL }) => {

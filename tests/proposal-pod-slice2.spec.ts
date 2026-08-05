@@ -306,7 +306,7 @@ test('AC6d: a re-import that cannot insert restores the lines it deleted', async
     { id: 'l1', proposal_id: 'p1', position: 0, title: 'Demolition & prep', description: '', price_cents: 480000, optional: false, category: 'demolition', bundle_members: null },
     { id: 'l2', proposal_id: 'p1', position: 1, title: 'Tile', description: 'porcelain', price_cents: 120000, optional: true, category: 'tile', bundle_members: null },
   ];
-  const calls: { method: string; url: string; body: unknown }[] = [];
+  const calls: { method: string; url: string; body: unknown; prefer?: string }[] = [];
   const env = { ...process.env };
   const realFetch = globalThis.fetch;
   process.env.SUPABASE_SECRET_KEY = 'stub-key';
@@ -318,7 +318,7 @@ test('AC6d: a re-import that cannot insert restores the lines it deleted', async
     const url = String(input);
     const method = init?.method ?? 'GET';
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-    calls.push({ method, url, body });
+    calls.push({ method, url, body, prefer: (init?.headers as Record<string, string>)?.Prefer });
     if (method === 'GET' && url.includes('/proposals?')) return json([{ id: 'p1', status: 'sent' }]);
     if (method === 'GET' && url.includes('/proposal_lines?')) return json(previous);
     if (method === 'DELETE') return json([]);
@@ -341,7 +341,13 @@ test('AC6d: a re-import that cannot insert restores the lines it deleted', async
     process.env = env;
   }
 
-  expect(calls.some((c) => c.method === 'DELETE'), 'the old lines are deleted').toBe(true);
+  const del = calls.find((c) => c.method === 'DELETE');
+  expect(del, 'the old lines are deleted').toBeTruthy();
+  // And asked for nothing back. The rows being deleted are already held in the
+  // snapshot this restore is built from, so PostgREST's default of returning
+  // the representation ships up to MAX_LINES of rows - bundle_members blobs and
+  // all - across the wire and through JSON.parse for a value no caller reads.
+  expect(del!.prefer, 'the DELETE asks for no representation').toContain('return=minimal');
   const restore = calls.find((c) =>
     c.method === 'POST' && Array.isArray(c.body) && (c.body as { id?: string }[])[0]?.id);
   expect(restore, 'the snapshot is re-inserted after the failed insert').toBeTruthy();
@@ -579,6 +585,26 @@ test('AC6h: a counts outage costs the roster its numbers, never its lifecycle co
     expect(healthy.counts_available).toBe(true);
     expect(healthy.proposals[0].line_count).toBe(7);
     expect(healthy.proposals[0].latest_total_cents).toBe(630050);
+
+    // An aggregate that ANSWERS but has no row for a proposal is the same
+    // "not known" - a response cut short by max-rows, a proposal deleted
+    // between the two reads, an empty body behind a 200. The function returns
+    // one row per proposal that exists and COUNT(*) is never null, so a missing
+    // row is never evidence of zero, and printing 0 lines / 0 submissions on a
+    // live proposal reads to an admin as the lines having been lost.
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/rpc/proposal_roster_counts')) return json([]);
+      if (url.includes('/proposals?')) return json([proposal]);
+      return json([]);
+    }) as typeof fetch;
+    const short = await listProposals();
+    expect(short.proposals[0].line_count).toBeNull();
+    expect(short.proposals[0].submission_count).toBeNull();
+    expect(short.proposals[0].latest_total_cents).toBeNull();
+    // The aggregate itself arrived, so the whole-roster banner stays down: the
+    // row says it does not know, and nothing over-claims on the rest's behalf.
+    expect(short.counts_available).toBe(true);
   } finally {
     globalThis.fetch = realFetch;
     process.env = env;

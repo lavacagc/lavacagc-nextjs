@@ -135,7 +135,9 @@ export async function createProposal(input: CreateProposalInput): Promise<Propos
   } catch (err) {
     // A proposal without lines is a broken artifact - take the parent with it
     // (no submissions can exist yet, so the RESTRICT cannot fire).
-    await supabaseRest('DELETE', `proposals?id=eq.${proposal.id}`).catch(() => {});
+    await supabaseRest('DELETE', `proposals?id=eq.${proposal.id}`, undefined, {
+      prefer: 'return=minimal',
+    }).catch(() => {});
     throw err;
   }
   return proposal;
@@ -203,7 +205,11 @@ export async function replaceLines(proposalId: string, lines: ProposalLineInput[
     `proposal_lines?select=${STORED_LINE_COLUMNS}&proposal_id=eq.${proposalId}&order=position.asc&limit=${MAX_LINES}`,
   )) ?? [];
 
-  await supabaseRest('DELETE', `proposal_lines?proposal_id=eq.${proposalId}`);
+  // The deleted rows are already held in `previous`; asking PostgREST to
+  // serialize them back is up to MAX_LINES of bundle_members blobs nobody reads.
+  await supabaseRest('DELETE', `proposal_lines?proposal_id=eq.${proposalId}`, undefined, {
+    prefer: 'return=minimal',
+  });
   try {
     await insertLines(proposalId, lines);
   } catch (err) {
@@ -425,15 +431,23 @@ export async function listProposals(search?: string | null): Promise<Roster> {
     };
   }
 
+  // A proposal the aggregate answered for gets its numbers; one it did NOT gets
+  // nulls, never zeros. The function selects one row per id that exists, so a
+  // missing row means the answer is short - a response truncated by max-rows, a
+  // proposal deleted between the two reads, an empty body behind a 200 - and
+  // "0 lines, 0 submissions" is a claim none of those support. Null is this
+  // module's word for not known right now, and the roster renders it as such.
+  // The banner stays down: it speaks for the whole aggregate, which arrived.
   const byId = new Map(counts.map((c) => [c.proposal_id, c]));
   return {
     proposals: proposals.map((p) => {
       const c = byId.get(p.id);
       return {
         ...p,
-        line_count: c?.line_count ?? 0,
-        submission_count: c?.submission_count ?? 0,
-        latest_total_cents: c?.latest_total_cents ?? null,
+        line_count: c ? c.line_count : null,
+        submission_count: c ? c.submission_count : null,
+        // Null from a row that IS present is the honest "no submission yet".
+        latest_total_cents: c ? c.latest_total_cents : null,
       };
     }),
     counts_available: true,

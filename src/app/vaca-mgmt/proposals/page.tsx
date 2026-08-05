@@ -191,8 +191,8 @@ export default function ProposalsAdminPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   /** The text the current preview was built from, so a re-paste of it re-keys nothing. */
   const lastParsed = useRef<string>('');
-  /** Set by onPaste so the change event that follows knows it is an import, not typing. */
-  const pasting = useRef(false);
+  /** Set by an import gesture so the change event that follows is not read as typing. */
+  const importing = useRef(false);
 
   const total = useMemo(() => rows.reduce((a, r) => a + r.priceCents, 0), [rows]);
 
@@ -278,6 +278,22 @@ export default function ProposalsAdminPage() {
     if (!text.trim()) return clearPreview(text);
     return reparse(text);
   }, [clearPreview, reparse]);
+
+  /**
+   * Mark the change event about to arrive as an import rather than typing.
+   *
+   * A paste and a dragged-in text are the same gesture as far as the box is
+   * concerned - the admin handing it a CSV - and the one-door rule covers both:
+   * they parse, behind the same confirm. What must NOT be marked is the
+   * keystroke after either, so the flag is dropped on the next task whether the
+   * change event read it or not: a gesture that inserts nothing fires no change
+   * event at all, and a flag left armed turns the next character typed into a
+   * re-import that silently discards the preview.
+   */
+  const armImport = useCallback(() => {
+    importing.current = true;
+    window.setTimeout(() => { importing.current = false; }, 0);
+  }, []);
 
   const onFile = useCallback((f: File | undefined | null) => {
     if (!f) return;
@@ -739,9 +755,15 @@ export default function ProposalsAdminPage() {
             browser would otherwise navigate to the file and take the preview
             with it); taking it away from a TEXT drag was collateral, and the
             one drag path that failed with no file, no preview and no word.
-            So the file drag is handled, a text drop into the box is left to the
-            browser, and a text drop anywhere else in the zone is still stopped
-            rather than allowed to navigate.
+
+            So a file is handled here; a text drop INTO the box keeps its
+            default, because the insert is the browser's to perform, and is
+            armed as an import so the change event it produces goes through the
+            paste path rather than the typing one - dragging a corrected CSV in
+            is an import, and leaving it as typing put the new text above a
+            preview still built from the old, with Create writing the old rows;
+            and a text drop anywhere ELSE in the zone is still stopped rather
+            than allowed to navigate the importer away.
           */}
           <div
             className="mb-4 rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground"
@@ -752,7 +774,11 @@ export default function ProposalsAdminPage() {
                 onFile(e.dataTransfer.files?.[0]);
                 return;
               }
-              if (!(e.target instanceof HTMLTextAreaElement)) e.preventDefault();
+              if (!(e.target instanceof HTMLTextAreaElement)) {
+                e.preventDefault();
+                return;
+              }
+              armImport();
             }}
           >
             Drop the CSV here, or
@@ -786,19 +812,23 @@ export default function ProposalsAdminPage() {
               // from, since a box left empty beside a live preview is the very
               // mismatch clearing exists to prevent.
               //
-              // A paste IS a deliberate import, so it parses - here rather than
-              // from onPaste, because the change event is the first moment the
-              // pasted text exists in the value. It commits that text only once
-              // the discard is accepted: committing first and asking afterwards
-              // left the box holding a corrected CSV above a preview built from
-              // the old one, with Create writing the old rows and nothing on
-              // screen saying the two panes disagreed. Returning without
+              // A paste - and a text dragged into the box, which is the same
+              // gesture through another door - IS a deliberate import, so it
+              // parses. Here rather than from onPaste/onDrop, because the change
+              // event is the first moment the incoming text exists in the value:
+              // both of those only arm the flag this branch reads. It commits
+              // that text only once the discard is accepted: committing first
+              // and asking afterwards left the box holding a corrected CSV
+              // above a preview built from the old one, with Create writing the
+              // old rows and nothing on screen saying the two panes disagreed -
+              // which is exactly where a dropped text landed while it took the
+              // typing branch below. Returning without
               // setCsvText leaves this a controlled value React puts straight
               // back, so declining restores the box the surviving preview owns.
               onChange={(e) => {
                 const text = e.target.value;
-                if (pasting.current) {
-                  pasting.current = false;
+                if (importing.current) {
+                  importing.current = false;
                   if (!parsePastedText(text)) return;
                   setCsvText(text);
                   return;
@@ -806,13 +836,7 @@ export default function ProposalsAdminPage() {
                 if (!text.trim() && !clearPreview(text)) return;
                 setCsvText(text);
               }}
-              onPaste={() => {
-                pasting.current = true;
-                // Never leave the flag armed: a paste that changes nothing
-                // fires no change event at all, and the keystroke after it must
-                // not be mistaken for an import.
-                window.setTimeout(() => { pasting.current = false; }, 0);
-              }}
+              onPaste={armImport}
             />
             <Button
               variant="outline"
