@@ -988,6 +988,48 @@ test('AC8: bundle migration - shape, sum tie, least-privilege function, frozen-f
   expect(ddl).toContain('@.price_cents.floor() == @.price_cents');
 });
 
+test('AC8b: a non-array bundle_members is the shape CHECK to refuse, not a 22023', () => {
+  // Exercised on a throwaway local Postgres, per the pod's standing rule: a
+  // bundle_members that is a JSON object was refused with SQLSTATE 22023
+  // ("cannot get array length of a non-array") instead of a check_violation
+  // naming a constraint, because the cap and the sum tie both reached an array
+  // call with no escape in front of it. No bad data ever landed either way -
+  // what was defective is the backstop's answer to a writer that skipped zod.
+  //
+  // Read as text, like every other DDL assertion here, so a future edit cannot
+  // quietly drop the guard.
+  const sql = read('supabase/migrations/20260827000000_proposal_bundle_check_guards.sql');
+  const ddl = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+
+  for (const name of ['proposal_lines_bundle_member_cap', 'proposal_lines_bundle_sum']) {
+    // Same name, dropped and re-added: a rename would leave the old constraint
+    // standing in every database that already has it.
+    expect(ddl, `${name} is re-added under its own name`)
+      .toMatch(new RegExp(`DROP CONSTRAINT ${name}[\\s\\S]*?ADD CONSTRAINT ${name} CHECK \\(`));
+    // The escape itself, ahead of the array call it protects.
+    const body = ddl.split(`ADD CONSTRAINT ${name} CHECK (`)[1].split(');')[0];
+    expect(body, `${name} stands down on a non-array`)
+      .toContain("WHEN jsonb_typeof(bundle_members) <> 'array' THEN TRUE");
+    // NULL is the ordinary non-bundle line and must reach neither call.
+    expect(body, `${name} still passes a NULL bundle_members`)
+      .toContain('WHEN bundle_members IS NULL THEN TRUE');
+    // CASE, not a leading OR: Postgres may reorder Boolean operands, which is
+    // how an unguarded array call surfaced in the first place.
+    expect(body, `${name} forces evaluation order with CASE`).toContain('CASE');
+  }
+
+  // The array semantics both constraints exist for are unchanged.
+  expect(ddl).toMatch(/jsonb_array_length\(bundle_members\) <= 200/);
+  expect(ddl).toMatch(/proposal_bundle_total\(bundle_members\) = price_cents/);
+
+  // 20260825000000 and 20260826000000 have both landed in a database, so the
+  // repair had to be a new file rather than an edit to either of them.
+  expect(read('supabase/migrations/20260826000000_proposal_roster_counts.sql'))
+    .not.toContain('jsonb_typeof');
+  // And this file carries the same rule forward for whoever edits next.
+  expect(sql).toContain('frozen');
+});
+
 test('AC9: member prices are admin-side only - the client render contract is pinned', () => {
   // What a composed bundle hands onward is titles and prices for the ADMIN, and
   // titles and one summed price for the client. The persisted shape is asserted
@@ -1422,6 +1464,7 @@ test('AC12: no em dashes in the slice-2 modules (house style)', () => {
     'src/lib/proposals/clientPage.ts',
     'supabase/migrations/20260825000000_proposal_bundles.sql',
     'supabase/migrations/20260826000000_proposal_roster_counts.sql',
+    'supabase/migrations/20260827000000_proposal_bundle_check_guards.sql',
   ]) {
     expect(read(p), `${p} must not contain an em dash`).not.toContain('—');
   }

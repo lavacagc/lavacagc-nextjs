@@ -120,7 +120,8 @@ No em dash appears in the three modules, the migration, or `CLAUDE.md`.
 
 The gate runs lint and `tsc + next build`, and the ACs assert over a migration's **text**, so nothing in the pipeline reads the DDL as SQL.
 Every revision of every pod migration is therefore applied to a throwaway local Postgres and its constraints exercised there before that revision is called finished.
-For 20260824000000 that is the token recipe, the lifecycle pairs, the snapshot shape, the whole-cents and cap rules, the total-is-the-sum check, both `updated_at` triggers, and the delete that must fail while a submission exists; slice 2's two migrations are held to the same rule, below.
+For 20260824000000 that is the token recipe, the lifecycle pairs, the snapshot shape, the whole-cents and cap rules, the total-is-the-sum check, both `updated_at` triggers, and the delete that must fail while a submission exists; slice 2's three migrations are held to the same rule, below.
+That rule is what caught the one defect the third of them repairs, so it is doing the work it is here to do.
 The PR's Supabase Preview check then replays every migration on a real database before merge, and production is hand-applied at go-live with `supabase db query --linked`, the path proven for the My Home Systems launch.
 
 ## Running the slice 1 checks
@@ -161,7 +162,7 @@ The client-facing page it links to is **slice 3** and does not exist yet, which 
 - `src/lib/proposals/clientPage.ts` - `CLIENT_PAGE_LIVE`, the send guard.
 - `src/lib/proposals/deliveryEmail.ts` - the delivery email.
 - `src/lib/notify/supabase-rest.ts` - `supabaseRestCounted`, the counted GET the roster's truncation notice is built on.
-- `supabase/migrations/20260825000000_proposal_bundles.sql` and `20260826000000_proposal_roster_counts.sql`.
+- `supabase/migrations/20260825000000_proposal_bundles.sql`, `20260826000000_proposal_roster_counts.sql` and `20260827000000_proposal_bundle_check_guards.sql`.
 - `src/components/admin/AdminSidebar.tsx` + `src/components/AdminContent.tsx` - the Customers -> Proposals entry and its tab. The **Crew** tab is fixed in passing: it had a sidebar entry with no content mounted behind it, so it rendered blank.
 - `tests/proposal-pod-slice2.spec.ts`, `tests/proposal-pod-slice2-browser.spec.ts`, `tests/proposal-pod-slice2-evidence.spec.ts`.
 
@@ -207,7 +208,12 @@ The email plumbing itself - category, sender, preference posture, audit row - is
 
 - `20260825000000_proposal_bundles.sql` - `proposal_lines.bundle_members` (an array of `{title, price_cents}`), its shape CHECK, and the arithmetic tie that a bundle's price **is** its members' sum. `proposal_bundle_total` is revoked from `PUBLIC`, `anon` and `authenticated` for the same reason `proposal_snapshot_total` is.
 - `20260826000000_proposal_roster_counts.sql` - the roster aggregate, the upper bound the bundle shape CHECK was missing (200 members, the parser's `MAX_LINES`), and the two privilege repairs 20260825000000 cannot make itself now that it is frozen: an explicit `service_role` grant on `proposal_bundle_total` (Postgres checks EXECUTE at INSERT time for a function a CHECK calls, so without it a bundled line cannot be written at all) and its pinned empty `search_path`.
-- Both follow the pod's standing rule: applied to a throwaway local Postgres and their constraints exercised there before the revision was called finished, because the ACs can only assert over their **text**. Production is hand-applied at go-live, per "How the schema is verified" above.
+- `20260827000000_proposal_bundle_check_guards.sql` - `proposal_lines_bundle_member_cap` and `proposal_lines_bundle_sum` re-added under their own names, each with a `jsonb_typeof(bundle_members) <> 'array'` escape ahead of the array call inside it.
+  Exercising the two files above on a local Postgres showed a `bundle_members` that is a JSON **object** being refused with SQLSTATE 22023 ("cannot get array length of a non-array") rather than a `check_violation` naming a constraint: the shape CHECK stands down on a non-array, but the cap and the sum tie reached `jsonb_array_length` and `proposal_bundle_total` unguarded.
+  The row was refused either way and `zod` validates before any write, so nothing bad ever landed; what was wrong is that the layer that exists to hold when a writer skips `zod` pointed that writer at nothing, non-deterministically, since Postgres evaluates a table's CHECKs in an unspecified order.
+  Now `proposal_lines_bundle_shape` **owns** the non-array rejection and the other two are no-ops for that input, with their semantics for every array input unchanged.
+  The escape is a `CASE`, not a leading `OR`: Boolean operators in Postgres are not a short-circuit guarantee, and the planner reordering operands is exactly how an unguarded array call surfaces.
+- All three follow the pod's standing rule: applied to a throwaway local Postgres and their constraints exercised there before the revision was called finished, because the ACs can only assert over their **text**. Production is hand-applied at go-live, per "How the schema is verified" above.
 
 ### Where the slice 2 ACs live, and how to run them
 
