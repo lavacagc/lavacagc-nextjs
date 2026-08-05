@@ -12,6 +12,7 @@ Schema, the parse route, the admin screen, and the member-facing shelf on the ch
 - `src/lib/homecare/products.ts` - the pure contract: ASIN extraction, link building, price bands, and the server read the checklist page uses.
 - `src/lib/homecare/amazonListing.ts` - the best-effort listing reader (title, brand, image URLs) behind `HOME_CARE_IMAGE_FETCH`.
 - `src/app/api/admin/home-care/parse-amazon/route.ts` - paste a URL, get back a filled-in draft.
+- `src/app/api/admin/home-care/product-image/route.ts` - the manual upload, which is a first-class path and not an error recovery (see the finding below).
 - `src/app/api/admin/home-care/products/route.ts` and `.../products/[id]/route.ts` - the CRUD the admin screen drives.
 - `src/components/admin/HomeCareShopManager.tsx` plus `src/app/vaca-mgmt/home-care-shop/page.tsx` - the task-first admin screen.
 - `src/components/homecare/HomeCareChecklistClient.tsx` - the collapsed strip, the swipe shelf, and the two row tweaks.
@@ -102,6 +103,23 @@ The clicks table ships here anyway because a second migration to add one table l
 
 - The product read is fail-soft: a missing table (a Supabase Preview branch where the migration has not been replayed, a restored copy) yields no shelves and a working checklist, exactly as `readHomeRecords` does today.
 - The read is one query for all visible tasks, issued inside the page's existing `Promise.all`. It adds one round trip, not one per task.
+
+## Finding from the first real run, 5 Aug 2026
+
+The automatic photo pull was exercised against a live Amazon product page from a home network and **was blocked**.
+Two things came out of that, and both change decisions rather than just being trivia.
+
+**Amazon's bot wall answers 404, not 503.**
+The response is a 1.1KB page reading "To discuss automated access to Amazon data please contact...", returned for a real ASIN and a made-up one alike.
+So a link-health checker that reads 404 as "this product is delisted" would mark the entire library dead on the first run that gets walled.
+That is the concrete version of the rule already written into the slice 2 design: a block is inconclusive, it is never a strike, and only a positive signal of unavailability may retire a product.
+Anything else empties the shelves on a bad afternoon and nobody finds out until a member does.
+
+**The manual upload is the primary path today, not the fallback.**
+The parse route still fills in the ASIN from any pasted URL, which is most of the tedium.
+Photos come from the upload box until either Amazon stops blocking us or PA-API access opens.
+Whether the block also applies from Vercel's IP ranges is unknown until this deploys, and the prior is not encouraging: datacenter ranges are what bot walls are tuned for.
+The design already survives this - the route answers 200 with a reason, the schema keeps the product as a draft until it has a picture, and `HOME_CARE_IMAGE_FETCH=off` retires the attempt entirely.
 
 ## AC12 - Clicks are counted without identifying anyone
 

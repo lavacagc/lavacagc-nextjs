@@ -133,7 +133,10 @@ test('AC9: no em dashes in any Slice 3 file (global style rule)', () => {
     return client.slice(s, e + end.length);
   };
   const stateBlock = slice('// My Home Systems: an overlay', 'setConsentGiven(true);');
-  const triggerBlock = slice('// My Home Systems: save where a system is', '{!isDone && (');
+  // End anchor moved with the DIY Kit slice: the dismiss control that used to
+  // close this block as `{!isDone && (` is now the extracted `hideButton`,
+  // rendered in one of two places. The block being scanned is unchanged.
+  const triggerBlock = slice('// My Home Systems: save where a system is', '{!isDone && hasRowActions && hideButton}');
   const panelBlock = slice('{fact && captureOpen && (', 'handleRecordSaved(fact.key, value)');
   expect(stateBlock.includes('—'), 'checklist client state block').toBe(false);
   expect(triggerBlock.includes('—'), 'checklist client trigger block').toBe(false);

@@ -69,8 +69,15 @@ export default function DiyKitShelf({ taskKey, products, affiliateTag }: Props) 
     const cardWidth = (el.firstElementChild as HTMLElement | null)?.offsetWidth ?? clientWidth;
     const step = cardWidth + 9;
     const perView = Math.max(1, Math.round(clientWidth / step));
-    const first = Math.min(products.length, Math.floor(scrollLeft / step) + 1);
-    setRange({ first, last: Math.min(products.length, first + perView - 1) });
+    // Counted from the RIGHT edge, and pinned to the end when the scroll is
+    // there. Counting from the left with a floor is off by one at the end: the
+    // final scroll position does not land on a card boundary, so a shelf swiped
+    // all the way right still read "2 - 3 of 4" while showing the fourth card.
+    const atEnd = scrollLeft >= scrollWidth - clientWidth - 1;
+    const last = atEnd
+      ? products.length
+      : Math.min(products.length, Math.max(1, Math.round((scrollLeft + clientWidth) / step)));
+    setRange({ first: Math.max(1, last - perView + 1), last });
   }, [products.length]);
 
   useEffect(() => {
@@ -138,7 +145,11 @@ export default function DiyKitShelf({ taskKey, products, affiliateTag }: Props) 
                 key={p.id}
                 product={p}
                 affiliateTag={affiliateTag}
-                className={swipes ? 'w-[47%] shrink-0 snap-start sm:w-[31%]' : ''}
+                // 44%, not 50%: two cards fit and a sliver of the third shows.
+                // The peek is the strongest "there is more" cue there is - the
+                // slider bar below says the same thing, but only to someone who
+                // has already looked down.
+                className={swipes ? 'w-[44%] shrink-0 snap-start sm:w-[30%]' : ''}
               />
             ))}
           </div>
@@ -213,9 +224,11 @@ function ProductCard({
         target="_blank"
         rel="sponsored nofollow noopener"
         data-testid="diy-kit-link"
-        className="mt-auto inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-lg bg-secondary px-2.5 py-2 text-[11.5px] font-extrabold text-secondary-foreground transition-transform hover:-translate-y-px"
+        className="mt-auto inline-flex min-h-[36px] w-full items-center justify-center gap-1 whitespace-nowrap rounded-lg bg-secondary px-1.5 py-2 text-[11px] font-extrabold text-secondary-foreground transition-transform hover:-translate-y-px"
       >
-        <ExternalLink className="h-3 w-3" /> View on Amazon
+        {/* nowrap: the label broke across two lines inside a 44%-wide card,
+            which made every card in the shelf a different height. */}
+        <ExternalLink className="h-3 w-3 shrink-0" /> View on Amazon
       </a>
     </div>
   );

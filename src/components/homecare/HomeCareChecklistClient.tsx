@@ -472,7 +472,33 @@ export default function HomeCareChecklistClient({
     // The DIY Kit shelf, if the owner has stocked this task. Empty for every
     // task they have not, which is most of them and the point.
     const shelf = productShelves[t.key] ?? [];
+    // Does the action row have anything in it besides the hide icon? On a task
+    // that is neither bookable nor tied to a home fact it does not, and an
+    // icon-only row reads as a stray control floating under the blurb - so on
+    // those cards the icon moves up to the title row, where the + circle sits
+    // on bookable ones and the space is otherwise empty.
+    const hasRowActions = t.bookable || !!fact;
     const panelKey = id(t.key, season);
+    // Icon-only (owner, 5 Aug 2026). The accessible name carries the meaning a
+    // phone cannot hover to read, `title` gives the pointer tooltip, and the
+    // undo bar in the sticky header pays for the lost label: an icon a member
+    // mis-taps has to be recoverable in the same breath, not only through the
+    // Hidden strip at the foot of the page.
+    const hideButton = (
+      <button
+        type="button"
+        onClick={() => dismissWithUndo(t.key, t.title)}
+        disabled={busy === `dismiss|${t.key}`}
+        aria-label={`Not relevant - hide ${t.title}`}
+        title="Not relevant - hide for me"
+        data-testid={`hide-task-${t.key}`}
+        className="group -my-2 ml-auto flex shrink-0 items-center justify-center"
+      >
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors group-hover:bg-muted group-hover:text-slate-600">
+          <EyeOff className="h-4 w-4" />
+        </span>
+      </button>
+    );
     const captureOpen = capturePanelOpen.has(panelKey);
     const saved = fact ? records.has(fact.key) : false;
     return (
@@ -525,6 +551,9 @@ export default function HomeCareChecklistClient({
               {cost && <span className="whitespace-nowrap text-[11px] text-slate-400">{cost === CONSULT_COST ? cost : `Pro est. ${cost}`}</span>}
             </div>
           </div>
+          {/* On a card with no action row, the hide icon lives up here instead
+              of alone under the blurb. */}
+          {!isDone && !hasRowActions && hideButton}
           {t.bookable && (
             <button
               type="button"
@@ -594,27 +623,7 @@ export default function HomeCareChecklistClient({
               </span>
             </button>
           )}
-          {!isDone && (
-            // Icon-only, pushed to the end of the row (owner, 5 Aug 2026). The
-            // accessible name carries the meaning a phone cannot hover to read,
-            // and `title` gives the pointer tooltip. Losing the visible label is
-            // what the undo bar above the list exists to pay for: an icon a
-            // member mis-taps has to be recoverable in the same breath, not only
-            // through the Hidden strip at the foot of the page.
-            <button
-              type="button"
-              onClick={() => dismissWithUndo(t.key, t.title)}
-              disabled={busy === `dismiss|${t.key}`}
-              aria-label={`Not relevant - hide ${t.title}`}
-              title="Not relevant - hide for me"
-              data-testid={`hide-task-${t.key}`}
-              className="group -my-2 ml-auto flex shrink-0 items-center justify-center"
-            >
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors group-hover:bg-muted group-hover:text-slate-600">
-                <EyeOff className="h-4 w-4" />
-              </span>
-            </button>
-          )}
+          {!isDone && hasRowActions && hideButton}
         </div>
         {shelf.length > 0 && <DiyKitShelf taskKey={t.key} products={shelf} affiliateTag={affiliateTag} />}
         {fact && captureOpen && (
