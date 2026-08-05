@@ -10,6 +10,7 @@ import { isServiceArea, normalizeTown } from '../src/lib/intake/serviceArea';
 import { offScriptReply, reachedAHuman, offScriptTelegram } from '../src/lib/intake/offScript';
 import { completionMessage, reactionLine, urgencyLine } from '../src/lib/intake/completionAlert';
 import { newIntakeToken, intakeUrlFor, intakePathFor } from '../src/lib/intake/session';
+import { isPrivateTokenPage } from '../src/lib/privatePages';
 import { TELEGRAM_TEXT_LIMIT } from '../src/lib/notify/telegramMessage';
 import { leadInstantAckHtml } from '../src/lib/emailTemplates';
 
@@ -594,7 +595,13 @@ test.describe('nothing sits on top of the conversation', () => {
     // That bar is `fixed bottom-0 z-50 md:hidden` - exactly where the answer
     // buttons and the composer are. A lead tapping the last price option was
     // hitting its "Free Estimate" link and being sent to /contact instead.
-    expect(code('src/components/StickyCTA.tsx')).toContain("pathname.startsWith('/intake')");
+    //
+    // The intake's own clause moved into the shared private-token list when the
+    // proposal page needed the identical suppression, so this asserts the
+    // ANSWER rather than the spelling: the widget asks that list, and the list
+    // says yes for a tokenized intake path.
+    expect(code('src/components/StickyCTA.tsx')).toContain('isPrivateTokenPage(pathname)');
+    expect(isPrivateTokenPage(intakePathFor('a'.repeat(43)))).toBe(true);
   });
 
   test('the thread scrolls inside itself rather than growing the page', () => {

@@ -297,16 +297,21 @@ async function pasteCsv(page: Page, text: string) {
 test.describe('proposals admin, in the browser', () => {
   test.use({ viewport: { width: 1280, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
 
-  test('B1 (AC10e): Send is refused while the client page does not exist; Copy link still works', async ({ page, context, baseURL }) => {
+  test('B1 (AC10e): Send is live on a draft with an address; Copy link still works', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
 
     // The roster rendered from the stubbed read.
     await expect(page.getByText('Rachel Morales')).toBeVisible();
 
-    // Send is off, and says why - a mis-click cannot mail a dead link.
+    // RETIRED BY SLICE 3, the same way the static half of AC10e was. Through
+    // slice 2 this asserted Send was OFF and carried the "not live yet" title,
+    // because /proposal/[token] did not exist and a mis-click would have mailed
+    // a dead link. Slice 3 added the route and flipped CLIENT_PAGE_LIVE in the
+    // same commit, so the button an admin sees is the real one and a test still
+    // demanding the refusal would be demanding a regression.
     const send = page.getByTestId('send-btn');
-    await expect(send).toBeDisabled();
-    await expect(send).toHaveAttribute('title', /not live yet/i);
+    await expect(send).toBeEnabled();
+    await expect(send).not.toHaveAttribute('title', /not live yet/i);
 
     // Copy link is deliberately still available.
     const copy = page.getByRole('button', { name: /copy link/i });
@@ -709,13 +714,24 @@ test.describe('proposals admin, in the browser', () => {
     // admin has pasted the corrected CSV and composed it.
     const reimport = row.getByTestId('reimport-btn');
     await expect(reimport).toBeDisabled();
-    // And the remedy it names is one the admin can act on. Send is disabled on
-    // every row while the client page is missing, so pointing at Re-send left
-    // this row frozen: Revoke hides itself once used, and Copy link was the only
-    // thing left that did anything.
+    // And the remedy it names is still Restore rather than Re-send, for the
+    // reason store.ts gives: lines that are wrong are repaired as a draft and
+    // sent again, not re-sent to a client in order to earn the right to fix
+    // them. Through slice 2 that was also the ONLY door - the line below
+    // asserted Send was disabled, because it was switched off on every row
+    // while the client page was missing, which left a revoked row frozen.
     await expect(reimport).toHaveAttribute('title', /restore it to draft before re-importing/i);
-    await expect(row.getByTestId('send-btn')).toBeDisabled();
     await expect(row.getByTestId('restore-btn')).toBeEnabled();
+
+    // RETIRED BY SLICE 3, the same way B1's half of AC10e was. The flag flip
+    // gave the row back the second door the lifecycle always documented:
+    // markSent is "also the un-revoke path" (store.ts) and clears revoked_at,
+    // so a revoked proposal can be revived by re-sending it. The button says
+    // which one it is, and a test still demanding the refusal would be
+    // demanding a regression.
+    const send = row.getByTestId('send-btn');
+    await expect(send).toBeEnabled();
+    await expect(send).toHaveText(/re-send/i);
 
     // A live proposal is unaffected.
     await page.getByTestId('roster-search-clear').click();
