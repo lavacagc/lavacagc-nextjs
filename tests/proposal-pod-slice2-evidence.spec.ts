@@ -162,6 +162,103 @@ const nameBundle = async (row: ReturnType<Page['getByTestId']>, name: string) =>
   await row.getByLabel('Bundle name').blur();
 };
 
+/**
+ * The surface an admin actually reaches: the dashboard shell at /vaca-mgmt,
+ * opened through its Customers -> Proposals entry.
+ *
+ * Capture E uses this rather than the bare /vaca-mgmt/proposals route for the
+ * same reason the browser suite's geometry tests do - the bare route has no
+ * shell at all, while the dashboard spends 64px on the sidebar rail before the
+ * container and card padding. A row photographed on the bare route is ~150px
+ * wider at 768px than the one the owner reviewed.
+ */
+async function openProposalsTab(page: Page, context: BrowserContext, baseURL: string) {
+  await signIn(context, baseURL);
+  await page.goto('/vaca-mgmt');
+  await expect(page.getByText('Content Management')).toBeVisible();
+  // The rail is collapsed to icons and opens on hover; there is no other way
+  // to reach a leaf entry.
+  await page.mouse.move(30, 400);
+  await page.getByRole('button', { name: 'Customers' }).click();
+  await page.getByRole('button', { name: 'Proposals' }).click();
+  await expect(page.getByTestId('proposals-admin')).toBeVisible();
+  // Back off the rail so it collapses to the 64px it occupies in use, and let
+  // its 500ms transition finish before anything is measured.
+  const size = page.viewportSize()!;
+  await page.mouse.move(size.width - 40, size.height - 40);
+  await page.waitForTimeout(700);
+}
+
+/**
+ * Everything the owner's crowding pass asked about, read off the rendered box
+ * model rather than off the class list: what sticks out past the viewport, what
+ * an ancestor is quietly clipping, which control is under the house 44px, and
+ * the three widths the two rounds of review turned on - the bundle name field,
+ * the Search/Clear pair, and the client's identity column.
+ */
+const geometry = (page: Page) => page.evaluate(() => {
+  const root = document.querySelector('[data-testid="proposals-admin"]');
+  if (!root) throw new Error('the proposals page is not on screen');
+  const label = (el: Element) => {
+    const testid = (el as HTMLElement).dataset?.testid;
+    if (testid) return `[${testid}]`;
+    const first = (el.className || '').toString().trim().split(/\s+/)[0];
+    return `${el.tagName.toLowerCase()}${first ? `.${first}` : ''}`;
+  };
+  const box = (sel: string) => {
+    const el = root.querySelector(sel);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { width: Math.round(r.width), height: Math.round(r.height), top: Math.round(r.top) };
+  };
+
+  const viewport = document.documentElement.clientWidth;
+  let widest = { what: '', right: 0 };
+  root.querySelectorAll('*').forEach((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return;
+    if (r.right > widest.right) widest = { what: label(el), right: Math.round(r.right) };
+  });
+
+  // An `overflow-x: hidden` box still reports the width it is hiding, which is
+  // the only place an overrun is observable on this shell: globals.css clips
+  // html and body, so the document can never grow a scrolling area to measure.
+  const clipping: string[] = [];
+  for (let el: Element | null = root; el; el = el.parentElement) {
+    const overflowX = getComputedStyle(el).overflowX;
+    if (!['hidden', 'auto', 'scroll'].includes(overflowX)) continue;
+    const over = el.scrollWidth - el.clientWidth;
+    if (over > 1) clipping.push(`${label(el)} clips ${Math.round(over)}px of its own content`);
+  }
+
+  const undersized: string[] = [];
+  root.querySelectorAll('button').forEach((btn) => {
+    const r = btn.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return;
+    if (r.width < 44 || r.height < 44) {
+      const name = (btn.getAttribute('aria-label') || btn.textContent || '?').trim();
+      undersized.push(`"${name}" ${Math.round(r.width)}x${Math.round(r.height)}`);
+    }
+  });
+
+  const search = box('[data-testid="roster-search-btn"]');
+  const clear = box('[data-testid="roster-search-clear"]');
+  return {
+    viewport,
+    widest,
+    clipping,
+    undersized,
+    tick: box('[data-testid="row-select-target"]'),
+    // The field, by its accessible name - the first input in a bundle row is
+    // the row's tick, and measuring that reports a 20px checkbox as the name.
+    bundleName: box('[data-testid="bundle-row"] input[aria-label="Bundle name"]'),
+    identity: box('[data-testid="roster-identity"]'),
+    searchRow: search && clear
+      ? { sameLine: search.top === clear.top, search: search.width, clear: clear.width }
+      : null,
+  };
+});
+
 test.beforeAll(() => { mkdirSync(OUT, { recursive: true }); });
 
 test.describe.configure({ mode: 'serial' });
@@ -400,5 +497,106 @@ test.describe('Proposal Pod slice 2 - evidence capture', () => {
       + `Category: proposal_delivery\n\n${withSlot.text}\n`);
     expect(withSlot.html).toContain('cal.com/lavacagc/walkthrough');
     expect(without.html).not.toContain('Book a time');
+  });
+
+  /**
+   * E. The two rounds of the owner's design review, photographed on the shell
+   * they were reviewed on, at the widths they were reviewed at.
+   *
+   * One composed screen - a roster carrying both row shapes, a search with its
+   * Clear showing, and a preview holding a bundle beside plain lines - resized
+   * through 320 / 360 / 768 / 1024 / 1440. Round one is the phone shape (icon
+   * actions, Send on its own full-width button, tick and name on one line with
+   * the badge top right); round two is the single md line and the crowding pass
+   * (the bundle name field on its own line below sm, Search and Clear sharing
+   * one). Each width is measured as well as shot, so the picture is not the
+   * only thing claiming the row fits.
+   */
+  test('E: the reviewed layout at 320, 360, 768, 1024 and 1440', async ({ page, context, baseURL }) => {
+    const store = { rows: seed(), posts: [] as unknown[] };
+    await mountApi(page, store);
+    await page.setViewportSize({ width: 1024, height: 1000 });
+    await openProposalsTab(page, context, baseURL!);
+
+    // A preview with both shapes in it: a bundle the admin named, and the plain
+    // lines around it.
+    await pasteCsv(page, CSV);
+    await expect(page.getByTestId('line-row')).toHaveCount(6);
+    await page.getByLabel('Select Heated floor upgrade').check();
+    await page.getByLabel('Select Frameless glass shower door').check();
+    await page.getByTestId('combine-btn').click();
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+    await nameBundle(page.getByTestId('bundle-row'), 'Spa shower package');
+
+    // Search for something both rows answer, so Clear is on screen beside it -
+    // the pair the crowding pass put back on one line.
+    await page.getByTestId('roster-search').fill('a');
+    await page.getByTestId('roster-search-btn').click();
+    await expect(page.getByTestId('roster-search-clear')).toBeVisible();
+    await expect(page.getByText('Rachel Morales')).toBeVisible();
+    await expect(page.getByText('Yusuf Adeyemi')).toBeVisible();
+
+    const lines: string[] = [];
+    for (const width of [320, 360, 768, 1024, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.waitForTimeout(400);
+      await shot(page, `60-shell-${width}.png`);
+      const seen = await geometry(page);
+
+      lines.push([
+        `${width}px (${width >= 1024 ? 'desktop, labels open on hover' : width >= 768 ? 'tablet, one line per row' : 'phone, stacked'})`,
+        `  widest element ends at ${seen.widest.right}px of a ${seen.viewport}px viewport - ${seen.widest.what}`,
+        `  ancestors clipping content: ${seen.clipping.length ? seen.clipping.join('; ') : 'none'}`,
+        `  controls under the house 44px: ${seen.undersized.length ? seen.undersized.join('; ') : 'none'}`,
+        `  row tick target ${seen.tick!.width}x${seen.tick!.height}px`,
+        `  bundle name field ${seen.bundleName!.width}px wide`,
+        `  client identity column ${seen.identity!.width}px wide`,
+        `  Search ${seen.searchRow!.search}px and Clear ${seen.searchRow!.clear}px`
+        + `, ${seen.searchRow!.sameLine ? 'sharing one line' : 'ON SEPARATE LINES'}`,
+      ].join('\n'));
+
+      expect(seen.widest.right, `${width}px: nothing is wider than the viewport`)
+        .toBeLessThanOrEqual(seen.viewport + 1);
+      expect(seen.clipping, `${width}px: no ancestor is hiding an overrun`).toEqual([]);
+      expect(seen.undersized, `${width}px: every control clears the house 44px`).toEqual([]);
+      expect(seen.tick!.width, `${width}px: the tick target`).toBeGreaterThanOrEqual(44);
+      expect(seen.tick!.height, `${width}px: the tick target`).toBeGreaterThanOrEqual(44);
+      expect(seen.searchRow!.sameLine, `${width}px: Search and Clear share a line`).toBe(true);
+    }
+
+    // The nice-to-have the owner asked for: on a desktop the icon opens its
+    // label on hover, and it opens into room that was already reserved, so the
+    // client's name beside it does not move.
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await page.waitForTimeout(400);
+    const row = page.getByTestId(`proposal-${seed()[0].id}`);
+    await row.scrollIntoViewIfNeeded();
+    // Park the cursor away from BOTH the actions and the sidebar rail: the rail
+    // is fixed and expands on hover, so resting at 0,0 photographs the row with
+    // the open rail lying over its left end.
+    await page.mouse.move(1240, 960);
+    await page.waitForTimeout(700);
+    const atRest = await geometry(page);
+    await row.screenshot({ path: join(OUT, '61-desktop-icons-at-rest.png') });
+
+    const copy = row.getByRole('button', { name: 'Copy link', exact: true });
+    const shut = await copy.evaluate((el) => Math.round(el.getBoundingClientRect().width));
+    await copy.hover();
+    await page.waitForTimeout(300);
+    const open = await copy.evaluate((el) => Math.round(el.getBoundingClientRect().width));
+    await row.screenshot({ path: join(OUT, '62-desktop-icon-hover-label.png') });
+    const hovered = await geometry(page);
+
+    lines.push([
+      '1280px, hover:',
+      `  "Copy link" grows ${shut}px -> ${open}px when the cursor lands on it`,
+      `  the client identity column beside it: ${atRest.identity!.width}px at rest, `
+      + `${hovered.identity!.width}px while the label is open`,
+    ].join('\n'));
+    writeFileSync(join(OUT, 'responsive-measurements.txt'), lines.join('\n\n') + '\n');
+
+    expect(open, 'the hover label opens on a desktop').toBeGreaterThan(shut);
+    expect(hovered.identity!.width, 'and it opens into reserved room, moving nothing')
+      .toBe(atRest.identity!.width);
   });
 });

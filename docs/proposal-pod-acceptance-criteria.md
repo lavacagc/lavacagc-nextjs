@@ -177,6 +177,23 @@ The client-facing page it links to is **slice 3** and does not exist yet, which 
 - **Restore to draft** is the way back from Revoke while re-sending cannot be one, and stays the right door afterwards: a proposal whose lines are wrong is repaired as a draft rather than re-sent to earn the right to fix it.
 - **One door for discarding a preview.** Every path that would destroy composed work asks the same confirm, and Cancel leaves the box and the preview agreeing.
 
+### Decisions taken on the built screen (the owner's design review, two rounds)
+
+Taken on the rendered rows rather than on the plan, and every call here is the owner's rather than a refactor chosen for them.
+Both the roster and the preview rows now have **two shapes and one breakpoint**; the geometry that holds each of them lives in the page's own comments, at the container it constrains, and is not restated here.
+
+- **Round one, the phone.** Four labelled lifecycle buttons bunched into an unreadable block at 390px, so Copy link, Re-import and Revoke became icon buttons.
+  Send keeps its words and drops to a full-width button of its own below `sm`, because it is the only action on the row that spends something: it mails a client.
+  A preview row puts the tick and the name on one line with the locked/optional badge pinned top right, and the price with its toggle on the line below.
+- **Round two, the desktop is not to move.** From `md` up both rows go back to a single line, the desktop that was already working, and stays that way "until we reach the tablet breaking point".
+- **Round two, the crowding pass at the narrow end.** A bundle's name field is the one control on this screen an admin **types into**, and it measured about thirteen characters wide at 320px, so below `sm` it takes its own full-width line.
+  Search and Clear share the line under the search field instead of each dropping to a half-width line of its own.
+- **The hover label is a nice-to-have, and it is gated on width rather than on input.** From `lg` up an icon opens its label on hover or keyboard focus, into width the actions reserved for it beforehand, so the client's name beside it never moves under the cursor.
+  Below `lg` the icons are plain 44px squares, because a 768px tablet inside the admin shell has no width to reserve and the single-line `md` row keeps all of it.
+  The label is never the accessible name - `aria-label` carries it at every width, open, closed, or never rendered - and an action that is disabled states its reason in words rather than standing there as a wordless grey glyph.
+- **Measured at 320, 360, 768 and 1024:** no horizontal overflow, no element wider than its viewport, no control under the house 44px minimum.
+  Every width assertion runs on the **dashboard shell** an admin actually reaches, never the bare `/vaca-mgmt/proposals` route, which renders this page about 150px wider at 768px than anybody has seen it; the browser suite's helper carries that argument, and the reason a row can be broken in the product while measuring clean on the route.
+
 ### The two facts a bundle keeps apart
 
 - **Intrinsic** is a member's own locked/optional verdict, fixed when it was bundled: the registry's, as overridden per line by the admin beforehand. Nothing done to a bundle ever writes it.
