@@ -147,6 +147,29 @@ export async function createProposal(input: CreateProposalInput): Promise<Propos
  * re-send once there is a client page to send to), so a dead link cannot be
  * quietly repointed at new content.
  *
+ * WHAT THAT GUARD IS AND IS NOT. It is a read-then-write: the status is read
+ * here and the lines are swapped in two further requests, so what it refuses is
+ * the DELIBERATE flow - an admin arming Re-import on a row that already reads
+ * revoked, which is the case the roster's own disabled button and this 409 both
+ * answer. What it cannot refuse is a revoke that lands in the millisecond
+ * between the read and the swap: that re-import commits, and the proposal ends
+ * up revoked with a new line set underneath it.
+ *
+ * That residual is accepted rather than engineered away. Both actors are the
+ * same single-operator admin surface; a revoked proposal's link does not serve
+ * at all while it is revoked, whatever its lines say, so the outcome is not a
+ * live link repointed at new content but a dead one holding different rows; and
+ * the only way back is restoreProposal, which puts the proposal in front of the
+ * admin as a draft before anything can be sent. Closing it properly would mean
+ * doing the check and the swap in one statement - a SECURITY DEFINER function -
+ * which is machinery this pod does not need.
+ *
+ * Where PostgREST CAN carry a precondition it is carried, and that is the
+ * module's rule: restoreProposal puts `status=eq.revoked` in the PATCH filter
+ * so the write itself is the check. A conditional DELETE cannot be written the
+ * same way here, because the condition lives on `proposals` and the rows being
+ * deleted live on `proposal_lines`, and PostgREST has no cross-table filter.
+ *
  * Old submissions keep their own snapshots by design (Slice 1's whole
  * argument), so replacing lines never rewrites what a client already agreed to.
  *

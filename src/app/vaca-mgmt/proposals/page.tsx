@@ -34,7 +34,6 @@ import {
   RefreshCw, Link2, Send, Ban, Upload, Boxes, X, FileUp, Undo2, Search, RotateCcw,
 } from 'lucide-react';
 import { parseProposalCsv, type ParsedProposalLine } from '@/lib/proposals/csv';
-import { categorizeLine } from '@/lib/proposals/categories';
 import {
   composeBundle, lockedMemberTitles, restoreMembers, toStoredMembers, type PreviewBundleMember,
 } from '@/lib/proposals/bundles';
@@ -48,6 +47,23 @@ interface PreviewRow {
   priceCents: number;
   optional: boolean;
   category: string;
+  /**
+   * The verdict this row was BADGED with when it entered the preview - the
+   * registry's for an imported line, and the registry's again for a line
+   * Unbundle put back. `optional` differing from it is the admin's own
+   * override, which is what previewHasEdits is asking about.
+   *
+   * Carried rather than re-derived: categorizeLine walks the whole keyword
+   * registry, previewHasEdits runs over every row, and renameBundle rebuilds
+   * the rows array on every keystroke in a bundle name - so re-deriving it put
+   * a registry sweep of the entire preview behind each character typed. The
+   * registry's answer for a given title never changes, so reading it once where
+   * the row is built is both cheaper and the same answer.
+   *
+   * On a bundle it is composeBundle's initialized badge, for the same reading:
+   * what the row was created with, before any flip on it.
+   */
+  registryOptional: boolean;
   /**
    * Present only on bundles: the composed members (admin-side only). These
    * carry the members' descriptions so Unbundle is lossless in the preview;
@@ -124,20 +140,37 @@ export default function ProposalsAdminPage() {
    */
   const [rosterTruncated, setRosterTruncated] = useState(false);
 
+  /**
+   * The stamp of the newest roster request. Searches are submitted by hand and
+   * answered by a server, so two can be in flight at once and they can land in
+   * either order - and the response that lands LAST used to win, whichever term
+   * it answered. That left the box reading "Rachel" above Zeta's row, and above
+   * "No proposals match ..." naming a term the admin had already replaced. On a
+   * roster whose whole job past the 200-row cap is reaching a proposal in order
+   * to revoke it, answering the wrong question is not cosmetic.
+   */
+  const rosterRequest = useRef(0);
+
   const loadRoster = useCallback(async (term: string) => {
+    const stamp = ++rosterRequest.current;
     setRosterError(null);
     const q = term.trim();
     try {
       const res = await fetch(`/api/admin/proposals${q ? `?search=${encodeURIComponent(q)}` : ''}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();
+      // Superseded: a newer search is already on its way, and its term is what
+      // the box says. Every piece of roster state moves together or not at all.
+      if (stamp !== rosterRequest.current) return;
       setRoster(body.proposals);
       setCountsAvailable(body.counts_available !== false);
       setRosterTotal(typeof body.total === 'number' ? body.total : null);
       setRosterTruncated(body.truncated === true);
       setActiveSearch(q);
     } catch {
-      // A failed read is an outage message, never an empty roster.
+      // A failed read is an outage message, never an empty roster - and a stale
+      // one must not paint an outage over a roster that has already arrived.
+      if (stamp !== rosterRequest.current) return;
       setRosterError('Could not load proposals - refresh to retry.');
     }
   }, []);
@@ -182,6 +215,9 @@ export default function ProposalsAdminPage() {
       description: l.description,
       priceCents: l.priceCents,
       optional: l.optional,
+      // The parser badges every line off the registry, so this IS the registry's
+      // verdict - kept beside the live one rather than asked for again later.
+      registryOptional: l.optional,
       category: l.category,
     })));
   }, []);
@@ -191,9 +227,13 @@ export default function ProposalsAdminPage() {
    * or a badge the admin flipped off what the registry said. Derived from the
    * rows rather than tracked by a flag, so a row Unbundle put back carrying an
    * override still counts as one.
+   *
+   * The comparison is against the verdict each row CARRIES, not against a fresh
+   * categorizeLine on its title: this runs over every row on every rows change,
+   * and a bundle-name keystroke is a rows change.
    */
   const previewHasEdits = useMemo(
-    () => rows.some((r) => r.members != null || r.optional !== categorizeLine(r.title).optional),
+    () => rows.some((r) => r.members != null || r.optional !== r.registryOptional),
     [rows],
   );
 
@@ -266,7 +306,9 @@ export default function ProposalsAdminPage() {
       const chosen = prev.filter((r) => keys.includes(r.key));
       const composed = composeBundle(chosen);
       if (!composed) return prev;
-      const bundle: PreviewRow = { key: rowKey(), description: '', ...composed };
+      const bundle: PreviewRow = {
+        key: rowKey(), description: '', ...composed, registryOptional: composed.optional,
+      };
       const at = prev.findIndex((r) => r.key === chosen[0].key);
       const rest = prev.filter((r) => !keys.includes(r.key));
       rest.splice(at, 0, bundle);
@@ -282,7 +324,7 @@ export default function ProposalsAdminPage() {
       if (!b?.members) return prev;
       const restored: PreviewRow[] = restoreMembers(b.members).map((m) => ({
         key: rowKey(), title: m.title, description: m.description, priceCents: m.priceCents,
-        optional: m.optional, category: m.category,
+        optional: m.optional, registryOptional: m.registryOptional, category: m.category,
       }));
       const next = [...prev];
       next.splice(i, 1, ...restored);
@@ -690,10 +732,28 @@ export default function ProposalsAdminPage() {
               </p>
             </div>
           ) : null}
+          {/*
+            The paste box lives INSIDE this drop zone, so every drop that lands
+            in it bubbles through here - and a cancelled drop is a cancelled
+            insert. Taking the default away from a file drag is the point (the
+            browser would otherwise navigate to the file and take the preview
+            with it); taking it away from a TEXT drag was collateral, and the
+            one drag path that failed with no file, no preview and no word.
+            So the file drag is handled, a text drop into the box is left to the
+            browser, and a text drop anywhere else in the zone is still stopped
+            rather than allowed to navigate.
+          */}
           <div
             className="mb-4 rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground"
             onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); onFile(e.dataTransfer.files?.[0]); }}
+            onDrop={(e) => {
+              if (e.dataTransfer.types.includes('Files')) {
+                e.preventDefault();
+                onFile(e.dataTransfer.files?.[0]);
+                return;
+              }
+              if (!(e.target instanceof HTMLTextAreaElement)) e.preventDefault();
+            }}
           >
             Drop the CSV here, or
             <Button variant="link" className="px-1" onClick={() => fileInput.current?.click()}>choose a file</Button>

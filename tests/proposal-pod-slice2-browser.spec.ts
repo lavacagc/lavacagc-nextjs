@@ -4,10 +4,16 @@ import { test, expect, type BrowserContext, type Page } from '@playwright/test';
  * Proposal Pod - Slice 2, in a real browser.
  *
  * The owner's AC contract calls for browser-level admin verification, and the
- * behaviours the static half can only assert as source text - Send refused
- * while the client page is missing, the paste box no longer re-importing on a
- * keystroke, unbundle giving descriptions and the selection back - are state
- * machines. They are pinned here by driving them.
+ * importer is a set of state machines that only exist once React is mounted:
+ * Send refused while the client page is missing, the paste box no longer
+ * re-importing on a keystroke, unbundle giving descriptions and the selection
+ * back. This file OWNS those ACs - the static spec points at the test id here
+ * rather than asserting how the page's source is spelled, because a rename is
+ * not a regression and a green string match is not a working importer.
+ *
+ * The AC each test carries is named in its title. Between them they cover
+ * AC9, AC10, AC10b, AC10c, AC10e (the page half), AC10g, AC10h, AC10i, AC10j,
+ * AC10k, AC10m, AC10n, AC6h, AC6j, AC6m and AC6n.
  *
  * Auth follows the house pattern for /vaca-mgmt specs: a stub session cookie
  * whose name derives from NEXT_PUBLIC_SUPABASE_URL's host, against the GoTrue
@@ -83,6 +89,23 @@ async function signInAsAdmin(context: BrowserContext, baseURL: string) {
   }]);
 }
 
+/**
+ * Open the admin page with one fixed roster payload behind it - for the ACs
+ * about what the roster SAYS (its counts, its truncation notice) rather than
+ * about searching it.
+ */
+async function openRoster(
+  page: Page, context: BrowserContext, baseURL: string, roster: unknown,
+) {
+  await signInAsAdmin(context, baseURL);
+  await page.route('**/api/admin/proposals*', async (route) => {
+    if (route.request().method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
+    await route.fulfill({ json: roster });
+  });
+  await page.goto('/vaca-mgmt/proposals');
+  await expect(page.getByTestId('proposals-admin')).toBeVisible();
+}
+
 async function openProposals(page: Page, context: BrowserContext, baseURL: string) {
   await signInAsAdmin(context, baseURL);
   // The glob keeps the query string in scope - the roster read carries ?search.
@@ -126,7 +149,7 @@ async function pasteCsv(page: Page, text: string) {
 test.describe('proposals admin, in the browser', () => {
   test.use({ viewport: { width: 1280, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
 
-  test('B1: Send is refused while the client page does not exist; Copy link still works', async ({ page, context, baseURL }) => {
+  test('B1 (AC10e): Send is refused while the client page does not exist; Copy link still works', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
 
     // The roster rendered from the stubbed read.
@@ -146,7 +169,7 @@ test.describe('proposals admin, in the browser', () => {
       .toContain(`/proposal/${'a'.repeat(43)}`);
   });
 
-  test('B2: a clipboard failure tells the admin instead of pretending it copied', async ({ page, context, baseURL }) => {
+  test('B2 (AC10d): a clipboard failure tells the admin instead of pretending it copied', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await page.evaluate(() => {
       Object.defineProperty(navigator, 'clipboard', {
@@ -159,7 +182,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(page.getByText(/Copy it by hand: http.*\/proposal\/aaa/).first()).toBeVisible();
   });
 
-  test('B3: pasting imports; typing and clicking away afterwards leave the bundle alone', async ({ page, context, baseURL }) => {
+  test('B3 (AC10, AC10c, AC9): pasting imports; typing and clicking away afterwards leave the bundle alone', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await pasteCsv(page, CSV);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
@@ -169,8 +192,17 @@ test.describe('proposals admin, in the browser', () => {
     await page.getByLabel('Select Vanity - double sink').check();
     await expect(page.getByTestId('combine-btn')).toContainText('Combine 2 into a bundle');
     await page.getByTestId('combine-btn').click();
-    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
-    await expect(page.getByTestId('bundle-row')).toContainText('$6,300.50');
+    const bundle = page.getByTestId('bundle-row');
+    await expect(bundle).toHaveCount(1);
+    await expect(bundle).toContainText('$6,300.50');
+
+    // AC9, on screen: the bundle shows its members BY NAME and one summed
+    // price. Neither member's own price is rendered anywhere on the row - that
+    // is the client-facing contract, and the preview is where it is composed.
+    await expect(bundle).toContainText('Includes: Tile - heated floor upgrade · Vanity - double sink');
+    await expect(bundle).toContainText('client sees names, never member prices');
+    await expect(bundle).not.toContainText('$2,900.50');
+    await expect(bundle).not.toContainText('$3,400.00');
 
     // Now type in the paste box - the natural reaction to a parse complaint.
     // This used to re-key every row and silently throw the bundle away.
@@ -197,7 +229,7 @@ test.describe('proposals admin, in the browser', () => {
     page.off('dialog', spy);
   });
 
-  test('B4: unbundle restores descriptions and frees the tick it was holding', async ({ page, context, baseURL }) => {
+  test('B4 (AC10b): unbundle restores descriptions and frees the tick it was holding', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await pasteCsv(page, CSV);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
@@ -228,7 +260,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(combine).toContainText('(select 2+)');
   });
 
-  test('B6: a proposal past the roster cap is still reachable - and revocable - by search', async ({ page, context, baseURL }) => {
+  test('B6 (AC6j): a proposal past the roster cap is still reachable - and revocable - by search', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
 
     // The page stops at the cap and says so rather than reading as the estate.
@@ -255,7 +287,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(page.getByText('Rachel Morales')).toBeVisible();
   });
 
-  test('B7: making a locked bundle optional asks first and names the locked work', async ({ page, context, baseURL }) => {
+  test('B7 (AC10i, AC10j): making a locked bundle optional asks first and names the locked work', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await pasteCsv(page, CSV);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
@@ -293,7 +325,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(row('Vanity - double sink').getByText('optional', { exact: true })).toBeVisible();
   });
 
-  test('B8: a badge the admin set on a LINE survives being bundled again', async ({ page, context, baseURL }) => {
+  test('B8 (AC10i, AC10j): a badge the admin set on a LINE survives being bundled again', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await pasteCsv(page, CSV_NESTED);
     await expect(page.getByTestId('line-row')).toHaveCount(4);
@@ -337,7 +369,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(badge(outer, 'locked')).toBeVisible();
   });
 
-  test('B9: locking a package and changing your mind asks nothing', async ({ page, context, baseURL }) => {
+  test('B9 (AC10i): locking a package and changing your mind asks nothing', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await pasteCsv(page, CSV);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
@@ -369,7 +401,7 @@ test.describe('proposals admin, in the browser', () => {
     page.off('dialog', spy);
   });
 
-  test('B5: the Parse button re-imports on demand, asking first when that discards composed work', async ({ page, context, baseURL }) => {
+  test('B5 (AC10c): the Parse button re-imports on demand, asking first when that discards composed work', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await pasteCsv(page, CSV);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
@@ -410,7 +442,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(page.getByTestId('parse-btn')).toBeDisabled();
   });
 
-  test('B11: emptying the box is a discard like any other - it asks, and Cancel keeps both', async ({ page, context, baseURL }) => {
+  test('B11 (AC10c): emptying the box is a discard like any other - it asks, and Cancel keeps both', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await pasteCsv(page, CSV);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
@@ -440,7 +472,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(page.getByTestId('csv-paste')).toHaveValue('');
   });
 
-  test('B13: arming a re-import is a discard like any other - it asks, and Cancel keeps the preview', async ({ page, context, baseURL }) => {
+  test('B13 (AC10c, AC10g): arming a re-import is a discard like any other - it asks, and Cancel keeps the preview', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await pasteCsv(page, CSV);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
@@ -486,7 +518,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(page.getByTestId('reimport-armed')).toBeVisible();
   });
 
-  test('B14: a declined paste leaves the box and the preview agreeing', async ({ page, context, baseURL }) => {
+  test('B14 (AC10c): a declined paste leaves the box and the preview agreeing', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await pasteCsv(page, CSV);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
@@ -516,7 +548,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(page.getByTestId('csv-paste')).toHaveValue(CSV_NESTED);
   });
 
-  test('B15: Re-import is refused on a revoked row before any work is composed', async ({ page, context, baseURL }) => {
+  test('B15 (AC10k): Re-import is refused on a revoked row before any work is composed', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await page.getByTestId('roster-search').fill('Yusuf');
     await page.getByTestId('roster-search-btn').click();
@@ -542,7 +574,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(page.getByTestId('reimport-btn').first()).toBeEnabled();
   });
 
-  test('B16: a revoked proposal can be restored to draft, and asks first', async ({ page, context, baseURL }) => {
+  test('B16 (AC10m): a revoked proposal can be restored to draft, and asks first', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     // This spec's own roster, so the restored status is this test's state and
     // nothing is mutated for anyone else. Registered after openProposals, which
@@ -592,7 +624,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(row.getByRole('button', { name: /revoke/i })).toBeEnabled();
   });
 
-  test('B17: an abandoned drag disarms, and a stray file never becomes a bundle', async ({ page, context, baseURL }) => {
+  test('B17 (AC10n): an abandoned drag disarms, and a stray file never becomes a bundle', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await pasteCsv(page, CSV);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
@@ -635,7 +667,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(page.getByTestId('line-row')).toHaveCount(1);
   });
 
-  test('B12: the row checkbox clears the house 44px touch target', async ({ page, context, baseURL }) => {
+  test('B12 (AC10c4): the row checkbox clears the house 44px touch target', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
     await pasteCsv(page, CSV);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
@@ -658,6 +690,270 @@ test.describe('proposals admin, in the browser', () => {
     // the target is the whole 44px, not just what is painted.
     await page.mouse.click(box!.x + 3, box!.y + 3);
     await expect(input).toBeChecked();
+  });
+
+  test('B19 (AC6h): a counts outage costs the roster its numbers, never its controls', async ({ page, context, baseURL }) => {
+    // The aggregate is down - the window between this code deploying and its
+    // migration being applied, or simply a failing function. The counts are a
+    // decoration; Copy link, Re-import and above all Revoke are the panel's job.
+    await openRoster(page, context, baseURL!, {
+      proposals: [{ ...RACHEL, line_count: null, submission_count: null, latest_total_cents: null }],
+      counts_available: false,
+      total: null,
+      truncated: false,
+    });
+
+    await expect(page.getByTestId('counts-unavailable')).toBeVisible();
+    const row = page.getByTestId(`proposal-${RACHEL.id}`);
+    // Unknown, said out loud - never a confident 0 the admin would act on.
+    await expect(row).toContainText('Counts unavailable');
+    await expect(row).not.toContainText('0 lines');
+    await expect(row.getByRole('button', { name: /copy link/i })).toBeEnabled();
+    await expect(row.getByTestId('reimport-btn')).toBeEnabled();
+    await expect(row.getByRole('button', { name: /revoke/i })).toBeEnabled();
+  });
+
+  test('B20 (AC6m): a truncated roster says so even when the exact total is unreadable', async ({ page, context, baseURL }) => {
+    // Content-Range can go missing three ways (no header, PostgREST's uncounted
+    // `*`, a proxy that mangles it), and a page that stopped at the cap with
+    // nothing saying so is the silent cut-off the search box exists to answer.
+    await openRoster(page, context, baseURL!, {
+      proposals: [RACHEL], counts_available: true, total: null, truncated: true,
+    });
+
+    const notice = page.getByTestId('roster-truncated');
+    await expect(notice).toContainText('Showing the first 1 proposals');
+    await expect(notice).toContainText('Search by client name, email or title');
+    // The number only fills in when it is known - no "of null", no invented total.
+    await expect(notice).not.toContainText('of null');
+    await expect(notice).not.toContainText('undefined');
+  });
+
+  test('B21 (AC6n): a created proposal is visible on the roster, never hidden by the search that was open', async ({ page, context, baseURL }) => {
+    await signInAsAdmin(context, baseURL!);
+    const terms: (string | null)[] = [];
+    const posted: unknown[] = [];
+    await page.route('**/api/admin/proposals*', async (route) => {
+      if (route.request().method() !== 'GET') {
+        posted.push(JSON.parse(route.request().postData() ?? 'null'));
+        await route.fulfill({ json: { ok: true, id: 'new', token: 'n'.repeat(43) } });
+        return;
+      }
+      const term = new URL(route.request().url()).searchParams.get('search');
+      terms.push(term);
+      const hit = term ? [OFF_THE_PAGE] : [RACHEL];
+      await route.fulfill({
+        json: { proposals: hit, counts_available: true, total: hit.length, truncated: false },
+      });
+    });
+    await page.goto('/vaca-mgmt/proposals');
+    await expect(page.getByTestId('proposals-admin')).toBeVisible();
+
+    // A search is open, as it would be after reaching a client to check their
+    // existing proposal before writing the next one.
+    await page.getByTestId('roster-search').fill('Zeta');
+    await page.getByTestId('roster-search-btn').click();
+    await expect(page.getByText('Zeta Vanterpool')).toBeVisible();
+
+    await pasteCsv(page, CSV);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+    await page.getByTestId('client-name').fill('Priya Raman');
+    await page.getByTestId('proposal-title').fill('Kitchen refresh');
+    await page.getByTestId('create-btn').click();
+    await expect(toastTitle(page, 'Proposal created (draft)')).toBeVisible();
+    expect(posted).toHaveLength(1);
+
+    // Reloading under whatever term happened to be in the box hid the brand new
+    // proposal entirely - and a create that looks like it did nothing gets
+    // pressed again, which is a duplicate proposal for a real client. So the
+    // search clears and the whole roster comes back.
+    await expect(page.getByTestId('roster-search')).toHaveValue('');
+    await expect(page.getByText('Rachel Morales')).toBeVisible();
+    expect(terms[terms.length - 1], 'the reload after Create carries no term').toBeNull();
+  });
+
+  test('B22 (AC10c): choosing a file is a discard like any other - it asks, and Cancel keeps the preview', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await pasteCsv(page, CSV);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+
+    await page.getByLabel('Select Tile - heated floor upgrade').check();
+    await page.getByLabel('Select Vanity - double sink').check();
+    await page.getByTestId('combine-btn').click();
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+
+    const chooseFile = () => page.getByTestId('csv-file-input').setInputFiles({
+      name: 'corrected.csv', mimeType: 'text/csv', buffer: Buffer.from(CSV_NESTED),
+    });
+    // The confirm is raised from a promise chain (the file is read first), so
+    // the dialog is awaited rather than assumed to have fired by now.
+    const asked = () => new Promise<string>((resolve) => {
+      page.once('dialog', (d) => { resolve(d.message()); void d.dismiss(); });
+    });
+
+    const question = asked();
+    await chooseFile();
+    expect(await question).toContain('bundles you composed');
+    // Declined: the bundle stands, and so does the text it was built from.
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+    await expect(page.getByTestId('csv-paste')).toHaveValue(CSV);
+
+    const accepted = new Promise<void>((resolve) => {
+      page.once('dialog', (d) => { void d.accept(); resolve(); });
+    });
+    await chooseFile();
+    await accepted;
+    await expect(page.getByTestId('bundle-row')).toHaveCount(0);
+    await expect(page.getByTestId('line-row')).toHaveCount(4);
+    await expect(page.getByTestId('csv-paste')).toHaveValue(CSV_NESTED);
+  });
+
+  test('B23 (AC10h): a bundle cannot be sent with its name deleted', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await pasteCsv(page, CSV);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+
+    await page.getByLabel('Select Tile - heated floor upgrade').check();
+    await page.getByLabel('Select Vanity - double sink').check();
+    await page.getByTestId('combine-btn').click();
+    const name = page.getByTestId('bundle-row').getByLabel('Bundle name');
+    await name.fill('Complete spa bathroom package');
+
+    // The client fields filled, so the name is the only thing left that can
+    // refuse the button.
+    await page.getByTestId('client-name').fill('Rachel Morales');
+    await page.getByTestId('proposal-title').fill('Your bathroom remodel');
+    const create = page.getByTestId('create-btn');
+    await expect(create).toBeEnabled();
+
+    // Typing through empty is how anyone replaces a name, so it is allowed -
+    // but an empty title is what the schema rejects with a message about a line
+    // the admin never sees, so the button refuses while the box is still there.
+    await name.fill('');
+    await expect(create).toBeDisabled();
+    await expect(create).toHaveAttribute('title', /needs a name/i);
+
+    // And leaving the box empty puts the last real name back.
+    await page.getByTestId('client-name').click();
+    await expect(name).toHaveValue('Complete spa bathroom package');
+    await expect(create).toBeEnabled();
+  });
+
+  test('B26 (AC10c): a badge set by hand is composed work too, before and after a bundle', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await pasteCsv(page, CSV);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+    const row = (title: string) => page.getByTestId('line-row').filter({ hasText: title });
+
+    // No bundle anywhere - just the admin overruling the registry on one line.
+    // A re-parse re-badges every row off the registry again, so that verdict is
+    // exactly as losable as a bundle and the discard has to ask about it.
+    await row('Vanity - double sink').getByRole('button', { name: /make .* locked/i }).click();
+    await expect(row('Vanity - double sink').getByText('locked', { exact: true })).toBeVisible();
+
+    let question = '';
+    page.once('dialog', (d) => { question = d.message(); d.dismiss(); });
+    await page.getByTestId('parse-btn').click();
+    expect(question).toContain('badges you set by hand');
+    await expect(row('Vanity - double sink').getByText('locked', { exact: true })).toBeVisible();
+
+    // And it is still the admin's verdict after a round trip through a bundle,
+    // which is the other way a row reaches the preview: Unbundle hands back the
+    // override, not the registry's answer, so the next discard asks again.
+    await page.getByLabel('Select Vanity - double sink').check();
+    await page.getByLabel('Select Demolition & prep').check();
+    await page.getByTestId('combine-btn').click();
+    await page.getByTestId('bundle-row').getByRole('button', { name: /unbundle/i }).click();
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+    await expect(row('Vanity - double sink').getByText('locked', { exact: true })).toBeVisible();
+
+    question = '';
+    page.once('dialog', (d) => { question = d.message(); d.dismiss(); });
+    await page.getByTestId('parse-btn').click();
+    expect(question).toContain('badges you set by hand');
+
+    // Accepted, the re-import is allowed to take it: the registry's own verdict
+    // is what a fresh parse produces, and this line is the client's again.
+    page.once('dialog', (d) => d.accept());
+    await page.getByTestId('parse-btn').click();
+    await expect(row('Vanity - double sink').getByText('optional', { exact: true })).toBeVisible();
+  });
+
+  test('B24 (AC10n): the drop zone takes a dropped file, and lets a dragged text reach the paste box', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+
+    /** Drop something on an element, and report whether the default was taken away. */
+    const dropOn = (selector: string, payload: { file?: string; text?: string }) =>
+      page.evaluate(({ selector: sel, payload: p }) => {
+        const box = document.querySelector('[data-testid="csv-paste"]')!;
+        const target = sel === 'box' ? box : box.parentElement!;
+        const dt = new DataTransfer();
+        if (p.file != null) dt.items.add(new File([p.file], 'estimate.csv', { type: 'text/csv' }));
+        if (p.text != null) dt.setData('text/plain', p.text);
+        const ev = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt });
+        target.dispatchEvent(ev);
+        return ev.defaultPrevented;
+      }, { selector, payload });
+
+    // A CSV dropped on the dashed box imports, and the browser's own handling
+    // of it - navigating away from the page, preview and all - is cancelled.
+    expect(await dropOn('zone', { file: CSV }), 'a dropped file is ours to handle').toBe(true);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+
+    // Text dragged INTO the paste box is the browser's to insert. The zone
+    // wraps the box, so it used to cancel that drop on the way past and the one
+    // drag path carrying a CSV as text did nothing at all: no insert, no
+    // preview, no message. (A synthetic event performs no native insert, so
+    // what is asserted is the cancellation the insert depends on.)
+    expect(await dropOn('box', { text: 'title,description,price\nX,,1.00' }),
+      'a text drop into the box is the browser\'s to insert').toBe(false);
+
+    // Released on the zone AROUND the box it is still stopped, so a dragged
+    // link cannot navigate the importer away with the preview still in it.
+    expect(await dropOn('zone', { text: 'https://example.com/estimate.csv' })).toBe(true);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+  });
+
+  test('B25: a slow search that lands last never overwrites the search that replaced it', async ({ page, context, baseURL }) => {
+    await signInAsAdmin(context, baseURL!);
+    // The first search is held open until the second has answered, so the two
+    // land in the OPPOSITE order to the one they were asked in. This is the
+    // ordinary shape of two searches typed a moment apart.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const answer = (proposals: unknown[]) => ({
+      proposals, counts_available: true, total: proposals.length, truncated: false,
+    });
+    await page.route('**/api/admin/proposals*', async (route) => {
+      const term = new URL(route.request().url()).searchParams.get('search');
+      if (term === 'Zeta') {
+        await held;
+        await route.fulfill({ json: answer([OFF_THE_PAGE]) });
+        return;
+      }
+      await route.fulfill({ json: term ? answer([REVOKED]) : ROSTER });
+    });
+    await page.goto('/vaca-mgmt/proposals');
+    await expect(page.getByTestId('proposals-admin')).toBeVisible();
+
+    await page.getByTestId('roster-search').fill('Zeta');
+    await page.getByTestId('roster-search-btn').click();
+    await page.getByTestId('roster-search').fill('Yusuf');
+    await page.getByTestId('roster-search-btn').click();
+    await expect(page.getByText('Yusuf Adeyemi')).toBeVisible();
+
+    // Now let the superseded one answer. Whichever response lands last used to
+    // win, so the box read "Yusuf" above Zeta's row - and on a roster whose
+    // whole job past the cap is reaching a proposal in order to revoke it, the
+    // wrong row under the right search term is not cosmetic.
+    const stale = page.waitForResponse((r) => r.url().includes('search=Zeta'));
+    release();
+    await stale;
+    await page.waitForTimeout(300);
+
+    await expect(page.getByTestId('roster-search')).toHaveValue('Yusuf');
+    await expect(page.getByText('Yusuf Adeyemi')).toBeVisible();
+    await expect(page.getByText('Zeta Vanterpool')).toHaveCount(0);
   });
 
   test('B18: at 390px a line name keeps its width whether or not the toggle wrapped', async ({ page, context, baseURL }) => {

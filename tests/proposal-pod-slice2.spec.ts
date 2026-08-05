@@ -8,11 +8,16 @@ import {
 } from '../src/lib/proposals/bundles';
 import {
   CreateProposalSchema, ProposalLinesSchema, ProposalConflictError, bundleSumError,
+  listProposals, markSent, replaceLines, restoreProposal, revokeProposal, searchPattern,
+  ROSTER_LIMIT,
 } from '../src/lib/proposals/store';
 import { MAX_LINES } from '../src/lib/proposals/csv';
 import { CLIENT_PAGE_LIVE } from '../src/lib/proposals/clientPage';
 import { buildProposalDeliveryEmail, PROPOSAL_FROM } from '../src/lib/proposals/deliveryEmail';
 import { POST as proposalAction } from '../src/app/api/admin/proposals/[id]/route';
+import {
+  GET as proposalRoster, POST as proposalCreate,
+} from '../src/app/api/admin/proposals/route';
 
 /**
  * Proposal Pod - Slice 2 ACs (owner-approved plan of 2026-08-04, incl the
@@ -25,10 +30,91 @@ import { POST as proposalAction } from '../src/app/api/admin/proposals/[id]/rout
  *    commit is the executable other half.
  *  - NEW CAPABILITY: bundling rules, store validation, delivery email, the
  *    schema's bundle constraints, and the page's mobile-first touch path.
+ *
+ * WHAT IS ASSERTED, AND HOW. Behaviour is DRIVEN wherever it can be: the pure
+ * modules are called, the store and both routes run against a stubbed PostgREST
+ * at the fetch boundary, and everything that only exists once React is mounted
+ * is driven in a real browser by proposal-pod-slice2-browser.spec.ts - whose
+ * test titles carry the AC ids they own, so the contract stays traceable.
+ *
+ * Reading source text is reserved for what has no runtime to observe:
+ *  - the SQL migrations, because the gate has no database to apply them to;
+ *  - the pre-slice sidebar inventory and the middleware gate, which are
+ *    regression pins on files this slice deliberately barely touches;
+ *  - copy that only renders on a path this slice switches off (the delivery
+ *    email's failure wording, behind CLIENT_PAGE_LIVE);
+ *  - the house em-dash rule, which is a style check by nature.
+ * An assertion that pins how a TypeScript file is spelled, where the same
+ * invariant can be watched happening, is not a test of the product - it turns a
+ * rename into a red suite and says nothing about behaviour.
  */
 
 const root = join(__dirname, '..');
 const read = (p: string) => readFileSync(join(root, p), 'utf8');
+
+/** One request the code under test made to the stubbed PostgREST. */
+interface RestCall { method: string; url: string; body: unknown }
+
+const restJson = (payload: unknown, status = 200, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(payload), {
+    status, headers: { 'Content-Type': 'application/json', ...headers },
+  });
+
+/**
+ * Run `body` with PostgREST stubbed at the FETCH boundary, and hand it every
+ * request the code under test made.
+ *
+ * The store, the routes and supabaseRest are all real: only the far side of the
+ * wire is a fixture, so what these tests observe is the request the product
+ * would actually have sent and the state it would actually have written. That
+ * is the difference between asserting a behaviour and asserting a spelling.
+ */
+async function withPostgrest(
+  respond: (call: RestCall) => Response,
+  body: (calls: RestCall[]) => Promise<void>,
+): Promise<void> {
+  const env = { ...process.env };
+  const realFetch = globalThis.fetch;
+  process.env.SUPABASE_SECRET_KEY = 'stub-key';
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://postgrest.stub';
+  const calls: RestCall[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const call: RestCall = {
+      method: init?.method ?? 'GET',
+      url: decodeURIComponent(String(input)),
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    };
+    calls.push(call);
+    return respond(call);
+  }) as typeof fetch;
+  try {
+    await body(calls);
+  } finally {
+    globalThis.fetch = realFetch;
+    process.env = env;
+  }
+}
+
+/** A lifecycle POST to /api/admin/proposals/[id], as the roster's buttons send it. */
+const lifecycle = (id: string, body: unknown) => proposalAction(
+  new NextRequest(`http://localhost/api/admin/proposals/${id}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }),
+  { params: Promise.resolve({ id }) },
+);
+
+const PROPOSAL_ID = '44444444-4444-4444-4444-444444444444';
+
+/** A proposals row as PostgREST returns it. */
+const proposalRow = (over: Record<string, unknown> = {}) => ({
+  id: PROPOSAL_ID, token: 'a'.repeat(43), client_name: 'Rachel Morales',
+  client_email: 'rachel@example.com', title: 'Your bathroom remodel', status: 'draft',
+  lead_id: null, sent_at: null, revoked_at: null,
+  created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-04T00:00:00Z',
+  ...over,
+});
 
 // ---------- REGRESSION HALF ----------
 
@@ -168,7 +254,7 @@ test('AC6: the create schema holds the money and size caps', () => {
   expect(negative.success).toBe(false);
 });
 
-test('AC6b: every line-array write path carries the same MAX_LINES bound', () => {
+test('AC6b: every line-array write path carries the same MAX_LINES bound', async () => {
   const line = (i: number) => ({
     title: `Line ${i}`, description: '', price_cents: 100, optional: false, category: 'general',
   });
@@ -176,10 +262,27 @@ test('AC6b: every line-array write path carries the same MAX_LINES bound', () =>
   expect(ProposalLinesSchema.safeParse(atCap).success).toBe(true);
   expect(ProposalLinesSchema.safeParse([...atCap, line(MAX_LINES)]).success).toBe(false);
   expect(ProposalLinesSchema.safeParse([]).success).toBe(false);
-  // The re-import route validates with this exact schema, so it cannot be the
-  // one door that writes an unbounded number of proposal_lines rows.
-  const route = read('src/app/api/admin/proposals/[id]/route.ts');
-  expect(route).toContain('lines: ProposalLinesSchema');
+
+  // And BOTH write routes hold that bound in front of the database rather than
+  // beside it: driven, so what is pinned is the refusal and the untouched
+  // database, not the name of the schema either route happens to validate with.
+  await withPostgrest(() => restJson([]), async (calls) => {
+    const overCap = [...atCap, line(MAX_LINES)];
+
+    const reimport = await lifecycle(PROPOSAL_ID, { action: 'reimport', lines: overCap });
+    expect(reimport.status).toBe(400);
+    expect((await reimport.json()).error).toContain('lines');
+
+    const create = await proposalCreate(new NextRequest('http://localhost/api/admin/proposals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_name: 'R', title: 'T', lines: overCap }),
+    }));
+    expect(create.status).toBe(400);
+    expect((await create.json()).error).toContain('lines');
+
+    expect(calls, 'an over-cap write never reaches the database').toEqual([]);
+  });
 });
 
 test('AC6c: bundle_members is bounded above as well as below', () => {
@@ -230,7 +333,6 @@ test('AC6d: a re-import that cannot insert restores the lines it deleted', async
   }) as typeof fetch;
 
   try {
-    const { replaceLines } = await import('../src/lib/proposals/store');
     await expect(replaceLines('p1', [
       { title: 'New', description: '', price_cents: 1, optional: false, category: 'general' },
     ])).rejects.toThrow(/failed: 400/);
@@ -249,10 +351,9 @@ test('AC6d: a re-import that cannot insert restores the lines it deleted', async
   // And the proposal is never marked updated - a failed re-import is not an
   // update. Nor is a SUCCESSFUL one written by hand: proposal_lines_touch_
   // proposal moves updated_at from the trigger, so the module writes no PATCH
-  // at all and cannot fail after the lines are already correct.
+  // at all and cannot fail after the lines are already correct. The request log
+  // is the whole proof; AC6l drives the same rule across the other writers.
   expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
-  expect(read('src/lib/proposals/store.ts'))
-    .not.toMatch(/PATCH', `proposals\?id=eq\.\$\{proposalId\}`, \{\s*\n?\s*updated_at/);
 });
 
 test('AC6d2: when the restore fails too, the log states what the proposal ACTUALLY holds', async () => {
@@ -303,7 +404,6 @@ test('AC6d2: when the restore fails too, the log states what the proposal ACTUAL
     }) as typeof fetch;
 
     try {
-      const { replaceLines } = await import('../src/lib/proposals/store');
       await expect(replaceLines('p1', newLines)).rejects.toThrow(/failed: 409/);
     } finally {
       globalThis.fetch = realFetch;
@@ -338,24 +438,67 @@ test('AC6d2: when the restore fails too, the log states what the proposal ACTUAL
   }
 });
 
-test('AC6e: a refused transition is a typed conflict, not a matched substring', () => {
+test('AC6e: a refused transition is a typed conflict, not a matched substring', async () => {
   const err = new ProposalConflictError('proposal is revoked - restore it to draft before re-importing');
   expect(err).toBeInstanceOf(Error);
-  const route = read('src/app/api/admin/proposals/[id]/route.ts');
-  expect(route).toContain('err instanceof ProposalConflictError');
-  expect(route).not.toContain(`message.includes('revoked - re-send')`);
-  // The 500 path stays generic: supabaseRest messages embed the PostgREST body
-  // (table, column and constraint names), which is the server log's business.
-  expect(route).toContain(`{ error: 'Could not complete that action' }`);
-  expect(route).not.toMatch(/NextResponse\.json\(\{ error: message \}/);
+
+  // Driven end to end: re-importing onto a REVOKED proposal is the refusal the
+  // type exists for. It comes back 409 carrying the store's own message - which
+  // is written for the admin - and, decisively, the old lines are still there:
+  // a dead link cannot be repointed at new content.
+  await withPostgrest(
+    (call) => (call.method === 'GET' ? restJson([proposalRow({
+      status: 'revoked', sent_at: '2026-08-01T00:00:00Z', revoked_at: '2026-08-02T00:00:00Z',
+    })]) : restJson([])),
+    async (calls) => {
+      const res = await lifecycle(PROPOSAL_ID, {
+        action: 'reimport',
+        lines: [{ title: 'New', description: '', price_cents: 1, optional: false, category: 'general' }],
+      });
+      expect(res.status).toBe(409);
+      expect((await res.json()).error).toMatch(/revoked - restore it to draft before re-importing/);
+      expect(calls.some((c) => c.method === 'DELETE'), 'nothing is deleted').toBe(false);
+      expect(calls.some((c) => c.method === 'POST'), 'nothing is written').toBe(false);
+    },
+  );
+
+  // Everything that is NOT a refused transition stays a generic 500 with the
+  // detail in the server log: supabaseRest messages embed the PostgREST body,
+  // table, column and constraint names included. AC10l2 drives that half on the
+  // same route, so the two verdicts are pinned by what the route answers rather
+  // than by how its catch block is written.
 });
 
-test('AC6f: the roster counts in Postgres, bounded, instead of counting fetched rows', () => {
-  const store = read('src/lib/proposals/store.ts');
-  expect(store).toContain('rpc/proposal_roster_counts');
-  // The unbounded fan-out reads that PostgREST's max-rows would truncate are gone.
-  expect(store).not.toMatch(/proposal_lines\?select=proposal_id&proposal_id=in\./);
-  expect(store).not.toMatch(/proposal_submissions\?select=proposal_id,total_cents/);
+test('AC6f: the roster counts in Postgres, bounded, instead of counting fetched rows', async () => {
+  // What the roster ASKS FOR is the whole point: one bounded page of proposals
+  // and one aggregate keyed by their ids. The shape it replaced pulled every
+  // line and every submission back to count them in JS, which PostgREST's
+  // max-rows quietly truncated once the estate grew - so the assertion is that
+  // those reads are not issued, watched on the wire rather than read in source.
+  await withPostgrest(
+    (call) => (call.url.includes('/rpc/')
+      ? restJson([{ proposal_id: 'p1', line_count: 7, submission_count: 2, latest_total_cents: 630050 }])
+      : restJson([proposalRow({ id: 'p1' })], 200, { 'Content-Range': '0-0/1' })),
+    async (calls) => {
+      const roster = await listProposals();
+      expect(roster.proposals[0].line_count).toBe(7);
+      expect(roster.proposals[0].submission_count).toBe(2);
+
+      expect(calls).toHaveLength(2);
+      const [page, counts] = calls;
+      expect(page.method).toBe('GET');
+      expect(page.url).toContain('/proposals?');
+      expect(page.url, 'the page of proposals is bounded').toContain('limit=200');
+      expect(counts.method).toBe('POST');
+      expect(counts.url).toContain('/rpc/proposal_roster_counts');
+      expect(counts.body).toEqual({ proposal_ids: ['p1'] });
+      // No fan-out read of the rows being counted, at any bound.
+      for (const c of calls) {
+        expect(c.url).not.toMatch(/\/proposal_lines\?/);
+        expect(c.url).not.toMatch(/\/proposal_submissions\?/);
+      }
+    },
+  );
 
   const sql = read('supabase/migrations/20260826000000_proposal_roster_counts.sql');
   const ddl = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
@@ -415,7 +558,6 @@ test('AC6h: a counts outage costs the roster its numbers, never its lifecycle co
   };
 
   try {
-    const { listProposals } = await import('../src/lib/proposals/store');
 
     stub(404);
     const degraded = await listProposals();
@@ -442,10 +584,9 @@ test('AC6h: a counts outage costs the roster its numbers, never its lifecycle co
     process.env = env;
   }
 
-  // And the page renders the degraded state rather than printing zeros.
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  expect(page).toContain('data-testid="counts-unavailable"');
-  expect(page).toContain('p.line_count == null || p.submission_count == null');
+  // The page's half of this - the notice, "Counts unavailable" in place of a
+  // confident 0, and every lifecycle button still working - is driven in the
+  // browser spec (B19), where those are things that can be looked at.
 });
 
 test('AC6j: every proposal stays reachable past the roster cap, by search and by count', async () => {
@@ -477,7 +618,6 @@ test('AC6j: every proposal stays reachable past the roster cap, by search and by
   }) as typeof fetch;
 
   try {
-    const { listProposals, ROSTER_LIMIT, searchPattern } = await import('../src/lib/proposals/store');
 
     // Unfiltered: a full page, and the exact total that says it is not everything.
     const page = await listProposals();
@@ -522,14 +662,27 @@ test('AC6j: every proposal stays reachable past the roster cap, by search and by
     process.env = env;
   }
 
-  // And the page offers the search and says how much it is not showing.
-  const pageSrc = read('src/app/vaca-mgmt/proposals/page.tsx');
-  expect(pageSrc).toContain('data-testid="roster-search"');
-  expect(pageSrc).toContain('data-testid="roster-truncated"');
-  expect(pageSrc).toContain('?search=${encodeURIComponent(q)}');
-  expect(pageSrc).toContain('rosterTotal != null && rosterTotal > roster.length');
-  expect(read('src/app/api/admin/proposals/route.ts'))
-    .toContain(`request.nextUrl.searchParams.get('search')`);
+  // The route carries the page's term through to that filter rather than
+  // dropping it - driven, because a search that silently lists everything is
+  // exactly as reachable a bug as one that lists nothing.
+  await withPostgrest(
+    (call) => (call.url.includes('/rpc/')
+      ? restJson({ message: 'nope' }, 500)
+      : restJson([], 200, { 'Content-Range': '*/0' })),
+    async (calls) => {
+      const res = await proposalRoster(
+        new NextRequest('http://localhost/api/admin/proposals?search=Zeta'),
+      );
+      expect(res.status).toBe(200);
+      expect(calls[0].url).toContain('client_name.ilike.*Zeta*');
+      expect(calls[0].url).toContain('client_email.ilike.*Zeta*');
+      expect(calls[0].url).toContain('title.ilike.*Zeta*');
+    },
+  );
+
+  // The page's half - the search box, the truncation notice, and reaching a
+  // capped-off proposal in order to revoke it - is driven in the browser spec
+  // (B6), against this same payload shape.
 });
 
 test('AC6m: a truncated roster says so even when the exact total is unreadable', async () => {
@@ -558,7 +711,6 @@ test('AC6m: a truncated roster says so even when the exact total is unreadable',
   };
 
   try {
-    const { listProposals, ROSTER_LIMIT } = await import('../src/lib/proposals/store');
 
     // The three ways the count goes missing: no header, PostgREST's uncounted
     // `*`, and a proxy that mangles it. A full page must still say it is full.
@@ -599,34 +751,38 @@ test('AC6m: a truncated roster says so even when the exact total is unreadable',
     process.env = env;
   }
 
-  // The page renders the notice off the flag, so neither case is silent, and
-  // the total only fills in the number when it is known.
-  const pageSrc = read('src/app/vaca-mgmt/proposals/page.tsx');
-  expect(pageSrc).toContain('{rosterTruncated ? (');
-  expect(pageSrc).toContain('setRosterTruncated(body.truncated === true)');
-  expect(pageSrc).toContain('Showing the first ${roster.length}');
-  expect(read('src/app/api/admin/proposals/route.ts'))
-    .toContain('counts_available, total, truncated });');
-  // The browser spec drives that notice off a stubbed roster, so its stub has to
-  // carry the same flag the server sends - otherwise the AC passes against a
-  // payload the product never produces.
+  // Both signals reach the page, because the notice is gated on the flag and
+  // only decorated by the total: a truncated roster whose count went missing
+  // still has to say so. Driven through the route, so the payload asserted here
+  // is the payload the page actually receives.
+  await withPostgrest(
+    (call) => (call.url.includes('/rpc/')
+      ? restJson({ message: 'nope' }, 500)
+      : restJson([proposalRow({ id: 'p1' })])),
+    async () => {
+      const body = await (await proposalRoster(
+        new NextRequest('http://localhost/api/admin/proposals'),
+      )).json();
+      expect(Object.keys(body).sort())
+        .toEqual(['counts_available', 'proposals', 'total', 'truncated']);
+      expect(body.total, 'no Content-Range, so no total').toBeNull();
+      expect(body.counts_available).toBe(false);
+    },
+  );
+
+  // The page renders that notice in both shapes - counted ("of 312") and
+  // uncounted ("Showing the first N") - in the browser spec (B6 and B20). Its
+  // stub therefore has to carry the same flag the server sends, or the AC would
+  // pass against a payload the product never produces.
   expect(read('tests/proposal-pod-slice2-browser.spec.ts')).toContain('truncated: true');
 });
 
-test('AC6n: a created proposal is visible on the roster, never hidden by the search that was open', () => {
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  // Reloading under whatever term happened to be in the box hid the brand new
-  // proposal entirely, and a create that looks like it did nothing gets pressed
-  // again - a duplicate proposal for a real client.
-  expect(page).toContain('const wasReimport = reimportTarget != null;');
-  expect(page).toContain("if (!wasReimport) setSearch('');");
-  expect(page).toContain("await loadRoster(wasReimport ? activeSearch : '');");
-  // The old shape reloaded under the active term unconditionally.
-  expect(page).not.toContain('setReimportTarget(null);\n      await loadRoster(activeSearch);');
-  // Re-import keeps its filter: that row already matches, and it is the row the
-  // admin is working on.
-  expect(page).toContain('await loadRoster(activeSearch);');
-});
+/*
+ * AC6n - a created proposal is visible on the roster, never hidden by the
+ * search that was open - is a page state machine end to end: the term in the
+ * box, the reload that follows Create, and which row is on screen afterwards.
+ * It is driven in the browser spec (B21), where all three can be observed.
+ */
 
 test('AC6k: a delivered email whose status write fails is reported as delivered, and retried', async () => {
   const env = { ...process.env };
@@ -648,7 +804,6 @@ test('AC6k: a delivered email whose status write fails is reported as delivered,
   };
 
   try {
-    const { markSent } = await import('../src/lib/proposals/store');
     // The email is already out by the time markSent runs, so a transient failure
     // is retried rather than costing the admin a second delivery.
     stub(1);
@@ -664,6 +819,10 @@ test('AC6k: a delivered email whose status write fails is reported as delivered,
     process.env = env;
   }
 
+  // The delivery half cannot be driven while CLIENT_PAGE_LIVE is false: the
+  // route refuses every send before it reaches the mailer (AC10e drives that),
+  // so nothing can reach the wording below until Slice 3 flips the constant and
+  // this test can run the branch instead of reading it.
   const route = read('src/app/api/admin/proposals/[id]/route.ts');
   // Send stays FIRST: a failed send must never leave a proposal reading 'sent'.
   expect(route.indexOf('sendTrackedEmail({')).toBeLessThan(route.indexOf('await markSent(id)'));
@@ -677,23 +836,33 @@ test('AC6k: a delivered email whose status write fails is reported as delivered,
   expect(route).toContain('const detail = res.error || res.reason');
 });
 
-test('AC6l: no lifecycle writer hand-maintains updated_at - the trigger owns it', () => {
-  const store = read('src/lib/proposals/store.ts');
+test('AC6l: no lifecycle writer hand-maintains updated_at - the trigger owns it', async () => {
   // proposals_set_updated_at (20260824000000) overwrites anything sent from
-  // here, so a hand-written value is dead payload in every one of these paths.
-  expect(store).not.toContain('updated_at: new Date().toISOString()');
-  // The lifecycle columns these two DO own are still written.
-  expect(store).toContain(`status: 'revoked'`);
-  expect(store).toContain('revoked_at: new Date().toISOString()');
-  expect(store).toContain(`status: 'sent'`);
-  expect(store).toContain('sent_at: new Date().toISOString()');
+  // here, so a hand-written value is dead payload - and dead payload that can
+  // still fail a request. Every writer is driven and its body inspected: the
+  // lifecycle columns each one owns are written, and nothing else is.
+  await withPostgrest(() => restJson([proposalRow({ status: 'draft' })]), async (calls) => {
+    await revokeProposal(PROPOSAL_ID);
+    await restoreProposal(PROPOSAL_ID);
+    await markSent(PROPOSAL_ID);
+
+    const bodies = calls.filter((c) => c.method === 'PATCH')
+      .map((c) => c.body as Record<string, unknown>);
+    expect(bodies).toHaveLength(3);
+    const [revoked, restored, sent] = bodies;
+
+    expect(revoked.status).toBe('revoked');
+    expect(typeof revoked.revoked_at).toBe('string');
+    expect(restored).toEqual({ status: 'draft', revoked_at: null });
+    expect(sent.status).toBe('sent');
+    expect(typeof sent.sent_at).toBe('string');
+    expect(sent.revoked_at).toBeNull();
+
+    for (const body of bodies) expect(Object.keys(body)).not.toContain('updated_at');
+  });
 });
 
-test('AC6i: a rejected write names the rule and the field, not just "Invalid <verb>"', () => {
-  const route = read('src/app/api/admin/proposals/[id]/route.ts');
-  // A flattened detail alongside a message that names the failing path.
-  expect(route).toContain('details: parsed.error.flatten()');
-  expect(route).toContain(`issue.path.join('.')`);
+test('AC6i: a rejected write names the rule and the field, not just "Invalid <verb>"', async () => {
   // An empty bundle name is the reachable case, and the path names which line.
   const bad = ProposalLinesSchema.safeParse([
     { title: 'Demo', description: '', price_cents: 100, optional: false, category: 'general' },
@@ -702,22 +871,43 @@ test('AC6i: a rejected write names the rule and the field, not just "Invalid <ve
   expect(bad.success).toBe(false);
   if (!bad.success) expect(bad.error.issues[0].path.join('.')).toBe('1.title');
 
-  // The create route holds the SAME rule - the page renders body.error and
-  // nothing else, so a bare verdict there is just as blind. Its own reachable
-  // case needs no malformed input either: the client fields are not inside a
-  // <form>, so `type="email"` never validates natively and a half-typed address
-  // goes to the wire with a fully composed preview behind it.
-  const create = read('src/app/api/admin/proposals/route.ts');
-  expect(create).toContain('details: parsed.error.flatten()');
-  expect(create).toContain(`issue.path.join('.')`);
-  expect(create).toContain('`Invalid proposal: ${where} - ${issue.message}`');
-  expect(create).not.toContain(`{ error: 'Invalid proposal', details: parsed.error.flatten() }`);
-  const halfTyped = CreateProposalSchema.safeParse({
-    client_name: 'Rachel', client_email: 'rachel@', title: 'Your bathroom remodel',
-    lines: [{ title: 'Demo', description: '', price_cents: 100, optional: false, category: 'general' }],
+  // Both routes then have to SAY that, because the page renders body.error and
+  // nothing else - a bare verdict is as blind as no message at all. Driven, so
+  // what is pinned is the sentence the admin reads.
+  await withPostgrest(() => restJson([]), async (calls) => {
+    // The re-import route's reachable case: a bundle whose name was deleted.
+    const reimport = await lifecycle(PROPOSAL_ID, {
+      action: 'reimport',
+      lines: [
+        { title: 'Demo', description: '', price_cents: 100, optional: false, category: 'general' },
+        { title: '', description: '', price_cents: 100, optional: false, category: 'general' },
+      ],
+    });
+    expect(reimport.status).toBe(400);
+    const reimportBody = await reimport.json();
+    expect(reimportBody.error).toContain('lines.1.title');
+    expect(reimportBody.error).not.toBe('Invalid action');
+    expect(reimportBody.details.fieldErrors).toBeTruthy();
+
+    // The create route's needs no malformed input at all: the client fields are
+    // not inside a <form>, so `type="email"` never validates natively and a
+    // half-typed address goes to the wire with a composed preview behind it.
+    const create = await proposalCreate(new NextRequest('http://localhost/api/admin/proposals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_name: 'Rachel', client_email: 'rachel@', title: 'Your bathroom remodel',
+        lines: [{ title: 'Demo', description: '', price_cents: 100, optional: false, category: 'general' }],
+      }),
+    }));
+    expect(create.status).toBe(400);
+    const createBody = await create.json();
+    expect(createBody.error).toContain('client_email');
+    expect(createBody.error).not.toBe('Invalid proposal');
+    expect(createBody.details.fieldErrors.client_email).toBeTruthy();
+
+    expect(calls, 'neither rejection touched the database').toEqual([]);
   });
-  expect(halfTyped.success).toBe(false);
-  if (!halfTyped.success) expect(halfTyped.error.issues[0].path.join('.')).toBe('client_email');
 });
 
 test('AC7: the delivery email carries the private link, warm sender, booking slot only when configured', () => {
@@ -751,9 +941,11 @@ test('AC8: bundle migration - shape, sum tie, least-privilege function, frozen-f
   expect(ddl).toContain('@.price_cents.floor() == @.price_cents');
 });
 
-test('AC9: member prices are admin-side only - the page says so and the client render contract is pinned', () => {
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  expect(page).toContain('client sees names, never member prices');
+test('AC9: member prices are admin-side only - the client render contract is pinned', () => {
+  // What a composed bundle hands onward is titles and prices for the ADMIN, and
+  // titles and one summed price for the client. The persisted shape is asserted
+  // in AC4b; the rendered one - member names on the bundle row, no member price
+  // anywhere near it - is driven in the browser spec (B3).
   const migration = read('supabase/migrations/20260825000000_proposal_bundles.sql');
   expect(migration).toContain('ADMIN-SIDE ONLY');
   // Slice 3's client page must render titles only; the contract lives in the
@@ -761,70 +953,32 @@ test('AC9: member prices are admin-side only - the page says so and the client r
   expect(migration).toContain('never the member prices');
 });
 
-test('AC10: the touch path is first-class - select + Combine exists alongside drag', () => {
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  expect(page).toContain('combine-btn');
-  expect(page).toMatch(/type="checkbox"/);
-  expect(page).toContain('draggable');
-  // The sticky action bar keeps Combine reachable on a phone.
-  expect(page).toContain('sticky bottom-2');
-});
-
-test('AC10b: Combine reads the rows a tick resolves to, and unbundle prunes its key', () => {
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  // Derived from rows, never from selected.size - a key left behind by a
-  // removed row cannot advertise a bundle that cannot be composed.
-  expect(page).toContain('const selectedRows = useMemo(');
-  expect(page).toContain('disabled={selectedRows.length < 2}');
-  expect(page).not.toContain('disabled={selected.size < 2}');
-  // And unbundle prunes anyway, so the selection never holds a dead key.
-  expect(page).toMatch(/setSelected\(\(prev\) => \{\s*\n\s*if \(!prev\.has\(key\)\)/);
-});
-
-test('AC10c: the paste box parses on paste and an explicit button - never on a keystroke or a click away', () => {
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  expect(page).toContain('data-testid="parse-btn"');
-  expect(page).toContain('onPaste=');
-  // The old shape re-parsed (and re-keyed every row) on every change.
-  expect(page).not.toContain('if (e.target.value.trim()) ingestCsv(e.target.value)');
-  // And then on every blur, which is any click at all: the Combine bar, a
-  // checkbox, the client name field. Typing was safe only until focus moved,
-  // and moving focus is not a decision to re-import.
-  expect(page).not.toContain('onBlur={(e) => parsePastedText(e.target.value)}');
-  expect(page).not.toMatch(/onBlur=\{[^}]*parsePastedText/);
-  // EVERY door into a discard asks first when there is composed work to lose, so
-  // the loss can never be silent whichever one it comes through.
-  expect(page).toContain('const previewHasEdits = useMemo(');
-  expect(page).toContain('r.members != null || r.optional !== categorizeLine(r.title).optional');
-  expect(page).toMatch(/const confirmDiscard = useCallback\(\(\) => !previewHasEdits \|\| window\.confirm\(/);
-  expect(page).toMatch(/const reparse = useCallback\(\(text: string\) => \{\s*\n\s*if \(!confirmDiscard\(\)\) return false;/);
-  expect(page).toContain('onClick={() => reparse(csvText)}');
-  expect(page).not.toContain('onClick={() => ingestCsv(csvText)}');
-  // The paste and the dropped file are the same discard, so they ask too.
-  expect(page).toMatch(/parsePastedText = useCallback[\s\S]*?reparse\(text\);/);
-  expect(page).toMatch(/f\.text\(\)\.then\(\(text\) => \{\s*\n\s*if \(!confirmDiscard\(\)\) return;/);
-  // Emptying the box clears the preview rather than leaving a stale one up -
-  // and THAT is a discard too, through the same door. It was the one path that
-  // wiped bundles with no question, which also disarmed the confirm for the
-  // re-paste that naturally followed (nothing left to lose by then).
-  expect(page).toMatch(/const clearPreview = useCallback\(\(text: string\) => \{\s*\n\s*if \(!confirmDiscard\(\)\) return false;/);
-  expect(page).toContain('if (!text.trim() && !clearPreview(text)) return;');
-  expect(page).not.toContain('if (!text.trim()) clearPreview(text);');
-  // Declined, the box keeps the text its surviving preview was built from -
-  // committing the empty value would leave exactly the mismatch (a cleared box
-  // beside a live preview) that clearing the preview exists to prevent.
-  expect(page).toMatch(/if \(!text\.trim\(\) && !clearPreview\(text\)\) return;\s*\n\s*setCsvText\(text\);/);
-  // The paste path holds the same invariant in the other direction: the box's
-  // new text is committed only AFTER the discard is accepted. Committing first
-  // (setCsvText in onChange, the parse a tick later) left a declined paste
-  // showing the corrected CSV above a preview built from the old one, with
-  // Create writing the old rows and nothing saying the panes disagreed.
-  expect(page).toMatch(/if \(pasting\.current\) \{\s*\n\s*pasting\.current = false;\s*\n\s*if \(!parsePastedText\(text\)\) return;\s*\n\s*setCsvText\(text\);/);
-  expect(page).not.toMatch(/onPaste=\{\(e\) => \{[\s\S]*?setTimeout\(\(\) => parsePastedText/);
-  // Which means both discard paths report whether they ran, rather than
-  // returning void and leaving the caller to guess.
-  expect(page).toMatch(/const parsePastedText = useCallback\(\(text: string\) => \{[\s\S]*?return clearPreview\(text\);\s*\n\s*return reparse\(text\);/);
-});
+/*
+ * The importer's own ACs are state machines that exist only once React is
+ * mounted, so every one of them is DRIVEN in the browser spec against the real
+ * page instead of being read out of its source here:
+ *
+ *   AC10  - the touch path is first-class: tick rows and press Combine (B3,
+ *           B4) alongside the drag gesture (B17), with the tick target
+ *           measured at 390px (B12).
+ *   AC10b - Combine reads the rows a tick resolves to, and Unbundle frees the
+ *           tick it was holding (B4).
+ *   AC10c - the paste box imports on a paste and on the Parse button, never on
+ *           a keystroke and never on a click away (B3) - and EVERY door into a
+ *           discard asks first: Parse (B5), emptying the box (B11), arming or
+ *           cancelling a re-import (B13), pasting over composed work (B14) and
+ *           choosing a file (B22). Each also pins that declining leaves the box
+ *           and the preview agreeing rather than showing two different imports,
+ *           and B26 pins that a badge set by hand counts as composed work at
+ *           every door - with or without a bundle, before or after one.
+ *   AC10g - arming a re-import empties the importer and names its target (B13).
+ *   AC10h - a bundle cannot be sent with its name deleted (B23).
+ *   AC10k - Re-import is refused on a revoked row by the row itself (B15), and
+ *           by replaceLines behind it (AC6e).
+ *   AC10m - a revoked proposal has a way back (B16; AC10m2 for the write).
+ *   AC10n - a drag only combines rows, an abandoned one disarms itself, and a
+ *           mis-aimed file is inert but never silent (B17, B24).
+ */
 
 test('AC10c2: re-picking the same file always re-fires, so a declined confirm is not a dead end', () => {
   const page = read('src/app/vaca-mgmt/proposals/page.tsx');
@@ -835,117 +989,23 @@ test('AC10c2: re-picking the same file always re-fires, so a declined confirm is
   expect(page).not.toContain('onChange={(e) => onFile(e.target.files?.[0])}');
 });
 
-test('AC10c3: combine takes only the keys - the name it used to forward had no source', () => {
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  // Naming is renameBundle writing r.title after the fact; neither call site
-  // (the Combine button, the drag drop) ever passed a name.
-  expect(page).toContain('const combine = useCallback((keys: string[]) => {');
-  expect(page).toContain('const composed = composeBundle(chosen);');
-  expect(page).not.toMatch(/combine = useCallback\(\(keys: string\[\], name/);
-  // composeBundle itself keeps the parameter - it is a real part of the pure
-  // module's surface, and the AC fixtures above compose named bundles with it.
-  const bundles = read('src/lib/proposals/bundles.ts');
-  expect(bundles).toContain('export function composeBundle(inputs: BundleInput[], name?: string)');
-});
+/*
+ * AC10c3 - combine takes only the keys, and composeBundle keeps the name
+ * parameter its own callers use - is a type-level fact the compiler checks and
+ * AC1 exercises by composing a named bundle; the gesture itself is B3.
+ * AC10c4 - the selection checkbox meets the house 44px touch target - is
+ * MEASURED at 390px in B12, on the rendered control rather than on the class
+ * list that was meant to produce it.
+ */
 
-test('AC10c4: the selection checkbox meets the house 44px touch target', () => {
+test('AC10d: an unreadable file reports instead of vanishing', () => {
   const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  // globals.css enforces 44px for WCAG AAA, but its selector list is buttons
-  // only - a checkbox is not one, so nothing bumped the primary control of the
-  // path the plan calls mobile-first. The padded label is the target; the box
-  // itself stays 20px, so the hit area grows and the visual does not.
-  const css = read('src/app/globals.css');
-  expect(css).toContain('min-height: 44px');
-  expect(css).not.toMatch(/input\[type="checkbox"\][\s\S]{0,80}min-height: 44px/);
-  expect(page).toMatch(/<label\s*\n\s*className="[^"]*h-11 w-11[^"]*"\s*\n\s*data-testid="row-select-target"/);
-  expect(page).toContain('className="h-5 w-5 accent-primary"');
-  // The accessible name stays on the input, so "Select <title>" still resolves
-  // to the control itself rather than to the wrapper.
-  expect(page).toContain('aria-label={`Select ${r.title}`}');
-});
-
-test('AC10d: the fire-and-forget async paths report failure instead of vanishing', () => {
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  // A clipboard denial must not leave the admin believing they hold the link.
-  expect(page).toContain('await navigator.clipboard.writeText(url)');
-  expect(page).toContain(`title: 'Could not copy the link'`);
-  // An unreadable dropped file must not fail as a preview that simply never appears.
+  // A File whose text() rejects cannot be handed to a browser through the file
+  // input, so this one path stays a source assertion: an unreadable drop must
+  // not fail as a preview that simply never appears. Its sibling - a denied
+  // clipboard - IS drivable, and B2 drives it.
   expect(page).toContain(`title: 'Could not read that file'`);
   expect(page).toMatch(/f\.text\(\)[\s\S]*?\.catch\(/);
-});
-
-test('AC10g: arming a re-import empties the importer and names its target', () => {
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  // The old shape only set the target, so a preview built for a DIFFERENT
-  // client stayed loaded and became the payload for whichever row was clicked -
-  // at the same moment the client fields that identified it were hidden.
-  expect(page).not.toContain('onClick={() => { setReimportTarget(p);');
-  expect(page).toContain('onClick={() => armReimport(p)}');
-  expect(page).toMatch(/const armReimport = useCallback\(\(p: RosterEntry\) => \{\s*\n\s*if \(!confirmDiscard\(\)\) return;\s*\n\s*resetImporter\(\);/);
-  // Cancel restores a clean importer rather than leaving the armed preview up.
-  expect(page).toContain('onClick={cancelReimport}');
-  expect(page).toMatch(/const cancelReimport = useCallback\(\(\) => \{\s*\n\s*if \(!confirmDiscard\(\)\) return;/);
-  expect(page).toMatch(/const cancelReimport = useCallback\(\(\) => \{[\s\S]*?resetImporter\(\);/);
-  // Emptying it is a discard like every other, so it goes through the one door.
-  // Re-import is a small outline button up in the roster, scroll-lengths from
-  // the preview it throws out; arming one by mistake used to cost every bundle,
-  // name and override with no dialog, no toast and no undo. Cancel is the same
-  // shape one step later, on a preview composed FOR the armed target.
-  expect(page).not.toMatch(/const armReimport = useCallback\(\(p: RosterEntry\) => \{\s*\n\s*resetImporter\(\);/);
-  expect(page).not.toMatch(/const cancelReimport = useCallback\(\(\) => \{\s*\n\s*setReimportTarget\(null\);/);
-  // And the target is named where the admin is working, not only in the title.
-  expect(page).toContain('data-testid="reimport-armed"');
-  expect(page).toContain(`Replace ${'${reimportTarget.client_name}'}'s lines`);
-});
-
-test('AC10k: Re-import is refused on a revoked proposal by the row, not only by the server', () => {
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  const store = read('src/lib/proposals/store.ts');
-  // replaceLines refuses outright while a proposal is revoked, so a dead link
-  // can never be repointed. That refusal is knowable the moment the button is
-  // clicked - the row already carries status - instead of after the admin has
-  // emptied the importer, pasted the corrected CSV and composed it.
-  expect(store).toContain(`throw new ProposalConflictError('proposal is revoked - restore it to draft before re-importing')`);
-  expect(page).toContain(`disabled={busy || p.status === 'revoked'}`);
-  expect(page).not.toContain('<Button size="sm" variant="outline" disabled={busy} onClick={() => armReimport(p)}>');
-  // And the tooltip names a control the admin can actually press. Send is
-  // disabled on EVERY row while the client page is missing, so "re-send this
-  // proposal first" prescribed a remedy the adjacent button denied - and with
-  // Revoke hidden once used, that left the row frozen behind Copy link.
-  expect(page).toContain('Revoked - restore it to draft before re-importing its lines');
-  expect(page).not.toContain('Revoked - re-send this proposal before re-importing its lines');
-});
-
-test('AC10m: a revoked proposal has a way back that does not wait for Slice 3', () => {
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  const store = read('src/lib/proposals/store.ts');
-  const route = read('src/app/api/admin/proposals/[id]/route.ts');
-
-  // The action exists end to end: schema, route branch, store writer.
-  expect(route).toContain(`z.object({ action: z.literal('restore') })`);
-  expect(route).toContain('await restoreProposal(id);');
-  expect(store).toContain('export async function restoreProposal');
-
-  // revoked -> draft, and revoked_at goes with it: the lifecycle CHECK
-  // (proposals_revoked_at_matches_status) makes that one statement, not two.
-  expect(store).toMatch(/\{ status: 'draft', revoked_at: null \}/);
-  // The precondition rides the filter, so the write itself is the check - a
-  // read-then-write would decide on a status that could change in between.
-  expect(store).toContain('`proposals?id=eq.${proposalId}&status=eq.revoked`');
-  expect(store).toContain(
-    `throw new ProposalConflictError('only a revoked proposal can be restored - this one is not revoked')`,
-  );
-  // sent_at is left alone: a proposal that was sent did send, and the schema
-  // keeps that timestamp on purpose (20260824000000). AC10m2 drives the write
-  // itself and pins that the body carries nothing else.
-  expect(store).toMatch(/restoreProposal[\s\S]*?\{ status: 'draft', revoked_at: null \},\s*\n\s*\);/);
-
-  // Offered exactly where Revoke is not - on the rows that have been revoked.
-  expect(page).toContain('data-testid="restore-btn"');
-  expect(page).toContain(`onClick={() => act(p, 'restore')}`);
-  expect(page).toContain('Restore to draft');
-  // Same confirm posture as Revoke, in the other direction.
-  expect(page).toMatch(/restore: \(p\) => `Restore \$\{p\.client_name\}'s proposal to draft\?/);
 });
 
 test('AC10m2: driven - restore moves a revoked proposal to draft, and refuses any other', async () => {
@@ -1018,25 +1078,6 @@ test('AC10m2: driven - restore moves a revoked proposal to draft, and refuses an
   }
 });
 
-test('AC10n: a drag only combines rows, and an abandoned one disarms itself', () => {
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  // The drag carries its own identity, and the drop reads it. Without this, the
-  // key survived a drag released anywhere else (the drop zone, the page), and
-  // the next thing dropped on any row - a CSV dragged from Finder, a few pixels
-  // low - silently combined two unrelated lines and swallowed the file.
-  expect(page).toContain(`const ROW_DRAG_TYPE = 'application/x-lavaca-proposal-row'`);
-  expect(page).toContain('e.dataTransfer.setData(ROW_DRAG_TYPE, r.key)');
-  expect(page).toContain('onDragEnd={() => { dragKey.current = null; }}');
-  expect(page).toContain('if (!e.dataTransfer.types.includes(ROW_DRAG_TYPE)) {');
-  // The old shape: whatever was dropped, combine with whatever was armed.
-  expect(page).not.toMatch(/onDrop=\{\(e\) => \{\s*\n\s*e\.preventDefault\(\);\s*\n\s*const from = dragKey\.current;/);
-  // preventDefault stays unconditional on the row: without it the browser
-  // handles a dropped file itself and navigates away, preview and all.
-  expect(page).toContain('onDragOver={(e) => e.preventDefault()}');
-  // A mis-aimed file is inert, and says where it should have gone.
-  expect(page).toContain('Drop the CSV on the dashed box above the preview, not on a line.');
-});
-
 test('AC10o: a malformed id is answered as one, without touching the database', async () => {
   const env = { ...process.env };
   const realFetch = globalThis.fetch;
@@ -1072,21 +1113,14 @@ test('AC10o: a malformed id is answered as one, without touching the database', 
   }
 });
 
-test('AC10l: a failed proposal read is an outage, never "No such proposal"', () => {
-  const route = read('src/app/api/admin/proposals/[id]/route.ts');
-  // The pre-flight read swallowed EVERY failure into null and reported it as a
-  // 404 - so an unreachable Supabase, an unset SUPABASE_SECRET_KEY or a
-  // PostgREST 5xx told an admin looking at the row on their roster that their
-  // proposal did not exist, on the D3 kill switch, with nothing logged to
-  // correct them. supabaseRest throws on any non-2xx, so the throw now falls
-  // through to the catch that logs and returns the generic 500.
-  expect(route).not.toContain(`&limit=1\`).catch(() => null)`);
-  expect(route).toMatch(/try \{[\s\S]*?const rows = await supabaseRest<ProposalRow\[\]>\('GET', `proposals\?select=\*&id=eq\.\$\{id\}&limit=1`\);/);
-  // 404 is reserved for a genuinely empty result.
-  expect(route).toMatch(/if \(!proposal\) return NextResponse\.json\(\{ error: 'No such proposal' \}, \{ status: 404 \}\);/);
-  expect(route).toContain(`console.error(\`proposal \${parsed.data.action} failed:\`, message)`);
-  expect(route).toContain(`{ error: 'Could not complete that action' }, { status: 500 }`);
-});
+/*
+ * AC10l - a failed proposal read is an outage, never "No such proposal" - is
+ * the same claim AC10l2 below drives on the running route: the pre-flight read
+ * used to swallow EVERY failure into null and answer 404, so an unreachable
+ * Supabase told an admin pressing the D3 kill switch that their proposal did
+ * not exist, with nothing logged to correct them. Both verdicts and the log
+ * line are asserted there, from the outside.
+ */
 
 test('AC10l2: driven - a revoke during an outage answers 500, and only a missing row answers 404', async () => {
   const env = { ...process.env };
@@ -1132,17 +1166,10 @@ test('AC10l2: driven - a revoke during an outage answers 500, and only a missing
   }
 });
 
-test('AC10h: a bundle cannot be sent with its name deleted', () => {
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  // Typing through empty is allowed; leaving the box empty is not - the last
-  // non-empty name comes back on blur, and composeBundle's default backs it.
-  expect(page).toContain('onBlur={() => commitBundleName(r.key)}');
-  expect(page).toContain('lastBundleName.current.get(key)');
-  expect(page).toContain('`Bundle (${r.members?.length ?? 0} items)`');
-  // Belt and braces: the button refuses while an empty name is still on screen.
-  expect(page).toContain('const hasUnnamedRow = useMemo(');
-  expect(page).toContain('hasUnnamedRow');
-  // The default name the fallback restores is the one composeBundle gives.
+test('AC10h: the fallback name a cleared bundle box restores is composeBundle own', () => {
+  // The page's half - typing through empty is allowed, leaving it empty is not,
+  // and Create refuses while an unnamed row is on screen - is driven in B23.
+  // This is the default that backs it, from the module that generates it.
   const b = composeBundle([
     { title: 'A', priceCents: 100, optional: true },
     { title: 'B', priceCents: 200, optional: true },
@@ -1212,17 +1239,12 @@ test('AC10i: turning a locked bundle optional asks first, and names what it woul
   ])!;
   expect(lockedMemberTitles(allOptional.members)).toEqual([]);
 
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  expect(page).toContain('lockedMemberTitles(row.members)');
-  expect(page).toMatch(/locked\.length > 0 && !window\.confirm\(/);
-  // Only that direction, and only for bundles: locking anything is never a risk.
-  expect(page).toContain('if (row?.members && !row.optional)');
-  // ONE predicate decides what "locked member" means, so the badge, the guard
-  // and Unbundle cannot drift apart.
-  const bundles = read('src/lib/proposals/bundles.ts');
-  expect(bundles).toContain('optional: r.optional');
-  expect(bundles).toContain('member.optional ?? categorizeLine(member.title).optional');
-  expect(bundles.match(/\?\? categorizeLine\(/g)).toHaveLength(1);
+  // Every fixture above is judged the same way by the badge and by the guard,
+  // which is what "ONE predicate" means where it can be observed - the two
+  // cannot drift apart while they keep agreeing on the storage-read case, the
+  // hand-locked case and the all-optional case alike. The page's half - the
+  // dialog, its contents, and that it only ever asks in the exposing direction
+  // - is driven in B7, B8 and B9.
 });
 
 test('AC10j: a bundle owns its badge; its members own their verdicts', () => {
@@ -1287,41 +1309,40 @@ test('AC10j: a bundle owns its badge; its members own their verdicts', () => {
   expect(nested.priceCents).toBe(480000 + 340000 + 290050);
   expect(nested.members).toHaveLength(3);
 
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  // The cascade: a bundle-level answer written onto every member as if it had
-  // been given about each of them one at a time.
-  expect(page).not.toContain('members: r.members.map((m) => ({ ...m, optional }))');
-  expect(page).toContain('(r.key === key ? { ...r, optional: !r.optional } : r)');
-  const bundles = read('src/lib/proposals/bundles.ts');
-  expect(bundles).toContain('optional: locked.length === 0');
-  expect(bundles).toContain('categorizeLine((locked[0] ?? members[0]).title).key');
-  // The shapes that read the top-level inputs, which say nothing about what is
-  // inside a bundle among them.
-  expect(bundles).not.toContain('optional: inputs.every((r) => r.optional)');
-  expect(bundles).not.toContain('inputs.find((r) => !r.optional)');
-  // Nothing reads a category handed IN any more, so the input shape stopped
-  // carrying one: threaded through every call site to be discarded, and on a
-  // nested bundle it was a stale label for a package it no longer described.
-  expect(bundles.match(/export interface BundleInput \{[\s\S]*?\n\}/)![0]).not.toContain('category');
-  // The COMPOSED bundle still has one - derived here, off the registry.
-  expect(bundles.match(/export interface ComposedBundle \{[\s\S]*?\n\}/)![0]).toContain('category: string;');
+  // A category handed IN would be a stale label the moment a bundle was nested,
+  // and every category asserted above is instead the one composeBundle derived
+  // from the member that decided the badge. Nothing carries one in: BundleInput
+  // has no such field, which the compiler enforces on every call site.
+
+  // The page's half - flipping a bundle writes THAT ROW and never cascades onto
+  // its members, so unbundling gives the demolition back locked - is driven in
+  // B7, and the nesting round trip in B8.
 });
 
-test('AC10e: Send is refused while the client page does not exist; Copy link is not', () => {
+test('AC10e: Send is refused while the client page does not exist', async () => {
   // Slice 2 ships the admin side only. Flipping this constant is Slice 3's job,
   // in the same commit that adds /proposal/[token].
   expect(CLIENT_PAGE_LIVE).toBe(false);
 
-  const route = read('src/app/api/admin/proposals/[id]/route.ts');
-  expect(route).toContain('if (!CLIENT_PAGE_LIVE)');
-  expect(route).toContain('CLIENT_PAGE_NOT_LIVE_MESSAGE }, { status: 409 }');
-  // Server-side, and BEFORE anything is handed to the mailer.
-  expect(route.indexOf('if (!CLIENT_PAGE_LIVE)')).toBeLessThan(route.indexOf('sendTrackedEmail({'));
+  // Driven, because the UI's disabled button is not the guard: a mis-click, a
+  // stale tab or a hand-made request must not be able to put a link that 404s
+  // into a client's inbox. The route refuses before anything reaches the
+  // mailer, and it refuses a proposal that is otherwise perfectly sendable.
+  await withPostgrest(
+    () => restJson([proposalRow({ client_email: 'rachel@example.com' })]),
+    async (calls) => {
+      const res = await lifecycle(PROPOSAL_ID, { action: 'send' });
+      expect(res.status).toBe(409);
+      expect((await res.json()).error).toMatch(/not live yet/i);
+      // Nothing was written either: the proposal does not come back reading
+      // 'sent' behind an email that was never sent.
+      expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+      expect(calls.some((c) => c.url.includes('email')), 'no delivery was attempted').toBe(false);
+    },
+  );
 
-  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
-  expect(page).toContain('disabled={busy || !CLIENT_PAGE_LIVE || !p.client_email}');
-  // Copy link stays unconditional - holding a link is not sending one.
-  expect(page).toContain('onClick={() => copyLink(p)}');
+  // Copy link stays unconditional beside it - holding a link is not sending one
+  // - which is B1, where both buttons are on screen together.
 });
 
 test('AC10f: a proposal delivery is attributed to the admin who sent it', () => {

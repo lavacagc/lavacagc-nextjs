@@ -168,9 +168,16 @@ export function lockedMemberTitles(members: PreviewBundleMember[]): string[] {
  * comes from the registry, which is the only thing that ever set it. The
  * description comes back when the preview still carries it, and restores empty
  * when it does not.
+ *
+ * The registry's own verdict comes back ALONGSIDE the intrinsic one rather than
+ * being folded into it, because a restored line is exactly where the two are
+ * allowed to disagree: a member the admin locked by hand returns locked, and
+ * the preview needs to know that is an override rather than ask the registry
+ * again for every row on every keystroke.
  */
 export function restoreMembers(members: PreviewBundleMember[]): {
-  title: string; description: string; priceCents: number; optional: boolean; category: string;
+  title: string; description: string; priceCents: number; optional: boolean;
+  registryOptional: boolean; category: string;
 }[] {
   return members.map((m) => {
     const verdict = categorizeLine(m.title);
@@ -179,6 +186,7 @@ export function restoreMembers(members: PreviewBundleMember[]): {
       description: m.description ?? '',
       priceCents: m.price_cents,
       optional: m.optional ?? verdict.optional,
+      registryOptional: verdict.optional,
       category: verdict.key,
     };
   });
