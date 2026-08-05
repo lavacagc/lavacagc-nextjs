@@ -6,6 +6,10 @@
  *                             because the link it delivers has nowhere to land.
  *   { action: 'revoke' }   -> the D3 kill switch; the client link goes to the
  *                             generic dead end while status is 'revoked'.
+ *   { action: 'restore' }  -> revoked back to draft. Revoking was always meant
+ *                             to be reversible, and re-sending cannot do it
+ *                             while there is no client page to send to, so this
+ *                             is the door that does not depend on Slice 3.
  *   { action: 'reimport', lines: [...] } -> replace the line set with a newly
  *                             imported composition (same link, corrected
  *                             numbers). Old submissions stay readable through
@@ -22,7 +26,7 @@ import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { cleanEnv } from '@/lib/envClean';
 import {
   ProposalLinesSchema, ProposalConflictError, bundleSumError, markSent, replaceLines,
-  revokeProposal, type ProposalRow,
+  restoreProposal, revokeProposal, type ProposalRow,
 } from '@/lib/proposals/store';
 import { CLIENT_PAGE_LIVE, CLIENT_PAGE_NOT_LIVE_MESSAGE } from '@/lib/proposals/clientPage';
 import { buildProposalDeliveryEmail, PROPOSAL_FROM } from '@/lib/proposals/deliveryEmail';
@@ -35,14 +39,27 @@ const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lava
 const ActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('send') }),
   z.object({ action: z.literal('revoke') }),
+  z.object({ action: z.literal('restore') }),
   // The same bound the create path and the CSV parser hold: re-import is a
   // replacement, not a second door with a wider frame.
   z.object({ action: z.literal('reimport'), lines: ProposalLinesSchema }),
 ]);
 
+/**
+ * The real UUID shape, not "36 characters of hex and dashes".
+ *
+ * The loose form let ids Postgres cannot cast - `------...`, 36 bare hex digits -
+ * through to the database, where PostgREST's `invalid input syntax for type
+ * uuid` throws into the catch below and answers 500 'Could not complete that
+ * action': an outage message, and a logged error, for what is only a malformed
+ * id. 400 catches it here without a round trip, so the 500 keeps meaning what it
+ * now says.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ error: 'Bad id' }, { status: 400 });
+  if (!UUID.test(id)) return NextResponse.json({ error: 'Bad id' }, { status: 400 });
 
   const parsed = ActionSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
@@ -74,6 +91,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       case 'revoke': {
         await revokeProposal(id);
         return NextResponse.json({ ok: true, status: 'revoked' });
+      }
+      case 'restore': {
+        // The way back from the kill switch that does not need a client page to
+        // exist. Re-import stays refused while a proposal is revoked (a dead
+        // link must not be repointed) - this is what makes it a draft again so
+        // it can be corrected and sent when Slice 3 lands.
+        await restoreProposal(id);
+        return NextResponse.json({ ok: true, status: 'draft' });
       }
       case 'reimport': {
         const sumError = bundleSumError(parsed.data.lines);

@@ -529,14 +529,110 @@ test.describe('proposals admin, in the browser', () => {
     // admin has pasted the corrected CSV and composed it.
     const reimport = row.getByTestId('reimport-btn');
     await expect(reimport).toBeDisabled();
-    await expect(reimport).toHaveAttribute('title', /re-send this proposal before re-importing/i);
-
-    // Re-send is the way back, and it is still offered.
-    await expect(row.getByTestId('send-btn')).toContainText('Re-send');
+    // And the remedy it names is one the admin can act on. Send is disabled on
+    // every row while the client page is missing, so pointing at Re-send left
+    // this row frozen: Revoke hides itself once used, and Copy link was the only
+    // thing left that did anything.
+    await expect(reimport).toHaveAttribute('title', /restore it to draft before re-importing/i);
+    await expect(row.getByTestId('send-btn')).toBeDisabled();
+    await expect(row.getByTestId('restore-btn')).toBeEnabled();
 
     // A live proposal is unaffected.
     await page.getByTestId('roster-search-clear').click();
     await expect(page.getByTestId('reimport-btn').first()).toBeEnabled();
+  });
+
+  test('B16: a revoked proposal can be restored to draft, and asks first', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    // This spec's own roster, so the restored status is this test's state and
+    // nothing is mutated for anyone else. Registered after openProposals, which
+    // is what makes it the route that answers.
+    const posted: unknown[] = [];
+    let status = 'revoked';
+    // The action route is its own pattern: a glob's `*` stops at a path
+    // separator, so the roster's pattern never reaches /proposals/<id>.
+    await page.route(`**/api/admin/proposals/${REVOKED.id}`, async (route) => {
+      posted.push(JSON.parse(route.request().postData() ?? 'null'));
+      status = 'draft';
+      await route.fulfill({ json: { ok: true, status: 'draft' } });
+    });
+    await page.route('**/api/admin/proposals*', async (route) => {
+      await route.fulfill({
+        json: {
+          proposals: [{ ...REVOKED, status }],
+          counts_available: true,
+          total: 1,
+          truncated: false,
+        },
+      });
+    });
+    await page.getByTestId('roster-search-btn').click();
+    const row = page.getByTestId(`proposal-${REVOKED.id}`);
+    await expect(row.getByText('revoked', { exact: true })).toBeVisible();
+
+    // Same confirm posture as Revoke, in the other direction: it changes what a
+    // link the client may be holding does.
+    let asked = '';
+    page.once('dialog', (d) => { asked = d.message(); d.dismiss(); });
+    await row.getByTestId('restore-btn').click();
+    expect(asked).toContain('Restore Yusuf Adeyemi');
+    expect(posted, 'a dismissed confirm sends nothing').toEqual([]);
+    await expect(row.getByText('revoked', { exact: true })).toBeVisible();
+
+    page.once('dialog', (d) => d.accept());
+    await row.getByTestId('restore-btn').click();
+    await expect(toastTitle(page, 'Restored to draft')).toBeVisible();
+    expect(posted).toEqual([{ action: 'restore' }]);
+
+    // Back to draft, which is what unfreezes the row: re-import is offered
+    // again, and Revoke has taken Restore's place.
+    await expect(row.getByText('draft', { exact: true })).toBeVisible();
+    await expect(row.getByTestId('reimport-btn')).toBeEnabled();
+    await expect(row.getByTestId('restore-btn')).toHaveCount(0);
+    await expect(row.getByRole('button', { name: /revoke/i })).toBeEnabled();
+  });
+
+  test('B17: an abandoned drag disarms, and a stray file never becomes a bundle', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await pasteCsv(page, CSV);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+
+    // Start dragging a row and release it somewhere that is not a row - the
+    // shrug that used to leave the key armed with nothing on screen saying so.
+    await page.evaluate(() => {
+      const rows = document.querySelectorAll('[data-testid="line-row"]');
+      const dt = new DataTransfer();
+      const opts = { bubbles: true, cancelable: true, dataTransfer: dt };
+      rows[0].dispatchEvent(new DragEvent('dragstart', opts));
+      rows[0].dispatchEvent(new DragEvent('dragend', opts));
+    });
+
+    // Now drop a FILE on a different row - the CSV dragged from Finder, aimed at
+    // the drop zone and landing a few pixels low. The row's handler used to read
+    // the armed key and combine two unrelated lines, swallowing the file: no
+    // toast, no dialog, no undo short of Unbundle.
+    await page.evaluate(() => {
+      const rows = document.querySelectorAll('[data-testid="line-row"]');
+      const dt = new DataTransfer();
+      dt.items.add(new File(['title,description,price\n'], 'corrected.csv', { type: 'text/csv' }));
+      rows[2].dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    });
+    await expect(page.getByTestId('bundle-row')).toHaveCount(0);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+    // Inert, but not silent.
+    await expect(toastTitle(page, 'Nothing was imported')).toBeVisible();
+
+    // And the gesture itself still works: the drag carries its own payload, and
+    // a row dropped on a row is a bundle.
+    await page.evaluate(() => {
+      const rows = document.querySelectorAll('[data-testid="line-row"]');
+      const dt = new DataTransfer();
+      const opts = { bubbles: true, cancelable: true, dataTransfer: dt };
+      rows[0].dispatchEvent(new DragEvent('dragstart', opts));
+      rows[1].dispatchEvent(new DragEvent('drop', opts));
+    });
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+    await expect(page.getByTestId('line-row')).toHaveCount(1);
   });
 
   test('B12: the row checkbox clears the house 44px touch target', async ({ page, context, baseURL }) => {

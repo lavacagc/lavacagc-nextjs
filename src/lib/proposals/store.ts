@@ -143,7 +143,8 @@ export async function createProposal(input: CreateProposalInput): Promise<Propos
 
 /**
  * Replace a proposal's lines (the Re-import flow). Deliberately NOT allowed on
- * a revoked proposal - un-revoke by sending first, so a dead link cannot be
+ * a revoked proposal - bring it back to draft first (restoreProposal, or a
+ * re-send once there is a client page to send to), so a dead link cannot be
  * quietly repointed at new content.
  *
  * Old submissions keep their own snapshots by design (Slice 1's whole
@@ -169,7 +170,7 @@ export async function replaceLines(proposalId: string, lines: ProposalLineInput[
   const proposal = existing?.[0];
   if (!proposal) throw new Error('no such proposal');
   if (proposal.status === 'revoked') {
-    throw new ProposalConflictError('proposal is revoked - re-send it before re-importing');
+    throw new ProposalConflictError('proposal is revoked - restore it to draft before re-importing');
   }
 
   // Bounded by the same MAX_LINES the write side enforces, so this read cannot
@@ -183,26 +184,66 @@ export async function replaceLines(proposalId: string, lines: ProposalLineInput[
   try {
     await insertLines(proposalId, lines);
   } catch (err) {
-    await restorePreviousLines(proposalId, previous);
+    await restorePreviousLines(proposalId, previous, lines.length);
     throw err;
   }
 }
 
 /**
- * Best-effort undo of the DELETE above. If even this fails the proposal really
- * does have no lines, which an operator must know about NOW - so it is logged
- * loudly, with the id to re-import against and the rows themselves, rather than
- * swallowed behind the original error.
+ * How many lines the proposal actually holds right now.
+ *
+ * Null is "could not be read", never a number to act on - the caller is already
+ * in a failure it is trying to describe, so this one must not add a claim of its
+ * own on top of it.
  */
-async function restorePreviousLines(proposalId: string, previous: StoredLine[]): Promise<void> {
+async function countLines(proposalId: string): Promise<number | null> {
+  try {
+    const { rows, total } = await supabaseRestCounted<{ id: string }>(
+      `proposal_lines?select=id&proposal_id=eq.${proposalId}&limit=1`,
+    );
+    // The exact count answers when the header arrives. Without it, an empty
+    // page is still proof of zero; a non-empty one says only "some".
+    return total ?? (rows.length === 0 ? 0 : null);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Best-effort undo of the DELETE above, and an honest report when even that
+ * fails.
+ *
+ * This log line exists to be read during an incident and is the only signal the
+ * operator gets, so it states what IS rather than what is feared. A failed
+ * restore does not prove the proposal is empty: an insert whose response was
+ * lost - a timeout, a reset connection, a 502 in front of PostgREST - commits
+ * server-side anyway, and then the snapshot going back collides with
+ * proposal_lines_position and throws for the one reason that means the NEW lines
+ * are already in place. So the count is read back and the wording follows it,
+ * with the repair matched to each case; the rows themselves are logged either
+ * way, because they are what a repair would be built from.
+ */
+async function restorePreviousLines(
+  proposalId: string, previous: StoredLine[], attemptedCount: number,
+): Promise<void> {
   if (previous.length === 0) return;
   try {
     await supabaseRest('POST', 'proposal_lines', previous, { prefer: 'return=minimal' });
   } catch (restoreErr) {
+    const held = await countLines(proposalId);
+    const state = held === 0
+      ? 'it now holds NO lines: re-import its CSV to repair it'
+      : held == null
+        ? 'its line count could not be read either: READ its lines before repairing anything'
+        : held === attemptedCount
+          ? `it holds ${held} line(s), the count the re-import was writing - the new set most likely `
+            + 'landed and only its response was lost, so verify those lines rather than re-importing blind'
+          : `it holds ${held} line(s), neither the ${previous.length} it started with nor the `
+            + `${attemptedCount} the re-import was writing: READ its lines before repairing anything`;
     console.error(
-      `PROPOSAL DATA LOSS: re-import of proposal ${proposalId} failed AND its ${previous.length} previous ` +
-      'line(s) could not be restored - the proposal now has no lines. Re-import its CSV to repair it. ' +
-      `Restore error: ${restoreErr instanceof Error ? restoreErr.message : String(restoreErr)}`,
+      `PROPOSAL LINES AT RISK: re-import of proposal ${proposalId} failed AND its ${previous.length} previous `
+      + `line(s) could not be put back - ${state}. `
+      + `Restore error: ${restoreErr instanceof Error ? restoreErr.message : String(restoreErr)}`,
       JSON.stringify(previous),
     );
   }
@@ -390,6 +431,38 @@ export async function revokeProposal(proposalId: string): Promise<void> {
     status: 'revoked',
     revoked_at: new Date().toISOString(),
   }, { prefer: 'return=minimal' });
+}
+
+/**
+ * Restore: revoked -> draft, the way back from the kill switch.
+ *
+ * Revoking is meant to be reversible - the lifecycle has always said so, and
+ * re-sending was the documented way back. But re-sending needs a client page to
+ * send a link TO, and that is Slice 3, so until it lands a revoked proposal had
+ * exactly one control left (Copy link): Revoke hides itself once used, Send is
+ * refused while CLIENT_PAGE_LIVE is false, and re-import is refused while the
+ * status reads revoked. This is the door that does not depend on any of that,
+ * and it stays the right one afterwards: a proposal whose lines are wrong is
+ * repaired as a draft and sent again, rather than being re-sent to a client in
+ * order to earn the right to fix it.
+ *
+ * The filter carries the precondition, so the write itself is the check: only a
+ * row that is still revoked when this reaches Postgres is updated, and an empty
+ * result is the refusal. A read-then-write would decide on a status that could
+ * have changed in between - and the lifecycle CHECK
+ * (proposals_revoked_at_matches_status) is what makes clearing revoked_at part
+ * of leaving 'revoked' rather than a second statement that could be forgotten.
+ * sent_at is deliberately left alone: a proposal that was sent did send, and the
+ * schema keeps that timestamp for exactly that reason.
+ */
+export async function restoreProposal(proposalId: string): Promise<void> {
+  const rows = await supabaseRest<ProposalRow[]>(
+    'PATCH', `proposals?id=eq.${proposalId}&status=eq.revoked`,
+    { status: 'draft', revoked_at: null },
+  );
+  if (!rows || rows.length === 0) {
+    throw new ProposalConflictError('only a revoked proposal can be restored - this one is not revoked');
+  }
 }
 
 async function patchSent(proposalId: string): Promise<void> {

@@ -5,7 +5,8 @@
  *
  * Two panels:
  *  - The roster: every proposal with status, submissions, and the lifecycle
- *    buttons (Copy link, Send, Re-import, Revoke).
+ *    buttons (Copy link, Send, Re-import, Revoke, and Restore to draft on a
+ *    row that has been revoked).
  *  - The importer: paste or drop the estimator's client-safe CSV, review the
  *    parsed preview - the category registry's locked/optional badge on every
  *    line with a per-line override switch - COMBINE lines into named bundles,
@@ -30,7 +31,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import {
-  RefreshCw, Link2, Send, Ban, Upload, Boxes, X, FileUp, Undo2, Search,
+  RefreshCw, Link2, Send, Ban, Upload, Boxes, X, FileUp, Undo2, Search, RotateCcw,
 } from 'lucide-react';
 import { parseProposalCsv, type ParsedProposalLine } from '@/lib/proposals/csv';
 import { categorizeLine } from '@/lib/proposals/categories';
@@ -68,6 +69,34 @@ interface RosterEntry {
   latest_total_cents: number | null;
   updated_at: string;
 }
+
+/**
+ * The drag-and-drop payload type a preview row starts a drag with, and the only
+ * one a preview row acts on when something is dropped. A file drag carries
+ * 'Files' and nothing of ours, so it cannot be mistaken for a row.
+ */
+const ROW_DRAG_TYPE = 'application/x-lavaca-proposal-row';
+
+/** The lifecycle transitions a roster row can ask the API for. */
+type LifecycleAction = 'send' | 'revoke' | 'restore';
+
+/**
+ * What each transition asks before it runs, and what it says when it lands.
+ *
+ * Revoke and Restore both change what a link a client may already be holding
+ * does, so both ask - the same posture, in both directions. Send asks nothing:
+ * it is refused outright while the client page does not exist, and delivering a
+ * proposal the admin has just reviewed is the ordinary path.
+ */
+const CONFIRMS: Record<LifecycleAction, ((p: RosterEntry) => string) | null> = {
+  send: null,
+  revoke: (p) => `Revoke ${p.client_name}'s link? The page stops resolving until you restore or re-send it.`,
+  restore: (p) => `Restore ${p.client_name}'s proposal to draft? Its link starts resolving again, and you can re-import its lines.`,
+};
+
+const DONE: Record<LifecycleAction, string> = {
+  send: 'Sent', revoke: 'Revoked', restore: 'Restored to draft',
+};
 
 const dollars = (cents: number) =>
   (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -437,8 +466,9 @@ export default function ProposalsAdminPage() {
     }
   };
 
-  const act = async (p: RosterEntry, action: 'send' | 'revoke') => {
-    if (action === 'revoke' && !window.confirm(`Revoke ${p.client_name}'s link? The page stops resolving until you re-send.`)) return;
+  const act = async (p: RosterEntry, action: LifecycleAction) => {
+    const ask = CONFIRMS[action];
+    if (ask && !window.confirm(ask(p))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/admin/proposals/${p.id}`, {
@@ -448,7 +478,7 @@ export default function ProposalsAdminPage() {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-      toast({ title: action === 'send' ? 'Sent' : 'Revoked', description: p.client_name });
+      toast({ title: DONE[action], description: p.client_name });
       await loadRoster(activeSearch);
     } catch (err) {
       toast({ title: 'Action failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
@@ -579,13 +609,17 @@ export default function ProposalsAdminPage() {
                       admin has emptied the importer, pasted the corrected CSV
                       and composed it. Send is gated in the UI for exactly this
                       reason, with the server as the backstop.
+
+                      The tooltip names Restore, not Re-send: Send is switched
+                      off for every row until the client page ships, so telling
+                      an admin to press it left the row frozen with no way out.
                     */}
                     <Button
                       size="sm"
                       variant="outline"
                       disabled={busy || p.status === 'revoked'}
                       title={p.status === 'revoked'
-                        ? 'Revoked - re-send this proposal before re-importing its lines'
+                        ? 'Revoked - restore it to draft before re-importing its lines'
                         : undefined}
                       onClick={() => armReimport(p)}
                       data-testid="reimport-btn"
@@ -594,7 +628,26 @@ export default function ProposalsAdminPage() {
                     </Button>
                     {p.status !== 'revoked' ? (
                       <Button size="sm" variant="outline" disabled={busy} onClick={() => act(p, 'revoke')}><Ban className="mr-1 h-4 w-4" />Revoke</Button>
-                    ) : null}
+                    ) : (
+                      /*
+                        The way back. Revoking has always been reversible, but
+                        every other door out of it needs the client page: Send is
+                        off until Slice 3 and re-import is refused while the
+                        status reads revoked, so without this a revoked proposal
+                        had exactly one control left - Copy link - and a tooltip
+                        pointing at a button that could not be pressed.
+                      */
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        title="Back to draft, so its lines can be corrected and it can be sent again"
+                        onClick={() => act(p, 'restore')}
+                        data-testid="restore-btn"
+                      >
+                        <RotateCcw className="mr-1 h-4 w-4" />Restore to draft
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       disabled={busy || !CLIENT_PAGE_LIVE || !p.client_email}
@@ -726,11 +779,37 @@ export default function ProposalsAdminPage() {
                 <div
                   key={r.key}
                   draggable
-                  onDragStart={() => { dragKey.current = r.key; }}
+                  // The drag carries its own identity. A drag that ends anywhere
+                  // else - over the drop zone, over the page, back where it
+                  // started - used to leave the key armed with nothing on screen
+                  // saying so, and the next thing dropped on ANY row was combined
+                  // with it: a CSV dragged from Finder onto a row a few pixels
+                  // below the drop zone silently became a bundle of two unrelated
+                  // lines, and the file itself was swallowed. dragend disarms it,
+                  // and the drop acts only on a payload this list started.
+                  onDragStart={(e) => {
+                    dragKey.current = r.key;
+                    e.dataTransfer.setData(ROW_DRAG_TYPE, r.key);
+                    e.dataTransfer.effectAllowed = 'move';
+                  }}
+                  onDragEnd={() => { dragKey.current = null; }}
+                  // preventDefault stays unconditional: without it the browser
+                  // handles a dropped file itself and navigates away from the
+                  // page, taking the whole preview with it.
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => {
                     e.preventDefault();
-                    const from = dragKey.current; dragKey.current = null;
+                    if (!e.dataTransfer.types.includes(ROW_DRAG_TYPE)) {
+                      if (e.dataTransfer.types.includes('Files')) {
+                        toast({
+                          title: 'Nothing was imported',
+                          description: 'Drop the CSV on the dashed box above the preview, not on a line.',
+                        });
+                      }
+                      return;
+                    }
+                    const from = e.dataTransfer.getData(ROW_DRAG_TYPE) || dragKey.current;
+                    dragKey.current = null;
                     if (from && from !== r.key) combine([from, r.key]);
                   }}
                   className={`rounded-lg border p-3 ${r.members ? 'border-primary bg-primary/5' : ''}`}

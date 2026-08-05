@@ -255,8 +255,91 @@ test('AC6d: a re-import that cannot insert restores the lines it deleted', async
     .not.toMatch(/PATCH', `proposals\?id=eq\.\$\{proposalId\}`, \{\s*\n?\s*updated_at/);
 });
 
+test('AC6d2: when the restore fails too, the log states what the proposal ACTUALLY holds', async () => {
+  // The one log line written to be read during an incident, and the operator's
+  // only signal. It used to assert "the proposal now has no lines" without ever
+  // looking - but an insert whose RESPONSE was lost commits anyway, and then the
+  // snapshot going back collides with proposal_lines_position and throws for the
+  // one reason that means the NEW lines are already in place. So the count is
+  // read back and the wording follows it.
+  const previous = [
+    { id: 'l1', proposal_id: 'p1', position: 0, title: 'Demolition & prep', description: '', price_cents: 480000, optional: false, category: 'demolition', bundle_members: null },
+    { id: 'l2', proposal_id: 'p1', position: 1, title: 'Tile', description: 'porcelain', price_cents: 120000, optional: true, category: 'tile', bundle_members: null },
+  ];
+  const newLines = [
+    { title: 'New A', description: '', price_cents: 1, optional: false, category: 'general' },
+    { title: 'New B', description: '', price_cents: 2, optional: false, category: 'general' },
+    { title: 'New C', description: '', price_cents: 3, optional: false, category: 'general' },
+  ];
+
+  const runWithHeld = async (held: number | null): Promise<string> => {
+    const env = { ...process.env };
+    const realFetch = globalThis.fetch;
+    const realError = console.error;
+    process.env.SUPABASE_SECRET_KEY = 'stub-key';
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://postgrest.stub';
+    const logged: string[] = [];
+    console.error = (...args: unknown[]) => { logged.push(args.map(String).join(' ')); };
+    const json = (payload: unknown, status = 200, headers: Record<string, string> = {}) =>
+      new Response(JSON.stringify(payload), {
+        status, headers: { 'Content-Type': 'application/json', ...headers },
+      });
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (method === 'GET' && url.includes('/proposals?')) return json([{ id: 'p1', status: 'sent' }]);
+      // The count read back, bounded: rows say "some", Content-Range says how many.
+      if (method === 'GET' && url.includes('select=id&proposal_id=')) {
+        return json(held === 0 ? [] : [{ id: 'x' }], 200,
+          held == null ? {} : { 'content-range': `0-0/${held}` });
+      }
+      if (method === 'GET' && url.includes('/proposal_lines?')) return json(previous);
+      if (method === 'DELETE') return json([]);
+      // Both the new set AND the snapshot going back fail - the shape this log
+      // line is written for.
+      if (method === 'POST') return json({ message: 'violates constraint proposal_lines_position' }, 409);
+      return json([]);
+    }) as typeof fetch;
+
+    try {
+      const { replaceLines } = await import('../src/lib/proposals/store');
+      await expect(replaceLines('p1', newLines)).rejects.toThrow(/failed: 409/);
+    } finally {
+      globalThis.fetch = realFetch;
+      console.error = realError;
+      process.env = env;
+    }
+    return logged.join('\n');
+  };
+
+  // The lines the re-import was writing are all there: it landed, and only its
+  // response was lost. Telling the operator the proposal is empty here would
+  // send them to overwrite a correct set.
+  const landed = await runWithHeld(newLines.length);
+  expect(landed).toContain('PROPOSAL LINES AT RISK');
+  expect(landed).toMatch(/holds 3 line\(s\), the count the re-import was writing/);
+  expect(landed).not.toMatch(/holds NO lines/);
+  // Genuinely empty: the loud claim is true, and so is the repair.
+  const empty = await runWithHeld(0);
+  expect(empty).toMatch(/it now holds NO lines: re-import its CSV to repair it/);
+  // Something else entirely - neither set - is named as such, not guessed at.
+  const partial = await runWithHeld(1);
+  expect(partial).toMatch(/holds 1 line\(s\), neither the 2 it started with nor the 3/);
+  expect(partial).toMatch(/READ its lines before repairing/);
+  // And when even the count cannot be read, that is what it says.
+  const unknown = await runWithHeld(null);
+  expect(unknown).toMatch(/line count could not be read either/);
+  // Every case carries the constraint the restore died on, and the rows a
+  // repair would be built from.
+  for (const log of [landed, empty, partial, unknown]) {
+    expect(log).toContain('proposal_lines_position');
+    expect(log).toContain('Demolition & prep');
+  }
+});
+
 test('AC6e: a refused transition is a typed conflict, not a matched substring', () => {
-  const err = new ProposalConflictError('proposal is revoked - re-send it before re-importing');
+  const err = new ProposalConflictError('proposal is revoked - restore it to draft before re-importing');
   expect(err).toBeInstanceOf(Error);
   const route = read('src/app/api/admin/proposals/[id]/route.ts');
   expect(route).toContain('err instanceof ProposalConflictError');
@@ -822,10 +905,171 @@ test('AC10k: Re-import is refused on a revoked proposal by the row, not only by 
   // can never be repointed. That refusal is knowable the moment the button is
   // clicked - the row already carries status - instead of after the admin has
   // emptied the importer, pasted the corrected CSV and composed it.
-  expect(store).toContain(`throw new ProposalConflictError('proposal is revoked - re-send it before re-importing')`);
+  expect(store).toContain(`throw new ProposalConflictError('proposal is revoked - restore it to draft before re-importing')`);
   expect(page).toContain(`disabled={busy || p.status === 'revoked'}`);
-  expect(page).toContain('Revoked - re-send this proposal before re-importing its lines');
   expect(page).not.toContain('<Button size="sm" variant="outline" disabled={busy} onClick={() => armReimport(p)}>');
+  // And the tooltip names a control the admin can actually press. Send is
+  // disabled on EVERY row while the client page is missing, so "re-send this
+  // proposal first" prescribed a remedy the adjacent button denied - and with
+  // Revoke hidden once used, that left the row frozen behind Copy link.
+  expect(page).toContain('Revoked - restore it to draft before re-importing its lines');
+  expect(page).not.toContain('Revoked - re-send this proposal before re-importing its lines');
+});
+
+test('AC10m: a revoked proposal has a way back that does not wait for Slice 3', () => {
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  const store = read('src/lib/proposals/store.ts');
+  const route = read('src/app/api/admin/proposals/[id]/route.ts');
+
+  // The action exists end to end: schema, route branch, store writer.
+  expect(route).toContain(`z.object({ action: z.literal('restore') })`);
+  expect(route).toContain('await restoreProposal(id);');
+  expect(store).toContain('export async function restoreProposal');
+
+  // revoked -> draft, and revoked_at goes with it: the lifecycle CHECK
+  // (proposals_revoked_at_matches_status) makes that one statement, not two.
+  expect(store).toMatch(/\{ status: 'draft', revoked_at: null \}/);
+  // The precondition rides the filter, so the write itself is the check - a
+  // read-then-write would decide on a status that could change in between.
+  expect(store).toContain('`proposals?id=eq.${proposalId}&status=eq.revoked`');
+  expect(store).toContain(
+    `throw new ProposalConflictError('only a revoked proposal can be restored - this one is not revoked')`,
+  );
+  // sent_at is left alone: a proposal that was sent did send, and the schema
+  // keeps that timestamp on purpose (20260824000000). AC10m2 drives the write
+  // itself and pins that the body carries nothing else.
+  expect(store).toMatch(/restoreProposal[\s\S]*?\{ status: 'draft', revoked_at: null \},\s*\n\s*\);/);
+
+  // Offered exactly where Revoke is not - on the rows that have been revoked.
+  expect(page).toContain('data-testid="restore-btn"');
+  expect(page).toContain(`onClick={() => act(p, 'restore')}`);
+  expect(page).toContain('Restore to draft');
+  // Same confirm posture as Revoke, in the other direction.
+  expect(page).toMatch(/restore: \(p\) => `Restore \$\{p\.client_name\}'s proposal to draft\?/);
+});
+
+test('AC10m2: driven - restore moves a revoked proposal to draft, and refuses any other', async () => {
+  const env = { ...process.env };
+  const realFetch = globalThis.fetch;
+  const realError = console.error;
+  process.env.SUPABASE_SECRET_KEY = 'stub-key';
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://postgrest.stub';
+  console.error = () => {};
+  const id = '33333333-3333-3333-3333-333333333333';
+  const proposal = {
+    id, token: 'c'.repeat(43), client_name: 'Yusuf Adeyemi', client_email: 'yusuf@example.com',
+    title: 'Primary suite addition', status: 'revoked', lead_id: null,
+    sent_at: '2026-08-01T00:00:00Z', revoked_at: '2026-08-02T00:00:00Z',
+    created_at: '2026-07-01T00:00:00Z', updated_at: '2026-08-02T00:00:00Z',
+  };
+  const calls: { method: string; url: string; body: unknown }[] = [];
+  const json = (payload: unknown, status = 200) =>
+    new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } });
+
+  const restore = () => proposalAction(
+    new NextRequest(`http://localhost/api/admin/proposals/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'restore' }),
+    }),
+    { params: Promise.resolve({ id }) },
+  );
+
+  try {
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      calls.push({ method, url, body });
+      if (method === 'GET') return json([proposal]);
+      // PostgREST applies the filter: a row that is still revoked is updated.
+      if (method === 'PATCH') {
+        return url.includes('status=eq.revoked')
+          ? json([{ ...proposal, status: 'draft', revoked_at: null }])
+          : json([]);
+      }
+      return json([]);
+    }) as typeof fetch;
+
+    const ok = await restore();
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ ok: true, status: 'draft' });
+    const patch = calls.find((c) => c.method === 'PATCH')!;
+    expect(patch.url).toContain('status=eq.revoked');
+    expect(patch.body).toEqual({ status: 'draft', revoked_at: null });
+    // sent_at survives the round trip - the record of a delivery that happened.
+    expect(JSON.stringify(patch.body)).not.toContain('sent_at');
+
+    // A proposal that is NOT revoked matches no row, and that is the refusal:
+    // 409, not a silent 200 claiming a transition that never happened.
+    calls.length = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      if (method === 'GET') return json([{ ...proposal, status: 'draft', revoked_at: null }]);
+      return json([]);
+    }) as typeof fetch;
+    const refused = await restore();
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toMatch(/only a revoked proposal can be restored/);
+  } finally {
+    globalThis.fetch = realFetch;
+    console.error = realError;
+    process.env = env;
+  }
+});
+
+test('AC10n: a drag only combines rows, and an abandoned one disarms itself', () => {
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  // The drag carries its own identity, and the drop reads it. Without this, the
+  // key survived a drag released anywhere else (the drop zone, the page), and
+  // the next thing dropped on any row - a CSV dragged from Finder, a few pixels
+  // low - silently combined two unrelated lines and swallowed the file.
+  expect(page).toContain(`const ROW_DRAG_TYPE = 'application/x-lavaca-proposal-row'`);
+  expect(page).toContain('e.dataTransfer.setData(ROW_DRAG_TYPE, r.key)');
+  expect(page).toContain('onDragEnd={() => { dragKey.current = null; }}');
+  expect(page).toContain('if (!e.dataTransfer.types.includes(ROW_DRAG_TYPE)) {');
+  // The old shape: whatever was dropped, combine with whatever was armed.
+  expect(page).not.toMatch(/onDrop=\{\(e\) => \{\s*\n\s*e\.preventDefault\(\);\s*\n\s*const from = dragKey\.current;/);
+  // preventDefault stays unconditional on the row: without it the browser
+  // handles a dropped file itself and navigates away, preview and all.
+  expect(page).toContain('onDragOver={(e) => e.preventDefault()}');
+  // A mis-aimed file is inert, and says where it should have gone.
+  expect(page).toContain('Drop the CSV on the dashed box above the preview, not on a line.');
+});
+
+test('AC10o: a malformed id is answered as one, without touching the database', async () => {
+  const env = { ...process.env };
+  const realFetch = globalThis.fetch;
+  process.env.SUPABASE_SECRET_KEY = 'stub-key';
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://postgrest.stub';
+  let fetched = 0;
+  globalThis.fetch = (async () => {
+    fetched += 1;
+    return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+
+  try {
+    // 36 characters of hex and dashes that Postgres cannot cast to UUID. The
+    // loose guard let these through to PostgREST, whose 400 threw into the
+    // catch and came back as a 500 'Could not complete that action' - an outage
+    // message, and a logged error, for a client's own malformed input.
+    for (const bad of ['-'.repeat(36), 'a'.repeat(36), '1111111-1111-1111-1111-1111111111111']) {
+      const res = await proposalAction(
+        new NextRequest(`http://localhost/api/admin/proposals/${bad}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'revoke' }),
+        }),
+        { params: Promise.resolve({ id: bad }) },
+      );
+      expect(res.status, bad).toBe(400);
+      expect((await res.json()).error).toBe('Bad id');
+    }
+    expect(fetched, 'a malformed id never reaches the database').toBe(0);
+  } finally {
+    globalThis.fetch = realFetch;
+    process.env = env;
+  }
 });
 
 test('AC10l: a failed proposal read is an outage, never "No such proposal"', () => {
