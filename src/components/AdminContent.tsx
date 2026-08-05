@@ -35,6 +35,8 @@ const EstimateLogPage = dynamic(() => import('@/app/vaca-mgmt/send-estimate/log/
 const SendServiceQuotePage = dynamic(() => import('@/app/vaca-mgmt/send-service-quote/page'), { ssr: false });
 const EmailsLogPage = dynamic(() => import('@/app/vaca-mgmt/emails/page'), { ssr: false });
 const HomeRecordsPage = dynamic(() => import('@/app/vaca-mgmt/home-records/page'), { ssr: false });
+const ProposalsPage = dynamic(() => import('@/app/vaca-mgmt/proposals/page'), { ssr: false });
+const CrewPage = dynamic(() => import('@/app/vaca-mgmt/crew/page'), { ssr: false });
 const PreferencesAdminPage = dynamic(() => import('@/app/vaca-mgmt/preferences/page'), { ssr: false });
 const ReleasesAdminPage = dynamic(() => import('@/app/vaca-mgmt/releases/page'), { ssr: false });
 const PageSpeedMonitor = dynamic(() => import('@/components/admin/PageSpeedMonitor'), { ssr: false });
@@ -292,6 +294,14 @@ export default function AdminContent() {
 
           <TabsContent value="home-records">
             <HomeRecordsPage />
+          </TabsContent>
+
+          <TabsContent value="proposals">
+            <ProposalsPage />
+          </TabsContent>
+
+          <TabsContent value="crew">
+            <CrewPage />
           </TabsContent>
 
           <TabsContent value="preferences">

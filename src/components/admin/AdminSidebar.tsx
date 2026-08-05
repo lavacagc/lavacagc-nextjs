@@ -92,6 +92,7 @@ const NAVIGATION: NavItem[] = [
       { id: 'follow-ups', icon: Mail, label: 'Follow-Ups' },
       { id: 'send-estimate', icon: Send, label: 'Send Estimate' },
       { id: 'send-service-quote', icon: Wrench, label: 'Send Service Quote' },
+      { id: 'proposals', icon: FileText, label: 'Proposals' },
       { id: 'crew', icon: HardHat, label: 'Crew' },
       { id: 'estimate-log', icon: History, label: 'Estimate Log' },
       { id: 'emails', icon: Mail, label: 'Email Tracking' },

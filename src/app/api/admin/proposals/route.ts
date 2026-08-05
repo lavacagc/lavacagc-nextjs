@@ -1,0 +1,62 @@
+/**
+ * GET  /api/admin/proposals - the roster (proposal + line/submission counts).
+ * POST /api/admin/proposals - create a proposal from the import preview's
+ *                             final composition (lines + bundles), draft status.
+ *
+ * Admin auth is enforced by middleware on /api/admin/* (any admin session -
+ * proposals are ordinary admin scope, unlike the Home Records allowlist).
+ * Everything money-shaped is validated here AND by the schema's own CHECKs,
+ * so a malformed write dies with a readable message first and a named
+ * constraint second.
+ */
+import { NextRequest, NextResponse } from 'next/server';
+import { CreateProposalSchema, bundleSumError, createProposal, listProposals } from '@/lib/proposals/store';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
+export async function GET(request: NextRequest) {
+  try {
+    // counts_available travels with the rows: the roster degrades to "counts
+    // unknown" rather than to an outage, so the lifecycle buttons stay reachable
+    // when only the aggregate is down. `truncated` travels too, because the page
+    // is capped: without it a roster that ends at the cap is indistinguishable
+    // from one that ends at the estate, and ?search reaches whatever the cap
+    // hides. `total` only fills in the number, and is null whenever the count
+    // header does not arrive - which is why the truncation flag is its own.
+    const { proposals, counts_available, total, truncated } = await listProposals(
+      request.nextUrl.searchParams.get('search'),
+    );
+    return NextResponse.json({ proposals, counts_available, total, truncated });
+  } catch (err) {
+    console.error('proposal roster read failed:', err instanceof Error ? err.message : String(err));
+    return NextResponse.json({ error: 'Could not load proposals' }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const parsed = CreateProposalSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    // Same construction as the sibling [id] route's reimport branch. A bare
+    // 'Invalid proposal' is what the admin's toast reads, and this is reachable
+    // without malformed input: the importer's client fields are not inside a
+    // <form>, so a half-typed address reaches .email() here and the admin - who
+    // is holding a fully composed preview - was told neither the field nor the
+    // rule. The flattened detail still travels alongside it.
+    const issue = parsed.error.issues[0];
+    const where = issue && issue.path.length > 0 ? issue.path.join('.') : null;
+    return NextResponse.json({
+      error: where ? `Invalid proposal: ${where} - ${issue.message}` : 'Invalid proposal',
+      details: parsed.error.flatten(),
+    }, { status: 400 });
+  }
+  const sumError = bundleSumError(parsed.data.lines);
+  if (sumError) return NextResponse.json({ error: sumError }, { status: 400 });
+  try {
+    const proposal = await createProposal(parsed.data);
+    return NextResponse.json({ ok: true, id: proposal.id, token: proposal.token });
+  } catch (err) {
+    console.error('proposal create failed:', err instanceof Error ? err.message : String(err));
+    return NextResponse.json({ error: 'Could not create the proposal' }, { status: 500 });
+  }
+}

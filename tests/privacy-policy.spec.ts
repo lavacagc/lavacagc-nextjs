@@ -31,7 +31,7 @@ test.describe('Privacy policy disclosures', () => {
     }
 
     // Version bumped.
-    expect(body).toContain('version: 2.6');
+    expect(body).toContain('version: 2.7');
     // Home Care disclosure present.
     expect(body).toContain('home care');
 

@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { RefreshCw, Search, MailOpen, MousePointerClick, AlertTriangle } from 'lucide-react';
+import type { EmailCategory } from '@/lib/notify/sendEmail';
 
 export interface EmailListRow {
   id: string;
@@ -29,12 +30,44 @@ export interface EmailListRow {
   sent_at: string | null;
 }
 
-const CATEGORIES = [
-  '', 'verification', 'welcome', 'estimate', 'lead_followup', 'lead_notification',
-  'home_care_newsletter', 'buy_remodel', 'seo_report', 'staged_draft',
-  'rollback_digest', 'form_error', 'feedback_request', 'broadcast', 'release',
-  'service_quote', 'visit_reminder', 'crew_dispatch', 'crew_dispatch_cancelled', 'other',
-];
+/**
+ * The filter's inventory, tied to `EmailCategory` in `sendEmail.ts` rather than
+ * restated beside it. This list was a bare array and it drifted: the proposal
+ * pod added `proposal_delivery` to the union and its sends were logged but
+ * could not be filtered for, which is a hole in an audit screen.
+ *
+ * `EmailCategory` is a TYPE, and `sendEmail.ts` is server-side (Resend, the
+ * secret-key REST client), so this client component may only `import type` it -
+ * a runtime import would drag the sender into the browser bundle. A `Record`
+ * over the union buys the protection anyway and costs nothing at runtime:
+ * adding a member to `EmailCategory` fails the build here until the filter
+ * offers it. Order is the union's own, which is the order these render in.
+ */
+const FILTERABLE: Record<EmailCategory, true> = {
+  verification: true,
+  welcome: true,
+  estimate: true,
+  lead_followup: true,
+  lead_notification: true,
+  home_care_newsletter: true,
+  buy_remodel: true,
+  seo_report: true,
+  staged_draft: true,
+  rollback_digest: true,
+  form_error: true,
+  feedback_request: true,
+  broadcast: true,
+  release: true,
+  service_quote: true,
+  visit_reminder: true,
+  crew_dispatch: true,
+  crew_dispatch_cancelled: true,
+  proposal_delivery: true,
+  other: true,
+};
+
+// '' is the "All categories" sentinel, which is not a category.
+const CATEGORIES = ['', ...Object.keys(FILTERABLE)];
 
 const STATUS_FILTERS = ['', 'sent', 'delivered', 'opened', 'clicked', 'bounced', 'failed', 'error'];
 
@@ -59,6 +92,7 @@ function catLabel(c: string) {
   // The retraction. Worth filtering for on its own: it is the send most likely
   // to need auditing after a cancellation went wrong.
   if (c === 'crew_dispatch_cancelled') return 'Crew dispatch cancelled';
+  if (c === 'proposal_delivery') return 'Proposal delivery';
   return c ? c.replace(/_/g, ' ') : 'All categories';
 }
 
