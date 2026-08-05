@@ -29,16 +29,34 @@ export const ProposalLineInputSchema = z.object({
   price_cents: z.number().int().min(0).max(MAX_PRICE_CENTS),
   optional: z.boolean(),
   category: z.string().trim().min(1).max(40),
-  bundle_members: z.array(BundleMemberSchema).min(2).nullish(),
+  // A bundle is composed FROM imported lines, so it can never hold more
+  // members than a CSV may hold lines. Same bound in the schema
+  // (proposal_lines_bundle_member_cap), so neither layer is the only one
+  // standing between an admin API call and an unbounded members array.
+  bundle_members: z.array(BundleMemberSchema).min(2).max(MAX_LINES).nullish(),
 });
+
+/** Every write path shares one line-array bound: at least one, at most MAX_LINES. */
+export const ProposalLinesSchema = z.array(ProposalLineInputSchema).min(1).max(MAX_LINES);
 
 export const CreateProposalSchema = z.object({
   client_name: z.string().trim().min(1).max(120),
   client_email: z.string().trim().email().max(320).nullish(),
   title: z.string().trim().min(1).max(200),
   lead_id: z.string().uuid().nullish(),
-  lines: z.array(ProposalLineInputSchema).min(1).max(MAX_LINES),
+  lines: ProposalLinesSchema,
 });
+
+/**
+ * A refused state transition, as a type rather than a message the caller has
+ * to string-match. The route maps this to 409; anything else is a 500.
+ */
+export class ProposalConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ProposalConflictError';
+  }
+}
 
 export type ProposalLineInput = z.infer<typeof ProposalLineInputSchema>;
 export type CreateProposalInput = z.infer<typeof CreateProposalSchema>;
@@ -72,6 +90,22 @@ export function bundleSumError(lines: ProposalLineInput[]): string | null {
   }
   return null;
 }
+
+/** A proposal_lines row exactly as it is stored, for snapshot-and-restore. */
+interface StoredLine {
+  id: string;
+  proposal_id: string;
+  position: number;
+  title: string;
+  description: string;
+  price_cents: number;
+  optional: boolean;
+  category: string;
+  bundle_members: { title: string; price_cents: number }[] | null;
+}
+
+const STORED_LINE_COLUMNS =
+  'id,proposal_id,position,title,description,price_cents,optional,category,bundle_members';
 
 async function insertLines(proposalId: string, lines: ProposalLineInput[]): Promise<void> {
   await supabaseRest('POST', 'proposal_lines', lines.map((l, i) => ({
@@ -114,6 +148,12 @@ export async function createProposal(input: CreateProposalInput): Promise<Propos
  *
  * Old submissions keep their own snapshots by design (Slice 1's whole
  * argument), so replacing lines never rewrites what a client already agreed to.
+ *
+ * PostgREST gives us no transaction across the DELETE and the INSERT, so the
+ * old rows are snapshotted first and put back if the insert throws - the same
+ * compensation posture as createProposal, which deletes the parent when its
+ * lines fail. A proposal with zero lines is a broken artifact, and a SENT one
+ * is a live client link pointing at nothing.
  */
 export async function replaceLines(proposalId: string, lines: ProposalLineInput[]): Promise<void> {
   const existing = await supabaseRest<{ id: string; status: string }[]>(
@@ -121,12 +161,47 @@ export async function replaceLines(proposalId: string, lines: ProposalLineInput[
   );
   const proposal = existing?.[0];
   if (!proposal) throw new Error('no such proposal');
-  if (proposal.status === 'revoked') throw new Error('proposal is revoked - re-send it before re-importing');
+  if (proposal.status === 'revoked') {
+    throw new ProposalConflictError('proposal is revoked - re-send it before re-importing');
+  }
+
+  // Bounded by the same MAX_LINES the write side enforces, so this read cannot
+  // silently truncate the set it is responsible for restoring.
+  const previous = (await supabaseRest<StoredLine[]>(
+    'GET',
+    `proposal_lines?select=${STORED_LINE_COLUMNS}&proposal_id=eq.${proposalId}&order=position.asc&limit=${MAX_LINES}`,
+  )) ?? [];
+
   await supabaseRest('DELETE', `proposal_lines?proposal_id=eq.${proposalId}`);
-  await insertLines(proposalId, lines);
+  try {
+    await insertLines(proposalId, lines);
+  } catch (err) {
+    await restorePreviousLines(proposalId, previous);
+    throw err;
+  }
   await supabaseRest('PATCH', `proposals?id=eq.${proposalId}`, {
     updated_at: new Date().toISOString(),
   }, { prefer: 'return=minimal' });
+}
+
+/**
+ * Best-effort undo of the DELETE above. If even this fails the proposal really
+ * does have no lines, which an operator must know about NOW - so it is logged
+ * loudly, with the id to re-import against and the rows themselves, rather than
+ * swallowed behind the original error.
+ */
+async function restorePreviousLines(proposalId: string, previous: StoredLine[]): Promise<void> {
+  if (previous.length === 0) return;
+  try {
+    await supabaseRest('POST', 'proposal_lines', previous, { prefer: 'return=minimal' });
+  } catch (restoreErr) {
+    console.error(
+      `PROPOSAL DATA LOSS: re-import of proposal ${proposalId} failed AND its ${previous.length} previous ` +
+      'line(s) could not be restored - the proposal now has no lines. Re-import its CSV to repair it. ' +
+      `Restore error: ${restoreErr instanceof Error ? restoreErr.message : String(restoreErr)}`,
+      JSON.stringify(previous),
+    );
+  }
 }
 
 export interface RosterEntry extends ProposalRow {
@@ -135,34 +210,44 @@ export interface RosterEntry extends ProposalRow {
   latest_total_cents: number | null;
 }
 
+/** How many proposals the roster shows; also the bound on the counts request. */
+export const ROSTER_LIMIT = 200;
+
+interface RosterCountRow {
+  proposal_id: string;
+  line_count: number;
+  submission_count: number;
+  latest_total_cents: number | null;
+}
+
+/**
+ * The roster: the proposals, plus their counts.
+ *
+ * The counts are aggregated in Postgres and returned one row per proposal
+ * (proposal_roster_counts, 20260826000000), NOT by pulling every line and every
+ * submission back and counting them in JS. That older shape was unbounded on
+ * both reads, so PostgREST's max-rows cap would quietly truncate it once the
+ * estate grew past a few full proposals and the admin would read a wrong count
+ * as data loss. This response is bounded by the number of proposals asked for.
+ */
 export async function listProposals(): Promise<RosterEntry[]> {
   const proposals = (await supabaseRest<ProposalRow[]>(
-    'GET', 'proposals?select=*&order=updated_at.desc&limit=200',
+    'GET', `proposals?select=*&order=updated_at.desc&limit=${ROSTER_LIMIT}`,
   )) ?? [];
   if (proposals.length === 0) return [];
-  const ids = proposals.map((p) => p.id).join(',');
-  const [lines, subs] = await Promise.all([
-    supabaseRest<{ proposal_id: string }[]>(
-      'GET', `proposal_lines?select=proposal_id&proposal_id=in.(${ids})`,
-    ),
-    supabaseRest<{ proposal_id: string; total_cents: number; created_at: string }[]>(
-      'GET', `proposal_submissions?select=proposal_id,total_cents,created_at&proposal_id=in.(${ids})&order=created_at.desc`,
-    ),
-  ]);
-  const lineCount = new Map<string, number>();
-  for (const l of lines ?? []) lineCount.set(l.proposal_id, (lineCount.get(l.proposal_id) ?? 0) + 1);
-  const subCount = new Map<string, number>();
-  const latest = new Map<string, number>();
-  for (const s of subs ?? []) {
-    subCount.set(s.proposal_id, (subCount.get(s.proposal_id) ?? 0) + 1);
-    if (!latest.has(s.proposal_id)) latest.set(s.proposal_id, s.total_cents);
-  }
-  return proposals.map((p) => ({
-    ...p,
-    line_count: lineCount.get(p.id) ?? 0,
-    submission_count: subCount.get(p.id) ?? 0,
-    latest_total_cents: latest.get(p.id) ?? null,
-  }));
+  const counts = (await supabaseRest<RosterCountRow[]>(
+    'POST', 'rpc/proposal_roster_counts', { proposal_ids: proposals.map((p) => p.id) },
+  )) ?? [];
+  const byId = new Map(counts.map((c) => [c.proposal_id, c]));
+  return proposals.map((p) => {
+    const c = byId.get(p.id);
+    return {
+      ...p,
+      line_count: c?.line_count ?? 0,
+      submission_count: c?.submission_count ?? 0,
+      latest_total_cents: c?.latest_total_cents ?? null,
+    };
+  });
 }
 
 /** Revoke: the explicit admin kill switch (owner decision D3). */
