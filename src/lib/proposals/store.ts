@@ -236,7 +236,8 @@ export interface Roster {
    * the header all reduce to null - and a truncated page with no total rendered
    * with no notice at all, which is the silent truncation the count exists to
    * remove. The server knows without the header, so it says so directly and the
-   * total only fills in the number.
+   * total only fills in the number. When the count IS readable it decides on its
+   * own: a page as long as the cap is not truncated if that is the whole estate.
    */
   truncated: boolean;
 }
@@ -309,9 +310,12 @@ export async function listProposals(search?: string | null): Promise<Roster> {
     `proposals?select=*${searchFilter(term)}&order=updated_at.desc&limit=${ROSTER_LIMIT}`,
   );
   const proposals = rows ?? [];
-  // Either signal is enough: a full page means the cap cut it, and a total
-  // above the page means so too when the header did arrive.
-  const truncated = proposals.length >= ROSTER_LIMIT || (total != null && total > proposals.length);
+  // The exact count decides whenever it arrives. A full page is only EVIDENCE
+  // of a cap, and it is wrong for an estate of exactly ROSTER_LIMIT - which
+  // would tell the admin their oldest proposals were hidden while every one of
+  // them was on screen. The fallback is for the case the count is unreadable,
+  // which is the only case it was ever needed for.
+  const truncated = total != null ? total > proposals.length : proposals.length >= ROSTER_LIMIT;
   if (proposals.length === 0) {
     return { proposals: [], counts_available: true, total, truncated };
   }

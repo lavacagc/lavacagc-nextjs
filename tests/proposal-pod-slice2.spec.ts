@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
   composeBundle, lockedMemberTitles, restoreMembers, toStoredMembers,
+  type PreviewBundleMember,
 } from '../src/lib/proposals/bundles';
 import {
   CreateProposalSchema, ProposalLinesSchema, ProposalConflictError, bundleSumError,
@@ -476,6 +477,18 @@ test('AC6m: a truncated roster says so even when the exact total is unreadable',
     expect(counted.total).toBe(312);
     expect(counted.truncated).toBe(true);
 
+    // An estate of EXACTLY the cap is not truncated. The count is authoritative
+    // whenever it arrives, and the full-page heuristic is wrong here: it told
+    // the admin to search for older proposals while every one was on screen.
+    stub(ROSTER_LIMIT, `0-199/${ROSTER_LIMIT}`);
+    const exact = await listProposals();
+    expect(exact.total).toBe(ROSTER_LIMIT);
+    expect(exact.proposals).toHaveLength(ROSTER_LIMIT);
+    expect(exact.truncated, 'a full page that is the whole estate is not truncated').toBe(false);
+    // Same page, no readable count: the heuristic is all there is, so it applies.
+    stub(ROSTER_LIMIT, null);
+    expect((await listProposals()).truncated).toBe(true);
+
     // A short page is NOT truncated, with or without a count.
     stub(3, '0-2/3');
     expect((await listProposals()).truncated).toBe(false);
@@ -496,6 +509,10 @@ test('AC6m: a truncated roster says so even when the exact total is unreadable',
   expect(pageSrc).toContain('Showing the first ${roster.length}');
   expect(read('src/app/api/admin/proposals/route.ts'))
     .toContain('counts_available, total, truncated });');
+  // The browser spec drives that notice off a stubbed roster, so its stub has to
+  // carry the same flag the server sends - otherwise the AC passes against a
+  // payload the product never produces.
+  expect(read('tests/proposal-pod-slice2-browser.spec.ts')).toContain('truncated: true');
 });
 
 test('AC6n: a created proposal is visible on the roster, never hidden by the search that was open', () => {
@@ -763,6 +780,58 @@ test('AC10i: turning a locked bundle optional asks first, and names what it woul
   const bundles = read('src/lib/proposals/bundles.ts');
   expect(bundles).toContain('optional: r.optional');
   expect(bundles).toContain('m.optional ?? categorizeLine(m.title).optional');
+});
+
+test('AC10j: nesting keeps the invariant - locked work cannot ride into an optional package', () => {
+  /** The one rule, at every depth: optional means nothing inside is locked. */
+  const invariant = (b: { optional: boolean; members: PreviewBundleMember[] }) =>
+    expect(b.optional).toBe(lockedMemberTitles(b.members).length === 0);
+
+  const inner = composeBundle([
+    { title: 'Demolition & prep', priceCents: 480000, optional: false, category: 'demolition' },
+    { title: 'Vanity - double sink', priceCents: 340000, optional: true, category: 'cabinets' },
+  ], 'Bathroom package')!;
+  expect(inner.optional).toBe(false);
+  invariant(inner);
+
+  // The fail-safe, from the wrong side: a bundle whose own flag says optional
+  // while a member still says locked. composeBundle judges the FLATTENED
+  // members, so the nested package is locked and the confirm guard - which only
+  // asks on a locked bundle - is reached. Reading the top-level inputs instead
+  // handed the client one all-or-nothing toggle over the demolition, with
+  // nothing asked, because every input read optional.
+  const nested = composeBundle([
+    { title: inner.title, priceCents: inner.priceCents, optional: true, category: inner.category, members: inner.members },
+    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true, category: 'tile' },
+  ])!;
+  expect(lockedMemberTitles(nested.members)).toEqual(['Demolition & prep']);
+  expect(nested.optional, 'a locked member locks the bundle it is nested into').toBe(false);
+  invariant(nested);
+
+  // The page's own path: a confirmed flip CASCADES into the members, so what
+  // the admin decided is what the next composition reads.
+  const cascadedMembers = inner.members.map((m) => ({ ...m, optional: true }));
+  const afterCascade = composeBundle([
+    { title: inner.title, priceCents: inner.priceCents, optional: true, category: inner.category, members: cascadedMembers },
+    { title: 'Tile - heated floor upgrade', priceCents: 290050, optional: true, category: 'tile' },
+  ])!;
+  expect(lockedMemberTitles(afterCascade.members)).toEqual([]);
+  expect(afterCascade.optional).toBe(true);
+  invariant(afterCascade);
+  // Money still flattens rather than double-counting, either way round.
+  expect(afterCascade.priceCents).toBe(480000 + 340000 + 290050);
+  expect(nested.priceCents).toBe(afterCascade.priceCents);
+
+  // The cascade is what makes the override survive Unbundle, as restoreMembers
+  // promises: the admin is not re-asked about work they already decided on.
+  expect(restoreMembers(cascadedMembers).map((m) => m.optional)).toEqual([true, true]);
+
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  expect(page).toContain('members: r.members.map((m) => ({ ...m, optional }))');
+  const bundles = read('src/lib/proposals/bundles.ts');
+  expect(bundles).toContain('optional: lockedMemberTitles(members).length === 0');
+  // The shape that could disagree with the guard one level down.
+  expect(bundles).not.toContain('optional: inputs.every((r) => r.optional)');
 });
 
 test('AC10e: Send is refused while the client page does not exist; Copy link is not', () => {

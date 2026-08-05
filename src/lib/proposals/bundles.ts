@@ -9,9 +9,11 @@
  * Pure module so the admin preview (browser) and the acceptance tests share
  * the exact same rules:
  *  - the price is the members' sum, integer cents in, integer cents out;
- *  - the badge follows the fail-safe: any locked input locks the bundle, and
+ *  - the badge follows the fail-safe: any locked MEMBER locks the bundle, and
  *    only an all-optional bundle gets the client toggle (all-or-nothing - the
- *    "no cherry-picking inside a package" posture the owner asked for);
+ *    "no cherry-picking inside a package" posture the owner asked for). The
+ *    members are the flattened list, so `optional` and lockedMemberTitles are
+ *    two readings of one fact at every level of nesting;
  *  - the category label comes from the first locked input (structure wins,
  *    same direction as the registry), else the first input;
  *  - nesting flattens: bundling a bundle re-uses its members, so members are
@@ -83,7 +85,13 @@ export function composeBundle(inputs: BundleInput[], name?: string): ComposedBun
   return {
     title: name ?? `Bundle (${members.length} items)`,
     priceCents: members.reduce((a, m) => a + m.price_cents, 0),
-    optional: inputs.every((r) => r.optional),
+    // The FLATTENED members decide, not the top-level inputs: they are the same
+    // list lockedMemberTitles reads, so the badge and the guard cannot say
+    // different things about the same bundle. Reading the inputs instead broke
+    // exactly one step down - a bundle whose own flag had been flipped by hand
+    // still carried a locked member, and bundling it again produced an OPTIONAL
+    // package holding structural work with nothing asked.
+    optional: lockedMemberTitles(members).length === 0,
     category: inputs.find((r) => !r.optional)?.category ?? inputs[0].category,
     members,
   };

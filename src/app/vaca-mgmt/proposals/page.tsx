@@ -219,6 +219,14 @@ export default function ProposalsAdminPage() {
    * optional hands the client one all-or-nothing toggle over structural work
    * whose names the bundle no longer shows. So that one direction names those
    * members and asks first; every other flip is unchanged.
+   *
+   * A flip on a bundle CASCADES into its members, because composeBundle reads
+   * those member flags to judge any bundle this one is nested into. Without the
+   * cascade the two drifted one step down: a bundle flipped optional here kept
+   * members that still read locked, so combining it again composed an OPTIONAL
+   * package over that same structural work - and the guard, which only asks on
+   * a locked bundle, never fired. Cascading also makes the override survive
+   * Unbundle, which is what restoreMembers already promised.
    */
   const toggleOptional = useCallback((key: string) => {
     const row = rows.find((r) => r.key === key);
@@ -230,7 +238,13 @@ export default function ProposalsAdminPage() {
         + 'Making the bundle optional gives them one toggle over all of it. Continue?',
       )) return;
     }
-    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, optional: !r.optional } : r)));
+    setRows((prev) => prev.map((r) => {
+      if (r.key !== key) return r;
+      const optional = !r.optional;
+      return r.members
+        ? { ...r, optional, members: r.members.map((m) => ({ ...m, optional })) }
+        : { ...r, optional };
+    }));
   }, [rows]);
 
   /**

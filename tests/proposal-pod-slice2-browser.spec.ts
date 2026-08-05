@@ -39,8 +39,11 @@ const OFF_THE_PAGE = {
   updated_at: '2025-01-01T00:00:00.000Z',
 };
 
-/** One page of one, out of an estate of 312 - the truncated shape. */
-const ROSTER = { proposals: [RACHEL], counts_available: true, total: 312 };
+/**
+ * One page of one, out of an estate of 312 - the truncated shape, carrying the
+ * server's own `truncated` flag because that flag alone gates the notice.
+ */
+const ROSTER = { proposals: [RACHEL], counts_available: true, total: 312, truncated: true };
 
 const CSV = [
   'title,description,price',
@@ -48,6 +51,9 @@ const CSV = [
   'Tile - heated floor upgrade,Ditra Heat under porcelain,2900.50',
   'Vanity - double sink,72in walnut with quartz top,3400.00',
 ].join('\n');
+
+/** The same estimate plus a second optional finish, so a bundle can be re-bundled. */
+const CSV_NESTED = [CSV, 'Faucet - matte black,Widespread lav faucet,900.00'].join('\n');
 
 async function signInAsAdmin(context: BrowserContext, baseURL: string) {
   const session = {
@@ -74,7 +80,11 @@ async function openProposals(page: Page, context: BrowserContext, baseURL: strin
     if (!term) { await route.fulfill({ json: ROSTER }); return; }
     const hit = [RACHEL, OFF_THE_PAGE].filter((p) =>
       [p.client_name, p.client_email, p.title].some((f) => f.toLowerCase().includes(term.toLowerCase())));
-    await route.fulfill({ json: { proposals: hit, counts_available: true, total: hit.length } });
+    // A match set that fits on the page is genuinely untruncated - the server
+    // sends the flag either way, so the stub does too.
+    await route.fulfill({
+      json: { proposals: hit, counts_available: true, total: hit.length, truncated: false },
+    });
   });
   await page.goto('/vaca-mgmt/proposals');
   await expect(page.getByTestId('proposals-admin')).toBeVisible();
@@ -236,6 +246,46 @@ test.describe('proposals admin, in the browser', () => {
     page.once('dialog', (d) => d.accept());
     await bundle.getByRole('button', { name: /make .* optional/i }).click();
     await expect(badge('optional')).toBeVisible();
+  });
+
+  test('B8: a badge the admin set by hand survives being bundled again', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await pasteCsv(page, CSV_NESTED);
+    await expect(page.getByTestId('line-row')).toHaveCount(4);
+    const badge = (row: ReturnType<Page['getByTestId']>, word: string) =>
+      row.getByText(word, { exact: true });
+
+    // Two registry-optional lines compose an optional bundle...
+    await page.getByLabel('Select Tile - heated floor upgrade').check();
+    await page.getByLabel('Select Vanity - double sink').check();
+    await page.getByTestId('combine-btn').click();
+    const inner = page.getByTestId('bundle-row');
+    await expect(badge(inner, 'optional')).toBeVisible();
+
+    // ...which the admin then locks by hand. Locking asks nothing - only the
+    // other direction can expose work - but it has to STICK.
+    await inner.getByRole('button', { name: /make .* locked/i }).click();
+    await expect(badge(inner, 'locked')).toBeVisible();
+
+    // Bundling that bundle must not launder the lock away. The new bundle is
+    // judged on the flattened members, and the flip above cascaded into them,
+    // so the admin's verdict is what the next composition reads.
+    await inner.getByRole('checkbox').check();
+    await page.getByLabel('Select Faucet - matte black').check();
+    await page.getByTestId('combine-btn').click();
+    const outer = page.getByTestId('bundle-row');
+    await expect(outer).toHaveCount(1);
+    await expect(outer).toContainText('Includes: Tile - heated floor upgrade');
+    await expect(badge(outer, 'locked')).toBeVisible();
+
+    // And one level up the guard still names what a flip would expose, instead
+    // of finding nothing locked and letting it through unasked.
+    let asked = '';
+    page.once('dialog', (d) => { asked = d.message(); d.dismiss(); });
+    await outer.getByRole('button', { name: /make .* optional/i }).click();
+    expect(asked).toContain('Tile - heated floor upgrade');
+    expect(asked).toContain('Vanity - double sink');
+    await expect(badge(outer, 'locked')).toBeVisible();
   });
 
   test('B5: the Parse button re-imports on demand, and clearing the box clears the preview', async ({ page, context, baseURL }) => {
