@@ -133,15 +133,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         //
         // Best effort, like the sentBy lookup: an admin who asked to send a
         // proposal must not be refused because the lifetime of the link could
-        // not be improved.
-        try {
-          await touchProposal(id, proposal.status);
-        } catch (err) {
-          console.error(
-            `proposal ${id} link-window refresh failed before delivery:`,
-            err instanceof Error ? err.message : String(err),
-          );
-        }
+        // not be improved. It reports whether it landed, because the failure
+        // branch below can only describe the client's access honestly if it
+        // knows.
+        const windowRefreshed = await touchProposal(id, proposal.status);
         // Middleware already confirmed the admin session; this is purely the
         // audit row's sent_by, per the sibling admin send routes.
         let sentBy: string | null = null;
@@ -193,14 +188,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             `proposal ${id} was delivered (email ${res.emailId ?? 'unknown'}) but its status could not be updated:`,
             err instanceof Error ? err.message : String(err),
           );
-          // What the CLIENT sees while it is unrepaired, because the retry has a
-          // deadline on it rather than being tidy-up: the refresh above bought
-          // the delivered link one draft window, and a proposal still reading
-          // 'revoked' has no window at all.
-          const clientImpact = proposal.status === 'revoked'
-            ? `Their link does NOT open while it reads that way - repair it now.`
-            : `Their link opens for ${DRAFT_WINDOW_HOURS} hours from this send and then stops opening `
-              + `until the status is repaired.`;
+          // What the CLIENT sees while it is unrepaired, chosen from what was
+          // actually established rather than from the status alone. The refresh
+          // above is a PATCH on this same row seconds earlier, so the outage
+          // that brought execution here is the one most likely to have taken it
+          // too - and a sentence promising a day of slack that does not exist is
+          // worse on this screen than admitting the uncertainty, because this is
+          // where an admin decides whether to pick the phone up.
+          const clientImpact = (() => {
+            if (proposal.status === 'sent') {
+              // D3: a sent link has no expiry. What is stale is the record.
+              return `Their link keeps working - a sent proposal's link does not expire - so what needs `
+                + `repairing is the record, not their access.`;
+            }
+            if (proposal.status === 'revoked') {
+              return `Their link does NOT open while it reads that way - repair it now.`;
+            }
+            if (windowRefreshed) {
+              return `Their link opens for ${DRAFT_WINDOW_HOURS} hours from this send; repair the status `
+                + `before that runs out.`;
+            }
+            return `The write that keeps a draft's link alive did not land either, so they may be holding `
+              + `a link that does not open right now - pressing Send again repairs both the status and `
+              + `their access.`;
+          })();
           return NextResponse.json({
             error: `The email WAS delivered, but the status could not be updated - this proposal still reads `
               + `"${proposal.status}". ${clientImpact} Press Send again to repair it; the client may `

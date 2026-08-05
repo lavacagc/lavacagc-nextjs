@@ -148,6 +148,22 @@ const submitRequest = (token: string, payload: unknown) => proposalSubmit(
   { params: Promise.resolve({ token }) },
 );
 
+/** The roster's Send button, as the route sees it. */
+const sendAction = () => proposalAction(
+  new NextRequest(`http://localhost/api/admin/proposals/${PROPOSAL_ID}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'send' }),
+  }),
+  { params: Promise.resolve({ id: PROPOSAL_ID }) },
+);
+
+const isDelivery = (c: RestCall) => c.url.includes('api.resend.com');
+/** The link-window refresh: the only PATCH on the row that carries a status filter. */
+const isRefresh = (c: RestCall) => c.method === 'PATCH' && c.url.includes('status=eq.');
+const isStatusWrite = (c: RestCall) => c.method === 'PATCH'
+  && c.url.includes('proposals?id=') && !c.url.includes('status=eq.');
+
 const record = (over: Partial<SubmissionRecord> = {}): SubmissionRecord => ({
   proposalId: PROPOSAL_ID,
   clientName: 'Sarah Whitfield',
@@ -509,19 +525,6 @@ test('AC-S3-21: Send refreshes the link window BEFORE it delivers, and never fai
   const env = { ...process.env };
   process.env.RESEND_API_KEY = 'stub';
 
-  const sendAction = () => proposalAction(
-    new NextRequest(`http://localhost/api/admin/proposals/${PROPOSAL_ID}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'send' }),
-    }),
-    { params: Promise.resolve({ id: PROPOSAL_ID }) },
-  );
-  const isDelivery = (c: RestCall) => c.url.includes('api.resend.com');
-  const isRefresh = (c: RestCall) => c.method === 'PATCH' && c.url.includes('status=eq.');
-  const isStatusWrite = (c: RestCall) => c.method === 'PATCH'
-    && c.url.includes('proposals?id=') && !c.url.includes('status=eq.');
-
   try {
     // The refresh is issued FIRST, and the delivery-before-status-write
     // ordering behind it is untouched.
@@ -596,6 +599,72 @@ test('AC-S3-21: Send refreshes the link window BEFORE it delivers, and never fai
         expect((await lookupPublicProposal(TOKEN)).state).toBe('ok');
       },
     );
+  } finally {
+    process.env = env;
+  }
+});
+
+test('AC-S3-22: the post-delivery failure describes the access it actually established', async () => {
+  const env = { ...process.env };
+  process.env.RESEND_API_KEY = 'stub';
+
+  /** Drive the send to its post-delivery failure and hand back what the admin reads. */
+  const failedStatusWrite = async (
+    over: Record<string, unknown>,
+    refreshLands: boolean,
+  ): Promise<string> => {
+    let message = '';
+    await withPostgrest(
+      (call) => {
+        if (isDelivery(call)) return restJson({ id: 'stub-email-id' });
+        if (isRefresh(call)) return refreshLands ? restJson([]) : restJson({ message: 'nope' }, 500);
+        if (isStatusWrite(call)) return restJson({ message: 'down' }, 500);
+        return serveProposal(over)(call);
+      },
+      async () => {
+        const res = await sendAction();
+        expect(res.status).toBe(500);
+        const body = await res.json();
+        expect(body.delivered).toBe(true);
+        message = body.error;
+      },
+    );
+    return message;
+  };
+
+  try {
+    // A draft whose window WAS refreshed: the client has the whole window, and
+    // the repair has that long to happen.
+    const refreshed = await failedStatusWrite({ updated_at: agoIso(25 * HOUR_MS) }, true);
+    expect(refreshed).toContain('24 hours from this send');
+
+    // The same failure with the refresh gone too - the likeliest shape of this
+    // branch, because both writes are PATCHes on one row seconds apart. It must
+    // NOT promise a window it did not buy.
+    const unrefreshed = await failedStatusWrite({ updated_at: agoIso(25 * HOUR_MS) }, false);
+    expect(unrefreshed).not.toBe(refreshed);
+    expect(unrefreshed).not.toContain('24 hours');
+    expect(unrefreshed).toContain('does not open right now');
+    expect(unrefreshed).toContain('Press Send again');
+
+    // A re-send of an already-sent proposal: D3 gives that link no expiry at
+    // all, so there is no deadline to invent. What is stale is the record.
+    const resent = await failedStatusWrite(
+      { status: 'sent', sent_at: agoIso(72 * HOUR_MS), updated_at: agoIso(72 * HOUR_MS) },
+      true,
+    );
+    expect(resent).not.toContain('24 hours');
+    expect(resent).toContain('does not expire');
+    expect(resent).toContain('the record, not their access');
+
+    // And a revoked one still says the link is shut, which it is whatever the
+    // refresh did.
+    const revoked = await failedStatusWrite(
+      { status: 'revoked', revoked_at: agoIso(2 * HOUR_MS) },
+      true,
+    );
+    expect(revoked).toContain('does NOT open');
+    expect(revoked).not.toContain('24 hours');
   } finally {
     process.env = env;
   }

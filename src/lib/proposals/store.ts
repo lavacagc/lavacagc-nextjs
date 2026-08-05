@@ -520,16 +520,31 @@ export async function restoreProposal(proposalId: string): Promise<void> {
  * stored one cannot trip a lifecycle CHECK, while the filter means a status
  * changed by somebody else in between updates nothing at all rather than being
  * quietly reverted.
+ *
+ * NEVER THROWS, and REPORTS. The lifetime of a link is not a precondition for
+ * delivering a proposal an admin asked to send, so a failure here is logged and
+ * swallowed - but the caller has to know, because what it tells the admin about
+ * the client's access afterwards is only true if this landed. False is "not
+ * refreshed, or not known to be", which is the answer that makes somebody act.
  */
 export async function touchProposal(
   proposalId: string,
   status: ProposalRow['status'],
-): Promise<void> {
-  await supabaseRest(
-    'PATCH', `proposals?id=eq.${proposalId}&status=eq.${status}`,
-    { status },
-    { prefer: 'return=minimal' },
-  );
+): Promise<boolean> {
+  try {
+    await supabaseRest(
+      'PATCH', `proposals?id=eq.${proposalId}&status=eq.${status}`,
+      { status },
+      { prefer: 'return=minimal' },
+    );
+    return true;
+  } catch (err) {
+    console.error(
+      `proposal ${proposalId} link-window refresh failed:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    return false;
+  }
 }
 
 async function patchSent(proposalId: string): Promise<void> {
