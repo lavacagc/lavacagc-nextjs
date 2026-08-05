@@ -36,6 +36,7 @@ const SendServiceQuotePage = dynamic(() => import('@/app/vaca-mgmt/send-service-
 const EmailsLogPage = dynamic(() => import('@/app/vaca-mgmt/emails/page'), { ssr: false });
 const HomeRecordsPage = dynamic(() => import('@/app/vaca-mgmt/home-records/page'), { ssr: false });
 const ProposalsPage = dynamic(() => import('@/app/vaca-mgmt/proposals/page'), { ssr: false });
+const HomeCareShopPage = dynamic(() => import('@/app/vaca-mgmt/home-care-shop/page'), { ssr: false });
 const CrewPage = dynamic(() => import('@/app/vaca-mgmt/crew/page'), { ssr: false });
 const PreferencesAdminPage = dynamic(() => import('@/app/vaca-mgmt/preferences/page'), { ssr: false });
 const ReleasesAdminPage = dynamic(() => import('@/app/vaca-mgmt/releases/page'), { ssr: false });
@@ -298,6 +299,10 @@ export default function AdminContent() {
 
           <TabsContent value="proposals">
             <ProposalsPage />
+          </TabsContent>
+
+          <TabsContent value="home-care-shop">
+            <HomeCareShopPage />
           </TabsContent>
 
           <TabsContent value="crew">

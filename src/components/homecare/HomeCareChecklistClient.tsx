@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, Plus, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy, MapPin, Wrench, Home, ChevronDown, Pencil, Trash2 } from 'lucide-react';
+import { Check, Plus, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy, MapPin, Wrench, Home, ChevronDown, Pencil, Trash2, Undo2 } from 'lucide-react';
 import { hasGuideItem } from '@/lib/homecare/guides';
 import { costLabel, CONSULT_COST } from '@/lib/homecare/cost';
 import { prevSeason, seasonStart, SEASONS, type Season } from '@/lib/homecare/season';
 import { getFactForTask, HOME_FACTS, factValueSummary } from '@/lib/homecare/records';
 import HomeCareRecordCapture, { type RecordValue } from '@/components/homecare/HomeCareRecordCapture';
+import DiyKitShelf from '@/components/homecare/DiyKitShelf';
+import type { HomeCareProduct } from '@/lib/homecare/products';
 
 const SHARE_URL = 'https://www.lavacagc.com/home-care?utm_source=member_share&utm_medium=portal&utm_campaign=home_care_share';
 const SHARE_TEXT = 'I use this free seasonal checklist to stay on top of the house — takes 20 seconds to set up, no account.';
@@ -108,6 +110,8 @@ export default function HomeCareChecklistClient({
   lavacaCompleted: lavacaCompletedFromServer,
   homeRecordPrefill = {},
   homeDetailsConsentGiven = false,
+  productShelves = {},
+  affiliateTag = null,
 }: {
   tasks: ChecklistTask[];
   doneItems: { task_key: string; season: string }[];
@@ -127,6 +131,14 @@ export default function HomeCareChecklistClient({
   homeRecordPrefill?: Record<string, RecordValue>;
   /** Whether the homeowner has already consented to saving home details (skip the checkbox). */
   homeDetailsConsentGiven?: boolean;
+  /**
+   * DIY Kit shelves, keyed by task_key. Only the tasks the owner has stocked
+   * appear here, so a task with no entry renders exactly as it did before the
+   * feature existed - no empty strip, no zero count, no layout shift.
+   */
+  productShelves?: Record<string, HomeCareProduct[]>;
+  /** AMAZON_ASSOCIATES_TAG, read server-side. Absent renders untagged links. */
+  affiliateTag?: string | null;
 }) {
   // Local, because re-ticking a task moves the attribution to the member and
   // the server has already agreed: /api/home-care/task writes
@@ -138,6 +150,8 @@ export default function HomeCareChecklistClient({
   const [dismissed, setDismissed] = useState<Set<string>>(new Set(dismissedKeys));
   const [selected, setSelected] = useState<Set<string>>(() => new Set(autoAddKey ? [autoAddKey] : []));
   const [busy, setBusy] = useState<string | null>(null);
+  /** The task the hide icon just removed, so the undo bar can name it. */
+  const [lastHidden, setLastHidden] = useState<{ key: string; title: string } | null>(null);
   const [activeSeason, setActiveSeason] = useState<string>(SEASONS.includes(currentSeason as (typeof SEASONS)[number]) ? currentSeason : 'spring');
   const [catchUpDismissed, setCatchUpDismissed] = useState(false);
   const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
@@ -327,6 +341,21 @@ export default function HomeCareChecklistClient({
     }
   };
 
+  /**
+   * Hide a task and say so, with one tap to take it back.
+   *
+   * The hide control lost its "Not relevant" label when it became an icon
+   * (owner, 5 Aug 2026), and an unlabelled control that makes a row vanish is
+   * exactly the shape a mis-tap takes on a phone. The Hidden strip at the foot
+   * of the page can always restore it, but a member who does not know what they
+   * just pressed will not go looking for a strip they have never seen. The undo
+   * bar sits in the sticky header, where their thumb already is.
+   */
+  const dismissWithUndo = (key: string, title: string) => {
+    setLastHidden({ key, title });
+    setDismissState(key, true);
+  };
+
   const shareHomeCare = async () => {
     // Native share sheet only where it's a real UX (touch devices) — on
     // desktop the sheet is rare/awkward and copy-link is what people expect.
@@ -440,6 +469,9 @@ export default function HomeCareChecklistClient({
     // My Home Systems: the canonical fact this task can capture (if any), whether
     // it's already saved, and whether its inline panel is open.
     const fact = getFactForTask(t.key);
+    // The DIY Kit shelf, if the owner has stocked this task. Empty for every
+    // task they have not, which is most of them and the point.
+    const shelf = productShelves[t.key] ?? [];
     const panelKey = id(t.key, season);
     const captureOpen = capturePanelOpen.has(panelKey);
     const saved = fact ? records.has(fact.key) : false;
@@ -464,15 +496,34 @@ export default function HomeCareChecklistClient({
               {isDone && <Check className="h-3.5 w-3.5" />}
             </span>
           </button>
-          <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          {/* Title on its own line, the badge row under it. They used to share
+              one wrapping flex, which put whichever badge did not fit at the
+              start of the next line - and every badge but the first carries a
+              leading "·", so a wrapped frequency read as an orphaned bullet.
+              Splitting them also matches the approved mockup. */}
+          <div className="min-w-0 flex-1">
             <h3 className={`text-base font-bold text-text-primary ${isDone ? 'line-through' : ''}`}>{t.title}</h3>
-            <span className={`text-[11px] font-extrabold ${t.diy_or_pro === 'pro' ? 'text-amber-700' : t.diy_or_pro === 'diy' ? 'text-emerald-700' : 'text-slate-500'}`}>
-              {t.diy_or_pro === 'pro' ? 'PRO' : t.diy_or_pro === 'diy' ? 'DIY' : 'DIY / PRO'}
-            </span>
-            {freq && <span className="text-[11px] text-slate-400">· {freq}</span>}
-            {/* "Pro est." prefixes a figure, not the consult copy - "Pro est.
-                Consult with our team" reads as a stray word. */}
-            {cost && <span className="text-[11px] text-slate-400">· {cost === CONSULT_COST ? cost : `Pro est. ${cost}`}</span>}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+              <span className={`text-[11px] font-extrabold ${t.diy_or_pro === 'pro' ? 'text-amber-700' : t.diy_or_pro === 'diy' ? 'text-emerald-700' : 'text-slate-500'}`}>
+                {t.diy_or_pro === 'pro' ? 'PRO' : t.diy_or_pro === 'diy' ? 'DIY' : 'DIY / PRO'}
+              </span>
+              {/* "Learn more" belongs beside the badge, not down in the action
+                  row (owner, 5 Aug 2026): it describes the task rather than
+                  doing anything to it, and the action row is then exactly the
+                  two things you can DO about this task, plus hide. */}
+              {hasGuideItem(season, t.key) && (
+                <a href={`/home-care/guides/${season}#${t.key}`} className="text-[11px] font-bold text-primary hover:underline">
+                  Learn more
+                </a>
+              )}
+              {/* Separated by space rather than by a leading "·": the row wraps
+                  on a narrow phone, and a dot that begins a line reads as a
+                  stray bullet. The gap does the same work and cannot orphan. */}
+              {freq && <span className="whitespace-nowrap text-[11px] text-slate-400">{freq}</span>}
+              {/* "Pro est." prefixes a figure, not the consult copy - "Pro est.
+                  Consult with our team" reads as a stray word. */}
+              {cost && <span className="whitespace-nowrap text-[11px] text-slate-400">{cost === CONSULT_COST ? cost : `Pro est. ${cost}`}</span>}
+            </div>
           </div>
           {t.bookable && (
             <button
@@ -505,11 +556,6 @@ export default function HomeCareChecklistClient({
         {/* Description + actions run the full card width below the title line */}
         <ClampedBlurb text={t.blurb} expanded={expandedBlurbs.has(id(t.key, season))} onToggle={() => toggleBlurb(id(t.key, season))} />
         <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-          {hasGuideItem(season, t.key) && (
-            <a href={`/home-care/guides/${season}#${t.key}`} className="inline-block text-xs font-semibold text-primary hover:underline">
-              Learn more →
-            </a>
-          )}
           {t.bookable && (
             // Add-to-request toggle (the labelled sibling of the ＋ circle).
             // There is no per-row "book now" anymore: every service goes into
@@ -549,18 +595,28 @@ export default function HomeCareChecklistClient({
             </button>
           )}
           {!isDone && (
+            // Icon-only, pushed to the end of the row (owner, 5 Aug 2026). The
+            // accessible name carries the meaning a phone cannot hover to read,
+            // and `title` gives the pointer tooltip. Losing the visible label is
+            // what the undo bar above the list exists to pay for: an icon a
+            // member mis-taps has to be recoverable in the same breath, not only
+            // through the Hidden strip at the foot of the page.
             <button
               type="button"
-              onClick={() => setDismissState(t.key, true)}
+              onClick={() => dismissWithUndo(t.key, t.title)}
               disabled={busy === `dismiss|${t.key}`}
-              className="group inline-flex items-center justify-start"
+              aria-label={`Not relevant - hide ${t.title}`}
+              title="Not relevant - hide for me"
+              data-testid={`hide-task-${t.key}`}
+              className="group -my-2 ml-auto flex shrink-0 items-center justify-center"
             >
-              <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 group-hover:text-slate-600 transition-colors">
-                <EyeOff className="h-3.5 w-3.5" /> Not relevant
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors group-hover:bg-muted group-hover:text-slate-600">
+                <EyeOff className="h-4 w-4" />
               </span>
             </button>
           )}
         </div>
+        {shelf.length > 0 && <DiyKitShelf taskKey={t.key} products={shelf} affiliateTag={affiliateTag} />}
         {fact && captureOpen && (
           <div className="mt-3">
             <HomeCareRecordCapture
@@ -683,6 +739,36 @@ export default function HomeCareChecklistClient({
             <p className="mt-1 text-xs text-text-muted">
               {planComplete ? 'Everything handled — progress is saved.' : `${planTotal - planDone} to go — progress is saved.`}
             </p>
+          </div>
+        )}
+        {/* Undo for the icon-only hide. Lives inside the sticky header so it
+            stays on screen wherever the row they tapped has scrolled to. */}
+        {lastHidden && (
+          <div className="mt-1.5 flex items-center gap-2 rounded-lg bg-muted px-2.5 py-1.5" role="status">
+            <EyeOff className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+            <span className="min-w-0 flex-1 truncate text-xs font-semibold text-text-secondary">
+              Hidden: {lastHidden.title}
+            </span>
+            <button
+              type="button"
+              onClick={() => { setDismissState(lastHidden.key, false); setLastHidden(null); }}
+              data-testid="undo-hide"
+              className="group -my-2 flex shrink-0 items-center justify-center"
+            >
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-primary group-hover:underline">
+                <Undo2 className="h-3.5 w-3.5" /> Undo
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLastHidden(null)}
+              aria-label="Dismiss this message"
+              className="group -my-2 -mr-1 flex shrink-0 items-center justify-center"
+            >
+              <span className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted group-hover:bg-background">
+                <X className="h-3.5 w-3.5" />
+              </span>
+            </button>
           </div>
         )}
       </div>

@@ -30,6 +30,7 @@ import {
   Home,
   Users,
   KeyRound,
+  Package,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -89,6 +90,7 @@ const NAVIGATION: NavItem[] = [
       { id: 'subscribers', icon: Users, label: 'Subscribers' },
       // Need-to-know: the page 403s for admins not on the Home Care staff list.
       { id: 'home-records', icon: KeyRound, label: 'Home Records' },
+      { id: 'home-care-shop', icon: Package, label: 'Home Care Shop' },
       { id: 'follow-ups', icon: Mail, label: 'Follow-Ups' },
       { id: 'send-estimate', icon: Send, label: 'Send Estimate' },
       { id: 'send-service-quote', icon: Wrench, label: 'Send Service Quote' },
