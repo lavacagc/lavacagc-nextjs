@@ -22,7 +22,7 @@
 import { z } from 'zod';
 import { supabaseRest, supabaseRestCounted } from '@/lib/notify/supabase-rest';
 import { MAX_LINES } from './csv';
-import { PROPOSAL_TOKEN_RE } from './publicView';
+import { PROPOSAL_TOKEN_RE, proposalLinkIsLive, type ProposalStatus } from './publicView';
 
 /** How much of a user-agent string is worth keeping on the audit row. */
 const MAX_USER_AGENT_CHARS = 500;
@@ -88,7 +88,10 @@ export interface SubmissionRecord {
 export type SubmitOutcome =
   /** Stored. */
   | { status: 'ok'; record: SubmissionRecord }
-  /** Unknown token, or revoked. The route answers with the generic dead end. */
+  /**
+   * Unknown token, revoked, or a draft past its window. The route answers all
+   * three with the one generic dead end.
+   */
   | { status: 'missing' }
   /** Our side failed. Never reported to the client as a bad link. */
   | { status: 'unreadable' }
@@ -100,7 +103,8 @@ interface ProposalHead {
   client_name: string;
   client_email: string | null;
   title: string;
-  status: 'draft' | 'sent' | 'revoked';
+  status: ProposalStatus;
+  updated_at: string | null;
   lead_id: string | null;
 }
 
@@ -134,12 +138,15 @@ export async function submitProposal(args: SubmitArgs): Promise<SubmitOutcome> {
   try {
     const heads = await supabaseRest<ProposalHead[]>(
       'GET',
-      `proposals?select=id,client_name,client_email,title,status,lead_id&token=eq.${encodeURIComponent(token)}&limit=1`,
+      `proposals?select=id,client_name,client_email,title,status,updated_at,lead_id&token=eq.${encodeURIComponent(token)}&limit=1`,
     );
     head = heads?.[0];
     if (!head) return { status: 'missing' };
-    // A revoked link does not serve, and does not accept. Same generic answer.
-    if (head.status === 'revoked') return { status: 'missing' };
+    // A link that does not serve does not accept either - a revoked proposal, or
+    // a draft past its window (DRAFT_LINK_LIFETIME_MS). The SAME rule the page's
+    // lookup applies, from the same function, so this door can never be open on
+    // a link the page has stopped serving. Same generic answer for all of them.
+    if (!proposalLinkIsLive(head)) return { status: 'missing' };
 
     lines = (await supabaseRest<LineRow[]>(
       'GET',

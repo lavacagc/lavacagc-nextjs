@@ -23,9 +23,10 @@
  * src/app/intake/[token]/page.tsx:
  *
  *   ok         - a proposal we found and may serve.
- *   missing    - a token that is not ours, or a proposal that is revoked. ONE
- *                answer for both, deliberately: a page that told them apart
- *                would let anyone test whether a token is live.
+ *   missing    - a token that is not ours, a proposal that is revoked, or a
+ *                DRAFT whose 24-hour window has run out. ONE answer for all of
+ *                them, deliberately: a page that told them apart would let
+ *                anyone test whether a token is live.
  *   unreadable - we could not ask. Telling somebody holding a good link that it
  *                is invalid sends them away for good.
  */
@@ -42,6 +43,57 @@ import { MAX_LINES } from './csv';
  * is not to ask at all.
  */
 export const PROPOSAL_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * How long a DRAFT's link stays live, measured from `updated_at` (owner
+ * decision, 5 Aug 2026). ONE number, read by both doors below.
+ *
+ * A draft has to open at all because Copy link is offered on one in the roster,
+ * and the client an admin pastes it to has to be able to answer - preview-only
+ * was considered and rejected. Bounding the window to a day bounds the hazard
+ * that openness creates, which is an accidental tap recording a submission on a
+ * proposal nobody ever sent, without breaking hand delivery.
+ *
+ * `updated_at` rather than `created_at`, deliberately: `proposal_lines_touch_proposal`
+ * (20260824000000) moves it on every re-import, so correcting a draft's lines
+ * reopens its proof-reading window, and an untouched draft still expires 24
+ * hours after creation because the two columns are equal then.
+ *
+ * A SENT proposal is untouched by this. Owner decision D3 governs that link - no
+ * hard expiry, revocable from the admin - and still does.
+ */
+export const DRAFT_LINK_LIFETIME_MS = 24 * 60 * 60 * 1000;
+
+/** The stored lifecycle, mirroring the `proposals_status_check` of 20260824000000. */
+export type ProposalStatus = 'draft' | 'sent' | 'revoked';
+
+/**
+ * May this proposal's link serve at all?
+ *
+ * ONE rule for both doors - the lookup below and `submitProposal` - so the
+ * submit route can never accept an answer on a link the page would no longer
+ * serve. Every `false` is answered as `missing`, identically to a token that
+ * was never ours.
+ *
+ * An `updated_at` we cannot read closes the window rather than opening it. The
+ * column is `NOT NULL DEFAULT now()`, so this is unreachable from a healthy
+ * database; if it ever is reached, a draft that stops resolving is recoverable
+ * (re-import, or Send it) and a draft that never stops is not.
+ *
+ * A type PREDICATE rather than a plain boolean, so a caller that has taken the
+ * early return holds a status the client projection can carry: 'revoked' cannot
+ * survive this check, and the compiler is the one saying so.
+ */
+export function proposalLinkIsLive<T extends { status: ProposalStatus; updated_at: string | null }>(
+  head: T,
+  now: number = Date.now(),
+): head is T & { status: Exclude<ProposalStatus, 'revoked'> } {
+  if (head.status === 'revoked') return false;
+  if (head.status !== 'draft') return true;
+  const touched = head.updated_at ? Date.parse(head.updated_at) : NaN;
+  if (Number.isNaN(touched)) return false;
+  return now - touched < DRAFT_LINK_LIFETIME_MS;
+}
 
 /** A line as the client's browser is allowed to see it. */
 export interface PublicProposalLine {
@@ -74,15 +126,21 @@ export type ProposalLookup =
   | { state: 'missing' }
   | { state: 'unreadable' };
 
-/** The columns the client read needs, and not one more. */
-const PROPOSAL_COLUMNS = 'id,client_name,title,status';
+/**
+ * The columns the client read needs, and not one more.
+ *
+ * `updated_at` is read to judge the draft window and never travels into the
+ * projection below - see the note on timestamps at the top of this file.
+ */
+const PROPOSAL_COLUMNS = 'id,client_name,title,status,updated_at';
 const LINE_COLUMNS = 'id,position,title,description,price_cents,optional,category,bundle_members';
 
 interface ProposalHead {
   id: string;
   client_name: string;
   title: string;
-  status: 'draft' | 'sent' | 'revoked';
+  status: ProposalStatus;
+  updated_at: string | null;
 }
 
 interface LineRow {
@@ -144,8 +202,9 @@ export async function lookupPublicProposal(token: string): Promise<ProposalLooku
   }
 
   if (!head) return { state: 'missing' };
-  // The D3 kill switch. Same answer as an unknown token, on purpose.
-  if (head.status === 'revoked') return { state: 'missing' };
+  // The D3 kill switch, and the draft window. Same answer as an unknown token
+  // for both, on purpose.
+  if (!proposalLinkIsLive(head)) return { state: 'missing' };
 
   let lines: LineRow[];
   try {

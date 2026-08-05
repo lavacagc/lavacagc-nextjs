@@ -2,7 +2,10 @@ import { test, expect } from '@playwright/test';
 import { NextRequest } from 'next/server';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
-import { lookupPublicProposal, PROPOSAL_TOKEN_RE } from '../src/lib/proposals/publicView';
+import {
+  lookupPublicProposal, proposalLinkIsLive, DRAFT_LINK_LIFETIME_MS, PROPOSAL_TOKEN_RE,
+  type ProposalStatus,
+} from '../src/lib/proposals/publicView';
 import { submitProposal, ProposalSubmitSchema, type SubmissionRecord } from '../src/lib/proposals/submit';
 import {
   buildProposalSubmissionEmail, buildProposalSubmissionTelegram, alertOwnerOfSubmission,
@@ -111,11 +114,19 @@ const LINES = [
 const LOCKED_TOTAL = 340000 + 480000;
 const FULL_TOTAL = LOCKED_TOTAL + 680000 + 430000;
 
+const HOUR_MS = 60 * 60 * 1000;
+/**
+ * Fixture timestamps are RELATIVE to the run, because the draft window is
+ * relative to now: a hard-coded `updated_at` would quietly turn every draft
+ * fixture here into an expired one the day after it was written.
+ */
+const agoIso = (ms: number) => new Date(Date.now() - ms).toISOString();
+
 const proposalRow = (over: Record<string, unknown> = {}) => ({
   id: PROPOSAL_ID, token: TOKEN, client_name: 'Sarah Whitfield',
   client_email: 'sarah@example.com', title: 'Primary bath remodel', status: 'draft',
   lead_id: null, sent_at: null, revoked_at: null,
-  created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-05T00:00:00Z',
+  created_at: agoIso(96 * HOUR_MS), updated_at: agoIso(HOUR_MS),
   ...over,
 });
 
@@ -347,7 +358,9 @@ test('AC-S3-1: the lookup keeps its three states apart, and revoked reads as mis
     const ok = await lookupPublicProposal(TOKEN);
     expect(ok.state).toBe('ok');
   });
-  // A draft resolves (owner decision, 5 Aug 2026) and so does a sent proposal.
+  // A draft resolves inside its 24-hour window (owner decision, 5 Aug 2026),
+  // and a sent proposal resolves with no lifetime at all. AC-S3-18 owns the
+  // window itself.
   for (const status of ['draft', 'sent']) {
     await withPostgrest(serveProposal({ status }), async () => {
       expect((await lookupPublicProposal(TOKEN)).state).toBe('ok');
@@ -371,6 +384,119 @@ test('AC-S3-1: the lookup keeps its three states apart, and revoked reads as mis
       expect((await lookupPublicProposal(TOKEN)).state).toBe('unreadable');
     },
   );
+});
+
+test('AC-S3-18: a draft link lives 24 hours from updated_at; a sent one has no lifetime', async () => {
+  // Inside the window. This is the link an admin pastes into a text message,
+  // and the client on the other end has to be able to open it.
+  await withPostgrest(serveProposal({ updated_at: agoIso(23 * HOUR_MS) }), async () => {
+    expect((await lookupPublicProposal(TOKEN)).state).toBe('ok');
+  });
+
+  // Past it, and the answer is the one an unknown token gets, to the field.
+  // Anything that told them apart would let somebody test a token for life.
+  let unknownAnswer: unknown;
+  await withPostgrest(() => restJson([]), async () => {
+    unknownAnswer = await lookupPublicProposal('z'.repeat(43));
+  });
+  await withPostgrest(serveProposal({ updated_at: agoIso(25 * HOUR_MS) }), async () => {
+    expect(await lookupPublicProposal(TOKEN)).toEqual(unknownAnswer);
+  });
+
+  // Re-importing a draft's lines moves updated_at through
+  // proposal_lines_touch_proposal, which is WHY the window is measured from it
+  // rather than created_at: a week-old draft whose lines were just corrected is
+  // live again for another day.
+  await withPostgrest(
+    serveProposal({ created_at: agoIso(20 * 24 * HOUR_MS), updated_at: agoIso(5 * 60 * 1000) }),
+    async () => {
+      expect((await lookupPublicProposal(TOKEN)).state).toBe('ok');
+    },
+  );
+
+  // A SENT proposal is governed by D3 instead - no hard expiry, revocable from
+  // the admin - and a month of silence does not touch it.
+  await withPostgrest(
+    serveProposal({
+      status: 'sent', sent_at: agoIso(30 * 24 * HOUR_MS), updated_at: agoIso(30 * 24 * HOUR_MS),
+    }),
+    async () => {
+      expect((await lookupPublicProposal(TOKEN)).state).toBe('ok');
+    },
+  );
+
+  // ONE number, and one rule, which is what keeps the page and the submit route
+  // from ever disagreeing about whether a link is live.
+  expect(DRAFT_LINK_LIFETIME_MS).toBe(24 * 60 * 60 * 1000);
+  const live = (status: ProposalStatus, ago: number) =>
+    proposalLinkIsLive({ status, updated_at: agoIso(ago) });
+  expect(live('draft', 0)).toBe(true);
+  expect(live('draft', DRAFT_LINK_LIFETIME_MS - 60 * 1000)).toBe(true);
+  expect(live('draft', DRAFT_LINK_LIFETIME_MS + 60 * 1000)).toBe(false);
+  expect(live('sent', 365 * 24 * HOUR_MS)).toBe(true);
+  expect(live('revoked', 0)).toBe(false);
+  // A timestamp we cannot read CLOSES the window: a draft that stops resolving
+  // is recoverable, a draft that never stops is not.
+  expect(proposalLinkIsLive({ status: 'draft', updated_at: null })).toBe(false);
+  expect(proposalLinkIsLive({ status: 'draft', updated_at: 'whenever' })).toBe(false);
+});
+
+test('AC-S3-19: an expired draft accepts no answer, and says only what a dead link says', async () => {
+  const env = { ...process.env };
+  delete process.env.RESEND_API_KEY;
+  delete process.env.TELEGRAM_BOT_TOKEN;
+  try {
+    let deadEnd: string | undefined;
+    await withPostgrest(() => restJson([]), async () => {
+      const res = await submitRequest('z'.repeat(43), { included_line_ids: [L(1)] });
+      expect(res.status).toBe(404);
+      deadEnd = (await res.json()).error;
+    });
+
+    // The submit door is closed on exactly the links the page has stopped
+    // serving, with the identical sentence, and nothing is written.
+    await withPostgrest(serveProposal({ updated_at: agoIso(25 * HOUR_MS) }), async (calls) => {
+      const res = await submitRequest(TOKEN, { included_line_ids: LINES.map((l) => l.id) });
+      expect(res.status).toBe(404);
+      expect((await res.json()).error).toBe(deadEnd);
+      expect(calls.some((c) => c.method === 'POST' && c.url.includes('proposal_submissions'))).toBe(false);
+    });
+
+    // Still a window and not a ban: the same draft an hour after a re-import
+    // takes the answer it was sent to collect.
+    await withPostgrest(serveProposal({ updated_at: agoIso(HOUR_MS) }), async (calls) => {
+      const res = await submitRequest(TOKEN, { included_line_ids: LINES.map((l) => l.id) });
+      expect(res.status).toBe(200);
+      expect(calls.some((c) => c.method === 'POST' && c.url.includes('proposal_submissions'))).toBe(true);
+    });
+  } finally {
+    process.env = env;
+  }
+});
+
+test('AC-S3-20: an empty selection is never offered, and is refused if it is sent anyway', async () => {
+  // The page's own guard (owner decision, 5 Aug 2026): a client who turns every
+  // line of an all-optional proposal off gets a disabled Send and a sentence
+  // saying why, rather than a refusal about an unreadable payload for a payload
+  // this page produced. The DOM half is the e2e spec's.
+  const view = read('src/app/proposal/[token]/ProposalView.tsx');
+  expect(view).toContain('const nothingChosen = includedLines.length === 0');
+  expect(view).toContain('disabled={phase === \'sending\' || nothingChosen}');
+  expect(view).toContain('Turn at least one choice on');
+  expect(view).toContain('(201) 212-4917');
+
+  // And the server keeps every guard it had. The UI is the explanation, not the
+  // enforcement: the schema refuses an empty array...
+  expect(ProposalSubmitSchema.safeParse({ included_line_ids: [] }).success).toBe(false);
+  // ...the route answers 400 rather than storing anything...
+  await withPostgrest(serveProposal(), async (calls) => {
+    const res = await submitRequest(TOKEN, { included_line_ids: [], touched_line_ids: [] });
+    expect(res.status).toBe(400);
+    expect(calls.some((c) => c.method === 'POST' && c.url.includes('proposal_submissions'))).toBe(false);
+  });
+  // ...and the table itself could not hold one.
+  expect(read('supabase/migrations/20260824000000_proposals.sql'))
+    .toContain('proposal_submissions_included_lines_present');
 });
 
 test('AC-S3-2: a malformed token is answered without a database round trip', async () => {
@@ -580,6 +706,31 @@ test('AC-S3-13: the owner alert is itemized, sent on both channels, and never se
   }));
   expect(huge.length).toBeLessThanOrEqual(4096);
   expect(huge).toContain('$19,300.00');
+
+  // Both channels escape ONCE. A CSV is where every one of these strings comes
+  // from, so an ampersand in a line title or a client's name is ordinary, and
+  // escaping it twice does not corrupt the markup - it prints '&amp;' at the
+  // owner, in the one message he reads on a phone in a van.
+  const amp = buildProposalSubmissionTelegram(record({
+    clientName: 'Smith & Sons', included: [
+      { id: L(1), title: 'Demo & haul away', price_cents: 340000, optional: false },
+    ],
+  }));
+  expect(amp).toContain('Smith &amp; Sons');
+  expect(amp).toContain('Demo &amp; haul away');
+  expect(amp).not.toContain('&amp;amp;');
+
+  const ampEmail = buildProposalSubmissionEmail(record({
+    clientName: 'Smith & Sons', included: [
+      { id: L(1), title: 'Demo & haul away', price_cents: 340000, optional: false },
+    ],
+  }));
+  expect(ampEmail.html).toContain('Demo &amp; haul away');
+  expect(ampEmail.html).not.toContain('&amp;amp;');
+  // Including the hidden preheader, which the shell drops in verbatim: it is
+  // the one interpolation in this email that is not inside a rendered cell, and
+  // the one that had no esc() around it.
+  expect(ampEmail.html).toContain('Smith &amp; Sons landed on');
 
   // Both channels are attempted, and nothing is addressed at our own origin.
   const env = { ...process.env };

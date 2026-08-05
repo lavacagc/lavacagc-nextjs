@@ -146,7 +146,7 @@ ${lineRows(record.declined)}
   return {
     subject,
     html: homeCareEmailShell({
-      preheader: `${record.clientName} landed on ${usd(record.totalCents)}.`,
+      preheader: `${esc(record.clientName)} landed on ${esc(usd(record.totalCents))}.`,
       rows,
     }),
     text,
@@ -210,8 +210,11 @@ export function buildProposalSubmissionTelegram(record: SubmissionRecord): strin
   ].join('\n');
 
   const budget = TELEGRAM_TEXT_LIMIT - head.length - 1;
+  // RAW, because escapeTelegramClipped escapes what it is given: escaping here
+  // as well would send '&amp;amp;' for a line titled 'Demo & haul away', and the
+  // clip budget would be counted against the wrong length.
   const items = record.included
-    .map((l) => `- ${escapeTelegram(l.title)}: ${escapeTelegram(usd(l.price_cents))}`)
+    .map((l) => `- ${l.title}: ${usd(l.price_cents)}`)
     .join('\n');
   return head + escapeTelegramClipped(items, Math.max(0, budget));
 }

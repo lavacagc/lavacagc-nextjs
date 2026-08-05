@@ -8,15 +8,22 @@
  * devtools.
  *
  * THREE STATES, kept distinct (the same posture as the tokenized intake page):
- * a proposal we found, a link that is genuinely not ours - or revoked, which
- * gets the identical answer so nobody can test a token - and a database we
- * could not reach. Telling somebody their link is dead when Supabase merely
- * timed out sends them away for good, and this one is holding prices they were
- * invited to answer.
+ * a proposal we found, a link that is genuinely not ours - or revoked, or a
+ * draft past its window, all of which get the identical answer so nobody can
+ * test a token - and a database we could not reach. Telling somebody their link
+ * is dead when Supabase merely timed out sends them away for good, and this one
+ * is holding prices they were invited to answer.
  *
- * A DRAFT RESOLVES (owner decision, 5 Aug 2026). Copy link is offered on a
- * draft in the admin roster, so the link has to open - it is how the estimate
- * is proof-read from the client's side before Send. Only `revoked` dead-ends.
+ * A DRAFT RESOLVES FOR 24 HOURS (owner decision, 5 Aug 2026). Copy link is
+ * offered on a draft in the admin roster, so the link has to open - it is how
+ * the estimate is proof-read from the client's side, and how an admin hands a
+ * proposal over in a text message before Send. What that openness costs is an
+ * accidental tap recording a submission on a proposal nobody sent, so the draft
+ * link expires 24 hours after `updated_at` - re-importing its lines moves that
+ * column and reopens the window. A SENT proposal has no such lifetime (D3:
+ * revocable from the admin, never expiring). The window lives in one place,
+ * `DRAFT_LINK_LIFETIME_MS` in publicView.ts, and the submit route reads the
+ * same rule, so this page and that door cannot disagree.
  */
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';

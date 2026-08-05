@@ -386,13 +386,21 @@ function SmartBannerInner() {
   // Check for preview mode: ?banner_preview=<id>
   const previewId = searchParams.get('banner_preview');
 
+  // Hoisted out of the effect so the dependency is this BOOLEAN rather than the
+  // pathname itself. This component lives in the root layout and survives every
+  // client-side navigation, and /api/banners is force-dynamic, so depending on
+  // `pathname` would spend a real round trip on each route change site-wide.
+  // What the effect actually needs to re-run on is crossing into or out of a
+  // tokenized page, which is what this changes on.
+  const isPrivate = isPrivateTokenPage(pathname);
+
   // Fetch banner rules from DB
   useEffect(() => {
     // Not on a private tokenized page, where this component returns null below
     // whatever the rules say: fetching them there is a request issued to
     // decide something already decided, on a page whose whole job is to be
     // quiet. `rulesLoaded` stays false, which is the "nothing to show" state.
-    if (isPrivateTokenPage(pathname)) return;
+    if (isPrivate) return;
     // If previewing, fetch ALL banners (including disabled) so we can find the preview target
     const url = previewId ? '/api/banners/admin' : '/api/banners';
     fetch(url)
@@ -402,7 +410,7 @@ function SmartBannerInner() {
         setRulesLoaded(true);
       })
       .catch(() => setRulesLoaded(true));
-  }, [previewId, pathname]);
+  }, [previewId, isPrivate]);
 
   const findMatchingRule = useCallback(() => {
     if (!rulesLoaded || rules.length === 0) return null;

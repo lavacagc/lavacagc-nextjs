@@ -80,9 +80,12 @@ function Includes({ titles }: { titles: string[] }) {
       <div className="text-[10.5px] font-extrabold uppercase tracking-[0.09em] text-text-secondary/70">
         Includes
       </div>
+      {/* Keyed by position, not by title: two members of one bundle can
+          legitimately carry the same title (two 'Recessed light' rows), and the
+          list is static, so the index IS the identity here. */}
       <ul className="mt-1 list-disc pl-[15px]">
-        {titles.map((t) => (
-          <li key={t} className="text-[12.2px] leading-snug text-text-secondary">{t}</li>
+        {titles.map((t, i) => (
+          <li key={`${i}-${t}`} className="text-[12.2px] leading-snug text-text-secondary">{t}</li>
         ))}
       </ul>
     </div>
@@ -204,6 +207,18 @@ export default function ProposalView({ token, proposal, bookingUrl }: Props) {
     [includedLines],
   );
   const chosenCount = optional.length - excluded.size;
+  /**
+   * An all-optional proposal with every switch off (owner decision, 5 Aug 2026).
+   *
+   * There is nothing to send: the API's schema requires at least one line and
+   * the table CHECKs the snapshot is non-empty, so a Send offered here could
+   * only ever come back as a refusal - and a refusal about an unreadable payload
+   * for a payload this page itself produced. The button is disabled and says
+   * why, which is the answer a client turning everything down deserves. The
+   * server guard stays exactly where it is; this is the explanation, not the
+   * enforcement.
+   */
+  const nothingChosen = includedLines.length === 0;
 
   const toggle = (id: string) => {
     setExcluded((prev) => {
@@ -269,8 +284,10 @@ export default function ProposalView({ token, proposal, bookingUrl }: Props) {
               {usd(sentTotal ?? totalCents)}
             </div>
             <div className="mt-1 text-xs text-text-secondary">
-              {includedLines.length} line{includedLines.length === 1 ? '' : 's'}, including{' '}
-              {usd(proposal.lockedTotalCents)} of structural work.
+              {includedLines.length} line{includedLines.length === 1 ? '' : 's'}
+              {proposal.lockedTotalCents > 0
+                ? `, including ${usd(proposal.lockedTotalCents)} of structural work`
+                : ''}.
             </div>
           </div>
           <button
@@ -363,14 +380,26 @@ export default function ProposalView({ token, proposal, bookingUrl }: Props) {
             </span>
           </div>
           <p className="mt-[3px] text-[11.5px] text-text-secondary/80">
-            Includes {usd(proposal.lockedTotalCents)} of structural work
+            {proposal.lockedTotalCents > 0
+              ? `Includes ${usd(proposal.lockedTotalCents)} of structural work`
+              : 'Every line here is yours to choose'}
             {optional.length > 0 ? ` and ${chosenCount} of your ${optional.length} choices` : ''}.
           </p>
+          {nothingChosen ? (
+            <p
+              id="proposal-nothing-chosen"
+              className="mt-2.5 rounded-lg bg-background-soft px-3 py-2 text-[12.5px] leading-snug text-text-secondary"
+            >
+              Turn at least one choice on, or call us on (201) 212-4917 and we will talk through a
+              different scope.
+            </p>
+          ) : null}
           <button
             type="button"
             onClick={send}
-            disabled={phase === 'sending'}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 text-[15.5px] font-extrabold text-white shadow-button transition-colors hover:bg-primary-dark disabled:opacity-70"
+            disabled={phase === 'sending' || nothingChosen}
+            aria-describedby={nothingChosen ? 'proposal-nothing-chosen' : undefined}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 text-[15.5px] font-extrabold text-white shadow-button transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-primary"
           >
             {phase === 'sending' ? (
               <>

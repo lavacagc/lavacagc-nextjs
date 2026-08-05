@@ -266,8 +266,21 @@ This is the half of the pod a client touches, and it is what makes the admin's S
 - **One slice, including submit-back.** The original four-slice plan put the page in S3 and the submit route in S4.
   The delivery email shipped in slice 2 already promises "when it reads right, send it back to us from the page" (`deliveryEmail.ts`), so flipping `CLIENT_PAGE_LIVE` over a read-only page would have put an email that lies in a client's inbox.
   Folding them together also costs no migration: slice 1 built `proposal_submissions`, the snapshot domain and the total-is-the-sum CHECK, and nothing had written to them.
-- **A draft resolves.** Copy link is offered on a draft in the roster, so the link has to open - it is how an estimate is proof-read from the client's side before Send.
-  Only `revoked` dead-ends.
+- **A draft resolves, for 24 hours.** Copy link is offered on a draft in the roster, so the link has to open - it is how an estimate is proof-read from the client's side, and how an admin hands a proposal over in a text message before Send.
+  Preview-only was considered and rejected for exactly that reason: the client on the other end of that message has to be able to answer.
+  What the openness costs is an accidental tap recording a real `proposal_submissions` row - and an owner alert reading "Proposal accepted" - on a proposal nobody ever sent, which then drives the roster's `submission_count` and `latest_total_cents`.
+  The owner's call was to bound the window rather than close the door: a draft resolves only while `now()` is within 24 hours of its `updated_at`.
+  `updated_at` rather than `created_at`, deliberately - `proposal_lines_touch_proposal` moves it on every re-import, so correcting a draft's lines reopens its proof-reading window, and an untouched draft still expires 24 hours after creation because the two columns are equal then.
+  An expired draft returns the identical generic answer an unknown or revoked token gets, for the same reason those two share one: a different answer lets somebody test whether a token is live.
+  The window is one named constant, `DRAFT_LINK_LIFETIME_MS` in `publicView.ts`, and one predicate, `proposalLinkIsLive`, which BOTH doors call - `lookupPublicProposal` and `submitProposal` - so the submit route can never accept an answer on a link the page has stopped serving.
+  A **sent** proposal is unaffected: D3 governs that link (no hard expiry, revocable from the admin) and still does.
+  Application logic only, no migration: `status` and `updated_at` already exist.
+  **The one consequence to know about:** Copy link on a draft older than 24 hours hands over a link that no longer resolves, and nothing in the admin roster says so.
+  Re-importing the proposal's lines, or sending it, makes the link live again.
+- **Nothing selected is not a thing to send.** A finish-only proposal can be all-optional, and a client who declines every line has an empty composition.
+  `ProposalSubmitSchema` requires at least one id and `proposal_submissions_included_lines_present` CHECKs the stored snapshot is non-empty, so the database cannot hold that record - which means the page must not offer to send it.
+  Send is disabled in that state with a line saying why ("Turn at least one choice on, or call us on (201) 212-4917 and we will talk through a different scope"), rather than a button whose only possible answer is a refusal about an unreadable payload for a payload the page itself produced.
+  Both server guards stay exactly where they were: the disabled button is the explanation, not the enforcement.
 - **Confirm, then allow adjusting.** D4 stores every submission; the page confirms with what was sent and offers a quiet way back to the switches.
   Every revision alerts, and the roster reports the latest total.
 - **Analytics is left exactly as it is.** The scoping pass found that `layout.tsx` loads Microsoft Clarity and the Meta Pixel on every page of `www.lavacagc.com` gated only on GPC, and that `Analytics.tsx` excludes only `/admin`, `/vaca-mgmt` and `/auth` from GA4 - so a proposal page sends its own token to three third parties, and Clarity session-records a page of private pricing.
@@ -279,7 +292,7 @@ This is the half of the pod a client touches, and it is what makes the admin's S
 
 - `src/app/proposal/[token]/page.tsx` - the server component: three states, `force-dynamic`, noindex, rate-limited lookup.
 - `src/app/proposal/[token]/ProposalView.tsx` - the switches, the running total, the submit and the confirmation.
-- `src/lib/proposals/publicView.ts` - the token lookup and the client-safe projection that strips member prices before anything is serialized.
+- `src/lib/proposals/publicView.ts` - the token lookup, the draft-link window (`DRAFT_LINK_LIFETIME_MS` and `proposalLinkIsLive`, shared with the submit route), and the client-safe projection that strips member prices before anything is serialized.
 - `src/app/api/proposal/[token]/submit/route.ts` - the one write a client can make.
 - `src/lib/proposals/submit.ts` - the WEB-022 guard, the server re-sum, and the insert.
 - `src/lib/proposals/ownerAlert.ts` - the itemized owner email and the Telegram message.
@@ -294,7 +307,7 @@ This is the half of the pod a client touches, and it is what makes the admin's S
 ### The three states, and why they are three
 
 `ok` is a proposal we found and may serve.
-`missing` is a token that is not ours, a token that is malformed, or a proposal that is revoked - ONE answer for all three, because a page that told them apart would let anyone test whether a token is live.
+`missing` is a token that is not ours, a token that is malformed, a proposal that is revoked, or a draft past its 24-hour window - ONE answer for all four, because a page that told them apart would let anyone test whether a token is live.
 `unreadable` is a database we could not ask, and it is a different page: telling somebody holding a good link that it is invalid sends them away for good, and this link is holding prices they were invited to answer.
 A proposal that resolves but holds no lines is `unreadable` too, not `missing` - both write paths guarantee at least one line, so reaching that state means something went wrong on our side.
 

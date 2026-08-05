@@ -53,6 +53,18 @@ test.describe.configure({ mode: 'serial' });
 const PROPOSAL_ID = '44444444-4444-4444-4444-444444444444';
 const TOKEN = 'a'.repeat(43);
 const REVOKED_TOKEN = 'b'.repeat(43);
+const STALE_DRAFT_TOKEN = 'c'.repeat(43);
+const ALL_OPTIONAL_TOKEN = 'd'.repeat(43);
+const ALL_OPTIONAL_ID = '66666666-6666-4666-8666-666666666666';
+
+const HOUR_MS = 60 * 60 * 1000;
+/**
+ * Seeded timestamps are RELATIVE to the run, because the draft window is
+ * relative to now (DRAFT_LINK_LIFETIME_MS): a hard-coded `updated_at` would
+ * turn every draft in this fixture into an expired one the day after it was
+ * written, and the failure would look like a regression in the page.
+ */
+const agoIso = (ms: number) => new Date(Date.now() - ms).toISOString();
 
 const L = {
   demo: '11111111-1111-4111-8111-111111111111',
@@ -100,6 +112,20 @@ const LINES = [
   },
 ];
 
+/** A finish-only estimate: no locked line anywhere in it. */
+const ALL_OPTIONAL_LINES = [
+  {
+    id: '66666666-6666-4666-8666-666666666661', position: 0, title: 'Interior repaint',
+    description: 'Walls, trim and ceilings throughout.',
+    price_cents: 240000, optional: true, category: 'painting', bundle_members: null,
+  },
+  {
+    id: '66666666-6666-4666-8666-666666666662', position: 1, title: 'Cabinet hardware swap',
+    description: 'Pulls and knobs, supplied and fitted.',
+    price_cents: 60000, optional: true, category: 'hardware', bundle_members: null,
+  },
+];
+
 const LOCKED_TOTAL = 340000 + 480000 + 260000;
 const FULL_TOTAL = LOCKED_TOTAL + 680000 + 430000;
 const usd = (c: number) => (c / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -133,15 +159,37 @@ test.beforeEach(async () => {
       id: PROPOSAL_ID, token: TOKEN, client_name: 'Sarah Whitfield',
       client_email: 'sarah@example.com', title: 'Primary bath remodel',
       status: 'draft', lead_id: null, sent_at: null, revoked_at: null,
+      created_at: agoIso(48 * HOUR_MS), updated_at: agoIso(HOUR_MS),
     },
     {
       id: '55555555-5555-4555-8555-555555555556', token: REVOKED_TOKEN,
       client_name: 'Yusuf Adeyemi', client_email: 'yusuf@example.com',
       title: 'Primary suite addition', status: 'revoked', lead_id: null,
       sent_at: '2026-08-01T00:00:00Z', revoked_at: '2026-08-02T00:00:00Z',
+      created_at: agoIso(96 * HOUR_MS), updated_at: agoIso(48 * HOUR_MS),
+    },
+    // A draft nobody has touched for more than a day: its link has run out.
+    {
+      id: '77777777-7777-4777-8777-777777777777', token: STALE_DRAFT_TOKEN,
+      client_name: 'Marta Oyelaran', client_email: 'marta@example.com',
+      title: 'Kitchen refresh', status: 'draft', lead_id: null,
+      sent_at: null, revoked_at: null,
+      created_at: agoIso(72 * HOUR_MS), updated_at: agoIso(25 * HOUR_MS),
+    },
+    // Finish-only work: every line is the client's to decline, so this is the
+    // one shape where a client can end up with nothing selected.
+    {
+      id: ALL_OPTIONAL_ID, token: ALL_OPTIONAL_TOKEN,
+      client_name: 'Dan Whitfield', client_email: 'dan@example.com',
+      title: 'Finish package', status: 'sent', lead_id: null,
+      sent_at: agoIso(2 * HOUR_MS), revoked_at: null,
+      created_at: agoIso(4 * HOUR_MS), updated_at: agoIso(2 * HOUR_MS),
     },
   ]);
-  await seed('proposal_lines', LINES.map((l) => ({ ...l, proposal_id: PROPOSAL_ID })));
+  await seed('proposal_lines', [
+    ...LINES.map((l) => ({ ...l, proposal_id: PROPOSAL_ID })),
+    ...ALL_OPTIONAL_LINES.map((l) => ({ ...l, proposal_id: ALL_OPTIONAL_ID })),
+  ]);
 });
 
 /**
@@ -155,7 +203,7 @@ test.beforeEach(async () => {
  */
 test('fixture integrity: every seeded category is a registry key', () => {
   const known = new Set(PROPOSAL_CATEGORIES.map((c) => c.key));
-  for (const line of LINES) {
+  for (const line of [...LINES, ...ALL_OPTIONAL_LINES]) {
     expect(known.has(line.category), `'${line.category}' is not a registry key`).toBe(true);
   }
 });
@@ -191,6 +239,57 @@ test('AC-S3-1e: an unknown token and a revoked one get the same dead end, word f
   // A malformed token is the same answer, and never reaches the database.
   await page.goto('/proposal/not-a-token');
   await expect(page.getByRole('heading')).toHaveText("This link isn't valid");
+});
+
+test('AC-S3-18e: a draft past its 24-hour window is the same dead end, and takes no answer', async ({ page }) => {
+  await page.goto(`/proposal/${'z'.repeat(43)}`);
+  const unknown = await page.locator('main').innerText();
+
+  // A draft whose updated_at is 25 hours old. Nothing on this page says it was
+  // ever a proposal, let alone whose.
+  await page.goto(`/proposal/${STALE_DRAFT_TOKEN}`);
+  await expect(page.getByRole('heading')).toHaveText("This link isn't valid");
+  expect(await page.locator('main').innerText()).toBe(unknown);
+  expect(await page.content()).not.toContain('Marta');
+
+  // The submit door is shut on it too, with the same sentence a token that was
+  // never ours gets, and no row is written.
+  const res = await page.request.post(`/api/proposal/${STALE_DRAFT_TOKEN}/submit`, {
+    data: { included_line_ids: [L.demo], touched_line_ids: [] },
+  });
+  expect(res.status()).toBe(404);
+  const unknownRes = await page.request.post(`/api/proposal/${'z'.repeat(43)}/submit`, {
+    data: { included_line_ids: [L.demo], touched_line_ids: [] },
+  });
+  expect((await res.json()).error).toBe((await unknownRes.json()).error);
+  expect(((await state()).tables.proposal_submissions ?? []).length).toBe(0);
+
+  // The draft an admin is actually working on is untouched by any of this.
+  await page.goto(`/proposal/${TOKEN}`);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Primary bath remodel');
+});
+
+test('AC-S3-20e: turning every line of a finish-only proposal off disables Send and says why', async ({ page }) => {
+  await page.goto(`/proposal/${ALL_OPTIONAL_TOKEN}`);
+  const send = page.getByRole('button', { name: /Send this back to Alex/ });
+  await expect(send).toBeEnabled();
+
+  // Both switches off: there is nothing left to send, and the page says so
+  // instead of offering a button whose only possible answer is a refusal.
+  for (const box of await switches(page).all()) await box.click();
+  await expect(totalText(page)).toHaveText(usd(0));
+  await expect(send).toBeDisabled();
+  await expect(page.getByText(/Turn at least one choice on/)).toBeVisible();
+  await expect(page.getByText('(201) 212-4917')).toBeVisible();
+  // And a proposal with no locked work does not claim $0.00 of structural work.
+  expect(await page.locator('main').innerText()).not.toContain('$0.00 of structural work');
+
+  // One choice back on and the door opens again.
+  await switches(page).first().click();
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Sent to Alex');
+  expect(((await state()).tables.proposal_submissions ?? []).length).toBe(1);
 });
 
 test('AC-S3-3e + AC-S3-8e: locked lines have nothing to flip, and only the all-optional bundle does', async ({ page }) => {
