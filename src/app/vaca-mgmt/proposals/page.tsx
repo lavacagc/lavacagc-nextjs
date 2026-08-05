@@ -40,6 +40,7 @@ import {
   composeBundle, lockedMemberTitles, restoreMembers, toStoredMembers, type PreviewBundleMember,
 } from '@/lib/proposals/bundles';
 import { CLIENT_PAGE_LIVE, CLIENT_PAGE_NOT_LIVE_MESSAGE } from '@/lib/proposals/clientPage';
+import { cn } from '@/lib/utils';
 
 /** One preview row: an imported line, or a bundle the admin composed. */
 interface PreviewRow {
@@ -134,41 +135,67 @@ const rowKey = () => `row-${nextKey++}`;
  *
  * The label is never the accessible name - `aria-label` carries it whether the
  * label is open, closed, or (on a phone) never rendered at all, so a screen
- * reader and Playwright both read the same button they always did. `title` is
- * the pointer tooltip; a caller passing an explanation for a DISABLED button
- * wants that shown instead, so it wins.
+ * reader and Playwright both read the same button they always did.
+ *
+ * Two tooltips, deliberately:
+ *  - `title` is the ordinary pointer tooltip for a control that WORKS.
+ *  - `disabledReason` is why a control does not, and it is a different job.
+ *    A disabled button cannot show a tooltip at all - the shared button base
+ *    carries `disabled:pointer-events-none`, so the button is not a hit target
+ *    and neither `:hover` nor the native tooltip ever fires on it. The reason
+ *    therefore rides on the WRAPPER, which does take pointer events and is what
+ *    a hover over the glyph actually lands on. A phone has no tooltip at all,
+ *    so a stated reason also stops hiding the label: an unavailable control is
+ *    never a wordless grey glyph, at any width or on any device. `disabled`
+ *    itself stays on the button, so the semantics do not move.
  *
  * 44px square: the house minimum, and globals.css only guarantees the height.
  */
 function IconAction({
-  icon: Icon, label, title, onClick, disabled, testId,
+  icon: Icon, label, title, disabledReason, onClick, disabled, testId,
 }: {
   icon: typeof Link2;
   label: string;
   title?: string;
+  disabledReason?: string;
   onClick: () => void;
   disabled?: boolean;
   testId?: string;
 }) {
+  /** Unavailable AND able to say why - the only case that shows words unasked. */
+  const explained = Boolean(disabled && disabledReason);
+  const tooltip = explained ? disabledReason : title ?? label;
   return (
-    <Button
-      size="sm"
-      variant="outline"
-      className="group h-11 w-11 shrink-0 justify-center overflow-hidden p-0 transition-[width,padding] duration-200 sm:hover:w-auto sm:hover:px-3 sm:focus-visible:w-auto sm:focus-visible:px-3"
-      aria-label={label}
-      title={title ?? label}
-      disabled={disabled}
-      onClick={onClick}
-      data-testid={testId}
-    >
-      <Icon className="h-4 w-4 shrink-0" />
-      <span
-        className="hidden max-w-0 whitespace-nowrap opacity-0 transition-[max-width,margin,opacity] duration-200 sm:inline sm:group-hover:ml-2 sm:group-hover:max-w-40 sm:group-hover:opacity-100 sm:group-focus-visible:ml-2 sm:group-focus-visible:max-w-40 sm:group-focus-visible:opacity-100"
-        aria-hidden="true"
+    <span className="inline-flex shrink-0" title={tooltip}>
+      <Button
+        size="sm"
+        variant="outline"
+        className={cn(
+          'group h-11 shrink-0 justify-center overflow-hidden transition-[width,padding] duration-200',
+          explained
+            ? 'w-auto px-3'
+            : 'w-11 p-0 sm:hover:w-auto sm:hover:px-3 sm:focus-visible:w-auto sm:focus-visible:px-3',
+        )}
+        aria-label={label}
+        title={tooltip}
+        disabled={disabled}
+        onClick={onClick}
+        data-testid={testId}
       >
-        {label}
-      </span>
-    </Button>
+        <Icon className="h-4 w-4 shrink-0" />
+        <span
+          className={cn(
+            'whitespace-nowrap',
+            explained
+              ? 'ml-2'
+              : 'hidden max-w-0 opacity-0 transition-[max-width,margin,opacity] duration-200 sm:inline sm:group-hover:ml-2 sm:group-hover:max-w-40 sm:group-hover:opacity-100 sm:group-focus-visible:ml-2 sm:group-focus-visible:max-w-40 sm:group-focus-visible:opacity-100',
+          )}
+          aria-hidden="true"
+        >
+          {label}
+        </span>
+      </Button>
+    </span>
   );
 }
 
@@ -727,7 +754,7 @@ export default function ProposalsAdminPage() {
                   */}
                   <div className="md:flex md:items-center md:gap-3">
                   <div className="flex items-start gap-2 md:contents">
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1" data-testid="roster-identity">
                       <div className="md:flex md:flex-wrap md:items-baseline md:gap-2">
                         <div className="font-semibold">{p.client_name}</div>
                         <div className="line-clamp-2 text-sm text-muted-foreground">{p.title}</div>
@@ -745,7 +772,27 @@ export default function ProposalsAdminPage() {
                     </div>
                     <div className="shrink-0 md:order-2">{statusBadge(p.status)}</div>
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 md:order-3 md:mt-0 md:shrink-0">
+                  {/*
+                    md and up, the actions reserve their own widest width and
+                    hang off the right of it.
+
+                    The hover label used to open IN FLOW inside a row whose only
+                    flexible item was the identity column, so every pass of the
+                    cursor across Copy link / Re-import / Revoke took up to
+                    ~170px off the client name and re-wrapped the title under
+                    the cursor, and on a narrow desktop pushed Send to a second
+                    line. The floor is the room the longest label ("Restore to
+                    draft", on a revoked row that is also showing Re-import's
+                    own disabled label) needs, so the label opens into space
+                    that was already there and nothing else moves. justify-end
+                    is what puts that spare room on the left, where the labels
+                    grow into it; Send loses its auto margin here because the
+                    whole cluster is now right-aligned.
+
+                    Below md the actions have a full line to themselves, with
+                    slack the label opens into for free - so no floor there.
+                  */}
+                  <div className="mt-2 flex flex-wrap items-center gap-2 md:order-3 md:mt-0 md:min-w-[30rem] md:shrink-0 md:justify-end">
                     <IconAction icon={Link2} label="Copy link" onClick={() => copyLink(p)} />
                     {/*
                       replaceLines refuses a revoked proposal outright (409), so
@@ -754,15 +801,18 @@ export default function ProposalsAdminPage() {
                       and composed it. Send is gated in the UI for exactly this
                       reason, with the server as the backstop.
 
-                      The tooltip names Restore, not Re-send: Send is switched
+                      The reason names Restore, not Re-send: Send is switched
                       off for every row until the client page ships, so telling
                       an admin to press it left the row frozen with no way out.
+                      It rides on `disabledReason`, so it is the tooltip a
+                      pointer gets AND the row keeps the word "Re-import" beside
+                      the greyed glyph where no tooltip exists.
                     */}
                     <IconAction
                       icon={FileUp}
                       label="Re-import"
                       disabled={busy || p.status === 'revoked'}
-                      title={p.status === 'revoked'
+                      disabledReason={p.status === 'revoked'
                         ? 'Revoked - restore it to draft before re-importing its lines'
                         : undefined}
                       onClick={() => armReimport(p)}
@@ -797,7 +847,7 @@ export default function ProposalsAdminPage() {
                     */}
                     <Button
                       size="sm"
-                      className="h-11 w-full sm:ml-auto sm:w-auto"
+                      className="h-11 w-full sm:ml-auto sm:w-auto md:ml-0"
                       disabled={busy || !CLIENT_PAGE_LIVE || !p.client_email}
                       title={!CLIENT_PAGE_LIVE ? CLIENT_PAGE_NOT_LIVE_MESSAGE : p.client_email ? undefined : 'No client email - use Copy link'}
                       onClick={() => act(p, 'send')}
@@ -1069,8 +1119,21 @@ export default function ProposalsAdminPage() {
                       44px tick target, so on a two-line title a centred badge
                       floats between the lines. Pinned to the top it reads as
                       the row's status, which is where the owner asked for it.
+
+                      ml-auto is what keeps the badges in ONE straight column
+                      down the preview below sm. A plain line's title carries
+                      flex-1 and pushes the badge to the right edge on its own,
+                      but a bundle's name field has dropped to a full-width line
+                      of its own by then, leaving the tick and the badge alone on
+                      the first line with nothing growing between them - so the
+                      bundle's badge sat flush against the tick while every
+                      neighbour's sat right, which is the ragged column the
+                      owner's crowding pass was called to fix. From sm up the
+                      name is inline and flexible again, so the auto margin has
+                      no free space to claim and is dropped rather than left to
+                      compete with it.
                     */}
-                    <Badge className="mt-1.5 shrink-0 self-start md:order-2 md:mt-0 md:self-auto" variant={r.optional ? 'default' : 'secondary'}>{r.optional ? 'optional' : 'locked'}</Badge>
+                    <Badge className="ml-auto mt-1.5 shrink-0 self-start sm:ml-0 md:order-2 md:mt-0 md:self-auto" variant={r.optional ? 'default' : 'secondary'} data-testid="row-badge">{r.optional ? 'optional' : 'locked'}</Badge>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-3 md:order-4 md:shrink-0">
                     <span className="font-semibold tabular-nums">{dollars(r.priceCents)}</span>

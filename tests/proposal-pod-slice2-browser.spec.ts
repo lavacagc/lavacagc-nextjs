@@ -1121,4 +1121,171 @@ test.describe('proposals admin, in the browser', () => {
       'the name wraps rather than overflowing its box sideways')
       .toBeLessThanOrEqual(long.clientWidth + 1);
   });
+
+  test('B28 (AC10k): a disabled Re-import is never a wordless glyph - its reason is reachable at every width', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await page.getByTestId('roster-search').fill('Yusuf');
+    await page.getByTestId('roster-search-btn').click();
+    const row = page.getByTestId(`proposal-${REVOKED.id}`);
+    await expect(row).toBeVisible();
+    const reimport = row.getByTestId('reimport-btn');
+    await expect(reimport).toBeDisabled();
+
+    /**
+     * What a sighted admin can actually GET AT, measured rather than read off
+     * an attribute - the bug this pins is that `title` on a disabled button is
+     * an attribute that never becomes a tooltip. The shared button base carries
+     * `disabled:pointer-events-none`, so while disabled the button is not a hit
+     * target: `:hover` never fires (no sliding label) and the browser resolves
+     * the tooltip from whatever elementFromPoint returns instead, which is what
+     * this reads. The words the button renders are read the same way - from the
+     * spans that actually have a box, not from textContent, which counts a
+     * `hidden` label as present.
+     */
+    const reach = () => reimport.evaluate((btn) => {
+      const box = btn.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      const owner = hit ? hit.closest('[title]') : null;
+      return {
+        hitIsTheButton: hit === btn,
+        tooltip: owner ? owner.getAttribute('title') : null,
+        words: Array.from(btn.querySelectorAll('span'))
+          .filter((s) => s.getBoundingClientRect().width > 0)
+          .map((s) => (s.textContent || '').trim()).join(' '),
+        accessibleName: btn.getAttribute('aria-label'),
+        stillDisabled: btn.hasAttribute('disabled'),
+      };
+    });
+
+    // A phone, the width the owner reviewed at, the tablet break and a desktop.
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await reimport.scrollIntoViewIfNeeded();
+      const seen = await reach();
+      expect(seen.hitIsTheButton,
+        `${width}px: a disabled button takes no pointer events, so its own title can never be the tooltip`)
+        .toBe(false);
+      expect(seen.tooltip,
+        `${width}px: hovering the glyph lands on the wrapper, which carries the reason`)
+        .toMatch(/restore it to draft before re-importing/i);
+      expect(seen.words,
+        `${width}px: and where there is no tooltip at all, the greyed glyph still says what it is`)
+        .toBe('Re-import');
+      expect(seen.accessibleName, `${width}px: the accessible name is unchanged`).toBe('Re-import');
+      expect(seen.stillDisabled, `${width}px: it is still genuinely disabled`).toBe(true);
+    }
+
+    // And a row that CAN be re-imported is untouched - a bare 44px glyph whose
+    // label stays shut until it is hovered. The words are the refusal's, not
+    // every icon's.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.getByTestId('roster-search-clear').click();
+    const live = page.getByTestId('reimport-btn').first();
+    await expect(live).toBeEnabled();
+    expect(await live.evaluate((el) => Math.round(el.getBoundingClientRect().width)),
+      'an available action is still a square glyph').toBe(44);
+  });
+
+  test('B29: the hover label opens into reserved room - it never moves the row it is in', async ({ page, context, baseURL }) => {
+    // Both roster shapes at once: a live row, and the revoked row that already
+    // spends width on Re-import's disabled label and carries the longest label
+    // of the set, "Restore to draft".
+    await openRoster(page, context, baseURL!, {
+      proposals: [RACHEL, REVOKED], counts_available: true, total: 2, truncated: false,
+    });
+
+    /** Everything the expanding label used to be able to shove. */
+    const measure = (id: string) => page.getByTestId(`proposal-${id}`).evaluate((row) => {
+      const identity = row.querySelector('[data-testid="roster-identity"]') as HTMLElement;
+      const send = row.querySelector('[data-testid="send-btn"]') as HTMLElement;
+      const box = row.getBoundingClientRect();
+      return {
+        rowHeight: Math.round(box.height),
+        identityWidth: Math.round(identity.getBoundingClientRect().width),
+        identityHeight: Math.round(identity.getBoundingClientRect().height),
+        // Relative to the row, so this catches Send dropping to a second line
+        // without also failing every time the page scrolls.
+        sendTop: Math.round(send.getBoundingClientRect().top - box.top),
+      };
+    });
+
+    const HOVERS: Record<string, string[]> = {
+      // Re-import is disabled on the revoked row, so it is not hoverable there.
+      [RACHEL.id]: ['Copy link', 'Re-import', 'Revoke'],
+      [REVOKED.id]: ['Copy link', 'Restore to draft'],
+    };
+
+    // Either side of the tablet break: below it the actions have their own
+    // line, which is where an opening label would push Send onto a second one;
+    // at and above it they share the row with the name the label used to steal
+    // from.
+    for (const width of [640, 700, 768, 1024, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const id of [RACHEL.id, REVOKED.id]) {
+        const row = page.getByTestId(`proposal-${id}`);
+        await row.scrollIntoViewIfNeeded();
+        await page.mouse.move(0, 0);
+        // The label animates over 200ms, so every reading is taken settled.
+        await page.waitForTimeout(300);
+        const rest = await measure(id);
+
+        for (const label of HOVERS[id]) {
+          const button = row.getByRole('button', { name: label, exact: true });
+          const shut = await button.evaluate((el) => Math.round(el.getBoundingClientRect().width));
+          await button.hover();
+          await page.waitForTimeout(300);
+          const open = await button.evaluate((el) => Math.round(el.getBoundingClientRect().width));
+          // Without this the rest of the test would pass on a label that never
+          // opened, which is exactly the regression nobody would notice.
+          expect(open, `${width}px / ${label}: the label actually opened (${shut}px -> ${open}px)`)
+            .toBeGreaterThan(shut);
+          expect(await measure(id),
+            `${width}px / ${label}: opening the label moved the row it is in`)
+            .toEqual(rest);
+        }
+
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(300);
+        expect(await measure(id), `${width}px: the row returns to exactly where it rested`)
+          .toEqual(rest);
+      }
+    }
+  });
+
+  test('B30: below sm every status badge sits on one right edge, bundle rows included', async ({ page, context, baseURL }) => {
+    await openProposals(page, context, baseURL!);
+    await pasteCsv(page, CSV);
+    await expect(page.getByTestId('line-row')).toHaveCount(3);
+    await page.getByLabel('Select Tile - heated floor upgrade').check();
+    await page.getByLabel('Select Vanity - double sink').check();
+    await page.getByTestId('combine-btn').click();
+    await expect(page.getByTestId('bundle-row')).toHaveCount(1);
+    await expect(page.getByTestId('line-row')).toHaveCount(1);
+
+    // Below sm a bundle's name field drops to a full-width line of its own,
+    // leaving the tick and the badge alone on the first line - so the bundle's
+    // badge used to sit flush against the tick while every plain line's sat
+    // right, and the preview read as a ragged column of statuses.
+    for (const width of [320, 390, 480]) {
+      await page.setViewportSize({ width, height: 900 });
+      const badges = await page.getByTestId('preview').evaluate((preview) =>
+        Array.from(preview.querySelectorAll('[data-testid="row-badge"]')).map((badge) => {
+          const row = badge.closest('[data-testid="line-row"],[data-testid="bundle-row"]') as HTMLElement;
+          return {
+            shape: row.dataset.testid,
+            // px-3 on the row: the inner edge the badge should be flush with.
+            fromRowEdge: Math.round(row.getBoundingClientRect().right - 12
+              - badge.getBoundingClientRect().right),
+          };
+        }));
+      expect(badges.map((b) => b.shape).sort(),
+        `${width}px: both shapes are on screen, so this compares them`)
+        .toEqual(['bundle-row', 'line-row']);
+      for (const badge of badges) {
+        expect(Math.abs(badge.fromRowEdge),
+          `${width}px: the ${badge.shape} badge is flush with the row's right edge`)
+          .toBeLessThanOrEqual(1);
+      }
+    }
+  });
 });
