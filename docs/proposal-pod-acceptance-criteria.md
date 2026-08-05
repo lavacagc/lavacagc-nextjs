@@ -1,14 +1,14 @@
 # Proposal page pod - acceptance criteria
 
 The proposal page pod, from section 3 of the website spec (`02-website-nextjs.md` - the owner's spec, held outside this repo, so this file is the tracked record of what the pod was built to).
-One section per slice: **slice 1** (WEB-020 and WEB-021, the schema and the import contract) runs to "Out of scope for slice 1", and **slice 2** (the admin import preview, bundles, and delivery) follows it at the foot of the file.
+One section per slice, in the order they shipped: **slice 1** (WEB-020 and WEB-021, the schema and the import contract) runs to "Out of scope for slice 1", then **slice 2** (the admin import preview, bundles, and delivery), then **slice 3** (the client page, the submit-back, and the flag flip) at the foot of the file.
 
 Slice 1 was approved from the plan artifact of 3 Aug 2026, with five owner decisions taken on it before any code was written.
 
 ## Slice 1 - what ships here, and what deliberately does not
 
 Schema, the CSV import contract, and the category registry.
-**No UI and no route.** The client proposal page, the admin import preview and the submit path are later slices - the import preview has since landed in slice 2, below.
+**No UI and no route.** The client proposal page, the admin import preview and the submit path are later slices - the import preview has since landed in slice 2, and the page and the submit path in slice 3, both below.
 
 - `supabase/migrations/20260824000000_proposals.sql` - `proposals`, `proposal_lines`, `proposal_submissions`, the shared snapshot domain, and the sum function the submission total is checked against.
 - `src/lib/proposals/csv.ts` - the estimator import contract: `parseProposalCsv`, `parsePriceCents`, and the caps all three layers share.
@@ -138,9 +138,9 @@ Slice 2 is where the browser half of the pod's acceptance begins.
 
 ## Out of scope for slice 1
 
-- The client proposal page, its toggles and its running total (WEB-022, WEB-023). Altering a locked line is refused at the API, on top of the snapshot shape defined here. Still out of scope after slice 2 - it is slice 3.
+- The client proposal page, its toggles and its running total (WEB-022, WEB-023). Altering a locked line is refused at the API, on top of the snapshot shape defined here. **Shipped in slice 3.**
 - The admin import preview, where a per-line category badge is overridden before a proposal is sent. Every gap the registry leaves is answered there. **Shipped in slice 2.**
-- The submit route, and the owner alert that prints `total_cents`. Slice 3, with the page that submits.
+- The submit route, and the owner alert that prints `total_cents`. **Shipped in slice 3**, with the page that submits.
 - The booking-link slot (D5). Slice 2 renders it in the delivery email when `NEXT_PUBLIC_BOOKING_URL` is set.
 - Client-facing analytics (WEB-027). `touched_lines` is the free early telemetry the schema reserves for it.
 
@@ -150,7 +150,7 @@ Slice 2 is where the browser half of the pod's acceptance begins.
 
 Approved from the plan artifact of 4 Aug 2026, carrying the owner's mid-review bundle request and the mobile-first note, with the in-design decisions delegated.
 This is the admin half of the pod: the estimator's CSV becomes a reviewed, priced proposal with a private link, and the lifecycle that link has.
-The client-facing page it links to is **slice 3** and does not exist yet, which is why Send is refused rather than offered.
+The client-facing page it links to did not exist while this slice was the head of the pod, which is why Send was refused rather than offered; **slice 3 shipped that page and flipped `CLIENT_PAGE_LIVE`**, so Send is live now (see the slice 3 section below).
 
 ### Slice 2 - what ships here
 
@@ -173,7 +173,9 @@ The client-facing page it links to is **slice 3** and does not exist yet, which 
 - **Mobile-first bundling.** Tick rows and press Combine is the primary gesture; dragging one row onto another is a desktop nicety on top of it. Every control keeps the house 44px touch minimum.
   A line's **title** is what the admin picks it by when ticking rows to combine, so at phone widths titles wrap to two lines rather than ellipsising to a fragment that reads identically on two different lines - the owner's mobile note, and the 390px evidence capture is what surfaced it.
   The capture only surfaced it; the checked-in browser suite is what holds it, and it asserts the rendered result rather than the utility class that produces it: at 390px a name too long for one line renders two, with nothing clipped below the clamp or cut off the side of it.
-- **Send is refused until the page it links to exists.** `CLIENT_PAGE_LIVE` is a constant, not an env var, and slice 3 flips it in the same commit that adds `/proposal/[token]`, so the code that claims the page exists ships with the page. Copy link stays available throughout.
+- **Send is refused until the page it links to exists.** `CLIENT_PAGE_LIVE` is a constant, not an env var, and slice 3 flipped it in the same commit that added `/proposal/[token]`, so the code that claims the page exists shipped with the page.
+  The guard itself was kept rather than deleted along with its reason, so a slice that ever takes the page down again gets every refusal back by changing one line.
+  Copy link stays available throughout.
 - **Restore to draft** is the way back from Revoke while re-sending cannot be one, and stays the right door afterwards: a proposal whose lines are wrong is repaired as a draft rather than re-sent to earn the right to fix it.
 - **One door for discarding a preview.** Every path that would destroy composed work asks the same confirm, and Cancel leaves the box and the preview agreeing.
 
@@ -252,7 +254,7 @@ npx playwright test tests/proposal-pod-slice2-browser.spec.ts    # the importer 
 
 ### Out of scope for slice 2
 
-- `/proposal/[token]` itself, its toggles and its running total, and the submit route (WEB-022, WEB-023). Slice 3, which also flips `CLIENT_PAGE_LIVE`.
+- `/proposal/[token]` itself, its toggles and its running total, and the submit route (WEB-022, WEB-023). **Shipped in slice 3**, below, which also flipped `CLIENT_PAGE_LIVE`.
 - Client-facing analytics (WEB-027).
 - Retention of the records this slice creates is disclosed in the privacy policy (v2.7, `src/content/privacy-policy-content.md`), which owns it.
 
@@ -311,6 +313,7 @@ This is the half of the pod a client touches, and it is what makes the admin's S
 - `src/lib/proposals/ownerAlert.ts` - the itemized owner email and the Telegram message.
 - `src/lib/proposals/money.ts` - one formatter, shared by the page, the alert and the tests.
 - `src/lib/privatePages.ts` - the one list of token-reached routes, and the four widgets that now consult it.
+- `src/lib/rateLimit.ts` - `clientIpFromHeaders`, a pure extraction (`getClientIp` delegates to it) so a Server Component holding `headers()` and the route holding a `Request` cannot drift on the trusted-header order.
 - `src/lib/proposals/clientPage.ts` - `CLIENT_PAGE_LIVE` flipped to true, in the same commit as the route.
 - `src/lib/proposals/store.ts` + `src/app/api/admin/proposals/[id]/route.ts` - `touchProposal`, and the send action's link-window refresh in front of the delivery.
 - `src/lib/notify/sendEmail.ts` + `src/app/vaca-mgmt/emails/page.tsx` - one added `EmailCategory`, and the audit filter that a `Record` over the union forces to keep up.
