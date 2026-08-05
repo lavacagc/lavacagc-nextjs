@@ -1,12 +1,14 @@
-# Proposal page pod, slice 1 - acceptance criteria
+# Proposal page pod - acceptance criteria
 
-Slice 1 of the proposal page pod, from section 3 of the website spec (`02-website-nextjs.md` - the owner's spec, held outside this repo, so this file is the tracked record of what WEB-020 and WEB-021 were built to).
-Approved from the plan artifact of 3 Aug 2026, with five owner decisions taken on it before any code was written.
+The proposal page pod, from section 3 of the website spec (`02-website-nextjs.md` - the owner's spec, held outside this repo, so this file is the tracked record of what the pod was built to).
+One section per slice: **slice 1** (WEB-020 and WEB-021, the schema and the import contract) runs to "Out of scope for slice 1", and **slice 2** (the admin import preview, bundles, and delivery) follows it at the foot of the file.
 
-## What ships here, and what deliberately does not
+Slice 1 was approved from the plan artifact of 3 Aug 2026, with five owner decisions taken on it before any code was written.
+
+## Slice 1 - what ships here, and what deliberately does not
 
 Schema, the CSV import contract, and the category registry.
-**No UI and no route.** The client proposal page, the admin import preview and the submit path are later slices.
+**No UI and no route.** The client proposal page, the admin import preview and the submit path are later slices - the import preview has since landed in slice 2, below.
 
 - `supabase/migrations/20260824000000_proposals.sql` - `proposals`, `proposal_lines`, `proposal_submissions`, the shared snapshot domain, and the sum function the submission total is checked against.
 - `src/lib/proposals/csv.ts` - the estimator import contract: `parseProposalCsv`, `parsePriceCents`, and the caps all three layers share.
@@ -17,7 +19,7 @@ Schema, the CSV import contract, and the category registry.
 Nothing in this slice writes any of the three tables.
 That is why so many of the rules below live in the schema rather than in the code that will eventually write it: a rule the first writer has to remember is a rule that fails silently the day somebody forgets.
 
-## Owner decisions on record
+## Owner decisions on record (taken at slice 1, binding on the pod)
 
 - **D1** The AI Estimator (a separate repo) grows a client-safe three-column export - `title,description,price`, with the blended price already applied.
   The website must **never** import the internal cost sheet, whose crew days and day rates are the margin math this pod exists to exclude.
@@ -114,13 +116,14 @@ A residential estimate does not have 500 lines; a file that does is the wrong fi
 
 No em dash appears in the three modules, the migration, or `CLAUDE.md`.
 
-## How the schema is verified
+## How the schema is verified (every slice of this pod)
 
-The gate runs lint and `tsc + next build`, and the ACs above assert over the migration's **text**, so nothing in the pipeline reads the DDL as SQL.
-Every revision of the migration is therefore applied to a throwaway local Postgres and its constraints exercised there before that revision is called finished: the token recipe, the lifecycle pairs, the snapshot shape, the whole-cents and cap rules, the total-is-the-sum check, both `updated_at` triggers, and the delete that must fail while a submission exists.
+The gate runs lint and `tsc + next build`, and the ACs assert over a migration's **text**, so nothing in the pipeline reads the DDL as SQL.
+Every revision of every pod migration is therefore applied to a throwaway local Postgres and its constraints exercised there before that revision is called finished.
+For 20260824000000 that is the token recipe, the lifecycle pairs, the snapshot shape, the whole-cents and cap rules, the total-is-the-sum check, both `updated_at` triggers, and the delete that must fail while a submission exists; slice 2's two migrations are held to the same rule, below.
 The PR's Supabase Preview check then replays every migration on a real database before merge, and production is hand-applied at go-live with `supabase db query --linked`, the path proven for the My Home Systems launch.
 
-## Running the checks
+## Running the slice 1 checks
 
 ```sh
 npx playwright test tests/proposal-pod.spec.ts
@@ -129,12 +132,99 @@ npx playwright test tests/proposal-pod.spec.ts
 The assertions are pure functions and source text, so they need no credentials of their own.
 The shared Playwright config still starts its two servers for the run, so build first, and see [`lead-intake-acceptance-criteria.md`](lead-intake-acceptance-criteria.md) for blanking the credentials that make a full local suite send real mail.
 
-**No browser-level acceptance is claimed for this slice**, because no rendered surface exists in it - the same argument PR #72 made for the `home_records` schema slice.
+**No browser-level acceptance is claimed for slice 1**, because no rendered surface exists in it - the same argument PR #72 made for the `home_records` schema slice.
+Slice 2 is where the browser half of the pod's acceptance begins.
 
-## Out of scope for this slice
+## Out of scope for slice 1
 
-- The client proposal page, its toggles and its running total (WEB-022, WEB-023). Altering a locked line is refused at the API, on top of the snapshot shape defined here.
-- The admin import preview, where a per-line category badge is overridden before a proposal is sent. Every gap the registry leaves is answered there.
-- The submit route, and the owner alert that prints `total_cents`.
-- The booking-link slot (D5).
+- The client proposal page, its toggles and its running total (WEB-022, WEB-023). Altering a locked line is refused at the API, on top of the snapshot shape defined here. Still out of scope after slice 2 - it is slice 3.
+- The admin import preview, where a per-line category badge is overridden before a proposal is sent. Every gap the registry leaves is answered there. **Shipped in slice 2.**
+- The submit route, and the owner alert that prints `total_cents`. Slice 3, with the page that submits.
+- The booking-link slot (D5). Slice 2 renders it in the delivery email when `NEXT_PUBLIC_BOOKING_URL` is set.
 - Client-facing analytics (WEB-027). `touched_lines` is the free early telemetry the schema reserves for it.
+
+---
+
+## Slice 2 - the admin import preview, bundles, and delivery
+
+Approved from the plan artifact of 4 Aug 2026, carrying the owner's mid-review bundle request and the mobile-first note, with the in-design decisions delegated.
+This is the admin half of the pod: the estimator's CSV becomes a reviewed, priced proposal with a private link, and the lifecycle that link has.
+The client-facing page it links to is **slice 3** and does not exist yet, which is why Send is refused rather than offered.
+
+### Slice 2 - what ships here
+
+- `src/app/vaca-mgmt/proposals/page.tsx` - Customers -> Proposals: the roster, and the importer whose preview runs entirely in the admin's browser (`parseProposalCsv` and the registry are pure, so nothing exists server-side until Create).
+- `src/app/api/admin/proposals/route.ts` - the roster read and the create write.
+- `src/app/api/admin/proposals/[id]/route.ts` - the lifecycle: `send`, `revoke`, `restore`, `reimport`.
+- `src/lib/proposals/store.ts` - every server-side write, with the money and size rules re-checked above the schema so an admin gets a sentence rather than a constraint name.
+- `src/lib/proposals/bundles.ts` - bundle composition, pure, shared by the preview and the tests.
+- `src/lib/proposals/clientPage.ts` - `CLIENT_PAGE_LIVE`, the send guard.
+- `src/lib/proposals/deliveryEmail.ts` - the delivery email.
+- `src/lib/notify/supabase-rest.ts` - `supabaseRestCounted`, the counted GET the roster's truncation notice is built on.
+- `supabase/migrations/20260825000000_proposal_bundles.sql` and `20260826000000_proposal_roster_counts.sql`.
+- `src/components/admin/AdminSidebar.tsx` + `src/components/AdminContent.tsx` - the Customers -> Proposals entry and its tab. The **Crew** tab is fixed in passing: it had a sidebar entry with no content mounted behind it, so it rendered blank.
+- `tests/proposal-pod-slice2.spec.ts`, `tests/proposal-pod-slice2-browser.spec.ts`, `tests/proposal-pod-slice2-evidence.spec.ts`.
+
+### Decisions taken on the slice 2 plan
+
+- **A bundle is one client-facing line**: the admin's name, ONE price (the members' sum), and the member titles as the "includes" list. Member **prices are admin-side only**, which is the feature's whole point, and the client render contract is pinned by AC9.
+- **All or nothing inside a package.** A bundle carries one badge; there is no cherry-picking among its members.
+- **Mobile-first bundling.** Tick rows and press Combine is the primary gesture; dragging one row onto another is a desktop nicety on top of it. Every control keeps the house 44px touch minimum.
+- **Send is refused until the page it links to exists.** `CLIENT_PAGE_LIVE` is a constant, not an env var, and slice 3 flips it in the same commit that adds `/proposal/[token]`, so the code that claims the page exists ships with the page. Copy link stays available throughout.
+- **Restore to draft** is the way back from Revoke while re-sending cannot be one, and stays the right door afterwards: a proposal whose lines are wrong is repaired as a draft rather than re-sent to earn the right to fix it.
+- **One door for discarding a preview.** Every path that would destroy composed work asks the same confirm, and Cancel leaves the box and the preview agreeing.
+
+### The two facts a bundle keeps apart
+
+- **Intrinsic** is a member's own locked/optional verdict, fixed when it was bundled: the registry's, as overridden per line by the admin beforehand. Nothing done to a bundle ever writes it.
+- **Presentation** is the bundle row's own flag, initialized from the intrinsic facts (locked when any member is locked, the same fail-safe direction as the registry) and flippable afterwards, behind a confirm that **names the structural members** it would put behind a client toggle.
+- Unbundling gives every member back its intrinsic verdict, so it can neither free structural work nor take away a selection the estimator marked optional. A member read back from storage has no intrinsic flag, and the registry re-badges it on the same fail-safe: unknown restores locked.
+- Nesting flattens. Bundling a bundle re-uses its members, so members are always original CSV lines and a sum can never double-count.
+
+### The lifecycle, and what it refuses
+
+- A refused transition is a typed `ProposalConflictError` mapped to **409**, never a matched substring; anything else is a logged, generic 500, and a 404 means only "no such row" rather than an outage.
+- **Re-import is refused on a revoked proposal**: restore it to draft first, so a dead link cannot be quietly repointed at new content. That guard is a read-then-write, so a revoke landing between the read and the swap still commits the re-import. The residual is **documented and accepted**: both actors are the same single-operator surface, a revoked link does not serve at all whatever its lines say, and the way back is a restore that puts the proposal in front of the admin as a draft. Closing it properly would mean a `SECURITY DEFINER` function this pod does not need. `store.ts` carries the same argument at the code.
+- **Line replacement is compensated.** PostgREST gives no transaction across the DELETE and the INSERT, so the old rows are snapshotted and put back if the insert throws. When the restore fails too, the line count is read back and the log states what the proposal **actually** holds, because a failed restore does not prove it is empty.
+- **Delivery comes before the status write**, so a failed send can never leave a proposal reading sent. The write is retried once, and a delivery whose status write still fails is reported as **delivered** with the repair named, rather than as an ordinary failure the admin would retry believing nothing went out.
+- `updated_at` is never hand-maintained here. The triggers from 20260824000000 own it.
+
+### The roster
+
+- Counts come from `proposal_roster_counts` in Postgres, one row per proposal asked for, instead of fetching every line and submission and counting them in JS past PostgREST's max-rows cap.
+- **Null is "not known right now", never zero.** A counts outage costs the roster its numbers and never its lifecycle controls, and the page says the counts are unavailable rather than printing zeros it cannot stand behind.
+- The page is capped at `ROSTER_LIMIT` (200) and says when it stopped at the cap rather than at the estate, in **both** cases: with the exact total when `Content-Range` answers, and with the notice alone when it does not. Copy link, Re-import and Revoke are per row, so a proposal that silently fell off the page would be one whose live link could no longer be killed.
+- Search is server-side over client name, email and title, so reachability does not depend on where a proposal sits in the order. Every filter-grammar and wildcard character is neutralized to a single `_`, a term of nothing but those matches nothing rather than everything, and a slow response that lands last never overwrites the search that replaced it.
+
+### The delivery email
+
+Warm sender, one job: put the client's private link in their hands, with the D5 booking line only when `NEXT_PUBLIC_BOOKING_URL` is set.
+Every interpolated value, `href`s included, is escaped through the shared email shell.
+It is a new `EmailCategory` (`proposal_delivery`), transactional, attributed to the admin who pressed Send.
+The email plumbing itself - category, sender, preference posture, audit row - is recorded in [`../EMAIL_TRACKING_AND_PREFERENCES.md`](../EMAIL_TRACKING_AND_PREFERENCES.md), which owns it.
+
+### The migrations
+
+- `20260825000000_proposal_bundles.sql` - `proposal_lines.bundle_members` (an array of `{title, price_cents}`), its shape CHECK, and the arithmetic tie that a bundle's price **is** its members' sum. `proposal_bundle_total` is revoked from `PUBLIC`, `anon` and `authenticated` for the same reason `proposal_snapshot_total` is.
+- `20260826000000_proposal_roster_counts.sql` - the roster aggregate, the upper bound the bundle shape CHECK was missing (200 members, the parser's `MAX_LINES`), and the two privilege repairs 20260825000000 cannot make itself now that it is frozen: an explicit `service_role` grant on `proposal_bundle_total` (Postgres checks EXECUTE at INSERT time for a function a CHECK calls, so without it a bundled line cannot be written at all) and its pinned empty `search_path`.
+- Both follow the pod's standing rule: applied to a throwaway local Postgres and their constraints exercised there before the revision was called finished, because the ACs can only assert over their **text**. Production is hand-applied at go-live, per "How the schema is verified" above.
+
+### Where the slice 2 ACs live, and how to run them
+
+The AC ids are carried by the test titles rather than restated here, so the contract stays traceable to what actually runs.
+
+```sh
+npx playwright test tests/proposal-pod-slice2.spec.ts            # pure modules, store, both routes
+npx playwright test tests/proposal-pod-slice2-browser.spec.ts    # the importer and roster in a real browser
+```
+
+- `tests/proposal-pod-slice2.spec.ts` drives the pure modules, the store and both routes against a stubbed PostgREST, and holds the regression half of the owner's AC contract: `AC-R1` pins the full pre-slice sidebar inventory (adding Proposals removes nothing), `AC-R2` the untouched admin gate.
+- `tests/proposal-pod-slice2-browser.spec.ts` owns every AC that only exists once React is mounted, and runs against a build; see [`lead-intake-acceptance-criteria.md`](lead-intake-acceptance-criteria.md) for blanking the credentials that make a full local suite send real mail.
+- `tests/proposal-pod-slice2-evidence.spec.ts` is **capture only** and skipped unless `PROPOSAL_EVIDENCE=1` is set; its run recipe is in the file header.
+- Driving the admin surfaces interactively against a local Supabase stack needs the **development-only** `connect-src` exception in `next.config.ts`, whose comment states its exact scope. The checked-in suite never needs it: Next resolves those headers at build time and Playwright serves a production build.
+
+### Out of scope for slice 2
+
+- `/proposal/[token]` itself, its toggles and its running total, and the submit route (WEB-022, WEB-023). Slice 3, which also flips `CLIENT_PAGE_LIVE`.
+- Client-facing analytics (WEB-027).
+- Retention of the records this slice creates is disclosed in the privacy policy (v2.7, `src/content/privacy-policy-content.md`), which owns it.
