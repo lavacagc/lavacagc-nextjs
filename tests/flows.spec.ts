@@ -21,21 +21,35 @@ test.describe('User Flow Tests', () => {
       await expect(kitchenMenuItem).toBeVisible();
 
       if (SKIP_WITHOUT_LIVE_BACKEND) {
-        // /services/* pages are DB-driven, so without a live backend this
-        // destination 404s - and the App Router only SOMETIMES answers a 404 by
-        // falling back to a hard navigation, which is what commits the URL. When
-        // it does not, the address bar never leaves the homepage and the wait
-        // below times out. Measured at 27 failures in 240 runs at 6-way
-        // concurrency, every one of them stuck here; 0 in 240 with this branch.
+        // /services/* pages are DB-driven, so under a stub build this
+        // destination has no row behind it and genuinely does not exist. The
+        // App Router only SOMETIMES answers that 404 by falling back to a full
+        // document navigation, which is what commits the URL; when it does not,
+        // the address bar never leaves the homepage and a wait on it times out.
+        // Asserting a URL change against a destination that is not there is
+        // testing the wrong thing however often it happens to pass - the same
+        // reasoning the Company dropdown gets below. That is the whole case for
+        // this branch, and it does not rest on a failure rate.
         //
-        // NOT the exit-intent history push, which is a separate bug fixed in
-        // this same change: the /about click-through below, which that push
-        // could eat, committed 240/240 in the same runs.
+        // The rates, as rates, since the next person will otherwise measure a
+        // third figure and wonder: at 6-way concurrency the click-through failed
+        // 27 times in 240 runs on a loaded machine and 2 in 480 on a quiet one,
+        // while this version failed 0 in 480 - including a paired run with both
+        // arms interleaved in one invocation, where neither failed. The rate
+        // tracks machine load, and at the quiet-machine baseline those runs had
+        // no power to separate the arms statistically. Consistent with this
+        // change, then; not proof that it moves them.
         //
-        // So assert the route is exposed instead of clicking through to a page
-        // that does not exist in this environment - the same treatment, for the
-        // same reason, that the Company dropdown gets below. The live-backend
-        // path keeps the full click-through, where the destination is real.
+        // Where the failures land does hold: every one, in both measurements,
+        // was stuck at this step. None at the /about click-through below, which
+        // is the one the exit-intent history push - a separate bug, fixed in
+        // this same change - could eat; that committed in every one of those
+        // runs, and 60/60 more under an instrumented driver recording every
+        // pushState the app makes.
+        //
+        // So assert the route is exposed rather than clicking through to a page
+        // that does not exist in this environment. The live-backend path keeps
+        // the full click-through, where the destination is real.
         await expect(kitchenMenuItem).toHaveAttribute('href', '/services/kitchen-remodeling');
         // Leave the dropdown closed, as navigating away would have.
         await page.keyboard.press('Escape');
