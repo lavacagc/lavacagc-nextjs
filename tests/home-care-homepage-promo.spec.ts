@@ -12,9 +12,18 @@ import { mkdirSync } from 'fs';
  *  B. Home Care band on the homepage, after testimonials: "Not remodeling
  *     yet?" pitch + mini checklist card. Member-aware CTA. No horizontal
  *     overflow on phones.
- *  D. Exit-intent popup now offers the free checklist instead of a second
- *     estimate ask: once per session, dismissible, members never see it,
- *     suppressed on /home-care pages.
+ *  D. Exit-intent popup now offers a one-field monthly-newsletter signup
+ *     instead of a second estimate ask, with the personalized checklist kept as
+ *     a secondary /home-care link: once per session, dismissible, members never
+ *     see it, suppressed on /home-care pages.
+ *
+ * This file owns `ExitIntentPopup`, so it also pins the one contract of that
+ * component that is not about the promo at all: the history entry it adds for
+ * mobile Back detection must carry no URL, because one that does can overwrite
+ * an in-flight navigation and strand the visitor on the page they tried to
+ * leave. The last three tests are that guard - the entry names no URL, and a
+ * navigation still commits at each layout - and their comments carry the
+ * reasoning.
  *
  * hc_known is a readable first-name hint cookie — setting it simulates a
  * returning member (real portal access stays server-enforced).
