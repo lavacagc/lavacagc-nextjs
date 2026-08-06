@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Plus, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy, MapPin, Wrench, Home, ChevronDown, Pencil, Trash2, Undo2 } from 'lucide-react';
 import { hasGuideItem } from '@/lib/homecare/guides';
-import { costLabel, CONSULT_COST } from '@/lib/homecare/cost';
 import { prevSeason, seasonStart, SEASONS, type Season } from '@/lib/homecare/season';
 import { getFactForTask, HOME_FACTS, factValueSummary } from '@/lib/homecare/records';
 import HomeCareRecordCapture, { type RecordValue } from '@/components/homecare/HomeCareRecordCapture';
 import DiyKitShelf from '@/components/homecare/DiyKitShelf';
+import { useToast } from '@/hooks/use-toast';
+import { taskChoice, shelfVisible } from '@/lib/homecare/taskChoice';
 import type { HomeCareProduct } from '@/lib/homecare/products';
 
 const SHARE_URL = 'https://www.lavacagc.com/home-care?utm_source=member_share&utm_medium=portal&utm_campaign=home_care_share';
@@ -19,8 +20,16 @@ export interface ChecklistTask {
   blurb: string;
   diy_or_pro: 'diy' | 'pro' | 'either';
   bookable: boolean;
-  est_cost_low: number | null;
-  est_cost_high: number | null;
+  /**
+   * A `diy` task La Vaca will also do on request. Only meaningful alongside
+   * `diy_or_pro`; see `taskChoice` for the three shapes a card can take.
+   *
+   * No `est_cost_*` here on purpose: the member checklist no longer quotes a
+   * price anywhere (owner decision 2026-08-06). The columns still exist and the
+   * admin quoting tools still read them - this surface stopped being a reader,
+   * so it does not ask for them.
+   */
+  pro_optional?: boolean;
   seasons: string[];
   frequency: string;
   starter: boolean;
@@ -57,16 +66,28 @@ const SEASON_SPOTLIGHTS: Record<string, { eyebrow: string; title: string; body: 
 const id = (key: string, season: string) => `${key}|${season}`;
 
 /**
- * Task blurb clamped to two lines with an ellipsis; when the text actually
- * overflows, the whole blurb becomes a tap target that expands/collapses it.
- * Keeps rows compact, which matters most on mobile.
+ * One line of blurb, with the way to open it INLINE at the end of that line.
+ *
+ * Two things about this are deliberate.
+ *
+ * ONE LINE, not two. The blurb explains why a task matters, which most members
+ * only need once; the title carries the rest. Clamping it is the other half of
+ * how a six-row card became three.
+ *
+ * THE AFFORDANCE IS INLINE, and it is not its own button. A truncated line with
+ * no visible way to open it is not a control, it is a trap - and globals.css
+ * gives every `button` a 44px floor, so a "more" button of its own would cost
+ * more height than the clamp saves. Instead the whole line is one block button
+ * with `min-h-0` overriding that floor and `py-1` keeping the tap target above
+ * the 24px WCAG AA minimum, with "more" as a plain span riding at the end of
+ * the text.
  */
 function ClampedBlurb({ text, expanded, onToggle }: { text: string; expanded: boolean; onToggle: () => void }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [overflows, setOverflows] = useState(false);
 
   useEffect(() => {
-    // Measure only while clamped — an expanded blurb never reports overflow.
+    // Measure only while clamped - an expanded blurb never reports overflow.
     if (expanded) return;
     const el = ref.current;
     if (!el) return;
@@ -77,22 +98,24 @@ function ClampedBlurb({ text, expanded, onToggle }: { text: string; expanded: bo
   }, [text, expanded]);
 
   const body = (
-    // line-clamp needs its own -webkit-box display, so only use block when expanded
-    <span ref={ref} className={`text-sm text-text-secondary leading-relaxed ${expanded ? 'block' : 'line-clamp-2'}`}>
+    // line-clamp needs its own -webkit-box display, so only use block when expanded.
+    <span ref={ref} className={`text-[13px] leading-snug text-text-secondary ${expanded ? 'block' : 'line-clamp-1'}`}>
       {text}
     </span>
   );
 
+  // Nothing to open: no control, and no phantom "more" on a blurb that fits.
   if (!overflows && !expanded) return <span className="mt-0.5 block">{body}</span>;
   return (
     <button
       type="button"
       onClick={onToggle}
       aria-expanded={expanded}
-      className="mt-0.5 block w-full cursor-pointer text-left"
+      data-testid="blurb-toggle"
+      className="mt-0.5 flex w-full min-h-0 cursor-pointer items-baseline gap-1.5 py-1 text-left"
     >
-      {body}
-      <span className="mt-0.5 inline-block text-xs font-semibold text-primary">{expanded ? 'Show less' : 'Read more'}</span>
+      <span className="min-w-0 flex-1">{body}</span>
+      <span className="shrink-0 text-[11px] font-extrabold text-primary">{expanded ? 'less' : 'more'}</span>
     </button>
   );
 }
@@ -108,6 +131,7 @@ export default function HomeCareChecklistClient({
   showCatchUp = false,
   autoAddKey,
   lavacaCompleted: lavacaCompletedFromServer,
+  modes: modesFromServer = {},
   homeRecordPrefill = {},
   homeDetailsConsentGiven = false,
   productShelves = {},
@@ -127,6 +151,13 @@ export default function HomeCareChecklistClient({
    * label - that distinction is the whole point of completed_by.
    */
   lavacaCompleted?: Record<string, string>;
+  /**
+   * `task_key|season` -> who the member said is doing it. Keyed per season like
+   * `done`, and absent for every task they have not decided about - which is
+   * the state a card opens in, and the reason the gear shelf is not on screen
+   * before anyone has said they are doing the work themselves.
+   */
+  modes?: Record<string, 'diy' | 'pro'>;
   /** Saved home facts keyed by canonical fact_key, for prefilling capture panels. */
   homeRecordPrefill?: Record<string, RecordValue>;
   /** Whether the homeowner has already consented to saving home details (skip the checkbox). */
@@ -145,6 +176,7 @@ export default function HomeCareChecklistClient({
   // completed_by='homeowner'. Left as a plain prop, the open tab would keep
   // reading "Completed by La Vaca" over work the member just did themselves -
   // which is the exact case the attribution exists to distinguish.
+  const { toast } = useToast();
   const [lavacaCompleted, setLavacaCompleted] = useState<Record<string, string>>(lavacaCompletedFromServer ?? {});
   const [done, setDone] = useState<Set<string>>(new Set(doneItems.map((d) => id(d.task_key, d.season))));
   const [dismissed, setDismissed] = useState<Set<string>>(new Set(dismissedKeys));
@@ -157,6 +189,8 @@ export default function HomeCareChecklistClient({
   const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
   const [stickyTop, setStickyTop] = useState(0);
   const [expandedBlurbs, setExpandedBlurbs] = useState<Set<string>>(new Set());
+  /** `task_key|season` -> 'diy' | 'pro'. Absent means undecided. */
+  const [modes, setModes] = useState<Record<string, 'diy' | 'pro'>>(modesFromServer);
 
   const toggleBlurb = (k: string) => {
     setExpandedBlurbs((prev) => {
@@ -457,6 +491,74 @@ export default function HomeCareChecklistClient({
     setSelected(next);
   };
 
+  /**
+   * Record who is doing a task, and put it on (or take it off) the request.
+   *
+   * Picking "La Vaca does it" IS adding it to the request - one tap, not two
+   * (owner decision 2026-08-06). That is also what let the card lose a row:
+   * the choice control and the old "Add to request" button were the same
+   * action, so only one of them survives. Nothing is sent to anyone until the
+   * member checks the request out, so this stays fully reversible.
+   *
+   * Tapping the current choice again clears it, which is the only way back to
+   * undecided - and it takes the task off the request if it was on it, because
+   * "I have not decided" cannot mean "please come and do it".
+   *
+   * Optimistic, with a revert: the member's tap must feel instant, and a failed
+   * write that silently kept the new state would tell them we are coming when
+   * nobody knows we are.
+   */
+  const setMode = async (key: string, season: string, next: 'diy' | 'pro') => {
+    const k = id(key, season);
+    const previous = modes[k];
+    const value = previous === next ? undefined : next;
+
+    setModes((prev) => {
+      const copy = { ...prev };
+      if (value) copy[k] = value;
+      else delete copy[k];
+      return copy;
+    });
+    const wasSelected = selected.has(key);
+    setSelected((prev) => {
+      const copy = new Set(prev);
+      if (value === 'pro') copy.add(key);
+      else copy.delete(key);
+      return copy;
+    });
+
+    setBusy(`mode|${k}`);
+    try {
+      const res = await fetch('/api/home-care/task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ task_key: key, season, mode: value ?? null }),
+      });
+      if (!res.ok) throw new Error(`mode update failed: ${res.status}`);
+    } catch {
+      setModes((prev) => {
+        const copy = { ...prev };
+        if (previous) copy[k] = previous;
+        else delete copy[k];
+        return copy;
+      });
+      setSelected((prev) => {
+        const copy = new Set(prev);
+        if (wasSelected) copy.add(key);
+        else copy.delete(key);
+        return copy;
+      });
+      toast({
+        title: 'Could not save that',
+        description: 'We could not record who is doing this task. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const requestUrl = `/home-care/book?tasks=${[...selected].map(encodeURIComponent).join(',')}`;
 
   // Finished tasks sink to the bottom of their group (stable within each half,
@@ -474,23 +576,20 @@ export default function HomeCareChecklistClient({
   const listMinimized = planComplete && !showCompleted;
 
   const Row = (t: ChecklistTask, season: string) => {
-    const isDone = done.has(id(t.key, season));
+    const panelKey = id(t.key, season);
+    const isDone = done.has(panelKey);
     const isSel = selected.has(t.key);
-    const cost = costLabel(t.est_cost_low, t.est_cost_high);
     const freq = FREQ_LABEL[t.frequency];
+    // Which of the three card shapes this task takes, and what the member has
+    // said about it. Both drive the row-3 control and whether the gear shows.
+    const choice = taskChoice(t);
+    const mode = modes[panelKey];
     // My Home Systems: the canonical fact this task can capture (if any), whether
     // it's already saved, and whether its inline panel is open.
     const fact = getFactForTask(t.key);
     // The DIY Kit shelf, if the owner has stocked this task. Empty for every
     // task they have not, which is most of them and the point.
     const shelf = productShelves[t.key] ?? [];
-    // Does the action row have anything in it besides the hide icon? On a task
-    // that is neither bookable nor tied to a home fact it does not, and an
-    // icon-only row reads as a stray control floating under the blurb - so on
-    // those cards the icon moves up to the title row, where the + circle sits
-    // on bookable ones and the space is otherwise empty.
-    const hasRowActions = t.bookable || !!fact;
-    const panelKey = id(t.key, season);
     // Icon-only (owner, 5 Aug 2026). The accessible name carries the meaning a
     // phone cannot hover to read, `title` gives the pointer tooltip, and the
     // undo bar in the sticky header pays for the lost label: an icon a member
@@ -504,7 +603,7 @@ export default function HomeCareChecklistClient({
         aria-label={`Not relevant - hide ${t.title}`}
         title="Not relevant - hide for me"
         data-testid={`hide-task-${t.key}`}
-        className="group -my-2 ml-auto flex shrink-0 items-center justify-center"
+        className="group -mx-2 -my-2 flex shrink-0 items-center justify-center"
       >
         <span className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors group-hover:bg-muted group-hover:text-slate-600">
           <EyeOff className="h-4 w-4" />
@@ -514,12 +613,19 @@ export default function HomeCareChecklistClient({
     const captureOpen = capturePanelOpen.has(panelKey);
     const saved = fact ? records.has(fact.key) : false;
     return (
-      <div key={`${t.key}-${season}`} className={`rounded-xl border bg-card p-4 shadow-card transition-colors ${isSel ? 'border-primary bg-primary/5' : 'border-border'} ${isDone ? 'opacity-70' : ''}`}>
-        {/* Title line: checkbox + title + badges (+ estimate toggle). The
-            checkbox keeps a tall tap target but negative margins shrink its
-            layout footprint so the title hugs the left edge — and the blurb
-            below runs the full card width instead of indenting under it. */}
-        <div className="flex items-center gap-2">
+      <div key={`${t.key}-${season}`} className={`rounded-xl border bg-card p-3.5 shadow-card transition-colors ${isSel ? 'border-primary bg-primary/5' : 'border-border'} ${isDone ? 'opacity-70' : ''}`}>
+        {/* ROW 1 - checkbox, title, and the two icon affordances.
+            Three rows, not six (owner, 6 Aug 2026): a member needs to know what
+            the task is, say who is doing it, and tick it off. Everything else
+            that used to have a row of its own is either an icon up here or one
+            tap inside the blurb. */}
+        {/* `gap-3`, with every icon button carrying `-mx-2`. globals.css gives
+            each of them a 44px MINIMUM WIDTH as well as height, so left alone
+            two icons plus the checkbox took ~100px out of a 328px card and the
+            title wrapped where it had no need to. The negative margins let the
+            tap targets overlap the gaps and the card padding instead of pushing
+            the text column - the same trick the checkbox already used. */}
+        <div className="flex items-start gap-3">
           <button
             type="button"
             onClick={() => toggleDone(t.key, season)}
@@ -527,65 +633,55 @@ export default function HomeCareChecklistClient({
             aria-label={isDone ? 'Mark not done' : 'Mark done'}
             className="group -my-2.5 -ml-3 -mr-1 flex shrink-0 items-center justify-center"
           >
-            {/* 20px visible box inside a 44px-tall button; the full-width blurb
-                below overlaps the bottom ~10px, so the effective tap target is
-                ~34px — still above the WCAG AA minimum of 24px */}
-            <span className={`flex h-5 w-5 items-center justify-center rounded-md border-2 transition-colors ${isDone ? 'border-secondary bg-secondary text-white' : 'border-slate-300 group-hover:border-primary'}`}>
+            {/* 20px visible box inside a 44px-tall button. Muted, and not a
+                statement about completion, once the member has handed the job
+                to us: the crew flow is what stamps that row, and inviting a
+                tick that means nothing is how "Completed by La Vaca" ends up
+                contradicting itself. */}
+            <span className={`flex h-5 w-5 items-center justify-center rounded-md border-2 transition-colors ${isDone ? 'border-secondary bg-secondary text-white' : mode === 'pro' ? 'border-slate-200' : 'border-slate-300 group-hover:border-primary'}`}>
               {isDone && <Check className="h-3.5 w-3.5" />}
             </span>
           </button>
-          {/* Title on its own line, the badge row under it. They used to share
-              one wrapping flex, which put whichever badge did not fit at the
-              start of the next line - and every badge but the first carries a
-              leading "·", so a wrapped frequency read as an orphaned bullet.
-              Splitting them also matches the approved mockup. */}
+
           <div className="min-w-0 flex-1">
-            <h3 className={`text-base font-bold text-text-primary ${isDone ? 'line-through' : ''}`}>{t.title}</h3>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-              <span className={`text-[11px] font-extrabold ${t.diy_or_pro === 'pro' ? 'text-amber-700' : t.diy_or_pro === 'diy' ? 'text-emerald-700' : 'text-slate-500'}`}>
-                {t.diy_or_pro === 'pro' ? 'PRO' : t.diy_or_pro === 'diy' ? 'DIY' : 'DIY / PRO'}
-              </span>
-              {/* "Learn more" belongs beside the badge, not down in the action
-                  row (owner, 5 Aug 2026): it describes the task rather than
-                  doing anything to it, and the action row is then exactly the
-                  two things you can DO about this task, plus hide. */}
-              {hasGuideItem(season, t.key) && (
-                <a href={`/home-care/guides/${season}#${t.key}`} className="text-[11px] font-bold text-primary hover:underline">
-                  Learn more
-                </a>
-              )}
-              {/* Separated by space rather than by a leading "·": the row wraps
-                  on a narrow phone, and a dot that begins a line reads as a
-                  stray bullet. The gap does the same work and cannot orphan. */}
-              {freq && <span className="whitespace-nowrap text-[11px] text-slate-400">{freq}</span>}
-              {/* "Pro est." prefixes a figure, not the consult copy - "Pro est.
-                  Consult with our team" reads as a stray word. */}
-              {cost && <span className="whitespace-nowrap text-[11px] text-slate-400">{cost === CONSULT_COST ? cost : `Pro est. ${cost}`}</span>}
-            </div>
+            <h3 className={`text-[15px] font-bold leading-snug text-text-primary ${isDone ? 'line-through' : ''}`}>{t.title}</h3>
+            {/* ROW 2 - one line of blurb with the affordance INLINE.
+                `min-h-0` is deliberate and load-bearing: globals.css gives every
+                button a 44px floor, which on a one-line blurb would cost more
+                height than clamping it saves. `py-1` keeps the tap target above
+                the 24px WCAG AA minimum without paying the full 44. */}
+            <ClampedBlurb
+              text={t.blurb}
+              expanded={expandedBlurbs.has(panelKey)}
+              onToggle={() => toggleBlurb(panelKey)}
+            />
           </div>
-          {/* On a card with no action row, the hide icon lives up here instead
-              of alone under the blurb. */}
-          {!isDone && !hasRowActions && hideButton}
-          {t.bookable && (
+
+          {/* My Home Systems, promoted from its own row to an icon that costs no
+              height (owner decision 2026-08-06). Teal once something is saved,
+              so the card still says at a glance that we know this house. */}
+          {fact && (
             <button
               type="button"
-              onClick={() => toggleSelect(t.key)}
-              aria-pressed={isSel}
-              aria-label={isSel ? `Remove ${t.title} from request` : `Add ${t.title} to request`}
-              className="group -my-2.5 -mr-2 flex shrink-0 items-center justify-center"
+              onClick={() => toggleCapture(panelKey)}
+              aria-expanded={captureOpen}
+              aria-label={saved ? `Edit saved home detail for ${t.title}` : fact.kind === 'location' ? `Add where this is for ${t.title}` : `Add details for ${t.title}`}
+              title={saved ? 'Saved home detail - edit' : fact.kind === 'location' ? 'Add where this is' : 'Add details'}
+              data-testid={`home-detail-${t.key}`}
+              className="group -mx-2 -my-2 flex shrink-0 items-center justify-center"
             >
-              {/* 36px visible circle inside the 44px tap target */}
-              <span className={`flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all ${isSel ? 'border-primary bg-primary text-white shadow-button' : 'border-slate-300 text-slate-400 group-hover:border-primary group-hover:text-primary'}`}>
-                {isSel ? <Check className="h-4 w-4" /> : <Plus className="h-5 w-5" />}
+              <span className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${saved ? 'bg-accent-teal/10 text-accent-teal' : 'text-slate-400 group-hover:bg-muted group-hover:text-accent-teal'}`}>
+                {fact.kind === 'location' ? <MapPin className="h-4 w-4" /> : <Wrench className="h-4 w-4" />}
               </span>
             </button>
           )}
+          {!isDone && hideButton}
         </div>
-        {/* Attribution sits on its own line under the title, not wedged into
-            the badge row between the title and PRO/DIY. The timezone is pinned
-            because this component is server-rendered too: without it the server
-            formats in UTC and the browser in the member's zone, so a late-evening
-            completion renders a different day on each and hydration mismatches. */}
+
+        {/* Attribution. The timezone is pinned because this component is
+            server-rendered too: without it the server formats in UTC and the
+            browser in the member's zone, so a late-evening completion renders a
+            different day on each and hydration mismatches. */}
         {isDone && lavacaCompleted?.[id(t.key, season)] && (
           <div className="mt-1 text-xs font-bold text-primary" data-testid="completed-by-lavaca">
             Completed by La Vaca &middot;{' '}
@@ -594,50 +690,88 @@ export default function HomeCareChecklistClient({
             })}
           </div>
         )}
-        {/* Description + actions run the full card width below the title line */}
-        <ClampedBlurb text={t.blurb} expanded={expandedBlurbs.has(id(t.key, season))} onToggle={() => toggleBlurb(id(t.key, season))} />
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-          {t.bookable && (
-            // Add-to-request toggle (the labelled sibling of the ＋ circle).
-            // There is no per-row "book now" anymore: every service goes into
-            // one request and checks out together, so the owner gets a single
-            // consolidated message instead of one alert per task.
+
+        {/* ROW 3 - who is doing it, and the frequency.
+            On a `choose` task this control replaces BOTH the old DIY/PRO badge
+            and the add-to-request pair, because picking "La Vaca does it" is
+            adding it to the request. That is where most of the height went. */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {choice === 'choose' ? (
+            mode ? (
+              // Decided: the toggle folds into a chip so a returning member's
+              // list is two rows per task, not three. Tap it to reopen.
+              <button
+                type="button"
+                onClick={() => setModes((prev) => { const c = { ...prev }; delete c[panelKey]; return c; })}
+                data-testid={`choice-chip-${t.key}`}
+                className="group -my-1 inline-flex items-center justify-start"
+              >
+                <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-extrabold ${mode === 'pro' ? 'bg-primary/10 text-primary' : 'bg-emerald-50 text-emerald-700'}`}>
+                  <Check className="h-3 w-3" />
+                  {mode === 'pro' ? 'On your request' : "You've got this"}
+                </span>
+              </button>
+            ) : (
+              <span className="inline-flex rounded-[10px] bg-muted p-0.5" role="group" aria-label={`Who is doing ${t.title}`}>
+                <button
+                  type="button"
+                  onClick={() => setMode(t.key, season, 'diy')}
+                  aria-pressed={false}
+                  disabled={busy === `mode|${panelKey}`}
+                  data-testid={`choose-diy-${t.key}`}
+                  className="-my-1.5 rounded-lg px-3 text-[12px] font-extrabold text-text-secondary transition-colors hover:text-emerald-700"
+                >
+                  I&apos;ll do it
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode(t.key, season, 'pro')}
+                  aria-pressed={false}
+                  disabled={busy === `mode|${panelKey}`}
+                  data-testid={`choose-pro-${t.key}`}
+                  className="-my-1.5 rounded-lg px-3 text-[12px] font-extrabold text-text-secondary transition-colors hover:text-primary"
+                >
+                  La Vaca does it
+                </button>
+              </span>
+            )
+          ) : (
+            // No choice to make, so the catalog's own verdict stays a label.
+            <span className={`text-[11px] font-extrabold ${choice === 'pro_only' ? 'text-amber-700' : 'text-emerald-700'}`}>
+              {choice === 'pro_only' ? 'PRO' : 'DIY'}
+            </span>
+          )}
+
+          {/* A pro-only task keeps the ＋ circle: it is bookable, and with no
+              toggle on the card this is the only way onto the request. */}
+          {choice === 'pro_only' && t.bookable && (
             <button
               type="button"
               onClick={() => toggleSelect(t.key)}
               aria-pressed={isSel}
-              className="group inline-flex items-center justify-start"
+              className="group -my-1 inline-flex items-center justify-start"
             >
               <span className="inline-flex items-center gap-1 text-xs font-bold text-primary group-hover:underline">
                 {isSel ? <><Check className="h-3.5 w-3.5" /> Added to request</> : <><Plus className="h-3.5 w-3.5" /> Add to request</>}
               </span>
             </button>
           )}
-          {fact && (
-            // My Home Systems: save where a system is (or its make/model) so La
-            // Vaca can help faster next time. Teal to read as "your home", not a
-            // booking action. The button keeps a full 44px tap target; the small
-            // visual lives in the nested span.
-            <button
-              type="button"
-              onClick={() => toggleCapture(panelKey)}
-              aria-expanded={captureOpen}
-              className="group inline-flex items-center justify-start"
-            >
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-accent-teal group-hover:underline">
-                {saved ? (
-                  <><Check className="h-3.5 w-3.5" /> Saved home detail · edit</>
-                ) : fact.kind === 'location' ? (
-                  <><MapPin className="h-3.5 w-3.5" /> Add where this is</>
-                ) : (
-                  <><Wrench className="h-3.5 w-3.5" /> Add details</>
-                )}
-              </span>
-            </button>
+
+          {freq && <span className="whitespace-nowrap text-[11px] text-slate-400">{freq}</span>}
+          {hasGuideItem(season, t.key) && (
+            <a href={`/home-care/guides/${season}#${t.key}`} className="text-[11px] font-bold text-primary hover:underline">
+              Learn more
+            </a>
           )}
-          {!isDone && hasRowActions && hideButton}
         </div>
-        {shelf.length > 0 && <DiyKitShelf taskKey={t.key} products={shelf} affiliateTag={affiliateTag} />}
+
+        {/* The gear shelf is the reward for saying you are doing it yourself.
+            Before that it is not on screen at all, which is both the biggest
+            height saving here and the honest thing to show someone who has just
+            asked us to do the job. */}
+        {shelf.length > 0 && shelfVisible(choice, mode) && (
+          <DiyKitShelf taskKey={t.key} products={shelf} affiliateTag={affiliateTag} />
+        )}
         {fact && captureOpen && (
           <div className="mt-3">
             <HomeCareRecordCapture

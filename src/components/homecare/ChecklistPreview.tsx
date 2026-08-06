@@ -13,16 +13,17 @@ import { Check, Wrench, PartyPopper } from 'lucide-react';
  *
  * This sample is intentionally a fixed summer illustration (not the live
  * season), so the labeled season always matches the hardcoded summer tasks
- * below. Task titles come from the production maintenance catalog, and the
- * cost ranges reflect the current production values after the catalog v2
- * update (e.g. A/C $100-375, deck $400-1,800, driveway $300-1,200).
+ * below. Task titles come from the production maintenance catalog.
+ *
+ * No prices, deliberately. This previews the real checklist, and that stopped
+ * quoting them (owner decision 2026-08-06) - a preview showing a price band the
+ * page behind it does not is a promise the product no longer makes.
  */
 
 interface PreviewTask {
   title: string;
   blurb: string;
   kind: 'diy' | 'pro';
-  cost?: string;
 }
 
 // A representative summer plan: real catalog titles/blurbs, DIY/PRO mix.
@@ -31,19 +32,16 @@ const PREVIEW_TASKS: PreviewTask[] = [
     title: 'Service the A/C before the heat wave',
     blurb: 'A tune-up keeps cooling efficient and catches problems before the first hot stretch.',
     kind: 'pro',
-    cost: '$100–375',
   },
   {
     title: 'Clean & seal the deck',
     blurb: 'Wash and reseal to protect the wood through another season of weather.',
     kind: 'pro',
-    cost: '$400–1,800',
   },
   {
     title: 'Power-wash siding & walkways',
     blurb: "Knock off a winter's grime and spot any siding that needs attention.",
     kind: 'pro',
-    cost: '$250–900',
   },
   {
     title: 'Replace the HVAC filter',
@@ -54,7 +52,6 @@ const PREVIEW_TASKS: PreviewTask[] = [
     title: 'Seal-coat the driveway',
     blurb: 'A fresh seal-coat protects asphalt from cracks and water in the off-season.',
     kind: 'pro',
-    cost: '$300–1,200',
   },
   {
     title: 'Test GFCI outlets',
@@ -196,9 +193,6 @@ export default function ChecklistPreview({ seasonLabel = 'Summer' }: { seasonLab
                   >
                     {task.kind === 'pro' ? 'PRO' : 'DIY'}
                   </span>
-                  {task.cost && (
-                    <span className="text-[10.5px] text-slate-400">· est. {task.cost}</span>
-                  )}
                 </div>
                 <p
                   className={`mt-0.5 text-[12.5px] leading-relaxed transition-opacity duration-300 ${

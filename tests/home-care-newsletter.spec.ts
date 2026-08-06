@@ -81,84 +81,64 @@ test('design: license bar, season pill, numbered rows, call block, postal addres
   expect(n.html).toContain('mso-line-height-rule:exactly');
 });
 
-test('cost ranges render only when the catalog actually has them', () => {
-  const n = buildNewsletter({
-    firstName: 'Alex', season: 'fall', tasks: TASKS, isSeasonal: true,
-    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
-  });
-  // clean_gutters has 150/250 -> shows a range next to its "Pro job" badge.
-  expect(n.html).toContain('$150&ndash;$250');
-  expect(n.text).toContain('$150-$250');
-  // Exactly one task has costs, so exactly one range appears - no invented prices.
-  expect((n.html.match(/\$\d+/g) || []).length).toBe(2); // low + high of the one range
-  expect(n.html).toContain('Pro job');
-  expect(n.html).toContain('DIY');
-});
-
-test('cost segment: real range, zero floor, and no data each render differently', () => {
-  // Four active catalog tasks carry est_cost_low = 0 (roof_inspect, attic_check,
-  // winterize_faucets, test_sump_pump). "Inspect the roof · Pro job · $0-$375"
-  // reads as a data error, so a zero floor quotes no figure at all.
-  const tasks: NewsletterTask[] = [
-    { key: 'clean_gutters', title: 'Clean gutters', blurb: 'Clear them out.', bookable: true, diy_or_pro: 'pro', priority: 10, applies_to: ['all'], est_cost_low: 150, est_cost_high: 250 },
-    { key: 'roof_inspect', title: 'Inspect the roof', blurb: 'Look for lifted shingles.', bookable: true, diy_or_pro: 'pro', priority: 9, applies_to: ['all'], est_cost_low: 0, est_cost_high: 375 },
-    { key: 'test_smoke_co', title: 'Test detectors', blurb: 'Press test.', bookable: false, diy_or_pro: 'diy', priority: 8, applies_to: ['all'] },
-  ];
-  const n = buildNewsletter({
-    firstName: 'Alex', season: 'fall', tasks, isSeasonal: true,
-    baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
-  });
-
-  // 1. A genuine range renders exactly as before.
-  expect(n.html).toContain('Pro job &nbsp;&middot;&nbsp; $150&ndash;$250 &nbsp;&middot;&nbsp; Clear them out.');
-  expect(n.text).toContain('Pro job · $150-$250 · Clear them out.');
-  // 2. A zero floor is not a price - no dollar figure, consult copy instead.
-  expect(n.html).not.toContain('$0');
-  expect(n.text).not.toContain('$0');
-  expect(n.html).toContain('Pro job &nbsp;&middot;&nbsp; Consult with our team &nbsp;&middot;&nbsp; Look for lifted shingles.');
-  expect(n.text).toContain('Pro job · Consult with our team · Look for lifted shingles.');
-  // Only the one real range puts numbers in the email.
-  expect((n.html.match(/\$\d+/g) || []).length).toBe(2);
-  // 3. No catalog numbers at all - the meta line stays badge · blurb.
-  expect(n.html).toContain('DIY &nbsp;&middot;&nbsp; Press test.');
-  expect(n.text).toContain('DIY · Press test.');
-});
-
-test('the email and the checklist page quote one cost label, not two', () => {
-  // They diverged: the email said "Consult with our team" for a zero floor
-  // while the page said "up to $375" for the same catalog row, so clicking the
-  // email's CTA changed the price. One formatter now, both callers.
-  expect(costLabel(150, 250)).toBe('$150–$250');
-  expect(costLabel(0, 375)).toBe(CONSULT_COST);
-  expect(costLabel(null, null)).toBeNull();
-  // A single figure and a half-populated row, for completeness.
-  expect(costLabel(200, 200)).toBe('$200');
-  expect(costLabel(null, 375)).toBeNull();
-
-  // Neither surface keeps a private copy to drift away again.
-  const src = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8');
-  const client = src('src/components/homecare/HomeCareChecklistClient.tsx');
-  expect(client).toContain("from '@/lib/homecare/cost'");
-  expect(client).not.toMatch(/function costLabel/);
-  expect(client).not.toContain('up to $');
-  expect(src('src/lib/homecare/newsletter.ts')).not.toMatch(/function costLabel/);
-
-  // And the email renders exactly what that formatter returns, en dash spelled
-  // for the medium: `&ndash;` in HTML, a hyphen in plain text.
+test('the newsletter quotes no price, whatever the catalog carries', () => {
+  // It used to print "$150&ndash;$250" beside each job from the same costLabel
+  // the checklist rendered. The checklist stopped quoting prices (owner,
+  // 6 Aug 2026) and this had to follow in the same change: a member reading a
+  // range in their inbox and finding none on the page that link lands them on
+  // is the exact disagreement costLabel was extracted to prevent - just in the
+  // other direction.
+  //
+  // The fixtures below still CARRY est_cost, deliberately. Removing the data
+  // would make this pass for the wrong reason; what has to be true is that the
+  // builder ignores it.
   const n = buildNewsletter({
     firstName: 'Alex', season: 'fall', isSeasonal: true,
     baseUrl: 'https://www.lavacagc.com', unsubscribeUrl: 'https://www.lavacagc.com/u',
     tasks: [
       { key: 'clean_gutters', title: 'Clean gutters', blurb: 'Clear them out.', bookable: true, diy_or_pro: 'pro', priority: 10, applies_to: ['all'], est_cost_low: 150, est_cost_high: 250 },
       { key: 'roof_inspect', title: 'Inspect the roof', blurb: 'Look for lifted shingles.', bookable: true, diy_or_pro: 'pro', priority: 9, applies_to: ['all'], est_cost_low: 0, est_cost_high: 375 },
+      { key: 'test_smoke_co', title: 'Test detectors', blurb: 'Press test.', bookable: false, diy_or_pro: 'diy', priority: 8, applies_to: ['all'] },
     ],
   });
-  expect(n.html).toContain('$150&ndash;$250');
-  expect(n.text).toContain('$150-$250');
-  expect(n.html).toContain(CONSULT_COST);
-  expect(n.text).toContain(CONSULT_COST);
-  expect(n.html).not.toContain('$375');
-  expect(n.text).not.toContain('$375');
+
+  // Not one dollar figure, and not the consult copy that stood in for one.
+  expect(n.html.match(/\$\d/g)).toBeNull();
+  expect(n.text.match(/\$\d/g)).toBeNull();
+  expect(n.html).not.toContain(CONSULT_COST);
+  expect(n.text).not.toContain(CONSULT_COST);
+
+  // The meta line is now badge then blurb, with nothing between them.
+  expect(n.html).toContain('Pro job &nbsp;&middot;&nbsp; Clear them out.');
+  expect(n.text).toContain('Pro job · Clear them out.');
+  expect(n.html).toContain('DIY &nbsp;&middot;&nbsp; Press test.');
+  expect(n.text).toContain('DIY · Press test.');
+
+  // And it does not keep a private formatter to start quoting again from. The
+  // NAME may still appear - the module explains at length why it stopped using
+  // it - so what is asserted is that nothing calls it.
+  const src = readFileSync(join(process.cwd(), 'src/lib/homecare/newsletter.ts'), 'utf8');
+  expect(src).not.toMatch(/costLabel\(/);
+  expect(src).not.toMatch(/from '\.\/cost'/);
+});
+
+test('costLabel still governs the surfaces that DO quote a price', () => {
+  // The member surfaces stopped calling it; the admin quoting tools did not,
+  // and the est_cost columns are untouched. The rules it encodes still matter
+  // there, so they stay asserted rather than deleted along with the callers.
+  expect(costLabel(150, 250)).toBe('$150–$250');
+  // A zero floor is the catalog saying "no meaningful floor", not a price.
+  expect(costLabel(0, 375)).toBe(CONSULT_COST);
+  expect(costLabel(null, null)).toBeNull();
+  expect(costLabel(200, 200)).toBe('$200');
+  expect(costLabel(null, 375)).toBeNull();
+
+  // Nobody re-implements it privately, which is how the page and the email
+  // disagreed in the first place.
+  const src = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8');
+  expect(src('src/components/homecare/HomeCareChecklistClient.tsx')).not.toMatch(/function costLabel/);
+  expect(src('src/components/homecare/HomeCareChecklistClient.tsx')).not.toContain('up to $');
+  expect(src('src/lib/homecare/newsletter.ts')).not.toMatch(/function costLabel/);
 });
 
 test('HTML entities stay in the HTML part - the text part gets the raw name', () => {

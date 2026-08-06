@@ -38,10 +38,16 @@ interface MaintenanceRow {
   scheduled_start: string | null;
   scheduled_end: string | null;
   service_address: string | null;
+  /** Who the member said is doing it. Null until they choose. */
+  mode: string | null;
 }
 
-/** Columns that only exist once 20260815000000 has been applied. */
-const SERVICE_COLUMNS = 'completed_by,scheduled_start,scheduled_end,service_address';
+/**
+ * Columns that only exist once a hand-applied migration has run:
+ * 20260815000000 for the service four, 20260828000000 for `mode`.
+ * Listed together because the degrade below is all-or-nothing anyway.
+ */
+const SERVICE_COLUMNS = 'completed_by,scheduled_start,scheduled_end,service_address,mode';
 const MAINTENANCE_BASE = 'task_key,season,status,completed_at,updated_at';
 
 /**
@@ -67,12 +73,47 @@ async function fetchMaintenanceRows(homeownerId: string): Promise<MaintenanceRow
       'GET', `homeowner_maintenance?select=${MAINTENANCE_BASE},${SERVICE_COLUMNS}${filter}`,
     )) ?? [];
   } catch {
-    const rows = (await supabaseRest<Omit<MaintenanceRow, 'completed_by' | 'scheduled_start' | 'scheduled_end' | 'service_address'>[]>(
+    const rows = (await supabaseRest<Omit<MaintenanceRow, 'completed_by' | 'scheduled_start' | 'scheduled_end' | 'service_address' | 'mode'>[]>(
       'GET', `homeowner_maintenance?select=${MAINTENANCE_BASE}${filter}`,
     )) ?? [];
     return rows.map((r) => ({
-      ...r, completed_by: null, scheduled_start: null, scheduled_end: null, service_address: null,
+      ...r, completed_by: null, scheduled_start: null, scheduled_end: null, service_address: null, mode: null,
     }));
+  }
+}
+
+/**
+ * The catalog as this page needs it.
+ *
+ * `est_cost_low` / `est_cost_high` are deliberately NOT selected. The member
+ * checklist no longer quotes a price anywhere (owner decision 2026-08-06):
+ * choosing who does a job is not the moment to anchor on a number, and the 18
+ * tasks that just gained a Pro option have no price to quote in the first
+ * place. The columns still exist and the admin quoting tools still read them -
+ * this page simply stops being one of their readers.
+ */
+const CATALOG_BASE =
+  'key,title,blurb,applies_to,stages,seasons,frequency,starter,diy_or_pro,bookable,priority';
+
+/**
+ * The catalog, degrading to the pre-migration column set.
+ *
+ * Same reasoning as fetchMaintenanceRows: `pro_optional` only exists once
+ * 20260828000000 has been hand-applied, and PostgREST answers an unknown column
+ * with a 400 that supabaseRest turns into a throw. Without this, deploying
+ * ahead of the migration 500s the portal for every member rather than showing
+ * them a checklist with no Pro choice on the DIY tasks.
+ */
+async function fetchCatalog(): Promise<CatalogRow[]> {
+  try {
+    return (await supabaseRest<CatalogRow[]>(
+      'GET', `maintenance_catalog?select=${CATALOG_BASE},pro_optional&active=eq.true&order=priority.desc`,
+    )) ?? [];
+  } catch {
+    const rows = (await supabaseRest<Omit<CatalogRow, 'pro_optional'>[]>(
+      'GET', `maintenance_catalog?select=${CATALOG_BASE}&active=eq.true&order=priority.desc`,
+    )) ?? [];
+    return rows.map((r) => ({ ...r, pro_optional: false }));
   }
 }
 
@@ -106,7 +147,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   const nowMs = Date.now();
   const season = currentSeason();
   const [allTasks, profileRows, doneRows, homeRecords] = await Promise.all([
-    supabaseRest<CatalogRow[]>('GET', `maintenance_catalog?select=key,title,blurb,applies_to,stages,seasons,frequency,starter,diy_or_pro,bookable,est_cost_low,est_cost_high,priority&active=eq.true&order=priority.desc`),
+    fetchCatalog(),
     supabaseRest<{ systems: HomeSystems; stage: Stage | null; homeowner_type: string | null }[]>('GET', `home_profiles?select=systems,stage,homeowner_type&homeowner_id=eq.${homeowner.id}&limit=1`),
     fetchMaintenanceRows(homeowner.id),
     // My Home Systems prefill. readHomeRecords is fail-soft (returns [] on a
@@ -146,6 +187,16 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
     .filter((r) => r.status === 'done' && isRowCurrent(r))
     .map(({ task_key, season }) => ({ task_key, season }));
   const dismissedKeys = (doneRows ?? []).filter((r) => r.status === 'dismissed').map((r) => r.task_key);
+  // Who the member said is doing each task, keyed per (task, season) exactly
+  // like doneItems. Not filtered through isRowCurrent: a completion expires
+  // when its season comes round again, but "I do this one myself" is a standing
+  // preference about the task, and re-asking every season would undo the point
+  // of storing it. A dismissed row is skipped - the card is not on the page.
+  const modes: Record<string, 'diy' | 'pro'> = {};
+  for (const r of doneRows ?? []) {
+    if (r.status === 'dismissed') continue;
+    if (r.mode === 'diy' || r.mode === 'pro') modes[`${r.task_key}|${r.season}`] = r.mode;
+  }
   // Work La Vaca performed gets a label; a task the member ticked themselves
   // does not - which is the whole point of completed_by.
   //
@@ -282,7 +333,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
             {(tasks?.length ?? 0) === 0 ? (
               <p className="text-text-secondary">Your checklist is being prepared — check back soon.</p>
             ) : (
-              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} dismissedKeys={dismissedKeys} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} autoAddKey={autoAddKey} lavacaCompleted={lavacaCompleted} homeRecordPrefill={homeRecordPrefill} homeDetailsConsentGiven={homeDetailsConsentGiven} productShelves={productShelves} affiliateTag={process.env.AMAZON_ASSOCIATES_TAG ?? null} />
+              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} dismissedKeys={dismissedKeys} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} autoAddKey={autoAddKey} lavacaCompleted={lavacaCompleted} modes={modes} homeRecordPrefill={homeRecordPrefill} homeDetailsConsentGiven={homeDetailsConsentGiven} productShelves={productShelves} affiliateTag={process.env.AMAZON_ASSOCIATES_TAG ?? null} />
             )}
           </div>
         </section>

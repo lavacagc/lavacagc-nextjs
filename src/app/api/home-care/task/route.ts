@@ -1,7 +1,11 @@
 /**
  * Toggle a homeowner's checklist task done/undone (the "stored" checklist),
- * or dismiss/restore a task via `dismiss: boolean` ("not relevant to my home",
- * stored as one season='all' row with status 'dismissed'; restore sets 'todo').
+ * dismiss/restore a task via `dismiss: boolean` ("not relevant to my home",
+ * stored as one season='all' row with status 'dismissed'; restore sets 'todo'),
+ * or record who is doing it via `mode: 'diy' | 'pro' | null`.
+ * The three are separate branches because they are separate statements: mode is
+ * about intent, status is about completion, and a member changing their mind
+ * about who does a job must not disturb the record of one already finished.
  * Cookie-gated by hc_access. Upserts homeowner_maintenance for the current season.
  * `completed_at` stamps each done-toggle - except an untick of work La Vaca
  * performed, which is a statement about now and leaves the record of the job
@@ -38,6 +42,23 @@ async function currentCompletion(homeownerId: string, taskKey: string, season: s
   return rows?.[0] ?? null;
 }
 
+/**
+ * The row's current `status`, or null when there is no row yet.
+ *
+ * Only the mode write needs this: it must carry a status for the INSERT case
+ * without overwriting one in the UPDATE case. Never swallowed - a read that
+ * failed does not mean "not done", and writing 'todo' on that guess is how a
+ * completion gets erased.
+ */
+async function currentStatus(homeownerId: string, taskKey: string, season: string): Promise<string | null> {
+  const rows = await supabaseRest<Array<{ status: string }>>(
+    'GET',
+    `homeowner_maintenance?select=status&homeowner_id=eq.${homeownerId}` +
+      `&task_key=eq.${encodeURIComponent(taskKey)}&season=eq.${encodeURIComponent(season)}&limit=1`,
+  );
+  return rows?.[0]?.status ?? null;
+}
+
 export async function POST(request: NextRequest) {
   const access = await verifyHomeAccess(request.cookies.get(HC_ACCESS_COOKIE)?.value);
   if (!access) return NextResponse.json({ ok: false, error: 'Not signed in' }, { status: 401 });
@@ -51,7 +72,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Not signed in' }, { status: 401 });
     }
 
-    const body = (await request.json().catch(() => ({}))) as { task_key?: string; done?: boolean; season?: string; dismiss?: boolean };
+    const body = (await request.json().catch(() => ({}))) as {
+      task_key?: string; done?: boolean; season?: string; dismiss?: boolean;
+      /** 'diy' | 'pro' | null. Present-but-null means "back to undecided". */
+      mode?: string | null;
+    };
     const taskKey = (body.task_key ?? '').slice(0, 80);
     if (!taskKey) return NextResponse.json({ ok: false, error: 'task_key required' }, { status: 400 });
     const now = new Date().toISOString();
@@ -76,9 +101,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, task_key: taskKey, dismissed: body.dismiss });
     }
 
-    const done = body.done === true;
     const validSeasons = ['spring', 'summer', 'fall', 'winter', 'starter'];
     const season = validSeasons.includes(body.season ?? '') ? (body.season as string) : currentSeason();
+
+    // "Who is doing this?" - diy, pro, or null to go back to undecided.
+    //
+    // Its own branch, and it writes ONLY `mode`, because it is a statement
+    // about intent and not about completion. A member who already ticked a
+    // task and then decides we should do it next time must not have that tick
+    // erased, so `status` is read and written back rather than defaulted: the
+    // upsert has to carry a status for the INSERT case (the column is NOT
+    // NULL), and carrying a hardcoded 'todo' would silently un-complete the row
+    // on the UPDATE case. The read is not swallowed for the same reason it is
+    // not on the untick path - guessing here is how a record gets destroyed.
+    if ('mode' in body) {
+      const mode = body.mode === 'diy' || body.mode === 'pro' ? body.mode : null;
+      const existing = await currentStatus(access.homeownerId, taskKey, season);
+      await supabaseRest(
+        'POST',
+        'homeowner_maintenance?on_conflict=homeowner_id,task_key,season',
+        {
+          homeowner_id: access.homeownerId,
+          task_key: taskKey,
+          season,
+          status: existing ?? 'todo',
+          mode,
+          updated_at: now,
+        },
+        { prefer: 'resolution=merge-duplicates,return=minimal' },
+      );
+      return NextResponse.json({ ok: true, task_key: taskKey, season, mode });
+    }
+
+    const done = body.done === true;
 
     // An untick is a statement about NOW, not about the past, and this row is
     // both. Only read on that path: a tick reassigns the row to the member

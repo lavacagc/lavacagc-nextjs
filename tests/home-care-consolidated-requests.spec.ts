@@ -45,11 +45,19 @@ test('AC1: checklist has no per-row single-book link (the fan-out is removed)', 
   expect(checklist).not.toContain('Book this now');
 });
 
-test('AC2: each bookable row has an Add-to-request toggle wired to the cart', () => {
+test('AC2: every bookable row has a way onto the cart, and they all drive one set', () => {
+  // Two shapes since the DIY/Pro slice, and both end at `selected`:
+  //  - a pro-only task keeps the explicit Add-to-request button;
+  //  - a task the member can choose about gets there by picking "La Vaca does
+  //    it", which IS adding it to the request. That merge is what let the card
+  //    drop a row - the button and the choice were the same action.
   expect(checklist).toContain('Add to request');
   expect(checklist).toContain('Added to request');
-  // Both the + circle and the text toggle drive the same selection set.
-  expect((checklist.match(/toggleSelect\(t\.key\)/g) || []).length).toBeGreaterThanOrEqual(2);
+  expect(checklist).toContain('La Vaca does it');
+  expect(checklist).toContain('On your request');
+  // One selection set, whichever way a task got there.
+  expect(checklist).toMatch(/setMode[\s\S]{0,1200}copy\.add\(key\)/);
+  expect(checklist).toContain('toggleSelect(t.key)');
 });
 
 test('AC3: the only submit path is the consolidated cart pill', () => {

@@ -33,7 +33,9 @@ test('newsletter cron selects the stage column the stage gate depends on', () =>
   // saw undefined for every task, and the two highest-priority pre-listing jobs went
   // out as items 01 and 02 to every member. The column is asserted verbatim here, the
   // row type requires it, and the route refuses to send if the response lacks the key.
-  expect(src).toContain('select=key,title,blurb,bookable,diy_or_pro,priority,applies_to,stages,est_cost_low,est_cost_high');
+  // No est_cost here since the email stopped quoting prices (2026-08-06). What
+  // this guard is about is `stages`, and that is still pinned verbatim.
+  expect(src).toContain('select=key,title,blurb,bookable,diy_or_pro,priority,applies_to,stages');
   expect(src).toContain('type CatalogTask = NewsletterTask & { stages: string[] }');
   expect(src).toContain('supabaseRest<CatalogTask[]>');
   expect(src).toContain('if (!catalogCarriesStages(tasks))');
@@ -45,7 +47,10 @@ test('checklist page carries the same stage-select guard as the cron', () => {
   // renders for every member, silently. Guarded by the same predicate, and the
   // column is pinned here so the regression fails in CI rather than in prod.
   const src = read('src/app/home-care/checklist/page.tsx');
-  expect(src).toContain('select=key,title,blurb,applies_to,stages,seasons');
+  // The select moved into CATALOG_BASE when the page gained a degrade path for
+  // `pro_optional`, so the column list is pinned where it now lives.
+  expect(src).toContain("'key,title,blurb,applies_to,stages,seasons");
+  expect(src).toContain('select=${CATALOG_BASE}');
   expect(src).toContain('stages: string[]');
   expect(src).toContain('if (!catalogCarriesStages(allTasks ?? []))');
 });

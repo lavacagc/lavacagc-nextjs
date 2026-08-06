@@ -130,7 +130,9 @@ export async function GET(request: NextRequest) {
   try {
     const tasks = (await supabaseRest<CatalogTask[]>(
       'GET',
-      `maintenance_catalog?select=key,title,blurb,bookable,diy_or_pro,priority,applies_to,stages,est_cost_low,est_cost_high&active=eq.true&starter=eq.false&seasons=cs.%7B${season}%7D&order=priority.desc`,
+      // No est_cost columns: the email stopped quoting prices with the checklist
+      // (2026-08-06), so asking for them would only mislead the next reader.
+      `maintenance_catalog?select=key,title,blurb,bookable,diy_or_pro,priority,applies_to,stages&active=eq.true&starter=eq.false&seasons=cs.%7B${season}%7D&order=priority.desc`,
     )) ?? [];
 
     if (tasks.length === 0) {

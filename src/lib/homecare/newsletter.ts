@@ -30,7 +30,6 @@
 import { checklistUrl } from './emailLinks';
 import { SEASON_LABEL, type Season } from './season';
 import { hasGuideItem } from './guides';
-import { costLabel, COST_DASH } from './cost';
 
 export interface NewsletterTask {
   key: string;
@@ -136,14 +135,18 @@ const MUTED = '#666666';
 const HAIRLINE = '#E2E8F0';
 const PANEL_BG = '#FBFAF8';
 
-/**
- * The cost segment of a task's meta line, from the formatter the checklist page
- * also renders, with the en dash spelled the way each build needs it: an HTML
- * entity for the widest mail-client support, a hyphen for plain text.
+/*
+ * NO COST SEGMENT, deliberately.
+ *
+ * This email used to print "$150&ndash;$750" beside each job, from the same
+ * `costLabel` the checklist rendered. The checklist stopped quoting prices
+ * (owner decision 2026-08-06) and this had to follow in the same change, or a
+ * member would read a range in their inbox and find none on the page that link
+ * lands them on - the exact disagreement `costLabel` was extracted to prevent.
+ *
+ * The `est_cost_*` columns are untouched and the admin quoting tools still read
+ * them. Pricing happens in a conversation about the actual house.
  */
-function costSegment(t: NewsletterTask, dash: string): string {
-  return (costLabel(t.est_cost_low, t.est_cost_high) ?? '').replace(COST_DASH, dash);
-}
 
 function badgeFor(t: NewsletterTask): string {
   return t.diy_or_pro === 'pro' ? 'Pro job' : t.diy_or_pro === 'diy' ? 'DIY' : 'DIY or pro';
@@ -291,7 +294,7 @@ export function buildNewsletter(args: NewsletterArgs): { subject: string; html: 
 
   /** One numbered task row, matching the comp's 01/02/03 treatment. */
   const row = (t: NewsletterTask, i: number, last: boolean) => {
-    const meta = [badgeFor(t), costSegment(t, '&ndash;'), esc(t.blurb)].filter(Boolean).join(DOT);
+    const meta = [badgeFor(t), esc(t.blurb)].filter(Boolean).join(DOT);
     const guide = hasGuideItem(season, t.key)
       ? `<div style="padding-top:6px"><a href="${baseUrl}/home-care/guides/${season}#${encodeURIComponent(t.key)}" style="font-family:${FF};font-size:12px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;color:${ORANGE_DEEP};text-decoration:none">Learn more &rarr;</a></div>`
       : '';
@@ -465,7 +468,7 @@ ${keepInTouch}
 </html>`;
 
   const plainMeta = (t: NewsletterTask) =>
-    [badgeFor(t), costSegment(t, '-'), t.blurb].filter(Boolean).join(' · ');
+    [badgeFor(t), t.blurb].filter(Boolean).join(' · ');
 
   let text = `${hiText}\n\n${copy.intro(false)}\n\n`;
   if (!caughtUp) {
