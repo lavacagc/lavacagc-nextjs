@@ -41,7 +41,9 @@ src/
 ```bash
 npm run dev         # Start development server
 npm run build       # Production build (also type-checks + lints every route)
-npm run test:ui     # Playwright with UI - local browser-level verification
+npm run typecheck   # tsc --noEmit on its own
+npm run test:e2e    # Build the app for the suite, then run Playwright
+npm run test:ui     # Playwright with UI, against a build test:build already made
 npm run audit       # Run site audit locally
 npm run audit:prod  # Run site audit on production
 ```
@@ -115,7 +117,7 @@ Note `test:e2e` leaves `.next` built against a stub Supabase, and `test:links`
 replaces it with a real one - run `npm run test:build` before returning to the
 rest of the suite, or `npm run build` before serving the app for anything else.
 
-`npm run lint` and `npm run build` (type-check) are the gauntlet the
+`npm run lint`, `npm run typecheck` and `npm run build` are the gauntlet the
 **no-mistakes gate runs for you** on every ship - see *Shipping changes* below.
 Run them by hand only for quick local iteration, not as a manual pre-push
 checklist. The Playwright suite is deliberately NOT in that gauntlet: it needs
@@ -154,7 +156,9 @@ Every change ships through the **no-mistakes** gate (`/no-mistakes`), not by
 hand. The gate runs one pipeline - review → test → lint → docs → push → PR → CI -
 in a disposable worktree, auto-applies safe fixes, escalates judgement calls, and
 only forwards to `origin` + opens the PR once every check is green. Config lives
-in `.no-mistakes.yaml` (gate commands: `npm run lint`, `tsc + next build`).
+in `.no-mistakes.yaml` (gate commands: `npm run lint`, and
+`npm run typecheck && npm run build` - that file states why the type-check must
+not be spelled `npx tsc --noEmit`).
 
 So **do not** treat these as separate manual steps - the gate owns them:
 

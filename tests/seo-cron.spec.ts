@@ -6,13 +6,9 @@ import { test, expect, request } from '@playwright/test';
  * Skips automatically if SEO_INGEST_MODE !== 'fixture' or CRON_SECRET is unset
  * in the test runner's env, so CI without secrets stays green.
  *
- * To run locally:
- *   1. Add to .env.local:
- *        CRON_SECRET=local-dev-secret
- *        SEO_INGEST_MODE=fixture
- *   2. Restart `npm run dev` (so it picks up the new env).
- *   3. CRON_SECRET=local-dev-secret SEO_INGEST_MODE=fixture \
- *      npx playwright test tests/seo-cron.spec.ts --project=chromium
+ * The local run recipe lives in src/lib/seo/README.md ("Local testing"), which
+ * owns it - including the TEST_URL that points the run at your dev server
+ * rather than at a build the suite's global setup would reject.
  */
 const CRON_SECRET = process.env.CRON_SECRET;
 const FIXTURE = process.env.SEO_INGEST_MODE === 'fixture';

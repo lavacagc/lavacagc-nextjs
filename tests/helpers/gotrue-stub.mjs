@@ -4,9 +4,10 @@
  * Everything under /vaca-mgmt is gated by middleware's
  * `supabase.auth.getUser()`, which is a SERVER call - `page.route` cannot reach
  * it - so those specs need something answering on the port
- * NEXT_PUBLIC_SUPABASE_URL was baked to at build time (127.0.0.1:9099, see the
- * Build step in .github/workflows/playwright.yml). The fabricated session cookie
- * each spec sets is only half of it; this is the other half.
+ * NEXT_PUBLIC_SUPABASE_URL was baked to at build time (127.0.0.1:9099, set by
+ * scripts/test-build.sh, which both `npm run test:build` and CI call). The
+ * fabricated session cookie each spec sets is only half of it; this is the
+ * other half.
  *
  * Started ONCE for the whole run, from playwright.config.ts. Three specs used to
  * start it themselves in `beforeAll` on this same fixed port, and Playwright

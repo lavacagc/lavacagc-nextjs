@@ -26,7 +26,7 @@ import { buildProposalDeliveryEmail, PROPOSAL_FROM } from '@/lib/proposals/deliv
  *
  * Capture-only, so it is skipped unless asked for. Run recipe:
  *
- *   npx next start -p 3100     # a build made with the CI placeholder env
+ *   npm run test:build && npx next start -p 3100     # the build the suite needs
  *   PROPOSAL_EVIDENCE=1 TEST_URL=http://localhost:3100 \
  *     npx playwright test tests/proposal-pod-slice2-evidence.spec.ts --project=chromium
  */
