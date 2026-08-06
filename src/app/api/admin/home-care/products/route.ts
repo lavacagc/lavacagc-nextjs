@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest, isMissingTableError } from '@/lib/notify/supabase-rest';
 import {
   readShopTasks, refuseIneligible, normalizeTaskKeys, TASK_KEYS_NOT_A_LIST,
+  isPriceBandNotNullError, PRICE_BAND_MIGRATION_MISSING,
 } from '@/lib/homecare/productAdmin';
 import { isPriceBand, isProductCategory, isImageSource, type AdminProduct } from '@/lib/homecare/products';
 
@@ -204,6 +205,11 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : String(err);
     if (/duplicate key|already exists|23505/i.test(message)) {
       return NextResponse.json({ error: 'That product is already in your library.' }, { status: 409 });
+    }
+    // Named for the same reason GET names the missing tables: a database behind
+    // on its migrations is a state the operator can act on, and only if told.
+    if (isPriceBandNotNullError(err)) {
+      return NextResponse.json({ error: PRICE_BAND_MIGRATION_MISSING }, { status: 503 });
     }
     return NextResponse.json({ error: 'Could not save the product.' }, { status: 500 });
   }

@@ -33,7 +33,10 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
-import { refuseIneligible, normalizeTaskKeys, TASK_KEYS_NOT_A_LIST } from '@/lib/homecare/productAdmin';
+import {
+  refuseIneligible, normalizeTaskKeys, TASK_KEYS_NOT_A_LIST,
+  isPriceBandNotNullError, PRICE_BAND_MIGRATION_MISSING,
+} from '@/lib/homecare/productAdmin';
 import { isPriceBand, isProductCategory, isImageSource } from '@/lib/homecare/products';
 
 export const dynamic = 'force-dynamic';
@@ -77,9 +80,14 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   if (typeof body.brand === 'string') patch.brand = body.brand.trim().slice(0, MAX_NAME) || null;
   if (typeof body.pitch === 'string') patch.pitch = body.pitch.trim().slice(0, MAX_PITCH) || null;
   if (body.price_band !== undefined) {
-    // Retired, but still validated if a caller sends one - see the create route.
-    if (!isPriceBand(body.price_band)) return NextResponse.json({ error: 'That is not a price band we recognize.' }, { status: 422 });
-    patch.price_band = body.price_band;
+    // Retired, but still validated if a caller sends one - see the create route,
+    // which this deliberately matches word for word. Absent means "unchanged",
+    // an explicit null means "clear it" and is the same "nobody said" a create
+    // stores, a band in the vocabulary still saves, and anything else is a 422.
+    if (body.price_band !== null && !isPriceBand(body.price_band)) {
+      return NextResponse.json({ error: 'That is not a price band we recognize.' }, { status: 422 });
+    }
+    patch.price_band = isPriceBand(body.price_band) ? body.price_band : null;
   }
   if (body.category !== undefined) patch.category = isProductCategory(body.category) ? body.category : null;
   if (body.image_source !== undefined) {
@@ -169,7 +177,13 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
       return NextResponse.json(current ? { ok: true, task_keys: current } : { ok: true });
     }
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (err) {
+    // The band is nullable only after 20260829000000, and this route can now
+    // write that null - so it owes a lagging database the same named answer the
+    // create route gives, rather than a sentence about saving the product.
+    if (isPriceBandNotNullError(err)) {
+      return NextResponse.json({ error: PRICE_BAND_MIGRATION_MISSING }, { status: 503 });
+    }
     return NextResponse.json(
       {
         error: shelvesEmptied

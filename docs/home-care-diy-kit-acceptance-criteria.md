@@ -69,6 +69,8 @@ The route spec takes the auth half, the live spec takes the data half, and neith
   The band was never a live price - Amazon permits those only through the Product Advertising API - but choosing one per product turned out to be manual labour for no return, so the owner retired it.
   Nothing collects a band and nothing displays one; a card is a name, a one-line pitch, a photo and a link.
   The column, its CHECK and the vocabulary in `products.ts` all survive, and `20260829000000_home_care_price_band_optional.sql` only drops the NOT NULL, so bands already chosen are kept and the decision is cheap to reverse.
+  Both write routes tell one story about it, deliberately the same one: absent means unchanged, an explicit null means no band, a band still in the vocabulary still saves, and anything else is a 422 rather than a value silently dropped into a column the schema still constrains.
+  A database that has not had that migration yet is told so by name instead of being handed "Could not save the product.", because since the retirement every create writes the null it forbids.
   If it ever comes back, the argument that produced it still holds: a member deserves to know a dehumidifier is not a $12 purchase before they tap.
 - **D4** The admin works **item first**: pick the maintenance task, then stock it. Never product-first with a hunt for the task afterwards.
 - **D5** Pro-only tasks are **locked in the UI**, not hidden, and an eligible task shows nothing until the owner puts items in it by hand. Curation is manual on purpose.

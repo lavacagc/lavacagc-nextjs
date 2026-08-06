@@ -105,6 +105,30 @@ export function normalizeTaskKeys(value: unknown): string[] | null {
 export const TASK_KEYS_NOT_A_LIST =
   'task_keys has to be a list of maintenance items. Send an empty list to take the product off every shelf.';
 
+/**
+ * True only for "this database still requires a price band" - the not-null
+ * violation every write hits on a database that has not had
+ * `20260829000000_home_care_price_band_optional.sql` applied.
+ *
+ * Since the band was retired, a create sends `price_band: null` every time and
+ * an edit may send it deliberately, so on a lagging database that is EVERY save
+ * failing - and the generic sentence names neither the env nor the cause.
+ * Production is already migrated; this is for the next person's local copy.
+ *
+ * Kept as narrow as `isMissingTableError` is, and for the same reason: 23502 is
+ * the not-null code for ANY column, and sending an operator to a migration that
+ * would not fix their actual problem is worse than saying nothing specific. The
+ * column has to be named in the error before this claims to recognize it.
+ */
+export function isPriceBandNotNullError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /23502|null value/i.test(msg) && msg.includes('price_band');
+}
+
+/** What to tell an operator whose database still has `price_band` NOT NULL. */
+export const PRICE_BAND_MIGRATION_MISSING =
+  'This database still requires a price band. Apply supabase/migrations/20260829000000_home_care_price_band_optional.sql first.';
+
 function serviceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY;
