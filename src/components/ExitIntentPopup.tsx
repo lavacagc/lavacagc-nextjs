@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -27,8 +27,6 @@ import { trackEvent } from '@/services/analyticsManager';
  */
 const ExitIntentPopup = () => {
   const [isOpen, setIsOpen] = useState(false);
-  /** Whether this page load has already added its back-button history entry. */
-  const historyEntryAdded = useRef(false);
   const [bannerShowing, setBannerShowing] = useState(() => isBannerVisible());
 
   // Newsletter capture state
@@ -126,13 +124,7 @@ const ExitIntentPopup = () => {
     // from 2 failures in 25 runs to 0 in 25; omitting the url argument does the
     // same while keeping the feature, because an entry with no url cannot
     // overwrite one.
-    //
-    // Once per page load as well - one entry is all Back detection needs, and
-    // the ref keeps every later re-run from stacking more.
-    if (!historyEntryAdded.current) {
-      historyEntryAdded.current = true;
-      window.history.pushState({ exitIntent: true }, '');
-    }
+    window.history.pushState({ exitIntent: true }, '');
 
     document.addEventListener('mouseleave', handleMouseLeave);
     window.addEventListener('popstate', handlePopState);

@@ -240,21 +240,41 @@ test.describe('D: exit-intent newsletter capture', () => {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(600);
 
-    // The component pushed its entry, and it named no URL.
-    expect(pushedUrls, 'the popup should add exactly one history entry').toContain('undefined');
-    const urlBearing = pushedUrls.filter((u) => u !== 'undefined' && u !== '' && u !== 'null');
+    // The entry is still being added - Back detection depends on it - and not
+    // one push names a URL, which is what makes it unable to eat a navigation.
+    // The property holds however many times the effect re-runs; it is the url
+    // argument that was the bug, never the count.
+    expect(pushedUrls, 'the popup must still add its back-button history entry').toContain('undefined');
+    const urlBearing = pushedUrls.filter((u) => u !== 'undefined' && u !== 'null');
     expect(urlBearing, 'no app push may carry a URL').toEqual([]);
     // And the address bar is where it started.
     expect(new URL(page.url()).pathname).toBe('/');
   });
 
-  test('a header navigation still commits with the popup mounted', async ({ page }) => {
-    // The user-visible half of the same bug: the navigation must actually land.
+  /**
+   * The user-visible half of the same bug, once per layout: the navigation has
+   * to actually land. Each half drives the nav that exists at its own width -
+   * the desktop bar is `hidden lg:flex` and the hamburger is `lg:hidden`, so
+   * neither can be reached from the other project. Widening the viewport inside
+   * the `mobile` project would only make it test a desktop layout.
+   */
+  test('a header navigation still commits with the popup mounted', async ({ page, isMobile }) => {
+    test.skip(Boolean(isMobile), 'desktop nav is `hidden lg:flex` - the mobile-menu test below makes this claim on phones');
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     const nav = page.locator('header nav').first();
     await page.click('button[aria-haspopup="true"]:has-text("Company")');
     await nav.locator('a[href="/about"]').first().click();
+    await page.waitForURL('**/about');
+    expect(new URL(page.url()).pathname).toBe('/about');
+  });
+
+  test('a mobile-menu navigation still commits with the popup mounted', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'hamburger menu is `lg:hidden` - the desktop test above makes this claim on wide viewports');
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await page.click('[aria-label="Open menu"]');
+    await page.locator('#mobile-menu').getByRole('button', { name: 'Go to about us page' }).click();
     await page.waitForURL('**/about');
     expect(new URL(page.url()).pathname).toBe('/about');
   });
