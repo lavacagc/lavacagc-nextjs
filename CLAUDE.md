@@ -64,8 +64,33 @@ Stop any `npm run dev` on port 3000 before running the suite.
 Playwright reuses a server already listening there instead of the one it would
 start, and `next dev` reads the real Supabase URL from `.env.local` at run time,
 so a leftover dev server trips that same guard no matter how you built.
-`npm run test:ui`, `test:headed` and `test:mobile` set `E2E_STUB_BACKEND=1` too,
-so they match `test:e2e` when run against a `test:build` build.
+
+#### Every Playwright script pins its backend - a new one must too
+
+There is no unpinned default, deliberately.
+A bare `playwright test` inherits whichever `.next` happened to be built last,
+and that is exactly how the live-backend specs end up red against a stub build
+with nothing on screen explaining why.
+So each `package.json` script that runs `playwright test` states which half of
+the trade-off below it is on, and any script added later has to choose:
+
+- **Stub-backed** - set `E2E_STUB_BACKEND=1`.
+  This is the default, and it is right for anything running the whole suite or a
+  subset of ordinary specs; the live-backend specs then skip and say so, exactly
+  as they do in CI.
+  Today: `test`, `test:e2e`, `test:ui`, `test:headed`, `test:mobile`,
+  `test:flows`.
+- **Live-backend** - set `E2E_LIVE_BACKEND=1`.
+  Only for specs whose entire point is real Supabase content.
+  These need a real `npm run build`, and the flag stands the build guard down, so
+  such a script must own its own build rather than inherit one.
+  Today: `test:links`.
+
+A subset that mixes the two is stub-backed: skipping the live-backend specs is
+honest, running them against a stub is not.
+`E2E_LIVE_BACKEND=1` in front of any of them still overrides, for a deliberate
+one-off against a real build.
+`test:report` only renders an existing report, so it pins nothing.
 
 The trade-off is deliberate: one build cannot satisfy both halves of the suite.
 The admin specs need a 127.x origin; the live-backend specs (`links`,
