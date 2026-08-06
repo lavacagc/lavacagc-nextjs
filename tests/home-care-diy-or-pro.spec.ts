@@ -129,6 +129,29 @@ test.describe('what the member has asked us to do', () => {
       .toEqual(['seal_deck', 'chimney_inspect']);
   });
 
+  test('a deep-linked task stays on the request after the member picks DIY', () => {
+    // Owner decision, 6 Aug 2026: the deep link wins until it is explicitly
+    // taken off. Landing from the newsletter's "Add to plan" and then saying
+    // "I'll do it" is not a withdrawal of the ask - plenty of members want a
+    // quote for the job they are about to attempt.
+    //
+    // What this REQUIRES of the card is the other half, guarded in
+    // home-care-consolidated-requests.spec.ts: a card in this state has to say
+    // it is on the request, because "You've got this" alone does not, and it
+    // has to offer the way off.
+    expect(request({ 'seal_deck|spring': 'diy' }, ['seal_deck'])).toEqual(['seal_deck']);
+  });
+
+  test('removing a deep-linked task holds against the recompute', () => {
+    // The removal control clears both inputs, so this is what it leaves behind.
+    // Dropping the pick alone is not enough while a season still says pro: the
+    // union would put the task straight back on the next render, which is the
+    // whole reason removal clears the modes too.
+    expect(request({ 'seal_deck|spring': 'diy' }, [])).toEqual([]);
+    expect(request({ 'seal_deck|spring': 'pro' }, [])).toEqual(['seal_deck']);
+    expect(request({}, [])).toEqual([]);
+  });
+
   test('a task no card can explain is not silently on the request', () => {
     // A mode row outliving a catalog edit, both directions. Neither of these
     // tasks renders the chip that would say "On your request" or the toggle

@@ -93,6 +93,11 @@ export interface RequestableTask extends ChoosableTask {
  *
  * `picked` is the one thing that genuinely has no stored counterpart: the ＋
  * circle on a pro-only card, and the `?add=` deep link that pre-selects a task.
+ * A pick WINS over a later `diy`, deliberately (owner, 6 Aug 2026): arriving
+ * from "Add to plan" and then saying "I'll do it" is not a withdrawal of the
+ * ask, so nothing here vetoes it. The card carries the matching obligation - it
+ * must say the task is on the request and offer the way off, since the chip
+ * alone reads as "you are handling this".
  *
  * Two exclusions, both about a card and the request never disagreeing:
  *  - a dismissed task is not on the page, so it is not on the request either;

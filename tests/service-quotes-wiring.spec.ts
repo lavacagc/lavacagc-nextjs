@@ -402,7 +402,7 @@ test('PT5: only La Vaca work carries a completion label', () => {
   // the attribution to the member server-side, and the open tab has to agree
   // or it credits us for work they just did themselves.
   expect(client).toContain('const [lavacaCompleted, setLavacaCompleted] = useState');
-  const toggle = client.slice(client.indexOf('const toggleDone ='), client.indexOf('const toggleSelect ='));
+  const toggle = client.slice(client.indexOf('const toggleDone ='), client.indexOf('const togglePicked ='));
   expect(toggle).toContain('setLavacaCompleted');
 });
 

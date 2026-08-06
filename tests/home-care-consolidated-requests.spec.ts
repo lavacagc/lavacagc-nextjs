@@ -55,9 +55,37 @@ test('AC2: every bookable row has a way onto the cart, and they all drive one se
   expect(checklist).toContain('Added to request');
   expect(checklist).toContain('La Vaca does it');
   expect(checklist).toContain('On your request');
-  // One selection set, whichever way a task got there.
-  expect(checklist).toMatch(/setMode[\s\S]{0,1200}copy\.add\(key\)/);
-  expect(checklist).toContain('toggleSelect(t.key)');
+  // One selection, whichever way a task got there - and DERIVED, not a second
+  // set written alongside the stored modes. That is what stops a card and the
+  // pill disagreeing, so it is asserted at the seam: the request comes out of
+  // `requestedTaskKeys`, and `setMode` does not write it a second time.
+  expect(checklist).toContain('requestedTaskKeys({ tasks, modes, picked, dismissed })');
+  expect(checklist).not.toMatch(/const \[selected, setSelected\]/);
+  // The pro-only ＋ circle is the one hand-made route onto it.
+  expect(checklist).toContain('togglePicked(t.key)');
+});
+
+test('AC2b: no card sits on the request without saying so, and every one can say no', () => {
+  // The deep links ("Add to plan", "Add this on my checklist", any ?add=) put a
+  // task on the request before the member has chosen who does it, and it STAYS
+  // there when they pick "I'll do it" - the ask is not withdrawn by saying you
+  // will also have a go (owner, 6 Aug 2026). A `choose` card has no ＋ circle to
+  // un-press, so without this the member reads a green "You've got this" chip
+  // on a job we are still queued to quote, with no way to see or stop it.
+  expect(checklist).toContain('const saysOnRequest =');
+  expect(checklist).toContain('isSel && !saysOnRequest');
+  expect(checklist).toContain('Still on your request');
+  expect(checklist).toContain('from your request'); // the control's accessible name
+  // Removing has to survive the recompute, so it clears BOTH inputs: the
+  // hand-made pick and any season still storing 'pro'. A summer "La Vaca does
+  // it" left standing would put the task straight back.
+  const clear = checklist.slice(
+    checklist.indexOf('const clearFromRequest ='),
+    checklist.indexOf('const requestUrl ='),
+  );
+  expect(clear).toContain('setPicked');
+  expect(clear).toContain("m === 'pro'");
+  expect(clear).toContain('await setMode(');
 });
 
 test('AC3: the only submit path is the consolidated cart pill', () => {

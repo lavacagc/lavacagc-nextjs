@@ -221,14 +221,22 @@ export default function HomeCareChecklistClient({
    * focus drops to <body> and a keyboard or screen-reader member loses their
    * place mid-list. Set on the write and again on a failed write's revert,
    * because that swaps the control back a second time.
+   *
+   * The target is HELD until a focus can actually land. Its replacement mounts
+   * in the same batched render that sets `busy`, so it mounts disabled, and a
+   * disabled button is not a focusable area - focusing it there is a silent
+   * no-op. `busy` is therefore a dependency: the write settling re-runs this,
+   * and only then is the target cleared.
    */
   const [focusTarget, setFocusTarget] = useState<string | null>(null);
   const choiceRefs = useRef(new Map<string, HTMLButtonElement | null>());
   useEffect(() => {
     if (!focusTarget) return;
-    choiceRefs.current.get(focusTarget)?.focus();
+    const el = choiceRefs.current.get(focusTarget);
+    if (el?.disabled) return;
+    el?.focus();
     setFocusTarget(null);
-  }, [focusTarget]);
+  }, [focusTarget, busy]);
 
   const toggleBlurb = (k: string) => {
     setExpandedBlurbs((prev) => {
@@ -605,6 +613,50 @@ export default function HomeCareChecklistClient({
     }
   };
 
+  /**
+   * Take a task off the consolidated request outright.
+   *
+   * The deep links - the newsletter's "Add to plan", a guide's "Add this on my
+   * checklist", any `?add=` - put a task on the request before the member has
+   * said anything about who is doing it, and they KEEP it there afterwards:
+   * saying "I'll do it" this season is not a withdrawal of the ask (owner
+   * decision 2026-08-06). That is only honest while there is a way back off,
+   * because a `choose` card has no ＋ circle to un-press.
+   *
+   * Removal has to hold against a recompute, so it clears every input that
+   * could put the task back: the hand-made pick, and any season still storing
+   * `pro`. Those are per (task, season) and the request is per task, so a
+   * summer "La Vaca does it" left standing would silently re-add the task the
+   * member just took off. Each is cleared through `setMode`, re-sending the
+   * mode it already holds - the "tap the current choice again" path - so the
+   * reversal is persisted and reverts on failure like any other.
+   */
+  const clearing = useRef<Set<string>>(new Set());
+  const clearFromRequest = async (key: string) => {
+    // One at a time per task. `setMode` clears a season by re-sending the mode
+    // it already holds, which a re-entrant call reading the pre-click `modes`
+    // would send as a fresh 'pro' - putting back the task it was asked to take
+    // off. A second tap while the first is settling has nothing left to do.
+    if (clearing.current.has(key)) return;
+    clearing.current.add(key);
+    try {
+      setPicked((prev) => {
+        if (!prev.has(key)) return prev;
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      const proSeasons = Object.entries(modes)
+        .filter(([panelKey, m]) => m === 'pro' && panelKey.slice(0, panelKey.lastIndexOf('|')) === key)
+        .map(([panelKey]) => panelKey.slice(panelKey.lastIndexOf('|') + 1));
+      for (const season of proSeasons) {
+        await setMode(key, season, 'pro');
+      }
+    } finally {
+      clearing.current.delete(key);
+    }
+  };
+
   const requestUrl = `/home-care/book?tasks=${[...selected].map(encodeURIComponent).join(',')}`;
 
   // Finished tasks sink to the bottom of their group (stable within each half,
@@ -630,6 +682,9 @@ export default function HomeCareChecklistClient({
     // said about it. Both drive the row-3 control and whether the gear shows.
     const choice = taskChoice(t);
     const mode = modes[panelKey];
+    // Whether a control on this card already tells the member the task is on
+    // the request, in its own words. Where none does, one has to be added.
+    const saysOnRequest = (choice === 'choose' && mode === 'pro') || (choice === 'pro_only' && t.bookable);
     // My Home Systems: the canonical fact this task can capture (if any), whether
     // it's already saved, and whether its inline panel is open.
     const fact = getFactForTask(t.key);
@@ -809,6 +864,33 @@ export default function HomeCareChecklistClient({
             >
               <span className="inline-flex items-center gap-1 text-xs font-bold text-primary group-hover:underline">
                 {isSel ? <><Check className="h-3.5 w-3.5" /> Added to request</> : <><Plus className="h-3.5 w-3.5" /> Add to request</>}
+              </span>
+            </button>
+          )}
+
+          {/* The card is not allowed to sit on the request without saying so.
+              Two controls already say it in their own words - the `pro` chip
+              and the ＋ circle's "Added to request" - and anywhere else that is
+              a card tinted `border-primary` and counted by the pill with
+              nothing on it to explain why or take it back. That is reachable
+              through every deep link, and most sharply right after "I'll do
+              it": a green "You've got this" chip on a job still queued for us
+              to quote. So the state is stated, and the statement is the way
+              out. */}
+          {isSel && !saysOnRequest && (
+            <button
+              type="button"
+              onClick={() => void clearFromRequest(t.key)}
+              disabled={busy === `mode|${panelKey}`}
+              aria-label={`Remove ${t.title} from your request`}
+              data-testid={`remove-from-request-${t.key}`}
+              className="group -my-1 inline-flex items-center justify-start"
+            >
+              <span className="inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2 py-1 text-[11px] font-extrabold text-primary">
+                Still on your request
+                <span className="inline-flex items-center gap-0.5 text-text-secondary group-hover:text-destructive">
+                  <X className="h-3 w-3" /> remove
+                </span>
               </span>
             </button>
           )}
