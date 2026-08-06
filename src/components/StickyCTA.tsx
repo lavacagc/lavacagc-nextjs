@@ -7,11 +7,15 @@ import Link from 'next/link';
 import { trackEvent, trackPhoneClick } from '@/services/analyticsManager';
 import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
 import { isPrivateTokenPage } from '@/lib/privatePages';
+import { useMobileMenuOpen } from '@/hooks/useMobileMenuState';
 
 export default function StickyCTA() {
   const pathname = usePathname();
   const [visible, setVisible] = useState(false);
   const [bannerShowing, setBannerShowing] = useState(() => isBannerVisible());
+  // While the hamburger menu is open this bar covers its last entries, and the
+  // menu carries its own "Request an Estimate" and phone number anyway.
+  const menuOpen = useMobileMenuOpen();
 
   // Listen for SmartBanner visibility
   useEffect(() => {
@@ -66,7 +70,7 @@ export default function StickyCTA() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [isSuppressed]);
 
-  if (isSuppressed || !visible || bannerShowing) return null;
+  if (isSuppressed || !visible || bannerShowing || menuOpen) return null;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white/95 backdrop-blur-sm border-t border-border shadow-lg safe-area-bottom">

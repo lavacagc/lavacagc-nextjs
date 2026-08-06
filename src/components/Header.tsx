@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Phone, Menu, X, Home } from "lucide-react";
 import logo from "@/assets/logo.png";
@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBuyRemodelPublished } from "@/lib/listings/publishedClient";
 import { readHcKnown } from "@/lib/homecare/knownClient";
 import { trackEvent } from "@/services/analyticsManager";
+import { setMobileMenuOpen as publishMobileMenuOpen } from "@/hooks/useMobileMenuState";
 
 const ITEM_CLASS =
   "block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors";
@@ -77,6 +78,44 @@ const Header = () => {
   // non-members (members use the My Home Care chip); Buy + Remodel only when
   // published/admin. Hide the whole menu if it would be empty.
   const showPrograms = showBuyRemodel || !hcKnown;
+
+  // Tell the bottom-pinned chrome - the StickyCTA bar and the SmartBanner
+  // mobile card - to get out of the way while the menu is open. Both are fixed
+  // to the bottom of the viewport, which is where the menu's last entries are.
+  useEffect(() => {
+    publishMobileMenuOpen(mobileMenuOpen);
+  }, [mobileMenuOpen]);
+  // Always publish `false` on unmount. Every page renders its own <Header>, so
+  // navigating away from a page with the menu open unmounts this instance while
+  // the flag still reads `true`, and the chrome would stay hidden on the next
+  // page with no menu left to explain why.
+  useEffect(() => () => publishMobileMenuOpen(false), []);
+
+  // The menu lives inside a `sticky` header that stays pinned at the top, so a
+  // menu taller than the viewport is not reachable by scrolling the page - its
+  // overflow is simply cut off (measured 188px, including the phone number, on
+  // a 390x844 phone). Cap it to the space actually left below the header and
+  // let it scroll itself. Measured rather than a `calc(100dvh - ...)` guess:
+  // the header row has three heights across breakpoints, the promo bar above it
+  // scrolls away, and a SmartBanner can offset the whole header.
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = menuRef.current;
+    if (!mobileMenuOpen || !el) return;
+
+    const fitToViewport = () => {
+      const top = el.getBoundingClientRect().top;
+      el.style.maxHeight = `${Math.max(160, window.innerHeight - top)}px`;
+    };
+    fitToViewport();
+
+    window.addEventListener('resize', fitToViewport);
+    window.addEventListener('scroll', fitToViewport, { passive: true });
+    return () => {
+      window.removeEventListener('resize', fitToViewport);
+      window.removeEventListener('scroll', fitToViewport);
+    };
+  }, [mobileMenuOpen]);
 
   const scrollToSection = (sectionId: string) => {
     // Close mobile menu if open
@@ -278,7 +317,13 @@ const Header = () => {
 
         {/* Mobile/Tablet Menu */}
         {mobileMenuOpen && (
-          <div id="mobile-menu" className="lg:hidden bg-background border-t border-border" role="navigation" aria-label="Mobile navigation">
+          <div
+            id="mobile-menu"
+            ref={menuRef}
+            className="lg:hidden bg-background border-t border-border overflow-y-auto overscroll-contain"
+            role="navigation"
+            aria-label="Mobile navigation"
+          >
             <div className="container mx-auto px-4 py-4 space-y-4">
               {/* Returning member portal access, surfaced first. */}
               {hcKnown && (
