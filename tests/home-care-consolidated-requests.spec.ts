@@ -86,6 +86,19 @@ test('AC2b: no card sits on the request without saying so, and every one can say
   expect(clear).toContain('setPicked');
   expect(clear).toContain("m === 'pro'");
   expect(clear).toContain('await setMode(');
+  // Tapping it unmounts it, so it has to hand focus on or a keyboard member is
+  // dropped to <body> mid-list. The target comes from the CARD, because the
+  // seasons this clears are by definition not the one on screen - relying on
+  // setMode's own target aims at a card no tab is rendering, and where there
+  // are no pro seasons at all setMode never runs. It is set after the loop so
+  // it is not overwritten by those.
+  expect(clear).toContain('setFocusTarget(focusKey)');
+  expect(clear.indexOf('setFocusTarget(focusKey)')).toBeGreaterThan(clear.indexOf('await setMode('));
+  expect(checklist).toMatch(/clearFromRequest\(t\.key,[^)]*panelKey/);
+  // Every one of those three targets has to be a registered, rendered control.
+  for (const kind of ['chip', 'toggle', 'done']) {
+    expect(checklist).toContain(`choiceRefs.current.set(\`${kind}|\${panelKey}\`, el)`);
+  }
 });
 
 test('AC3: the only submit path is the consolidated cart pill', () => {

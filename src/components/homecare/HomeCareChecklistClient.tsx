@@ -630,9 +630,18 @@ export default function HomeCareChecklistClient({
    * member just took off. Each is cleared through `setMode`, re-sending the
    * mode it already holds - the "tap the current choice again" path - so the
    * reversal is persisted and reverts on failure like any other.
+   *
+   * `focusKey` is resolved by the card that owns the button, because only it
+   * knows which control it will be left showing once `isSel` flips and the
+   * button unmounts. It cannot be inferred here: the seasons this clears are by
+   * definition NOT the one on screen (the button only renders where the active
+   * season is not already saying "On your request"), so the targets `setMode`
+   * sets on the way through point at cards no tab is currently rendering. It is
+   * therefore set last, after those, so the card the member is actually looking
+   * at is the one that wins.
    */
   const clearing = useRef<Set<string>>(new Set());
-  const clearFromRequest = async (key: string) => {
+  const clearFromRequest = async (key: string, focusKey: string) => {
     // One at a time per task. `setMode` clears a season by re-sending the mode
     // it already holds, which a re-entrant call reading the pre-click `modes`
     // would send as a fresh 'pro' - putting back the task it was asked to take
@@ -654,6 +663,7 @@ export default function HomeCareChecklistClient({
       }
     } finally {
       clearing.current.delete(key);
+      setFocusTarget(focusKey);
     }
   };
 
@@ -729,6 +739,7 @@ export default function HomeCareChecklistClient({
         <div className="flex items-start gap-3">
           <button
             type="button"
+            ref={(el) => { choiceRefs.current.set(`done|${panelKey}`, el); }}
             onClick={() => toggleDone(t.key, season)}
             disabled={busy === id(t.key, season)}
             aria-label={isDone ? 'Mark not done' : 'Mark done'}
@@ -877,10 +888,15 @@ export default function HomeCareChecklistClient({
               it": a green "You've got this" chip on a job still queued for us
               to quote. So the state is stated, and the statement is the way
               out. */}
+          {/* Tapping this unmounts it, so it hands on the control this card is
+              left showing: the chip or the toggle where there is a choice to
+              make, and the done box where there is not. The active season's
+              mode is never one of the ones cleared, so the chip and toggle both
+              outlive the tap. */}
           {isSel && !saysOnRequest && (
             <button
               type="button"
-              onClick={() => void clearFromRequest(t.key)}
+              onClick={() => void clearFromRequest(t.key, choice === 'choose' ? `${mode ? 'chip' : 'toggle'}|${panelKey}` : `done|${panelKey}`)}
               disabled={busy === `mode|${panelKey}`}
               aria-label={`Remove ${t.title} from your request`}
               data-testid={`remove-from-request-${t.key}`}
