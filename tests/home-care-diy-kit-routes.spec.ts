@@ -15,8 +15,8 @@ import { SKIP_WITHOUT_LIVE_BACKEND } from './helpers/liveBackend';
  *  - Everything validated BEFORE a database call runs under the ordinary stub
  *    build, in CI, every time. That is most of the refusals: a URL with no
  *    product in it, an ASIN that is not one, a nameless product, a price band
- *    we do not have, a photo that is not an image, a live product with no
- *    picture at all.
+ *    outside the retired vocabulary, a photo that is not an image, a live
+ *    product with no picture at all.
  *  - The refusals that need to READ something - the pro-task gate, the
  *    duplicate ASIN, the round trip of creating and deleting a product - are
  *    guarded by SKIP_WITHOUT_LIVE_BACKEND, the same way links.spec.ts is. They
@@ -40,7 +40,6 @@ const VALID = {
   pitch: 'One at each end of the basement.',
   images: ['B08XYZ1234/1-0.jpg'],
   image_source: 'manual',
-  price_band: 'under_25',
   category: 'monitor',
   task_keys: [] as string[],
   active: false,
@@ -140,7 +139,6 @@ test.describe('DIY Kit admin routes', () => {
       ['blank name', { display_name: '   ' }, /display name/i],
       ['missing name', { display_name: undefined }, /display name/i],
       ['unknown band', { price_band: 'cheap' }, /price band/i],
-      ['missing band', { price_band: undefined }, /price band/i],
       ['live with no photo', { active: true, images: [] }, /photo/i],
       // The column's CHECK knows three sources. Anything else has to be refused
       // in words here, or it lands as a 500 carrying the constraint's name.
@@ -171,6 +169,12 @@ test.describe('DIY Kit admin routes', () => {
     expect(blank.status()).toBe(422);
     const band = await context.request.patch(`${baseURL}${PRODUCTS}/${id}`, { data: { price_band: 'free' } });
     expect(band.status()).toBe(422);
+    // Null is the one band value an edit accepts, and it means "clear it" - the
+    // same story the create route tells, which is the whole reason to assert it
+    // here. It reaches the database, which the stub cannot answer, so "was not
+    // refused as malformed" is the only honest assertion available on this side.
+    const cleared = await context.request.patch(`${baseURL}${PRODUCTS}/${id}`, { data: { price_band: null } });
+    expect(cleared.status(), 'an explicit null clears the band, it is not a malformed one').not.toBe(422);
     const source = await context.request.patch(`${baseURL}${PRODUCTS}/${id}`, { data: { image_source: 'amazon' } });
     expect(source.status()).toBe(422);
     expect((await source.json()).error).toMatch(/listing, an upload, or the Amazon API/i);

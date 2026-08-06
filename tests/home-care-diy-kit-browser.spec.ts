@@ -265,6 +265,60 @@ test.describe('DIY Kit admin screen', () => {
     await expect(page.getByRole('button', { name: 'Draft' })).toBeVisible();
   });
 
+  test('the retired price band is nowhere on the admin screen, on any of its three surfaces', async ({ page }) => {
+    // Owner, 2026-08-06: the band is retired. The contract spec asserts that
+    // over the SOURCE, which a rename would satisfy without the screen changing,
+    // so the screen itself is asked here.
+    //
+    // What makes this worth its runtime: the mocked payload above still carries
+    // `price_band` on all three products, exactly as a database full of bands
+    // chosen before today does. So this passes only while the component
+    // genuinely ignores a band it was handed, not merely because none arrived.
+    await serveShop(page);
+    await page.route('**/api/admin/home-care/parse-amazon', async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: { asin: 'B0NEWITEM1', title: 'Moisture absorber tubs', brand: 'DampRid', images: ['B0NEWITEM1/1.png'], imageSource: 'listing' },
+      });
+    });
+    await page.goto(SHOP);
+
+    /**
+     * Swept on EACH surface rather than once at the end, which is the whole
+     * difference between this test and a vacuous one: these three are separate
+     * renders of the same screen and only one of them is mounted at a time, so
+     * a single sweep after the last navigation says nothing about the first
+     * two. Written this way because the one-sweep version passed with a band
+     * deliberately put back on the shelf row.
+     */
+    const noPricingOnScreen = async () => expect(page.getByText(/\$\d/)).toHaveCount(0);
+
+    // 1. The shelf on an open task, where a band used to sit under each name.
+    await page.getByRole('button', { name: /Keep the basement/ }).click();
+    await expect(page.getByText('Digital hygrometer, 2-pack')).toBeVisible();
+    await expect(page.getByText('On this item only').first()).toBeVisible();
+    await noPricingOnScreen();
+
+    // 2. The drafting form, which no longer asks for one. The control's absence
+    // is asserted as well as its text: a select nobody can see still posts a
+    // band.
+    await page.getByLabel('Amazon product URL').fill('https://www.amazon.com/dp/B0NEWITEM1');
+    await page.getByRole('button', { name: 'Parse' }).click();
+    await expect(page.getByText('Display name')).toBeVisible();
+    await expect(page.getByText('Price band')).toHaveCount(0);
+    await expect(page.locator('select')).toHaveCount(1); // Category, and only Category.
+    await expect(page.locator('select')).not.toContainText('Under $25');
+    await noPricingOnScreen();
+
+    // 3. The library, the other list that carried a band per row. It lives on
+    // the catalog screen, so the open task has to be closed to get back to it.
+    await page.getByRole('button', { name: /All items/ }).click();
+    await page.getByRole('button', { name: /Product library \(3\)/ }).click();
+    await expect(page.getByText('Wet/dry shop vac')).toBeVisible();
+    await expect(page.getByText('On no item')).toBeVisible();
+    await noPricingOnScreen();
+  });
+
   test('happy: adding from the library asks for ONE shelf, never the whole set', async ({ page }) => {
     // The failure being ruled out: this screen has been open a while, another
     // tab put the same product on two more tasks, and an "add" that restates

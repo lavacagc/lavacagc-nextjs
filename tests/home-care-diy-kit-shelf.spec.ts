@@ -280,7 +280,7 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
     await shot(page, '01-shelf-collapsed-strip.png');
   });
 
-  test('S2: expanding shows the picks, their bands, tagged links and the disclosure', async ({ page }) => {
+  test('S2: expanding shows the picks, tagged links and the disclosure - and no pricing', async ({ page }) => {
     await openChecklist(page);
     const row = taskRow(page, 'Replace the HVAC filter');
     await page.getByTestId('diy-kit-toggle-replace_hvac_filter').scrollIntoViewIfNeeded();
@@ -293,10 +293,16 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
     await expect(row.getByText('Draft product nobody approved')).toHaveCount(0);
     await expect(row.getByText('Delisted product')).toHaveCount(0);
 
-    // Bands, never a price. The one that reads "and up" is the open-ended band.
-    await expect(row.getByText('Under $25')).toBeVisible();
-    await expect(row.getByText('$25 - $50')).toBeVisible();
-    await expect(row.getByText('$100 and up')).toBeVisible();
+    // NO pricing of any kind (owner, 2026-08-06). The band was retired because
+    // maintaining one per product was manual labour, so a card is name, pitch,
+    // photo and link. Asserted as an absence because the failure this guards is
+    // a band creeping back onto a card nobody chose one for - and because the
+    // stub still SERVES bands on some rows, so this only passes while the
+    // component genuinely ignores them.
+    await expect(row.getByText('Under $25')).toHaveCount(0);
+    await expect(row.getByText('$25 - $50')).toHaveCount(0);
+    await expect(row.getByText('$100 and up')).toHaveCount(0);
+    await expect(row.getByText(/\$\d/)).toHaveCount(0);
     for (const [i, product] of VISIBLE_ON_HVAC.entries()) {
       const link = links.nth(i);
       await expect(link).toHaveAttribute('href', amazonProductUrl(product.asin, TAG));

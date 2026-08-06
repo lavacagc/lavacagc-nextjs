@@ -5,6 +5,7 @@ import {
   parseAsin, amazonProductUrl, isDiyEligible, isRenderable, priceBandLabel, isPriceBand,
   isProductCategory, productImageUrl, AFFILIATE_DISCLOSURE, type HomeCareProduct,
 } from '@/lib/homecare/products';
+import { isPriceBandNotNullError, PRICE_BAND_MIGRATION_MISSING } from '@/lib/homecare/productAdmin';
 
 /**
  * Home Care DIY Kit, slice 1. Acceptance criteria in
@@ -46,7 +47,7 @@ const functionBody = (src: string, name: string): string => {
 
 const product = (over: Partial<HomeCareProduct> = {}): HomeCareProduct => ({
   id: 'p1', asin: 'B08XYZ1234', display_name: 'Digital hygrometer, 2-pack',
-  images: ['B08XYZ1234/1-0.jpg'], price_band: 'under_25', active: true, link_status: 'ok', ...over,
+  images: ['B08XYZ1234/1-0.jpg'], active: true, link_status: 'ok', ...over,
 });
 
 // ---------------------------------------------------------------- AC2: ASINs
@@ -319,7 +320,25 @@ test('AC12 - a click row has nowhere to put a person', () => {
 
 // ------------------------------------------------------------- small contracts
 
-test('price bands are labelled, and nothing else is a band', () => {
+test('the retired price band is not fetched, not rendered, and not asked for', () => {
+  // Owner, 2026-08-06: maintaining a band per product was manual labour, so it
+  // is retired. Retired means three separate things, and each is worth its own
+  // assertion because each could regress on its own.
+  // 1. The member read does not even SELECT it, so it never reaches a browser.
+  expect(read('src/lib/homecare/productShelf.ts')).not.toContain('price_band');
+  // 2. No card renders it.
+  expect(read(SHELF)).not.toContain('priceBandLabel');
+  expect(read(SHELF)).not.toContain('price_band');
+  // 3. No form asks for it.
+  const admin = read(ADMIN);
+  expect(admin).not.toContain('Price band');
+  expect(admin).not.toContain('PRICE_BANDS');
+  // The column and its vocabulary survive on purpose - see the migration.
+  expect(read('supabase/migrations/20260829000000_home_care_price_band_optional.sql'))
+    .toContain('DROP NOT NULL');
+});
+
+test('the retired price band keeps its vocabulary, and reaches no rendering path', () => {
   expect(priceBandLabel('under_25')).toBe('Under $25');
   expect(priceBandLabel('100_plus')).toBe('$100 and up');
   expect(priceBandLabel('cheap')).toBeNull();
@@ -328,6 +347,54 @@ test('price bands are labelled, and nothing else is a band', () => {
   expect(isPriceBand('25-50')).toBe(false);
   expect(isProductCategory('tool')).toBe(true);
   expect(isProductCategory('gadget')).toBe(false);
+});
+
+test('a database still requiring a band is named, and nothing else is mistaken for one', () => {
+  // Since the retirement every create writes the null a pre-migration database
+  // forbids, so on a lagging copy this is EVERY save failing. The 503 is the
+  // only thing that tells an operator which migration to apply, and it is
+  // reached solely through this predicate - which reads a string, so it is
+  // worth pinning to strings a real database actually produces.
+  //
+  // The message texts below are the ones PostgreSQL 17 emits for this exact
+  // table, captured by replaying both migrations on a throwaway server, wrapped
+  // the way supabase-rest.ts wraps a failed call: `... failed: <status> <body>`.
+  const wrap = (body: unknown) =>
+    new Error(`Supabase POST home_care_products failed: 400 ${JSON.stringify(body)}`);
+
+  const lagging = wrap({
+    code: '23502',
+    details: 'Failing row contains (7a6e2de2, B00BEFORE1, No band, null, null, [], null, null, null, f, ok, 0, null).',
+    hint: null,
+    message: 'null value in column "price_band" of relation "home_care_products" violates not-null constraint',
+  });
+  expect(isPriceBandNotNullError(lagging)).toBe(true);
+
+  // A not-null violation on a DIFFERENT column must NOT be answered with this
+  // migration - sending an operator to a migration that would not fix their
+  // problem is the failure the narrowness is for. Note the detail line carries
+  // the band VALUE ('under_25') without naming the column, which is exactly the
+  // near-miss that makes a looser predicate wrong.
+  const otherColumn = wrap({
+    code: '23502',
+    details: "Failing row contains (47c47bc2, B04NONAME1, null, null, null, [], null, under_25, null, f, ok, 0, null).",
+    hint: null,
+    message: 'null value in column "display_name" of relation "home_care_products" violates not-null constraint',
+  });
+  expect(isPriceBandNotNullError(otherColumn)).toBe(false);
+
+  // Neither is anything else that goes wrong on the same write path.
+  expect(isPriceBandNotNullError(wrap({ code: '23505', message: 'duplicate key value violates unique constraint' }))).toBe(false);
+  expect(isPriceBandNotNullError(wrap({ code: '42P01', message: 'relation "public.home_care_products" does not exist' }))).toBe(false);
+  expect(isPriceBandNotNullError(new Error('fetch failed'))).toBe(false);
+  // A thrown non-Error must not take the route's catch block down with it.
+  expect(isPriceBandNotNullError('null value in column "price_band"')).toBe(true);
+  expect(isPriceBandNotNullError(undefined)).toBe(false);
+
+  // The sentence sends an operator to a file, so that file has to be there.
+  const named = /supabase\/migrations\/\S+\.sql/.exec(PRICE_BAND_MIGRATION_MISSING)?.[0];
+  expect(named, 'the operator message must name the migration').toBeTruthy();
+  expect(read(named!)).toContain('DROP NOT NULL');
 });
 
 test('an image path with no storage host configured yields null, not a broken URL', () => {

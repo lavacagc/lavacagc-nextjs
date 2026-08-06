@@ -27,7 +27,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import {
-  AFFILIATE_DISCLOSURE, amazonProductUrl, priceBandLabel, productImageUrl, type HomeCareProduct,
+  AFFILIATE_DISCLOSURE, amazonProductUrl, productImageUrl, type HomeCareProduct,
 } from '@/lib/homecare/products';
 import { SHELF_GAP, shelfPosition, shelfRangeLabel } from '@/lib/homecare/shelfPosition';
 
@@ -202,15 +202,15 @@ function ProductPhoto({ product, sizes }: { product: HomeCareProduct; sizes: str
 function ProductCard({
   product, affiliateTag, className,
 }: { product: HomeCareProduct; affiliateTag?: string | null; className?: string }) {
-  const band = priceBandLabel(product.price_band);
   return (
     <div className={`flex flex-col gap-1.5 rounded-xl border border-border bg-card p-2.5 ${className ?? ''}`}>
       <div className="relative h-[72px] overflow-hidden rounded-lg border border-border/60 bg-white">
         <ProductPhoto product={product} sizes="(min-width: 640px) 180px, 45vw" />
       </div>
       <span className="text-xs font-bold leading-tight text-text-primary">{product.display_name}</span>
+      {/* No price band (owner, 2026-08-06): it was manual labour to maintain and
+          is no longer collected or shown. The card is name, pitch, photo, link. */}
       {product.pitch && <span className="text-[11px] leading-snug text-text-muted">{product.pitch}</span>}
-      {band && <span className="text-[11px] font-extrabold text-accent-teal">{band}</span>}
       <a
         href={amazonProductUrl(product.asin, affiliateTag)}
         target="_blank"
