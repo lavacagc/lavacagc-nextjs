@@ -305,7 +305,8 @@ export default function HomeCareChecklistClient({
   const planComplete = planTotal > 0 && planDone === planTotal;
   const planLabel = trackedStarter.length > 0 ? `${SEASON_LABEL[activeSeason]} + essentials` : SEASON_LABEL[activeSeason];
 
-  const setDismissState = async (key: string, dismiss: boolean) => {
+  /** Writes the hide/unhide and reports whether it landed, so a caller can undo its own UI. */
+  const setDismissState = async (key: string, dismiss: boolean): Promise<boolean> => {
     setDismissed((prev) => {
       const next = new Set(prev);
       if (dismiss) next.add(key);
@@ -329,6 +330,7 @@ export default function HomeCareChecklistClient({
         body: JSON.stringify({ task_key: key, dismiss }),
       });
       if (!res.ok) throw new Error(`dismiss failed: ${res.status}`);
+      return true;
     } catch {
       setDismissed((prev) => {
         const revert = new Set(prev);
@@ -336,6 +338,7 @@ export default function HomeCareChecklistClient({
         else revert.add(key);
         return revert;
       });
+      return false;
     } finally {
       setBusy(null);
     }
@@ -350,10 +353,19 @@ export default function HomeCareChecklistClient({
    * of the page can always restore it, but a member who does not know what they
    * just pressed will not go looking for a strip they have never seen. The undo
    * bar sits in the sticky header, where their thumb already is.
+   *
+   * The bar goes up optimistically and comes back down if the write did not
+   * land - an offline phone, an expired cookie. Leaving it up would have the
+   * header announcing "Hidden: <task>" with an Undo button while the row is
+   * plainly still on the page, and pressing that Undo would POST an unhide for
+   * a task that was never hidden. Keyed, so a second hide that succeeded while
+   * this one was failing keeps its own bar.
    */
   const dismissWithUndo = (key: string, title: string) => {
     setLastHidden({ key, title });
-    setDismissState(key, true);
+    void setDismissState(key, true).then((ok) => {
+      if (!ok) setLastHidden((prev) => (prev?.key === key ? null : prev));
+    });
   };
 
   const shareHomeCare = async () => {

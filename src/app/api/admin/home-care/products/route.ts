@@ -15,9 +15,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest, isMissingTableError } from '@/lib/notify/supabase-rest';
 import {
-  readShopTasks, eligibleTaskKeys, normalizeTaskKeys, TASK_KEYS_NOT_A_LIST,
+  readShopTasks, refuseIneligible, normalizeTaskKeys, TASK_KEYS_NOT_A_LIST,
 } from '@/lib/homecare/productAdmin';
-import { isPriceBand, isProductCategory, type AdminProduct } from '@/lib/homecare/products';
+import { isPriceBand, isProductCategory, isImageSource, type AdminProduct } from '@/lib/homecare/products';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -143,19 +143,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'A live product needs at least one photo. Add one, or save it as a draft.' }, { status: 422 });
   }
 
-  const taskKeys = body.task_keys === undefined ? [] : normalizeTaskKeys(body.task_keys);
-  if (taskKeys === null) return NextResponse.json({ error: TASK_KEYS_NOT_A_LIST }, { status: 422 });
-  if (taskKeys.length > 0) {
-    const eligible = await eligibleTaskKeys();
-    const refused = taskKeys.filter((k) => !eligible.has(k));
-    if (refused.length > 0) {
-      return NextResponse.json(
-        { error: `We only recommend gear for tasks a homeowner can do themselves. Not eligible: ${refused.join(', ')}.` },
-        { status: 422 },
-      );
-    }
+  // Absent is fine - most drafts have no photo yet. A value the column's CHECK
+  // does not know is not, and it is refused here for the same reason the band
+  // and the category are: the alternative is a 500 carrying a constraint name.
+  const imageSource = body.image_source === undefined || body.image_source === null ? null : body.image_source;
+  if (imageSource !== null && !isImageSource(imageSource)) {
+    return NextResponse.json({ error: 'Photos have to come from the listing, an upload, or the Amazon API.' }, { status: 422 });
   }
 
+  const taskKeys = body.task_keys === undefined ? [] : normalizeTaskKeys(body.task_keys);
+  if (taskKeys === null) return NextResponse.json({ error: TASK_KEYS_NOT_A_LIST }, { status: 422 });
+  const refusal = await refuseIneligible(taskKeys);
+  if (refusal) return NextResponse.json({ error: refusal }, { status: 422 });
+
+  // The id of the row once it exists, and the whole reason the catch below has
+  // two answers. A create is TWO PostgREST requests with no transaction across
+  // them, so the shelf insert can fail with the product already stored - and
+  // "Could not save the product." is then a lie the operator acts on: they press
+  // Add again and meet a 409 about a product they were just told did not save.
+  let createdId: string | null = null;
   try {
     const created = await supabaseRest<Array<{ id: string }>>('POST', 'home_care_products', {
       asin,
@@ -163,13 +169,14 @@ export async function POST(request: NextRequest) {
       brand: typeof body.brand === 'string' ? body.brand.trim().slice(0, MAX_NAME) || null : null,
       pitch: typeof body.pitch === 'string' ? body.pitch.trim().slice(0, MAX_PITCH) || null : null,
       images,
-      image_source: typeof body.image_source === 'string' ? body.image_source : null,
+      image_source: imageSource,
       price_band: body.price_band,
       category: isProductCategory(body.category) ? body.category : null,
       active,
     });
     const id = created?.[0]?.id;
     if (!id) return NextResponse.json({ error: 'The product was not created.' }, { status: 500 });
+    createdId = id;
 
     if (taskKeys.length > 0) {
       await supabaseRest('POST', 'home_care_product_tasks',
@@ -177,6 +184,19 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ id }, { status: 201 });
   } catch (err) {
+    // The product landed and only its shelves did not. Answering 201 with the
+    // truth beside it is what makes the next move obvious - open it and put it
+    // on the item - instead of sending the operator back through a create that
+    // cannot succeed.
+    if (createdId) {
+      return NextResponse.json(
+        {
+          id: createdId,
+          warning: 'Saved, but it may not be on the shelf yet - open the product and check which items it is on.',
+        },
+        { status: 201 },
+      );
+    }
     const message = err instanceof Error ? err.message : String(err);
     if (/duplicate key|already exists|23505/i.test(message)) {
       return NextResponse.json({ error: 'That product is already in your library.' }, { status: 409 });

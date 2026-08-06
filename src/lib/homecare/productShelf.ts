@@ -22,7 +22,7 @@
  * throw away.
  */
 import { supabaseRest } from '@/lib/notify/supabase-rest';
-import { isRenderable, type HomeCareProduct, type PriceBand, type LinkStatus } from '@/lib/homecare/products';
+import { isDiyEligible, isRenderable, type HomeCareProduct, type PriceBand, type LinkStatus } from '@/lib/homecare/products';
 
 /** The join row as PostgREST returns it with the product embedded. */
 interface ShelfRow {
@@ -46,6 +46,26 @@ interface ShelfRow {
 export type ProductShelves = Record<string, HomeCareProduct[]>;
 
 /**
+ * A task as this read has to be asked about it: the key, and the catalog's own
+ * DIY verdict for it.
+ *
+ * The verdict is part of the ARGUMENT rather than something re-fetched here, and
+ * that is the whole shape of the eligibility rule at render time. `diy_or_pro`
+ * is edited as data: a task stocked while it was `either` keeps its join rows
+ * after the owner hands the work to the crew, so a read that trusts the join
+ * table alone will keep offering a member the gear for work we have just
+ * declared pro-only. Taking the verdict here means the rule is re-checked on
+ * every render, and taking it as a required field of the task means a caller
+ * cannot ask for a shelf without saying which side of that line the task is on.
+ * Every member surface already has it in hand - the checklist page reads
+ * `maintenance_catalog` before it calls this - so it costs no extra query.
+ */
+export interface ShelfTask {
+  key: string;
+  diy_or_pro?: string | null;
+}
+
+/**
  * A stored `images` value, defensively.
  *
  * The column is CHECKed as a jsonb array, but its ELEMENTS are not constrained -
@@ -59,8 +79,15 @@ function imagePaths(value: unknown): string[] {
   return value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
 }
 
-export async function readProductShelves(taskKeys: string[]): Promise<ProductShelves> {
-  const keys = Array.from(new Set(taskKeys.filter((k) => typeof k === 'string' && k.length > 0)));
+export async function readProductShelves(tasks: ReadonlyArray<ShelfTask>): Promise<ProductShelves> {
+  // Ineligible tasks are dropped before the query rather than after it: a task
+  // the catalog now calls `pro` is not a shelf we filter out of the answer, it
+  // is a shelf we never ask about.
+  const keys = Array.from(new Set(
+    (tasks ?? [])
+      .filter((t) => t && typeof t.key === 'string' && t.key.length > 0 && isDiyEligible(t.diy_or_pro))
+      .map((t) => t.key),
+  ));
   if (keys.length === 0 || !process.env.SUPABASE_SECRET_KEY) return {};
 
   try {

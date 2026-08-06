@@ -118,12 +118,35 @@ function fullSizeImageUrl(url: string): string {
   return url.replace(/\._[A-Z0-9_,]+_\.(jpg|jpeg|png|webp)/i, '.$1');
 }
 
+/**
+ * Amazon's own image CDNs, and nothing else.
+ *
+ * Everything this module reads comes out of a page we do not control, matched by
+ * tolerant regexes over `og:image`, any `"hiRes"`/`"large"` JSON value and every
+ * key of `data-a-dynamic-image`. What comes back is then fetched server-side and
+ * copied into our PUBLIC bucket, where it renders on member pages - so a URL
+ * that merely LOOKS like an image is enough to point a first-party fetch and a
+ * first-party asset at a third-party host. Pinning the host is what keeps the
+ * shape of the page from being the thing that decides where we go.
+ */
+const AMAZON_IMAGE_HOST = /(^|\.)(media-amazon\.com|ssl-images-amazon\.com|images-amazon\.com)$/i;
+
+function isAmazonImageUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && AMAZON_IMAGE_HOST.test(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function collectImages(html: string, limit: number): string[] {
   const found: string[] = [];
   const push = (u: string | null | undefined) => {
     if (!u) return;
     const clean = fullSizeImageUrl(u.replace(/&amp;/g, '&').trim());
     if (!/^https:\/\/[^\s"']+\.(jpg|jpeg|png|webp)/i.test(clean)) return;
+    if (!isAmazonImageUrl(clean)) return;
     if (!found.includes(clean) && found.length < limit) found.push(clean);
   };
 
@@ -204,6 +227,10 @@ const IMAGE_TYPES: Record<string, string> = {
  * and not the paste.
  */
 export async function fetchProductImage(url: string): Promise<FetchedImage | null> {
+  // The host is checked again at the point of the fetch, not only where the URL
+  // was collected: this is the function that actually opens the connection, so
+  // it is the one place the rule cannot be walked around by a future caller.
+  if (!isAmazonImageUrl(url)) return null;
   try {
     const res = await fetchWithTimeout(url);
     if (!res.ok) return null;

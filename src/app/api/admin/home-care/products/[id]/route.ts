@@ -33,8 +33,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
-import { eligibleTaskKeys, normalizeTaskKeys, TASK_KEYS_NOT_A_LIST } from '@/lib/homecare/productAdmin';
-import { isPriceBand, isProductCategory } from '@/lib/homecare/products';
+import { refuseIneligible, normalizeTaskKeys, TASK_KEYS_NOT_A_LIST } from '@/lib/homecare/productAdmin';
+import { isPriceBand, isProductCategory, isImageSource } from '@/lib/homecare/products';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -81,7 +81,12 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     patch.price_band = body.price_band;
   }
   if (body.category !== undefined) patch.category = isProductCategory(body.category) ? body.category : null;
-  if (body.image_source !== undefined) patch.image_source = typeof body.image_source === 'string' ? body.image_source : null;
+  if (body.image_source !== undefined) {
+    if (body.image_source !== null && !isImageSource(body.image_source)) {
+      return NextResponse.json({ error: 'Photos have to come from the listing, an upload, or the Amazon API.' }, { status: 422 });
+    }
+    patch.image_source = body.image_source;
+  }
   if (Array.isArray(body.images)) {
     patch.images = body.images.filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
   }
@@ -120,17 +125,8 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     );
   }
 
-  const wantsEligible = attachKey ? [attachKey] : taskKeys ?? [];
-  if (wantsEligible.length > 0) {
-    const eligible = await eligibleTaskKeys();
-    const refused = wantsEligible.filter((k) => !eligible.has(k));
-    if (refused.length > 0) {
-      return NextResponse.json(
-        { error: `We only recommend gear for tasks a homeowner can do themselves. Not eligible: ${refused.join(', ')}.` },
-        { status: 422 },
-      );
-    }
-  }
+  const refusal = await refuseIneligible(attachKey ? [attachKey] : taskKeys ?? []);
+  if (refusal) return NextResponse.json({ error: refusal }, { status: 422 });
 
   // True only inside the window the replacement path opens: the old rows are
   // gone and the new ones are not in yet. See the message it produces below.

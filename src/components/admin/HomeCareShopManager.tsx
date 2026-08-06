@@ -214,10 +214,17 @@ export function HomeCareShopManager() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? 'Could not save.');
-      toast({
-        title: draft.images.length > 0 ? 'Added to the shelf' : 'Saved as a draft',
-        description: draft.images.length > 0 ? undefined : 'It stays hidden from members until it has a photo.',
-      });
+      // A create is two writes, and the route says so when only the first one
+      // landed. Reporting that as success would send the owner away believing
+      // the product is on the item when it may be sitting in the library alone.
+      if (data?.warning) {
+        toast({ variant: 'destructive', title: 'Saved, but check the shelf', description: data.warning });
+      } else {
+        toast({
+          title: draft.images.length > 0 ? 'Added to the shelf' : 'Saved as a draft',
+          description: draft.images.length > 0 ? undefined : 'It stays hidden from members until it has a photo.',
+        });
+      }
       resetAdd();
       await load();
     } catch (err) {
@@ -493,7 +500,7 @@ export function HomeCareShopManager() {
                 <div>
                   <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">Also show on these items</div>
                   <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
-                    {otherEligible.slice(0, 40).map((t) => {
+                    {otherEligible.map((t) => {
                       const on = draft.task_keys.includes(t.key);
                       return (
                         <button

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
 import { readShopTasks, eligibleTaskKeys } from '@/lib/homecare/productAdmin';
 import { readProductShelves } from '@/lib/homecare/productShelf';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
@@ -21,8 +22,19 @@ import { isDiyEligible } from '@/lib/homecare/products';
  * it actually is: that `chimney_inspect` is genuinely refused because the live
  * row says `pro`, not because a fixture said so.
  *
- * Skips loudly without credentials, so CI stays deterministic. Run it with
- * `set -a && . ./.env.local && set +a && npx playwright test tests/home-care-diy-kit-live.spec.ts`.
+ * TWO GUARDS, and both are load-bearing. This file WRITES to whatever database
+ * the environment names, which is production - so it must never be reachable
+ * from an ordinary `npm run test:e2e`, and that run is only distinguishable by
+ * the shared flag: a shell that has sourced `.env.local` has the credentials,
+ * so a credentials check alone would let a stub-backed run insert and delete
+ * live rows. `SKIP_WITHOUT_LIVE_BACKEND` is what refuses that, and it is also
+ * what puts this spec into the index CLAUDE.md documents
+ * (`grep -l "test.skip(SKIP_WITHOUT_LIVE_BACKEND" tests/*.spec.ts`). The
+ * credentials check stays on top of it, so that deliberately running with
+ * E2E_LIVE_BACKEND=1 and no env skips rather than erroring.
+ *
+ * Run it with `npm run build`, then
+ * `set -a && . ./.env.local && set +a && E2E_LIVE_BACKEND=1 npx playwright test tests/home-care-diy-kit-live.spec.ts`.
  */
 
 const HAS_BACKEND = !!process.env.SUPABASE_SECRET_KEY && !!process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -38,18 +50,22 @@ const TEST_ASIN = 'B0TESTKIT1';
  * production. Linked to a real key like `basement_humidity`, the test product
  * would sit on the live shelf of every member whose plan includes that task for
  * as long as the test runs - with a broken photo, since nothing was ever
- * uploaded to `B0TESTKIT1/`. `readProductShelves` never consults the catalog; it
- * joins from the keys the checklist hands it, so an off-catalog key exercises
- * the identical insert, read, filter and cascade rules and can never reach a
- * member page.
+ * uploaded to `B0TESTKIT1/`. `readProductShelves` is handed its tasks WITH their
+ * DIY verdict by the caller rather than looking the catalog up itself, so this
+ * key exercises the identical insert, read, filter and cascade rules while
+ * appearing on no member's plan at all.
  */
 const TEST_TASK_KEY = 'zz_diy_kit_test';
+
+/** The test task as a member surface would present it: stockable, so a shelf may render. */
+const DIY_TEST_TASK = { key: TEST_TASK_KEY, diy_or_pro: 'diy' };
 
 async function removeTestProduct() {
   await supabaseRest('DELETE', `home_care_products?asin=eq.${TEST_ASIN}`, undefined).catch(() => {});
 }
 
 test.describe('DIY Kit against the live catalog', () => {
+  test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
   test.skip(!HAS_BACKEND, REASON);
   test.describe.configure({ mode: 'serial' });
 
@@ -123,26 +139,37 @@ test.describe('DIY Kit against the live catalog', () => {
     ]);
     await supabaseRest('PATCH', `home_care_products?id=eq.${id}`, { active: true });
 
-    const shelves = await readProductShelves([TEST_TASK_KEY, 'chimney_inspect']);
+    const chimney = (await readShopTasks()).find((t) => t.key === 'chimney_inspect')!;
+    const shelves = await readProductShelves([DIY_TEST_TASK, chimney]);
     expect(shelves[TEST_TASK_KEY]?.some((p) => p.asin === TEST_ASIN)).toBe(true);
     // A task nobody stocked has no entry at all - not an empty array, nothing,
     // which is what lets the row render exactly as it did before this feature.
     expect(shelves.chimney_inspect).toBeUndefined();
 
+    // THE RULE IS RE-CHECKED AT RENDER, not only at stocking time. The catalog
+    // is edited as data: this exact product, on this exact shelf, must stop
+    // coming back the moment the task it hangs off is called pro work - without
+    // anybody having to remember to unstock it.
+    expect(await readProductShelves([{ key: TEST_TASK_KEY, diy_or_pro: 'pro' }])).toEqual({});
+    // 'either' is DIY-eligible and still renders; a missing verdict is not.
+    expect((await readProductShelves([{ key: TEST_TASK_KEY, diy_or_pro: 'either' }]))[TEST_TASK_KEY]
+      ?.some((p) => p.asin === TEST_ASIN)).toBe(true);
+    expect(await readProductShelves([{ key: TEST_TASK_KEY, diy_or_pro: null }])).toEqual({});
+
     // unhappy: a product marked gone stops rendering immediately. Fail closed -
     // a member tapping a dead link is worse than one fewer pick.
     await supabaseRest('PATCH', `home_care_products?id=eq.${id}`, { link_status: 'gone' });
-    expect((await readProductShelves([TEST_TASK_KEY]))[TEST_TASK_KEY] ?? [])
+    expect((await readProductShelves([DIY_TEST_TASK]))[TEST_TASK_KEY] ?? [])
       .not.toContainEqual(expect.objectContaining({ asin: TEST_ASIN }));
 
     // But 'suspect' - "we could not tell", usually an Amazon block - still
     // renders, which is the whole point of having three states.
     await supabaseRest('PATCH', `home_care_products?id=eq.${id}`, { link_status: 'suspect' });
-    expect((await readProductShelves([TEST_TASK_KEY]))[TEST_TASK_KEY]?.some((p) => p.asin === TEST_ASIN)).toBe(true);
+    expect((await readProductShelves([DIY_TEST_TASK]))[TEST_TASK_KEY]?.some((p) => p.asin === TEST_ASIN)).toBe(true);
 
     // Same for a draft: stocked, but not published, so not shown.
     await supabaseRest('PATCH', `home_care_products?id=eq.${id}`, { link_status: 'ok', active: false, images: [] });
-    expect((await readProductShelves([TEST_TASK_KEY]))[TEST_TASK_KEY] ?? []).toHaveLength(0);
+    expect((await readProductShelves([DIY_TEST_TASK]))[TEST_TASK_KEY] ?? []).toHaveLength(0);
 
     // Deleting the product takes its shelf entry with it - no orphan rows for a
     // later reader to defend against.
@@ -157,6 +184,9 @@ test.describe('DIY Kit against the live catalog', () => {
     // No tasks: no query at all, and an empty map rather than a throw.
     expect(await readProductShelves([])).toEqual({});
     // Unknown keys: an empty map, not an error - the checklist must render.
-    expect(await readProductShelves(['no_such_task', 'another_missing_one'])).toEqual({});
+    expect(await readProductShelves([
+      { key: 'no_such_task', diy_or_pro: 'diy' },
+      { key: 'another_missing_one', diy_or_pro: 'either' },
+    ])).toEqual({});
   });
 });

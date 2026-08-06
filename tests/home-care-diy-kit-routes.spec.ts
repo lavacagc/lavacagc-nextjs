@@ -142,6 +142,10 @@ test.describe('DIY Kit admin routes', () => {
       ['unknown band', { price_band: 'cheap' }, /price band/i],
       ['missing band', { price_band: undefined }, /price band/i],
       ['live with no photo', { active: true, images: [] }, /photo/i],
+      // The column's CHECK knows three sources. Anything else has to be refused
+      // in words here, or it lands as a 500 carrying the constraint's name.
+      ['unknown image source', { image_source: 'amazon' }, /listing, an upload, or the Amazon API/i],
+      ['image source that is not a string', { image_source: 7 }, /listing, an upload, or the Amazon API/i],
       ['task_keys that is not a list', { task_keys: null }, /list of maintenance items/i],
       ['task_keys as a bare string', { task_keys: 'basement_humidity' }, /list of maintenance items/i],
     ];
@@ -167,6 +171,9 @@ test.describe('DIY Kit admin routes', () => {
     expect(blank.status()).toBe(422);
     const band = await context.request.patch(`${baseURL}${PRODUCTS}/${id}`, { data: { price_band: 'free' } });
     expect(band.status()).toBe(422);
+    const source = await context.request.patch(`${baseURL}${PRODUCTS}/${id}`, { data: { image_source: 'amazon' } });
+    expect(source.status()).toBe(422);
+    expect((await source.json()).error).toMatch(/listing, an upload, or the Amazon API/i);
   });
 
   test('unhappy: a task_keys that is not a list never means "take it off every shelf"', async ({ context, baseURL }) => {

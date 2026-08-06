@@ -195,7 +195,12 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
   // profile-filtered task list, which the Promise.all above is what produces, so
   // it cannot ride along in that batch without reading shelves for work that is
   // not on their plan. Fail-soft: no table, no shelves, same page.
-  const productShelves = await readProductShelves(tasks.map((t) => t.key));
+  //
+  // The whole task is handed over, not just its key, because the shelf read
+  // re-checks `diy_or_pro` itself - these rows are the catalog as it reads
+  // RIGHT NOW, so a task the owner has since made pro-only loses its shelf on
+  // the next render rather than keeping it until somebody unstocks it by hand.
+  const productShelves = await readProductShelves(tasks);
 
   const autoAddKey = addKey && tasks.some((t) => t.key === addKey && t.bookable && !t.starter && !dismissedKeys.includes(addKey)) ? addKey : undefined;
   const ownedSystems = SYSTEM_QUESTIONS.filter((q) => systems?.[q.key] === true);

@@ -60,6 +60,23 @@ export async function eligibleTaskKeys(): Promise<Set<string>> {
 }
 
 /**
+ * The sentence to refuse a write with, or null when every key may carry a shelf.
+ *
+ * The check AND the sentence live together here, for the reason
+ * `TASK_KEYS_NOT_A_LIST` does: every path that can put a product onto a task -
+ * create, edit, attach, and slice 2's reorder - is asking the same question and
+ * has to answer it in the same words. Two copies of a rule this close to the
+ * owner's "we do this one ourselves" line is two places for it to drift.
+ */
+export async function refuseIneligible(keys: string[]): Promise<string | null> {
+  if (keys.length === 0) return null;
+  const eligible = await eligibleTaskKeys();
+  const refused = keys.filter((k) => !eligible.has(k));
+  if (refused.length === 0) return null;
+  return `We only recommend gear for tasks a homeowner can do themselves. Not eligible: ${refused.join(', ')}.`;
+}
+
+/**
  * The task keys a write actually means, de-duplicated and trimmed, or NULL when
  * the caller did not send a list at all.
  *

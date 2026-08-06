@@ -138,9 +138,15 @@ test('AC1 - only diy and either tasks may carry a shelf', () => {
 test('AC1 - the gate is enforced on write, not only in the UI', () => {
   for (const route of [PRODUCTS_ROUTE, PATCH_ROUTE]) {
     const src = read(route);
-    expect(src, route).toContain('eligibleTaskKeys');
+    expect(src, route).toContain('refuseIneligible');
     expect(src, route).toContain('status: 422');
+    // The refusal itself is written once, where the rule lives, so the two
+    // write paths cannot come to say different things about the same task.
+    expect(src, route).not.toContain('Not eligible:');
   }
+  const admin = read('src/lib/homecare/productAdmin.ts');
+  expect(admin).toContain('Not eligible:');
+  expect(admin).toContain('eligibleTaskKeys');
   // And the admin renders pro rows locked rather than hiding them, so the
   // exclusion reads as a decision instead of a missing task.
   expect(read(ADMIN)).toContain('We do this one');
@@ -285,7 +291,20 @@ test('AC11 - the checklist read is fail-soft and issued once', () => {
   expect(shelfRead).toContain('catch');
   // One request for every visible task, not one per task.
   expect(shelfRead).toContain('task_key=in.(');
-  expect(read(PAGE)).toContain('readProductShelves(tasks.map((t) => t.key))');
+  expect(read(PAGE)).toContain('readProductShelves(tasks)');
+});
+
+test('AC1 - the shelf read re-checks the DIY rule, and cannot be asked to skip it', () => {
+  const shelfRead = read('src/lib/homecare/productShelf.ts');
+  // Eligibility is applied to what the caller passed rather than looked up, so
+  // it costs no query - and it is applied HERE rather than at each surface, so
+  // no future member page can forget it.
+  expect(shelfRead).toContain('isDiyEligible(t.diy_or_pro)');
+  // The verdict travels with the key: there is no signature that takes bare
+  // task keys, which is what makes the gate impossible to leave out.
+  expect(shelfRead).not.toContain('readProductShelves(taskKeys: string[])');
+  // And the page hands over the catalog rows it already read, not a key list.
+  expect(read(PAGE)).not.toContain('readProductShelves(tasks.map');
 });
 
 test('AC12 - a click row has nowhere to put a person', () => {

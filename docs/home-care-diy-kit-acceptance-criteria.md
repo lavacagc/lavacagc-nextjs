@@ -28,7 +28,10 @@ Three specs, split by what each can honestly answer.
 - `tests/home-care-diy-kit.spec.ts` - the contract: the pure functions, and the rules that live in SQL or in a server component asserted over the files that carry them.
 - `tests/home-care-diy-kit-routes.spec.ts` - the running admin routes, through real middleware with the house session cookie. Unhappy paths first: unauthenticated callers, malformed bodies, links with no product in them, every malformed product field, unknown ids, and every refusal the photo uploader makes. Runs in CI on the ordinary stub build.
 - `tests/home-care-diy-kit-browser.spec.ts` - the admin screen once React has mounted: a pro task that will not open, a blocked photo pull becoming an upload box, a rejected save that keeps the draft, a database without the migration explaining itself. Runs in CI.
-- `tests/home-care-diy-kit-live.spec.ts` - the rules only a real database can answer: that the gate resolves against the live catalog, that the schema refuses a live product with no photo and a duplicate ASIN, and that a `gone` product leaves the member shelf while a `suspect` one stays. Skips without credentials.
+- `tests/home-care-diy-kit-live.spec.ts` - the rules only a real database can answer: that the gate resolves against the live catalog, that a product stocked on a task the catalog now calls `pro` stops reaching the member shelf, that the schema refuses a live product with no photo and a duplicate ASIN, and that a `gone` product leaves the member shelf while a `suspect` one stays.
+This file WRITES to the database the environment names, so it is guarded by the shared `SKIP_WITHOUT_LIVE_BACKEND` flag as well as by a credentials check.
+A credentials check alone was not enough: a shell that has sourced `.env.local` has the keys, so `npm run test:e2e` would have run it against production.
+Run it deliberately, against a real `npm run build`, with `E2E_LIVE_BACKEND=1`.
 
 The live file calls the libraries directly rather than the HTTP routes, and that is forced rather than chosen: middleware authenticates the fabricated admin session only against a build whose `NEXT_PUBLIC_SUPABASE_URL` points at the GoTrue stub, and that same baked value is what every server-side read uses.
 A build that can authenticate an admin therefore cannot reach the real catalog.
@@ -51,6 +54,10 @@ The route spec takes the auth half, the live spec takes the data half, and neith
 - A product may be linked to a task whose `maintenance_catalog.diy_or_pro` is `diy` or `either`.
 - A task whose value is `pro` is rendered in the admin as locked, with the lock stated, and its row cannot open the stocking panel.
 - The gate is re-checked server-side on write: a POST naming a pro task is rejected with 422, so a crafted request cannot do what the UI refuses to.
+- The gate is re-checked again at RENDER, so the rule is continuously true rather than true at the moment of stocking.
+The catalog is edited as data: a task stocked while it was `either` keeps its join rows after the owner hands that work to the crew, and a read that trusted the join table alone would go on offering a member the gear for it.
+`readProductShelves` therefore takes tasks with their `diy_or_pro` rather than bare keys, and drops the ineligible ones before it queries.
+The verdict comes from the rows the calling page has already read, so the check costs no extra round trip, and a surface cannot ask for a shelf without saying which side of the line the task is on.
 - 34 of the 54 active catalog tasks are eligible at the time of writing (18 `diy`, 16 `either`). That number is not hardcoded anywhere; it falls out of the catalog.
 
 ## AC2 - An Amazon URL parses to an ASIN, or fails loudly

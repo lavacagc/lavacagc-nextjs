@@ -83,6 +83,13 @@ export function isProductCategory(value: unknown): value is ProductCategory {
   return value === 'tool' || value === 'consumable' || value === 'safety' || value === 'monitor';
 }
 
+/** Where a product's photos came from. Mirrors the column's CHECK exactly. */
+export type ImageSource = 'pa_api' | 'listing' | 'manual';
+
+export function isImageSource(value: unknown): value is ImageSource {
+  return value === 'pa_api' || value === 'listing' || value === 'manual';
+}
+
 /**
  * May this task carry a shelf?
  *
