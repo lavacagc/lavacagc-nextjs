@@ -21,9 +21,9 @@
  *   - Local dev against a real build:     runs them (uses the real public keys
  *                                         already in .env.local)
  *
- * Nothing covers production link health independently while these skip.
- * `npm run audit:prod` cannot: its bare chromium.launch() sends a HeadlessChrome
- * UA, which our own bot filter in src/middleware.ts 403s on every path.
+ * While these skip, `npm run audit:prod` is the nearest thing to production link
+ * coverage, but it is not equivalent: it sweeps a hardcoded path list rather
+ * than the DB-driven paths these specs walk.
  * See CLAUDE.md, "Every Playwright script pins its backend".
  */
 export const SKIP_WITHOUT_LIVE_BACKEND =

@@ -45,7 +45,7 @@ npm run typecheck   # tsc --noEmit on its own
 npm run test:e2e    # Build the app for the suite, then run Playwright
 npm run test:ui     # Playwright with UI, against a build test:build already made
 npm run audit       # Site audit vs localhost:3000 (start a server first)
-npm run audit:prod  # Site audit vs production - 403s every page, see below
+npm run audit:prod  # Site audit vs production - exits nonzero even when healthy
 ```
 
 ### Running the Playwright suite
@@ -111,18 +111,26 @@ report a green run that checked nothing.
 It owns its build because `E2E_LIVE_BACKEND` disables the guard, so against the
 stub `.next` that `test:e2e` leaves behind it would otherwise 404 on every
 DB-driven path with nothing to say why.
-Do NOT treat production link health as independently covered.
-`npm run audit:prod` was documented as that safety net and cannot serve as one
-today: `scripts/site-audit.ts` drives a bare `chromium.launch()`, so its browser
-sends a `HeadlessChrome/...` user agent, and our own bot filter in
-`src/middleware.ts` answers that with 403 on every path.
-Measured against production it reports 58 failures across all 29 pages, on a site
-that returns 200 to a real browser, so a red run there tells you nothing either
-way.
-The Playwright suite is unaffected: `playwright.config.ts` uses
-`devices['Desktop Chrome']`, whose user agent passes that filter.
-`npm run test:links` is therefore the only check that actually walks the
-DB-driven paths, and it only runs when you invoke it deliberately.
+Do NOT treat `npm run audit:prod` as equivalent coverage.
+It does reach production and report real results, but it sweeps a HARDCODED list
+of 29 paths in `scripts/site-audit.ts`, so it drifts from the DB instead of
+tracking it.
+That list is already stale: it still contains `/locations/fairfield`, which is
+not a `service_areas` slug and 404s in production.
+`npm run test:links` is therefore the only check that walks the DB-driven paths
+as they actually are, and it only runs when you invoke it deliberately.
+
+Read that audit's output, do not gate on its exit code.
+It scores every aborted third-party beacon as a failure, and Google Analytics,
+Clarity and Cloudflare RUM abort routinely, so it exits nonzero against a healthy
+site: the last production run was 163 passed / 33 failed / 1 warning, and 28 of
+those 33 failures were that analytics noise.
+
+Anything headless you point at this site must identify as a real browser.
+The bad-bot filter in `src/middleware.ts` matches `/headlesschrome/i` and answers
+403 on every path, which is why `scripts/site-audit.ts` and
+`playwright.config.ts` both use `devices['Desktop Chrome']`.
+A first-party tool that skips this measures the bot filter, not the site.
 
 Note `test:e2e` leaves `.next` built against a stub Supabase, and `test:links`
 replaces it with a real one - run `npm run test:build` before returning to the
