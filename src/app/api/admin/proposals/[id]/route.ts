@@ -29,16 +29,13 @@ import {
   restoreProposal, revokeProposal, touchProposal, type ProposalRow,
 } from '@/lib/proposals/store';
 import { CLIENT_PAGE_LIVE, CLIENT_PAGE_NOT_LIVE_MESSAGE } from '@/lib/proposals/clientPage';
-import { DRAFT_LINK_LIFETIME_MS } from '@/lib/proposals/publicView';
+import { DRAFT_WINDOW_HOURS } from '@/lib/proposals/publicView';
 import { buildProposalDeliveryEmail, PROPOSAL_FROM } from '@/lib/proposals/deliveryEmail';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const SITE_URL = cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.lavacagc.com';
-
-/** The draft window in the unit an admin reads, from the one constant that owns it. */
-const DRAFT_WINDOW_HOURS = Math.round(DRAFT_LINK_LIFETIME_MS / (60 * 60 * 1000));
 
 const ActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('send') }),

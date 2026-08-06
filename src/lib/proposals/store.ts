@@ -526,18 +526,27 @@ export async function restoreProposal(proposalId: string): Promise<void> {
  * swallowed - but the caller has to know, because what it tells the admin about
  * the client's access afterwards is only true if this landed. False is "not
  * refreshed, or not known to be", which is the answer that makes somebody act.
+ *
+ * The UPDATED ROWS are what that report is read off, which is why this asks for
+ * a representation rather than the cheaper `return=minimal`. The filter above
+ * can match nothing - that is the whole point of it - and a PATCH that matched
+ * no row is a 204 under `return=minimal`, indistinguishable from one that
+ * wrote. So "did not throw" is not "did write": a status changed between the
+ * caller's read and this statement would have answered true over a timestamp
+ * that never moved, and every sentence the callers build on that boolean
+ * promises a window the link does not have. Zero rows is `false`, like any
+ * other refresh that did not happen.
  */
 export async function touchProposal(
   proposalId: string,
   status: ProposalRow['status'],
 ): Promise<boolean> {
   try {
-    await supabaseRest(
+    const rows = await supabaseRest<ProposalRow[]>(
       'PATCH', `proposals?id=eq.${proposalId}&status=eq.${status}`,
       { status },
-      { prefer: 'return=minimal' },
     );
-    return true;
+    return Array.isArray(rows) && rows.length > 0;
   } catch (err) {
     console.error(
       `proposal ${proposalId} link-window refresh failed:`,

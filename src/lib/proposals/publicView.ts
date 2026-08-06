@@ -55,7 +55,7 @@ export const PROPOSAL_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
  * every existing caller of these three is unchanged.
  */
 export {
-  DRAFT_LINK_LIFETIME_MS, draftLinkHasExpired,
+  DRAFT_LINK_LIFETIME_MS, DRAFT_WINDOW_HOURS, draftLinkHasExpired,
 } from './linkWindow';
 export { proposalLinkIsLive, type ProposalStatus };
 

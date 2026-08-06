@@ -123,6 +123,23 @@ async function signInAsAdmin(context: BrowserContext, baseURL: string) {
 }
 
 /**
+ * The lifecycle POST, which the roster glob below cannot see.
+ *
+ * It goes to /api/admin/proposals/<id>, and Playwright's `*` does not cross a
+ * `/`, so the roster glob each opener registers matches the roster READ and
+ * nothing else.
+ * Copy link fires one of these on every draft it copies, so without this stub
+ * those tests aim a real mutating POST at the dev server: the copy waits on a
+ * live request's latency, and what they exercise is a FAILED refresh while
+ * their names claim a working one.
+ */
+async function stubLifecycle(page: Page) {
+  await page.route('**/api/admin/proposals/*', async (route) => {
+    await route.fulfill({ json: { ok: true, window_hours: 24 } });
+  });
+}
+
+/**
  * Open the admin page with one fixed roster payload behind it - for the ACs
  * about what the roster SAYS (its counts, its truncation notice) rather than
  * about searching it.
@@ -131,6 +148,7 @@ async function openRoster(
   page: Page, context: BrowserContext, baseURL: string, roster: unknown,
 ) {
   await signInAsAdmin(context, baseURL);
+  await stubLifecycle(page);
   await page.route('**/api/admin/proposals*', async (route) => {
     if (route.request().method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
     await route.fulfill({ json: roster });
@@ -141,6 +159,7 @@ async function openRoster(
 
 async function openProposals(page: Page, context: BrowserContext, baseURL: string) {
   await signInAsAdmin(context, baseURL);
+  await stubLifecycle(page);
   // The glob keeps the query string in scope - the roster read carries ?search.
   await page.route('**/api/admin/proposals*', async (route) => {
     if (route.request().method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
@@ -182,6 +201,7 @@ async function openProposalsTab(
   page: Page, context: BrowserContext, baseURL: string, roster: unknown,
 ) {
   await signInAsAdmin(context, baseURL);
+  await stubLifecycle(page);
   await page.route('**/api/admin/proposals*', async (route) => {
     if (route.request().method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
     await route.fulfill({ json: roster });
@@ -317,12 +337,14 @@ test.describe('proposals admin, in the browser', () => {
    * already stopped opening - the admin found out when the client said the link
    * was broken.
    */
-  test('B33: a stale draft says its link expired, and Copy link refreshes it before copying', async ({ page, context, baseURL }) => {
-    const STALE = {
-      ...RACHEL,
-      updated_at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
-    };
+  const STALE = {
+    ...RACHEL,
+    updated_at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+  };
+
+  test('B33: a stale draft says its link expired, and Copy link refreshes it without re-reading the roster', async ({ page, context, baseURL }) => {
     const refreshes: unknown[] = [];
+    const reads: string[] = [];
     await signInAsAdmin(context, baseURL!);
     // The lifecycle POST goes to /api/admin/proposals/<id>, and Playwright's `*`
     // does not cross a `/`, so the roster glob below never sees it. Its own
@@ -330,7 +352,7 @@ test.describe('proposals admin, in the browser', () => {
     await page.route('**/api/admin/proposals/*', async (route) => {
       const body = route.request().postDataJSON();
       if (body?.action === 'refresh') refreshes.push(body);
-      await route.fulfill({ json: { ok: true } });
+      await route.fulfill({ json: { ok: true, window_hours: 24 } });
     });
     await page.route('**/api/admin/proposals*', async (route) => {
       const req = route.request();
@@ -338,13 +360,15 @@ test.describe('proposals admin, in the browser', () => {
         await route.fulfill({ json: { ok: true } });
         return;
       }
-      // Once refreshed, the roster re-read must answer with the moved row, or
-      // the hint would go on describing state the copy just fixed.
+      reads.push(req.url());
+      // ALWAYS the stale row, deliberately. The roster is ordered
+      // updated_at.desc and a refresh writes exactly that column, so re-reading
+      // it after a copy lifted the copied row to position one and shifted the
+      // next row out from under the admin's cursor. The row is updated in place
+      // instead - and because this stub never stops serving the stale
+      // timestamp, the hint clearing below can only be that in-place update.
       await route.fulfill({
-        json: {
-          proposals: [refreshes.length > 0 ? RACHEL : STALE],
-          counts_available: true, total: 1, truncated: false,
-        },
+        json: { proposals: [STALE], counts_available: true, total: 1, truncated: false },
       });
     });
     await page.goto('/vaca-mgmt/proposals');
@@ -354,6 +378,7 @@ test.describe('proposals admin, in the browser', () => {
     const hint = page.getByTestId('link-expired-hint');
     await expect(hint).toBeVisible();
     await expect(hint).toContainText(/expired/i);
+    expect(reads).toHaveLength(1);
 
     await page.getByRole('button', { name: /copy link/i }).click();
 
@@ -365,8 +390,56 @@ test.describe('proposals admin, in the browser', () => {
     // when the assertion runs.
     await expect(page.getByText(/opens for the next 24 hours/i).first()).toBeVisible();
 
-    // And the hint clears, because the roster was re-read.
+    // The hint clears - and no second roster read paid for it.
     await expect(hint).toHaveCount(0);
+    expect(reads, 'the roster was not re-read').toHaveLength(1);
+    // The link itself is on the clipboard whatever the refresh did.
+    expect(await page.evaluate(() => navigator.clipboard.readText()))
+      .toContain(`/proposal/${'a'.repeat(43)}`);
+  });
+
+  test('B35: a refresh the server refuses is quoted, not paraphrased, and corrects the row', async ({ page, context, baseURL }) => {
+    // The row on screen reads draft; a colleague sent it a moment ago. The
+    // route answers 409 with a sentence written for the admin, and the generic
+    // "send or re-import it, then copy again" this used to show in its place
+    // was both false - a sent link does not expire - and advice that mails the
+    // client a second copy of their proposal.
+    const REFUSAL = "A sent proposal's link does not expire, so there is nothing to refresh.";
+    const reads: string[] = [];
+    let refused = 0;
+    await signInAsAdmin(context, baseURL!);
+    await page.route('**/api/admin/proposals/*', async (route) => {
+      refused += 1;
+      await route.fulfill({ status: 409, json: { error: REFUSAL } });
+    });
+    await page.route('**/api/admin/proposals*', async (route) => {
+      const req = route.request();
+      if (req.method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
+      reads.push(req.url());
+      await route.fulfill({
+        json: {
+          proposals: [refused > 0 ? { ...STALE, status: 'sent' } : STALE],
+          counts_available: true, total: 1, truncated: false,
+        },
+      });
+    });
+    await page.goto('/vaca-mgmt/proposals');
+    await expect(page.getByTestId('proposals-admin')).toBeVisible();
+    await expect(page.getByTestId('link-expired-hint')).toBeVisible();
+
+    await page.getByRole('button', { name: /copy link/i }).click();
+
+    // The link is still copied - that is what was asked for - and the server's
+    // own sentence is what the admin reads.
+    await expect(toastTitle(page, 'Link copied')).toBeVisible();
+    await expect(page.getByText(/does not expire/i).first()).toBeVisible();
+    await expect(page.getByText(/opens for the next/i)).toHaveCount(0);
+
+    // And a 409 is the one answer that says the ROW is out of date rather than
+    // the write, so the roster is re-read and the row stops calling itself an
+    // expired draft.
+    await expect.poll(() => reads.length).toBe(2);
+    await expect(page.getByTestId('link-expired-hint')).toHaveCount(0);
   });
 
   test('B34: a FRESH draft is not labelled expired', async ({ page, context, baseURL }) => {

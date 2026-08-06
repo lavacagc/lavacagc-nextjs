@@ -40,7 +40,7 @@ import {
   composeBundle, lockedMemberTitles, restoreMembers, toStoredMembers, type PreviewBundleMember,
 } from '@/lib/proposals/bundles';
 import { CLIENT_PAGE_LIVE, CLIENT_PAGE_NOT_LIVE_MESSAGE } from '@/lib/proposals/clientPage';
-import { DRAFT_LINK_LIFETIME_MS, draftLinkHasExpired } from '@/lib/proposals/linkWindow';
+import { DRAFT_WINDOW_HOURS, draftLinkHasExpired } from '@/lib/proposals/linkWindow';
 import { cn } from '@/lib/utils';
 
 /** One preview row: an imported line, or a bundle the admin composed. */
@@ -117,9 +117,6 @@ const CONFIRMS: Record<LifecycleAction, ((p: RosterEntry) => string) | null> = {
 const DONE: Record<LifecycleAction, string> = {
   send: 'Sent', revoke: 'Revoked', restore: 'Restored to draft',
 };
-
-/** The draft link window in the unit an admin reads, from the constant that owns it. */
-const DRAFT_WINDOW_HOURS = Math.round(DRAFT_LINK_LIFETIME_MS / (60 * 60 * 1000));
 
 const dollars = (cents: number) =>
   (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -232,6 +229,64 @@ async function postProposalAction(url: string, payload: unknown): Promise<void> 
   if (res.ok) return;
   const body: { error?: unknown } | null = await res.json().catch(() => null);
   throw new Error(typeof body?.error === 'string' ? body.error : `HTTP ${res.status}`);
+}
+
+/** What a draft's link-window refresh did, in the terms Copy link reports it in. */
+interface RefreshOutcome {
+  /** Whether the window actually moved. */
+  ok: boolean;
+  /** Why it did not, in the words the admin should read. Null when it did. */
+  reason: string | null;
+  /**
+   * The server answered 409: this row is not a draft any more, so what is out
+   * of date is the ROSTER rather than the write.
+   */
+  stale: boolean;
+}
+
+/**
+ * Move a draft's link window forward, and carry back what the server SAID.
+ *
+ * A bare `res.ok` was not enough, because the route composes two different
+ * refusals for a row whose status has moved since the roster was read, and both
+ * are written for the admin: a sent link has no window to move under D3, and a
+ * revoked one must not be revived by a button that promises to change nothing a
+ * client can see. Collapsing them into one generic sentence told an admin whose
+ * colleague had just sent the proposal that the link "may not open" and to send
+ * or re-import it - false on both counts, and advice that mails the client a
+ * second copy of their proposal.
+ *
+ * A 409 is also the one answer that says the ROW on screen is wrong rather than
+ * the write, which is why it travels separately from the reason: it is what
+ * makes the roster worth re-reading.
+ */
+async function refreshDraftWindow(id: string): Promise<RefreshOutcome> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/admin/proposals/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'refresh' }),
+    });
+  } catch {
+    return {
+      ok: false,
+      stale: false,
+      reason: 'The refresh never reached the server, so this link may still be expired.',
+    };
+  }
+  if (res.ok) return { ok: true, reason: null, stale: false };
+  // Status before body, for the reason postProposalAction gives above: a
+  // gateway failure answers HTML, and parsing that first turns the toast into a
+  // JSON parser's complaint.
+  const body: { error?: unknown } | null = await res.json().catch(() => null);
+  return {
+    ok: false,
+    stale: res.status === 409,
+    reason: typeof body?.error === 'string'
+      ? body.error
+      : `Could not refresh this link (HTTP ${res.status}), so it may still be expired.`,
+  };
 }
 
 export default function ProposalsAdminPage() {
@@ -645,65 +700,94 @@ export default function ProposalsAdminPage() {
   };
 
   /**
-   * Copy the client's link - and on a DRAFT, make it resolve for a full window
-   * first.
+   * Copy the client's link - and on a DRAFT, move its window forward so what
+   * was just handed over resolves for a full window.
    *
    * Copying this link is the act of handing it to somebody: it is how a client
    * with no email address, or one who would rather have it by text, gets their
-   * proposal. A draft's link only resolves for `DRAFT_LINK_LIFETIME_MS` from
-   * its `updated_at`, so before this the button could silently put a URL on the
+   * proposal. A draft's link only resolves for a bounded window from its
+   * `updated_at`, so before this the button could silently put a URL on the
    * clipboard that had already stopped working - and the admin found out when
    * the client said the link was broken.
    *
-   * So the refresh runs FIRST and the copy waits for it. The alternative,
-   * copying immediately and refreshing behind it, hands over a link that is
-   * live only if a request the admin never saw happened to succeed.
+   * THE COPY GOES FIRST, and that ordering is load-bearing. A clipboard write
+   * is only permitted while the click's user activation is still live, and
+   * WebKit drops that activation across an awaited network round trip: with the
+   * refresh in front, `writeText` rejected with NotAllowedError on Safari for
+   * every DRAFT - precisely the row this whole feature exists for - and Copy
+   * link degraded to the copy-it-by-hand toast there. Nothing about WHAT is
+   * copied depends on the refresh; only the toast's wording does, and that is
+   * composed once the refresh resolves. Do not put the network call back in
+   * front of the clipboard write.
    *
-   * A refresh that FAILS still copies. The link is the thing being asked for,
-   * an expired one is still the right URL for a proposal that can be revived by
-   * Send or Re-import, and refusing to copy would leave an admin with no way to
-   * get it at all. What changes is what the toast promises.
+   * A refresh that FAILS still leaves the link copied. The URL is the thing
+   * being asked for, an expired one is still the right URL for a proposal that
+   * Send or Re-import can revive, and refusing to copy would leave an admin
+   * with no way to get it at all. What changes is what the toast promises.
+   *
+   * A clipboard write that fails does NOT skip the refresh either: the admin is
+   * about to copy that URL out of the fallback toast by hand, and it has to
+   * resolve for them exactly as much as it would have from the clipboard.
    */
   const copyLink = async (p: RosterEntry) => {
     const url = `${window.location.origin}/proposal/${p.token}`;
-    let refreshed = p.status !== 'draft';
-    if (p.status === 'draft') {
-      try {
-        const res = await fetch(`/api/admin/proposals/${p.id}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'refresh' }),
-        });
-        refreshed = res.ok;
-      } catch {
-        refreshed = false;
-      }
-      // The row's own updated_at moved server-side, so the roster has to catch
-      // up or the "link expired" hint below would go on describing the state
-      // this copy just fixed.
-      if (refreshed) void loadRoster(search);
-    }
+    let copied = true;
     try {
       // Denied permission or a non-secure context rejects here, and an admin
       // who thinks a private link is on their clipboard when it is not will
       // paste the wrong thing to a client.
       await navigator.clipboard.writeText(url);
     } catch {
+      copied = false;
+    }
+
+    const refresh = p.status === 'draft' ? await refreshDraftWindow(p.id) : null;
+    /** What the toast may say about the window, and only ever the truth of it. */
+    let windowNote: string | null = null;
+    let refreshFailed = false;
+    if (refresh !== null) {
+      if (refresh.ok) {
+        // THIS ROW, in place - not a re-read of the roster. The roster is
+        // ordered `updated_at.desc` and a refresh is a write to exactly that
+        // column, so re-reading lifted every copied row to position one: an
+        // admin working down a list of drafts watched each row jump to the top
+        // as they went, with the next row they were about to click shifting out
+        // from under the cursor. The only reader of this column on this page is
+        // the expiry hint below, comparing it against a window measured in
+        // hours, so the client's own clock is close enough - it differs from
+        // the server's stamp by one round trip.
+        const refreshedAt = new Date().toISOString();
+        setRoster((current) => current?.map(
+          (row) => (row.id === p.id ? { ...row, updated_at: refreshedAt } : row),
+        ) ?? current);
+        windowNote = `It opens for the next ${DRAFT_WINDOW_HOURS} hours.`;
+      } else {
+        refreshFailed = true;
+        windowNote = refresh.reason;
+        if (refresh.stale) {
+          // The server refused because this row is not a draft any more, so the
+          // roster is showing a status - and a set of controls - the database
+          // has already left behind. Re-read it, with the term the roster on
+          // screen answers rather than whatever the search box happens to hold:
+          // an unsubmitted term here would silently collapse the roster to a
+          // search the admin never ran.
+          void loadRoster(activeSearch);
+        }
+      }
+    }
+
+    if (!copied) {
       toast({
         title: 'Could not copy the link',
-        description: `Copy it by hand: ${url}`,
+        description: `Copy it by hand: ${url}${windowNote ? ` - ${windowNote}` : ''}`,
         variant: 'destructive',
       });
       return;
     }
     toast({
       title: 'Link copied',
-      description: p.status !== 'draft'
-        ? 'Private to this client - share deliberately.'
-        : refreshed
-          ? `Private to this client - share deliberately. It opens for the next ${DRAFT_WINDOW_HOURS} hours.`
-          : 'Copied, but the link could not be refreshed - it may not open. Send or re-import the proposal, then copy it again.',
-      variant: refreshed ? undefined : 'destructive',
+      description: `Private to this client - share deliberately.${windowNote ? ` ${windowNote}` : ''}`,
+      variant: refreshFailed ? 'destructive' : undefined,
     });
   };
 

@@ -34,6 +34,16 @@
  */
 export const DRAFT_LINK_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * The same window in the unit an admin reads it in.
+ *
+ * Here rather than beside each screen that says it out loud: the roster's toast
+ * and its expiry hint, and the send route's post-delivery failure, all name a
+ * number of hours, and a derivation restated per caller is a second definition
+ * of the rule this module exists to own.
+ */
+export const DRAFT_WINDOW_HOURS = Math.round(DRAFT_LINK_LIFETIME_MS / (60 * 60 * 1000));
+
 /** The stored lifecycle, mirroring the `proposals_status_check` of 20260824000000. */
 export type ProposalStatus = 'draft' | 'sent' | 'revoked';
 
