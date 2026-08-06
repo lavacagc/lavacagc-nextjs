@@ -33,8 +33,8 @@ import {
   Package, Plus, RefreshCw, Search, Trash2, Upload, X,
 } from 'lucide-react';
 import {
-  PRICE_BANDS, priceBandLabel, productImageUrl, amazonProductUrl,
-  type AdminProduct, type PriceBand, type ProductCategory,
+  productImageUrl, amazonProductUrl,
+  type AdminProduct, type ProductCategory,
 } from '@/lib/homecare/products';
 
 interface ShopTaskRow {
@@ -63,7 +63,6 @@ interface Draft {
   pitch: string;
   images: string[];
   image_source: string | null;
-  price_band: PriceBand;
   category: ProductCategory | '';
   task_keys: string[];
   reason?: string;
@@ -162,7 +161,6 @@ export function HomeCareShopManager() {
         pitch: '',
         images: data.images ?? [],
         image_source: data.imageSource ?? null,
-        price_band: 'under_25',
         category: '',
         task_keys: [openTask],
         reason: data.reason,
@@ -206,7 +204,6 @@ export function HomeCareShopManager() {
           pitch: draft.pitch || null,
           images: draft.images,
           image_source: draft.image_source,
-          price_band: draft.price_band,
           category: draft.category || null,
           task_keys: draft.task_keys,
           active: draft.images.length > 0,
@@ -365,8 +362,9 @@ export function HomeCareShopManager() {
                   <div className="min-w-0 flex-1">
                     <div className="font-bold text-sm leading-tight">{p.display_name}</div>
                     <div className="text-xs text-muted-foreground">
-                      {priceBandLabel(p.price_band)}
-                      {p.task_keys.length > 1 && ` · also on ${p.task_keys.length - 1} other item${p.task_keys.length === 2 ? '' : 's'}`}
+                      {p.task_keys.length > 1
+                        ? `Also on ${p.task_keys.length - 1} other item${p.task_keys.length === 2 ? '' : 's'}`
+                        : 'On this item only'}
                       {!p.active && ' · draft'}
                     </div>
                   </div>
@@ -473,16 +471,6 @@ export function HomeCareShopManager() {
                       className="mt-1 min-h-[44px] font-normal normal-case tracking-normal text-sm"
                       placeholder="One at each end of the basement."
                     />
-                  </label>
-                  <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                    Price band
-                    <select
-                      value={draft.price_band}
-                      onChange={(e) => setDraft({ ...draft, price_band: e.target.value as PriceBand })}
-                      className="mt-1 w-full rounded-lg border bg-background px-3 min-h-[44px] text-sm font-normal normal-case tracking-normal"
-                    >
-                      {PRICE_BANDS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
-                    </select>
                   </label>
                   <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                     Category
@@ -656,7 +644,7 @@ export function HomeCareShopManager() {
                 <div className="font-bold text-sm leading-tight">{p.display_name}</div>
                 <div className="text-xs text-muted-foreground font-mono">{p.asin}</div>
                 <div className="text-xs text-muted-foreground mt-0.5">
-                  {priceBandLabel(p.price_band)} · {p.task_keys.length === 0 ? 'on no item' : `on ${p.task_keys.length} item${p.task_keys.length === 1 ? '' : 's'}`}
+                  {p.task_keys.length === 0 ? 'On no item' : `On ${p.task_keys.length} item${p.task_keys.length === 1 ? '' : 's'}`}
                 </div>
                 <div className="flex gap-1 mt-2 flex-wrap">
                   <Button variant="outline" size="sm" onClick={() => toggleActive(p)}>

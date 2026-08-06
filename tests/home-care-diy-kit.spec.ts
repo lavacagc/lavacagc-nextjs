@@ -46,7 +46,7 @@ const functionBody = (src: string, name: string): string => {
 
 const product = (over: Partial<HomeCareProduct> = {}): HomeCareProduct => ({
   id: 'p1', asin: 'B08XYZ1234', display_name: 'Digital hygrometer, 2-pack',
-  images: ['B08XYZ1234/1-0.jpg'], price_band: 'under_25', active: true, link_status: 'ok', ...over,
+  images: ['B08XYZ1234/1-0.jpg'], active: true, link_status: 'ok', ...over,
 });
 
 // ---------------------------------------------------------------- AC2: ASINs
@@ -319,7 +319,25 @@ test('AC12 - a click row has nowhere to put a person', () => {
 
 // ------------------------------------------------------------- small contracts
 
-test('price bands are labelled, and nothing else is a band', () => {
+test('the retired price band is not fetched, not rendered, and not asked for', () => {
+  // Owner, 2026-08-06: maintaining a band per product was manual labour, so it
+  // is retired. Retired means three separate things, and each is worth its own
+  // assertion because each could regress on its own.
+  // 1. The member read does not even SELECT it, so it never reaches a browser.
+  expect(read('src/lib/homecare/productShelf.ts')).not.toContain('price_band');
+  // 2. No card renders it.
+  expect(read(SHELF)).not.toContain('priceBandLabel');
+  expect(read(SHELF)).not.toContain('price_band');
+  // 3. No form asks for it.
+  const admin = read(ADMIN);
+  expect(admin).not.toContain('Price band');
+  expect(admin).not.toContain('PRICE_BANDS');
+  // The column and its vocabulary survive on purpose - see the migration.
+  expect(read('supabase/migrations/20260829000000_home_care_price_band_optional.sql'))
+    .toContain('DROP NOT NULL');
+});
+
+test('the retired price band keeps its vocabulary, and reaches no rendering path', () => {
   expect(priceBandLabel('under_25')).toBe('Under $25');
   expect(priceBandLabel('100_plus')).toBe('$100 and up');
   expect(priceBandLabel('cheap')).toBeNull();

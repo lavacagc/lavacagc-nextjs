@@ -15,6 +15,7 @@ import { SKIP_WITHOUT_LIVE_BACKEND } from './helpers/liveBackend';
  *  - Everything validated BEFORE a database call runs under the ordinary stub
  *    build, in CI, every time. That is most of the refusals: a URL with no
  *    product in it, an ASIN that is not one, a nameless product, a price band
+ *    outside the retired vocabulary,
  *    we do not have, a photo that is not an image, a live product with no
  *    picture at all.
  *  - The refusals that need to READ something - the pro-task gate, the
@@ -40,7 +41,6 @@ const VALID = {
   pitch: 'One at each end of the basement.',
   images: ['B08XYZ1234/1-0.jpg'],
   image_source: 'manual',
-  price_band: 'under_25',
   category: 'monitor',
   task_keys: [] as string[],
   active: false,
@@ -140,7 +140,6 @@ test.describe('DIY Kit admin routes', () => {
       ['blank name', { display_name: '   ' }, /display name/i],
       ['missing name', { display_name: undefined }, /display name/i],
       ['unknown band', { price_band: 'cheap' }, /price band/i],
-      ['missing band', { price_band: undefined }, /price band/i],
       ['live with no photo', { active: true, images: [] }, /photo/i],
       // The column's CHECK knows three sources. Anything else has to be refused
       // in words here, or it lands as a 500 carrying the constraint's name.

@@ -22,7 +22,7 @@
  * throw away.
  */
 import { supabaseRest } from '@/lib/notify/supabase-rest';
-import { isDiyEligible, isRenderable, type HomeCareProduct, type PriceBand, type LinkStatus } from '@/lib/homecare/products';
+import { isDiyEligible, isRenderable, type HomeCareProduct, type LinkStatus } from '@/lib/homecare/products';
 
 /** The join row as PostgREST returns it with the product embedded. */
 interface ShelfRow {
@@ -35,7 +35,6 @@ interface ShelfRow {
     brand: string | null;
     pitch: string | null;
     images: unknown;
-    price_band: string;
     category: string | null;
     active: boolean;
     link_status: string;
@@ -96,7 +95,7 @@ export async function readProductShelves(tasks: ReadonlyArray<ShelfTask>): Promi
     const inList = keys.map((k) => `"${k.replace(/"/g, '')}"`).join(',');
     const rows = await supabaseRest<ShelfRow[]>(
       'GET',
-      `home_care_product_tasks?select=task_key,sort_order,home_care_products(id,asin,display_name,brand,pitch,images,price_band,category,active,link_status)`
+      `home_care_product_tasks?select=task_key,sort_order,home_care_products(id,asin,display_name,brand,pitch,images,category,active,link_status)`
         + `&task_key=in.(${encodeURIComponent(inList)})&order=sort_order.asc`,
     );
 
@@ -111,7 +110,6 @@ export async function readProductShelves(tasks: ReadonlyArray<ShelfTask>): Promi
         brand: p.brand,
         pitch: p.pitch,
         images: imagePaths(p.images),
-        price_band: p.price_band as PriceBand,
         category: (p.category ?? null) as HomeCareProduct['category'],
         active: p.active,
         link_status: p.link_status as LinkStatus,

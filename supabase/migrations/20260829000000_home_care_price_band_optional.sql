@@ -1,0 +1,27 @@
+-- Home Care DIY Kit - the price band stops being collected.
+--
+-- Owner decision, 2026-08-06: choosing a band for every product turned out to be
+-- manual labour for no return. It is removed from the admin form and from the
+-- member shelf. It is NOT removed from the database.
+--
+-- The column stays, and stays CHECKed, for two reasons. Dropping it would throw
+-- away the bands already chosen for anything stocked before today, and this is
+-- exactly the kind of decision that gets revisited - the original argument for
+-- bands (a member deserves to know a dehumidifier is not a $12 purchase before
+-- they tap) has not stopped being true, it has only stopped being worth typing.
+-- A column that is present, constrained and unused costs nothing; a column that
+-- was dropped and is wanted back costs a migration and the lost history.
+--
+-- So the only change is that it may now be absent. NULL means "nobody said",
+-- which is the truthful record of a field no form offers. The CHECK is left
+-- alone deliberately: `NULL IN (...)` evaluates to NULL, and a CHECK rejects
+-- only FALSE, so a null passes while every non-null value is still held to the
+-- same four-word vocabulary. Anything that writes a band later is still bound
+-- by it.
+--
+-- Verified on a throwaway Postgres before this file was called finished: a row
+-- inserted with no price_band accepted and reading back NULL, a row inserted
+-- with 'under_25' still accepted, and a row inserted with 'cheap' still rejected
+-- by home_care_products_price_band.
+
+ALTER TABLE public.home_care_products ALTER COLUMN price_band DROP NOT NULL;

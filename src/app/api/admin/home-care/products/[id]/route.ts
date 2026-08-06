@@ -77,7 +77,8 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   if (typeof body.brand === 'string') patch.brand = body.brand.trim().slice(0, MAX_NAME) || null;
   if (typeof body.pitch === 'string') patch.pitch = body.pitch.trim().slice(0, MAX_PITCH) || null;
   if (body.price_band !== undefined) {
-    if (!isPriceBand(body.price_band)) return NextResponse.json({ error: 'Pick a price band.' }, { status: 422 });
+    // Retired, but still validated if a caller sends one - see the create route.
+    if (!isPriceBand(body.price_band)) return NextResponse.json({ error: 'That is not a price band we recognize.' }, { status: 422 });
     patch.price_band = body.price_band;
   }
   if (body.category !== undefined) patch.category = isProductCategory(body.category) ? body.category : null;

@@ -101,9 +101,17 @@ test.describe('DIY Kit against the live catalog', () => {
     // Draft with no photo: allowed, because that is the state a blocked photo
     // pull leaves behind and the owner has to be able to save it.
     const draft = await supabaseRest<Array<{ id: string; active: boolean }>>('POST', 'home_care_products', {
-      asin: TEST_ASIN, display_name: 'Kit test product', price_band: 'under_25',
+      asin: TEST_ASIN, display_name: 'Kit test product',
     });
     expect(draft?.[0]?.active, 'a product must arrive as a draft, not live').toBe(false);
+
+    // No price band was sent, and none is required any more: the column is
+    // retired but kept, so 'nobody said' is recorded as NULL rather than as a
+    // band somebody invented to satisfy a NOT NULL.
+    const stored = await supabaseRest<Array<{ price_band: string | null }>>(
+      'GET', `home_care_products?select=price_band&asin=eq.${TEST_ASIN}`,
+    );
+    expect(stored?.[0]?.price_band).toBeNull();
 
     // Live with no photo: refused by the schema, not by the UI.
     await expect(
@@ -112,7 +120,7 @@ test.describe('DIY Kit against the live catalog', () => {
 
     // The same ASIN twice: refused.
     await expect(
-      supabaseRest('POST', 'home_care_products', { asin: TEST_ASIN, display_name: 'again', price_band: 'under_25' }),
+      supabaseRest('POST', 'home_care_products', { asin: TEST_ASIN, display_name: 'again' }),
     ).rejects.toThrow(/duplicate key|23505/i);
 
     // With a photo it publishes.
@@ -131,7 +139,7 @@ test.describe('DIY Kit against the live catalog', () => {
     // leaves no window at all in which a real page could pick it up.
     const created = await supabaseRest<Array<{ id: string }>>('POST', 'home_care_products', {
       asin: TEST_ASIN, display_name: 'Kit test product', pitch: 'A pitch.',
-      images: [`${TEST_ASIN}/1.png`], price_band: 'under_25',
+      images: [`${TEST_ASIN}/1.png`],
     });
     const id = created![0].id;
     await supabaseRest('POST', 'home_care_product_tasks', [

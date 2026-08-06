@@ -21,7 +21,21 @@
  *    the admin UI and the write route both.
  */
 
-/** How a product is priced, in bands. Never a live price - see the migration. */
+/**
+ * How a product is priced, in bands. RETIRED, not deleted (owner, 2026-08-06).
+ *
+ * Choosing a band for every product turned out to be manual labour for no
+ * return, so nothing collects one and nothing displays one. The vocabulary and
+ * its column stay because the argument that produced them has not stopped being
+ * true - a member deserves to know a dehumidifier is not a $12 purchase before
+ * they tap - it has only stopped being worth typing, and bands already chosen
+ * are still in the database. Should this come back, the type, the labels and the
+ * validator are the whole of what is needed.
+ *
+ * Nothing here is exported into a rendering path. `priceBandLabel` has no
+ * caller by design; deleting it is the change to make if this is ever declared
+ * dead rather than dormant.
+ */
 export type PriceBand = 'under_25' | '25_50' | '50_100' | '100_plus';
 
 export type ProductCategory = 'tool' | 'consumable' | 'safety' | 'monitor';
@@ -39,7 +53,8 @@ export interface HomeCareProduct {
   pitch?: string | null;
   /** Storage paths in the home-care-products bucket, display order. [0] is the card image. */
   images: string[];
-  price_band: PriceBand;
+  /** Retired: nothing collects or renders this. Null on everything stocked after 2026-08-06. */
+  price_band?: PriceBand | null;
   category?: ProductCategory | null;
   active?: boolean;
   link_status?: LinkStatus;

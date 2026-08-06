@@ -9,7 +9,7 @@ This file is the tracked record of what was decided, because the mockup is a wor
 Schema, the parse route, the admin screen, and the member-facing shelf on the checklist page.
 
 - `supabase/migrations/20260828000000_home_care_products.sql` - `home_care_products`, `home_care_product_tasks`, `home_care_product_clicks`, and the `home-care-products` storage bucket.
-- `src/lib/homecare/products.ts` - the pure contract, client-safe because the checklist client imports it: ASIN extraction, link building, price bands, and the DIY gate.
+- `src/lib/homecare/products.ts` - the pure contract, client-safe because the checklist client imports it: ASIN extraction, link building, the DIY gate, and the retired price-band vocabulary.
 - `src/lib/homecare/productShelf.ts` - the server read the checklist page uses, its own module so the service-role import stays out of the client bundle.
 - `src/lib/homecare/productAdmin.ts` - the rules the admin routes share: which tasks may be stocked, and where a photo is stored.
 - `src/lib/homecare/shelfPosition.ts` - the slider-bar and counter arithmetic, pure and outside the component so it can be handed real browser measurements.
@@ -47,7 +47,7 @@ Five specs, split by what each can honestly answer.
 - `tests/home-care-diy-kit.spec.ts` - the contract: the pure functions, and the rules that live in SQL or in a server component asserted over the files that carry them.
 - `tests/home-care-diy-kit-routes.spec.ts` - the running admin routes, through real middleware with the house session cookie. Unhappy paths first: unauthenticated callers, malformed bodies, links with no product in them, every malformed product field, unknown ids, and every refusal the photo uploader makes. Runs in CI on the ordinary stub build.
 - `tests/home-care-diy-kit-browser.spec.ts` - the admin screen once React has mounted: a pro task that will not open, a blocked photo pull becoming an upload box, a rejected save that keeps the draft, a database without the migration explaining itself. Runs in CI.
-- `tests/home-care-diy-kit-shelf.spec.ts` - the shelf a MEMBER meets, rendered on the real `/home-care/checklist`: the collapsed strip stating its count and appearing only where something is stocked, the expanded picks with their bands, tagged links and disclosure, the drawn bar past two picks, a plain grid at two, and the two row tweaks including the icon-only hide being undoable.
+- `tests/home-care-diy-kit-shelf.spec.ts` - the shelf a MEMBER meets, rendered on the real `/home-care/checklist`: the collapsed strip stating its count and appearing only where something is stocked, the expanded picks with their tagged links and disclosure and no pricing at all, the drawn bar past two picks, a plain grid at two, and the two row tweaks including the icon-only hide being undoable.
 The other four never render `DiyKitShelf` itself, so without this one the surface the whole slice exists for was the only part no test had drawn.
 It is gated on `HC_SHELF_E2E` rather than run in CI: the page needs an `hc_access` cookie and a catalog behind it, so it needs a server whose Supabase URL points at a stub this spec controls, and that URL is baked at BUILD time - under the ordinary suite build it could only ever assert a redirect.
 It must also run against a build rather than `next dev`, because `next/image` validates its src against `images.remotePatterns` in development only and a stub host would throw out of the render.
@@ -65,7 +65,11 @@ The route spec takes the auth half, the live spec takes the data half, and neith
 
 - **D1** The shelf is a tinted strip, collapsed by default, expanding in place. The booking CTA stays the only orange primary action on the row.
 - **D2** Past two products the shelf is a horizontally swipe-able row with a slider bar that is **always drawn**, not the platform scrollbar that fades out.
-- **D3** Price bands only ("Under $25"), never a live price. Amazon only permits live prices through the Product Advertising API, which we do not have access to yet.
+- **D3** ~~Price bands only ("Under $25"), never a live price.~~ **Superseded 2026-08-06: no pricing at all.**
+  The band was never a live price - Amazon permits those only through the Product Advertising API - but choosing one per product turned out to be manual labour for no return, so the owner retired it.
+  Nothing collects a band and nothing displays one; a card is a name, a one-line pitch, a photo and a link.
+  The column, its CHECK and the vocabulary in `products.ts` all survive, and `20260829000000_home_care_price_band_optional.sql` only drops the NOT NULL, so bands already chosen are kept and the decision is cheap to reverse.
+  If it ever comes back, the argument that produced it still holds: a member deserves to know a dehumidifier is not a $12 purchase before they tap.
 - **D4** The admin works **item first**: pick the maintenance task, then stock it. Never product-first with a hunt for the task afterwards.
 - **D5** Pro-only tasks are **locked in the UI**, not hidden, and an eligible task shows nothing until the owner puts items in it by hand. Curation is manual on purpose.
 - **D6** Photos are pulled from the pasted Amazon link automatically, with manual upload as the fallback and PA-API as the eventual upgrade. `HOME_CARE_IMAGE_FETCH=off` disables the fetch without a deploy.

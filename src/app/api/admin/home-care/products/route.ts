@@ -34,7 +34,6 @@ interface ProductRow {
   pitch: string | null;
   images: unknown;
   image_source: string | null;
-  price_band: string;
   category: string | null;
   active: boolean;
   link_status: string;
@@ -50,7 +49,6 @@ function toAdminProduct(row: ProductRow, taskKeys: string[]): AdminProduct {
     pitch: row.pitch,
     images: Array.isArray(row.images) ? row.images.filter((v): v is string => typeof v === 'string') : [],
     image_source: row.image_source,
-    price_band: row.price_band as AdminProduct['price_band'],
     category: row.category as AdminProduct['category'],
     active: row.active,
     link_status: row.link_status as AdminProduct['link_status'],
@@ -65,7 +63,7 @@ export async function GET() {
       readShopTasks(),
       supabaseRest<ProductRow[]>(
         'GET',
-        'home_care_products?select=id,asin,display_name,brand,pitch,images,image_source,price_band,category,active,link_status,checked_at&order=created_at.desc',
+        'home_care_products?select=id,asin,display_name,brand,pitch,images,image_source,category,active,link_status,checked_at&order=created_at.desc',
       ),
       supabaseRest<Array<{ product_id: string; task_key: string; sort_order: number }>>(
         'GET',
@@ -128,7 +126,13 @@ export async function POST(request: NextRequest) {
   const displayName = typeof body.display_name === 'string' ? body.display_name.trim().slice(0, MAX_NAME) : '';
   if (!displayName) return NextResponse.json({ error: 'Give the product a short display name.' }, { status: 422 });
 
-  if (!isPriceBand(body.price_band)) return NextResponse.json({ error: 'Pick a price band.' }, { status: 422 });
+  // Retired (owner, 2026-08-06): no form offers a band, so absent is the normal
+  // case and null is the honest record of it. A band that DOES arrive is still
+  // held to the vocabulary rather than silently dropped, so a backfill cannot
+  // quietly write nonsense into a column the schema still constrains.
+  if (body.price_band !== undefined && body.price_band !== null && !isPriceBand(body.price_band)) {
+    return NextResponse.json({ error: 'That is not a price band we recognize.' }, { status: 422 });
+  }
 
   const images = Array.isArray(body.images)
     ? body.images.filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
@@ -170,7 +174,7 @@ export async function POST(request: NextRequest) {
       pitch: typeof body.pitch === 'string' ? body.pitch.trim().slice(0, MAX_PITCH) || null : null,
       images,
       image_source: imageSource,
-      price_band: body.price_band,
+      price_band: isPriceBand(body.price_band) ? body.price_band : null,
       category: isProductCategory(body.category) ? body.category : null,
       active,
     });
