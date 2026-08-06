@@ -46,6 +46,29 @@ npm run audit       # Run site audit locally
 npm run audit:prod  # Run site audit on production
 ```
 
+### Running the Playwright suite
+
+Use **`npm run test:e2e`**. It builds the app the way the suite needs and then
+runs Playwright, and it is the same build CI makes (`scripts/test-build.sh` is
+called by both, so they cannot drift).
+
+A plain `npm run build` followed by `npx playwright test` does **not** work, and
+used to fail 59 specs with pages rendering only "Unauthorized".
+`NEXT_PUBLIC_SUPABASE_URL` is inlined at BUILD time, and the admin specs sign in
+with a cookie named `sb-127-auth-token` whose name derives from that URL, so
+they can only authenticate against a build pointed at the local GoTrue stub.
+A global setup now fails the run immediately, naming the fix, rather than
+letting that surface as dozens of confusing failures.
+
+The trade-off is deliberate: one build cannot satisfy both halves of the suite.
+The admin specs need a 127.x origin; the live-backend specs (`links`,
+`hero-trust-badges`, `listings-gate`) need the real one, so they SKIP under
+`test:e2e` exactly as they do in CI. To run those instead, build normally and
+set `E2E_LIVE_BACKEND=1`.
+
+Note `test:e2e` leaves `.next` built against a stub Supabase - run
+`npm run build` before serving the app for anything else.
+
 `npm run lint` and `npm run build` (type-check) are the gauntlet the
 **no-mistakes gate runs for you** on every ship - see *Shipping changes* below.
 Run them by hand only for quick local iteration, not as a manual pre-push

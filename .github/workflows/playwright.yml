@@ -26,29 +26,12 @@ jobs:
 
       - run: npx playwright install --with-deps chromium
 
+      # Build via the SAME script `npm run test:e2e` uses locally, so the env
+      # this suite needs is defined once (scripts/test-build.sh) rather than
+      # here and there. Local runs had no equivalent for a long time, and the
+      # resulting failures looked like product regressions.
       - name: Build Next.js
-        run: npm run build
-        env:
-          # Public reCAPTCHA site keys are only referenced client-side — placeholders
-          # unblock the build; tests stub window.grecaptcha so no real verify runs.
-          # The v2 (checkbox) key MUST be non-empty or RecaptchaChallengeProvider's
-          # requestChallenge() short-circuits to null, which fails the v2-challenge
-          # E2E (request-estimate AC5) even though that test mocks the network.
-          NEXT_PUBLIC_RECAPTCHA_SITE_KEY: "test-placeholder-site-key"
-          NEXT_PUBLIC_RECAPTCHA_V2_SITE_KEY: "test-placeholder-v2-site-key"
-          # Public Supabase URL is baked into the client bundle AND the middleware
-          # at build time. Point it at 127.0.0.1:9099 — the local GoTrue stub that
-          # playwright.config.ts starts as a webServer for the whole run, so
-          # middleware's getUser() can authenticate the /vaca-mgmt admin-page
-          # tests (cookie name sb-127-auth-token derives from this hostname).
-          # While the stub isn't running the port refuses connections, which behaves exactly like the
-          # old unreachable placeholder: mocked tests never hit Supabase (they
-          # stub/intercept), and live-backend tests skip unless E2E_LIVE_BACKEND
-          # is set. The browser client reads NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-          # (falling back to ANON_KEY), so set both names to the placeholder.
-          NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:9099"
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "placeholder-anon-key"
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
+        run: npm run test:build
 
       # Run Playwright against `next start`. playwright.config.ts's webServer
       # block spawns the server when TEST_URL is unset.

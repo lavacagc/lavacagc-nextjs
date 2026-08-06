@@ -5,6 +5,12 @@ const NODE_SUITES = /service-quotes-e2e\.spec\.ts/;
 
 export default defineConfig({
   testDir: './tests',
+  /**
+   * One legible failure instead of dozens of confusing ones when the app under
+   * test was built with the wrong baked env. See the helper for the whole
+   * argument; `npm run test:e2e` is the path that cannot get it wrong.
+   */
+  globalSetup: './tests/helpers/assert-test-build.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

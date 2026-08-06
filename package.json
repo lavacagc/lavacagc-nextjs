@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "playwright test",
+    "test:build": "bash scripts/test-build.sh",
+    "test:e2e": "npm run test:build && E2E_STUB_BACKEND=1 playwright test",
     "test:ui": "playwright test --ui",
     "test:headed": "playwright test --headed",
     "test:links": "playwright test tests/links.spec.ts",
