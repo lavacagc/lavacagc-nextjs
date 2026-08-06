@@ -73,8 +73,22 @@ The admin specs need a 127.x origin; the live-backend specs (`links`,
 `test:e2e` exactly as they do in CI. To run those instead, build normally and
 set `E2E_LIVE_BACKEND=1`.
 
-Note `test:e2e` leaves `.next` built against a stub Supabase - run
-`npm run build` before serving the app for anything else.
+`npm run test:links` is the one script on the other side of that trade-off, and
+it is deliberately the LIVE-BACKEND link sweep: walking the real `/locations/*`
+and `/services/*` paths only means anything when Supabase has content behind
+them.
+So it builds normally and sets `E2E_LIVE_BACKEND=1` itself, which both runs its
+two specs instead of skipping them and stands the build guard down.
+Do not pin it to `E2E_STUB_BACKEND` instead: that would skip both specs and
+report a green run that checked nothing.
+It owns its build because `E2E_LIVE_BACKEND` disables the guard, so against the
+stub `.next` that `test:e2e` leaves behind it would otherwise 404 on every
+DB-driven path with nothing to say why.
+Production link health is covered independently by `npm run audit:prod`.
+
+Note `test:e2e` leaves `.next` built against a stub Supabase, and `test:links`
+replaces it with a real one - run `npm run test:build` before returning to the
+rest of the suite, or `npm run build` before serving the app for anything else.
 
 `npm run lint` and `npm run build` (type-check) are the gauntlet the
 **no-mistakes gate runs for you** on every ship - see *Shipping changes* below.

@@ -12,7 +12,7 @@
     "test:e2e": "npm run test:build && E2E_STUB_BACKEND=1 playwright test",
     "test:ui": "E2E_STUB_BACKEND=1 playwright test --ui",
     "test:headed": "E2E_STUB_BACKEND=1 playwright test --headed",
-    "test:links": "playwright test tests/links.spec.ts",
+    "test:links": "npm run build && E2E_LIVE_BACKEND=1 playwright test tests/links.spec.ts",
     "test:flows": "playwright test tests/flows.spec.ts",
     "test:mobile": "E2E_STUB_BACKEND=1 playwright test --project=mobile",
     "test:report": "playwright show-report playwright-report",
