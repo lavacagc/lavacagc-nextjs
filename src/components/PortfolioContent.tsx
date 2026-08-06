@@ -142,7 +142,12 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
               <span className="font-medium text-sm sm:text-base text-text-primary">Filter by Type:</span>
             </div>
 
-            <div className="w-full sm:w-auto -mx-4 px-4 sm:mx-0 sm:px-0 flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {/* w-[calc(100%+2rem)], not w-full: `width:100%` resolves against the
+                container's CONTENT box, so -mx-4 would only SHIFT that box left
+                and the row would bleed off the left screen edge while stopping
+                32px short of the right. The extra 2rem is what the two negative
+                margins give back. All of it resets at sm:, where the row wraps. */}
+            <div className="w-[calc(100%+2rem)] sm:w-auto -mx-4 px-4 sm:mx-0 sm:px-0 flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {categories.map((category) => (
                 <Button
                   key={category}

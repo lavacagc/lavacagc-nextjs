@@ -157,3 +157,137 @@ test.describe('open mobile menu', () => {
     await expect(page.locator(stickyBar)).toBeVisible();
   });
 });
+
+/**
+ * The 768-1023px band: the menu still exists, the chrome is already DESKTOP.
+ *
+ * The hamburger toggle and the menu are both `lg:hidden`, so the menu is
+ * open-able all the way to 1023px, while ReviewToast (which stands down only
+ * below 768px) and the SmartBanner slide-in's desktop card (`hidden md:block`)
+ * switch at `md`. Gates scoped to `md` therefore left this entire band - a real
+ * iPad in portrait, or an 800px-wide desktop window - with exactly the defect
+ * the phone block above pins. Every gate now keys off the shared menu flag,
+ * which can only be true while the menu is rendered.
+ *
+ * The last test covers the other half of keying off the menu rather than a
+ * width: the menu has to actually close when the viewport crosses to a layout
+ * where it no longer has a toggle, or the chrome stays hidden on a desktop
+ * screen with nothing on it to explain why.
+ *
+ * Viewport pinned in the spec for the same reason as the block above: CI runs
+ * the chromium project only, so a band-specific assertion left to the project's
+ * device profile would never run there.
+ */
+test.describe('open mobile menu on a tablet (768-1023px)', () => {
+  test.use({ viewport: { width: 820, height: 1024 } });
+
+  const menu = '#mobile-menu';
+  const hamburger = 'button[aria-controls="mobile-menu"]';
+  /** At this width every banner type renders its DESKTOP presentation. */
+  const cardText = 'Banner over the menu';
+
+  type Page = import('@playwright/test').Page;
+
+  /** Same shape the phone block serves, so both drive one real banner rule. */
+  async function stubBanners(page: Page, rules: unknown[]) {
+    await page.route('**/api/banners', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(rules),
+    }));
+  }
+
+  const SLIDE_IN_RULE = {
+    id: 'test-menu-overlap-tablet', name: 'test', visitor_type: 'all',
+    min_visits: 0, max_visits: null, min_days_since_first: 0, max_days_since_first: null,
+    show_on_paths: [], exclude_paths: [], require_viewed_pages: [], require_not_viewed_pages: [],
+    display_type: 'slide-in', icon: null, title: cardText,
+    message: 'This card sits where the menu ends', cta_text: null, cta_link: null,
+    cta_phone: null, bg_color: 'bg-blue-600', text_color: 'text-white',
+    dismissable: true, dismiss_for_hours: 0, enabled: true, priority: 1,
+    start_date: null, end_date: null,
+  };
+
+  /**
+   * ReviewToast reads its copy straight from Supabase and the stub backend has
+   * no `google_reviews` to answer with, so without this it renders nothing at
+   * all and "the toast is not over the menu" would pass having never had a
+   * toast. Patch `fetch` before any page script runs - which is also before the
+   * Supabase client module captures it - and answer that one table.
+   */
+  async function stubReviews(page: Page) {
+    await page.addInitScript(() => {
+      const original = window.fetch.bind(window);
+      window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes('/rest/v1/google_reviews')) {
+          return Promise.resolve(new Response(JSON.stringify([{
+            reviewer_name: 'Dana Whitfield',
+            comment: 'They finished our kitchen on schedule and the trim work is flawless.',
+            star_rating: 5,
+          }]), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        }
+        return original(input, init);
+      }) as typeof window.fetch;
+    });
+  }
+
+  test('the review toast steps aside, and comes back', async ({ page }) => {
+    // No banner: ReviewToast already suppresses itself whenever one is showing,
+    // so a stray rule would hide it for a reason this test is not about.
+    await stubBanners(page, []);
+    await stubReviews(page);
+    await page.goto('/portfolio');
+
+    // Matched by its dismiss button - the toast root carries no test id, and
+    // this exists only while the component renders.
+    const reviewToast = page.locator('button[aria-label="Dismiss review"]');
+    await expect(reviewToast).toHaveCount(1);
+
+    await page.click(hamburger);
+    await expect(page.locator(menu)).toBeVisible();
+    await expect(reviewToast).toHaveCount(0);
+
+    await page.click(hamburger);
+    await expect(page.locator(menu)).toHaveCount(0);
+    await expect(reviewToast).toHaveCount(1);
+  });
+
+  test('the SmartBanner desktop card steps aside, and comes back', async ({ page }) => {
+    await stubBanners(page, [SLIDE_IN_RULE]);
+    await page.goto('/portfolio');
+
+    // Scoped to `.bottom-4`: the slide-in renders both cards and only this one
+    // is on screen at this width (the phone card is `md:hidden`, at bottom-20).
+    const card = page.locator('div.fixed.bottom-4', { hasText: cardText });
+    await expect(card).toBeVisible({ timeout: 15000 });
+
+    await page.click(hamburger);
+    await expect(page.locator(menu)).toBeVisible();
+    await expect(card).toBeHidden();
+
+    await page.click(hamburger);
+    await expect(card).toBeVisible();
+  });
+
+  test('widening past the lg breakpoint closes the menu and restores the chrome', async ({ page }) => {
+    await stubBanners(page, [SLIDE_IN_RULE]);
+    await page.goto('/portfolio');
+
+    const card = page.locator('div.fixed.bottom-4', { hasText: cardText });
+    await expect(card).toBeVisible({ timeout: 15000 });
+
+    // Deliberately does NOT assert the card is hidden here - that is the test
+    // above, and asserting it first would fail this one before it reaches the
+    // closing behaviour it exists for.
+    await page.click(hamburger);
+    await expect(page.locator(menu)).toBeVisible();
+
+    // Past 1024px both the menu and its toggle are `lg:hidden`, so there is no
+    // X button left to close it with - the header has to close it itself, or
+    // the flag stays set and the chrome stays hidden with no menu on screen.
+    await page.setViewportSize({ width: 1280, height: 1024 });
+    await expect(page.locator(menu)).toHaveCount(0);
+    await expect(card).toBeVisible();
+  });
+});

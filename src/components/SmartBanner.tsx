@@ -198,14 +198,17 @@ function TopBar({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void }
 // ---- SLIDE-IN COMPONENT ----
 function SlideIn({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void }) {
   const d = rule.display;
-  // Same reason as TopBar's mobile card: it is pinned over the bottom of an open
-  // hamburger menu. The desktop card is bottom-RIGHT of a viewport wide enough
-  // that the menu is not open, so it is left alone.
+  // Same reason as TopBar's mobile card: these are pinned over the bottom of an
+  // open hamburger menu, at a z-index above the header. BOTH cards stand down,
+  // including the desktop one - it appears from 768px, but the menu is
+  // `lg:hidden` and so stays open-able to 1023px, which leaves this card on the
+  // menu's last entries on a tablet in portrait. `hidden md:block` cannot be
+  // cancelled by appending `hidden` (the md rule wins), so swap the whole pair.
   const menuOpen = useMobileMenuOpen();
   return (
     <>
       {/* Desktop: bottom-right card */}
-      <div className={`hidden md:block fixed bottom-4 right-4 z-[60] max-w-sm rounded-xl shadow-2xl ${d.bgColor} ${d.textColor} animate-in slide-in-from-right duration-500`}>
+      <div className={`${menuOpen ? 'hidden' : 'hidden md:block'} fixed bottom-4 right-4 z-[60] max-w-sm rounded-xl shadow-2xl ${d.bgColor} ${d.textColor} animate-in slide-in-from-right duration-500`}>
         <div className="p-4">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1">
