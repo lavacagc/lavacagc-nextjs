@@ -142,6 +142,8 @@ test.describe('DIY Kit admin routes', () => {
       ['unknown band', { price_band: 'cheap' }, /price band/i],
       ['missing band', { price_band: undefined }, /price band/i],
       ['live with no photo', { active: true, images: [] }, /photo/i],
+      ['task_keys that is not a list', { task_keys: null }, /list of maintenance items/i],
+      ['task_keys as a bare string', { task_keys: 'basement_humidity' }, /list of maintenance items/i],
     ];
     for (const [label, patch, message] of cases) {
       const res = await context.request.post(`${baseURL}${PRODUCTS}`, { data: { ...VALID, ...patch } });
@@ -165,6 +167,31 @@ test.describe('DIY Kit admin routes', () => {
     expect(blank.status()).toBe(422);
     const band = await context.request.patch(`${baseURL}${PRODUCTS}/${id}`, { data: { price_band: 'free' } });
     expect(band.status()).toBe(422);
+  });
+
+  test('unhappy: a task_keys that is not a list never means "take it off every shelf"', async ({ context, baseURL }) => {
+    // `task_keys: null` is the natural way for a client to say "unchanged", and
+    // read as an empty set it DELETES every shelf the product is on and answers
+    // 200. Refused before any database call, which is why this runs on the stub.
+    const id = '11111111-1111-1111-1111-111111111111';
+    for (const bad of [null, 'basement_humidity', 42, { key: 'basement_humidity' }]) {
+      const res = await context.request.patch(`${baseURL}${PRODUCTS}/${id}`, { data: { task_keys: bad } });
+      expect(res.status(), JSON.stringify(bad)).toBe(422);
+      expect((await res.json()).error, JSON.stringify(bad)).toMatch(/list of maintenance items/i);
+    }
+
+    // An empty list keeps its meaning: that one is a real instruction, and it is
+    // the reason the malformed cases cannot simply be folded into it.
+    const empty = await context.request.patch(`${baseURL}${PRODUCTS}/${id}`, { data: { task_keys: [] } });
+    expect(empty.status(), 'an empty list is a valid instruction, not a client bug').not.toBe(422);
+
+    // And the shelf instructions are mutually exclusive: two of them describe
+    // the same set from different directions.
+    const both = await context.request.patch(`${baseURL}${PRODUCTS}/${id}`, {
+      data: { attach_task_key: 'basement_humidity', detach_task_key: 'audit_alarms' },
+    });
+    expect(both.status()).toBe(422);
+    expect((await both.json()).error).toMatch(/one thing about the shelves/i);
   });
 
   test('unhappy: activating fails closed when the stored row cannot be read', async ({ context, baseURL }) => {

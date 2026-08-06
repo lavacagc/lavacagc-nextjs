@@ -2,7 +2,7 @@
  * PATCH  /api/admin/home-care/products/[id] -> edit a product, or move its shelves
  * DELETE /api/admin/home-care/products/[id] -> remove it from the library entirely
  *
- * THREE WAYS TO SAY SOMETHING ABOUT THE SHELVES, and only one of them at a time:
+ * THREE SHELF OPERATIONS, across two fields, and a request may carry only one:
  *
  *  - `attach_task_key` / `detach_task_key` - one shelf, added or removed, with
  *    the rest left exactly as they are. These exist because the caller is a
@@ -10,14 +10,22 @@
  *    whole set from what it last loaded will silently strip the shelves another
  *    tab added in the meantime. "Also put it on this task" is the instruction
  *    the operator actually gives, so it is the instruction the route takes, and
- *    the current set stays the server's to know.
- *  - `task_keys` - REPLACES the set outright. Kept for the caller that genuinely
- *    means the whole list (the draft form, which composes one before the product
- *    exists), and for the reordering slice 2 adds.
+ *    the current set stays the server's to know. These are what the admin screen
+ *    sends, and they are the only shelf writes with no window to be torn down in.
+ *  - `task_keys` - REPLACES the set outright. NO client sends this today: the
+ *    shop screen attaches and detaches one shelf at a time, and the draft form
+ *    composes its whole list for POST /api/admin/home-care/products, a different
+ *    route. It is here for slice 2's reorder, which genuinely does mean the whole
+ *    list in a new order - and it is the one path that carries the non-atomic
+ *    window described at its call site below, which is the other reason not to
+ *    reach for it when an attach would do.
  *
- * The eligibility check runs on all three: an edit is as good a way to attach a
- * pro task as a create. Every answer that touched the shelves carries the
- * resulting `task_keys`, so no caller has to infer them.
+ * The eligibility check runs on every key that would ADD a shelf, whether by
+ * attach or by replace: an edit is as good a way onto a pro task as a create.
+ * A DETACH is never gated - taking a product off a task the catalog has since
+ * made pro-only must not be blocked by the rule that made it pro-only. Every
+ * answer that touched the shelves carries the resulting `task_keys`, so no
+ * caller has to infer them.
  *
  * Deleting cascades to the join rows and the click rows by foreign key. A
  * product the owner takes out of the library leaves no orphan shelf entry behind
@@ -25,7 +33,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
-import { eligibleTaskKeys, normalizeTaskKeys } from '@/lib/homecare/productAdmin';
+import { eligibleTaskKeys, normalizeTaskKeys, TASK_KEYS_NOT_A_LIST } from '@/lib/homecare/productAdmin';
 import { isPriceBand, isProductCategory } from '@/lib/homecare/products';
 
 export const dynamic = 'force-dynamic';
@@ -91,7 +99,14 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     }
   }
 
-  const taskKeys = body.task_keys !== undefined ? normalizeTaskKeys(body.task_keys) : null;
+  // Absent and malformed are different answers. `[]` means "off every shelf" and
+  // is honoured; anything else that is not a list is a client bug, and reading it
+  // as `[]` would delete every shelf the product is on and answer 200.
+  let taskKeys: string[] | null = null;
+  if (body.task_keys !== undefined) {
+    taskKeys = normalizeTaskKeys(body.task_keys);
+    if (taskKeys === null) return NextResponse.json({ error: TASK_KEYS_NOT_A_LIST }, { status: 422 });
+  }
   const attachKey = typeof body.attach_task_key === 'string' ? body.attach_task_key.trim() : '';
   const detachKey = typeof body.detach_task_key === 'string' ? body.detach_task_key.trim() : '';
 

@@ -28,6 +28,22 @@ const PARSE_ROUTE = 'src/app/api/admin/home-care/parse-amazon/route.ts';
 const ADMIN = 'src/components/admin/HomeCareShopManager.tsx';
 const read = (p: string) => readFileSync(join(root, p), 'utf8');
 
+/**
+ * The body of one `const <name> = ...` in a component, up to the next one.
+ *
+ * Anchored on the declaration that follows rather than on a character window.
+ * A window says "these two things are near each other", which stops being true
+ * when somebody adds two lines of comment in between - and then the build goes
+ * red pointing at code that is correct. This branch has already had to move one
+ * such anchor once.
+ */
+const functionBody = (src: string, name: string): string => {
+  const from = src.indexOf(`const ${name} `);
+  expect(from, `${name} is not declared in this file`).toBeGreaterThan(-1);
+  const end = src.indexOf('\n  const ', from + 1);
+  return src.slice(from, end === -1 ? undefined : end);
+};
+
 const product = (over: Partial<HomeCareProduct> = {}): HomeCareProduct => ({
   id: 'p1', asin: 'B08XYZ1234', display_name: 'Digital hygrometer, 2-pack',
   images: ['B08XYZ1234/1-0.jpg'], price_band: 'under_25', active: true, link_status: 'ok', ...over,
@@ -201,22 +217,36 @@ test('AC8 - the admin opens on tasks and links products rather than copying them
   expect(admin).toContain('By maintenance item');
   expect(admin).toContain('Pick from my library');
   // Reuse patches the existing row's task list; it never creates a second row.
-  expect(admin).toMatch(/attachExisting[\s\S]{0,400}method: 'PATCH'/);
+  expect(functionBody(admin, 'attachExisting')).toContain("method: 'PATCH'");
   expect(admin).toContain('Also show on these items');
 });
 
 test('AC8 - attaching adds one shelf and never restates a set the screen may not have', () => {
   // The failure this guards: a screen left open while another tab stocks the
   // same product elsewhere, then an attach computed from the stale list that
-  // silently strips every other shelf.
-  const admin = read(ADMIN);
-  expect(admin).toContain('attach_task_key: openTask');
-  expect(admin).toContain('detach_task_key: openTask');
-  expect(admin).not.toMatch(/attachExisting[\s\S]{0,400}task_keys:/);
+  // silently strips every other shelf. What the screen actually SENDS is
+  // asserted in home-care-diy-kit-browser.spec.ts; this is the same invariant
+  // read off the source, so a refactor cannot quietly reintroduce the set.
+  const attach = functionBody(read(ADMIN), 'attachExisting');
+  expect(attach).toContain('attach_task_key: openTask');
+  expect(attach).not.toContain('task_keys');
+  expect(functionBody(read(ADMIN), 'detach')).toContain('detach_task_key: openTask');
   // The server owns the union, and answers with the resulting set.
   const route = read(PATCH_ROUTE);
   expect(route).toContain('attach_task_key');
   expect(route).toContain('currentTaskKeys');
+});
+
+test('AC8 - a task_keys that is not a list is refused, never read as "off every shelf"', () => {
+  // `[]` is a real instruction and stays one. Anything else that is not a list
+  // is a client bug, and the two must not be the same value by the time a route
+  // decides whether to delete every join row.
+  const admin = read('src/lib/homecare/productAdmin.ts');
+  expect(admin).toContain('export function normalizeTaskKeys(value: unknown): string[] | null');
+  expect(admin).toContain('if (!Array.isArray(value)) return null;');
+  for (const route of [PRODUCTS_ROUTE, PATCH_ROUTE]) {
+    expect(read(route), route).toContain('TASK_KEYS_NOT_A_LIST');
+  }
 });
 
 // ------------------------------------------------------- AC9: the two row tweaks

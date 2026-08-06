@@ -14,7 +14,9 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest, isMissingTableError } from '@/lib/notify/supabase-rest';
-import { readShopTasks, eligibleTaskKeys, normalizeTaskKeys } from '@/lib/homecare/productAdmin';
+import {
+  readShopTasks, eligibleTaskKeys, normalizeTaskKeys, TASK_KEYS_NOT_A_LIST,
+} from '@/lib/homecare/productAdmin';
 import { isPriceBand, isProductCategory, type AdminProduct } from '@/lib/homecare/products';
 
 export const dynamic = 'force-dynamic';
@@ -141,7 +143,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'A live product needs at least one photo. Add one, or save it as a draft.' }, { status: 422 });
   }
 
-  const taskKeys = normalizeTaskKeys(body.task_keys);
+  const taskKeys = body.task_keys === undefined ? [] : normalizeTaskKeys(body.task_keys);
+  if (taskKeys === null) return NextResponse.json({ error: TASK_KEYS_NOT_A_LIST }, { status: 422 });
   if (taskKeys.length > 0) {
     const eligible = await eligibleTaskKeys();
     const refused = taskKeys.filter((k) => !eligible.has(k));

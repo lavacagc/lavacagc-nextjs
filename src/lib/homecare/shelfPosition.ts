@@ -13,8 +13,8 @@
  * the scroller and this decides what they mean.
  */
 
-/** The gap between two cards, matching the shelf's own `gap-2.5`. */
-export const SHELF_GAP = 9;
+/** The gap between two cards, in px. `gap-2.5` on the scroller, which is 0.625rem. */
+export const SHELF_GAP = 10;
 
 export interface ShelfMetrics {
   scrollLeft: number;

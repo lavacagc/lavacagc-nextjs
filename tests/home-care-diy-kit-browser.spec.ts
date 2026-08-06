@@ -72,10 +72,21 @@ async function signInAsAdmin(context: BrowserContext, baseURL: string) {
   }]);
 }
 
-/** Serve the shop payload, and let each test say what the mutating calls answer. */
+/**
+ * Serve the shop payload, and let each test say what the mutating calls answer.
+ *
+ * `onWrite` is handed the parsed request BODY as well as the method, because
+ * what the screen asks for is half of what these tests are about: an attach that
+ * restates the whole shelf set is a silent data loss that looks identical from
+ * the outside to one that asks for a single shelf.
+ */
 async function serveShop(
   page: Page,
-  opts: { status?: number; body?: unknown; onWrite?: (method: string) => { status: number; json: unknown } } = {},
+  opts: {
+    status?: number;
+    body?: unknown;
+    onWrite?: (method: string, body: unknown) => { status: number; json: unknown };
+  } = {},
 ) {
   await page.route('**/api/admin/home-care/products**', async (route) => {
     const method = route.request().method();
@@ -86,7 +97,9 @@ async function serveShop(
       });
       return;
     }
-    const answer = opts.onWrite?.(method) ?? { status: 200, json: { ok: true } };
+    let sent: unknown = null;
+    try { sent = route.request().postDataJSON(); } catch { sent = route.request().postData(); }
+    const answer = opts.onWrite?.(method, sent) ?? { status: 200, json: { ok: true } };
     await route.fulfill({ status: answer.status, json: answer.json });
   });
 }
@@ -252,6 +265,50 @@ test.describe('DIY Kit admin screen', () => {
     await expect(page.getByRole('button', { name: 'Draft' })).toBeVisible();
   });
 
+  test('happy: adding from the library asks for ONE shelf, never the whole set', async ({ page }) => {
+    // The failure being ruled out: this screen has been open a while, another
+    // tab put the same product on two more tasks, and an "add" that restates
+    // the set from what this screen last loaded takes those two away without
+    // ever saying so. The request body is where that is visible, so that is
+    // what this asserts.
+    const writes: Array<{ method: string; body: unknown }> = [];
+    await serveShop(page, {
+      onWrite: (method, body) => {
+        writes.push({ method, body });
+        return { status: 200, json: { ok: true, task_keys: ['audit_alarms'] } };
+      },
+    });
+    await page.goto(SHOP);
+    await page.getByRole('button', { name: /Check every smoke/ }).click();
+    await page.getByRole('button', { name: /Pick from my library/ }).click();
+    await page.getByRole('button', { name: 'Add' }).first().click();
+
+    await expect(page.getByText(/is on this item now/).first()).toBeVisible();
+    const patch = writes.find((w) => w.method === 'PATCH');
+    // Exactly this, and nothing else: no task_keys field at all.
+    expect(patch?.body).toEqual({ attach_task_key: 'audit_alarms' });
+  });
+
+  test('happy: removing asks for that one shelf, and the count comes from the answer', async ({ page }) => {
+    const writes: Array<{ method: string; body: unknown }> = [];
+    await serveShop(page, {
+      onWrite: (method, body) => {
+        writes.push({ method, body });
+        // The server says this product is still on two other shelves. The
+        // screen's own copy says it is on none, so a toast reading "2 other
+        // items" can only have come from this answer.
+        return { status: 200, json: { ok: true, task_keys: ['audit_alarms', 'winterize_faucets'] } };
+      },
+    });
+    await page.goto(SHOP);
+    await page.getByRole('button', { name: /Keep the basement/ }).click();
+    await page.getByRole('button', { name: /Remove Digital hygrometer, 2-pack from this item/ }).click();
+
+    await expect(page.getByText('Still shown on 2 other items.').first()).toBeVisible();
+    const patch = writes.find((w) => w.method === 'PATCH');
+    expect(patch?.body).toEqual({ detach_task_key: 'basement_humidity' });
+  });
+
   test('the PA-API reminder is on the screen where the manual work happens', async ({ page }) => {
     await serveShop(page);
     await page.goto(SHOP);
@@ -272,7 +329,7 @@ test.describe('DIY Kit admin screen', () => {
 const SHELF_HARNESS = (count: number, shelf = 320, card = '44%') => `
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    #scroller { display: flex; gap: 10px; overflow-x: auto; width: ${shelf}px; }
+    #scroller { display: flex; gap: ${SHELF_GAP}px; overflow-x: auto; width: ${shelf}px; }
     #scroller > div { width: ${card}; flex: 0 0 auto; height: 120px; background: #eee; }
   </style>
   <div id="scroller">${'<div></div>'.repeat(count)}</div>

@@ -60,19 +60,33 @@ export async function eligibleTaskKeys(): Promise<Set<string>> {
 }
 
 /**
- * The task keys a write actually means, de-duplicated and trimmed.
+ * The task keys a write actually means, de-duplicated and trimmed, or NULL when
+ * the caller did not send a list at all.
  *
  * Shared by the create and the update path so "which shelves is this on" is
  * normalized once. A duplicate key in the request would otherwise hit the join
  * table's primary key and fail a whole save over what is plainly the same
  * instruction said twice.
+ *
+ * THE NULL IS THE POINT. An empty list is a real instruction - "take it off
+ * every shelf" - and `task_keys: null`, a string, or an object are a client bug.
+ * Folding those together into `[]` made the bug indistinguishable from the
+ * instruction, so a PATCH carrying `task_keys: null` (the natural way to say
+ * "unchanged") silently deleted every shelf the product was on and answered 200.
+ * The two answers are separated here rather than at each call site so no future
+ * caller can fall into it: a `null` from this function has to be handled, and
+ * `TASK_KEYS_NOT_A_LIST` is the sentence to handle it with.
  */
-export function normalizeTaskKeys(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
+export function normalizeTaskKeys(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
   return Array.from(new Set(
     value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0).map((v) => v.trim()),
   ));
 }
+
+/** What to tell a caller that sent a `task_keys` which is not a list. */
+export const TASK_KEYS_NOT_A_LIST =
+  'task_keys has to be a list of maintenance items. Send an empty list to take the product off every shelf.';
 
 function serviceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
