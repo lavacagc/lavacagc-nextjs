@@ -122,10 +122,12 @@ test('the newsletter quotes no price, whatever the catalog carries', () => {
   expect(src).not.toMatch(/from '\.\/cost'/);
 });
 
-test('costLabel still governs the surfaces that DO quote a price', () => {
-  // The member surfaces stopped calling it; the admin quoting tools did not,
-  // and the est_cost columns are untouched. The rules it encodes still matter
-  // there, so they stay asserted rather than deleted along with the callers.
+test('costLabel keeps the rule it cost a production disagreement to learn', () => {
+  // Nothing in src/ calls this any more - removing member-facing pricing took
+  // both of its callers, and while the admin service-quote intake route still
+  // SELECTS est_cost_low/high, no admin surface formats them with this yet. The
+  // columns stay, so the module stays for whichever surface quotes them next,
+  // and its rules stay asserted rather than left to rot alongside it.
   expect(costLabel(150, 250)).toBe('$150–$250');
   // A zero floor is the catalog saying "no meaningful floor", not a price.
   expect(costLabel(0, 375)).toBe(CONSULT_COST);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Plus, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy, MapPin, Wrench, Home, ChevronDown, Pencil, Trash2, Undo2 } from 'lucide-react';
 import { hasGuideItem } from '@/lib/homecare/guides';
 import { prevSeason, seasonStart, SEASONS, type Season } from '@/lib/homecare/season';
@@ -8,7 +8,7 @@ import { getFactForTask, HOME_FACTS, factValueSummary } from '@/lib/homecare/rec
 import HomeCareRecordCapture, { type RecordValue } from '@/components/homecare/HomeCareRecordCapture';
 import DiyKitShelf from '@/components/homecare/DiyKitShelf';
 import { useToast } from '@/hooks/use-toast';
-import { taskChoice, shelfVisible } from '@/lib/homecare/taskChoice';
+import { taskChoice, shelfVisible, requestedTaskKeys } from '@/lib/homecare/taskChoice';
 import type { HomeCareProduct } from '@/lib/homecare/products';
 
 const SHARE_URL = 'https://www.lavacagc.com/home-care?utm_source=member_share&utm_medium=portal&utm_campaign=home_care_share';
@@ -180,7 +180,12 @@ export default function HomeCareChecklistClient({
   const [lavacaCompleted, setLavacaCompleted] = useState<Record<string, string>>(lavacaCompletedFromServer ?? {});
   const [done, setDone] = useState<Set<string>>(new Set(doneItems.map((d) => id(d.task_key, d.season))));
   const [dismissed, setDismissed] = useState<Set<string>>(new Set(dismissedKeys));
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(autoAddKey ? [autoAddKey] : []));
+  /**
+   * Tasks put on the request by hand: the ＋ circle on a pro-only card, and the
+   * `?add=` deep link. Everything the member chose with "La Vaca does it" is
+   * NOT here - that lives in `modes`, and `selected` below unions the two.
+   */
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(autoAddKey ? [autoAddKey] : []));
   const [busy, setBusy] = useState<string | null>(null);
   /** The task the hide icon just removed, so the undo bar can name it. */
   const [lastHidden, setLastHidden] = useState<{ key: string; title: string } | null>(null);
@@ -191,6 +196,39 @@ export default function HomeCareChecklistClient({
   const [expandedBlurbs, setExpandedBlurbs] = useState<Set<string>>(new Set());
   /** `task_key|season` -> 'diy' | 'pro'. Absent means undecided. */
   const [modes, setModes] = useState<Record<string, 'diy' | 'pro'>>(modesFromServer);
+
+  /**
+   * The consolidated request, derived rather than stored - see
+   * `requestedTaskKeys`, which owns the rule and is unit-tested.
+   *
+   * Everything downstream reads this: the card tint, the ＋ circle's pressed
+   * state, `requestUrl`, and the sticky pill. That is the point. A chip reading
+   * "On your request" is the same fact as the pill's count, so they are read
+   * from the same place and cannot disagree - not after a reload, not across
+   * two seasons of the same task, and not after the chip's reset.
+   */
+  const selected = useMemo(
+    () => requestedTaskKeys({ tasks, modes, picked, dismissed }),
+    [tasks, modes, picked, dismissed],
+  );
+
+  /**
+   * Where keyboard focus must land after a choice: `chip|<task|season>` or
+   * `toggle|<task|season>`.
+   *
+   * Picking a side unmounts the control that was pressed - the segmented toggle
+   * folds into the chip, and the chip's reset unfolds it again - so left alone,
+   * focus drops to <body> and a keyboard or screen-reader member loses their
+   * place mid-list. Set on the write and again on a failed write's revert,
+   * because that swaps the control back a second time.
+   */
+  const [focusTarget, setFocusTarget] = useState<string | null>(null);
+  const choiceRefs = useRef(new Map<string, HTMLButtonElement | null>());
+  useEffect(() => {
+    if (!focusTarget) return;
+    choiceRefs.current.get(focusTarget)?.focus();
+    setFocusTarget(null);
+  }, [focusTarget]);
 
   const toggleBlurb = (k: string) => {
     setExpandedBlurbs((prev) => {
@@ -323,7 +361,14 @@ export default function HomeCareChecklistClient({
   const seasonTasks = tasks.filter((t) => !t.starter && t.seasons.includes(activeSeason) && !dismissed.has(t.key));
   const hiddenTasks = tasks.filter((t) => dismissed.has(t.key));
   const showStarterSection = showStarter && starterTasks.length > 0;
-  const hasBookable = tasks.some((t) => t.bookable);
+  // Can ANYTHING on this list reach the request, and by which route. No longer
+  // the same question as `bookable`: a `diy` + `pro_optional` task is
+  // requestable through the "La Vaca does it" toggle while its bookable column
+  // stays false on purpose, because bookable also drives the admin walk-in
+  // dropdown and the newsletter CTA. Read through `taskChoice` so the hint
+  // tracks the card shapes rather than a column that no longer means this.
+  const hasChoice = tasks.some((t) => taskChoice(t) === 'choose');
+  const hasPlusAdd = tasks.some((t) => taskChoice(t) === 'pro_only' && t.bookable);
   // Saved home facts for the "My Home" recap, in registry order (stable).
   const savedFacts = HOME_FACTS.filter((f) => records.has(f.key));
 
@@ -348,7 +393,9 @@ export default function HomeCareChecklistClient({
       return next;
     });
     if (dismiss) {
-      setSelected((prev) => {
+      // Only the hand-made pick needs clearing; a `pro` mode drops off the
+      // request on its own, because `requestedTaskKeys` skips dismissed tasks.
+      setPicked((prev) => {
         if (!prev.has(key)) return prev;
         const next = new Set(prev);
         next.delete(key);
@@ -484,11 +531,14 @@ export default function HomeCareChecklistClient({
     }
   };
 
-  const toggleSelect = (key: string) => {
-    const next = new Set(selected);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    setSelected(next);
+  /** The ＋ circle on a pro-only card. A `choose` task goes on via `setMode`. */
+  const togglePicked = (key: string) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
 
   /**
@@ -502,7 +552,14 @@ export default function HomeCareChecklistClient({
    *
    * Tapping the current choice again clears it, which is the only way back to
    * undecided - and it takes the task off the request if it was on it, because
-   * "I have not decided" cannot mean "please come and do it".
+   * "I have not decided" cannot mean "please come and do it". The chip a decided
+   * card collapses into calls exactly this with the mode it is showing, so
+   * "change your mind" is one persisted reversal rather than a local unhide that
+   * a reload would undo.
+   *
+   * Nothing is written about the request itself: membership is DERIVED from
+   * these modes (see `requestedTaskKeys`), so the pill follows the chip by
+   * construction instead of by a second write that could miss.
    *
    * Optimistic, with a revert: the member's tap must feel instant, and a failed
    * write that silently kept the new state would tell them we are coming when
@@ -519,13 +576,7 @@ export default function HomeCareChecklistClient({
       else delete copy[k];
       return copy;
     });
-    const wasSelected = selected.has(key);
-    setSelected((prev) => {
-      const copy = new Set(prev);
-      if (value === 'pro') copy.add(key);
-      else copy.delete(key);
-      return copy;
-    });
+    setFocusTarget(`${value ? 'chip' : 'toggle'}|${k}`);
 
     setBusy(`mode|${k}`);
     try {
@@ -543,12 +594,7 @@ export default function HomeCareChecklistClient({
         else delete copy[k];
         return copy;
       });
-      setSelected((prev) => {
-        const copy = new Set(prev);
-        if (wasSelected) copy.add(key);
-        else copy.delete(key);
-        return copy;
-      });
+      setFocusTarget(`${previous ? 'chip' : 'toggle'}|${k}`);
       toast({
         title: 'Could not save that',
         description: 'We could not record who is doing this task. Please try again.',
@@ -699,10 +745,19 @@ export default function HomeCareChecklistClient({
           {choice === 'choose' ? (
             mode ? (
               // Decided: the toggle folds into a chip so a returning member's
-              // list is two rows per task, not three. Tap it to reopen.
+              // list is two rows per task, not three. Tapping it re-sends the
+              // mode it is showing, which `setMode` reads as "clear this" - so
+              // the reversal is written, drops the task off the request, and
+              // survives a reload, rather than hiding a chip the server still
+              // believes in. The accessible name says it is a control: "On your
+              // request" alone reads as a status, and the member arriving here
+              // by keyboard has just been moved onto it.
               <button
                 type="button"
-                onClick={() => setModes((prev) => { const c = { ...prev }; delete c[panelKey]; return c; })}
+                ref={(el) => { choiceRefs.current.set(`chip|${panelKey}`, el); }}
+                onClick={() => setMode(t.key, season, mode)}
+                disabled={busy === `mode|${panelKey}`}
+                aria-label={`Change who is doing ${t.title}`}
                 data-testid={`choice-chip-${t.key}`}
                 className="group -my-1 inline-flex items-center justify-start"
               >
@@ -715,6 +770,7 @@ export default function HomeCareChecklistClient({
               <span className="inline-flex rounded-[10px] bg-muted p-0.5" role="group" aria-label={`Who is doing ${t.title}`}>
                 <button
                   type="button"
+                  ref={(el) => { choiceRefs.current.set(`toggle|${panelKey}`, el); }}
                   onClick={() => setMode(t.key, season, 'diy')}
                   aria-pressed={false}
                   disabled={busy === `mode|${panelKey}`}
@@ -747,7 +803,7 @@ export default function HomeCareChecklistClient({
           {choice === 'pro_only' && t.bookable && (
             <button
               type="button"
-              onClick={() => toggleSelect(t.key)}
+              onClick={() => togglePicked(t.key)}
               aria-pressed={isSel}
               className="group -my-1 inline-flex items-center justify-start"
             >
@@ -992,10 +1048,19 @@ export default function HomeCareChecklistClient({
         </div>
       )}
 
-      {hasBookable && selected.size === 0 && (
+      {/* How to get something onto the request, named as the card actually
+          offers it. Most cards are now a choice, where the way in is the
+          "La Vaca does it" toggle - a ＋ circle is only the mechanism on a
+          pro-only card, so promising one where none exists sends the member
+          hunting for a glyph that is not on their list. */}
+      {(hasChoice || hasPlusAdd) && selected.size === 0 && (
         <div className="flex items-center gap-2 rounded-lg bg-primary/5 px-3 py-2 text-xs font-semibold text-text-secondary">
-          <span className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-primary/40 text-primary"><Plus className="h-3.5 w-3.5" /></span>
-          Add any task you&apos;d like us to handle, then send them all as one request.
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-primary/40 text-primary">
+            {hasChoice ? <ClipboardList className="h-3 w-3" /> : <Plus className="h-3.5 w-3.5" />}
+          </span>
+          {hasChoice
+            ? 'Tap “La Vaca does it” on anything you’d like us to handle, then send them all as one request.'
+            : 'Add any task you’d like us to handle, then send them all as one request.'}
         </div>
       )}
 

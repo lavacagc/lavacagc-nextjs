@@ -55,13 +55,77 @@ export function taskChoice(t: ChoosableTask): TaskChoice {
  * height saving on the card and the honest thing to show someone who has just
  * asked us to do the job.
  *
- * `pro_only` returns false whatever the stored mode says. A mode row can outlive
- * a catalog edit, so a task the owner has since made pro-only loses its shelf on
- * the next render rather than keeping it because of what somebody picked last
- * season - the same "re-check the rule every render" instinct as readProductShelves.
+ * A stored `pro` loses the shelf whatever shape the catalog now gives the task,
+ * and `pro_only` loses it whatever the stored mode says. Those are one guard
+ * from two ends, because a mode row can outlive a catalog edit in either
+ * direction: a task the owner has since made pro-only drops its shelf on the
+ * next render rather than keeping it because of what somebody picked last
+ * season, and a member who asked us to do the job is not handed a shopping list
+ * for it when the owner un-marks `pro_optional` - or when `fetchCatalog`'s
+ * degrade path is defaulting every row to `pro_optional: false` because the
+ * migration has not been applied yet. Same "re-check the rule every render"
+ * instinct as readProductShelves.
  */
 export function shelfVisible(choice: TaskChoice, mode: 'diy' | 'pro' | undefined): boolean {
+  if (mode === 'pro') return false;
   if (choice === 'pro_only') return false;
   if (choice === 'diy_only') return true;
   return mode === 'diy';
+}
+
+/** A task as the request rule needs it: its shape, plus the key it goes on the request under. */
+export interface RequestableTask extends ChoosableTask {
+  key: string;
+}
+
+/**
+ * Which tasks are on the consolidated request.
+ *
+ * DERIVED from what is stored, never accumulated alongside it. The checklist
+ * used to keep a second Set of task keys next to `modes`, and holding the same
+ * fact in two grains drifted three separate ways: the Set was seeded from the
+ * `?add=` deep link alone, so after any reload a card read "On your request"
+ * with nothing on the request and no pill to send it; `modes` is per (task,
+ * season) while the request is per task, so picking "I'll do it" on the autumn
+ * card of a four-season task silently cancelled the Pro request made on the
+ * summer one; and the chip's reset dropped the local entry without touching
+ * either the Set or the server. Deriving is what makes those unrepresentable.
+ *
+ * `picked` is the one thing that genuinely has no stored counterpart: the ＋
+ * circle on a pro-only card, and the `?add=` deep link that pre-selects a task.
+ *
+ * Two exclusions, both about a card and the request never disagreeing:
+ *  - a dismissed task is not on the page, so it is not on the request either;
+ *  - a `pro` mode only counts while the task still renders the chip that says
+ *    so. A mode row can outlive a catalog edit, and a task that has since
+ *    become `diy_only` (or `pro_only`) must not keep a silent seat on the
+ *    request that no card on screen can explain or take back.
+ */
+export function requestedTaskKeys({
+  tasks,
+  modes,
+  picked,
+  dismissed,
+}: {
+  tasks: readonly RequestableTask[];
+  modes: Readonly<Record<string, 'diy' | 'pro'>>;
+  picked: ReadonlySet<string>;
+  dismissed: ReadonlySet<string>;
+}): Set<string> {
+  // `modes` is keyed `task_key|season`; the request is keyed by task alone, so
+  // ANY season saying pro puts the task on it and clearing one season only
+  // takes it off when no other season still does.
+  const proKeys = new Set<string>();
+  for (const [panelKey, mode] of Object.entries(modes)) {
+    if (mode !== 'pro') continue;
+    const cut = panelKey.lastIndexOf('|');
+    if (cut > 0) proKeys.add(panelKey.slice(0, cut));
+  }
+
+  const out = new Set<string>();
+  for (const t of tasks) {
+    if (dismissed.has(t.key)) continue;
+    if (picked.has(t.key) || (proKeys.has(t.key) && taskChoice(t) === 'choose')) out.add(t.key);
+  }
+  return out;
 }

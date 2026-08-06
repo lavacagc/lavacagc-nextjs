@@ -475,14 +475,40 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
     // Picking Pro IS adding it to the request - one tap, not two.
     await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toContainText('On your request');
     await expect(page.getByTestId('diy-kit-toggle-flush_ac_condensate')).toHaveCount(0);
+
+    // "On your request" has to mean a request that EXISTS. The pill is the only
+    // way to send one, and it carries the keys, so both are asserted rather
+    // than the chip's wording alone.
+    const pill = page.getByRole('link', { name: /^Review your request/ });
+    await expect(pill).toBeVisible();
+    await expect(pill).toHaveAttribute('href', /[?&]tasks=(.*,)?flush_ac_condensate(,|$)/);
     await shot(page, '09-choice-pro-on-request.png');
 
     // And it survives a reload, because the choice is stored rather than held
     // in a tab. A member who picks on their phone and opens the portal on a
     // laptop must not be asked again.
+    //
+    // The pill is re-asserted here for a reason: the chip is rendered from the
+    // rehydrated mode while the request used to be seeded from the ?add= deep
+    // link alone, so this was exactly where the two came apart - card saying
+    // the job was on the request, no pill on screen to send it, and this spec
+    // passing over it because it only ever checked the wording.
     await openChecklist(page);
     await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toContainText('On your request');
     await expect(page.getByTestId('diy-kit-toggle-flush_ac_condensate')).toHaveCount(0);
+    await expect(pill).toBeVisible();
+    await expect(pill).toHaveAttribute('href', /[?&]tasks=(.*,)?flush_ac_condensate(,|$)/);
+
+    // The chip is the way back, and a real one: it writes the reversal, so the
+    // task leaves the request and STAYS off across a reload rather than the
+    // card quietly re-growing a chip the server still believed in.
+    await page.getByTestId('choice-chip-flush_ac_condensate').click();
+    await expect(page.getByTestId('choose-pro-flush_ac_condensate')).toBeVisible();
+    await expect(pill).toHaveCount(0);
+    await openChecklist(page);
+    await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toHaveCount(0);
+    await expect(page.getByTestId('choose-pro-flush_ac_condensate')).toBeVisible();
+    await expect(pill).toHaveCount(0);
   });
 
   test('S8: no price appears anywhere on the checklist', async ({ page }) => {

@@ -1,16 +1,23 @@
 /**
- * La Vaca Home Care - the one cost label every surface renders.
+ * La Vaca Home Care - how an `est_cost_low/high` pair becomes a price label.
  *
- * The monthly email and the live checklist page read the same
- * `maintenance_catalog.est_cost_low/high` columns, and each used to format them
- * itself. They disagreed: for a zero floor the email said "Consult with our
- * team" while the page said "up to $375" for the very same row, so a member who
- * clicked the email's CTA landed on a different price than the email quoted.
- * One function, both callers - the same reason the seasonal-reset rule lives in
- * `isRowCurrent` rather than being written out on each side.
+ * NOTHING IN `src/` CALLS THIS TODAY. It was written because the monthly email
+ * and the live checklist page each formatted those columns themselves and
+ * disagreed: for a zero floor the email said "Consult with our team" while the
+ * page said "up to $375" for the very same row, so a member who clicked the
+ * email's CTA landed on a different price than the email quoted. One function,
+ * both callers, fixed that - and then the owner removed member-facing pricing
+ * outright (2026-08-06), which removed both callers.
  *
- * Pure and client-safe: `HomeCareChecklistClient` is a 'use client' component,
- * so nothing server-only may be imported here.
+ * It is kept rather than deleted because the columns are not going anywhere:
+ * `/api/admin/service-quote/intake` still selects `est_cost_low/high` and
+ * carries them through `ServiceCatalogRow`. No admin surface FORMATS them yet,
+ * so this is here for the one that will, with the zero-floor rule it took a
+ * production disagreement to learn already written down. Its tests in
+ * home-care-newsletter.spec.ts keep that rule honest in the meantime.
+ *
+ * Pure and client-safe, so a client component may import it if one ever needs
+ * to again: nothing server-only may be added here.
  */
 
 /** Short enough to sit as one segment of the "badge · cost · blurb" meta line. */
