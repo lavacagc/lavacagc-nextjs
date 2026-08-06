@@ -206,4 +206,56 @@ test.describe('D: exit-intent newsletter capture', () => {
     await page.waitForTimeout(400);
     await expect(page.getByRole('dialog')).toBeHidden();
   });
+
+  /**
+   * The back-button history entry must never carry a URL.
+   *
+   * It used to: `pushState(null, '', window.location.href)` read the current
+   * URL and wrote it back, from an effect that re-runs on `pathname` - which
+   * changes DURING a navigation. A push landing mid-flight replaced the
+   * incoming URL with the outgoing one and the navigation was lost: the address
+   * bar snapped back and the page the visitor asked for never arrived. It
+   * needed load to show up, so it surfaced as a nav test failing about one run
+   * in six while CI hid it behind workers=1 and two retries.
+   *
+   * `pushState(state, '')` adds the same entry at the current URL and cannot
+   * overwrite anything, which is what makes the race unlosable rather than
+   * merely unlikely. These two assertions are the contract: the entry exists
+   * (Back detection still works, covered by the tests above) and it names no
+   * URL.
+   */
+  test('the back-button history entry carries no URL, so it cannot eat a navigation', async ({ page }) => {
+    const pushedUrls: string[] = [];
+    await page.exposeFunction('__recordPush', (url: string) => { pushedUrls.push(url); });
+    await page.addInitScript(() => {
+      const original = history.pushState.bind(history);
+      history.pushState = (...args: Parameters<History['pushState']>) => {
+        // `url` is args[2]; undefined is the shape this test exists to pin.
+        (window as unknown as { __recordPush?: (u: string) => void }).__recordPush?.(String(args[2]));
+        return original(...args);
+      };
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(600);
+
+    // The component pushed its entry, and it named no URL.
+    expect(pushedUrls, 'the popup should add exactly one history entry').toContain('undefined');
+    const urlBearing = pushedUrls.filter((u) => u !== 'undefined' && u !== '' && u !== 'null');
+    expect(urlBearing, 'no app push may carry a URL').toEqual([]);
+    // And the address bar is where it started.
+    expect(new URL(page.url()).pathname).toBe('/');
+  });
+
+  test('a header navigation still commits with the popup mounted', async ({ page }) => {
+    // The user-visible half of the same bug: the navigation must actually land.
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    const nav = page.locator('header nav').first();
+    await page.click('button[aria-haspopup="true"]:has-text("Company")');
+    await nav.locator('a[href="/about"]').first().click();
+    await page.waitForURL('**/about');
+    expect(new URL(page.url()).pathname).toBe('/about');
+  });
 });
