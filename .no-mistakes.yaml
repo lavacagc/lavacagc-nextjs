@@ -27,4 +27,11 @@ commands:
   # NOT enough: once that package is in the npx cache it still runs from there.
   # `npm run` only prepends node_modules/.bin to PATH, so a missing TypeScript
   # is `tsc: command not found` and exit 127 - loud, truthful, unmistakable.
+  #
+  # This is the rule REPO-WIDE, not just for the gate: any tool the repo pins as
+  # a dependency (tsc, eslint, next, playwright) is invoked through `npm run` or
+  # node_modules/.bin, never `npx`, in CI workflows, husky/lint-staged hooks and
+  # scripts/ alike. `npx` stays only for one-off tools the repo does NOT depend
+  # on - `npx playwright install`, `npx supabase`, `npx tsx` - where fetching
+  # from the registry is the whole point.
   test: "npm run typecheck && npm run build"

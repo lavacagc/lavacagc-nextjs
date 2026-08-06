@@ -42,4 +42,8 @@ export NEXT_PUBLIC_SUPABASE_URL="http://127.0.0.1:9099"
 export NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="placeholder-anon-key"
 export NEXT_PUBLIC_SUPABASE_ANON_KEY="placeholder-anon-key"
 
-exec npx next build
+# `npm run build`, not `npx next build`: this script is also run directly as
+# `bash scripts/test-build.sh`, where node_modules/.bin is NOT on PATH, and
+# `npx` would answer that by fetching Next from the registry and building with
+# a version the repo never pinned. `npm run` resolves locally or fails loudly.
+exec npm run build

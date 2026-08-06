@@ -35,8 +35,14 @@ jobs:
 
       # Run Playwright against `next start`. playwright.config.ts's webServer
       # block spawns the server when TEST_URL is unset.
+      #
+      # The local binary, not `npx playwright`: `npx` would answer a broken
+      # install by fetching Playwright from the registry and running a version
+      # whose browsers this job never downloaded. Not `npm test` either - that
+      # script pins E2E_STUB_BACKEND, and CI deliberately pins the same skip set
+      # via `CI` below (see tests/helpers/liveBackend.ts).
       - name: Run Playwright
-        run: npx playwright test --project=chromium
+        run: ./node_modules/.bin/playwright test --project=chromium
         env:
           CI: "true"
 

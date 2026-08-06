@@ -16,6 +16,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npx eslint --max-warnings 0
+      # Run both tools through `npm run`, never `npx`. `npx` falls back to the
+      # registry when the tool is not resolvable locally, and for `tsc` that
+      # fallback is an unrelated package that exits 1 having type-checked
+      # nothing - a green-looking pipeline reporting a check it never ran.
+      # `.no-mistakes.yaml` owns the full rationale.
+      - run: npm run lint -- --max-warnings 0
       - run: mkdir -p .next/types && touch .next/types/routes.d.ts
-      - run: npx tsc --noEmit
+      - run: npm run typecheck

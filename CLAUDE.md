@@ -157,8 +157,11 @@ hand. The gate runs one pipeline - review → test → lint → docs → push �
 in a disposable worktree, auto-applies safe fixes, escalates judgement calls, and
 only forwards to `origin` + opens the PR once every check is green. Config lives
 in `.no-mistakes.yaml` (gate commands: `npm run lint`, and
-`npm run typecheck && npm run build` - that file states why the type-check must
-not be spelled `npx tsc --noEmit`).
+`npm run typecheck && npm run build`).
+That file also owns a repo-wide rule worth knowing before you add any script,
+workflow step or hook: pinned dependencies are invoked through `npm run`, never
+`npx` - a bare `npx tsc` runs an unrelated registry package that type-checks
+nothing.
 
 So **do not** treat these as separate manual steps - the gate owns them:
 
