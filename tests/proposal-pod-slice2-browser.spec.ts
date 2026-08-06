@@ -490,6 +490,13 @@ test.describe('proposals admin, in the browser', () => {
     await openRoster(page, context, baseURL!, {
       proposals: [RACHEL], counts_available: true, total: 1, truncated: false,
     });
+    // The ROW has to be on screen before its absence of a hint means anything.
+    // `openRoster` returns once the page container is mounted, which is before
+    // the roster read resolves, and a roster that has not painted yet renders
+    // no hint either - so without this the assertion passed against a fixture
+    // deliberately made old enough to be labelled expired, whenever the rest of
+    // the suite was loading the machine enough to slow the read down.
+    await expect(page.getByText(RACHEL.client_name)).toBeVisible();
     await expect(page.getByTestId('link-expired-hint')).toHaveCount(0);
   });
 
