@@ -1,11 +1,12 @@
 /**
  * Server-only helpers the DIY Kit admin routes share.
  *
- * Two things live here because they are rules about the DATA rather than about
- * one route: which maintenance tasks may carry a shelf, and where a product
- * photo is stored. Both are enforced again on the server even though the admin
- * UI already respects them - the UI refusing to offer a pro task is a courtesy,
- * and a crafted POST is not obliged to be courteous.
+ * What lives here are rules about the DATA rather than about one route: which
+ * maintenance tasks may carry a shelf, where a product photo is stored, and how
+ * a database that has not caught up on its migrations is named to the operator
+ * instead of guessed at. The first two are enforced again on the server even
+ * though the admin UI already respects them - the UI refusing to offer a pro
+ * task is a courtesy, and a crafted POST is not obliged to be courteous.
  */
 import { createClient } from '@supabase/supabase-js';
 import { supabaseRest } from '@/lib/notify/supabase-rest';

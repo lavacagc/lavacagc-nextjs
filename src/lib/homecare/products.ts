@@ -33,7 +33,8 @@
  * validator are the whole of what is needed.
  *
  * Nothing here is exported into a rendering path. `priceBandLabel` has no
- * caller by design; deleting it is the change to make if this is ever declared
+ * caller outside the spec that pins its labels, and that is by design rather
+ * than an oversight; deleting it is the change to make if this is ever declared
  * dead rather than dormant.
  */
 export type PriceBand = 'under_25' | '25_50' | '50_100' | '100_plus';
