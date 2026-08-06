@@ -167,7 +167,7 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
         if (url.pathname === '/rest/v1/homeowner_maintenance') {
           if (req.method === 'POST') {
             try {
-              const b = JSON.parse(raw) as { task_key: string; season: string; status: string; mode?: string | null };
+              const b = JSON.parse(raw) as { task_key: string; season: string; status: string; mode?: string | null; completed_at?: string | null };
               const k = `${b.task_key}|${b.season}`;
               // merge-duplicates: a body that does not carry a column leaves it
               // alone, exactly as PostgREST would. Without this the mode write
@@ -176,7 +176,7 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
               const held = maintStore.get(k);
               maintStore.set(k, {
                 status: b.status,
-                completed_at: held?.completed_at ?? null,
+                completed_at: 'completed_at' in b ? (b.completed_at ?? null) : held?.completed_at ?? null,
                 mode: 'mode' in b ? (b.mode ?? null) : held?.mode ?? null,
               });
             } catch { /* ignore malformed */ }
@@ -187,7 +187,24 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
             const [task_key, season] = k.split('|');
             return { task_key, season, status: v.status, completed_at: v.completed_at, updated_at: null, completed_by: null, scheduled_start: null, scheduled_end: null, service_address: null, mode: v.mode };
           });
-          return json(200, rows);
+          // The page reads every row for the member; the task route reads ONE,
+          // by task and season, before it rewrites that row's status. Answering
+          // the second read with the whole table hands it row zero - some other
+          // task's - so the stub decides what the route writes and the test
+          // proves nothing about the route. Honour the filters PostgREST would.
+          // `searchParams.get` has already decoded the value, so `eq.` is all
+          // there is left to strip.
+          const eq = (col: string) => {
+            const val = url.searchParams.get(col);
+            return val?.startsWith('eq.') ? val.slice(3) : null;
+          };
+          const wantKey = eq('task_key');
+          const wantSeason = eq('season');
+          const limit = Number(url.searchParams.get('limit') || 0);
+          const filtered = rows
+            .filter((r) => (wantKey === null || r.task_key === wantKey)
+              && (wantSeason === null || r.season === wantSeason));
+          return json(200, limit > 0 ? filtered.slice(0, limit) : filtered);
         }
         // The shelf read, embedded exactly as PostgREST answers it. Scoped to
         // the keys the page asked for, so a shelf leaking onto a task the query
@@ -520,9 +537,42 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
     const main = page.locator('main');
     await expect(main).not.toContainText('Pro est.');
     await expect(main).not.toContainText('Consult with our team');
-    // The shelf's own price BANDS are a different thing and stay: they describe
-    // a product on Amazon, not a quote from us.
+    // Nor does the shelf carry a price of its own. The product price band was
+    // retired one commit earlier (#100) and the component stopped reading the
+    // column, so "no pricing" now covers the open shelf too - which is the only
+    // reading that matches S2. The stub still SERVES a band on these rows, so
+    // this only passes while the component genuinely ignores them.
     await page.getByTestId('diy-kit-toggle-replace_hvac_filter').click();
-    await expect(taskRow(page, 'Replace the HVAC filter').getByText('Under $25')).toBeVisible();
+    const shelf = taskRow(page, 'Replace the HVAC filter');
+    await expect(shelf.getByTestId('diy-kit-link').first()).toBeVisible();
+    await expect(shelf.getByText('Under $25')).toHaveCount(0);
+    await expect(main.getByText(/\$\d/)).toHaveCount(0);
+    await shot(page, '10-no-pricing-anywhere.png', { fullPage: true });
+  });
+
+  test('S9: changing who does a task does not erase a completion', async ({ page }) => {
+    await openChecklist(page);
+    const row = taskRow(page, 'Clear the A/C condensate drain line');
+    await row.scrollIntoViewIfNeeded();
+
+    // The member who cleared the line themselves in June, and in August decides
+    // we should take it over next time. Both facts are one row, and the mode
+    // write touches only one of them.
+    await row.getByRole('button', { name: 'Mark done' }).click();
+    await expect(row.getByRole('button', { name: 'Mark not done' })).toBeVisible();
+
+    await page.getByTestId('choose-pro-flush_ac_condensate').click();
+    await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toContainText('On your request');
+
+    // Asserted across a RELOAD, because that is the only place the damage would
+    // show: the mode write upserts with merge-duplicates, so a hardcoded
+    // status:'todo' would blank the completion server-side while the tab kept
+    // rendering the tick it never re-read. The route reads the status back and
+    // writes it again for exactly this.
+    await openChecklist(page);
+    const after = taskRow(page, 'Clear the A/C condensate drain line');
+    await expect(after.getByRole('button', { name: 'Mark not done' })).toBeVisible();
+    await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toContainText('On your request');
+    await shot(page, '11-completion-survives-mode-change.png');
   });
 });
