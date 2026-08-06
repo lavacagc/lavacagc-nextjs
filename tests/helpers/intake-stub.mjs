@@ -99,7 +99,27 @@ function handleRest(req, res, url, body) {
   if (req.method === 'PATCH') {
     const patch = JSON.parse(body.toString() || '{}');
     const hit = rows.filter((r) => matches(r, params));
-    hit.forEach((r) => Object.assign(r, patch));
+    hit.forEach((r) => {
+      Object.assign(r, patch);
+      // `proposals_set_updated_at` (20260824000000), the one trigger this stub
+      // has to model rather than ignore.
+      //
+      // The real table maintains updated_at itself - BEFORE UPDATE, for every
+      // writer - and the proposal pod builds a user-visible rule on top of it:
+      // a draft's link resolves for 24 hours FROM updated_at, and the admin's
+      // refresh moves that window by PATCHing the row without naming a
+      // timestamp. Against a stub that only assigns what it was sent, that
+      // write lands, answers 200, and changes nothing an expiry check can see -
+      // so a spec driving the real product would watch a refreshed link stay
+      // dead and read it as a bug in the page.
+      //
+      // Only where the column already exists, so this stays what it claims to
+      // be: a table that keeps its own updated_at behaves like one, and a table
+      // that has no such column is left alone.
+      if (patch.updated_at === undefined && r.updated_at !== undefined) {
+        r.updated_at = new Date().toISOString();
+      }
+    });
     return json(res, 200, minimal ? undefined : hit);
   }
 
@@ -135,6 +155,33 @@ http
     if (url.pathname === '/__fail') {
       failing = url.searchParams.get('on') === '1';
       return json(res, 200, { failing });
+    }
+
+    /**
+     * GoTrue, so the ADMIN doors can be driven end to end here too.
+     *
+     * `/api/admin/*` is gated by middleware's `supabase.auth.getUser()`, which
+     * goes to NEXT_PUBLIC_SUPABASE_URL - the one origin this stub is standing
+     * in for. Without this it 404s, the middleware reads that as signed out,
+     * and every admin action answers 401 before it reaches a route. That left
+     * the admin half of the proposal lifecycle - the refresh a stale draft
+     * needs - unreachable from the suite that owns the client half of it.
+     *
+     * As dumb as tests/helpers/gotrue-stub.mjs, and the same answer: any
+     * authenticated user unlocks the page, and no spec asserts who it is.
+     * `failing` is deliberately NOT honoured - a spec pretending the database
+     * is down is not also signing the admin out.
+     */
+    if (url.pathname.startsWith('/auth/v1/user')) {
+      return json(res, 200, {
+        id: '00000000-0000-0000-0000-000000000001',
+        aud: 'authenticated',
+        role: 'authenticated',
+        email: 'admin@lavacagc.com',
+        created_at: '2026-01-01T00:00:00Z',
+        app_metadata: {},
+        user_metadata: {},
+      });
     }
 
     // api.telegram.org, after the preload rewrote the host.

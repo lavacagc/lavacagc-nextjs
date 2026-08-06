@@ -33,13 +33,14 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import {
-  RefreshCw, Link2, Send, Ban, Upload, Boxes, X, FileUp, Undo2, Search, RotateCcw,
+  RefreshCw, Link2, Send, Ban, Upload, Boxes, X, FileUp, Undo2, Search, RotateCcw, Clock3,
 } from 'lucide-react';
 import { parseProposalCsv, type ParsedProposalLine } from '@/lib/proposals/csv';
 import {
   composeBundle, lockedMemberTitles, restoreMembers, toStoredMembers, type PreviewBundleMember,
 } from '@/lib/proposals/bundles';
 import { CLIENT_PAGE_LIVE, CLIENT_PAGE_NOT_LIVE_MESSAGE } from '@/lib/proposals/clientPage';
+import { DRAFT_WINDOW_HOURS, draftLinkHasExpired } from '@/lib/proposals/linkWindow';
 import { cn } from '@/lib/utils';
 
 /** One preview row: an imported line, or a bundle the admin composed. */
@@ -228,6 +229,79 @@ async function postProposalAction(url: string, payload: unknown): Promise<void> 
   if (res.ok) return;
   const body: { error?: unknown } | null = await res.json().catch(() => null);
   throw new Error(typeof body?.error === 'string' ? body.error : `HTTP ${res.status}`);
+}
+
+/** What a draft's link-window refresh did, in the terms Copy link reports it in. */
+interface RefreshOutcome {
+  /** Whether the window actually moved. */
+  ok: boolean;
+  /** What it means for the link, in the words the admin should read. */
+  reason: string | null;
+  /**
+   * The server's answer says the ROW on screen is out of date rather than the
+   * write: a 409 (this proposal is not a draft any more) or a 404 (it is gone).
+   */
+  stale: boolean;
+}
+
+/**
+ * What a failed refresh means for the link, said once so no branch can lose it.
+ *
+ * This sentence is the reason the toast exists. The window did not move, so the
+ * admin is holding a draft link that may already have stopped opening, and they
+ * are about to text it to somebody. Every failure below therefore reports THIS,
+ * and only a message written for this action may be shown in its place.
+ */
+const REFRESH_FAILED = 'Its window could not be refreshed, so it may not open. '
+  + 'Send or re-import the proposal, then copy it again.';
+
+/**
+ * Move a draft's link window forward, and carry back what it means for the link.
+ *
+ * A bare `res.ok` was not enough, because the route composes two refusals for a
+ * row whose status has moved since the roster was read, and both are written
+ * for the admin AND are more accurate than the sentence above: a sent link has
+ * no window to move under D3 and never expires, and a revoked one is shut until
+ * it is restored rather than merely at risk. Reporting those as "it may not
+ * open. Send or re-import the proposal" was false in the first case and advice
+ * that mails the client a second copy of their proposal.
+ *
+ * NO OTHER STATUS speaks for itself. The route's outer catch answers a
+ * deliberately generic 'Could not complete that action' for any outage, a
+ * gateway answers an HTML error page, and a 404 says only that the row is gone
+ * - none of which tells an admin what the link they just copied will do. Those
+ * are reported as `REFRESH_FAILED`, which does.
+ *
+ * `stale` travels separately because it is a different question: whether what
+ * needs correcting is the ROSTER rather than the write. A 409 says this row is
+ * no longer a draft, a 404 says it is not there at all, and both leave the page
+ * rendering a row - and a set of controls - the database has already left
+ * behind.
+ */
+async function refreshDraftWindow(id: string): Promise<RefreshOutcome> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/admin/proposals/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'refresh' }),
+    });
+  } catch {
+    return { ok: false, stale: false, reason: REFRESH_FAILED };
+  }
+  if (res.ok) return { ok: true, reason: null, stale: false };
+  if (res.status !== 409) {
+    return { ok: false, stale: res.status === 404, reason: REFRESH_FAILED };
+  }
+  // Status before body, for the reason postProposalAction gives above: a
+  // gateway failure answers HTML, and parsing that first turns the toast into a
+  // JSON parser's complaint. Only this status is ever read for its words.
+  const body: { error?: unknown } | null = await res.json().catch(() => null);
+  return {
+    ok: false,
+    stale: true,
+    reason: typeof body?.error === 'string' ? body.error : REFRESH_FAILED,
+  };
 }
 
 export default function ProposalsAdminPage() {
@@ -640,22 +714,96 @@ export default function ProposalsAdminPage() {
     }
   };
 
+  /**
+   * Copy the client's link - and on a DRAFT, move its window forward so what
+   * was just handed over resolves for a full window.
+   *
+   * Copying this link is the act of handing it to somebody: it is how a client
+   * with no email address, or one who would rather have it by text, gets their
+   * proposal. A draft's link only resolves for a bounded window from its
+   * `updated_at`, so before this the button could silently put a URL on the
+   * clipboard that had already stopped working - and the admin found out when
+   * the client said the link was broken.
+   *
+   * THE COPY GOES FIRST, and that ordering is load-bearing. A clipboard write
+   * is only permitted while the click's user activation is still live, and
+   * WebKit drops that activation across an awaited network round trip: with the
+   * refresh in front, `writeText` rejected with NotAllowedError on Safari for
+   * every DRAFT - precisely the row this whole feature exists for - and Copy
+   * link degraded to the copy-it-by-hand toast there. Nothing about WHAT is
+   * copied depends on the refresh; only the toast's wording does, and that is
+   * composed once the refresh resolves. Do not put the network call back in
+   * front of the clipboard write.
+   *
+   * A refresh that FAILS still leaves the link copied. The URL is the thing
+   * being asked for, an expired one is still the right URL for a proposal that
+   * Send or Re-import can revive, and refusing to copy would leave an admin
+   * with no way to get it at all. What changes is what the toast promises.
+   *
+   * A clipboard write that fails does NOT skip the refresh either: the admin is
+   * about to copy that URL out of the fallback toast by hand, and it has to
+   * resolve for them exactly as much as it would have from the clipboard.
+   */
   const copyLink = async (p: RosterEntry) => {
     const url = `${window.location.origin}/proposal/${p.token}`;
+    let copied = true;
     try {
       // Denied permission or a non-secure context rejects here, and an admin
       // who thinks a private link is on their clipboard when it is not will
       // paste the wrong thing to a client.
       await navigator.clipboard.writeText(url);
     } catch {
+      copied = false;
+    }
+
+    const refresh = p.status === 'draft' ? await refreshDraftWindow(p.id) : null;
+    /** What the toast may say about the window, and only ever the truth of it. */
+    let windowNote: string | null = null;
+    let refreshFailed = false;
+    if (refresh !== null) {
+      if (refresh.ok) {
+        // THIS ROW, in place - not a re-read of the roster. The roster is
+        // ordered `updated_at.desc` and a refresh is a write to exactly that
+        // column, so re-reading lifted every copied row to position one: an
+        // admin working down a list of drafts watched each row jump to the top
+        // as they went, with the next row they were about to click shifting out
+        // from under the cursor. The only reader of this column on this page is
+        // the expiry hint below, comparing it against a window measured in
+        // hours, so the client's own clock is close enough - it differs from
+        // the server's stamp by one round trip.
+        const refreshedAt = new Date().toISOString();
+        setRoster((current) => current?.map(
+          (row) => (row.id === p.id ? { ...row, updated_at: refreshedAt } : row),
+        ) ?? current);
+        windowNote = `It opens for the next ${DRAFT_WINDOW_HOURS} hours.`;
+      } else {
+        refreshFailed = true;
+        windowNote = refresh.reason;
+        if (refresh.stale) {
+          // The server says this row is not a draft any more, or is not there at
+          // all, so the roster is showing a status - and a set of controls - the
+          // database has already left behind. Re-read it, with the term the
+          // roster on screen answers rather than whatever the search box happens
+          // to hold: an unsubmitted term here would silently collapse the roster
+          // to a search the admin never ran.
+          void loadRoster(activeSearch);
+        }
+      }
+    }
+
+    if (!copied) {
       toast({
         title: 'Could not copy the link',
-        description: `Copy it by hand: ${url}`,
+        description: `Copy it by hand: ${url}${windowNote ? ` - ${windowNote}` : ''}`,
         variant: 'destructive',
       });
       return;
     }
-    toast({ title: 'Link copied', description: 'Private to this client - share deliberately.' });
+    toast({
+      title: 'Link copied',
+      description: `Private to this client - share deliberately.${windowNote ? ` ${windowNote}` : ''}`,
+      variant: refreshFailed ? 'destructive' : undefined,
+    });
   };
 
   const statusBadge = (s: RosterEntry['status']) =>
@@ -799,6 +947,30 @@ export default function ProposalsAdminPage() {
                           </>
                         )}
                       </div>
+                      {/*
+                        A draft whose window has run out. Said on the ROW rather
+                        than left for the client to discover, because this is
+                        the state in which a link already handed out - texted,
+                        read down the phone - has silently stopped opening, and
+                        nothing else on this screen distinguishes it from a
+                        draft made ten minutes ago.
+
+                        It names the remedy, and Copy link performs that remedy
+                        itself, so the hint is a fact about links already out
+                        there rather than an obstacle to sharing this one.
+                      */}
+                      {draftLinkHasExpired(p) ? (
+                        <div
+                          className="mt-1 flex items-start gap-1.5 text-xs font-medium text-amber-700"
+                          data-testid="link-expired-hint"
+                        >
+                          <Clock3 className="mt-[1px] h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          <span>
+                            Link expired after {DRAFT_WINDOW_HOURS}h - any copy already shared has
+                            stopped opening. Copying it again refreshes it.
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
                     <div className="shrink-0 md:order-2">{statusBadge(p.status)}</div>
                   </div>

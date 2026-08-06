@@ -20,6 +20,17 @@ import { test, expect, type BrowserContext, type Page } from '@playwright/test';
  * stub playwright.config.ts runs for the whole suite.
  */
 
+/**
+ * A timestamp inside the draft link window, computed per run.
+ *
+ * It was a hard-coded date, which is fine until behaviour starts depending on
+ * how old a row is: the slice-3 follow-up renders an "link expired" hint on a
+ * draft past its window, so a fixed date would have quietly grown an extra line
+ * in every geometry assertion below the moment it aged past 24 hours. These
+ * tests are about the action buttons, not the window.
+ */
+const FRESH = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
 const RACHEL = {
   id: '11111111-1111-1111-1111-111111111111',
   client_name: 'Rachel Morales',
@@ -30,7 +41,7 @@ const RACHEL = {
   line_count: 4,
   submission_count: 0,
   latest_total_cents: null,
-  updated_at: '2026-08-04T12:00:00.000Z',
+  updated_at: FRESH,
 };
 
 /** The proposal the 200-row cap hides: reachable only through the search. */
@@ -112,6 +123,23 @@ async function signInAsAdmin(context: BrowserContext, baseURL: string) {
 }
 
 /**
+ * The lifecycle POST, which the roster glob below cannot see.
+ *
+ * It goes to /api/admin/proposals/<id>, and Playwright's `*` does not cross a
+ * `/`, so the roster glob each opener registers matches the roster READ and
+ * nothing else.
+ * Copy link fires one of these on every draft it copies, so without this stub
+ * those tests aim a real mutating POST at the dev server: the copy waits on a
+ * live request's latency, and what they exercise is a FAILED refresh while
+ * their names claim a working one.
+ */
+async function stubLifecycle(page: Page) {
+  await page.route('**/api/admin/proposals/*', async (route) => {
+    await route.fulfill({ json: { ok: true, window_hours: 24 } });
+  });
+}
+
+/**
  * Open the admin page with one fixed roster payload behind it - for the ACs
  * about what the roster SAYS (its counts, its truncation notice) rather than
  * about searching it.
@@ -120,6 +148,7 @@ async function openRoster(
   page: Page, context: BrowserContext, baseURL: string, roster: unknown,
 ) {
   await signInAsAdmin(context, baseURL);
+  await stubLifecycle(page);
   await page.route('**/api/admin/proposals*', async (route) => {
     if (route.request().method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
     await route.fulfill({ json: roster });
@@ -130,6 +159,7 @@ async function openRoster(
 
 async function openProposals(page: Page, context: BrowserContext, baseURL: string) {
   await signInAsAdmin(context, baseURL);
+  await stubLifecycle(page);
   // The glob keeps the query string in scope - the roster read carries ?search.
   await page.route('**/api/admin/proposals*', async (route) => {
     if (route.request().method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
@@ -171,6 +201,7 @@ async function openProposalsTab(
   page: Page, context: BrowserContext, baseURL: string, roster: unknown,
 ) {
   await signInAsAdmin(context, baseURL);
+  await stubLifecycle(page);
   await page.route('**/api/admin/proposals*', async (route) => {
     if (route.request().method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
     await route.fulfill({ json: roster });
@@ -296,6 +327,178 @@ async function pasteCsv(page: Page, text: string) {
 
 test.describe('proposals admin, in the browser', () => {
   test.use({ viewport: { width: 1280, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
+
+  /**
+   * The stale-draft follow-up (Aug 2026), owned here because the roster only
+   * exists once React is mounted.
+   *
+   * A draft's link stops resolving 24 hours after its updated_at. Before this,
+   * nothing on the roster said so, and Copy link handed over a URL that had
+   * already stopped opening - the admin found out when the client said the link
+   * was broken.
+   */
+  const STALE = {
+    ...RACHEL,
+    updated_at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+  };
+
+  test('B33: a stale draft says its link expired, and Copy link refreshes it without re-reading the roster', async ({ page, context, baseURL }) => {
+    const refreshes: unknown[] = [];
+    const reads: string[] = [];
+    await signInAsAdmin(context, baseURL!);
+    // The lifecycle POST goes to /api/admin/proposals/<id>, and Playwright's `*`
+    // does not cross a `/`, so the roster glob below never sees it. Its own
+    // route, registered first.
+    await page.route('**/api/admin/proposals/*', async (route) => {
+      const body = route.request().postDataJSON();
+      if (body?.action === 'refresh') refreshes.push(body);
+      await route.fulfill({ json: { ok: true, window_hours: 24 } });
+    });
+    await page.route('**/api/admin/proposals*', async (route) => {
+      const req = route.request();
+      if (req.method() !== 'GET') {
+        await route.fulfill({ json: { ok: true } });
+        return;
+      }
+      reads.push(req.url());
+      // ALWAYS the stale row, deliberately. The roster is ordered
+      // updated_at.desc and a refresh writes exactly that column, so re-reading
+      // it after a copy lifted the copied row to position one and shifted the
+      // next row out from under the admin's cursor. The row is updated in place
+      // instead - and because this stub never stops serving the stale
+      // timestamp, the hint clearing below can only be that in-place update.
+      await route.fulfill({
+        json: { proposals: [STALE], counts_available: true, total: 1, truncated: false },
+      });
+    });
+    await page.goto('/vaca-mgmt/proposals');
+    await expect(page.getByTestId('proposals-admin')).toBeVisible();
+
+    // The row says it, in words, before anybody copies anything.
+    const hint = page.getByTestId('link-expired-hint');
+    await expect(hint).toBeVisible();
+    await expect(hint).toContainText(/expired/i);
+    expect(reads).toHaveLength(1);
+
+    await page.getByRole('button', { name: /copy link/i }).click();
+
+    // The refresh went out, and the toast promises the link opens.
+    await expect.poll(() => refreshes.length).toBe(1);
+    // `.first()`: the toast primitive renders its description in the visible
+    // toast AND in an aria-live region, so a bare text match is two nodes and
+    // strict mode fails - intermittently, since it depends on which is mounted
+    // when the assertion runs.
+    await expect(page.getByText(/opens for the next 24 hours/i).first()).toBeVisible();
+
+    // The hint clears - and no second roster read paid for it.
+    await expect(hint).toHaveCount(0);
+    expect(reads, 'the roster was not re-read').toHaveLength(1);
+    // The link itself is on the clipboard whatever the refresh did.
+    expect(await page.evaluate(() => navigator.clipboard.readText()))
+      .toContain(`/proposal/${'a'.repeat(43)}`);
+  });
+
+  test('B35: a refresh the server refuses is quoted, not paraphrased, and corrects the row', async ({ page, context, baseURL }) => {
+    // The row on screen reads draft; a colleague sent it a moment ago. The
+    // route answers 409 with a sentence written for the admin, and the generic
+    // "send or re-import it, then copy again" this used to show in its place
+    // was both false - a sent link does not expire - and advice that mails the
+    // client a second copy of their proposal.
+    const REFUSAL = "A sent proposal's link does not expire, so there is nothing to refresh.";
+    const reads: string[] = [];
+    let refused = 0;
+    await signInAsAdmin(context, baseURL!);
+    await page.route('**/api/admin/proposals/*', async (route) => {
+      refused += 1;
+      await route.fulfill({ status: 409, json: { error: REFUSAL } });
+    });
+    await page.route('**/api/admin/proposals*', async (route) => {
+      const req = route.request();
+      if (req.method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
+      reads.push(req.url());
+      await route.fulfill({
+        json: {
+          proposals: [refused > 0 ? { ...STALE, status: 'sent' } : STALE],
+          counts_available: true, total: 1, truncated: false,
+        },
+      });
+    });
+    await page.goto('/vaca-mgmt/proposals');
+    await expect(page.getByTestId('proposals-admin')).toBeVisible();
+    await expect(page.getByTestId('link-expired-hint')).toBeVisible();
+
+    await page.getByRole('button', { name: /copy link/i }).click();
+
+    // The link is still copied - that is what was asked for - and the server's
+    // own sentence is what the admin reads.
+    await expect(toastTitle(page, 'Link copied')).toBeVisible();
+    await expect(page.getByText(/does not expire/i).first()).toBeVisible();
+    await expect(page.getByText(/opens for the next/i)).toHaveCount(0);
+
+    // And a 409 is the one answer that says the ROW is out of date rather than
+    // the write, so the roster is re-read and the row stops calling itself an
+    // expired draft.
+    await expect.poll(() => reads.length).toBe(2);
+    await expect(page.getByTestId('link-expired-hint')).toHaveCount(0);
+  });
+
+  test('B36: an outage never costs the toast its warning about the link', async ({ page, context, baseURL }) => {
+    // The mirror of B35, and the reason only a 409 is quoted. Supabase is
+    // unreachable, so the route's own read throws and its outer catch answers a
+    // deliberately generic 'Could not complete that action' - a sentence about
+    // the request, not about the link. Shown in place of the warning, it left
+    // an admin holding a draft link that may already be dead and told only that
+    // something went wrong, on the screen where they decide whether to text it
+    // to somebody.
+    const reads: string[] = [];
+    await signInAsAdmin(context, baseURL!);
+    await page.route('**/api/admin/proposals/*', async (route) => {
+      await route.fulfill({ status: 500, json: { error: 'Could not complete that action' } });
+    });
+    await page.route('**/api/admin/proposals*', async (route) => {
+      const req = route.request();
+      if (req.method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
+      reads.push(req.url());
+      await route.fulfill({
+        json: { proposals: [STALE], counts_available: true, total: 1, truncated: false },
+      });
+    });
+    await page.goto('/vaca-mgmt/proposals');
+    await expect(page.getByTestId('proposals-admin')).toBeVisible();
+
+    await page.getByRole('button', { name: /copy link/i }).click();
+
+    // Copied, because the URL is what was asked for - and told what that copy
+    // will do, which is the whole reason this toast exists.
+    await expect(toastTitle(page, 'Link copied')).toBeVisible();
+    await expect(page.getByText(/may not open/i).first()).toBeVisible();
+    await expect(page.getByText(/re-import the proposal/i).first()).toBeVisible();
+    await expect(page.getByText(/opens for the next/i)).toHaveCount(0);
+    // The server's sentence explains nothing to an admin, so it does not
+    // displace the one that does.
+    await expect(page.getByText(/Could not complete that action/i)).toHaveCount(0);
+    expect(await page.evaluate(() => navigator.clipboard.readText()))
+      .toContain(`/proposal/${'a'.repeat(43)}`);
+
+    // Nothing was written, so the row keeps saying what it said - a 500 is the
+    // write failing, not the roster being out of date.
+    await expect(page.getByTestId('link-expired-hint')).toBeVisible();
+    expect(reads).toHaveLength(1);
+  });
+
+  test('B34: a FRESH draft is not labelled expired', async ({ page, context, baseURL }) => {
+    await openRoster(page, context, baseURL!, {
+      proposals: [RACHEL], counts_available: true, total: 1, truncated: false,
+    });
+    // The ROW has to be on screen before its absence of a hint means anything.
+    // `openRoster` returns once the page container is mounted, which is before
+    // the roster read resolves, and a roster that has not painted yet renders
+    // no hint either - so without this the assertion passed against a fixture
+    // deliberately made old enough to be labelled expired, whenever the rest of
+    // the suite was loading the machine enough to slow the read down.
+    await expect(page.getByText(RACHEL.client_name)).toBeVisible();
+    await expect(page.getByTestId('link-expired-hint')).toHaveCount(0);
+  });
 
   test('B1 (AC10e): Send is live on a draft with an address; Copy link still works', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
@@ -1217,12 +1420,24 @@ test.describe('proposals admin, in the browser', () => {
     // fit beside it collapsed to a single letter while its neighbours - whose
     // longer "Make optional" wrapped - kept ~100px.
     await page.setViewportSize({ width: 390, height: 844 });
-    const widths = await page.getByTestId('line-row').evaluateAll((els) => els.map((el) => {
+    const nameWidths = () => page.getByTestId('line-row').evaluateAll((els) => els.map((el) => {
       const name = el.querySelector('[data-testid="line-title"]') as HTMLElement | null;
       return name ? Math.round(name.getBoundingClientRect().width) : -1;
     }));
-    expect(widths).toHaveLength(4);
-    for (const w of widths) expect(w).toBeGreaterThanOrEqual(150);
+    expect(await nameWidths(), 'one name per line row').toHaveLength(4);
+
+    // POLLED, because the reading has to be of the SETTLED row. setViewportSize
+    // resolves - and window.innerWidth already reads 390 - a frame before the
+    // style recalculation that drops the md: classes has run, so a measurement
+    // taken straight after it gets the desktop arrangement, where the price and
+    // its toggle are still inline and squeeze the name to ~125px. Run alone
+    // that window closes too fast to land in; run with the rest of the file it
+    // does not. And ~125px is indistinguishable from the squeeze described
+    // above, so an unsettled reading fails this test wearing the face of the
+    // very regression it guards against.
+    await expect
+      .poll(async () => Math.min(...(await nameWidths())))
+      .toBeGreaterThanOrEqual(150);
 
     // Buying that floor must not push the row off the side of the phone.
     expect(await overrunsOn(page)).toEqual([]);
@@ -1419,6 +1634,15 @@ test.describe('proposals admin, in the browser', () => {
   });
 
   test('B29: the hover label opens into reserved room - it never moves the row it is in', async ({ page, context, baseURL }) => {
+    // This one is SLOW by construction, not by accident, so it gets the room to
+    // be: seven viewports x two rows x a settling wait either side of every
+    // hover is ~24s of deliberate waiting, against a 30s default. That margin
+    // is thinner than the machine's own variance - it passed alone and timed
+    // out in the same commit when the rest of the file was running beside it -
+    // and shortening the waits instead would be reading the label mid-animation,
+    // which is the measurement this test exists to take.
+    test.slow();
+
     // Both roster shapes at once: a live row, and the revoked row that already
     // spends width on Re-import's disabled label and carries the longest label
     // of the set, "Restore to draft".

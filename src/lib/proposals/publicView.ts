@@ -33,6 +33,7 @@
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { iconForCategory } from './categories';
 import { MAX_LINES } from './csv';
+import { proposalLinkIsLive, type ProposalStatus } from './linkWindow';
 
 /**
  * The token recipe, mirroring `proposals_token_recipe` in 20260824000000.
@@ -45,55 +46,18 @@ import { MAX_LINES } from './csv';
 export const PROPOSAL_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 
 /**
- * How long a DRAFT's link stays live, measured from `updated_at` (owner
- * decision, 5 Aug 2026). ONE number, read by both doors below.
+ * The draft link window, which now lives in its own PURE module.
  *
- * A draft has to open at all because Copy link is offered on one in the roster,
- * and the client an admin pastes it to has to be able to answer - preview-only
- * was considered and rejected. Bounding the window to a day bounds the hazard
- * that openness creates, which is an accidental tap recording a submission on a
- * proposal nobody ever sent, without breaking hand delivery.
- *
- * `updated_at` rather than `created_at`, deliberately: `proposal_lines_touch_proposal`
- * (20260824000000) moves it on every re-import, so correcting a draft's lines
- * reopens its proof-reading window, and an untouched draft still expires 24
- * hours after creation because the two columns are equal then.
- *
- * A SENT proposal is untouched by this. Owner decision D3 governs that link - no
- * hard expiry, revocable from the admin - and still does.
+ * It moved because the admin roster needs the same rule to know whether the
+ * link its Copy button is about to hand over still resolves, and this file
+ * imports the secret-key REST client - so importing it from a client component
+ * would have pulled `supabaseRest` into the browser bundle. Re-exported here so
+ * every existing caller of these three is unchanged.
  */
-export const DRAFT_LINK_LIFETIME_MS = 24 * 60 * 60 * 1000;
-
-/** The stored lifecycle, mirroring the `proposals_status_check` of 20260824000000. */
-export type ProposalStatus = 'draft' | 'sent' | 'revoked';
-
-/**
- * May this proposal's link serve at all?
- *
- * ONE rule for both doors - the lookup below and `submitProposal` - so the
- * submit route can never accept an answer on a link the page would no longer
- * serve. Every `false` is answered as `missing`, identically to a token that
- * was never ours.
- *
- * An `updated_at` we cannot read closes the window rather than opening it. The
- * column is `NOT NULL DEFAULT now()`, so this is unreachable from a healthy
- * database; if it ever is reached, a draft that stops resolving is recoverable
- * (re-import, or Send it) and a draft that never stops is not.
- *
- * A type PREDICATE rather than a plain boolean, so a caller that has taken the
- * early return holds a status the client projection can carry: 'revoked' cannot
- * survive this check, and the compiler is the one saying so.
- */
-export function proposalLinkIsLive<T extends { status: ProposalStatus; updated_at: string | null }>(
-  head: T,
-  now: number = Date.now(),
-): head is T & { status: Exclude<ProposalStatus, 'revoked'> } {
-  if (head.status === 'revoked') return false;
-  if (head.status !== 'draft') return true;
-  const touched = head.updated_at ? Date.parse(head.updated_at) : NaN;
-  if (Number.isNaN(touched)) return false;
-  return now - touched < DRAFT_LINK_LIFETIME_MS;
-}
+export {
+  DRAFT_LINK_LIFETIME_MS, DRAFT_WINDOW_HOURS, draftLinkHasExpired,
+} from './linkWindow';
+export { proposalLinkIsLive, type ProposalStatus };
 
 /** A line as the client's browser is allowed to see it. */
 export interface PublicProposalLine {

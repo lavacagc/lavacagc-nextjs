@@ -70,18 +70,30 @@ interface Row {
   latest_total_cents: number | null; updated_at: string;
 }
 
+/**
+ * Fixture timestamps RELATIVE to the run, because the draft link window is
+ * relative to now.
+ *
+ * A hard-coded date ages: a draft seeded at a fixed instant renders the
+ * link-expired hint from the day after these captures were written, which grows
+ * an extra line on the row and moves every identity-column measurement written
+ * to responsive-measurements.txt - and changes the screenshots a reviewer is
+ * comparing against, for a reason that has nothing to do with what changed.
+ */
+const agoIso = (hours: number) => new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
 const seed = (): Row[] => ([
   {
     id: '11111111-1111-1111-1111-111111111111', client_name: 'Rachel Morales',
     client_email: 'rachel@example.com', title: 'Your primary bath remodel', status: 'sent',
     token: 'a'.repeat(43), line_count: 9, submission_count: 2, latest_total_cents: 2841500,
-    updated_at: '2026-08-04T12:00:00.000Z',
+    updated_at: agoIso(26),
   },
   {
     id: '33333333-3333-3333-3333-333333333333', client_name: 'Yusuf Adeyemi',
     client_email: 'yusuf@example.com', title: 'Primary suite addition', status: 'revoked',
     token: 'c'.repeat(43), line_count: 14, submission_count: 1, latest_total_cents: 8620000,
-    updated_at: '2026-07-28T09:30:00.000Z',
+    updated_at: agoIso(8 * 24),
   },
 ]);
 
@@ -111,7 +123,7 @@ function mountApi(page: Page, store: { rows: Row[]; posts: unknown[] }) {
         id: NEW_ID, client_name: body.client_name, client_email: body.client_email,
         title: body.title, status: 'draft', token: 'd'.repeat(43),
         line_count: body.lines.length, submission_count: 0, latest_total_cents: null,
-        updated_at: '2026-08-05T10:00:00.000Z',
+        updated_at: agoIso(0),
       });
       await route.fulfill({ json: { ok: true, id: NEW_ID, token: 'd'.repeat(43) } });
       return;
@@ -274,9 +286,15 @@ test.describe('Proposal Pod slice 2 - evidence capture', () => {
     await expect(page.getByTestId('proposals-admin')).toBeVisible();
     await expect(page.getByText('Rachel Morales')).toBeVisible();
 
+    // SLICE 3 SHIPPED, so this reads the other way round now. These captures
+    // were written while the client page was still dark, when Send was disabled
+    // on every row and its title said so; `CLIENT_PAGE_LIVE` was flipped true
+    // when slice 3 went live, and the gate that remains is the one that was
+    // always there - a row with nobody to mail it to.
     const send = page.getByTestId('send-btn').first();
-    await expect(send).toBeDisabled();
-    note(`Send is disabled on every row until Slice 3. Its title reads:\n  ${await send.getAttribute('title')}`);
+    await expect(send).toBeEnabled();
+    note('Send is live (slice 3). It stays disabled only on a row with no client '
+      + `email, whose title then reads:\n  No client email - use Copy link`);
     await shot(page, '01-roster.png');
 
     // The import preview, straight off the estimator CSV.

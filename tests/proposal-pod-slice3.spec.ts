@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { NextRequest } from 'next/server';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { draftLinkHasExpired } from '../src/lib/proposals/linkWindow';
 import {
   lookupPublicProposal, proposalLinkIsLive, DRAFT_LINK_LIFETIME_MS, PROPOSAL_TOKEN_RE,
   type ProposalStatus,
@@ -308,10 +309,45 @@ test('AC-R7: analytics is left exactly as it was (owner decision, 5 Aug 2026)', 
   expect(analytics).not.toContain('privatePages');
 });
 
-test('AC-R8: no migration is added - a prod database at 20260827000000 runs this slice', () => {
+test('AC-R8: the pod needed no DDL - its schema still ends at 20260827000000', () => {
   const files = readdirSync(join(root, 'supabase/migrations')).filter((f) => f.endsWith('.sql'));
-  const newest = files.map((f) => f.slice(0, 14)).sort().at(-1);
-  expect(newest).toBe('20260827000000');
+
+  // The pod's OWN migrations, all four from slices 1 and 2. Slice 3 added none,
+  // which is what let it go live by merge-and-deploy with nothing hand-applied.
+  const POD = [
+    '20260824000000_proposals.sql',
+    '20260825000000_proposal_bundles.sql',
+    '20260826000000_proposal_roster_counts.sql',
+    '20260827000000_proposal_bundle_check_guards.sql',
+  ];
+  for (const m of POD) expect(files, `${m} must still be present`).toContain(m);
+
+  // And nothing since has changed the pod's schema underneath the code.
+  //
+  // SCOPED TO THE POD'S TABLES, deliberately. This began as "the newest
+  // migration in the repo is 20260827000000", which was true the day it was
+  // written and is a claim about the WHOLE repository: the next migration any
+  // unrelated feature adds fails it, having changed nothing about this pod. A
+  // sibling branch adding 20260828000000_home_care_products.sql was already
+  // queued to trip it. What the AC means is that slice 3 needed no DDL and that
+  // the schema it runs against is still the one it was written for, and that is
+  // what this now says.
+  // Comments are stripped first, and that is not a detail. These migrations
+  // argue for their own shape at length and cite each other while doing it -
+  // the home-care products migration names `proposals` three times explaining
+  // why it copies the pod's deny-by-default RLS and its no-existence-guard
+  // rule. Matching prose would fail this AC for a file that quotes the pod as
+  // precedent without touching a single one of its tables, which is the
+  // opposite of the point.
+  const POD_TABLES = /\b(public\.)?(proposals|proposal_lines|proposal_submissions)\b/;
+  const newer = files.filter((f) => f.slice(0, 14) > '20260827000000');
+  for (const f of newer) {
+    const sql = read(`supabase/migrations/${f}`)
+      .split('\n')
+      .map((line) => line.replace(/--.*$/, ''))
+      .join('\n');
+    expect(POD_TABLES.test(sql), `${f} must not touch the proposal pod's tables`).toBe(false);
+  }
 });
 
 test('AC-R9: the security headers are unchanged', () => {
@@ -573,7 +609,10 @@ test('AC-S3-21: Send refreshes the link window BEFORE it delivers, and never fai
         if (isDelivery(call)) return restJson({ id: 'stub-email-id' });
         if (isRefresh(call)) {
           live = { ...live, updated_at: new Date().toISOString() };
-          return restJson([]);
+          // The UPDATED ROW, the way PostgREST answers a PATCH that matched
+          // one: the refresh reports whether it wrote anything, and an empty
+          // array is how a status changed underneath it arrives.
+          return restJson([live]);
         }
         if (isStatusWrite(call)) return restJson({ message: 'down' }, 500);
         if (call.url.includes('/proposals?')) return restJson([live]);
@@ -617,7 +656,11 @@ test('AC-S3-22: the post-delivery failure describes the access it actually estab
     await withPostgrest(
       (call) => {
         if (isDelivery(call)) return restJson({ id: 'stub-email-id' });
-        if (isRefresh(call)) return refreshLands ? restJson([]) : restJson({ message: 'nope' }, 500);
+        // A landed refresh answers with the row it matched; a PATCH that
+        // matched nothing would be an empty array, and is not a refresh.
+        if (isRefresh(call)) {
+          return refreshLands ? restJson([proposalRow(over)]) : restJson({ message: 'nope' }, 500);
+        }
         if (isStatusWrite(call)) return restJson({ message: 'down' }, 500);
         return serveProposal(over)(call);
       },
@@ -1052,6 +1095,7 @@ test('house style: no em dashes in anything this slice ships', () => {
     'src/lib/proposals/ownerAlert.ts',
     'src/lib/proposals/money.ts',
     'src/lib/proposals/clientPage.ts',
+    'src/lib/proposals/linkWindow.ts',
     'src/app/proposal/[token]/page.tsx',
     'src/app/proposal/[token]/ProposalView.tsx',
     'src/app/api/proposal/[token]/submit/route.ts',
@@ -1062,4 +1106,195 @@ test('house style: no em dashes in anything this slice ships', () => {
   for (const f of files) {
     expect(read(f), `${f} must not use an em dash`).not.toContain('—');
   }
+});
+
+// ------------------------------------------- STALE DRAFT LINK (follow-up fix)
+//
+// Numbered from 23, after the ACs slice 3 shipped. AC-S3-21 and AC-S3-22 are
+// already taken above (the send path's window refresh, and the wording of its
+// post-delivery failure), and the doc names them for that - so reusing those
+// two ids would have put two different claims behind one name in both places.
+
+test('AC-S3-23: the window rule is one pure module, reachable without the server client', () => {
+  // The roster runs in a browser and has to ask the same question the server
+  // doors ask. Importing it from publicView would have pulled the secret-key
+  // REST client into the client bundle to reach a function that does
+  // arithmetic on a timestamp, so the rule lives in a module that imports
+  // nothing.
+  const win = read('src/lib/proposals/linkWindow.ts');
+  expect(win, 'linkWindow must import nothing').not.toMatch(/^\s*import\s/m);
+  expect(win).toContain('export const DRAFT_LINK_LIFETIME_MS');
+  // And there is still exactly one of it: publicView re-exports rather than
+  // restating, so the two doors and the roster cannot drift apart.
+  const view = read('src/lib/proposals/publicView.ts');
+  expect(view).toContain("from './linkWindow'");
+  expect(view).not.toMatch(/export const DRAFT_LINK_LIFETIME_MS\s*=/);
+  expect(DRAFT_LINK_LIFETIME_MS).toBe(24 * 60 * 60 * 1000);
+
+  // Including the unit an admin reads it in. Both screens that name a number of
+  // hours - the roster's toast and hint, and the send route's post-delivery
+  // failure - used to derive it themselves from the milliseconds, with the same
+  // arithmetic and the same comment in two files. That is a second definition
+  // of the rule this module exists to own.
+  expect(win).toContain('export const DRAFT_WINDOW_HOURS');
+  for (const f of [
+    'src/app/vaca-mgmt/proposals/page.tsx',
+    'src/app/api/admin/proposals/[id]/route.ts',
+  ]) {
+    expect(read(f), `${f} must read the window in hours, not re-derive it`)
+      .not.toMatch(/DRAFT_WINDOW_HOURS\s*=/);
+  }
+});
+
+test('AC-S3-24: draftLinkHasExpired describes only a stale DRAFT, never a revoked row', () => {
+  const fresh = new Date(Date.now() - 60_000).toISOString();
+  const stale = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+
+  expect(draftLinkHasExpired({ status: 'draft', updated_at: stale })).toBe(true);
+  expect(draftLinkHasExpired({ status: 'draft', updated_at: fresh })).toBe(false);
+  // A sent link has no expiry (D3), so it is never "expired".
+  expect(draftLinkHasExpired({ status: 'sent', updated_at: stale })).toBe(false);
+  // And a revoked row is a DIFFERENT situation with a different remedy - the
+  // roster already renders it as revoked, and must not also call it expired.
+  expect(draftLinkHasExpired({ status: 'revoked', updated_at: stale })).toBe(false);
+  expect(proposalLinkIsLive({ status: 'revoked', updated_at: fresh })).toBe(false);
+  // An unreadable timestamp closes the window rather than opening it.
+  expect(draftLinkHasExpired({ status: 'draft', updated_at: null })).toBe(true);
+});
+
+test('AC-S3-25: refresh moves a draft window, and is refused on anything else', async () => {
+  const action = (id: string, body: unknown) => proposalAction(
+    new NextRequest(`http://localhost/api/admin/proposals/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+    { params: Promise.resolve({ id }) },
+  );
+
+  // A draft: the write is a PATCH filtered on the status it writes back, so
+  // proposals_set_updated_at owns the column and no lifecycle CHECK can reject
+  // it, and a concurrent status change updates nothing rather than reverting.
+  await withPostgrest(
+    () => restJson([proposalRow({ status: 'draft' })]),
+    async (calls) => {
+      const res = await action(PROPOSAL_ID, { action: 'refresh' });
+      expect(res.status).toBe(200);
+      const patch = calls.find((c) => c.method === 'PATCH');
+      expect(patch?.url).toContain('status=eq.draft');
+      expect(patch?.body).toEqual({ status: 'draft' });
+      // Nothing was mailed: this is the door that refreshes WITHOUT sending.
+      expect(calls.some((c) => c.url.includes('api.resend.com'))).toBe(false);
+    },
+  );
+
+  // A sent proposal has no window to move, and a revoked one must not be
+  // quietly revived by a button that promises to change nothing a client sees.
+  for (const status of ['sent', 'revoked'] as const) {
+    await withPostgrest(
+      () => restJson([proposalRow({
+        status,
+        sent_at: status === 'sent' ? '2026-08-05T00:00:00Z' : null,
+        revoked_at: status === 'revoked' ? '2026-08-05T00:00:00Z' : null,
+      })]),
+      async (calls) => {
+        const res = await action(PROPOSAL_ID, { action: 'refresh' });
+        expect(res.status).toBe(409);
+        expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+      },
+    );
+  }
+
+  // A refresh whose write fails is reported, never claimed as done: an admin
+  // told "refreshed" over a failed write pastes the link anyway.
+  await withPostgrest(
+    (call) => (call.method === 'PATCH'
+      ? restJson({ message: 'down' }, 500)
+      : restJson([proposalRow({ status: 'draft' })])),
+    async () => {
+      const res = await action(PROPOSAL_ID, { action: 'refresh' });
+      expect(res.status).toBe(502);
+      expect((await res.json()).error).toMatch(/may still be expired/i);
+    },
+  );
+
+  // And a write that SUCCEEDS while matching no row is not a refresh either.
+  // The PATCH is filtered on status=eq.draft, so a status changed between the
+  // read above and the write updates nothing at all - and PostgREST answers
+  // that with 200 and an empty array, not an error. Reported as a refresh, it
+  // would have put "it opens for the next 24 hours" over a link whose window
+  // never moved, which is the exact dishonesty this action exists to remove.
+  await withPostgrest(
+    (call) => (call.method === 'PATCH'
+      ? restJson([])
+      : restJson([proposalRow({ status: 'draft' })])),
+    async () => {
+      const res = await action(PROPOSAL_ID, { action: 'refresh' });
+      expect(res.status).toBe(502);
+      expect((await res.json()).error).toMatch(/may still be expired/i);
+    },
+  );
+});
+
+test('AC-S3-26: Copy link copies inside the click, then refreshes the draft it copied', () => {
+  const page = read('src/app/vaca-mgmt/proposals/page.tsx');
+  const copy = page.slice(page.indexOf('const copyLink'), page.indexOf('return (', page.indexOf('const copyLink')));
+  // The whole statement, so what is measured is everything ahead of the write
+  // rather than everything ahead of its method name.
+  const write = copy.indexOf('await navigator.clipboard.writeText');
+  expect(write, 'copyLink must write to the clipboard').toBeGreaterThan(-1);
+
+  // THE REASON, not just the sequence. A clipboard write is only permitted
+  // while the click's user activation is live, and WebKit drops that activation
+  // across an awaited network round trip - so a refresh awaited in front of the
+  // write made it reject with NotAllowedError on Safari for every draft, which
+  // is the row this feature exists for. Nothing may be awaited ahead of it.
+  const before = copy.slice(0, write);
+  expect(before, 'the clipboard write must not sit behind an await').not.toMatch(/\bawait\b/);
+  expect(before, 'nor behind a network call').not.toMatch(/\bfetch\(|refreshDraftWindow\(/);
+
+  // The refresh still happens - it just follows.
+  expect(copy).toContain('refreshDraftWindow(p.id)');
+  expect(write).toBeLessThan(copy.indexOf('refreshDraftWindow(p.id)'));
+  // Only a draft is refreshed; a sent link has no window to move.
+  expect(copy).toContain("p.status === 'draft'");
+
+  // A failed clipboard write does NOT skip the refresh: the admin copies the
+  // URL out of the fallback toast by hand, and it has to resolve for them too.
+  expect(copy).toContain('copied = false');
+  expect(copy.indexOf('copied = false')).toBeLessThan(copy.indexOf('refreshDraftWindow(p.id)'));
+
+  // A failed refresh still leaves the link copied, and the toast says what that
+  // failure means FOR THE LINK. That sentence is the reason the toast exists,
+  // so it lives in one constant and every failure branch reports it - a branch
+  // composing its own wording is how it went missing before.
+  expect(copy).toContain('refresh.reason');
+  const helper = page.slice(page.indexOf('async function refreshDraftWindow'), page.indexOf('export default'));
+  const impact = page.match(/const REFRESH_FAILED = ([\s\S]*?);\n/)?.[1] ?? '';
+  expect(impact, 'the failure sentence must say the link may not open').toMatch(/may not open/);
+  expect(impact, 'and name the remedy').toMatch(/re-import/);
+  expect(helper.match(/REFRESH_FAILED/g)?.length, 'every failure branch reports it')
+    .toBeGreaterThanOrEqual(3);
+
+  // The SERVER's sentence displaces it only on a 409 - the one status whose
+  // messages were written for this action, and the only two that are more
+  // accurate than it (a sent link never expires; a revoked one is shut until it
+  // is restored). Everything else - the route's generic 'Could not complete
+  // that action' for any outage, a gateway's HTML error page, an empty body -
+  // explains nothing to an admin, so it is never read for its words.
+  expect(helper).toContain('res.status !== 409');
+  expect(helper.indexOf('res.status !== 409'), 'the body is parsed only past that guard')
+    .toBeLessThan(helper.indexOf('res.json()'));
+  expect(helper).toContain("typeof body?.error === 'string'");
+  // A 404 is the row being gone, which is the roster's problem rather than the
+  // write's, exactly like a 409.
+  expect(helper).toContain('res.status === 404');
+
+  // The copied row is updated in place. A re-read would reorder the roster
+  // (it is ordered updated_at.desc, and a refresh writes that column), and the
+  // only reload left on this path is the one a 409 triggers - which must use
+  // the term the roster on screen answers, never the unsubmitted search box.
+  expect(copy).toContain('setRoster(');
+  expect(copy).not.toContain('loadRoster(search)');
+  expect(copy).toContain('loadRoster(activeSearch)');
 });
