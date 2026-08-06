@@ -1,4 +1,5 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
+import { shelfPosition, shelfRangeLabel, SHELF_GAP } from '@/lib/homecare/shelfPosition';
 
 /**
  * Home Care DIY Kit - the admin screen and the member shelf, in a real browser.
@@ -16,6 +17,14 @@ import { test, expect, type BrowserContext, type Page } from '@playwright/test';
  *
  * Auth follows the house pattern: the fabricated session cookie whose name
  * derives from the baked NEXT_PUBLIC_SUPABASE_URL, against the GoTrue stub.
+ *
+ * The shelf half at the bottom takes a different route to the same place, for a
+ * reason worth stating: /home-care/checklist needs an `hc_access` cookie signed
+ * with LISTINGS_ACCESS_SECRET and a real homeowner behind it, and the stub build
+ * has neither, so a route-level render test would only ever assert a redirect.
+ * What it does instead is lay out the shelf's real geometry in a real browser
+ * and ask `shelfPosition` - the arithmetic the component runs on every scroll
+ * event - what the counter says about it.
  */
 
 const SHOP = '/vaca-mgmt/home-care-shop';
@@ -248,5 +257,90 @@ test.describe('DIY Kit admin screen', () => {
     await page.goto(SHOP);
     await expect(page.getByText('Photos are manual for now.')).toBeVisible();
     await expect(page.getByText(/Product Advertising API access opens/)).toBeVisible();
+  });
+});
+
+// ------------------------------------------------------------- the member shelf
+
+/**
+ * The shelf's own layout, in the browser: a 320px viewport (a small phone), the
+ * cards at the 44% the component gives them so two fit with a sliver of the
+ * third, and the same gap. Nothing here is React - what is under test is the
+ * arithmetic, and the browser's job is to produce the fractional widths and the
+ * clamped end-of-scroll position that a hand-written fixture gets wrong.
+ */
+const SHELF_HARNESS = (count: number, shelf = 320, card = '44%') => `
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    #scroller { display: flex; gap: 10px; overflow-x: auto; width: ${shelf}px; }
+    #scroller > div { width: ${card}; flex: 0 0 auto; height: 120px; background: #eee; }
+  </style>
+  <div id="scroller">${'<div></div>'.repeat(count)}</div>
+`;
+
+async function readShelf(page: Page) {
+  return page.evaluate(() => {
+    const el = document.getElementById('scroller')!;
+    const card = el.firstElementChild as HTMLElement | null;
+    return {
+      scrollLeft: el.scrollLeft,
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+      cardWidth: card?.offsetWidth ?? el.clientWidth,
+      count: el.children.length,
+    };
+  });
+}
+
+/** The counter exactly as DiyKitShelf composes it: the label, then " of N". */
+const counter = (position: ReturnType<typeof shelfPosition>, count: number) =>
+  `${shelfRangeLabel(position.range)} of ${count}`;
+
+test.describe('DIY Kit member shelf', () => {
+  test('happy: the counter tracks the scroll, and reaches the last card at the end', async ({ page }) => {
+    await page.setContent(SHELF_HARNESS(4));
+
+    const atRest = await readShelf(page);
+    expect(atRest.scrollWidth, 'four 44% cards must overflow a 320px shelf').toBeGreaterThan(atRest.clientWidth);
+    const start = shelfPosition(atRest);
+    expect(counter(start, 4)).toBe('1 - 2 of 4');
+    // The bar starts at the left and covers the fraction that is on screen.
+    expect(start.thumb.left).toBe(0);
+    expect(start.thumb.width).toBeGreaterThan(40);
+    expect(start.thumb.width).toBeLessThan(70);
+
+    // All the way right. The browser clamps this to the real maximum, which is
+    // the position the old left-counted arithmetic got wrong: it does not land
+    // on a card boundary, so the counter read "2 - 3 of 4" with the fourth card
+    // plainly on screen.
+    await page.evaluate(() => { document.getElementById('scroller')!.scrollLeft = 99999; });
+    const atEnd = shelfPosition(await readShelf(page));
+    expect(counter(atEnd, 4)).toBe('3 - 4 of 4');
+    // And the bar is flush with the right end of its track.
+    expect(atEnd.thumb.left + atEnd.thumb.width).toBeCloseTo(100, 5);
+
+    // One card forward from rest, by the same step the arrows nudge by.
+    const step = atRest.cardWidth + SHELF_GAP;
+    await page.evaluate((left) => { document.getElementById('scroller')!.scrollLeft = left; }, step);
+    const nudged = shelfPosition(await readShelf(page));
+    expect(counter(nudged, 4)).toBe('2 - 3 of 4');
+    expect(nudged.thumb.left).toBeGreaterThan(0);
+  });
+
+  test('a shelf whose cards all fit counts all of them and fills its bar', async ({ page }) => {
+    // The sm: layout - three cards at 30% on a desktop-width shelf, so nothing
+    // is off screen. The counter must say so rather than claiming a window.
+    await page.setContent(SHELF_HARNESS(3, 900, '30%'));
+    const wide = await readShelf(page);
+    expect(wide.scrollWidth).toBe(wide.clientWidth);
+    const all = shelfPosition(wide);
+    expect(counter(all, 3)).toBe('1 - 3 of 3');
+    expect(all.thumb.width).toBe(100);
+    expect(all.thumb.left).toBe(0);
+
+    // And when one card fills the view the label collapses to a single number
+    // rather than reading "2 - 2".
+    expect(shelfRangeLabel({ first: 2, last: 2 })).toBe('2');
+    expect(shelfRangeLabel({ first: 1, last: 2 })).toBe('1 - 2');
   });
 });

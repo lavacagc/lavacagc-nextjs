@@ -173,6 +173,11 @@ test('AC7 - a blocked fetch is a normal answer, not an error', () => {
   expect(route).toContain('listingFetchEnabled()');
   // Images are copied into our storage, never hotlinked.
   expect(route).toContain('storeProductImage');
+  // And the listing that gets read is the CANONICAL one built from the ASIN. A
+  // bare ASIN and a scheme-less URL both parse, and neither is something fetch
+  // can open, so pointing this at the raw paste turned two advertised shapes
+  // into "Amazon blocked the request" for a request never sent.
+  expect(route).toContain('parseAmazonListing(amazonProductUrl(asin)');
 });
 
 test('AC7 - a live product cannot exist without a photo, and that is in the schema', () => {
@@ -198,6 +203,20 @@ test('AC8 - the admin opens on tasks and links products rather than copying them
   // Reuse patches the existing row's task list; it never creates a second row.
   expect(admin).toMatch(/attachExisting[\s\S]{0,400}method: 'PATCH'/);
   expect(admin).toContain('Also show on these items');
+});
+
+test('AC8 - attaching adds one shelf and never restates a set the screen may not have', () => {
+  // The failure this guards: a screen left open while another tab stocks the
+  // same product elsewhere, then an attach computed from the stale list that
+  // silently strips every other shelf.
+  const admin = read(ADMIN);
+  expect(admin).toContain('attach_task_key: openTask');
+  expect(admin).toContain('detach_task_key: openTask');
+  expect(admin).not.toMatch(/attachExisting[\s\S]{0,400}task_keys:/);
+  // The server owns the union, and answers with the resulting set.
+  const route = read(PATCH_ROUTE);
+  expect(route).toContain('attach_task_key');
+  expect(route).toContain('currentTaskKeys');
 });
 
 // ------------------------------------------------------- AC9: the two row tweaks

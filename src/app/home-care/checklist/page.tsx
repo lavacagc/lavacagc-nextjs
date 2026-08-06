@@ -191,8 +191,10 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
       })()
     : null;
   // DIY Kit shelves for the tasks this member can actually see. One query for
-  // all of them, issued after the profile filter so we never fetch shelves for
-  // work that is not on their plan. Fail-soft: no table, no shelves, same page.
+  // all of them, but one EXTRA sequential round trip: it takes the
+  // profile-filtered task list, which the Promise.all above is what produces, so
+  // it cannot ride along in that batch without reading shelves for work that is
+  // not on their plan. Fail-soft: no table, no shelves, same page.
   const productShelves = await readProductShelves(tasks.map((t) => t.key));
 
   const autoAddKey = addKey && tasks.some((t) => t.key === addKey && t.bookable && !t.starter && !dismissedKeys.includes(addKey)) ? addKey : undefined;

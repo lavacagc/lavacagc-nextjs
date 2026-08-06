@@ -227,15 +227,21 @@ export function HomeCareShopManager() {
     }
   };
 
-  /** Link an existing library product onto the open task, keeping its other shelves. */
+  /**
+   * Link an existing library product onto the open task, keeping its other shelves.
+   *
+   * Asks for ONE shelf rather than restating the whole set, because this screen
+   * is not authoritative about that set: it may have been open while another tab
+   * - or another admin - stocked the same product elsewhere, and a replacement
+   * computed from `products` would take those shelves away without saying so.
+   * The route owns the union, and answers with the result.
+   */
   const attachExisting = async (productId: string) => {
     if (!openTask) return;
-    const product = products.find((p) => p.id === productId);
-    const next = Array.from(new Set([...(product?.task_keys ?? []), openTask]));
     const res = await fetch(`/api/admin/home-care/products/${productId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task_keys: next }),
+      body: JSON.stringify({ attach_task_key: openTask }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -246,17 +252,24 @@ export function HomeCareShopManager() {
 
   const detach = async (product: AdminProduct) => {
     if (!openTask) return;
-    const next = product.task_keys.filter((k) => k !== openTask);
     try {
       const res = await fetch(`/api/admin/home-care/products/${product.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_keys: next }),
+        body: JSON.stringify({ detach_task_key: openTask }),
       });
-      if (!res.ok) throw new Error('Could not remove it.');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? 'Could not remove it.');
+      // What it is still on is the route's answer, not our arithmetic on a list
+      // that may be an hour old.
+      const remaining: string[] = Array.isArray(data?.task_keys)
+        ? data.task_keys
+        : product.task_keys.filter((k) => k !== openTask);
       toast({
         title: 'Off this shelf',
-        description: next.length > 0 ? `Still shown on ${next.length} other item${next.length === 1 ? '' : 's'}.` : 'Still in your library.',
+        description: remaining.length > 0
+          ? `Still shown on ${remaining.length} other item${remaining.length === 1 ? '' : 's'}.`
+          : 'Still in your library.',
       });
       await load();
     } catch (err) {

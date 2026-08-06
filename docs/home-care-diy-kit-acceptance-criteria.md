@@ -115,7 +115,10 @@ The route spec takes the auth half, the live spec takes the data half, and neith
 ## AC11 - The checklist page degrades rather than fails
 
 - The product read is fail-soft: a missing table (a Supabase Preview branch where the migration has not been replayed, a restored copy) yields no shelves and a working checklist, exactly as `readHomeRecords` does today.
-- The read is one query for all visible tasks, issued inside the page's existing `Promise.all`. It adds one round trip, not one per task.
+- The read is one query for all visible tasks, not one per task.
+It is issued AFTER the page's existing `Promise.all`, not inside it, and is therefore one extra sequential round trip.
+It cannot join that batch: the keys it is handed are the profile-filtered task list, which is one of the things the batch resolves.
+Hoisting it would mean reading shelves for work that is not on the member's plan.
 
 ## Finding from the first real run, 5 Aug 2026
 

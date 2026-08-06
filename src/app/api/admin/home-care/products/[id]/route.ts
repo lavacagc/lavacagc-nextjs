@@ -2,10 +2,22 @@
  * PATCH  /api/admin/home-care/products/[id] -> edit a product, or move its shelves
  * DELETE /api/admin/home-care/products/[id] -> remove it from the library entirely
  *
- * `task_keys`, when present, REPLACES the set of shelves this product sits on.
- * That is what makes "also show on these items" and "remove from this task" the
- * same operation, and it is why the eligibility check runs here too: an edit is
- * as good a way to attach a pro task as a create.
+ * THREE WAYS TO SAY SOMETHING ABOUT THE SHELVES, and only one of them at a time:
+ *
+ *  - `attach_task_key` / `detach_task_key` - one shelf, added or removed, with
+ *    the rest left exactly as they are. These exist because the caller is a
+ *    screen that may have been open for an hour: a client that restates the
+ *    whole set from what it last loaded will silently strip the shelves another
+ *    tab added in the meantime. "Also put it on this task" is the instruction
+ *    the operator actually gives, so it is the instruction the route takes, and
+ *    the current set stays the server's to know.
+ *  - `task_keys` - REPLACES the set outright. Kept for the caller that genuinely
+ *    means the whole list (the draft form, which composes one before the product
+ *    exists), and for the reordering slice 2 adds.
+ *
+ * The eligibility check runs on all three: an edit is as good a way to attach a
+ * pro task as a create. Every answer that touched the shelves carries the
+ * resulting `task_keys`, so no caller has to infer them.
  *
  * Deleting cascades to the join rows and the click rows by foreign key. A
  * product the owner takes out of the library leaves no orphan shelf entry behind
@@ -33,6 +45,8 @@ interface PatchBody {
   category?: unknown;
   active?: unknown;
   task_keys?: unknown;
+  attach_task_key?: unknown;
+  detach_task_key?: unknown;
 }
 
 export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -78,9 +92,23 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   }
 
   const taskKeys = body.task_keys !== undefined ? normalizeTaskKeys(body.task_keys) : null;
-  if (taskKeys && taskKeys.length > 0) {
+  const attachKey = typeof body.attach_task_key === 'string' ? body.attach_task_key.trim() : '';
+  const detachKey = typeof body.detach_task_key === 'string' ? body.detach_task_key.trim() : '';
+
+  // One instruction at a time. Two of them describe the same set from different
+  // directions, and guessing an order to apply them in would be inventing a rule
+  // no caller asked for.
+  if ([taskKeys !== null, !!attachKey, !!detachKey].filter(Boolean).length > 1) {
+    return NextResponse.json(
+      { error: 'Say one thing about the shelves at a time.' },
+      { status: 422 },
+    );
+  }
+
+  const wantsEligible = attachKey ? [attachKey] : taskKeys ?? [];
+  if (wantsEligible.length > 0) {
     const eligible = await eligibleTaskKeys();
-    const refused = taskKeys.filter((k) => !eligible.has(k));
+    const refused = wantsEligible.filter((k) => !eligible.has(k));
     if (refused.length > 0) {
       return NextResponse.json(
         { error: `We only recommend gear for tasks a homeowner can do themselves. Not eligible: ${refused.join(', ')}.` },
@@ -89,23 +117,94 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     }
   }
 
+  // True only inside the window the replacement path opens: the old rows are
+  // gone and the new ones are not in yet. See the message it produces below.
+  let shelvesEmptied = false;
   try {
     if (Object.keys(patch).length > 0) {
       await supabaseRest('PATCH', `home_care_products?id=eq.${encodeURIComponent(id)}`, patch);
     }
-    if (taskKeys) {
-      // Replace rather than diff: the set is at most a handful of rows, and a
-      // delete-then-insert cannot leave the shelves half-moved the way an
-      // interrupted diff can.
+
+    if (attachKey) {
+      await attachToShelf(id, attachKey);
+    } else if (detachKey) {
+      await supabaseRest(
+        'DELETE',
+        `home_care_product_tasks?product_id=eq.${encodeURIComponent(id)}&task_key=eq.${encodeURIComponent(detachKey)}`,
+        undefined,
+      );
+    } else if (taskKeys) {
+      // Replace rather than diff: the set is at most a handful of rows, so
+      // working out which to add and which to drop costs more than restating it.
+      //
+      // It is NOT atomic, and the honest version of that is worth writing down:
+      // PostgREST has no transaction across two requests, so a failure or a
+      // teardown between the DELETE and the POST leaves the product on NO
+      // shelves. Rare, and silent unless it is said out loud - which is what
+      // `shelvesEmptied` is for. The additive operations above exist partly
+      // because they never open this window at all.
       await supabaseRest('DELETE', `home_care_product_tasks?product_id=eq.${encodeURIComponent(id)}`, undefined);
       if (taskKeys.length > 0) {
+        shelvesEmptied = true;
         await supabaseRest('POST', 'home_care_product_tasks',
           taskKeys.map((task_key, i) => ({ product_id: id, task_key, sort_order: i })));
+        shelvesEmptied = false;
       }
+    }
+
+    if (attachKey || detachKey || taskKeys) {
+      const current = await currentTaskKeys(id);
+      return NextResponse.json(current ? { ok: true, task_keys: current } : { ok: true });
     }
     return NextResponse.json({ ok: true });
   } catch {
-    return NextResponse.json({ error: 'Could not save the product.' }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: shelvesEmptied
+          ? 'Saved, but the shelves may not have moved - open the product again and check which items it is on.'
+          : 'Could not save the product.',
+      },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * Put a product on one more shelf, leaving every other shelf alone.
+ *
+ * Appended at the END of that task's shelf rather than at sort_order 0, so
+ * stocking one more pick does not silently re-order the ones the owner already
+ * arranged. Already-there is a no-op instead of a primary-key violation: an
+ * operator pressing Add twice means the same thing both times.
+ */
+async function attachToShelf(id: string, taskKey: string): Promise<void> {
+  const rows = await supabaseRest<Array<{ product_id: string; sort_order: number }>>(
+    'GET',
+    `home_care_product_tasks?select=product_id,sort_order&task_key=eq.${encodeURIComponent(taskKey)}`,
+  ) ?? [];
+  if (rows.some((r) => r.product_id === id)) return;
+  const sortOrder = rows.reduce((max, r) => Math.max(max, r.sort_order), -1) + 1;
+  await supabaseRest('POST', 'home_care_product_tasks', [
+    { product_id: id, task_key: taskKey, sort_order: sortOrder },
+  ]);
+}
+
+/**
+ * The shelves this product is on now, or null if we could not ask.
+ *
+ * Answered back to the caller so the admin screen never has to compute a set it
+ * may hold a stale copy of. Fail-soft on purpose: the write has already landed
+ * by the time this runs, and reporting it as a failure because the read-back
+ * failed would be the wrong sentence entirely.
+ */
+async function currentTaskKeys(id: string): Promise<string[] | null> {
+  try {
+    const rows = await supabaseRest<Array<{ task_key: string }>>(
+      'GET', `home_care_product_tasks?select=task_key&product_id=eq.${encodeURIComponent(id)}`,
+    );
+    return (rows ?? []).map((r) => r.task_key);
+  } catch {
+    return null;
   }
 }
 

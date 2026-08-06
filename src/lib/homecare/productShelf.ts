@@ -12,9 +12,14 @@
  * before go-live - this returns an empty map and the checklist renders exactly
  * as it does today. A shelf is an enhancement; the member's plan is the page.
  *
- * ONE query for every visible task, not one per task. The checklist page issues
- * it inside the Promise.all it already runs, so the whole feature costs one
- * round trip on a page every member loads.
+ * ONE query for every visible task, not one per task. It is an EXTRA round trip
+ * on a page every member loads, and a SEQUENTIAL one - it cannot join the
+ * Promise.all the checklist page already runs, because the keys it is handed are
+ * the profile-filtered catalog and that filter is one of the things that batch
+ * resolves. Fetching shelves for work that is not on the member's plan would
+ * make it parallelisable and is not worth it: this is a small indexed read
+ * against a small table, and the alternative reads rows for tasks the page will
+ * throw away.
  */
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { isRenderable, type HomeCareProduct, type PriceBand, type LinkStatus } from '@/lib/homecare/products';

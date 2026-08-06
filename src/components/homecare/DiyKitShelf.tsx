@@ -29,6 +29,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-rea
 import {
   AFFILIATE_DISCLOSURE, amazonProductUrl, priceBandLabel, productImageUrl, type HomeCareProduct,
 } from '@/lib/homecare/products';
+import { SHELF_GAP, shelfPosition, shelfRangeLabel } from '@/lib/homecare/shelfPosition';
 
 interface Props {
   taskKey: string;
@@ -53,31 +54,22 @@ export default function DiyKitShelf({ taskKey, products, affiliateTag }: Props) 
    *
    * Read off the scroller rather than tracked as an index, because the scroll is
    * the source of truth: a member can fling it, drag it, or land mid-card, and a
-   * counter derived from a click handler would disagree with what they see.
+   * counter derived from a click handler would disagree with what they see. What
+   * those four measurements MEAN is `shelfPosition`, which is pure so a test can
+   * hand it real browser numbers and check the answer.
    */
   const measure = useCallback(() => {
     const el = scroller.current;
     if (!el || products.length === 0) return;
-    const { scrollLeft, scrollWidth, clientWidth } = el;
-    const visibleFraction = scrollWidth > 0 ? Math.min(1, clientWidth / scrollWidth) : 1;
-    const maxScroll = Math.max(1, scrollWidth - clientWidth);
-    const progress = Math.min(1, Math.max(0, scrollLeft / maxScroll));
-    setThumb({
-      width: visibleFraction * 100,
-      left: progress * (100 - visibleFraction * 100),
+    const position = shelfPosition({
+      scrollLeft: el.scrollLeft,
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+      cardWidth: (el.firstElementChild as HTMLElement | null)?.offsetWidth ?? el.clientWidth,
+      count: products.length,
     });
-    const cardWidth = (el.firstElementChild as HTMLElement | null)?.offsetWidth ?? clientWidth;
-    const step = cardWidth + 9;
-    const perView = Math.max(1, Math.round(clientWidth / step));
-    // Counted from the RIGHT edge, and pinned to the end when the scroll is
-    // there. Counting from the left with a floor is off by one at the end: the
-    // final scroll position does not land on a card boundary, so a shelf swiped
-    // all the way right still read "2 - 3 of 4" while showing the fourth card.
-    const atEnd = scrollLeft >= scrollWidth - clientWidth - 1;
-    const last = atEnd
-      ? products.length
-      : Math.min(products.length, Math.max(1, Math.round((scrollLeft + clientWidth) / step)));
-    setRange({ first: Math.max(1, last - perView + 1), last });
+    setThumb(position.thumb);
+    setRange(position.range);
   }, [products.length]);
 
   useEffect(() => {
@@ -94,7 +86,7 @@ export default function DiyKitShelf({ taskKey, products, affiliateTag }: Props) 
     const el = scroller.current;
     if (!el) return;
     const cardWidth = (el.firstElementChild as HTMLElement | null)?.offsetWidth ?? el.clientWidth;
-    el.scrollBy({ left: direction * (cardWidth + 9), behavior: 'smooth' });
+    el.scrollBy({ left: direction * (cardWidth + SHELF_GAP), behavior: 'smooth' });
   };
 
   if (products.length === 0) return null;
@@ -165,8 +157,8 @@ export default function DiyKitShelf({ taskKey, products, affiliateTag }: Props) 
                 />
               </div>
               <div className="mt-1 flex items-center justify-between">
-                <span className="text-[11px] font-bold text-text-muted">
-                  {range.first}{range.last > range.first ? ` - ${range.last}` : ''} of {products.length}
+                <span data-testid={`diy-kit-count-${taskKey}`} className="text-[11px] font-bold text-text-muted">
+                  {shelfRangeLabel(range)} of {products.length}
                   <span className="sm:hidden"> · swipe for more</span>
                 </span>
                 <span className="hidden gap-1 sm:flex">

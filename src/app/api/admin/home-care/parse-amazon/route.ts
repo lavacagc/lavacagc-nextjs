@@ -17,7 +17,9 @@
  * where the operator has to do something different.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { parseAsin, isShortenedAmazonLink, MAX_PRODUCT_IMAGES } from '@/lib/homecare/products';
+import {
+  parseAsin, isShortenedAmazonLink, amazonProductUrl, MAX_PRODUCT_IMAGES,
+} from '@/lib/homecare/products';
 import {
   parseAmazonListing, resolveShortLink, fetchProductImage, listingFetchEnabled,
 } from '@/lib/homecare/amazonListing';
@@ -51,8 +53,8 @@ export async function POST(request: NextRequest) {
   // resolve is best-effort: if it fails we fall through to parsing the original,
   // which simply will not contain an ASIN, and the operator gets the message
   // below rather than a stack trace.
-  const productUrl = isShortenedAmazonLink(input) ? await resolveShortLink(input) : input;
-  const asin = parseAsin(productUrl);
+  const pasted = isShortenedAmazonLink(input) ? await resolveShortLink(input) : input;
+  const asin = parseAsin(pasted);
   if (!asin) {
     return NextResponse.json(
       { error: "That link doesn't name a product. Open the item on Amazon and copy the URL from the address bar (it contains /dp/)." },
@@ -80,7 +82,13 @@ export async function POST(request: NextRequest) {
     // insert will say so in its own words; do not fail the parse for it.
   }
 
-  const listing = await parseAmazonListing(productUrl, MAX_PRODUCT_IMAGES);
+  // Read the CANONICAL listing, not the paste. `parseAsin` deliberately accepts
+  // a bare ASIN and a scheme-less URL, and neither is something `fetch` can
+  // open - pointed at the raw string those two shapes died as "Amazon blocked
+  // the request" for a request that was never sent. It also pins the read to the
+  // marketplace whose link we store: a paste from amazon.co.uk describes the
+  // product the member is sent to, which is always the www.amazon.com one.
+  const listing = await parseAmazonListing(amazonProductUrl(asin), MAX_PRODUCT_IMAGES);
 
   const stamp = Date.now();
   const stored: string[] = [];

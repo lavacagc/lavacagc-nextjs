@@ -31,6 +31,20 @@ const REASON = 'needs SUPABASE_SECRET_KEY + NEXT_PUBLIC_SUPABASE_URL in the envi
 /** Reserved for this file. Nothing else may use it, and it is deleted after every test. */
 const TEST_ASIN = 'B0TESTKIT1';
 
+/**
+ * A task key that exists in NO catalog row, and that is the point.
+ *
+ * These tests write to whatever database `.env.local` names, which is
+ * production. Linked to a real key like `basement_humidity`, the test product
+ * would sit on the live shelf of every member whose plan includes that task for
+ * as long as the test runs - with a broken photo, since nothing was ever
+ * uploaded to `B0TESTKIT1/`. `readProductShelves` never consults the catalog; it
+ * joins from the keys the checklist hands it, so an off-catalog key exercises
+ * the identical insert, read, filter and cascade rules and can never reach a
+ * member page.
+ */
+const TEST_TASK_KEY = 'zz_diy_kit_test';
+
 async function removeTestProduct() {
   await supabaseRest('DELETE', `home_care_products?asin=eq.${TEST_ASIN}`, undefined).catch(() => {});
 }
@@ -96,17 +110,21 @@ test.describe('DIY Kit against the live catalog', () => {
   });
 
   test('happy: a stocked product reaches the member shelf, and hiding it takes it away', async () => {
+    // Created as a DRAFT and published only once it is linked to the off-catalog
+    // key: a product is only ever visible to a member while active, so this
+    // leaves no window at all in which a real page could pick it up.
     const created = await supabaseRest<Array<{ id: string }>>('POST', 'home_care_products', {
       asin: TEST_ASIN, display_name: 'Kit test product', pitch: 'A pitch.',
-      images: [`${TEST_ASIN}/1.png`], price_band: 'under_25', active: true,
+      images: [`${TEST_ASIN}/1.png`], price_band: 'under_25',
     });
     const id = created![0].id;
     await supabaseRest('POST', 'home_care_product_tasks', [
-      { product_id: id, task_key: 'basement_humidity', sort_order: 0 },
+      { product_id: id, task_key: TEST_TASK_KEY, sort_order: 0 },
     ]);
+    await supabaseRest('PATCH', `home_care_products?id=eq.${id}`, { active: true });
 
-    const shelves = await readProductShelves(['basement_humidity', 'chimney_inspect']);
-    expect(shelves.basement_humidity?.some((p) => p.asin === TEST_ASIN)).toBe(true);
+    const shelves = await readProductShelves([TEST_TASK_KEY, 'chimney_inspect']);
+    expect(shelves[TEST_TASK_KEY]?.some((p) => p.asin === TEST_ASIN)).toBe(true);
     // A task nobody stocked has no entry at all - not an empty array, nothing,
     // which is what lets the row render exactly as it did before this feature.
     expect(shelves.chimney_inspect).toBeUndefined();
@@ -114,17 +132,17 @@ test.describe('DIY Kit against the live catalog', () => {
     // unhappy: a product marked gone stops rendering immediately. Fail closed -
     // a member tapping a dead link is worse than one fewer pick.
     await supabaseRest('PATCH', `home_care_products?id=eq.${id}`, { link_status: 'gone' });
-    expect((await readProductShelves(['basement_humidity'])).basement_humidity ?? [])
+    expect((await readProductShelves([TEST_TASK_KEY]))[TEST_TASK_KEY] ?? [])
       .not.toContainEqual(expect.objectContaining({ asin: TEST_ASIN }));
 
     // But 'suspect' - "we could not tell", usually an Amazon block - still
     // renders, which is the whole point of having three states.
     await supabaseRest('PATCH', `home_care_products?id=eq.${id}`, { link_status: 'suspect' });
-    expect((await readProductShelves(['basement_humidity'])).basement_humidity?.some((p) => p.asin === TEST_ASIN)).toBe(true);
+    expect((await readProductShelves([TEST_TASK_KEY]))[TEST_TASK_KEY]?.some((p) => p.asin === TEST_ASIN)).toBe(true);
 
     // Same for a draft: stocked, but not published, so not shown.
     await supabaseRest('PATCH', `home_care_products?id=eq.${id}`, { link_status: 'ok', active: false, images: [] });
-    expect((await readProductShelves(['basement_humidity'])).basement_humidity ?? []).toHaveLength(0);
+    expect((await readProductShelves([TEST_TASK_KEY]))[TEST_TASK_KEY] ?? []).toHaveLength(0);
 
     // Deleting the product takes its shelf entry with it - no orphan rows for a
     // later reader to defend against.

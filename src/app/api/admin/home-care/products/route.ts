@@ -13,7 +13,7 @@
  * true rather than merely displayed.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { supabaseRest, isMissingTableError } from '@/lib/notify/supabase-rest';
 import { readShopTasks, eligibleTaskKeys, normalizeTaskKeys } from '@/lib/homecare/productAdmin';
 import { isPriceBand, isProductCategory, type AdminProduct } from '@/lib/homecare/products';
 
@@ -85,11 +85,13 @@ export async function GET() {
       products: (products ?? []).map((p) => toAdminProduct(p, byProduct.get(p.id) ?? [])),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
     // The shop tables are applied by hand like every other Home Care migration,
     // so "not created yet" is a state the operator will genuinely meet. Say so
-    // in words rather than showing them a PostgREST error.
-    const missing = /404|42P01|does not exist/i.test(message);
+    // in words rather than showing them a PostgREST error - but through the
+    // shared helper, whose whole point is that this test stays narrow. A local
+    // `/404/` would match any error text carrying those three digits and send
+    // the operator off to re-apply a migration that is already there.
+    const missing = isMissingTableError(err);
     return NextResponse.json(
       { error: missing ? 'The Home Care Shop tables are not in this database yet. Apply the migration first.' : 'Could not load the shop.' },
       { status: missing ? 503 : 500 },
