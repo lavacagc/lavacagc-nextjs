@@ -286,9 +286,15 @@ test.describe('Proposal Pod slice 2 - evidence capture', () => {
     await expect(page.getByTestId('proposals-admin')).toBeVisible();
     await expect(page.getByText('Rachel Morales')).toBeVisible();
 
+    // SLICE 3 SHIPPED, so this reads the other way round now. These captures
+    // were written while the client page was still dark, when Send was disabled
+    // on every row and its title said so; `CLIENT_PAGE_LIVE` was flipped true
+    // when slice 3 went live, and the gate that remains is the one that was
+    // always there - a row with nobody to mail it to.
     const send = page.getByTestId('send-btn').first();
-    await expect(send).toBeDisabled();
-    note(`Send is disabled on every row until Slice 3. Its title reads:\n  ${await send.getAttribute('title')}`);
+    await expect(send).toBeEnabled();
+    note('Send is live (slice 3). It stays disabled only on a row with no client '
+      + `email, whose title then reads:\n  No client email - use Copy link`);
     await shot(page, '01-roster.png');
 
     // The import preview, straight off the estimator CSV.

@@ -1420,12 +1420,24 @@ test.describe('proposals admin, in the browser', () => {
     // fit beside it collapsed to a single letter while its neighbours - whose
     // longer "Make optional" wrapped - kept ~100px.
     await page.setViewportSize({ width: 390, height: 844 });
-    const widths = await page.getByTestId('line-row').evaluateAll((els) => els.map((el) => {
+    const nameWidths = () => page.getByTestId('line-row').evaluateAll((els) => els.map((el) => {
       const name = el.querySelector('[data-testid="line-title"]') as HTMLElement | null;
       return name ? Math.round(name.getBoundingClientRect().width) : -1;
     }));
-    expect(widths).toHaveLength(4);
-    for (const w of widths) expect(w).toBeGreaterThanOrEqual(150);
+    expect(await nameWidths(), 'one name per line row').toHaveLength(4);
+
+    // POLLED, because the reading has to be of the SETTLED row. setViewportSize
+    // resolves - and window.innerWidth already reads 390 - a frame before the
+    // style recalculation that drops the md: classes has run, so a measurement
+    // taken straight after it gets the desktop arrangement, where the price and
+    // its toggle are still inline and squeeze the name to ~125px. Run alone
+    // that window closes too fast to land in; run with the rest of the file it
+    // does not. And ~125px is indistinguishable from the squeeze described
+    // above, so an unsettled reading fails this test wearing the face of the
+    // very regression it guards against.
+    await expect
+      .poll(async () => Math.min(...(await nameWidths())))
+      .toBeGreaterThanOrEqual(150);
 
     // Buying that floor must not push the row off the side of the phone.
     expect(await overrunsOn(page)).toEqual([]);
@@ -1622,6 +1634,15 @@ test.describe('proposals admin, in the browser', () => {
   });
 
   test('B29: the hover label opens into reserved room - it never moves the row it is in', async ({ page, context, baseURL }) => {
+    // This one is SLOW by construction, not by accident, so it gets the room to
+    // be: seven viewports x two rows x a settling wait either side of every
+    // hover is ~24s of deliberate waiting, against a 30s default. That margin
+    // is thinner than the machine's own variance - it passed alone and timed
+    // out in the same commit when the rest of the file was running beside it -
+    // and shortening the waits instead would be reading the label mid-animation,
+    // which is the measurement this test exists to take.
+    test.slow();
+
     // Both roster shapes at once: a live row, and the revoked row that already
     // spends width on Re-import's disabled label and carries the longest label
     // of the set, "Restore to draft".

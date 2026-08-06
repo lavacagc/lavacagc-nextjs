@@ -42,6 +42,13 @@ import { PROPOSAL_CATEGORIES } from '../src/lib/proposals/categories';
  * RESEND_API_KEY is deliberately BLANK, not unset-and-forgotten: the alert path
  * runs for real and the email is skipped rather than delivered, so a full local
  * run cannot mail anybody.
+ *
+ * The last two ACs drive the ADMIN side of the same lifecycle, because the fix
+ * they cover is only observable from the client's: a stale draft's link is dead
+ * until an admin refreshes its window, and then the SAME url opens again. That
+ * needs no extra server - `/api/admin/*` is gated by middleware's
+ * `supabase.auth.getUser()`, which goes to the origin above, and the stub
+ * answers `/auth/v1/user` for exactly that reason.
  */
 
 const RUN = process.env.PROPOSAL_E2E === '1';
@@ -54,6 +61,8 @@ const PROPOSAL_ID = '44444444-4444-4444-4444-444444444444';
 const TOKEN = 'a'.repeat(43);
 const REVOKED_TOKEN = 'b'.repeat(43);
 const STALE_DRAFT_TOKEN = 'c'.repeat(43);
+const STALE_DRAFT_ID = '77777777-7777-4777-8777-777777777777';
+const REVOKED_ID = '55555555-5555-4555-8555-555555555556';
 const ALL_OPTIONAL_TOKEN = 'd'.repeat(43);
 const ALL_OPTIONAL_ID = '66666666-6666-4666-8666-666666666666';
 
@@ -126,6 +135,31 @@ const ALL_OPTIONAL_LINES = [
   },
 ];
 
+/**
+ * The stale draft's own lines, and it MUST have some.
+ *
+ * `lookupPublicProposal` answers the same dead end for a proposal that holds no
+ * lines as for one whose window has run out - a broken artifact and an expired
+ * link look identical from the client's side, deliberately. So a stale draft
+ * seeded without lines renders "This link isn't valid" whatever the window rule
+ * does, and the assertion below that its link is dead would have passed against
+ * a build with no window rule in it at all. Its own ids, because the stub is a
+ * single flat table and reusing LINES' would put two proposals' worth of rows
+ * behind the same primary keys.
+ */
+const STALE_LINES = [
+  {
+    id: '77777777-7777-4777-8777-777777777771', position: 0, title: 'Cabinet refacing',
+    description: 'Doors, drawer fronts and end panels in the specified finish.',
+    price_cents: 520000, optional: false, category: 'cabinets', bundle_members: null,
+  },
+  {
+    id: '77777777-7777-4777-8777-777777777772', position: 1, title: 'Quartz countertops',
+    description: 'Templated, fabricated and fitted, with an undermount sink cutout.',
+    price_cents: 380000, optional: true, category: 'countertops', bundle_members: null,
+  },
+];
+
 const LOCKED_TOTAL = 340000 + 480000 + 260000;
 const FULL_TOTAL = LOCKED_TOTAL + 680000 + 430000;
 const usd = (c: number) => (c / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -162,7 +196,7 @@ test.beforeEach(async () => {
       created_at: agoIso(48 * HOUR_MS), updated_at: agoIso(HOUR_MS),
     },
     {
-      id: '55555555-5555-4555-8555-555555555556', token: REVOKED_TOKEN,
+      id: REVOKED_ID, token: REVOKED_TOKEN,
       client_name: 'Yusuf Adeyemi', client_email: 'yusuf@example.com',
       title: 'Primary suite addition', status: 'revoked', lead_id: null,
       sent_at: '2026-08-01T00:00:00Z', revoked_at: '2026-08-02T00:00:00Z',
@@ -170,7 +204,7 @@ test.beforeEach(async () => {
     },
     // A draft nobody has touched for more than a day: its link has run out.
     {
-      id: '77777777-7777-4777-8777-777777777777', token: STALE_DRAFT_TOKEN,
+      id: STALE_DRAFT_ID, token: STALE_DRAFT_TOKEN,
       client_name: 'Marta Oyelaran', client_email: 'marta@example.com',
       title: 'Kitchen refresh', status: 'draft', lead_id: null,
       sent_at: null, revoked_at: null,
@@ -189,6 +223,7 @@ test.beforeEach(async () => {
   await seed('proposal_lines', [
     ...LINES.map((l) => ({ ...l, proposal_id: PROPOSAL_ID })),
     ...ALL_OPTIONAL_LINES.map((l) => ({ ...l, proposal_id: ALL_OPTIONAL_ID })),
+    ...STALE_LINES.map((l) => ({ ...l, proposal_id: STALE_DRAFT_ID })),
   ]);
 });
 
@@ -203,7 +238,7 @@ test.beforeEach(async () => {
  */
 test('fixture integrity: every seeded category is a registry key', () => {
   const known = new Set(PROPOSAL_CATEGORIES.map((c) => c.key));
-  for (const line of [...LINES, ...ALL_OPTIONAL_LINES]) {
+  for (const line of [...LINES, ...ALL_OPTIONAL_LINES, ...STALE_LINES]) {
     expect(known.has(line.category), `'${line.category}' is not a registry key`).toBe(true);
   }
 });
@@ -244,6 +279,17 @@ test('AC-S3-1e: an unknown token and a revoked one get the same dead end, word f
 test('AC-S3-18e: a draft past its 24-hour window is the same dead end, and takes no answer', async ({ page }) => {
   await page.goto(`/proposal/${'z'.repeat(43)}`);
   const unknown = await page.locator('main').innerText();
+
+  // The window is the ONLY thing shutting this link, which is what makes the
+  // dead end below mean anything: a proposal holding no lines answers exactly
+  // the same page (`lookupPublicProposal` calls that a broken artifact), so
+  // while this fixture had none it would have passed against a build with no
+  // window rule in it. AC-S3-27e opens this same token by moving the window and
+  // nothing else, which is the other half of the same proof.
+  expect(
+    ((await state()).tables.proposal_lines ?? []).filter((l) => l.proposal_id === STALE_DRAFT_ID),
+    'the stale draft must hold lines, or this proves nothing',
+  ).toHaveLength(STALE_LINES.length);
 
   // A draft whose updated_at is 25 hours old. Nothing on this page says it was
   // ever a proposal, let alone whose.
@@ -470,4 +516,88 @@ test('AC-S3-9e: a hand-made payload that drops a locked line is refused, and sto
   expect(res.status()).toBe(400);
   expect((await res.json()).error).toContain('not optional');
   expect((await state()).tables.proposal_submissions ?? []).toHaveLength(0);
+});
+
+// ------------------------------------------- STALE DRAFT LINK (follow-up fix)
+
+/**
+ * Signed in as the admin, for the `/api/admin/*` doors.
+ *
+ * Middleware gates them on `supabase.auth.getUser()`, a SERVER call, so this is
+ * two halves: the fabricated session cookie here, and the `/auth/v1/user` the
+ * stub answers. The cookie name derives from the host in
+ * NEXT_PUBLIC_SUPABASE_URL, exactly as the slice-2 admin browser specs set it.
+ */
+async function signInAsAdmin(page: Page, baseURL: string) {
+  const host = new URL(STUB).hostname.split('.')[0];
+  const session = {
+    access_token: 'stub-access-token', refresh_token: 'stub-refresh-token',
+    token_type: 'bearer', expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    user: { id: '00000000-0000-0000-0000-000000000001', aud: 'authenticated', role: 'authenticated' },
+  };
+  await page.context().addCookies([{
+    name: `sb-${host}-auth-token`,
+    value: `base64-${Buffer.from(JSON.stringify(session)).toString('base64url')}`,
+    url: baseURL,
+  }]);
+}
+
+const proposalRowIn = async (id: string) =>
+  ((await state()).tables.proposals ?? []).find((r) => r.id === id) as
+    { status: string; updated_at: string } | undefined;
+
+test('AC-S3-27e: the refresh an admin fires from Copy link makes a dead draft link open again', async ({ page, baseURL }) => {
+  // THE WHOLE POINT, end to end and from the client's side of it. AC-S3-18e
+  // above proves the dead end; this proves the way back out of it, which is
+  // what an admin hand-delivering a link by text actually needs. Nothing here
+  // reads a toast: the claim is about the URL the client taps.
+  await page.goto(`/proposal/${STALE_DRAFT_TOKEN}`);
+  await expect(page.getByRole('heading')).toHaveText("This link isn't valid");
+  const before = await proposalRowIn(STALE_DRAFT_ID);
+
+  await signInAsAdmin(page, baseURL!);
+  const res = await page.request.post(`/api/admin/proposals/${STALE_DRAFT_ID}`, {
+    data: { action: 'refresh' },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  // The window is reported in the unit the toast says it in.
+  expect((await res.json()).window_hours).toBe(24);
+
+  // The SAME url, untouched - it is the link already texted to the client.
+  await page.goto(`/proposal/${STALE_DRAFT_TOKEN}`);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Kitchen refresh');
+
+  // And it was the window that moved, not the lifecycle: still a draft, still
+  // unsent, so nothing about what the client is looking at changed except that
+  // it resolves.
+  const after = await proposalRowIn(STALE_DRAFT_ID);
+  expect(after!.status).toBe('draft');
+  expect(Date.parse(after!.updated_at)).toBeGreaterThan(Date.parse(before!.updated_at));
+  expect((await state()).telegram, 'a refresh mails nobody').toHaveLength(0);
+});
+
+test('AC-S3-28e: refresh is refused on a sent or revoked proposal, and moves nothing', async ({ page, baseURL }) => {
+  // The two rows whose window must not move under owner decision D3: a sent
+  // link has no expiry to push, and a revoked one must not be revived by a
+  // button whose whole promise is that it changes nothing a client can see.
+  await page.goto(`/proposal/${TOKEN}`);
+  await signInAsAdmin(page, baseURL!);
+
+  for (const [id, expected] of [
+    [ALL_OPTIONAL_ID, /does not expire/i],
+    [REVOKED_ID, /revoked/i],
+  ] as const) {
+    const was = await proposalRowIn(id);
+    const res = await page.request.post(`/api/admin/proposals/${id}`, { data: { action: 'refresh' } });
+    expect(res.status(), `${id} must be refused`).toBe(409);
+    expect((await res.json()).error).toMatch(expected);
+    expect((await proposalRowIn(id))!.updated_at, 'the window did not move').toBe(was!.updated_at);
+  }
+
+  // The revoked link is still the dead end it was, and the sent one still opens.
+  await page.goto(`/proposal/${REVOKED_TOKEN}`);
+  await expect(page.getByRole('heading')).toHaveText("This link isn't valid");
+  await page.goto(`/proposal/${ALL_OPTIONAL_TOKEN}`);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Finish package');
 });
