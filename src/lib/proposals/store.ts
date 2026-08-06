@@ -536,6 +536,14 @@ export async function restoreProposal(proposalId: string): Promise<void> {
  * that never moved, and every sentence the callers build on that boolean
  * promises a window the link does not have. Zero rows is `false`, like any
  * other refresh that did not happen.
+ *
+ * `Prefer` is passed EXPLICITLY, not inherited. `restPrefer` happens to default
+ * a PATCH to `return=representation` today, but that default reads as a
+ * convenience for callers that ignore the body - and this one does not. Were it
+ * ever flipped, `supabaseRest` would short-circuit to `undefined` and every
+ * successful refresh would report false: Copy link warning about a window that
+ * did move, and the send route telling an admin a client may be holding a dead
+ * link when they are not. Silent, and inverted. The dependency stays local.
  */
 export async function touchProposal(
   proposalId: string,
@@ -545,6 +553,7 @@ export async function touchProposal(
     const rows = await supabaseRest<ProposalRow[]>(
       'PATCH', `proposals?id=eq.${proposalId}&status=eq.${status}`,
       { status },
+      { prefer: 'return=representation' },
     );
     return Array.isArray(rows) && rows.length > 0;
   } catch (err) {

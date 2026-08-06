@@ -442,6 +442,50 @@ test.describe('proposals admin, in the browser', () => {
     await expect(page.getByTestId('link-expired-hint')).toHaveCount(0);
   });
 
+  test('B36: an outage never costs the toast its warning about the link', async ({ page, context, baseURL }) => {
+    // The mirror of B35, and the reason only a 409 is quoted. Supabase is
+    // unreachable, so the route's own read throws and its outer catch answers a
+    // deliberately generic 'Could not complete that action' - a sentence about
+    // the request, not about the link. Shown in place of the warning, it left
+    // an admin holding a draft link that may already be dead and told only that
+    // something went wrong, on the screen where they decide whether to text it
+    // to somebody.
+    const reads: string[] = [];
+    await signInAsAdmin(context, baseURL!);
+    await page.route('**/api/admin/proposals/*', async (route) => {
+      await route.fulfill({ status: 500, json: { error: 'Could not complete that action' } });
+    });
+    await page.route('**/api/admin/proposals*', async (route) => {
+      const req = route.request();
+      if (req.method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
+      reads.push(req.url());
+      await route.fulfill({
+        json: { proposals: [STALE], counts_available: true, total: 1, truncated: false },
+      });
+    });
+    await page.goto('/vaca-mgmt/proposals');
+    await expect(page.getByTestId('proposals-admin')).toBeVisible();
+
+    await page.getByRole('button', { name: /copy link/i }).click();
+
+    // Copied, because the URL is what was asked for - and told what that copy
+    // will do, which is the whole reason this toast exists.
+    await expect(toastTitle(page, 'Link copied')).toBeVisible();
+    await expect(page.getByText(/may not open/i).first()).toBeVisible();
+    await expect(page.getByText(/re-import the proposal/i).first()).toBeVisible();
+    await expect(page.getByText(/opens for the next/i)).toHaveCount(0);
+    // The server's sentence explains nothing to an admin, so it does not
+    // displace the one that does.
+    await expect(page.getByText(/Could not complete that action/i)).toHaveCount(0);
+    expect(await page.evaluate(() => navigator.clipboard.readText()))
+      .toContain(`/proposal/${'a'.repeat(43)}`);
+
+    // Nothing was written, so the row keeps saying what it said - a 500 is the
+    // write failing, not the roster being out of date.
+    await expect(page.getByTestId('link-expired-hint')).toBeVisible();
+    expect(reads).toHaveLength(1);
+  });
+
   test('B34: a FRESH draft is not labelled expired', async ({ page, context, baseURL }) => {
     await openRoster(page, context, baseURL!, {
       proposals: [RACHEL], counts_available: true, total: 1, truncated: false,

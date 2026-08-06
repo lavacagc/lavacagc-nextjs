@@ -1264,14 +1264,31 @@ test('AC-S3-26: Copy link copies inside the click, then refreshes the draft it c
   expect(copy).toContain('copied = false');
   expect(copy.indexOf('copied = false')).toBeLessThan(copy.indexOf('refreshDraftWindow(p.id)'));
 
-  // A failed refresh still leaves the link copied, and the toast says what the
-  // SERVER said rather than one generic sentence - the route composes a
-  // different refusal for a sent row and a revoked one, and both are written
-  // for the admin.
+  // A failed refresh still leaves the link copied, and the toast says what that
+  // failure means FOR THE LINK. That sentence is the reason the toast exists,
+  // so it lives in one constant and every failure branch reports it - a branch
+  // composing its own wording is how it went missing before.
   expect(copy).toContain('refresh.reason');
   const helper = page.slice(page.indexOf('async function refreshDraftWindow'), page.indexOf('export default'));
+  const impact = page.match(/const REFRESH_FAILED = ([\s\S]*?);\n/)?.[1] ?? '';
+  expect(impact, 'the failure sentence must say the link may not open').toMatch(/may not open/);
+  expect(impact, 'and name the remedy').toMatch(/re-import/);
+  expect(helper.match(/REFRESH_FAILED/g)?.length, 'every failure branch reports it')
+    .toBeGreaterThanOrEqual(3);
+
+  // The SERVER's sentence displaces it only on a 409 - the one status whose
+  // messages were written for this action, and the only two that are more
+  // accurate than it (a sent link never expires; a revoked one is shut until it
+  // is restored). Everything else - the route's generic 'Could not complete
+  // that action' for any outage, a gateway's HTML error page, an empty body -
+  // explains nothing to an admin, so it is never read for its words.
+  expect(helper).toContain('res.status !== 409');
+  expect(helper.indexOf('res.status !== 409'), 'the body is parsed only past that guard')
+    .toBeLessThan(helper.indexOf('res.json()'));
   expect(helper).toContain("typeof body?.error === 'string'");
-  expect(helper).toContain('res.status === 409');
+  // A 404 is the row being gone, which is the roster's problem rather than the
+  // write's, exactly like a 409.
+  expect(helper).toContain('res.status === 404');
 
   // The copied row is updated in place. A re-read would reorder the roster
   // (it is ordered updated_at.desc, and a refresh writes that column), and the

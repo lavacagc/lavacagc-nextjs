@@ -235,30 +235,48 @@ async function postProposalAction(url: string, payload: unknown): Promise<void> 
 interface RefreshOutcome {
   /** Whether the window actually moved. */
   ok: boolean;
-  /** Why it did not, in the words the admin should read. Null when it did. */
+  /** What it means for the link, in the words the admin should read. */
   reason: string | null;
   /**
-   * The server answered 409: this row is not a draft any more, so what is out
-   * of date is the ROSTER rather than the write.
+   * The server's answer says the ROW on screen is out of date rather than the
+   * write: a 409 (this proposal is not a draft any more) or a 404 (it is gone).
    */
   stale: boolean;
 }
 
 /**
- * Move a draft's link window forward, and carry back what the server SAID.
+ * What a failed refresh means for the link, said once so no branch can lose it.
  *
- * A bare `res.ok` was not enough, because the route composes two different
- * refusals for a row whose status has moved since the roster was read, and both
- * are written for the admin: a sent link has no window to move under D3, and a
- * revoked one must not be revived by a button that promises to change nothing a
- * client can see. Collapsing them into one generic sentence told an admin whose
- * colleague had just sent the proposal that the link "may not open" and to send
- * or re-import it - false on both counts, and advice that mails the client a
- * second copy of their proposal.
+ * This sentence is the reason the toast exists. The window did not move, so the
+ * admin is holding a draft link that may already have stopped opening, and they
+ * are about to text it to somebody. Every failure below therefore reports THIS,
+ * and only a message written for this action may be shown in its place.
+ */
+const REFRESH_FAILED = 'Its window could not be refreshed, so it may not open. '
+  + 'Send or re-import the proposal, then copy it again.';
+
+/**
+ * Move a draft's link window forward, and carry back what it means for the link.
  *
- * A 409 is also the one answer that says the ROW on screen is wrong rather than
- * the write, which is why it travels separately from the reason: it is what
- * makes the roster worth re-reading.
+ * A bare `res.ok` was not enough, because the route composes two refusals for a
+ * row whose status has moved since the roster was read, and both are written
+ * for the admin AND are more accurate than the sentence above: a sent link has
+ * no window to move under D3 and never expires, and a revoked one is shut until
+ * it is restored rather than merely at risk. Reporting those as "it may not
+ * open. Send or re-import the proposal" was false in the first case and advice
+ * that mails the client a second copy of their proposal.
+ *
+ * NO OTHER STATUS speaks for itself. The route's outer catch answers a
+ * deliberately generic 'Could not complete that action' for any outage, a
+ * gateway answers an HTML error page, and a 404 says only that the row is gone
+ * - none of which tells an admin what the link they just copied will do. Those
+ * are reported as `REFRESH_FAILED`, which does.
+ *
+ * `stale` travels separately because it is a different question: whether what
+ * needs correcting is the ROSTER rather than the write. A 409 says this row is
+ * no longer a draft, a 404 says it is not there at all, and both leave the page
+ * rendering a row - and a set of controls - the database has already left
+ * behind.
  */
 async function refreshDraftWindow(id: string): Promise<RefreshOutcome> {
   let res: Response;
@@ -269,23 +287,20 @@ async function refreshDraftWindow(id: string): Promise<RefreshOutcome> {
       body: JSON.stringify({ action: 'refresh' }),
     });
   } catch {
-    return {
-      ok: false,
-      stale: false,
-      reason: 'The refresh never reached the server, so this link may still be expired.',
-    };
+    return { ok: false, stale: false, reason: REFRESH_FAILED };
   }
   if (res.ok) return { ok: true, reason: null, stale: false };
+  if (res.status !== 409) {
+    return { ok: false, stale: res.status === 404, reason: REFRESH_FAILED };
+  }
   // Status before body, for the reason postProposalAction gives above: a
   // gateway failure answers HTML, and parsing that first turns the toast into a
-  // JSON parser's complaint.
+  // JSON parser's complaint. Only this status is ever read for its words.
   const body: { error?: unknown } | null = await res.json().catch(() => null);
   return {
     ok: false,
-    stale: res.status === 409,
-    reason: typeof body?.error === 'string'
-      ? body.error
-      : `Could not refresh this link (HTTP ${res.status}), so it may still be expired.`,
+    stale: true,
+    reason: typeof body?.error === 'string' ? body.error : REFRESH_FAILED,
   };
 }
 
@@ -765,12 +780,12 @@ export default function ProposalsAdminPage() {
         refreshFailed = true;
         windowNote = refresh.reason;
         if (refresh.stale) {
-          // The server refused because this row is not a draft any more, so the
-          // roster is showing a status - and a set of controls - the database
-          // has already left behind. Re-read it, with the term the roster on
-          // screen answers rather than whatever the search box happens to hold:
-          // an unsubmitted term here would silently collapse the roster to a
-          // search the admin never ran.
+          // The server says this row is not a draft any more, or is not there at
+          // all, so the roster is showing a status - and a set of controls - the
+          // database has already left behind. Re-read it, with the term the
+          // roster on screen answers rather than whatever the search box happens
+          // to hold: an unsubmitted term here would silently collapse the roster
+          // to a search the admin never ran.
           void loadRoster(activeSearch);
         }
       }
