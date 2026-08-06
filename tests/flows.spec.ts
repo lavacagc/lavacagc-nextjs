@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { SKIP_WITHOUT_LIVE_BACKEND } from './helpers/liveBackend';
 
 test.describe('User Flow Tests', () => {
   test.describe('Navigation', () => {
@@ -18,8 +19,46 @@ test.describe('User Flow Tests', () => {
       await page.click('button[aria-haspopup="true"]:has-text("Services")');
       const kitchenMenuItem = page.locator('[role="menuitem"]:has-text("Kitchen Remodeling")');
       await expect(kitchenMenuItem).toBeVisible();
-      await kitchenMenuItem.click();
-      await page.waitForURL(/.*kitchen-remodeling/);
+
+      if (SKIP_WITHOUT_LIVE_BACKEND) {
+        // /services/* pages are DB-driven, so under a stub build this
+        // destination has no row behind it and genuinely does not exist. The
+        // App Router only SOMETIMES answers that 404 by falling back to a full
+        // document navigation, which is what commits the URL; when it does not,
+        // the address bar never leaves the homepage and a wait on it times out.
+        // Asserting a URL change against a destination that is not there is
+        // testing the wrong thing however often it happens to pass - the same
+        // reasoning the Company dropdown gets below. That is the whole case for
+        // this branch, and it does not rest on a failure rate.
+        //
+        // The rates, as rates, since the next person will otherwise measure a
+        // third figure and wonder: at 6-way concurrency the click-through failed
+        // 27 times in 240 runs on a loaded machine and 2 in 480 on a quiet one,
+        // while this version failed 0 in 480 - including a paired run with both
+        // arms interleaved in one invocation, where neither failed. The rate
+        // tracks machine load, and at the quiet-machine baseline those runs had
+        // no power to separate the arms statistically. Consistent with this
+        // change, then; not proof that it moves them.
+        //
+        // Where the failures land does hold: every one, in both measurements,
+        // was stuck at this step. None at the /about click-through below, which
+        // is the one the exit-intent history push - a separate bug, fixed in
+        // this same change - could eat; that committed in every one of those
+        // runs, and 60/60 more under an instrumented driver recording every
+        // pushState the app makes.
+        //
+        // So assert the route is exposed rather than clicking through to a page
+        // that does not exist in this environment. The live-backend path keeps
+        // the full click-through, where the destination is real.
+        await expect(kitchenMenuItem).toHaveAttribute('href', '/services/kitchen-remodeling');
+        // Leave the dropdown closed, as navigating away would have.
+        await page.keyboard.press('Escape');
+        await expect(page.locator('button[aria-haspopup="true"]:has-text("Services")'))
+          .toHaveAttribute('aria-expanded', 'false');
+      } else {
+        await kitchenMenuItem.click();
+        await page.waitForURL(/.*kitchen-remodeling/);
+      }
 
       // Go back home — logo is an <a aria-label="La Vaca General Contractors - Home">
       await page.click('a[aria-label^="La Vaca General Contractors"]');

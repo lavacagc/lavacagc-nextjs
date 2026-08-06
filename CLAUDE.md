@@ -95,10 +95,14 @@ one-off against a real build.
 `test:report` only renders an existing report, so it pins nothing.
 
 The trade-off is deliberate: one build cannot satisfy both halves of the suite.
-The admin specs need a 127.x origin; the live-backend specs (`links`,
-`hero-trust-badges`, `listings-gate`) need the real one, so they SKIP under
-`test:e2e` exactly as they do in CI. To run those instead, build normally and
-set `E2E_LIVE_BACKEND=1`.
+The admin specs need a 127.x origin; the live-backend specs need the real one,
+so they SKIP under `test:e2e` exactly as they do in CI.
+There are more of those than the obvious ones (`links`, `listings-gate`), and
+the set grows as specs are added, so do not read any list here as the roster.
+The specs are their own index: `grep -l "test.skip(SKIP_WITHOUT_LIVE_BACKEND"
+tests/*.spec.ts` names every one that skips, and `tests/helpers/liveBackend.ts`
+owns the flag and spells out which mode does what.
+To run them instead, build normally and set `E2E_LIVE_BACKEND=1`.
 
 `npm run test:links` is the one script on the other side of that trade-off, and
 it is deliberately the LIVE-BACKEND link sweep: walking the real `/locations/*`

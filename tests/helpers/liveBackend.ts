@@ -25,6 +25,18 @@
  * coverage, but it is not equivalent: it sweeps a hardcoded path list rather
  * than the DB-driven paths these specs walk.
  * See CLAUDE.md, "Every Playwright script pins its backend".
+ *
+ * SECOND USE, and it is not a skip. A spec that belongs in BOTH modes can read
+ * this flag to choose the assertion its environment can actually make, instead
+ * of skipping a check that is only half unavailable. `flows.spec.ts` does that
+ * at the Services dropdown: `/services/*` is DB-driven, so under a stub build
+ * that destination has no row behind it, and it asserts the route is exposed
+ * rather than clicking through to a page that is not there - keeping the full
+ * click-through for the live-backend run, where the destination is real.
+ * The bar for that pattern: BOTH arms must assert something true about the app.
+ * An arm that asserts nothing is a skip wearing an `if`, and should use
+ * `test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON)` so the run says
+ * so out loud.
  */
 export const SKIP_WITHOUT_LIVE_BACKEND =
   (!!process.env.CI || !!process.env.E2E_STUB_BACKEND) && !process.env.E2E_LIVE_BACKEND;

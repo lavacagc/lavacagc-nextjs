@@ -12,9 +12,18 @@ import { mkdirSync } from 'fs';
  *  B. Home Care band on the homepage, after testimonials: "Not remodeling
  *     yet?" pitch + mini checklist card. Member-aware CTA. No horizontal
  *     overflow on phones.
- *  D. Exit-intent popup now offers the free checklist instead of a second
- *     estimate ask: once per session, dismissible, members never see it,
- *     suppressed on /home-care pages.
+ *  D. Exit-intent popup now offers a one-field monthly-newsletter signup
+ *     instead of a second estimate ask, with the personalized checklist kept as
+ *     a secondary /home-care link: once per session, dismissible, members never
+ *     see it, suppressed on /home-care pages.
+ *
+ * This file owns `ExitIntentPopup`, so it also pins the one contract of that
+ * component that is not about the promo at all: the history entry it adds for
+ * mobile Back detection must carry no URL, because one that does can overwrite
+ * an in-flight navigation and strand the visitor on the page they tried to
+ * leave. The last three tests are that guard - the entry names no URL, and a
+ * navigation still commits at each layout - and their comments carry the
+ * reasoning.
  *
  * hc_known is a readable first-name hint cookie — setting it simulates a
  * returning member (real portal access stays server-enforced).
@@ -205,5 +214,77 @@ test.describe('D: exit-intent newsletter capture', () => {
     await triggerExitIntent(page);
     await page.waitForTimeout(400);
     await expect(page.getByRole('dialog')).toBeHidden();
+  });
+
+  /**
+   * The back-button history entry must never carry a URL.
+   *
+   * It used to: `pushState(null, '', window.location.href)` read the current
+   * URL and wrote it back, from an effect that re-runs on `pathname` - which
+   * changes DURING a navigation. A push landing mid-flight replaced the
+   * incoming URL with the outgoing one and the navigation was lost: the address
+   * bar snapped back and the page the visitor asked for never arrived. It
+   * needed load to show up, so it surfaced as a nav test failing about one run
+   * in six while CI hid it behind workers=1 and two retries.
+   *
+   * `pushState(state, '')` adds the same entry at the current URL and cannot
+   * overwrite anything, which is what makes the race unlosable rather than
+   * merely unlikely. These two assertions are the contract: the entry exists
+   * (Back detection still works, covered by the tests above) and it names no
+   * URL.
+   */
+  test('the back-button history entry carries no URL, so it cannot eat a navigation', async ({ page }) => {
+    const pushedUrls: string[] = [];
+    await page.exposeFunction('__recordPush', (url: string) => { pushedUrls.push(url); });
+    await page.addInitScript(() => {
+      const original = history.pushState.bind(history);
+      history.pushState = (...args: Parameters<History['pushState']>) => {
+        // `url` is args[2]; undefined is the shape this test exists to pin.
+        (window as unknown as { __recordPush?: (u: string) => void }).__recordPush?.(String(args[2]));
+        return original(...args);
+      };
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(600);
+
+    // The entry is still being added - Back detection depends on it - and not
+    // one push names a URL, which is what makes it unable to eat a navigation.
+    // The property holds however many times the effect re-runs; it is the url
+    // argument that was the bug, never the count.
+    expect(pushedUrls, 'the popup must still add its back-button history entry').toContain('undefined');
+    const urlBearing = pushedUrls.filter((u) => u !== 'undefined' && u !== 'null');
+    expect(urlBearing, 'no app push may carry a URL').toEqual([]);
+    // And the address bar is where it started.
+    expect(new URL(page.url()).pathname).toBe('/');
+  });
+
+  /**
+   * The user-visible half of the same bug, once per layout: the navigation has
+   * to actually land. Each half drives the nav that exists at its own width -
+   * the desktop bar is `hidden lg:flex` and the hamburger is `lg:hidden`, so
+   * neither can be reached from the other project. Widening the viewport inside
+   * the `mobile` project would only make it test a desktop layout.
+   */
+  test('a header navigation still commits with the popup mounted', async ({ page, isMobile }) => {
+    test.skip(Boolean(isMobile), 'desktop nav is `hidden lg:flex` - the mobile-menu test below makes this claim on phones');
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    const nav = page.locator('header nav').first();
+    await page.click('button[aria-haspopup="true"]:has-text("Company")');
+    await nav.locator('a[href="/about"]').first().click();
+    await page.waitForURL('**/about');
+    expect(new URL(page.url()).pathname).toBe('/about');
+  });
+
+  test('a mobile-menu navigation still commits with the popup mounted', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'hamburger menu is `lg:hidden` - the desktop test above makes this claim on wide viewports');
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await page.click('[aria-label="Open menu"]');
+    await page.locator('#mobile-menu').getByRole('button', { name: 'Go to about us page' }).click();
+    await page.waitForURL('**/about');
+    expect(new URL(page.url()).pathname).toBe('/about');
   });
 });
