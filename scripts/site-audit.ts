@@ -1,5 +1,9 @@
 #!/usr/bin/env npx ts-node
-import { chromium, Page } from '@playwright/test';
+// `Page` must be a type-only import: this file is loaded as ESM, where a plain
+// named import of a type resolves at runtime and fails with
+// "does not provide an export named 'Page'" before any audit code runs.
+import { chromium } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 interface AuditResult {
   category: string;

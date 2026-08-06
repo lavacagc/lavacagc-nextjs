@@ -44,8 +44,8 @@ npm run build       # Production build (also type-checks + lints every route)
 npm run typecheck   # tsc --noEmit on its own
 npm run test:e2e    # Build the app for the suite, then run Playwright
 npm run test:ui     # Playwright with UI, against a build test:build already made
-npm run audit       # Run site audit locally
-npm run audit:prod  # Run site audit on production
+npm run audit       # Site audit vs localhost:3000 (start a server first)
+npm run audit:prod  # Site audit vs production - 403s every page, see below
 ```
 
 ### Running the Playwright suite
@@ -111,7 +111,18 @@ report a green run that checked nothing.
 It owns its build because `E2E_LIVE_BACKEND` disables the guard, so against the
 stub `.next` that `test:e2e` leaves behind it would otherwise 404 on every
 DB-driven path with nothing to say why.
-Production link health is covered independently by `npm run audit:prod`.
+Do NOT treat production link health as independently covered.
+`npm run audit:prod` was documented as that safety net and cannot serve as one
+today: `scripts/site-audit.ts` drives a bare `chromium.launch()`, so its browser
+sends a `HeadlessChrome/...` user agent, and our own bot filter in
+`src/middleware.ts` answers that with 403 on every path.
+Measured against production it reports 58 failures across all 29 pages, on a site
+that returns 200 to a real browser, so a red run there tells you nothing either
+way.
+The Playwright suite is unaffected: `playwright.config.ts` uses
+`devices['Desktop Chrome']`, whose user agent passes that filter.
+`npm run test:links` is therefore the only check that actually walks the
+DB-driven paths, and it only runs when you invoke it deliberately.
 
 Note `test:e2e` leaves `.next` built against a stub Supabase, and `test:links`
 replaces it with a real one - run `npm run test:build` before returning to the
