@@ -25,6 +25,21 @@ Schema, the parse route, the admin screen, and the member-facing shelf on the ch
 **Not in this slice**, by the approved plan: the `/home-care/toolkit` page, shelves on the season guide pages, click logging and its admin counts, the coverage panel, and the weekly link-health cron.
 The clicks table ships here anyway because a second migration to add one table later is a worse trade than an unused table now.
 
+## Environment variables
+
+Two, both read server-side only, and only one of them has to be provisioned.
+This section is what the deployment checklist in `EMAIL_TRACKING_AND_PREFERENCES.md` points at; the behaviour behind each is AC3 and AC7 below, not repeated here.
+
+- **`AMAZON_ASSOCIATES_TAG` must be SET in Vercel, or the feature earns nothing.**
+It is the Associates ID appended at render (AC3), so with it unset every product link goes out untagged and no commission is attributed to any tap.
+The shelf looks and behaves identically either way, which is what makes the slice safe to ship before the Associates account is approved - but that is a launch step still owed, not a resting state, and nothing on the page will complain about it.
+- **`HOME_CARE_IMAGE_FETCH` is an optional kill switch, and it defaults to ON.**
+There is nothing to provision unless you want the automatic photo pull disabled; only the value `off` does that (any casing, surrounding space ignored), and unset or any other value leaves the fetch enabled (AC7).
+It exists so the fetch can be retired without a deploy.
+
+Neither is `NEXT_PUBLIC_` and neither is a secret - the tag ends up visible in every rendered link anyway.
+Do not mark them sensitive in Vercel: that buys nothing here and costs the value on `vercel env pull`.
+
 ## How these are verified
 
 Five specs, split by what each can honestly answer.
