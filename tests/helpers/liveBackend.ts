@@ -28,4 +28,6 @@ export const SKIP_WITHOUT_LIVE_BACKEND =
 
 export const LIVE_BACKEND_REASON =
   'Requires a live backend (real Supabase reads / server secret keys). ' +
-  'Set E2E_LIVE_BACKEND=1 with real env to run in CI; runs locally via .env.local.';
+  'Skipped in CI, and locally under `npm run test:e2e`, whose build is baked ' +
+  'against the GoTrue stub. To run them: `npm run build`, then E2E_LIVE_BACKEND=1 ' +
+  'with real env in .env.local (or in the CI job).';

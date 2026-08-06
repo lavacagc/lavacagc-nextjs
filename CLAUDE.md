@@ -60,6 +60,13 @@ they can only authenticate against a build pointed at the local GoTrue stub.
 A global setup now fails the run immediately, naming the fix, rather than
 letting that surface as dozens of confusing failures.
 
+Stop any `npm run dev` on port 3000 before running the suite.
+Playwright reuses a server already listening there instead of the one it would
+start, and `next dev` reads the real Supabase URL from `.env.local` at run time,
+so a leftover dev server trips that same guard no matter how you built.
+`npm run test:ui`, `test:headed` and `test:mobile` set `E2E_STUB_BACKEND=1` too,
+so they match `test:e2e` when run against a `test:build` build.
+
 The trade-off is deliberate: one build cannot satisfy both halves of the suite.
 The admin specs need a 127.x origin; the live-backend specs (`links`,
 `hero-trust-badges`, `listings-gate`) need the real one, so they SKIP under

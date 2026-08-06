@@ -86,7 +86,11 @@ export default function RootLayout({
         <link rel="icon" href="/logo.webp" type="image/webp" />
         <link rel="alternate icon" href="/logo.png" type="image/png" />
         <meta name="theme-color" content="#EE9639" />
-        {/* Preconnect to Supabase storage for faster asset loading */}
+        {/* Preconnect to Supabase storage for faster asset loading.
+            Also the probe tests/helpers/assert-test-build.ts reads to tell which
+            NEXT_PUBLIC_SUPABASE_URL the SERVED build was baked with - keep it the
+            first preconnect link and keep it rendered from that value, or update
+            that helper alongside. */}
         <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
         <link rel="dns-prefetch" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
         {/* Preload hero video for faster LCP */}
