@@ -309,10 +309,45 @@ test('AC-R7: analytics is left exactly as it was (owner decision, 5 Aug 2026)', 
   expect(analytics).not.toContain('privatePages');
 });
 
-test('AC-R8: no migration is added - a prod database at 20260827000000 runs this slice', () => {
+test('AC-R8: the pod needed no DDL - its schema still ends at 20260827000000', () => {
   const files = readdirSync(join(root, 'supabase/migrations')).filter((f) => f.endsWith('.sql'));
-  const newest = files.map((f) => f.slice(0, 14)).sort().at(-1);
-  expect(newest).toBe('20260827000000');
+
+  // The pod's OWN migrations, all four from slices 1 and 2. Slice 3 added none,
+  // which is what let it go live by merge-and-deploy with nothing hand-applied.
+  const POD = [
+    '20260824000000_proposals.sql',
+    '20260825000000_proposal_bundles.sql',
+    '20260826000000_proposal_roster_counts.sql',
+    '20260827000000_proposal_bundle_check_guards.sql',
+  ];
+  for (const m of POD) expect(files, `${m} must still be present`).toContain(m);
+
+  // And nothing since has changed the pod's schema underneath the code.
+  //
+  // SCOPED TO THE POD'S TABLES, deliberately. This began as "the newest
+  // migration in the repo is 20260827000000", which was true the day it was
+  // written and is a claim about the WHOLE repository: the next migration any
+  // unrelated feature adds fails it, having changed nothing about this pod. A
+  // sibling branch adding 20260828000000_home_care_products.sql was already
+  // queued to trip it. What the AC means is that slice 3 needed no DDL and that
+  // the schema it runs against is still the one it was written for, and that is
+  // what this now says.
+  // Comments are stripped first, and that is not a detail. These migrations
+  // argue for their own shape at length and cite each other while doing it -
+  // the home-care products migration names `proposals` three times explaining
+  // why it copies the pod's deny-by-default RLS and its no-existence-guard
+  // rule. Matching prose would fail this AC for a file that quotes the pod as
+  // precedent without touching a single one of its tables, which is the
+  // opposite of the point.
+  const POD_TABLES = /\b(public\.)?(proposals|proposal_lines|proposal_submissions)\b/;
+  const newer = files.filter((f) => f.slice(0, 14) > '20260827000000');
+  for (const f of newer) {
+    const sql = read(`supabase/migrations/${f}`)
+      .split('\n')
+      .map((line) => line.replace(/--.*$/, ''))
+      .join('\n');
+    expect(POD_TABLES.test(sql), `${f} must not touch the proposal pod's tables`).toBe(false);
+  }
 });
 
 test('AC-R9: the security headers are unchanged', () => {
