@@ -23,6 +23,7 @@ import HomeCareChecklistClient, { type ChecklistTask } from '@/components/homeca
 import UpcomingVisitCard, { type UpcomingVisit } from '@/components/homecare/UpcomingVisitCard';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { readHomeRecords } from '@/lib/homecare/homeRecords';
+import { readProductShelves } from '@/lib/homecare/productShelf';
 import { CheckCircle2, ChevronDown, Phone, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -189,6 +190,18 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
         };
       })()
     : null;
+  // DIY Kit shelves for the tasks this member can actually see. One query for
+  // all of them, but one EXTRA sequential round trip: it takes the
+  // profile-filtered task list, which the Promise.all above is what produces, so
+  // it cannot ride along in that batch without reading shelves for work that is
+  // not on their plan. Fail-soft: no table, no shelves, same page.
+  //
+  // The whole task is handed over, not just its key, because the shelf read
+  // re-checks `diy_or_pro` itself - these rows are the catalog as it reads
+  // RIGHT NOW, so a task the owner has since made pro-only loses its shelf on
+  // the next render rather than keeping it until somebody unstocks it by hand.
+  const productShelves = await readProductShelves(tasks);
+
   const autoAddKey = addKey && tasks.some((t) => t.key === addKey && t.bookable && !t.starter && !dismissedKeys.includes(addKey)) ? addKey : undefined;
   const ownedSystems = SYSTEM_QUESTIONS.filter((q) => systems?.[q.key] === true);
   const greeting = homeowner.first_name ? `Welcome back, ${homeowner.first_name}` : 'Your home checklist';
@@ -269,7 +282,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
             {(tasks?.length ?? 0) === 0 ? (
               <p className="text-text-secondary">Your checklist is being prepared — check back soon.</p>
             ) : (
-              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} dismissedKeys={dismissedKeys} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} autoAddKey={autoAddKey} lavacaCompleted={lavacaCompleted} homeRecordPrefill={homeRecordPrefill} homeDetailsConsentGiven={homeDetailsConsentGiven} />
+              <HomeCareChecklistClient tasks={tasks} doneItems={doneItems} dismissedKeys={dismissedKeys} showStarter={stageShowsStarter(stage)} currentSeason={season} showCatchUp={showCatchUp} autoAddKey={autoAddKey} lavacaCompleted={lavacaCompleted} homeRecordPrefill={homeRecordPrefill} homeDetailsConsentGiven={homeDetailsConsentGiven} productShelves={productShelves} affiliateTag={process.env.AMAZON_ASSOCIATES_TAG ?? null} />
             )}
           </div>
         </section>

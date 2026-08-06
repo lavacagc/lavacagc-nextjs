@@ -67,6 +67,16 @@ Playwright reuses a server already listening there instead of the one it would
 start, and `next dev` reads the real Supabase URL from `.env.local` at run time,
 so a leftover dev server trips that same guard no matter how you built.
 
+Move `.env.local` aside for the run if it holds `SUPABASE_SECRET_KEY`.
+CI has no such file, which is why this only bites locally: `test:build` points
+the Supabase URL at the stub, and `/home-care/whats-new` is `force-static` and
+reads Supabase while prerendering, so with a secret key present that read
+actually dials 127.0.0.1:9099, gets ECONNREFUSED, and takes the whole build
+down - `Export encountered an error on /home-care/whats-new/page`, which names
+neither the env nor the cause. Without the key the same read fails early and
+harmlessly. The specs that DO need real credentials are the live-backend ones,
+and they are run separately by design.
+
 #### Every Playwright script pins its backend - a new one must too
 
 There is no unpinned default, deliberately.
