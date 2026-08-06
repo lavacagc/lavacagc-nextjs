@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "E2E_STUB_BACKEND=1 playwright test",
     "test:build": "bash scripts/test-build.sh",
     "test:e2e": "npm run test:build && E2E_STUB_BACKEND=1 playwright test",

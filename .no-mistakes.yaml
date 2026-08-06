@@ -18,4 +18,13 @@ commands:
   # disposable worktree has no Supabase/Resend/reCAPTCHA secrets, so many specs
   # fail environmentally (see the acceptance-criteria note). Browser-level
   # Playwright verification stays a manual pre-gate step against a real dev server.
-  test: "npx tsc --noEmit && npm run build"
+  # Use `npm run typecheck`, NOT `npx tsc --noEmit`. `npx` falls back to the
+  # registry when TypeScript is not resolvable locally, and there is an
+  # unrelated package literally named `tsc` that it then downloads and runs. It
+  # prints "This is not the tsc command you are looking for" and exits 1, so a
+  # worktree whose `npm ci` never ran reports what looks exactly like a failing
+  # type-check while having type-checked nothing at all. `npx --no-install` is
+  # NOT enough: once that package is in the npx cache it still runs from there.
+  # `npm run` only prepends node_modules/.bin to PATH, so a missing TypeScript
+  # is `tsc: command not found` and exit 127 - loud, truthful, unmistakable.
+  test: "npm run typecheck && npm run build"
