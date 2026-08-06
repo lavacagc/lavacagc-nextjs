@@ -51,8 +51,12 @@ Or via Playwright:
 
 ```bash
 CRON_SECRET=local-dev-secret SEO_INGEST_MODE=fixture \
+  TEST_URL=http://localhost:3001 \
   npx playwright test tests/seo-cron.spec.ts --project=chromium
 ```
+
+`TEST_URL` points the run at the dev server you just started, instead of letting Playwright start its own on :3000.
+Without it the suite's global setup stops the whole run, because that server was not built for the suite (see `CLAUDE.md`, "Running the Playwright suite") - and these two specs only need the routes above.
 
 ## Production env vars
 

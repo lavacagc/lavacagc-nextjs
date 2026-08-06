@@ -356,11 +356,18 @@ test.describe('admin /vaca-mgmt/releases', () => {
     // The manual-only promise is stated right on the screen.
     await expect(page.getByText('Nothing is ever emailed automatically')).toBeVisible();
     // Entry thumbnails decoded.
-    const thumbs = await page.$$eval('img[src^="/email/releases/"]', (els: HTMLImageElement[]) =>
-      els.map((el) => el.complete && el.naturalWidth > 0),
-    );
-    expect(thumbs).toHaveLength(3);
-    for (const ok of thumbs) expect(ok).toBe(true);
+    //
+    // POLLED rather than sampled once. `complete` is a point-in-time read, so
+    // the original single `$$eval` asserted whether three images happened to
+    // have finished decoding at the instant it ran - which under a parallel run
+    // they often had not, failing a page that was correct a frame later. It
+    // flaked about one run in three locally; CI hid it behind workers=1 and two
+    // retries. The claim is unchanged: three thumbnails, all decoded.
+    await expect.poll(
+      () => page.$$eval('img[src^="/email/releases/"]', (els: HTMLImageElement[]) =>
+        els.map((el) => el.complete && el.naturalWidth > 0)),
+      { timeout: 10_000 },
+    ).toEqual([true, true, true]);
     await page.screenshot({ path: shot('02-admin-queue.png'), fullPage: true });
   });
 

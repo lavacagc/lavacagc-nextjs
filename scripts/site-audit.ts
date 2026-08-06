@@ -1,5 +1,9 @@
 #!/usr/bin/env npx ts-node
-import { chromium, Page } from '@playwright/test';
+// `Page` must be a type-only import: this file is loaded as ESM, where a plain
+// named import of a type resolves at runtime and fails with
+// "does not provide an export named 'Page'" before any audit code runs.
+import { chromium, devices } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 interface AuditResult {
   category: string;
@@ -229,7 +233,12 @@ async function runFullAudit() {
   console.log('━'.repeat(60));
 
   const browser = await chromium.launch();
-  const page = await browser.newPage();
+  // Audit as a real desktop Chrome - the same device profile playwright.config.ts
+  // gives the suite. A bare newPage() sends a `HeadlessChrome/...` UA, which the
+  // bad-bot filter in src/middleware.ts answers with 403 on every path, so the
+  // audit measured that filter instead of the site.
+  const context = await browser.newContext({ ...devices['Desktop Chrome'] });
+  const page = await context.newPage();
 
   const allResults: { path: string; results: AuditResult[] }[] = [];
   let totalPass = 0;

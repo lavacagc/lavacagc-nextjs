@@ -118,7 +118,7 @@ No em dash appears in the three modules, the migration, or `CLAUDE.md`.
 
 ## How the schema is verified (every slice of this pod)
 
-The gate runs lint and `tsc + next build`, and the ACs assert over a migration's **text**, so nothing in the pipeline reads the DDL as SQL.
+The gate runs lint and a type-checked build, and the ACs assert over a migration's **text**, so nothing in the pipeline reads the DDL as SQL.
 Every revision of every pod migration is therefore applied to a throwaway local Postgres and its constraints exercised there before that revision is called finished.
 For 20260824000000 that is the token recipe, the lifecycle pairs, the snapshot shape, the whole-cents and cap rules, the total-is-the-sum check, both `updated_at` triggers, and the delete that must fail while a submission exists; slice 2's three migrations are held to the same rule, below.
 That rule is what caught the one defect the third of them repairs, so it is doing the work it is here to do.
@@ -127,11 +127,13 @@ The PR's Supabase Preview check then replays every migration on a real database 
 ## Running the slice 1 checks
 
 ```sh
-npx playwright test tests/proposal-pod.spec.ts
+npm run test:build     # once; the run is gated on a build made this way
+E2E_STUB_BACKEND=1 npx playwright test tests/proposal-pod.spec.ts
 ```
 
 The assertions are pure functions and source text, so they need no credentials of their own.
-The shared Playwright config still starts its two servers for the run, so build first, and see [`lead-intake-acceptance-criteria.md`](lead-intake-acceptance-criteria.md) for blanking the credentials that make a full local suite send real mail.
+The shared Playwright config still starts its two servers for the run, and a global setup stops the whole run unless the served build was made for the suite - so `npm run test:build` first, not a plain `npm run build`.
+`CLAUDE.md` ("Running the Playwright suite") owns that rule and the backend flags; see [`lead-intake-acceptance-criteria.md`](lead-intake-acceptance-criteria.md) for blanking the credentials that make a full local suite send real mail.
 
 **No browser-level acceptance is claimed for slice 1**, because no rendered surface exists in it - the same argument PR #72 made for the `home_records` schema slice.
 Slice 2 is where the browser half of the pod's acceptance begins.
@@ -243,8 +245,9 @@ The email plumbing itself - category, sender, preference posture, audit row - is
 The AC ids are carried by the test titles rather than restated here, so the contract stays traceable to what actually runs.
 
 ```sh
-npx playwright test tests/proposal-pod-slice2.spec.ts            # pure modules, store, both routes
-npx playwright test tests/proposal-pod-slice2-browser.spec.ts    # the importer and roster in a real browser
+npm run test:build                                                                    # once, as above
+E2E_STUB_BACKEND=1 npx playwright test tests/proposal-pod-slice2.spec.ts              # pure modules, store, both routes
+E2E_STUB_BACKEND=1 npx playwright test tests/proposal-pod-slice2-browser.spec.ts      # the importer and roster in a real browser
 ```
 
 - `tests/proposal-pod-slice2.spec.ts` drives the pure modules, the store and both routes against a stubbed PostgREST, and holds the regression half of the owner's AC contract: `AC-R1` pins the full pre-slice sidebar inventory (adding Proposals removes nothing), `AC-R2` the untouched admin gate.
@@ -378,7 +381,8 @@ Folding them together announced a genuine revision to the owner as a first answe
 ### Where the slice 3 ACs live, and how to run them
 
 ```sh
-npx playwright test tests/proposal-pod-slice3.spec.ts          # modules, route, guards, regression pins
+npm run test:build                                                              # once, as above
+E2E_STUB_BACKEND=1 npx playwright test tests/proposal-pod-slice3.spec.ts        # modules, route, guards, regression pins
 ```
 
 - `tests/proposal-pod-slice3.spec.ts` drives the modules and the route against a PostgREST stubbed at the fetch boundary, and holds the regression half (`AC-R1` to `AC-R12`).

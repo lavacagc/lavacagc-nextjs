@@ -41,12 +41,102 @@ src/
 ```bash
 npm run dev         # Start development server
 npm run build       # Production build (also type-checks + lints every route)
-npm run test:ui     # Playwright with UI - local browser-level verification
-npm run audit       # Run site audit locally
-npm run audit:prod  # Run site audit on production
+npm run typecheck   # tsc --noEmit on its own
+npm run test:e2e    # Build the app for the suite, then run Playwright
+npm run test:ui     # Playwright with UI, against a build test:build already made
+npm run audit       # Site audit vs localhost:3000 (start a server first)
+npm run audit:prod  # Site audit vs production - exits nonzero even when healthy
 ```
 
-`npm run lint` and `npm run build` (type-check) are the gauntlet the
+### Running the Playwright suite
+
+Use **`npm run test:e2e`**. It builds the app the way the suite needs and then
+runs Playwright, and it is the same build CI makes (`scripts/test-build.sh` is
+called by both, so they cannot drift).
+
+A plain `npm run build` followed by `npx playwright test` does **not** work, and
+used to fail 59 specs with pages rendering only "Unauthorized".
+`NEXT_PUBLIC_SUPABASE_URL` is inlined at BUILD time, and the admin specs sign in
+with a cookie named `sb-127-auth-token` whose name derives from that URL, so
+they can only authenticate against a build pointed at the local GoTrue stub.
+A global setup now fails the run immediately, naming the fix, rather than
+letting that surface as dozens of confusing failures.
+
+Stop any `npm run dev` on port 3000 before running the suite.
+Playwright reuses a server already listening there instead of the one it would
+start, and `next dev` reads the real Supabase URL from `.env.local` at run time,
+so a leftover dev server trips that same guard no matter how you built.
+
+#### Every Playwright script pins its backend - a new one must too
+
+There is no unpinned default, deliberately.
+A bare `playwright test` inherits whichever `.next` happened to be built last,
+and that is exactly how the live-backend specs end up red against a stub build
+with nothing on screen explaining why.
+So each `package.json` script that runs `playwright test` states which half of
+the trade-off below it is on, and any script added later has to choose:
+
+- **Stub-backed** - set `E2E_STUB_BACKEND=1`.
+  This is the default, and it is right for anything running the whole suite or a
+  subset of ordinary specs; the live-backend specs then skip and say so, exactly
+  as they do in CI.
+  Today: `test`, `test:e2e`, `test:ui`, `test:headed`, `test:mobile`,
+  `test:flows`.
+- **Live-backend** - set `E2E_LIVE_BACKEND=1`.
+  Only for specs whose entire point is real Supabase content.
+  These need a real `npm run build`, and the flag stands the build guard down, so
+  such a script must own its own build rather than inherit one.
+  Today: `test:links`.
+
+A subset that mixes the two is stub-backed: skipping the live-backend specs is
+honest, running them against a stub is not.
+`E2E_LIVE_BACKEND=1` in front of any of them still overrides, for a deliberate
+one-off against a real build.
+`test:report` only renders an existing report, so it pins nothing.
+
+The trade-off is deliberate: one build cannot satisfy both halves of the suite.
+The admin specs need a 127.x origin; the live-backend specs (`links`,
+`hero-trust-badges`, `listings-gate`) need the real one, so they SKIP under
+`test:e2e` exactly as they do in CI. To run those instead, build normally and
+set `E2E_LIVE_BACKEND=1`.
+
+`npm run test:links` is the one script on the other side of that trade-off, and
+it is deliberately the LIVE-BACKEND link sweep: walking the real `/locations/*`
+and `/services/*` paths only means anything when Supabase has content behind
+them.
+So it builds normally and sets `E2E_LIVE_BACKEND=1` itself, which both runs its
+two specs instead of skipping them and stands the build guard down.
+Do not pin it to `E2E_STUB_BACKEND` instead: that would skip both specs and
+report a green run that checked nothing.
+It owns its build because `E2E_LIVE_BACKEND` disables the guard, so against the
+stub `.next` that `test:e2e` leaves behind it would otherwise 404 on every
+DB-driven path with nothing to say why.
+Do NOT treat `npm run audit:prod` as equivalent coverage.
+It does reach production and report real results, but it sweeps a HARDCODED list
+of 29 paths in `scripts/site-audit.ts`, so it drifts from the DB instead of
+tracking it.
+That list is already stale: it still contains `/locations/fairfield`, which is
+not a `service_areas` slug and 404s in production.
+`npm run test:links` is therefore the only check that walks the DB-driven paths
+as they actually are, and it only runs when you invoke it deliberately.
+
+Read that audit's output, do not gate on its exit code.
+It scores every aborted third-party beacon as a failure, and Google Analytics,
+Clarity and Cloudflare RUM abort routinely, so it exits nonzero against a healthy
+site: the last production run was 163 passed / 33 failed / 1 warning, and 28 of
+those 33 failures were that analytics noise.
+
+Anything headless you point at this site must identify as a real browser.
+The bad-bot filter in `src/middleware.ts` matches `/headlesschrome/i` and answers
+403 on every path, which is why `scripts/site-audit.ts` and
+`playwright.config.ts` both use `devices['Desktop Chrome']`.
+A first-party tool that skips this measures the bot filter, not the site.
+
+Note `test:e2e` leaves `.next` built against a stub Supabase, and `test:links`
+replaces it with a real one - run `npm run test:build` before returning to the
+rest of the suite, or `npm run build` before serving the app for anything else.
+
+`npm run lint`, `npm run typecheck` and `npm run build` are the gauntlet the
 **no-mistakes gate runs for you** on every ship - see *Shipping changes* below.
 Run them by hand only for quick local iteration, not as a manual pre-push
 checklist. The Playwright suite is deliberately NOT in that gauntlet: it needs
@@ -85,7 +175,12 @@ Every change ships through the **no-mistakes** gate (`/no-mistakes`), not by
 hand. The gate runs one pipeline - review → test → lint → docs → push → PR → CI -
 in a disposable worktree, auto-applies safe fixes, escalates judgement calls, and
 only forwards to `origin` + opens the PR once every check is green. Config lives
-in `.no-mistakes.yaml` (gate commands: `npm run lint`, `tsc + next build`).
+in `.no-mistakes.yaml` (gate commands: `npm run lint`, and
+`npm run typecheck && npm run build`).
+That file also owns a repo-wide rule worth knowing before you add any script,
+workflow step or hook: pinned dependencies are invoked through `npm run`, never
+`npx` - a bare `npx tsc` runs an unrelated registry package that type-checks
+nothing.
 
 So **do not** treat these as separate manual steps - the gate owns them:
 

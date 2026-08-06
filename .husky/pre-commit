@@ -1,1 +1,5 @@
-npx lint-staged
+# Bare, not `npx lint-staged`: husky's runner already prepends
+# node_modules/.bin to PATH (.husky/_/h), so this resolves the pinned
+# lint-staged, and a missing install fails as exit 127 rather than being
+# papered over by a registry download. See .no-mistakes.yaml for the rule.
+lint-staged

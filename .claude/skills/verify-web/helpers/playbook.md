@@ -74,7 +74,7 @@ Treat as a fresh failure of the AC, not as an "edge case". Either fix-forward im
 ## What "ready" means in this codebase
 
 - All session-level ACs pass.
-- TypeScript clean (`npx tsc --noEmit`).
+- TypeScript clean (`npm run typecheck` - not `npx tsc --noEmit`; `.no-mistakes.yaml` states why).
 - ESLint clean on changed files.
 - For website code: full Playwright matrix passes against dev, AND prod after deploy.
 - For commits: gitleaks clean (runs automatically via pre-commit hook).

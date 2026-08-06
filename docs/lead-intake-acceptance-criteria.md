@@ -150,8 +150,11 @@ Blank the credentials rather than unsetting them, because an unset key is repopu
 ```sh
 export RESEND_API_KEY=""
 export TELEGRAM_BOT_TOKEN=""
-npx playwright test
+npm run test:e2e
 ```
 
-Verified: 1410 pass, 0 emails written to `email_log`.
+`npm run test:e2e` rather than a bare `playwright test`: it builds the app the way the suite needs and pins the backend, and a global setup now stops the run outright against any other build.
+`CLAUDE.md` ("Running the Playwright suite") owns that rule; the blanking above is what this section owns, and the exports carry into the run either way.
+
+Verified on the full local run that established this recipe: 1410 pass, 0 emails written to `email_log`.
 Kill any stray dev server on port 3000 first - two processes on the same port produce failures that look like real regressions and are not.
