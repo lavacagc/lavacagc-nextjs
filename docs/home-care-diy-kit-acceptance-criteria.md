@@ -21,6 +21,19 @@ Schema, the parse route, the admin screen, and the member-facing shelf on the ch
 **Not in this slice**, by the approved plan: the `/home-care/toolkit` page, shelves on the season guide pages, click logging and its admin counts, the coverage panel, and the weekly link-health cron.
 The clicks table ships here anyway because a second migration to add one table later is a worse trade than an unused table now.
 
+## How these are verified
+
+Three specs, split by what each can honestly answer.
+
+- `tests/home-care-diy-kit.spec.ts` - the contract: the pure functions, and the rules that live in SQL or in a server component asserted over the files that carry them.
+- `tests/home-care-diy-kit-routes.spec.ts` - the running admin routes, through real middleware with the house session cookie. Unhappy paths first: unauthenticated callers, malformed bodies, links with no product in them, every malformed product field, unknown ids, and every refusal the photo uploader makes. Runs in CI on the ordinary stub build.
+- `tests/home-care-diy-kit-browser.spec.ts` - the admin screen once React has mounted: a pro task that will not open, a blocked photo pull becoming an upload box, a rejected save that keeps the draft, a database without the migration explaining itself. Runs in CI.
+- `tests/home-care-diy-kit-live.spec.ts` - the rules only a real database can answer: that the gate resolves against the live catalog, that the schema refuses a live product with no photo and a duplicate ASIN, and that a `gone` product leaves the member shelf while a `suspect` one stays. Skips without credentials.
+
+The live file calls the libraries directly rather than the HTTP routes, and that is forced rather than chosen: middleware authenticates the fabricated admin session only against a build whose `NEXT_PUBLIC_SUPABASE_URL` points at the GoTrue stub, and that same baked value is what every server-side read uses.
+A build that can authenticate an admin therefore cannot reach the real catalog.
+The route spec takes the auth half, the live spec takes the data half, and neither pretends to cover the other.
+
 ## Owner decisions on record (binding on the pod)
 
 - **D1** The shelf is a tinted strip, collapsed by default, expanding in place. The booking CTA stays the only orange primary action on the row.

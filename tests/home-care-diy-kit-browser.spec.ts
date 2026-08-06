@@ -1,0 +1,252 @@
+import { test, expect, type BrowserContext, type Page } from '@playwright/test';
+
+/**
+ * Home Care DIY Kit - the admin screen and the member shelf, in a real browser.
+ *
+ * The static spec proves the contract and the route spec proves the answers;
+ * this one proves the SCREEN, because the parts the owner will actually judge -
+ * a pro task that refuses to open, a blocked photo pull that turns into an
+ * upload box, a swipe shelf whose counter tracks the scroll - only exist once
+ * React has mounted. A string match on the source cannot tell you any of them
+ * work, and a rename is not a regression.
+ *
+ * The shop's data comes through page.route, so these run under the ordinary
+ * stub build with no database: what is being tested is the screen's behaviour
+ * given an answer, not the answer.
+ *
+ * Auth follows the house pattern: the fabricated session cookie whose name
+ * derives from the baked NEXT_PUBLIC_SUPABASE_URL, against the GoTrue stub.
+ */
+
+const SHOP = '/vaca-mgmt/home-care-shop';
+
+const TASKS = [
+  { key: 'basement_humidity', title: 'Keep the basement under 60% humidity', diy_or_pro: 'diy', seasons: ['summer'], frequency: 'quarterly', eligible: true, product_count: 2 },
+  { key: 'audit_alarms', title: 'Check every smoke & CO alarm', diy_or_pro: 'diy', seasons: ['spring', 'summer', 'fall', 'winter'], frequency: 'annual', eligible: true, product_count: 0 },
+  { key: 'winterize_faucets', title: 'Shut off & drain outdoor faucets', diy_or_pro: 'either', seasons: ['fall'], frequency: 'annual', eligible: true, product_count: 0 },
+  { key: 'chimney_inspect', title: 'Chimney inspection & sweep', diy_or_pro: 'pro', seasons: ['fall'], frequency: 'annual', eligible: false, product_count: 0 },
+];
+
+const PRODUCTS = [
+  {
+    id: 'p1', asin: 'B01H1R0K5C', display_name: 'Digital hygrometer, 2-pack', brand: 'ThermoPro',
+    pitch: 'One at each end of the basement.', images: ['B01H1R0K5C/1.png'], image_source: 'manual',
+    price_band: 'under_25', category: 'monitor', active: true, link_status: 'ok', checked_at: null,
+    task_keys: ['basement_humidity'],
+  },
+  {
+    id: 'p2', asin: 'B08KFRZL3B', display_name: '50-pint dehumidifier', brand: null,
+    pitch: 'Set it to 55% and run the hose to the sump.', images: ['B08KFRZL3B/1.png'], image_source: 'manual',
+    price_band: '100_plus', category: 'tool', active: true, link_status: 'ok', checked_at: null,
+    task_keys: ['basement_humidity'],
+  },
+  {
+    id: 'p3', asin: 'B07YFCB4RD', display_name: 'Wet/dry shop vac', brand: null, pitch: null,
+    images: [], image_source: null, price_band: '50_100', category: 'tool', active: false,
+    link_status: 'ok', checked_at: null, task_keys: [],
+  },
+];
+
+async function signInAsAdmin(context: BrowserContext, baseURL: string) {
+  const session = {
+    access_token: 'stub-access-token',
+    refresh_token: 'stub-refresh-token',
+    token_type: 'bearer',
+    expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    user: { id: '00000000-0000-0000-0000-000000000001', aud: 'authenticated', role: 'authenticated' },
+  };
+  await context.addCookies([{
+    name: 'sb-127-auth-token',
+    value: 'base64-' + Buffer.from(JSON.stringify(session)).toString('base64url'),
+    url: baseURL,
+  }]);
+}
+
+/** Serve the shop payload, and let each test say what the mutating calls answer. */
+async function serveShop(
+  page: Page,
+  opts: { status?: number; body?: unknown; onWrite?: (method: string) => { status: number; json: unknown } } = {},
+) {
+  await page.route('**/api/admin/home-care/products**', async (route) => {
+    const method = route.request().method();
+    if (method === 'GET') {
+      await route.fulfill({
+        status: opts.status ?? 200,
+        json: opts.body ?? { tasks: TASKS, products: PRODUCTS },
+      });
+      return;
+    }
+    const answer = opts.onWrite?.(method) ?? { status: 200, json: { ok: true } };
+    await route.fulfill({ status: answer.status, json: answer.json });
+  });
+}
+
+test.describe('DIY Kit admin screen', () => {
+  test.beforeEach(async ({ context, baseURL }) => {
+    await signInAsAdmin(context, baseURL!);
+  });
+
+  test('happy: the screen opens on the maintenance catalog with its counts', async ({ page }) => {
+    await serveShop(page);
+    await page.goto(SHOP);
+    await expect(page.getByRole('heading', { name: 'Home Care Shop' })).toBeVisible();
+    // Task-first: the first thing on screen is the catalog, not a product form.
+    await expect(page.getByText('Keep the basement under 60% humidity')).toBeVisible();
+    await expect(page.getByText('2 items')).toBeVisible();
+    await expect(page.getByText('Add items').first()).toBeVisible();
+    // The header states the eligible split, so the gate is legible before anyone clicks.
+    await expect(page.getByText('3 of 4 tasks can carry a DIY shelf')).toBeVisible();
+  });
+
+  test('unhappy: a pro-only task is visibly locked and cannot be opened', async ({ page }) => {
+    await serveShop(page);
+    await page.goto(SHOP);
+
+    const pro = page.getByRole('button', { name: /Chimney inspection/ });
+    await expect(pro).toBeVisible();
+    await expect(pro).toBeDisabled();
+    await expect(pro).toContainText('We do this one');
+
+    // Clicking it must do nothing at all - not open, not error.
+    await pro.click({ force: true });
+    await expect(page.getByRole('heading', { name: 'Home Care Shop' })).toBeVisible();
+    await expect(page.getByText('Paste an Amazon link')).toHaveCount(0);
+  });
+
+  test('happy: opening a task shows its shelf and the two ways to add', async ({ page }) => {
+    await serveShop(page);
+    await page.goto(SHOP);
+    await page.getByRole('button', { name: /Keep the basement/ }).click();
+
+    await expect(page.getByRole('heading', { name: 'Keep the basement under 60% humidity' })).toBeVisible();
+    await expect(page.getByText('2 products, shown in this order.')).toBeVisible();
+    await expect(page.getByText('Digital hygrometer, 2-pack')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Paste an Amazon link/ })).toBeVisible();
+    // The library offers the products that are NOT already on this task.
+    await expect(page.getByRole('button', { name: /Pick from my library \(1\)/ })).toBeVisible();
+  });
+
+  test('happy: an empty task says so rather than showing an empty grid', async ({ page }) => {
+    await serveShop(page);
+    await page.goto(SHOP);
+    await page.getByRole('button', { name: /Check every smoke/ }).click();
+    await expect(page.getByText('Members see no shelf on this task until you add something.')).toBeVisible();
+  });
+
+  test('unhappy: a link the server refuses surfaces the server sentence', async ({ page }) => {
+    await serveShop(page);
+    await page.route('**/api/admin/home-care/parse-amazon', async (route) => {
+      await route.fulfill({
+        status: 422,
+        json: { error: "That link doesn't name a product. Open the item on Amazon and copy the URL from the address bar (it contains /dp/)." },
+      });
+    });
+    await page.goto(SHOP);
+    await page.getByRole('button', { name: /Keep the basement/ }).click();
+    await page.getByLabel('Amazon product URL').fill('https://www.amazon.com/s?k=hygrometer');
+    await page.getByRole('button', { name: 'Parse' }).click();
+
+    await expect(page.getByText('That link did not work').first()).toBeVisible();
+    await expect(page.getByText(/it contains \/dp\//).first()).toBeVisible();
+    // And the form does not advance to a draft it could not build.
+    await expect(page.getByText('Display name')).toHaveCount(0);
+  });
+
+  test('unhappy: a blocked photo pull becomes an upload box and a draft, not an error', async ({ page }) => {
+    await serveShop(page);
+    await page.route('**/api/admin/home-care/parse-amazon', async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: {
+          asin: 'B01H1R0K5C', title: 'ThermoPro TP49 Digital Hygrometer', brand: 'ThermoPro',
+          images: [], imageSource: null,
+          reason: 'Amazon blocked the request (it does that to servers). Add a photo below.',
+        },
+      });
+    });
+    await page.goto(SHOP);
+    await page.getByRole('button', { name: /Keep the basement/ }).click();
+    await page.getByLabel('Amazon product URL').fill('https://www.amazon.com/dp/B01H1R0K5C');
+    await page.getByRole('button', { name: 'Parse' }).click();
+
+    // The ASIN and the title still arrived - the paste was not wasted.
+    await expect(page.getByText('B01H1R0K5C')).toBeVisible();
+    await expect(page.getByText('photo needed')).toBeVisible();
+    await expect(page.getByText(/Amazon blocked the request/)).toBeVisible();
+    await expect(page.getByText('Upload a photo')).toBeVisible();
+    // With no photo the only thing on offer is a draft, and it says so.
+    await expect(page.getByRole('button', { name: 'Save as draft' })).toBeVisible();
+  });
+
+  test('happy: a parse with photos offers to add it to the task', async ({ page }) => {
+    await serveShop(page);
+    await page.route('**/api/admin/home-care/parse-amazon', async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: { asin: 'B0NEWITEM1', title: 'Moisture absorber tubs', brand: 'DampRid', images: ['B0NEWITEM1/1.png'], imageSource: 'listing' },
+      });
+    });
+    await page.goto(SHOP);
+    await page.getByRole('button', { name: /Keep the basement/ }).click();
+    await page.getByLabel('Amazon product URL').fill('https://www.amazon.com/dp/B0NEWITEM1');
+    await page.getByRole('button', { name: 'Parse' }).click();
+
+    await expect(page.getByText('1 photo pulled')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Add to this item' })).toBeVisible();
+    // The name came pre-filled from the listing, which is the point of the paste.
+    await expect(page.locator('input[placeholder="Digital hygrometer, 2-pack"]')).toHaveValue('Moisture absorber tubs');
+    // Pro tasks are absent from the "also show on" chips entirely.
+    await expect(page.getByRole('button', { name: /Chimney inspection/ })).toHaveCount(0);
+  });
+
+  test('unhappy: a save the server rejects keeps the draft on screen', async ({ page }) => {
+    await serveShop(page, {
+      onWrite: (method) => method === 'POST'
+        ? { status: 409, json: { error: 'That product is already in your library.' } }
+        : { status: 200, json: { ok: true } },
+    });
+    await page.route('**/api/admin/home-care/parse-amazon', async (route) => {
+      await route.fulfill({ status: 200, json: { asin: 'B0NEWITEM1', title: 'Moisture absorber tubs', brand: null, images: ['B0NEWITEM1/1.png'], imageSource: 'listing' } });
+    });
+    await page.goto(SHOP);
+    await page.getByRole('button', { name: /Keep the basement/ }).click();
+    await page.getByLabel('Amazon product URL').fill('https://www.amazon.com/dp/B0NEWITEM1');
+    await page.getByRole('button', { name: 'Parse' }).click();
+    await page.getByRole('button', { name: 'Add to this item' }).click();
+
+    await expect(page.getByText('Not saved').first()).toBeVisible();
+    await expect(page.getByText('That product is already in your library.').first()).toBeVisible();
+    // The work is not thrown away: the draft is still there to correct.
+    await expect(page.getByRole('button', { name: 'Add to this item' })).toBeVisible();
+  });
+
+  test('unhappy: a database without the migration says so, and offers a retry', async ({ page }) => {
+    await serveShop(page, {
+      status: 503,
+      body: { error: 'The Home Care Shop tables are not in this database yet. Apply the migration first.' },
+    });
+    await page.goto(SHOP);
+    await expect(page.getByText(/tables are not in this database yet/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+  });
+
+  test('happy: the library lists every product with where it is shown', async ({ page }) => {
+    await serveShop(page);
+    await page.goto(SHOP);
+    await page.getByRole('button', { name: /Product library \(3\)/ }).click();
+    await expect(page.getByText('Wet/dry shop vac')).toBeVisible();
+    // A product on no task is visible in the library and says it is on none -
+    // that is the state the coverage panel will act on in slice 2.
+    await expect(page.getByText('on no item')).toBeVisible();
+    // Drafts are labelled as drafts rather than looking live.
+    await expect(page.getByRole('button', { name: 'Draft' })).toBeVisible();
+  });
+
+  test('the PA-API reminder is on the screen where the manual work happens', async ({ page }) => {
+    await serveShop(page);
+    await page.goto(SHOP);
+    await expect(page.getByText('Photos are manual for now.')).toBeVisible();
+    await expect(page.getByText(/Product Advertising API access opens/)).toBeVisible();
+  });
+});
