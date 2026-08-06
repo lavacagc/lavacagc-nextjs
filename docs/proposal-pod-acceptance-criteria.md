@@ -274,7 +274,7 @@ This is the half of the pod a client touches, and it is what makes the admin's S
   The owner's call was to bound the window rather than close the door: a draft resolves only while `now()` is within 24 hours of its `updated_at`.
   `updated_at` rather than `created_at`, deliberately - `proposal_lines_touch_proposal` moves it on every re-import, so correcting a draft's lines reopens its proof-reading window, and an untouched draft still expires 24 hours after creation because the two columns are equal then.
   An expired draft returns the identical generic answer an unknown or revoked token gets, for the same reason those two share one: a different answer lets somebody test whether a token is live.
-  The window is one named constant, `DRAFT_LINK_LIFETIME_MS` in `publicView.ts`, and one predicate, `proposalLinkIsLive`, which BOTH doors call - `lookupPublicProposal` and `submitProposal` - so the submit route can never accept an answer on a link the page has stopped serving.
+  The window is one named constant, `DRAFT_LINK_LIFETIME_MS` in `linkWindow.ts` (it began in `publicView.ts`, and moved for the reason the follow-up below gives), and one predicate, `proposalLinkIsLive`, which BOTH doors call - `lookupPublicProposal` and `submitProposal` - so the submit route can never accept an answer on a link the page has stopped serving.
   A **sent** proposal is unaffected: D3 governs that link (no hard expiry, revocable from the admin) and still does.
   Application logic only, no migration: `status` and `updated_at` already exist.
   **The consequence this created, and how it was closed (follow-up, 5 Aug 2026):** Copy link on a draft older than 24 hours handed over a link that no longer resolved, and nothing in the admin roster said so.
@@ -292,7 +292,7 @@ This is the half of the pod a client touches, and it is what makes the admin's S
   A clipboard write that fails does not skip the refresh either: the admin copies that URL out of the fallback toast by hand, and it has to resolve for them too.
   A landed refresh updates that one row in place rather than re-reading the roster, which is ordered `updated_at.desc` - a re-read lifted every copied row to position one and shifted the next row out from under the cursor.
   The window rule moved into `src/lib/proposals/linkWindow.ts`, a module that imports nothing, so the roster's browser can ask the same question the server doors ask without pulling the secret-key REST client into the client bundle; `publicView` re-exports it, so there is still exactly one rule, in both units it is read in (`DRAFT_LINK_LIFETIME_MS` and `DRAFT_WINDOW_HOURS`).
-  Covered by `AC-S3-23` through `AC-S3-26` and by `B33` through `B36` in the roster browser suite.
+  Covered by `AC-S3-23` through `AC-S3-26`, by `B33` through `B36` in the roster browser suite, and end to end by `AC-S3-27e` (the same dead link opens again once an admin refreshes it) and `AC-S3-28e` (the two refusals, neither of which moves anything).
   Re-importing the proposal's lines, or sending it, makes the link live again.
 - **Send refreshes the window before it delivers.** The second consequence of the draft window, and the one it needed code for.
   The send route delivers the email FIRST and writes the status second, deliberately - a failed send must never leave a proposal reading "sent" - and it already handles `markSent` failing after delivery.
@@ -324,7 +324,9 @@ This is the half of the pod a client touches, and it is what makes the admin's S
 
 - `src/app/proposal/[token]/page.tsx` - the server component: three states, `force-dynamic`, noindex, rate-limited lookup.
 - `src/app/proposal/[token]/ProposalView.tsx` - the switches, the running total, the submit and the confirmation.
-- `src/lib/proposals/publicView.ts` - the token lookup, the draft-link window (`DRAFT_LINK_LIFETIME_MS` and `proposalLinkIsLive`, shared with the submit route), and the client-safe projection that strips member prices before anything is serialized.
+- `src/lib/proposals/publicView.ts` - the token lookup, and the client-safe projection that strips member prices before anything is serialized.
+- `src/lib/proposals/linkWindow.ts` - the draft-link window itself (`DRAFT_LINK_LIFETIME_MS`, `DRAFT_WINDOW_HOURS`, `proposalLinkIsLive` and `draftLinkHasExpired`), shared with the submit route and, since the follow-up above, with the roster's browser.
+  It imports nothing, which is what lets a client component read it; `publicView` re-exports all four, so every caller written against that module is unchanged and there is still one rule.
 - `src/app/api/proposal/[token]/submit/route.ts` - the one write a client can make.
 - `src/lib/proposals/submit.ts` - the WEB-022 guard, the server re-sum, and the insert.
 - `src/lib/proposals/ownerAlert.ts` - the itemized owner email and the Telegram message.
@@ -332,11 +334,14 @@ This is the half of the pod a client touches, and it is what makes the admin's S
 - `src/lib/privatePages.ts` - the one list of token-reached routes, and the four widgets that now consult it.
 - `src/lib/rateLimit.ts` - `clientIpFromHeaders`, a pure extraction (`getClientIp` delegates to it) so a Server Component holding `headers()` and the route holding a `Request` cannot drift on the trusted-header order.
 - `src/lib/proposals/clientPage.ts` - `CLIENT_PAGE_LIVE` flipped to true, in the same commit as the route.
-- `src/lib/proposals/store.ts` + `src/app/api/admin/proposals/[id]/route.ts` - `touchProposal`, and the send action's link-window refresh in front of the delivery.
+- `src/lib/proposals/store.ts` + `src/app/api/admin/proposals/[id]/route.ts` - `touchProposal`, the send action's link-window refresh in front of the delivery, and (from the follow-up above) the `refresh` lifecycle action Copy link fires on a draft.
 - `src/lib/notify/sendEmail.ts` + `src/app/vaca-mgmt/emails/page.tsx` - one added `EmailCategory`, and the audit filter that a `Record` over the union forces to keep up.
 - `src/middleware.ts` - `/api/proposal/` registered PUBLIC, alongside the other tokenized APIs.
 - `tests/proposal-pod-slice3.spec.ts` and `tests/proposal-pod-slice3-e2e.spec.ts`.
-- **No migration.** A production database at `20260827000000` runs this slice untouched, which AC-R8 asserts.
+- **No migration.** A production database at `20260827000000` runs this slice untouched.
+  `AC-R8` asserts that about **this pod's** schema rather than the whole repository: the pod's four migrations are all still present, and no migration dated after `20260827000000` touches `proposals`, `proposal_lines` or `proposal_submissions`.
+  It began as "the newest migration in the repo is `20260827000000`", which was a claim about every future feature - the next migration anyone adds anywhere fails it, having changed nothing about this pod.
+  SQL comments are stripped before matching, because these migrations cite each other in prose, and a later one quoting the pod as precedent for its own RLS posture must not fail an AC about tables it never touches.
 
 ### The three states, and why they are three
 

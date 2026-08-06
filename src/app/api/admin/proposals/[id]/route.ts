@@ -10,6 +10,10 @@
  *                             to be reversible, and re-sending cannot do it
  *                             while there is no client page to send to, so this
  *                             is the door that does not depend on Slice 3.
+ *   { action: 'refresh' }  -> move a DRAFT's link window forward and mail
+ *                             nobody, so what Copy link hands over resolves.
+ *                             Refused with 409 on anything else; see the case
+ *                             below for why that is a refusal and not a no-op.
  *   { action: 'reimport', lines: [...] } -> replace the line set with a newly
  *                             imported composition (same link, corrected
  *                             numbers). Old submissions stay readable through
