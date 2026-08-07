@@ -201,3 +201,29 @@ test('no two migrations claim the same version', () => {
     'rename the newer file to an unused version - Supabase rejects the push otherwise',
   ).toEqual([]);
 });
+
+test('the DIY Kit replay still sorts before the migration that needs it', () => {
+  // The collision above did lasting damage before it was renamed away. The
+  // Preview branch recorded version 20260828000000 for the diy_or_pro file,
+  // which sorts first, and then rolled back the whole of home_care_products
+  // when that file reached the same primary key. Preview branches are
+  // PERSISTENT and run each version exactly once, so the products migration is
+  // now unreachable there and the next one in line answered
+  // `relation "public.home_care_products" does not exist`.
+  //
+  // 20260828120000 replays those objects under a version the branch has not
+  // seen. What makes it work is only its POSITION: after the last version the
+  // branch recorded, and before the first migration that reads the table.
+  // Renumbering it outside that window puts the branch straight back where it
+  // was, and no other check in this repo would notice.
+  const files = readdirSync(join(__dirname, '..', 'supabase/migrations'));
+  // Every version is 14 digits, so a string compare IS the chronological one.
+  const versionOf = (name: string) => {
+    const file = files.find((f) => f === `${name}.sql`);
+    expect(file, `${name}.sql is gone - the Preview branch depends on it`).toBeTruthy();
+    return file!.slice(0, 14);
+  };
+  const replay = versionOf('20260828120000_home_care_products_preview_fixup');
+  expect(replay > versionOf('20260828000000_home_care_products')).toBe(true);
+  expect(replay < versionOf('20260829000000_home_care_price_band_optional')).toBe(true);
+});

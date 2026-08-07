@@ -134,6 +134,12 @@ Its stub honours PostgREST's `merge-duplicates` and row filters precisely so thi
   It was written as `20260828000000`, which a sibling branch had already spent on `home_care_products`.
   Supabase keys `supabase_migrations.schema_migrations` on that version alone and not on the filename, so the Preview branch pushed the second file onto the first one's primary key and answered `duplicate key value violates unique constraint "schema_migrations_pkey"`.
   It is `20260830000000` for that reason and must not be renumbered back.
+- The rename fixed the collision but not its damage, and `supabase/migrations/20260828120000_home_care_products_preview_fixup.sql` is the second half of the same repair.
+  A directory listing puts `..._diy_or_pro.sql` ahead of `..._products.sql`, so the Preview branch had applied THIS file's SQL under version `20260828000000` and then rolled the entire `home_care_products` migration back when it reached the history insert on the same key - its eleven statements had all succeeded, and the twelfth took them with it.
+  Preview branches are persistent and run each version exactly once, so the products migration is unreachable on that branch forever, and the next migration in line answered `relation "public.home_care_products" does not exist`.
+  The replay re-creates those objects under a version the branch has not seen; it is a guarded, re-runnable copy of `20260828000000`, so it is a no-op on production and on any fresh branch that replays in order.
+  Its version number is the whole mechanism: after the last version the damaged branch recorded, and before `20260829000000`, the first migration that reads the table.
+  It keeps `price_band NOT NULL` deliberately, so `20260829000000` still does its own work rather than finding it done.
 - Both new columns are read through degrade paths, because PostgREST answers an unknown column with a 400 and that would otherwise 500 the portal for every member.
   `fetchCatalog` retries without `pro_optional` and defaults it to `false`; `fetchMaintenanceRows` retries without `mode` and defaults it to `null`.
 - What a member loses on a deploy that runs ahead of the migration is the choice, not the checklist.
@@ -143,6 +149,8 @@ Its stub honours PostgREST's `merge-duplicates` and row filters precisely so thi
   The renumber above does not disturb it: what was applied was the SQL body, pasted into the editor, and every statement in it is idempotent, so a later run under the new version is a no-op on those columns.
 
 *Covered* for the "absent reads as no Pro option" half by `tests/home-care-diy-or-pro.spec.ts`, and for the pinned selects by `tests/home-care-wave1-growth.spec.ts`, both in CI.
+That same spec pins the two rules the Preview branch depends on: that no two migrations share a version, and that the replay still sorts between the migration it copies and the one that reads the table.
+The replay itself was checked the way its original was, on a throwaway Postgres 17: applied to a database missing the products schema it lands the tables, the trigger, RLS and the bucket and lets `20260829000000` and `20260830000000` follow; applied to one that already has them it changes nothing, twice over; and `pg_dump` of the two paths differs in nothing.
 
 ## DP9 - Which DIY tasks are worth offering as a service
 
