@@ -129,14 +129,18 @@ Its stub honours PostgREST's `merge-duplicates` and row filters precisely so thi
 
 ## DP8 - Deploying ahead of the migration cannot break the portal
 
-- `supabase/migrations/20260828000000_home_care_diy_or_pro.sql` is hand-applied, like the rest of this schema, and is idempotent.
+- `supabase/migrations/20260830000000_home_care_diy_or_pro.sql` is hand-applied, like the rest of this schema, and is idempotent.
   It adds `maintenance_catalog.pro_optional` (`NOT NULL DEFAULT false`) and `homeowner_maintenance.mode` (`NULL`, `CHECK (mode IS NULL OR mode IN ('diy','pro'))`), and marks the owner's 13 rows.
+  It was written as `20260828000000`, which a sibling branch had already spent on `home_care_products`.
+  Supabase keys `supabase_migrations.schema_migrations` on that version alone and not on the filename, so the Preview branch pushed the second file onto the first one's primary key and answered `duplicate key value violates unique constraint "schema_migrations_pkey"`.
+  It is `20260830000000` for that reason and must not be renumbered back.
 - Both new columns are read through degrade paths, because PostgREST answers an unknown column with a 400 and that would otherwise 500 the portal for every member.
   `fetchCatalog` retries without `pro_optional` and defaults it to `false`; `fetchMaintenanceRows` retries without `mode` and defaults it to `null`.
 - What a member loses on a deploy that runs ahead of the migration is the choice, not the checklist.
   Every `diy` task reads as `diy_only` and keeps its shelf exactly as it had it before the choice existed, an `either` task shows no shelf while it waits on an "I'll do it" that cannot be recorded, and the write behind it answers 500 and reverts the card with a toast.
-- **Migration 20260828000000 has already been applied to production and verified (6 Aug 2026):** both columns exist, the CHECK constraint is present, 13 rows marked.
+- **This migration has already been applied to production and verified (6 Aug 2026):** both columns exist, the CHECK constraint is present, 13 rows marked.
   That verification is by hand and has no automated equivalent, which is why it is recorded here.
+  The renumber above does not disturb it: what was applied was the SQL body, pasted into the editor, and every statement in it is idempotent, so a later run under the new version is a no-op on those columns.
 
 *Covered* for the "absent reads as no Pro option" half by `tests/home-care-diy-or-pro.spec.ts`, and for the pinned selects by `tests/home-care-wave1-growth.spec.ts`, both in CI.
 

@@ -69,7 +69,7 @@ interface CatalogRow {
   seasons: string[]; frequency: string; diy_or_pro: string; bookable: boolean;
   /** The catalog still carries these; the member surfaces stopped reading them. */
   est_cost_low: number | null; est_cost_high: number | null; priority: number; starter: boolean;
-  /** 20260828000000. A `diy` task La Vaca will also do on request. */
+  /** 20260830000000. A `diy` task La Vaca will also do on request. */
   pro_optional: boolean;
 }
 

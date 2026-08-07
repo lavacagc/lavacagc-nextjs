@@ -20,7 +20,7 @@ export interface ChoosableTask {
   diy_or_pro: 'diy' | 'pro' | 'either';
   /**
    * A `diy` task La Vaca will also do on request (maintenance_catalog.
-   * pro_optional). Optional because it only exists once 20260828000000 has been
+   * pro_optional). Optional because it only exists once 20260830000000 has been
    * hand-applied, and absent has to read as "no Pro option" rather than as one.
    */
   pro_optional?: boolean;

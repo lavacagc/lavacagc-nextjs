@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { readdirSync } from 'fs';
+import { join } from 'path';
 import { taskChoice, shelfVisible, requestedTaskKeys } from '../src/lib/homecare/taskChoice';
 
 /**
@@ -168,4 +170,34 @@ test.describe('what the member has asked us to do', () => {
     expect(request({ 'replace_hvac_filter|summer': 'pro' }, [], ['replace_hvac_filter'])).toEqual([]);
     expect(request({}, ['chimney_inspect'], ['chimney_inspect'])).toEqual([]);
   });
+});
+
+test('no two migrations claim the same version', () => {
+  // This slice's migration was written as 20260828000000, which a sibling
+  // branch had already spent on home_care_products. Supabase keys
+  // supabase_migrations.schema_migrations on the leading timestamp ALONE and
+  // never on the rest of the filename, so the Preview branch tried to insert
+  // the second file onto the first one's primary key and failed the whole PR
+  // with `duplicate key value violates unique constraint
+  // "schema_migrations_pkey"`. Nothing in the repo caught it: both files are
+  // valid SQL, both apply cleanly on their own, and lint, typecheck and build
+  // never read this directory.
+  //
+  // Repo-wide on purpose, unlike the scoped check in proposal-pod-slice3.spec
+  // that this file otherwise resembles. That one had to be narrowed because
+  // "the newest migration is X" goes stale the moment any feature adds one.
+  // This claim does not: two files may never share a version, today or after
+  // any number of new ones, so a passing run stays passing without edits.
+  const files = readdirSync(join(__dirname, '..', 'supabase/migrations'))
+    .filter((f) => f.endsWith('.sql'));
+  const byVersion = new Map<string, string[]>();
+  for (const f of files) {
+    const version = f.slice(0, 14);
+    byVersion.set(version, [...(byVersion.get(version) ?? []), f]);
+  }
+  const collisions = [...byVersion.entries()].filter(([, names]) => names.length > 1);
+  expect(
+    collisions.map(([version, names]) => `${version}: ${names.join(', ')}`),
+    'rename the newer file to an unused version - Supabase rejects the push otherwise',
+  ).toEqual([]);
 });

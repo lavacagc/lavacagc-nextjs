@@ -44,7 +44,7 @@ interface MaintenanceRow {
 
 /**
  * Columns that only exist once a hand-applied migration has run:
- * 20260815000000 for the service four, 20260828000000 for `mode`.
+ * 20260815000000 for the service four, 20260830000000 for `mode`.
  * Listed together because the degrade below is all-or-nothing anyway.
  */
 const SERVICE_COLUMNS = 'completed_by,scheduled_start,scheduled_end,service_address,mode';
@@ -99,7 +99,7 @@ const CATALOG_BASE =
  * The catalog, degrading to the pre-migration column set.
  *
  * Same reasoning as fetchMaintenanceRows: `pro_optional` only exists once
- * 20260828000000 has been hand-applied, and PostgREST answers an unknown column
+ * 20260830000000 has been hand-applied, and PostgREST answers an unknown column
  * with a 400 that supabaseRest turns into a throw. Without this, deploying
  * ahead of the migration 500s the portal for every member rather than showing
  * them a checklist with no Pro choice on the DIY tasks.
