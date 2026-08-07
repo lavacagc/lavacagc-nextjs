@@ -67,7 +67,10 @@ const MEMBER_ID = 'eeeeeeee-7777-4777-8777-777777777777';
 interface CatalogRow {
   key: string; title: string; blurb: string; applies_to: string[]; stages: string[];
   seasons: string[]; frequency: string; diy_or_pro: string; bookable: boolean;
+  /** The catalog still carries these; the member surfaces stopped reading them. */
   est_cost_low: number | null; est_cost_high: number | null; priority: number; starter: boolean;
+  /** 20260830000000. A `diy` task La Vaca will also do on request. */
+  pro_optional: boolean;
 }
 
 const ALL_SEASONS = ['spring', 'summer', 'fall', 'winter'];
@@ -76,16 +79,21 @@ const ALL_SEASONS = ['spring', 'summer', 'fall', 'winter'];
  * Four tasks, each carrying one question this file has to answer:
  *  - a stocked DIY task with FOUR picks, which is the swipe shelf;
  *  - a stocked DIY task with TWO, which is the plain grid;
+ *  - a stocked PRO-OPTIONAL DIY task, whose shelf must stay off screen until
+ *    the member says they are doing it themselves;
  *  - an eligible task nobody has stocked, which must look untouched;
  *  - a PRO task, which can never carry a shelf at all.
  * The two guide-backed keys are real summer guide keys, so "Learn more" renders
  * from the same `hasGuideItem` the page uses rather than from a fixture.
  */
 const CATALOG: CatalogRow[] = [
-  { key: 'replace_hvac_filter', title: 'Replace the HVAC filter', blurb: 'A clogged filter makes the system work harder and cost more.', applies_to: ['all'], stages: ['all'], seasons: ALL_SEASONS, frequency: 'quarterly', diy_or_pro: 'diy', bookable: false, est_cost_low: null, est_cost_high: null, priority: 30, starter: false },
-  { key: 'audit_alarms', title: 'Check every smoke & CO alarm', blurb: 'Press test on every alarm and swap the batteries.', applies_to: ['all'], stages: ['all'], seasons: ALL_SEASONS, frequency: 'annual', diy_or_pro: 'diy', bookable: false, est_cost_low: null, est_cost_high: null, priority: 20, starter: false },
-  { key: 'seal_deck', title: 'Clean & seal the deck', blurb: 'Wash it, let it dry, then seal or stain while the weather is warm.', applies_to: ['all'], stages: ['all'], seasons: ALL_SEASONS, frequency: 'annual', diy_or_pro: 'either', bookable: true, est_cost_low: 400, est_cost_high: 900, priority: 15, starter: false },
-  { key: 'chimney_inspect', title: 'Chimney inspection & sweep', blurb: 'Creosote buildup is a chimney-fire hazard.', applies_to: ['all'], stages: ['all'], seasons: ALL_SEASONS, frequency: 'annual', diy_or_pro: 'pro', bookable: true, est_cost_low: 200, est_cost_high: 400, priority: 10, starter: false },
+  { key: 'replace_hvac_filter', title: 'Replace the HVAC filter', blurb: 'A clogged filter makes the system work harder and cost more.', applies_to: ['all'], stages: ['all'], seasons: ALL_SEASONS, frequency: 'quarterly', diy_or_pro: 'diy', bookable: false, est_cost_low: null, est_cost_high: null, priority: 30, starter: false, pro_optional: false },
+  { key: 'audit_alarms', title: 'Check every smoke & CO alarm', blurb: 'Press test on every alarm and swap the batteries.', applies_to: ['all'], stages: ['all'], seasons: ALL_SEASONS, frequency: 'annual', diy_or_pro: 'diy', bookable: false, est_cost_low: null, est_cost_high: null, priority: 20, starter: false, pro_optional: false },
+  { key: 'seal_deck', title: 'Clean & seal the deck', blurb: 'Wash it, let it dry, then seal or stain while the weather is warm.', applies_to: ['all'], stages: ['all'], seasons: ALL_SEASONS, frequency: 'annual', diy_or_pro: 'either', bookable: true, est_cost_low: 400, est_cost_high: 900, priority: 15, starter: false, pro_optional: false },
+  { key: 'chimney_inspect', title: 'Chimney inspection & sweep', blurb: 'Creosote buildup is a chimney-fire hazard.', applies_to: ['all'], stages: ['all'], seasons: ALL_SEASONS, frequency: 'annual', diy_or_pro: 'pro', bookable: true, est_cost_low: 200, est_cost_high: 400, priority: 10, starter: false, pro_optional: false },
+  // The slice's own case: a DIY task the owner will also send a crew to. Its
+  // gear is stocked, so "the shelf is hidden" can only be about the choice.
+  { key: 'flush_ac_condensate', title: 'Clear the A/C condensate drain line', blurb: 'A clogged line overflows the drain pan - that is a ceiling stain in August.', applies_to: ['all'], stages: ['all'], seasons: ALL_SEASONS, frequency: 'annual', diy_or_pro: 'diy', bookable: false, est_cost_low: null, est_cost_high: null, priority: 25, starter: false, pro_optional: true },
 ];
 
 interface StubProduct {
@@ -108,6 +116,10 @@ const SHELVES: Record<string, StubProduct[]> = {
     { id: 'p5', asin: 'B05DRAFT01', display_name: 'Draft product nobody approved', brand: null, pitch: null, images: ['B05DRAFT01/1.png'], price_band: 'under_25', category: null, active: false, link_status: 'ok' },
     { id: 'p6', asin: 'B06GONE001', display_name: 'Delisted product', brand: null, pitch: null, images: ['B06GONE001/1.png'], price_band: 'under_25', category: null, active: true, link_status: 'gone' },
   ],
+  flush_ac_condensate: [
+    { id: 'p9', asin: 'B09VINEGR1', display_name: 'Distilled white vinegar, 1 gal', brand: 'Iberia', pitch: 'A cup down the line, twice a season.', images: ['B09VINEGR1/1.png'], price_band: 'under_25', category: 'consumable', active: true, link_status: 'ok' },
+    { id: 'p10', asin: 'B10DRAINB1', display_name: 'Condensate drain brush, 48 in', brand: 'Gulfmew', pitch: 'Reaches the trap without pulling the line apart.', images: ['B10DRAINB1/1.png'], price_band: '25_50', category: 'tool', active: true, link_status: 'ok' },
+  ],
   audit_alarms: [
     { id: 'p7', asin: 'B07ALARM01', display_name: 'Combination smoke & CO alarm', brand: 'First Alert', pitch: 'One per floor, plus outside every bedroom.', images: ['B07ALARM01/1.png'], price_band: '25_50', category: 'safety', active: true, link_status: 'ok' },
     { id: 'p8', asin: 'B08BATTRY1', display_name: '9V lithium batteries, 4-pack', brand: null, pitch: 'Ten-year cells, so this is a one-time job.', images: ['B08BATTRY1/1.png'], price_band: 'under_25', category: 'consumable', active: true, link_status: 'ok' },
@@ -129,7 +141,7 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
     source: 'home_care', created_at: new Date().toISOString(), updated_at: null,
   };
 
-  const maintStore = new Map<string, { status: string; completed_at: string | null }>();
+  const maintStore = new Map<string, { status: string; completed_at: string | null; mode: string | null }>();
   let stub: http.Server;
 
   test.beforeAll(async () => {
@@ -155,17 +167,44 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
         if (url.pathname === '/rest/v1/homeowner_maintenance') {
           if (req.method === 'POST') {
             try {
-              const b = JSON.parse(raw) as { task_key: string; season: string; status: string };
-              maintStore.set(`${b.task_key}|${b.season}`, { status: b.status, completed_at: null });
+              const b = JSON.parse(raw) as { task_key: string; season: string; status: string; mode?: string | null; completed_at?: string | null };
+              const k = `${b.task_key}|${b.season}`;
+              // merge-duplicates: a body that does not carry a column leaves it
+              // alone, exactly as PostgREST would. Without this the mode write
+              // would blank a completion and the test would prove the opposite
+              // of what the route is careful to do.
+              const held = maintStore.get(k);
+              maintStore.set(k, {
+                status: b.status,
+                completed_at: 'completed_at' in b ? (b.completed_at ?? null) : held?.completed_at ?? null,
+                mode: 'mode' in b ? (b.mode ?? null) : held?.mode ?? null,
+              });
             } catch { /* ignore malformed */ }
             res.writeHead(201).end();
             return;
           }
           const rows = [...maintStore.entries()].map(([k, v]) => {
             const [task_key, season] = k.split('|');
-            return { task_key, season, status: v.status, completed_at: v.completed_at, updated_at: null, completed_by: null, scheduled_start: null, scheduled_end: null, service_address: null };
+            return { task_key, season, status: v.status, completed_at: v.completed_at, updated_at: null, completed_by: null, scheduled_start: null, scheduled_end: null, service_address: null, mode: v.mode };
           });
-          return json(200, rows);
+          // The page reads every row for the member; the task route reads ONE,
+          // by task and season, before it rewrites that row's status. Answering
+          // the second read with the whole table hands it row zero - some other
+          // task's - so the stub decides what the route writes and the test
+          // proves nothing about the route. Honour the filters PostgREST would.
+          // `searchParams.get` has already decoded the value, so `eq.` is all
+          // there is left to strip.
+          const eq = (col: string) => {
+            const val = url.searchParams.get(col);
+            return val?.startsWith('eq.') ? val.slice(3) : null;
+          };
+          const wantKey = eq('task_key');
+          const wantSeason = eq('season');
+          const limit = Number(url.searchParams.get('limit') || 0);
+          const filtered = rows
+            .filter((r) => (wantKey === null || r.task_key === wantKey)
+              && (wantSeason === null || r.season === wantSeason));
+          return json(200, limit > 0 ? filtered.slice(0, limit) : filtered);
         }
         // The shelf read, embedded exactly as PostgREST answers it. Scoped to
         // the keys the page asked for, so a shelf leaking onto a task the query
@@ -378,18 +417,20 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
     await shot(page, '05-shelf-two-picks-grid.png');
   });
 
-  test('S5: Learn more sits beside the DIY badge, and the icon-only hide is undoable', async ({ page }) => {
+  test('S5: the badge line sits under the blurb, and the icon-only hide is undoable', async ({ page }) => {
     await openChecklist(page);
     const row = taskRow(page, 'Replace the HVAC filter');
     await row.scrollIntoViewIfNeeded();
 
-    // "Learn more" is on the badge line, not down in the action row: same
-    // baseline as the DIY badge, and above the blurb.
+    // Three rows, not six (owner, 6 Aug 2026). Title, then one line of blurb,
+    // then everything that is neither: the DIY verdict, the frequency and the
+    // guide link share the last row. "Learn more" used to sit above the blurb
+    // beside the badge; the badge came down instead of the blurb going up.
     const badge = await row.getByText('DIY', { exact: true }).boundingBox();
     const learn = await row.getByRole('link', { name: 'Learn more' }).boundingBox();
     const blurb = await row.getByText('A clogged filter', { exact: false }).first().boundingBox();
     expect(Math.abs(learn!.y - badge!.y)).toBeLessThan(4);
-    expect(learn!.y).toBeLessThan(blurb!.y);
+    expect(badge!.y).toBeGreaterThan(blurb!.y);
 
     // Icon-only, but named - and still a 44px target under the global rule.
     const hide = page.getByTestId('hide-task-replace_hvac_filter');
@@ -411,5 +452,127 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
     await expect(taskRow(page, 'Replace the HVAC filter')).toHaveCount(1);
     await expect(page.getByTestId('diy-kit-toggle-replace_hvac_filter')).toBeVisible();
     await expect(undoBar).toHaveCount(0);
+  });
+
+  test('S6: a pro-optional task hides its gear until the member says they are doing it', async ({ page }) => {
+    await openChecklist(page);
+    const row = taskRow(page, 'Clear the A/C condensate drain line');
+    await row.scrollIntoViewIfNeeded();
+
+    // Stocked, and still not on screen. This is the whole slice: the shelf is
+    // the reward for an intent we know, not the default state of a DIY task.
+    await expect(page.getByTestId('diy-kit-toggle-flush_ac_condensate')).toHaveCount(0);
+    // The choice is offered instead - and it has replaced the badge, so there
+    // is no static DIY label competing with it.
+    await expect(page.getByTestId('choose-diy-flush_ac_condensate')).toBeVisible();
+    await expect(page.getByTestId('choose-pro-flush_ac_condensate')).toBeVisible();
+    await shot(page, '07-choice-undecided.png');
+
+    await page.getByTestId('choose-diy-flush_ac_condensate').click();
+    const strip = page.getByTestId('diy-kit-toggle-flush_ac_condensate');
+    await expect(strip).toBeVisible();
+    await expect(strip).toContainText('2 picks');
+    // Decided, so the toggle folds into a chip and the card loses a row.
+    await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toContainText("You've got this");
+    await shot(page, '08-choice-diy-shelf.png');
+  });
+
+  test('S7: handing it to La Vaca puts it on the request and takes the gear away', async ({ page }) => {
+    await openChecklist(page);
+    const row = taskRow(page, 'Clear the A/C condensate drain line');
+    await row.scrollIntoViewIfNeeded();
+
+    // S6 left this task decided, which is exactly the state a returning member
+    // arrives in - so this also proves the way back. The chip IS the way to
+    // change your mind: tapping it reopens the toggle it collapsed into.
+    await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toContainText("You've got this");
+    await page.getByTestId('choice-chip-flush_ac_condensate').click();
+
+    await page.getByTestId('choose-pro-flush_ac_condensate').click();
+    // Picking Pro IS adding it to the request - one tap, not two.
+    await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toContainText('On your request');
+    await expect(page.getByTestId('diy-kit-toggle-flush_ac_condensate')).toHaveCount(0);
+
+    // "On your request" has to mean a request that EXISTS. The pill is the only
+    // way to send one, and it carries the keys, so both are asserted rather
+    // than the chip's wording alone.
+    const pill = page.getByRole('link', { name: /^Review your request/ });
+    await expect(pill).toBeVisible();
+    await expect(pill).toHaveAttribute('href', /[?&]tasks=(.*,)?flush_ac_condensate(,|$)/);
+    await shot(page, '09-choice-pro-on-request.png');
+
+    // And it survives a reload, because the choice is stored rather than held
+    // in a tab. A member who picks on their phone and opens the portal on a
+    // laptop must not be asked again.
+    //
+    // The pill is re-asserted here for a reason: the chip is rendered from the
+    // rehydrated mode while the request used to be seeded from the ?add= deep
+    // link alone, so this was exactly where the two came apart - card saying
+    // the job was on the request, no pill on screen to send it, and this spec
+    // passing over it because it only ever checked the wording.
+    await openChecklist(page);
+    await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toContainText('On your request');
+    await expect(page.getByTestId('diy-kit-toggle-flush_ac_condensate')).toHaveCount(0);
+    await expect(pill).toBeVisible();
+    await expect(pill).toHaveAttribute('href', /[?&]tasks=(.*,)?flush_ac_condensate(,|$)/);
+
+    // The chip is the way back, and a real one: it writes the reversal, so the
+    // task leaves the request and STAYS off across a reload rather than the
+    // card quietly re-growing a chip the server still believed in.
+    await page.getByTestId('choice-chip-flush_ac_condensate').click();
+    await expect(page.getByTestId('choose-pro-flush_ac_condensate')).toBeVisible();
+    await expect(pill).toHaveCount(0);
+    await openChecklist(page);
+    await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toHaveCount(0);
+    await expect(page.getByTestId('choose-pro-flush_ac_condensate')).toBeVisible();
+    await expect(pill).toHaveCount(0);
+  });
+
+  test('S8: no price appears anywhere on the checklist', async ({ page }) => {
+    await openChecklist(page);
+    // The catalog still carries est_cost on two of these fixtures, and the page
+    // used to render "Pro est. $400-$900" from them. Choosing who does a job is
+    // not the moment to anchor on a number (owner, 6 Aug 2026), so the page
+    // stopped reading those columns at all.
+    const main = page.locator('main');
+    await expect(main).not.toContainText('Pro est.');
+    await expect(main).not.toContainText('Consult with our team');
+    // Nor does the shelf carry a price of its own. The product price band was
+    // retired one commit earlier (#100) and the component stopped reading the
+    // column, so "no pricing" now covers the open shelf too - which is the only
+    // reading that matches S2. The stub still SERVES a band on these rows, so
+    // this only passes while the component genuinely ignores them.
+    await page.getByTestId('diy-kit-toggle-replace_hvac_filter').click();
+    const shelf = taskRow(page, 'Replace the HVAC filter');
+    await expect(shelf.getByTestId('diy-kit-link').first()).toBeVisible();
+    await expect(shelf.getByText('Under $25')).toHaveCount(0);
+    await expect(main.getByText(/\$\d/)).toHaveCount(0);
+    await shot(page, '10-no-pricing-anywhere.png', { fullPage: true });
+  });
+
+  test('S9: changing who does a task does not erase a completion', async ({ page }) => {
+    await openChecklist(page);
+    const row = taskRow(page, 'Clear the A/C condensate drain line');
+    await row.scrollIntoViewIfNeeded();
+
+    // The member who cleared the line themselves in June, and in August decides
+    // we should take it over next time. Both facts are one row, and the mode
+    // write touches only one of them.
+    await row.getByRole('button', { name: 'Mark done' }).click();
+    await expect(row.getByRole('button', { name: 'Mark not done' })).toBeVisible();
+
+    await page.getByTestId('choose-pro-flush_ac_condensate').click();
+    await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toContainText('On your request');
+
+    // Asserted across a RELOAD, because that is the only place the damage would
+    // show: the mode write upserts with merge-duplicates, so a hardcoded
+    // status:'todo' would blank the completion server-side while the tab kept
+    // rendering the tick it never re-read. The route reads the status back and
+    // writes it again for exactly this.
+    await openChecklist(page);
+    const after = taskRow(page, 'Clear the A/C condensate drain line');
+    await expect(after.getByRole('button', { name: 'Mark not done' })).toBeVisible();
+    await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toContainText('On your request');
+    await shot(page, '11-completion-survives-mode-change.png');
   });
 });

@@ -169,7 +169,10 @@ test('AC5 - nothing dead, drafted or pictureless reaches a member', () => {
 test('AC5 - a task with no shelf renders exactly as before', () => {
   const client = read(CLIENT);
   expect(client).toContain('const shelf = productShelves[t.key] ?? [];');
-  expect(client).toContain('{shelf.length > 0 && <DiyKitShelf');
+  // Stock is still the first condition. The second - shelfVisible - arrived
+  // with the DIY/Pro slice, and only ever REMOVES a shelf: an unstocked task
+  // still renders with no strip, no zero count, no layout shift.
+  expect(client).toContain('{shelf.length > 0 && shelfVisible(choice, mode) && (');
 });
 
 // ------------------------------------------------------- AC6: the swipe shelf
@@ -258,11 +261,16 @@ test('AC8 - a task_keys that is not a list is refused, never read as "off every 
 
 // ------------------------------------------------------- AC9: the two row tweaks
 
-test('AC9 - Learn more sits beside the badge, not in the action row', () => {
+test('AC9 - Learn more shares the last row with the DIY/Pro control', () => {
+  // The card was condensed to three rows (owner, 6 Aug 2026): title, one line
+  // of blurb, then everything else. "Learn more" still sits with the DIY/Pro
+  // verdict rather than in an action row of its own - the pair came DOWN below
+  // the blurb together instead of the blurb going up.
   const client = read(CLIENT);
-  const meta = client.slice(client.indexOf('DIY / PRO'), client.indexOf('Pro est.'));
-  expect(meta).toContain('Learn more');
-  expect(meta).toContain('/home-care/guides/');
+  const row = client.slice(client.indexOf("Who is doing ${t.title}"), client.indexOf('shelfVisible(choice, mode)'));
+  expect(row).toContain('Learn more');
+  expect(row).toContain('/home-care/guides/');
+  expect(row).toContain('{freq &&');
 });
 
 test('AC9 - the hide control is an icon that still says what it does, and is undoable', () => {

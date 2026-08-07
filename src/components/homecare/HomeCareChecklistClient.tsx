@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Plus, ClipboardList, Sparkles, History, X, EyeOff, RotateCcw, PartyPopper, Share2, Copy, MapPin, Wrench, Home, ChevronDown, Pencil, Trash2, Undo2 } from 'lucide-react';
 import { hasGuideItem } from '@/lib/homecare/guides';
-import { costLabel, CONSULT_COST } from '@/lib/homecare/cost';
 import { prevSeason, seasonStart, SEASONS, type Season } from '@/lib/homecare/season';
 import { getFactForTask, HOME_FACTS, factValueSummary } from '@/lib/homecare/records';
 import HomeCareRecordCapture, { type RecordValue } from '@/components/homecare/HomeCareRecordCapture';
 import DiyKitShelf from '@/components/homecare/DiyKitShelf';
+import { useToast } from '@/hooks/use-toast';
+import { taskChoice, shelfVisible, requestedTaskKeys } from '@/lib/homecare/taskChoice';
 import type { HomeCareProduct } from '@/lib/homecare/products';
 
 const SHARE_URL = 'https://www.lavacagc.com/home-care?utm_source=member_share&utm_medium=portal&utm_campaign=home_care_share';
@@ -19,8 +20,16 @@ export interface ChecklistTask {
   blurb: string;
   diy_or_pro: 'diy' | 'pro' | 'either';
   bookable: boolean;
-  est_cost_low: number | null;
-  est_cost_high: number | null;
+  /**
+   * A `diy` task La Vaca will also do on request. Only meaningful alongside
+   * `diy_or_pro`; see `taskChoice` for the three shapes a card can take.
+   *
+   * No `est_cost_*` here on purpose: the member checklist no longer quotes a
+   * price anywhere (owner decision 2026-08-06). The columns still exist and the
+   * admin quoting tools still read them - this surface stopped being a reader,
+   * so it does not ask for them.
+   */
+  pro_optional?: boolean;
   seasons: string[];
   frequency: string;
   starter: boolean;
@@ -57,16 +66,28 @@ const SEASON_SPOTLIGHTS: Record<string, { eyebrow: string; title: string; body: 
 const id = (key: string, season: string) => `${key}|${season}`;
 
 /**
- * Task blurb clamped to two lines with an ellipsis; when the text actually
- * overflows, the whole blurb becomes a tap target that expands/collapses it.
- * Keeps rows compact, which matters most on mobile.
+ * One line of blurb, with the way to open it INLINE at the end of that line.
+ *
+ * Two things about this are deliberate.
+ *
+ * ONE LINE, not two. The blurb explains why a task matters, which most members
+ * only need once; the title carries the rest. Clamping it is the other half of
+ * how a six-row card became three.
+ *
+ * THE AFFORDANCE IS INLINE, and it is not its own button. A truncated line with
+ * no visible way to open it is not a control, it is a trap - and globals.css
+ * gives every `button` a 44px floor, so a "more" button of its own would cost
+ * more height than the clamp saves. Instead the whole line is one block button
+ * with `min-h-0` overriding that floor and `py-1` keeping the tap target above
+ * the 24px WCAG AA minimum, with "more" as a plain span riding at the end of
+ * the text.
  */
 function ClampedBlurb({ text, expanded, onToggle }: { text: string; expanded: boolean; onToggle: () => void }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [overflows, setOverflows] = useState(false);
 
   useEffect(() => {
-    // Measure only while clamped — an expanded blurb never reports overflow.
+    // Measure only while clamped - an expanded blurb never reports overflow.
     if (expanded) return;
     const el = ref.current;
     if (!el) return;
@@ -77,22 +98,24 @@ function ClampedBlurb({ text, expanded, onToggle }: { text: string; expanded: bo
   }, [text, expanded]);
 
   const body = (
-    // line-clamp needs its own -webkit-box display, so only use block when expanded
-    <span ref={ref} className={`text-sm text-text-secondary leading-relaxed ${expanded ? 'block' : 'line-clamp-2'}`}>
+    // line-clamp needs its own -webkit-box display, so only use block when expanded.
+    <span ref={ref} className={`text-[13px] leading-snug text-text-secondary ${expanded ? 'block' : 'line-clamp-1'}`}>
       {text}
     </span>
   );
 
+  // Nothing to open: no control, and no phantom "more" on a blurb that fits.
   if (!overflows && !expanded) return <span className="mt-0.5 block">{body}</span>;
   return (
     <button
       type="button"
       onClick={onToggle}
       aria-expanded={expanded}
-      className="mt-0.5 block w-full cursor-pointer text-left"
+      data-testid="blurb-toggle"
+      className="mt-0.5 flex w-full min-h-0 cursor-pointer items-baseline gap-1.5 py-1 text-left"
     >
-      {body}
-      <span className="mt-0.5 inline-block text-xs font-semibold text-primary">{expanded ? 'Show less' : 'Read more'}</span>
+      <span className="min-w-0 flex-1">{body}</span>
+      <span className="shrink-0 text-[11px] font-extrabold text-primary">{expanded ? 'less' : 'more'}</span>
     </button>
   );
 }
@@ -108,6 +131,7 @@ export default function HomeCareChecklistClient({
   showCatchUp = false,
   autoAddKey,
   lavacaCompleted: lavacaCompletedFromServer,
+  modes: modesFromServer = {},
   homeRecordPrefill = {},
   homeDetailsConsentGiven = false,
   productShelves = {},
@@ -127,6 +151,13 @@ export default function HomeCareChecklistClient({
    * label - that distinction is the whole point of completed_by.
    */
   lavacaCompleted?: Record<string, string>;
+  /**
+   * `task_key|season` -> who the member said is doing it. Keyed per season like
+   * `done`, and absent for every task they have not decided about - which is
+   * the state a card opens in, and the reason the gear shelf is not on screen
+   * before anyone has said they are doing the work themselves.
+   */
+  modes?: Record<string, 'diy' | 'pro'>;
   /** Saved home facts keyed by canonical fact_key, for prefilling capture panels. */
   homeRecordPrefill?: Record<string, RecordValue>;
   /** Whether the homeowner has already consented to saving home details (skip the checkbox). */
@@ -145,10 +176,16 @@ export default function HomeCareChecklistClient({
   // completed_by='homeowner'. Left as a plain prop, the open tab would keep
   // reading "Completed by La Vaca" over work the member just did themselves -
   // which is the exact case the attribution exists to distinguish.
+  const { toast } = useToast();
   const [lavacaCompleted, setLavacaCompleted] = useState<Record<string, string>>(lavacaCompletedFromServer ?? {});
   const [done, setDone] = useState<Set<string>>(new Set(doneItems.map((d) => id(d.task_key, d.season))));
   const [dismissed, setDismissed] = useState<Set<string>>(new Set(dismissedKeys));
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(autoAddKey ? [autoAddKey] : []));
+  /**
+   * Tasks put on the request by hand: the ＋ circle on a pro-only card, and the
+   * `?add=` deep link. Everything the member chose with "La Vaca does it" is
+   * NOT here - that lives in `modes`, and `selected` below unions the two.
+   */
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(autoAddKey ? [autoAddKey] : []));
   const [busy, setBusy] = useState<string | null>(null);
   /** The task the hide icon just removed, so the undo bar can name it. */
   const [lastHidden, setLastHidden] = useState<{ key: string; title: string } | null>(null);
@@ -157,6 +194,49 @@ export default function HomeCareChecklistClient({
   const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
   const [stickyTop, setStickyTop] = useState(0);
   const [expandedBlurbs, setExpandedBlurbs] = useState<Set<string>>(new Set());
+  /** `task_key|season` -> 'diy' | 'pro'. Absent means undecided. */
+  const [modes, setModes] = useState<Record<string, 'diy' | 'pro'>>(modesFromServer);
+
+  /**
+   * The consolidated request, derived rather than stored - see
+   * `requestedTaskKeys`, which owns the rule and is unit-tested.
+   *
+   * Everything downstream reads this: the card tint, the ＋ circle's pressed
+   * state, `requestUrl`, and the sticky pill. That is the point. A chip reading
+   * "On your request" is the same fact as the pill's count, so they are read
+   * from the same place and cannot disagree - not after a reload, not across
+   * two seasons of the same task, and not after the chip's reset.
+   */
+  const selected = useMemo(
+    () => requestedTaskKeys({ tasks, modes, picked, dismissed }),
+    [tasks, modes, picked, dismissed],
+  );
+
+  /**
+   * Where keyboard focus must land after a choice: `chip|<task|season>` or
+   * `toggle|<task|season>`.
+   *
+   * Picking a side unmounts the control that was pressed - the segmented toggle
+   * folds into the chip, and the chip's reset unfolds it again - so left alone,
+   * focus drops to <body> and a keyboard or screen-reader member loses their
+   * place mid-list. Set on the write and again on a failed write's revert,
+   * because that swaps the control back a second time.
+   *
+   * The target is HELD until a focus can actually land. Its replacement mounts
+   * in the same batched render that sets `busy`, so it mounts disabled, and a
+   * disabled button is not a focusable area - focusing it there is a silent
+   * no-op. `busy` is therefore a dependency: the write settling re-runs this,
+   * and only then is the target cleared.
+   */
+  const [focusTarget, setFocusTarget] = useState<string | null>(null);
+  const choiceRefs = useRef(new Map<string, HTMLButtonElement | null>());
+  useEffect(() => {
+    if (!focusTarget) return;
+    const el = choiceRefs.current.get(focusTarget);
+    if (el?.disabled) return;
+    el?.focus();
+    setFocusTarget(null);
+  }, [focusTarget, busy]);
 
   const toggleBlurb = (k: string) => {
     setExpandedBlurbs((prev) => {
@@ -289,7 +369,14 @@ export default function HomeCareChecklistClient({
   const seasonTasks = tasks.filter((t) => !t.starter && t.seasons.includes(activeSeason) && !dismissed.has(t.key));
   const hiddenTasks = tasks.filter((t) => dismissed.has(t.key));
   const showStarterSection = showStarter && starterTasks.length > 0;
-  const hasBookable = tasks.some((t) => t.bookable);
+  // Can ANYTHING on this list reach the request, and by which route. No longer
+  // the same question as `bookable`: a `diy` + `pro_optional` task is
+  // requestable through the "La Vaca does it" toggle while its bookable column
+  // stays false on purpose, because bookable also drives the admin walk-in
+  // dropdown and the newsletter CTA. Read through `taskChoice` so the hint
+  // tracks the card shapes rather than a column that no longer means this.
+  const hasChoice = tasks.some((t) => taskChoice(t) === 'choose');
+  const hasPlusAdd = tasks.some((t) => taskChoice(t) === 'pro_only' && t.bookable);
   // Saved home facts for the "My Home" recap, in registry order (stable).
   const savedFacts = HOME_FACTS.filter((f) => records.has(f.key));
 
@@ -314,7 +401,9 @@ export default function HomeCareChecklistClient({
       return next;
     });
     if (dismiss) {
-      setSelected((prev) => {
+      // Only the hand-made pick needs clearing; a `pro` mode drops off the
+      // request on its own, because `requestedTaskKeys` skips dismissed tasks.
+      setPicked((prev) => {
         if (!prev.has(key)) return prev;
         const next = new Set(prev);
         next.delete(key);
@@ -450,11 +539,132 @@ export default function HomeCareChecklistClient({
     }
   };
 
-  const toggleSelect = (key: string) => {
-    const next = new Set(selected);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    setSelected(next);
+  /** The ＋ circle on a pro-only card. A `choose` task goes on via `setMode`. */
+  const togglePicked = (key: string) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  /**
+   * Record who is doing a task, and put it on (or take it off) the request.
+   *
+   * Picking "La Vaca does it" IS adding it to the request - one tap, not two
+   * (owner decision 2026-08-06). That is also what let the card lose a row:
+   * the choice control and the old "Add to request" button were the same
+   * action, so only one of them survives. Nothing is sent to anyone until the
+   * member checks the request out, so this stays fully reversible.
+   *
+   * Tapping the current choice again clears it, which is the only way back to
+   * undecided - and it takes the task off the request if it was on it, because
+   * "I have not decided" cannot mean "please come and do it". The chip a decided
+   * card collapses into calls exactly this with the mode it is showing, so
+   * "change your mind" is one persisted reversal rather than a local unhide that
+   * a reload would undo.
+   *
+   * Nothing is written about the request itself: membership is DERIVED from
+   * these modes (see `requestedTaskKeys`), so the pill follows the chip by
+   * construction instead of by a second write that could miss.
+   *
+   * Optimistic, with a revert: the member's tap must feel instant, and a failed
+   * write that silently kept the new state would tell them we are coming when
+   * nobody knows we are.
+   */
+  const setMode = async (key: string, season: string, next: 'diy' | 'pro') => {
+    const k = id(key, season);
+    const previous = modes[k];
+    const value = previous === next ? undefined : next;
+
+    setModes((prev) => {
+      const copy = { ...prev };
+      if (value) copy[k] = value;
+      else delete copy[k];
+      return copy;
+    });
+    setFocusTarget(`${value ? 'chip' : 'toggle'}|${k}`);
+
+    setBusy(`mode|${k}`);
+    try {
+      const res = await fetch('/api/home-care/task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ task_key: key, season, mode: value ?? null }),
+      });
+      if (!res.ok) throw new Error(`mode update failed: ${res.status}`);
+    } catch {
+      setModes((prev) => {
+        const copy = { ...prev };
+        if (previous) copy[k] = previous;
+        else delete copy[k];
+        return copy;
+      });
+      setFocusTarget(`${previous ? 'chip' : 'toggle'}|${k}`);
+      toast({
+        title: 'Could not save that',
+        description: 'We could not record who is doing this task. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /**
+   * Take a task off the consolidated request outright.
+   *
+   * The deep links - the newsletter's "Add to plan", a guide's "Add this on my
+   * checklist", any `?add=` - put a task on the request before the member has
+   * said anything about who is doing it, and they KEEP it there afterwards:
+   * saying "I'll do it" this season is not a withdrawal of the ask (owner
+   * decision 2026-08-06). That is only honest while there is a way back off,
+   * because a `choose` card has no ＋ circle to un-press.
+   *
+   * Removal has to hold against a recompute, so it clears every input that
+   * could put the task back: the hand-made pick, and any season still storing
+   * `pro`. Those are per (task, season) and the request is per task, so a
+   * summer "La Vaca does it" left standing would silently re-add the task the
+   * member just took off. Each is cleared through `setMode`, re-sending the
+   * mode it already holds - the "tap the current choice again" path - so the
+   * reversal is persisted and reverts on failure like any other.
+   *
+   * `focusKey` is resolved by the card that owns the button, because only it
+   * knows which control it will be left showing once `isSel` flips and the
+   * button unmounts. It cannot be inferred here: the seasons this clears are by
+   * definition NOT the one on screen (the button only renders where the active
+   * season is not already saying "On your request"), so the targets `setMode`
+   * sets on the way through point at cards no tab is currently rendering. It is
+   * therefore set last, after those, so the card the member is actually looking
+   * at is the one that wins.
+   */
+  const clearing = useRef<Set<string>>(new Set());
+  const clearFromRequest = async (key: string, focusKey: string) => {
+    // One at a time per task. `setMode` clears a season by re-sending the mode
+    // it already holds, which a re-entrant call reading the pre-click `modes`
+    // would send as a fresh 'pro' - putting back the task it was asked to take
+    // off. A second tap while the first is settling has nothing left to do.
+    if (clearing.current.has(key)) return;
+    clearing.current.add(key);
+    try {
+      setPicked((prev) => {
+        if (!prev.has(key)) return prev;
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      const proSeasons = Object.entries(modes)
+        .filter(([panelKey, m]) => m === 'pro' && panelKey.slice(0, panelKey.lastIndexOf('|')) === key)
+        .map(([panelKey]) => panelKey.slice(panelKey.lastIndexOf('|') + 1));
+      for (const season of proSeasons) {
+        await setMode(key, season, 'pro');
+      }
+    } finally {
+      clearing.current.delete(key);
+      setFocusTarget(focusKey);
+    }
   };
 
   const requestUrl = `/home-care/book?tasks=${[...selected].map(encodeURIComponent).join(',')}`;
@@ -474,23 +684,23 @@ export default function HomeCareChecklistClient({
   const listMinimized = planComplete && !showCompleted;
 
   const Row = (t: ChecklistTask, season: string) => {
-    const isDone = done.has(id(t.key, season));
+    const panelKey = id(t.key, season);
+    const isDone = done.has(panelKey);
     const isSel = selected.has(t.key);
-    const cost = costLabel(t.est_cost_low, t.est_cost_high);
     const freq = FREQ_LABEL[t.frequency];
+    // Which of the three card shapes this task takes, and what the member has
+    // said about it. Both drive the row-3 control and whether the gear shows.
+    const choice = taskChoice(t);
+    const mode = modes[panelKey];
+    // Whether a control on this card already tells the member the task is on
+    // the request, in its own words. Where none does, one has to be added.
+    const saysOnRequest = (choice === 'choose' && mode === 'pro') || (choice === 'pro_only' && t.bookable);
     // My Home Systems: the canonical fact this task can capture (if any), whether
     // it's already saved, and whether its inline panel is open.
     const fact = getFactForTask(t.key);
     // The DIY Kit shelf, if the owner has stocked this task. Empty for every
     // task they have not, which is most of them and the point.
     const shelf = productShelves[t.key] ?? [];
-    // Does the action row have anything in it besides the hide icon? On a task
-    // that is neither bookable nor tied to a home fact it does not, and an
-    // icon-only row reads as a stray control floating under the blurb - so on
-    // those cards the icon moves up to the title row, where the + circle sits
-    // on bookable ones and the space is otherwise empty.
-    const hasRowActions = t.bookable || !!fact;
-    const panelKey = id(t.key, season);
     // Icon-only (owner, 5 Aug 2026). The accessible name carries the meaning a
     // phone cannot hover to read, `title` gives the pointer tooltip, and the
     // undo bar in the sticky header pays for the lost label: an icon a member
@@ -504,7 +714,7 @@ export default function HomeCareChecklistClient({
         aria-label={`Not relevant - hide ${t.title}`}
         title="Not relevant - hide for me"
         data-testid={`hide-task-${t.key}`}
-        className="group -my-2 ml-auto flex shrink-0 items-center justify-center"
+        className="group -mx-2 -my-2 flex shrink-0 items-center justify-center"
       >
         <span className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors group-hover:bg-muted group-hover:text-slate-600">
           <EyeOff className="h-4 w-4" />
@@ -514,78 +724,76 @@ export default function HomeCareChecklistClient({
     const captureOpen = capturePanelOpen.has(panelKey);
     const saved = fact ? records.has(fact.key) : false;
     return (
-      <div key={`${t.key}-${season}`} className={`rounded-xl border bg-card p-4 shadow-card transition-colors ${isSel ? 'border-primary bg-primary/5' : 'border-border'} ${isDone ? 'opacity-70' : ''}`}>
-        {/* Title line: checkbox + title + badges (+ estimate toggle). The
-            checkbox keeps a tall tap target but negative margins shrink its
-            layout footprint so the title hugs the left edge — and the blurb
-            below runs the full card width instead of indenting under it. */}
-        <div className="flex items-center gap-2">
+      <div key={`${t.key}-${season}`} className={`rounded-xl border bg-card p-3.5 shadow-card transition-colors ${isSel ? 'border-primary bg-primary/5' : 'border-border'} ${isDone ? 'opacity-70' : ''}`}>
+        {/* ROW 1 - checkbox, title, and the two icon affordances.
+            Three rows, not six (owner, 6 Aug 2026): a member needs to know what
+            the task is, say who is doing it, and tick it off. Everything else
+            that used to have a row of its own is either an icon up here or one
+            tap inside the blurb. */}
+        {/* `gap-3`, with every icon button carrying `-mx-2`. globals.css gives
+            each of them a 44px MINIMUM WIDTH as well as height, so left alone
+            two icons plus the checkbox took ~100px out of a 328px card and the
+            title wrapped where it had no need to. The negative margins let the
+            tap targets overlap the gaps and the card padding instead of pushing
+            the text column - the same trick the checkbox already used. */}
+        <div className="flex items-start gap-3">
           <button
             type="button"
+            ref={(el) => { choiceRefs.current.set(`done|${panelKey}`, el); }}
             onClick={() => toggleDone(t.key, season)}
             disabled={busy === id(t.key, season)}
             aria-label={isDone ? 'Mark not done' : 'Mark done'}
             className="group -my-2.5 -ml-3 -mr-1 flex shrink-0 items-center justify-center"
           >
-            {/* 20px visible box inside a 44px-tall button; the full-width blurb
-                below overlaps the bottom ~10px, so the effective tap target is
-                ~34px — still above the WCAG AA minimum of 24px */}
-            <span className={`flex h-5 w-5 items-center justify-center rounded-md border-2 transition-colors ${isDone ? 'border-secondary bg-secondary text-white' : 'border-slate-300 group-hover:border-primary'}`}>
+            {/* 20px visible box inside a 44px-tall button. Muted, and not a
+                statement about completion, once the member has handed the job
+                to us: the crew flow is what stamps that row, and inviting a
+                tick that means nothing is how "Completed by La Vaca" ends up
+                contradicting itself. */}
+            <span className={`flex h-5 w-5 items-center justify-center rounded-md border-2 transition-colors ${isDone ? 'border-secondary bg-secondary text-white' : mode === 'pro' ? 'border-slate-200' : 'border-slate-300 group-hover:border-primary'}`}>
               {isDone && <Check className="h-3.5 w-3.5" />}
             </span>
           </button>
-          {/* Title on its own line, the badge row under it. They used to share
-              one wrapping flex, which put whichever badge did not fit at the
-              start of the next line - and every badge but the first carries a
-              leading "·", so a wrapped frequency read as an orphaned bullet.
-              Splitting them also matches the approved mockup. */}
+
           <div className="min-w-0 flex-1">
-            <h3 className={`text-base font-bold text-text-primary ${isDone ? 'line-through' : ''}`}>{t.title}</h3>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-              <span className={`text-[11px] font-extrabold ${t.diy_or_pro === 'pro' ? 'text-amber-700' : t.diy_or_pro === 'diy' ? 'text-emerald-700' : 'text-slate-500'}`}>
-                {t.diy_or_pro === 'pro' ? 'PRO' : t.diy_or_pro === 'diy' ? 'DIY' : 'DIY / PRO'}
-              </span>
-              {/* "Learn more" belongs beside the badge, not down in the action
-                  row (owner, 5 Aug 2026): it describes the task rather than
-                  doing anything to it, and the action row is then exactly the
-                  two things you can DO about this task, plus hide. */}
-              {hasGuideItem(season, t.key) && (
-                <a href={`/home-care/guides/${season}#${t.key}`} className="text-[11px] font-bold text-primary hover:underline">
-                  Learn more
-                </a>
-              )}
-              {/* Separated by space rather than by a leading "·": the row wraps
-                  on a narrow phone, and a dot that begins a line reads as a
-                  stray bullet. The gap does the same work and cannot orphan. */}
-              {freq && <span className="whitespace-nowrap text-[11px] text-slate-400">{freq}</span>}
-              {/* "Pro est." prefixes a figure, not the consult copy - "Pro est.
-                  Consult with our team" reads as a stray word. */}
-              {cost && <span className="whitespace-nowrap text-[11px] text-slate-400">{cost === CONSULT_COST ? cost : `Pro est. ${cost}`}</span>}
-            </div>
+            <h3 className={`text-[15px] font-bold leading-snug text-text-primary ${isDone ? 'line-through' : ''}`}>{t.title}</h3>
+            {/* ROW 2 - one line of blurb with the affordance INLINE.
+                `min-h-0` is deliberate and load-bearing: globals.css gives every
+                button a 44px floor, which on a one-line blurb would cost more
+                height than clamping it saves. `py-1` keeps the tap target above
+                the 24px WCAG AA minimum without paying the full 44. */}
+            <ClampedBlurb
+              text={t.blurb}
+              expanded={expandedBlurbs.has(panelKey)}
+              onToggle={() => toggleBlurb(panelKey)}
+            />
           </div>
-          {/* On a card with no action row, the hide icon lives up here instead
-              of alone under the blurb. */}
-          {!isDone && !hasRowActions && hideButton}
-          {t.bookable && (
+
+          {/* My Home Systems, promoted from its own row to an icon that costs no
+              height (owner decision 2026-08-06). Teal once something is saved,
+              so the card still says at a glance that we know this house. */}
+          {fact && (
             <button
               type="button"
-              onClick={() => toggleSelect(t.key)}
-              aria-pressed={isSel}
-              aria-label={isSel ? `Remove ${t.title} from request` : `Add ${t.title} to request`}
-              className="group -my-2.5 -mr-2 flex shrink-0 items-center justify-center"
+              onClick={() => toggleCapture(panelKey)}
+              aria-expanded={captureOpen}
+              aria-label={saved ? `Edit saved home detail for ${t.title}` : fact.kind === 'location' ? `Add where this is for ${t.title}` : `Add details for ${t.title}`}
+              title={saved ? 'Saved home detail - edit' : fact.kind === 'location' ? 'Add where this is' : 'Add details'}
+              data-testid={`home-detail-${t.key}`}
+              className="group -mx-2 -my-2 flex shrink-0 items-center justify-center"
             >
-              {/* 36px visible circle inside the 44px tap target */}
-              <span className={`flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all ${isSel ? 'border-primary bg-primary text-white shadow-button' : 'border-slate-300 text-slate-400 group-hover:border-primary group-hover:text-primary'}`}>
-                {isSel ? <Check className="h-4 w-4" /> : <Plus className="h-5 w-5" />}
+              <span className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${saved ? 'bg-accent-teal/10 text-accent-teal' : 'text-slate-400 group-hover:bg-muted group-hover:text-accent-teal'}`}>
+                {fact.kind === 'location' ? <MapPin className="h-4 w-4" /> : <Wrench className="h-4 w-4" />}
               </span>
             </button>
           )}
+          {!isDone && hideButton}
         </div>
-        {/* Attribution sits on its own line under the title, not wedged into
-            the badge row between the title and PRO/DIY. The timezone is pinned
-            because this component is server-rendered too: without it the server
-            formats in UTC and the browser in the member's zone, so a late-evening
-            completion renders a different day on each and hydration mismatches. */}
+
+        {/* Attribution. The timezone is pinned because this component is
+            server-rendered too: without it the server formats in UTC and the
+            browser in the member's zone, so a late-evening completion renders a
+            different day on each and hydration mismatches. */}
         {isDone && lavacaCompleted?.[id(t.key, season)] && (
           <div className="mt-1 text-xs font-bold text-primary" data-testid="completed-by-lavaca">
             Completed by La Vaca &middot;{' '}
@@ -594,50 +802,130 @@ export default function HomeCareChecklistClient({
             })}
           </div>
         )}
-        {/* Description + actions run the full card width below the title line */}
-        <ClampedBlurb text={t.blurb} expanded={expandedBlurbs.has(id(t.key, season))} onToggle={() => toggleBlurb(id(t.key, season))} />
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-          {t.bookable && (
-            // Add-to-request toggle (the labelled sibling of the ＋ circle).
-            // There is no per-row "book now" anymore: every service goes into
-            // one request and checks out together, so the owner gets a single
-            // consolidated message instead of one alert per task.
+
+        {/* ROW 3 - who is doing it, and the frequency.
+            On a `choose` task this control replaces BOTH the old DIY/PRO badge
+            and the add-to-request pair, because picking "La Vaca does it" is
+            adding it to the request. That is where most of the height went. */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {choice === 'choose' ? (
+            mode ? (
+              // Decided: the toggle folds into a chip so a returning member's
+              // list is two rows per task, not three. Tapping it re-sends the
+              // mode it is showing, which `setMode` reads as "clear this" - so
+              // the reversal is written, drops the task off the request, and
+              // survives a reload, rather than hiding a chip the server still
+              // believes in. The accessible name says it is a control: "On your
+              // request" alone reads as a status, and the member arriving here
+              // by keyboard has just been moved onto it.
+              <button
+                type="button"
+                ref={(el) => { choiceRefs.current.set(`chip|${panelKey}`, el); }}
+                onClick={() => setMode(t.key, season, mode)}
+                disabled={busy === `mode|${panelKey}`}
+                aria-label={`Change who is doing ${t.title}`}
+                data-testid={`choice-chip-${t.key}`}
+                className="group -my-1 inline-flex items-center justify-start"
+              >
+                <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-extrabold ${mode === 'pro' ? 'bg-primary/10 text-primary' : 'bg-emerald-50 text-emerald-700'}`}>
+                  <Check className="h-3 w-3" />
+                  {mode === 'pro' ? 'On your request' : "You've got this"}
+                </span>
+              </button>
+            ) : (
+              <span className="inline-flex rounded-[10px] bg-muted p-0.5" role="group" aria-label={`Who is doing ${t.title}`}>
+                <button
+                  type="button"
+                  ref={(el) => { choiceRefs.current.set(`toggle|${panelKey}`, el); }}
+                  onClick={() => setMode(t.key, season, 'diy')}
+                  aria-pressed={false}
+                  disabled={busy === `mode|${panelKey}`}
+                  data-testid={`choose-diy-${t.key}`}
+                  className="-my-1.5 rounded-lg px-3 text-[12px] font-extrabold text-text-secondary transition-colors hover:text-emerald-700"
+                >
+                  I&apos;ll do it
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode(t.key, season, 'pro')}
+                  aria-pressed={false}
+                  disabled={busy === `mode|${panelKey}`}
+                  data-testid={`choose-pro-${t.key}`}
+                  className="-my-1.5 rounded-lg px-3 text-[12px] font-extrabold text-text-secondary transition-colors hover:text-primary"
+                >
+                  La Vaca does it
+                </button>
+              </span>
+            )
+          ) : (
+            // No choice to make, so the catalog's own verdict stays a label.
+            <span className={`text-[11px] font-extrabold ${choice === 'pro_only' ? 'text-amber-700' : 'text-emerald-700'}`}>
+              {choice === 'pro_only' ? 'PRO' : 'DIY'}
+            </span>
+          )}
+
+          {/* A pro-only task keeps the ＋ circle: it is bookable, and with no
+              toggle on the card this is the only way onto the request. */}
+          {choice === 'pro_only' && t.bookable && (
             <button
               type="button"
-              onClick={() => toggleSelect(t.key)}
+              onClick={() => togglePicked(t.key)}
               aria-pressed={isSel}
-              className="group inline-flex items-center justify-start"
+              className="group -my-1 inline-flex items-center justify-start"
             >
               <span className="inline-flex items-center gap-1 text-xs font-bold text-primary group-hover:underline">
                 {isSel ? <><Check className="h-3.5 w-3.5" /> Added to request</> : <><Plus className="h-3.5 w-3.5" /> Add to request</>}
               </span>
             </button>
           )}
-          {fact && (
-            // My Home Systems: save where a system is (or its make/model) so La
-            // Vaca can help faster next time. Teal to read as "your home", not a
-            // booking action. The button keeps a full 44px tap target; the small
-            // visual lives in the nested span.
+
+          {/* The card is not allowed to sit on the request without saying so.
+              Two controls already say it in their own words - the `pro` chip
+              and the ＋ circle's "Added to request" - and anywhere else that is
+              a card tinted `border-primary` and counted by the pill with
+              nothing on it to explain why or take it back. That is reachable
+              through every deep link, and most sharply right after "I'll do
+              it": a green "You've got this" chip on a job still queued for us
+              to quote. So the state is stated, and the statement is the way
+              out. */}
+          {/* Tapping this unmounts it, so it hands on the control this card is
+              left showing: the chip or the toggle where there is a choice to
+              make, and the done box where there is not. The active season's
+              mode is never one of the ones cleared, so the chip and toggle both
+              outlive the tap. */}
+          {isSel && !saysOnRequest && (
             <button
               type="button"
-              onClick={() => toggleCapture(panelKey)}
-              aria-expanded={captureOpen}
-              className="group inline-flex items-center justify-start"
+              onClick={() => void clearFromRequest(t.key, choice === 'choose' ? `${mode ? 'chip' : 'toggle'}|${panelKey}` : `done|${panelKey}`)}
+              disabled={busy === `mode|${panelKey}`}
+              aria-label={`Remove ${t.title} from your request`}
+              data-testid={`remove-from-request-${t.key}`}
+              className="group -my-1 inline-flex items-center justify-start"
             >
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-accent-teal group-hover:underline">
-                {saved ? (
-                  <><Check className="h-3.5 w-3.5" /> Saved home detail · edit</>
-                ) : fact.kind === 'location' ? (
-                  <><MapPin className="h-3.5 w-3.5" /> Add where this is</>
-                ) : (
-                  <><Wrench className="h-3.5 w-3.5" /> Add details</>
-                )}
+              <span className="inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2 py-1 text-[11px] font-extrabold text-primary">
+                Still on your request
+                <span className="inline-flex items-center gap-0.5 text-text-secondary group-hover:text-destructive">
+                  <X className="h-3 w-3" /> remove
+                </span>
               </span>
             </button>
           )}
-          {!isDone && hasRowActions && hideButton}
+
+          {freq && <span className="whitespace-nowrap text-[11px] text-slate-400">{freq}</span>}
+          {hasGuideItem(season, t.key) && (
+            <a href={`/home-care/guides/${season}#${t.key}`} className="text-[11px] font-bold text-primary hover:underline">
+              Learn more
+            </a>
+          )}
         </div>
-        {shelf.length > 0 && <DiyKitShelf taskKey={t.key} products={shelf} affiliateTag={affiliateTag} />}
+
+        {/* The gear shelf is the reward for saying you are doing it yourself.
+            Before that it is not on screen at all, which is both the biggest
+            height saving here and the honest thing to show someone who has just
+            asked us to do the job. */}
+        {shelf.length > 0 && shelfVisible(choice, mode) && (
+          <DiyKitShelf taskKey={t.key} products={shelf} affiliateTag={affiliateTag} />
+        )}
         {fact && captureOpen && (
           <div className="mt-3">
             <HomeCareRecordCapture
@@ -858,10 +1146,19 @@ export default function HomeCareChecklistClient({
         </div>
       )}
 
-      {hasBookable && selected.size === 0 && (
+      {/* How to get something onto the request, named as the card actually
+          offers it. Most cards are now a choice, where the way in is the
+          "La Vaca does it" toggle - a ＋ circle is only the mechanism on a
+          pro-only card, so promising one where none exists sends the member
+          hunting for a glyph that is not on their list. */}
+      {(hasChoice || hasPlusAdd) && selected.size === 0 && (
         <div className="flex items-center gap-2 rounded-lg bg-primary/5 px-3 py-2 text-xs font-semibold text-text-secondary">
-          <span className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-primary/40 text-primary"><Plus className="h-3.5 w-3.5" /></span>
-          Add any task you&apos;d like us to handle, then send them all as one request.
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-primary/40 text-primary">
+            {hasChoice ? <ClipboardList className="h-3 w-3" /> : <Plus className="h-3.5 w-3.5" />}
+          </span>
+          {hasChoice
+            ? 'Tap “La Vaca does it” on anything you’d like us to handle, then send them all as one request.'
+            : 'Add any task you’d like us to handle, then send them all as one request.'}
         </div>
       )}
 

@@ -109,12 +109,20 @@ test('AC8: capture buttons keep a full 44px tap target (visual shrink on a neste
   // The trigger button carries no height/width utility - its small look lives in
   // the nested span (globals.css forces every button to min 44px). Grab just the
   // button's own className value (up to its closing quote), not the nested icons.
-  const triggerMatch = client.match(/onClick=\{\(\) => toggleCapture\(panelKey\)\}[\s\S]{0,140}?className="([^"]*)"/);
+  //
+  // It became an ICON on the title row when the card was condensed (owner,
+  // 6 Aug 2026), so it no longer carries `inline-flex`; the negative margins it
+  // gained let that 44px box overlap the gap instead of pushing the title, and
+  // change nothing about the target itself. What this guards is unchanged: no
+  // sizing utility on the button, so the global floor still applies.
+  const triggerMatch = client.match(/onClick=\{\(\) => toggleCapture\(panelKey\)\}[\s\S]{0,400}?className="([^"]*)"/);
   expect(triggerMatch).not.toBeNull();
   const triggerButtonClass = triggerMatch?.[1] ?? '';
-  expect(triggerButtonClass).toContain('inline-flex');
+  expect(triggerButtonClass).toMatch(/\bflex\b/);
   expect(triggerButtonClass).not.toMatch(/\bh-\d/);
   expect(triggerButtonClass).not.toMatch(/\bw-\d/);
+  // The visual size lives on the span inside it.
+  expect(client).toMatch(/toggleCapture\(panelKey\)[\s\S]{0,900}h-7 w-7/);
   // Save button sizes via padding, not a sub-44 height class.
   const saveMatch = capture.match(/onClick=\{save\}[\s\S]{0,140}?className="([^"]*)"/);
   expect(saveMatch).not.toBeNull();
@@ -133,10 +141,12 @@ test('AC9: no em dashes in any Slice 3 file (global style rule)', () => {
     return client.slice(s, e + end.length);
   };
   const stateBlock = slice('// My Home Systems: an overlay', 'setConsentGiven(true);');
-  // End anchor moved with the DIY Kit slice: the dismiss control that used to
-  // close this block as `{!isDone && (` is now the extracted `hideButton`,
-  // rendered in one of two places. The block being scanned is unchanged.
-  const triggerBlock = slice('// My Home Systems: save where a system is', '{!isDone && hasRowActions && hideButton}');
+  // Anchors move whenever the card is restyled - they moved again when it was
+  // condensed to three rows and this trigger became a title-row icon. The
+  // `length` sanity checks below are what stops a stale anchor from silently
+  // scanning the whole (legacy, em-dash-carrying) file and failing for the
+  // wrong reason.
+  const triggerBlock = slice('My Home Systems, promoted from its own row', '{!isDone && hideButton}');
   const panelBlock = slice('{fact && captureOpen && (', 'handleRecordSaved(fact.key, value)');
   expect(stateBlock.includes('—'), 'checklist client state block').toBe(false);
   expect(triggerBlock.includes('—'), 'checklist client trigger block').toBe(false);

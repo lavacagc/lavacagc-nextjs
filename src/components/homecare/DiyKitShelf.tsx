@@ -7,12 +7,17 @@
  * it owns a scroll position and a resize listener, and the checklist has enough
  * state of its own.
  *
+ * WHEN IT RENDERS is not this component's call: `shelfVisible` decides, and on
+ * a task where both ways are real it says no until the member has picked "I'll
+ * do it". So the card above this one is never offering a shopping list and a
+ * hand-it-to-us control at the same time.
+ *
  * THE SHAPE IS THE OWNER'S DECISION, not a default:
  *  - Collapsed by default (D1). It is a warm tinted bar with the first photos
  *    stacked on it and a count, so it is noticed on every scroll pass while
- *    costing one row of height until it is wanted. "Add to request" stays the
- *    only orange primary on the row, because a booking is worth two orders of
- *    magnitude more than a commission and the page should say so.
+ *    costing one row of height until it is wanted. Nothing here is an orange
+ *    primary, because a booking is worth two orders of magnitude more than a
+ *    commission and the page should say so.
  *  - Past two products it swipes, with a slider bar that is ALWAYS DRAWN (D2).
  *    Not the platform scrollbar: that one fades out, and a member who cannot see
  *    it reads a four-product shelf as a two-product shelf and never swipes.

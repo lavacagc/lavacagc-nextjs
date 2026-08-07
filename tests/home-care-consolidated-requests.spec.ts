@@ -45,11 +45,60 @@ test('AC1: checklist has no per-row single-book link (the fan-out is removed)', 
   expect(checklist).not.toContain('Book this now');
 });
 
-test('AC2: each bookable row has an Add-to-request toggle wired to the cart', () => {
+test('AC2: every bookable row has a way onto the cart, and they all drive one set', () => {
+  // Two shapes since the DIY/Pro slice, and both end at `selected`:
+  //  - a pro-only task keeps the explicit Add-to-request button;
+  //  - a task the member can choose about gets there by picking "La Vaca does
+  //    it", which IS adding it to the request. That merge is what let the card
+  //    drop a row - the button and the choice were the same action.
   expect(checklist).toContain('Add to request');
   expect(checklist).toContain('Added to request');
-  // Both the + circle and the text toggle drive the same selection set.
-  expect((checklist.match(/toggleSelect\(t\.key\)/g) || []).length).toBeGreaterThanOrEqual(2);
+  expect(checklist).toContain('La Vaca does it');
+  expect(checklist).toContain('On your request');
+  // One selection, whichever way a task got there - and DERIVED, not a second
+  // set written alongside the stored modes. That is what stops a card and the
+  // pill disagreeing, so it is asserted at the seam: the request comes out of
+  // `requestedTaskKeys`, and `setMode` does not write it a second time.
+  expect(checklist).toContain('requestedTaskKeys({ tasks, modes, picked, dismissed })');
+  expect(checklist).not.toMatch(/const \[selected, setSelected\]/);
+  // The pro-only ＋ circle is the one hand-made route onto it.
+  expect(checklist).toContain('togglePicked(t.key)');
+});
+
+test('AC2b: no card sits on the request without saying so, and every one can say no', () => {
+  // The deep links ("Add to plan", "Add this on my checklist", any ?add=) put a
+  // task on the request before the member has chosen who does it, and it STAYS
+  // there when they pick "I'll do it" - the ask is not withdrawn by saying you
+  // will also have a go (owner, 6 Aug 2026). A `choose` card has no ＋ circle to
+  // un-press, so without this the member reads a green "You've got this" chip
+  // on a job we are still queued to quote, with no way to see or stop it.
+  expect(checklist).toContain('const saysOnRequest =');
+  expect(checklist).toContain('isSel && !saysOnRequest');
+  expect(checklist).toContain('Still on your request');
+  expect(checklist).toContain('from your request'); // the control's accessible name
+  // Removing has to survive the recompute, so it clears BOTH inputs: the
+  // hand-made pick and any season still storing 'pro'. A summer "La Vaca does
+  // it" left standing would put the task straight back.
+  const clear = checklist.slice(
+    checklist.indexOf('const clearFromRequest ='),
+    checklist.indexOf('const requestUrl ='),
+  );
+  expect(clear).toContain('setPicked');
+  expect(clear).toContain("m === 'pro'");
+  expect(clear).toContain('await setMode(');
+  // Tapping it unmounts it, so it has to hand focus on or a keyboard member is
+  // dropped to <body> mid-list. The target comes from the CARD, because the
+  // seasons this clears are by definition not the one on screen - relying on
+  // setMode's own target aims at a card no tab is rendering, and where there
+  // are no pro seasons at all setMode never runs. It is set after the loop so
+  // it is not overwritten by those.
+  expect(clear).toContain('setFocusTarget(focusKey)');
+  expect(clear.indexOf('setFocusTarget(focusKey)')).toBeGreaterThan(clear.indexOf('await setMode('));
+  expect(checklist).toMatch(/clearFromRequest\(t\.key,[^)]*panelKey/);
+  // Every one of those three targets has to be a registered, rendered control.
+  for (const kind of ['chip', 'toggle', 'done']) {
+    expect(checklist).toContain(`choiceRefs.current.set(\`${kind}|\${panelKey}\`, el)`);
+  }
 });
 
 test('AC3: the only submit path is the consolidated cart pill', () => {

@@ -23,7 +23,10 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
     .filter(Boolean)
     .slice(0, 20);
 
-  // Look up the requested tasks (preserve the order the homeowner selected them).
+  // Look up the requested tasks, in the order the URL lists them. That order is
+  // the checklist's own - catalog priority, since the request is derived by
+  // walking the task list rather than accumulated as the member taps - so it is
+  // no longer tap order, and this page does not sort it into one of its own.
   // Degrade gracefully: if the catalog lookup fails, fall back to a generic
   // service below rather than 500ing the booking page.
   let services: BookingService[] = [];
