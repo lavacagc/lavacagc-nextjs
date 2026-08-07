@@ -129,7 +129,7 @@ export default async function HomeCarePage({ searchParams }: { searchParams: Pro
                   <span className="text-transparent bg-gradient-to-r from-primary to-accent-sunset bg-clip-text">take care of itself</span>
                 </h2>
                 <p className="text-lg text-text-secondary leading-relaxed mb-5">
-                  Each season we hand you a short, personalized list of what your home actually needs, with a quick why, a rough cost, and a one-tap way to book La Vaca on anything you&apos;d rather not do yourself. Check things off as you go; your progress is always saved.
+                  Each season we hand you a short, personalized list of what your home actually needs, with a quick why and a one-tap way to book La Vaca on anything you&apos;d rather not do yourself. Check things off as you go; your progress is always saved.
                 </p>
                 <ul className="space-y-2.5 mb-2">
                   {[

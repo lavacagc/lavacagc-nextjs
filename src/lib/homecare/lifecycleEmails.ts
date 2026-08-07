@@ -115,12 +115,12 @@ export function buildWelcomeEmail(args: WelcomeEmailArgs): {
     headline(`You're in.`, 'Your plan is ready.'),
     intro(
       hi,
-      `Your seasonal checklist is live - a short, personalized list of what your home needs right now, each item tagged <strong style="color:${INK}">DIY or pro</strong> so you know what's worth handing off. Check things off as you go; your progress is always saved.`,
+      `Your seasonal checklist is live - a short, personalized list of what your home needs right now, and you decide <strong style="color:${INK}">who is doing what</strong>: the jobs you'll take on, and the ones you'd rather hand to us. Check things off as you go; your progress is always saved.`,
     ),
     cta('See my checklist', checklistUrl, 'Free &nbsp;&middot;&nbsp; No account &nbsp;&middot;&nbsp; Nothing to download'),
     callBlock(
       'Rather we handled it?',
-      `Tap "Add to request" on anything you'd rather not do yourself, and we'll price it in one go.`,
+      `Pick "La Vaca does it" on anything you'd rather not do yourself, and we'll price it all in one go.`,
     ),
     // Send them the signup page, never this email. The checklist button above
     // carries a stable access token that gates booking paid work at this
@@ -143,8 +143,8 @@ export function buildWelcomeEmail(args: WelcomeEmailArgs): {
 
   const text =
     `${hi}\n\nYour La Vaca Home Care checklist is ready: ${checklistUrl}\n\n` +
-    `A short, personalized list of what your home needs right now - each item tagged DIY or pro. Check things off as you go; your progress is saved.\n\n` +
-    `Rather we handled it? Call (201) 212-4917 - 24-hour response guaranteed.\n\n` +
+    `A short, personalized list of what your home needs right now - you decide who is doing what: the jobs you'll take on, and the ones you'd rather hand to us. Check things off as you go; your progress is saved.\n\n` +
+    `Rather we handled it? Pick "La Vaca does it" on anything you'd rather not do yourself and we'll price it all in one go, or call (201) 212-4917 - 24-hour response guaranteed.\n\n` +
     `Know someone who'd want this? They can get their own free plan: ${baseUrl}/home-care\n` +
     textFooter(
       `You're getting this because you joined La Vaca Home Care.`,

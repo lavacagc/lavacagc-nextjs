@@ -49,7 +49,7 @@ Five specs, split by what each can honestly answer.
 - `tests/home-care-diy-kit-routes.spec.ts` - the running admin routes, through real middleware with the house session cookie. Unhappy paths first: unauthenticated callers, malformed bodies, links with no product in them, every malformed product field, unknown ids, and every refusal the photo uploader makes. Runs in CI on the ordinary stub build.
 - `tests/home-care-diy-kit-browser.spec.ts` - the admin screen once React has mounted: a pro task that will not open, a blocked photo pull becoming an upload box, a rejected save that keeps the draft, a database without the migration explaining itself, and no pricing on any of the screen's three surfaces even though the mocked rows still carry bands. Runs in CI.
 - `tests/home-care-diy-kit-shelf.spec.ts` - the shelf a MEMBER meets, rendered on the real `/home-care/checklist`: the collapsed strip stating its count and appearing only where something is stocked, the expanded picks with their tagged links and disclosure and no pricing at all, the drawn bar past two picks, a plain grid at two, and the row tweaks including the icon-only hide being undoable.
-Since the choice control landed (AC5) it also drives that: a task with both ways open keeps its gear hidden until the member picks DIY, handing the job to La Vaca instead puts it on the request and takes the gear away across a reload, no price renders anywhere on the page, and changing who does a task leaves an existing completion alone.
+Since the choice control landed (AC5) it also carries S6 to S9, which are the only browser proof of that slice; the ACs they answer to are in `home-care-diy-or-pro-acceptance-criteria.md`.
 The other four never render `DiyKitShelf` itself, so without this one the surface the whole slice exists for was the only part no test had drawn.
 It is gated on `HC_SHELF_E2E` rather than run in CI: the page needs an `hc_access` cookie and a catalog behind it, so it needs a server whose Supabase URL points at a stub this spec controls, and that URL is baked at BUILD time - under the ordinary suite build it could only ever assert a redirect.
 It must also run against a build rather than `next dev`, because `next/image` validates its src against `images.remotePatterns` in development only and a stub host would throw out of the render.
@@ -118,11 +118,9 @@ The verdict comes from the rows the calling page has already read, so the check 
 ## AC5 - The shelf renders only where it has something to say
 
 - **The member's own answer is the first gate (owner, 2026-08-06).**
-"What you'll need" is the reward for saying you are doing the work yourself, so on a task where both ways are real - `diy_or_pro = 'either'`, or a `diy` task the owner marked `pro_optional` - nothing is on screen until the member taps "I'll do it".
-Tapping "La Vaca does it" instead takes it away again: a shopping list is not what somebody who has just asked us to do the job wants to read.
-A `diy` task with no Pro option shows its shelf exactly as it always did, because there is nothing to decide, and a `pro` task never shows one - we should not hand anybody a shopping list for a gas line.
-`shelfVisible` in `src/lib/homecare/taskChoice.ts` owns that rule and is re-checked at RENDER for the same reason the eligibility gate is (AC1): a stored mode can outlive a catalog edit in either direction, so the stored `pro` and the task's current shape each drop the shelf from their own end.
-The two columns behind it, `maintenance_catalog.pro_optional` and `homeowner_maintenance.mode`, come from `supabase/migrations/20260828000000_home_care_diy_or_pro.sql`, hand-applied like the rest.
+"What you'll need" is the reward for saying you are doing the work yourself, so on a task where both ways are real the shelf waits for "I'll do it", and picking "La Vaca does it" takes it away again.
+`shelfVisible` in `src/lib/homecare/taskChoice.ts` owns that rule and is re-checked at RENDER for the same reason the eligibility gate is (AC1).
+**DP2 in `home-care-diy-or-pro-acceptance-criteria.md` owns the decision and every case of it**; this AC only records that stock is no longer the sole condition.
 - A task with no active products renders exactly as it does today. No empty strip, no zero count, no layout shift.
 - A product that is inactive, or whose `link_status` is `gone`, does not render. Hiding is fail-closed: the member never taps a link we know is dead.
 - The strip is collapsed on first render and states the count. Expanding it is one tap and does not navigate.
@@ -152,8 +150,8 @@ The two columns behind it, `maintenance_catalog.pro_optional` and `homeowner_mai
 ## AC9 - The row tweaks
 
 - "Learn more" renders in the card's meta line, never in an action row of its own: it describes the task rather than doing anything to it.
-That line is now the "who is doing this?" row (owner, 2026-08-06), which is also where the action row went - picking "La Vaca does it" IS adding the task to the request, so the two merged and the card lost a row rather than gaining one.
-A DIY/PRO badge still sits at the head of it, but only on the cards with no choice to offer; where there is a choice the control stands in its place.
+That line is now the "who is doing this?" row (owner, 2026-08-06), and a DIY/PRO badge only heads it on the cards with no choice to offer.
+Why the choice control and the action row merged, and why that made the card shorter, is DP1 in `home-care-diy-or-pro-acceptance-criteria.md`.
 - "Not relevant" is an icon-only button carrying an accessible name ("Not relevant - hide this task"), with a hover tooltip on pointer devices.
 It sits on the title row, beside the "add details" icon that was promoted out of its own row in the same pass.
 - Because a phone has no hover and an icon-only dismiss is otherwise unrecoverable on a mis-tap, dismissing shows an undo affordance that restores the task. The dismiss itself is unchanged: it still writes `status = 'dismissed'` with season `'all'`.
@@ -169,9 +167,8 @@ The margins let the tap targets overlap the gaps and the card padding instead of
 ## AC11 - The checklist page degrades rather than fails
 
 - The product read is fail-soft: a missing table (a Supabase Preview branch where the migration has not been replayed, a restored copy) yields no shelves and a working checklist, exactly as `readHomeRecords` does today.
-- The two columns AC5's gate reads degrade the same way, because PostgREST answers an unknown column with a 400 and that would otherwise 500 the portal for every member.
-`fetchCatalog` retries without `pro_optional` and `fetchMaintenanceRows` without `mode`, so the page can be deployed ahead of the hand-applied migration.
-What a member loses there is the choice, not the checklist: an absent `pro_optional` reads as "no Pro option", so the `diy` tasks keep their shelves exactly as they had them before the choice existed, while an `either` task shows none - its shelf waits on a "I'll do it" that cannot be recorded yet, and the write behind it answers 500 and reverts the card with a toast.
+- The two columns AC5's gate reads degrade the same way, so the page can be deployed ahead of their hand-applied migration.
+DP8 in `home-care-diy-or-pro-acceptance-criteria.md` owns that path and what a member loses while it is in effect.
 - The read is one query for all visible tasks, not one per task.
 It is issued AFTER the page's existing `Promise.all`, not inside it, and is therefore one extra sequential round trip.
 It cannot join that batch: the keys it is handed are the profile-filtered task list, which is one of the things the batch resolves.
