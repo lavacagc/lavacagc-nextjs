@@ -37,7 +37,7 @@ const NO_LINES = [
 const STEPS = [
   { icon: ListChecks, title: 'Tell us about your home', body: 'Just your email + ZIP (and your home type, if you like). 20 seconds, no account.' },
   { icon: CalendarCheck, title: 'Get your seasonal checklist', body: 'See exactly what your house needs this season — with a quick why for each task.' },
-  { icon: Wrench, title: 'DIY it — or book us', body: 'Knock out the easy ones yourself, and tap “Book La Vaca” on anything you’d rather hand off.' },
+  { icon: Wrench, title: 'DIY it — or book us', body: 'Knock out the easy ones yourself, and tap “La Vaca does it” on anything you’d rather hand off.' },
 ];
 
 export default async function HomeCarePage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
@@ -134,7 +134,7 @@ export default async function HomeCarePage({ searchParams }: { searchParams: Pro
                 <ul className="space-y-2.5 mb-2">
                   {[
                     'Tailored to your home: HVAC, deck, driveway, and more',
-                    'Clear DIY vs. pro guidance on every task',
+                    'You choose DIY or pro, task by task',
                     'Book the hard ones with one tap',
                   ].map((line) => (
                     <li key={line} className="flex items-start gap-2.5 text-text-secondary">
