@@ -142,6 +142,7 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
   };
 
   const maintStore = new Map<string, { status: string; completed_at: string | null; mode: string | null }>();
+  const degrade = { catalog: false, maint: false };
   let stub: http.Server;
 
   test.beforeAll(async () => {
@@ -155,7 +156,19 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
       let raw = '';
       req.on('data', (c) => (raw += c));
       req.on('end', () => {
-        if (url.pathname === '/rest/v1/maintenance_catalog') return json(200, CATALOG);
+        if (url.pathname === '/rest/v1/maintenance_catalog') {
+          if (degrade.catalog && url.search.includes('pro_optional')) {
+            return json(400, { message: 'column maintenance_catalog.pro_optional does not exist' });
+          }
+          // Strip the column rather than destructure it away - an unused
+          // binding is exactly the lint this repo fails on.
+          return json(200, CATALOG.map((c) => {
+            if (!degrade.catalog) return c;
+            const copy: Record<string, unknown> = { ...c };
+            delete copy.pro_optional;
+            return copy;
+          }));
+        }
         if (url.pathname === '/rest/v1/homeowners') {
           if (req.method === 'PATCH') return json(204, undefined);
           return json(200, [HOMEOWNER]);
@@ -165,6 +178,9 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
         }
         if (url.pathname === '/rest/v1/home_records') return json(200, []);
         if (url.pathname === '/rest/v1/homeowner_maintenance') {
+          if (degrade.maint && req.method === 'GET' && url.search.includes('mode')) {
+            return json(400, { message: 'column homeowner_maintenance.mode does not exist' });
+          }
           if (req.method === 'POST') {
             try {
               const b = JSON.parse(raw) as { task_key: string; season: string; status: string; mode?: string | null; completed_at?: string | null };
@@ -574,5 +590,91 @@ test.describe('DIY Kit: the shelf a member actually sees', () => {
     await expect(after.getByRole('button', { name: 'Mark not done' })).toBeVisible();
     await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toContainText('On your request');
     await shot(page, '11-completion-survives-mode-change.png');
+  });
+
+  // ---------------------------------------------------------------- UNHAPPY
+  // The paths a green happy-path suite is quietest about: a write that fails, a
+  // schema that is not there yet, and a caller with no business here. U6 is the
+  // regression guard for the defect this slice's review caught - the request
+  // surviving a reload - which S7 asserted the chip for and not the cart.
+
+  test('U1: a failed mode write reverts the card instead of claiming we are coming', async ({ page }) => {
+    await openChecklist(page);
+    const row = taskRow(page, 'Clear the A/C condensate drain line');
+    await row.scrollIntoViewIfNeeded();
+    // Reopen the choice FIRST, while writes still succeed - the chip's own
+    // reversal is a real POST now, so intercepting before this point fails the
+    // reset instead of the pick under test.
+    const chip = page.getByTestId('choice-chip-flush_ac_condensate');
+    if (await chip.count()) await chip.click();
+    await expect(page.getByTestId('choose-pro-flush_ac_condensate')).toBeVisible();
+    // Now force the persist to fail.
+    await page.route('**/api/home-care/task', (r) => r.fulfill({ status: 500, body: '{"ok":false}' }));
+    await page.getByTestId('choose-pro-flush_ac_condensate').click();
+    // It must NOT end up saying the job is on the request when nothing was stored.
+    await expect(page.getByTestId('choose-pro-flush_ac_condensate')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('diy-kit-toggle-flush_ac_condensate')).toHaveCount(0);
+    await page.unroute('**/api/home-care/task');
+  });
+
+  test('U2: the page survives a catalog with no pro_optional column', async ({ page }) => {
+    // Exactly what PostgREST answers before the migration is applied. Driven at
+    // the STUB, not via page.route: the catalog read is server-side, so browser
+    // interception never sees it - which is how the first attempt at this test
+    // passed a broken assertion for the wrong reason.
+    degrade.catalog = true;
+    try {
+      await openChecklist(page);
+      await expect(taskRow(page, 'Replace the HVAC filter')).toHaveCount(1);
+      // No Pro option offered, and no crash.
+      await expect(page.getByTestId('choose-pro-flush_ac_condensate')).toHaveCount(0);
+      await expect(page.getByTestId('choose-diy-flush_ac_condensate')).toHaveCount(0);
+      // A diy task still shows its gear, because there is nothing to decide.
+      await expect(page.getByTestId('diy-kit-toggle-replace_hvac_filter')).toBeVisible();
+    } finally {
+      degrade.catalog = false;
+    }
+  });
+
+  test('U3: the page survives maintenance rows with no mode column', async ({ page }) => {
+    degrade.maint = true;
+    try {
+      await openChecklist(page);
+      await expect(taskRow(page, 'Replace the HVAC filter')).toHaveCount(1);
+      await expect(taskRow(page, 'Clear the A/C condensate drain line')).toHaveCount(1);
+    } finally {
+      degrade.maint = false;
+    }
+  });
+
+  test('U4: no access cookie lands on the signup page, not the checklist', async ({ browser }) => {
+    const ctx = await browser.newContext();
+    const p2 = await ctx.newPage();
+    await p2.goto(`${BASE}/home-care/checklist`, { waitUntil: 'domcontentloaded' });
+    expect(new URL(p2.url()).pathname).toBe('/home-care');
+    await ctx.close();
+  });
+
+  test('U5: a pro-only task offers no DIY choice at all', async ({ page }) => {
+    await openChecklist(page);
+    await expect(page.getByTestId('choose-diy-chimney_inspect')).toHaveCount(0);
+    await expect(page.getByTestId('choose-pro-chimney_inspect')).toHaveCount(0);
+    await expect(page.getByTestId('diy-kit-toggle-chimney_inspect')).toHaveCount(0);
+    await expect(taskRow(page, 'Chimney inspection & sweep').getByText('PRO', { exact: true })).toBeVisible();
+  });
+
+  test('U6: a Pro pick is on the request AND submittable after a reload', async ({ page }) => {
+    await openChecklist(page);
+    const chip = page.getByTestId('choice-chip-flush_ac_condensate');
+    if (await chip.count()) await chip.click();
+    await page.getByTestId('choose-pro-flush_ac_condensate').click();
+    await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toContainText('On your request');
+
+    await openChecklist(page); // reload - this is the bug the gate caught
+    await expect(page.getByTestId('choice-chip-flush_ac_condensate')).toContainText('On your request');
+    // The submit path must exist and carry the task.
+    const pill = page.getByRole('link', { name: /review your request/i });
+    await expect(pill).toBeVisible();
+    expect(await pill.getAttribute('href')).toContain('flush_ac_condensate');
   });
 });
