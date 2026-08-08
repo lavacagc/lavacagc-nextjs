@@ -331,6 +331,57 @@ test.describe('proposal builder', () => {
     await expect(page.getByTestId('builder-line-title-cabinets')).toHaveCount(0);
   });
 
+  test('round 11: both add controls sit above the sections and stay put while the list scrolls', async ({ page }) => {
+    await page.goto('/vaca-mgmt/proposals');
+    await page.getByTestId('open-builder').click();
+    await page.getByTestId('customer-search-input').fill('maria');
+    await page.getByTestId('customer-row-7b39c2ba-58f5-4d68-9d5a-2f4f5f27a001').click();
+    await page.locator('#pb-title').fill('T');
+    await page.getByTestId('builder-to-lines').click();
+
+    // The section maker is the FIRST thing on the step - it used to sit below
+    // every section, so adding one meant scrolling past the whole estimate.
+    await expect(page.getByTestId('builder-cat-query')).toBeVisible();
+    await page.getByTestId('builder-cat-pick-demolition').click();
+    await page.getByTestId('builder-cat-pick-cabinets').click();
+
+    // Document order, not just visibility: both add controls precede the
+    // sections they act on.
+    const order = await page.evaluate(() => {
+      const at = (id: string) => document.querySelector(`[data-testid="${id}"]`);
+      const picker = at('builder-cat-query');
+      const quick = at('builder-quick-add');
+      const firstSection = at('builder-section-demolition');
+      const before = (a: Element | null, b: Element | null) =>
+        !!a && !!b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+      return { pickerFirst: before(picker, quick), quickAboveSections: before(quick, firstSection) };
+    });
+    expect(order.pickerFirst, 'the section maker sits above the line maker').toBe(true);
+    expect(order.quickAboveSections, 'both add controls sit above the sections').toBe(true);
+
+    // The chip row scrolls sideways rather than wrapping into a block: at the
+    // top of the step every extra row of chips pushes the sections down. The
+    // claim is about the ROW, not about this fixture's three categories - the
+    // real library holds 35+, so what has to hold is that they stay on one
+    // line and the overflow scrolls.
+    const strip = page.getByTestId('builder-cat-strip');
+    const stripShape = await strip.evaluate((el) => {
+      const s = getComputedStyle(el);
+      const tops = [...el.children].map((c) => (c as HTMLElement).offsetTop);
+      return { overflowX: s.overflowX, flexWrap: s.flexWrap, rows: new Set(tops).size };
+    });
+    expect(stripShape.overflowX, 'the strip scrolls sideways').toBe('auto');
+    expect(stripShape.flexWrap, 'chips never wrap onto a second line').toBe('nowrap');
+    expect(stripShape.rows, 'every chip sits on one row').toBe(1);
+
+    // The strip only ever offers what can actually be added: a category
+    // already on the proposal leaves it, rather than sitting there as a dead
+    // chip taking room a scrolling row cannot spare.
+    await expect(page.getByTestId('builder-cat-pick-demolition')).toHaveCount(0);
+    await expect(page.getByTestId('builder-cat-pick-cabinets')).toHaveCount(0);
+    await expect(page.getByTestId('builder-cat-pick-permits-fees')).toBeVisible();
+  });
+
   test('round 11: the quick-add bar writes into any section and opens where the line landed', async ({ page }) => {
     await page.goto('/vaca-mgmt/proposals');
     await page.getByTestId('open-builder').click();

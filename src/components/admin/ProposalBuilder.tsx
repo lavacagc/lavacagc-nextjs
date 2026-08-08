@@ -819,18 +819,69 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, ini
         {/* Step 3 - line items */}
         {step === 2 && (
           <div className="space-y-4">
-            {categoryOrder.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Start by adding a cost category below.</p>
-            ) : (
-              <>
+            {/*
+              The whole "add things" toolbar, at the TOP and sticky (owner,
+              round 11b): adding a category used to mean scrolling past every
+              section to a box at the very bottom, which is the same
+              stranded-control problem the accordion was called in to fix. Both
+              rows now travel with you - the section maker above the line maker,
+              in the order the work actually happens.
+            */}
+            <div className="sticky top-0 z-20 -mx-1 space-y-2 border-b bg-background px-1 pb-2.5">
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+                <Label htmlFor="pb-cat" className="shrink-0 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  Add a section
+                </Label>
+                <Input
+                  id="pb-cat"
+                  placeholder="Type to search the library..."
+                  className="h-9 w-full max-w-[15rem] sm:w-auto sm:flex-1"
+                  value={catQuery}
+                  onChange={(e) => setCatQuery(e.target.value)}
+                  data-testid="builder-cat-query"
+                />
                 {/*
-                  The quick-add bar: type a line, name its section, done - from
-                  anywhere on the step, without opening the section first.
-                  Sticky, because its whole point is being in reach while you
-                  are reading somewhere else.
+                  One row that scrolls sideways rather than a block that wraps
+                  to five: at the top of the step, every extra line of chips is
+                  a line pushed off the sections underneath.
                 */}
+                <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto py-0.5" data-testid="builder-cat-strip">
+                  {catMatches.slice(0, 20).map((c) => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => addCategory(c.key)}
+                      data-testid={`builder-cat-pick-${c.key}`}
+                      className="shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                    >
+                      {c.label}
+                      {c.custom && <span className="ml-1 text-[9px] uppercase text-primary">yours</span>}
+                    </button>
+                  ))}
+                  {catQuery.trim() && !exactMatch && (
+                    <button
+                      type="button"
+                      onClick={createCategory}
+                      disabled={isCreatingCategory}
+                      data-testid="builder-cat-create"
+                      className="shrink-0 whitespace-nowrap rounded-full border border-primary px-3 py-1 text-xs font-bold text-primary transition-colors hover:bg-primary/10"
+                    >
+                      {isCreatingCategory ? 'Creating…' : `Create "${catQuery.trim()}" (admin only)`}
+                    </button>
+                  )}
+                  {catMatches.length === 0 && !catQuery.trim() && (
+                    <span className="self-center text-xs text-muted-foreground">The library is loading…</span>
+                  )}
+                </div>
+              </div>
+
+              {/*
+                The quick-add bar: type a line, name its section, done - from
+                anywhere on the step, without opening the section first.
+              */}
+              {categoryOrder.length > 0 && (
                 <div
-                  className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center gap-2 rounded-lg border-[1.5px] border-primary bg-background px-3 py-2.5"
+                  className="flex flex-wrap items-center gap-2 rounded-lg border-[1.5px] border-primary bg-background px-3 py-2.5"
                   data-testid="builder-quick-add"
                 >
                   <Plus className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
@@ -865,6 +916,15 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, ini
                     Add line
                   </Button>
                 </div>
+              )}
+            </div>
+
+            {categoryOrder.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Start by adding a cost section above - pick one from the library or type to search it.
+              </p>
+            ) : (
+              <>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground">
                     Click a section to open it - one at a time. Drag any line by its grip: onto another
@@ -1204,44 +1264,6 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, ini
                 </Button>
               </div>
             )}
-
-            {/* Category picker: hybrid typeahead */}
-            <div className="border border-dashed rounded-lg p-4">
-              <Label htmlFor="pb-cat" className="text-sm">Add a cost category</Label>
-              <Input
-                id="pb-cat"
-                placeholder="Type to search the library..."
-                className="mt-1.5 max-w-sm"
-                value={catQuery}
-                onChange={(e) => setCatQuery(e.target.value)}
-                data-testid="builder-cat-query"
-              />
-              <div className="flex gap-1.5 flex-wrap mt-2.5">
-                {catMatches.slice(0, 14).map((c) => (
-                  <button
-                    key={c.key}
-                    type="button"
-                    onClick={() => addCategory(c.key)}
-                    data-testid={`builder-cat-pick-${c.key}`}
-                    className="border rounded-full px-3 py-1 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                  >
-                    {c.label}
-                    {c.custom && <span className="ml-1 text-[9px] uppercase text-primary">yours</span>}
-                  </button>
-                ))}
-                {catQuery.trim() && !exactMatch && (
-                  <button
-                    type="button"
-                    onClick={createCategory}
-                    disabled={isCreatingCategory}
-                    data-testid="builder-cat-create"
-                    className="border border-primary rounded-full px-3 py-1 text-xs font-bold text-primary hover:bg-primary/10 transition-colors"
-                  >
-                    {isCreatingCategory ? 'Creating…' : `Create "${catQuery.trim()}" (admin only)`}
-                  </button>
-                )}
-              </div>
-            </div>
 
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-sm text-muted-foreground">
