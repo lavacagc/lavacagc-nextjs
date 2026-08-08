@@ -41,14 +41,14 @@ const PAGES = [
   { slug: 'homepage', label: 'Homepage', urlPath: '/' },
   { slug: 'request-estimate', label: 'Request-estimate form page', urlPath: '/request-estimate' },
   { slug: 'home-care', label: 'Home Care page', urlPath: '/home-care' },
-  { slug: 'service-kitchen', label: 'Kitchen remodeling service page', urlPath: '/services/kitchen-remodeling' },
+  { slug: 'service-interior', label: 'Interior finishing service page', urlPath: '/services/interior-finishing' },
 ];
 
 const ACTION_LABELS = {
   'load-homepage': 'Loading the homepage',
   'load-request-estimate': 'Loading the request-estimate page',
   'load-home-care': 'Loading the Home Care page',
-  'load-service-kitchen': 'Loading the kitchen service page',
+  'load-service-interior': 'Loading the interior-finishing service page',
   'submit-estimate-request': 'Submitting the estimate request form',
 };
 
@@ -63,6 +63,9 @@ const WORSE = {
   bytes: (base, cur) => cur > base * 1.2 + 100_000,
 };
 const SANITY = {
+  // A full page load legitimately fetches dozens of assets (JS, CSS, images,
+  // fonts); a single click should not. Separate budgets per action kind.
+  maxRequestsPerPageLoad: 60,
   maxRequestsPerAction: 12,
   maxQueriesPerAction: 8,
   duplicateQueryCalls: 5,
@@ -171,7 +174,16 @@ function describeAction(name, a) {
             Math.max(1, a.queries.reduce((s, q) => s + q.calls, 0))
           ).toFixed(1)} ms each`
         : '';
-    parts.push(`and runs ${a.queryCount} database quer${a.queryCount === 1 ? 'y' : 'ies'}${mean}`);
+    if (a.queryCount === 0 && name.startsWith('load-')) {
+      parts.push('and runs 0 database queries (this page is pre-built, so viewing it costs nothing)');
+    } else {
+      parts.push(`and runs ${a.queryCount} database quer${a.queryCount === 1 ? 'y' : 'ies'}${mean}`);
+    }
+  }
+  if (a.prefetch) {
+    parts.push(
+      `plus ${a.prefetch} background page-preloads (Next.js prefetching links as they scroll into view - normal)`
+    );
   }
   const load = a.loadMs ? ` The page finished loading in ${sec(a.loadMs)}.` : '';
   const csp = a.browserSupabaseBlockedByCsp
@@ -184,9 +196,11 @@ function sanityFlags(current) {
   const flags = [];
   for (const [name, a] of Object.entries(current.actions)) {
     const label = ACTION_LABELS[name] ?? name;
-    if (a.requests > SANITY.maxRequestsPerAction) {
+    const isPageLoad = name.startsWith('load-');
+    const budget = isPageLoad ? SANITY.maxRequestsPerPageLoad : SANITY.maxRequestsPerAction;
+    if (a.requests > budget) {
       flags.push(
-        `${label} fires ${a.requests} network requests - that is a lot for one action regardless of baseline (rule of thumb: keep it under ${SANITY.maxRequestsPerAction}). Look for calls that can be combined or cached.`
+        `${label} fires ${a.requests} network requests - that is a lot for ${isPageLoad ? 'a page load' : 'one action'} regardless of baseline (rule of thumb: keep it under ${budget}). Look for calls that can be combined or cached.`
       );
     }
     if ((a.queryCount ?? 0) > SANITY.maxQueriesPerAction) {

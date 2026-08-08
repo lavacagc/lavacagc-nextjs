@@ -43,6 +43,10 @@ interface ActionResult {
   app: number;
   supabase: number;
   thirdParty: number;
+  /** Next.js background preloads of OTHER pages (?_rsc requests fired as
+   *  links enter the viewport). Real but not caused by the action itself,
+   *  so they are counted apart to keep the headline numbers meaningful. */
+  prefetch: number;
   browserSupabaseBlockedByCsp: number;
   urls: RequestEntry[];
   queries: QueryRow[] | null;
@@ -110,10 +114,15 @@ function trackRequests(page: Page) {
       let app = 0;
       let supabase = 0;
       let thirdParty = 0;
+      let prefetch = 0;
       const counts = new Map<string, number>();
       for (const url of urls) {
-        const host = new URL(url).host;
-        if (APP_HOSTS.has(host)) app += 1;
+        const u = new URL(url);
+        if (u.searchParams.has('_rsc')) {
+          prefetch += 1;
+          continue;
+        }
+        if (APP_HOSTS.has(u.host)) app += 1;
         else if (SUPABASE_ORIGIN && url.startsWith(SUPABASE_ORIGIN)) supabase += 1;
         else thirdParty += 1;
         const n = normalizeUrl(url);
@@ -123,10 +132,11 @@ function trackRequests(page: Page) {
         .map(([url, count]) => ({ url, count }))
         .sort((a, b) => b.count - a.count);
       return {
-        requests: urls.length,
+        requests: app + supabase + thirdParty,
         app,
         supabase,
         thirdParty,
+        prefetch,
         browserSupabaseBlockedByCsp: cspBlocked,
         urls: sorted,
       };
@@ -190,8 +200,10 @@ test('load-home-care', async ({ page }) => {
   await measurePageLoad(page, 'load-home-care', '/home-care');
 });
 
-test('load-service-kitchen', async ({ page }) => {
-  await measurePageLoad(page, 'load-service-kitchen', '/services/kitchen-remodeling');
+test('load-service-interior', async ({ page }) => {
+  // /services/[slug] pages are DB-driven and empty in the local stack;
+  // interior-finishing is a real static route, so it measures the same shape.
+  await measurePageLoad(page, 'load-service-interior', '/services/interior-finishing');
 });
 
 test('submit-estimate-request', async ({ page }) => {
@@ -231,7 +243,11 @@ test('submit-estimate-request', async ({ page }) => {
   resetQueryStats();
   await page.getByRole('button', { name: /request availability/i }).click();
   await expect(page.getByText('Request received.')).toBeVisible({ timeout: 15000 });
-  await page.waitForTimeout(500);
+  // Deterministic window end: wait for the network to go quiet so the
+  // success view's asset loads are always included (a fixed pause sometimes
+  // missed them, making the count flap run-to-run).
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(300);
   const queries = readQueryStats();
   record('submit-estimate-request', {
     ...tracker.summarize(),
