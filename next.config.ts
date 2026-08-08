@@ -4,6 +4,26 @@ const nextConfig: NextConfig = {
   // Enable React strict mode for better development experience
   reactStrictMode: true,
 
+  // Logging discipline (two halves of one policy):
+  //
+  // PRODUCTION (Vercel builds only - VERCEL=1 is set there and never locally):
+  // strip routine console.log/info/debug chatter at compile time, keep
+  // console.warn/error. Production logs then carry only warnings and errors.
+  // No log files are written on Vercel (stdout only, platform-retained with a
+  // bounded window), so nothing can grow unbounded there.
+  //
+  // LOCAL (dev, test builds, perf builds): nothing is stripped - the full
+  // console output stays available for diagnosing test failures, and `next
+  // dev` additionally logs every server fetch with its full URL below.
+  compiler: {
+    removeConsole: process.env.VERCEL ? { exclude: ['error', 'warn'] } : false,
+  },
+  logging: {
+    fetches: {
+      fullUrl: true,
+    },
+  },
+
   // Several modules create a Supabase client at module scope, which throws
   // during `next build` page-data collection when these vars are unset. The
   // no-mistakes gate builds in a secret-free worktree, so fall back to inert
