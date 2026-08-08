@@ -16,6 +16,7 @@
     "test:links": "npm run build && E2E_LIVE_BACKEND=1 playwright test tests/links.spec.ts",
     "test:flows": "E2E_STUB_BACKEND=1 playwright test tests/flows.spec.ts",
     "test:mobile": "E2E_STUB_BACKEND=1 playwright test --project=mobile",
+    "test:smoke": "E2E_STUB_BACKEND=1 RESEND_API_KEY= playwright test tests/flows.spec.ts tests/request-estimate-form.spec.ts tests/home-care-capture.spec.ts tests/lead-submit-validation.spec.ts --project=chromium",
     "test:report": "playwright show-report playwright-report",
     "audit": "ts-node scripts/site-audit.ts",
     "audit:prod": "SITE_URL=https://www.lavacagc.com ts-node scripts/site-audit.ts",
