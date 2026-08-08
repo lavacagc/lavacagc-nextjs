@@ -16,14 +16,14 @@
  * indistinguishable from an imported one downstream (client page, send,
  * revoke, re-import all unchanged).
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { Check, Lock, Boxes, Trash2, Undo2 } from 'lucide-react';
+import { Check, Lock, Boxes, Trash2, Undo2, GripVertical } from 'lucide-react';
 import { CustomerSearch, type CustomerHit } from '@/components/admin/CustomerSearch';
 import { composeBundle, toStoredMembers, type PreviewBundleMember } from '@/lib/proposals/bundles';
 import { type BuilderCategory } from '@/lib/proposals/builderCategories';
@@ -200,9 +200,11 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
     setRows((prev) => prev.map((r) => (r.uid === uid ? { ...r, optional: !r.optional } : r)));
 
   // ---- bundling ------------------------------------------------------------
-  const bundleSelected = () => {
-    const picked = rows.filter((r) => selected.has(r.uid));
-    if (picked.length < 2) return;
+  // Compose one bundle row from picked rows. The pure module names the
+  // category by keyword-guessing the member title; here the admin PICKED every
+  // category, so the package lands where its first locked member lives
+  // (structure wins), else its first member.
+  const composeRowsIntoBundle = (picked: BuilderRow[], name?: string): BuilderRow | null => {
     const composed = composeBundle(
       picked.map((r) => ({
         title: r.title,
@@ -211,36 +213,162 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
         optional: r.optional,
         members: r.members,
       })),
-      bundleName.trim() || undefined,
+      name,
     );
-    if (!composed) return;
-    // The pure module names the category by keyword-guessing the member title;
-    // here the admin PICKED every category, so the package lands where its
-    // first locked member lives (structure wins), else its first member.
+    if (!composed) return null;
     const firstLocked = picked.find((r) => !r.optional);
-    const categoryKey = (firstLocked ?? picked[0]).categoryKey;
-    const bundleRow: BuilderRow = {
+    return {
       uid: nextUid++,
       title: composed.title,
       description: '',
       priceCents: composed.priceCents,
-      categoryKey,
+      categoryKey: (firstLocked ?? picked[0]).categoryKey,
       optional: composed.optional,
       members: composed.members,
       memberRows: picked.flatMap((r) => r.memberRows ?? [r]),
     };
-    setRows((prev) => [...prev.filter((r) => !selected.has(r.uid)), bundleRow]);
+  };
+
+  const bundleSelected = () => {
+    const picked = rows.filter((r) => selected.has(r.uid));
+    if (picked.length < 2) return;
+    const bundleRow = composeRowsIntoBundle(picked, bundleName.trim() || undefined);
+    if (!bundleRow) return;
+    const firstIdx = rows.findIndex((r) => selected.has(r.uid));
+    setRows((prev) => {
+      const rest = prev.filter((r) => !selected.has(r.uid));
+      rest.splice(Math.min(firstIdx, rest.length), 0, bundleRow);
+      return rest;
+    });
     setSelected(new Set());
     setBundleName('');
   };
 
   const unbundle = (uid: number) => {
     setRows((prev) => {
-      const bundle = prev.find((r) => r.uid === uid);
+      const idx = prev.findIndex((r) => r.uid === uid);
+      const bundle = prev[idx];
       if (!bundle?.memberRows) return prev;
-      return [...prev.filter((r) => r.uid !== uid), ...bundle.memberRows];
+      const next = prev.filter((r) => r.uid !== uid);
+      next.splice(idx, 0, ...bundle.memberRows);
+      return next;
     });
   };
+
+  // Pop ONE member out of a bundle (owner round 6: "if something needs to be
+  // taken out"). The bundle re-sums from what remains; down to one member it
+  // dissolves entirely - a package of one is just a line.
+  const takeOutMember = (bundleUid: number, memberUid: number) => {
+    setRows((prev) => {
+      const idx = prev.findIndex((r) => r.uid === bundleUid);
+      const bundle = prev[idx];
+      if (!bundle?.memberRows) return prev;
+      const taken = bundle.memberRows.find((m) => m.uid === memberUid);
+      const remaining = bundle.memberRows.filter((m) => m.uid !== memberUid);
+      if (!taken) return prev;
+      const next = prev.filter((r) => r.uid !== bundleUid);
+      if (remaining.length >= 2) {
+        const recomposed = composeRowsIntoBundle(remaining, bundle.title);
+        if (recomposed) next.splice(idx, 0, recomposed, taken);
+        else next.splice(idx, 0, ...remaining, taken);
+      } else {
+        // One member left: the bundle dissolves into its last line + the taken one.
+        next.splice(idx, 0, ...remaining, taken);
+      }
+      return next;
+    });
+  };
+
+  const renameBundle = (uid: number, name: string) => {
+    setRows((prev) => prev.map((r) => (r.uid === uid ? { ...r, title: name } : r)));
+  };
+
+  // ---- drag and drop (round 6) --------------------------------------------
+  // Native HTML5, the same gesture family the CSV importer's preview already
+  // uses. One drag, four outcomes, decided by where it lands:
+  //   onto a line            -> the two become a new bundle (instant, auto-named)
+  //   onto a bundle block    -> joins that package (keeps the package's name)
+  //   onto a category header -> the row moves to that category
+  //   onto a row's top edge  -> reorders in front of it (and adopts its category)
+  const dragUid = useRef<number | null>(null);
+  const [hoverTarget, setHoverTarget] = useState<string | null>(null);
+
+  const clearDrag = () => {
+    dragUid.current = null;
+    setHoverTarget(null);
+  };
+
+  const dropOnRow = (targetUid: number, zone: 'onto' | 'before') => {
+    const fromUid = dragUid.current;
+    clearDrag();
+    if (fromUid === null || fromUid === targetUid) return;
+    setRows((prev) => {
+      const dragged = prev.find((r) => r.uid === fromUid);
+      const targetIdx = prev.findIndex((r) => r.uid === targetUid);
+      const target = prev[targetIdx];
+      if (!dragged || !target) return prev;
+
+      if (zone === 'before') {
+        const without = prev.filter((r) => r.uid !== fromUid);
+        const insertAt = without.findIndex((r) => r.uid === targetUid);
+        without.splice(insertAt, 0, { ...dragged, categoryKey: target.categoryKey });
+        return without;
+      }
+
+      // 'onto': join the target bundle, or fuse two rows into a new package.
+      const composed = target.members
+        ? composeRowsIntoBundle([target, dragged], target.title)
+        : composeRowsIntoBundle([target, dragged]);
+      if (!composed) return prev;
+      const next = prev.filter((r) => r.uid !== fromUid && r.uid !== targetUid);
+      next.splice(Math.min(targetIdx, next.length), 0, composed);
+      return next;
+    });
+  };
+
+  const dropOnCategory = (categoryKey: string) => {
+    const fromUid = dragUid.current;
+    clearDrag();
+    if (fromUid === null) return;
+    setRows((prev) => prev.map((r) => (r.uid === fromUid ? { ...r, categoryKey } : r)));
+  };
+
+  const rowDragProps = (r: BuilderRow) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      dragUid.current = r.uid;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(r.uid));
+    },
+    onDragEnd: clearDrag,
+    onDragOver: (e: React.DragEvent) => {
+      if (dragUid.current === null || dragUid.current === r.uid) return;
+      e.preventDefault();
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const zone = e.clientY - rect.top < rect.height * 0.3 ? 'before' : 'onto';
+      setHoverTarget(`row-${r.uid}-${zone}`);
+    },
+    onDragLeave: () => setHoverTarget((h) => (h?.startsWith(`row-${r.uid}-`) ? null : h)),
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const zone = e.clientY - rect.top < rect.height * 0.3 ? 'before' : 'onto';
+      dropOnRow(r.uid, zone);
+    },
+  });
+
+  const categoryDropProps = (key: string) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (dragUid.current === null) return;
+      e.preventDefault();
+      setHoverTarget(`cat-${key}`);
+    },
+    onDragLeave: () => setHoverTarget((h) => (h === `cat-${key}` ? null : h)),
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      dropOnCategory(key);
+    },
+  });
 
   // ---- derived -------------------------------------------------------------
   const rowsByCategory = useMemo(() => {
@@ -254,6 +382,12 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
   }, [rows, categoryOrder]);
 
   const totalCents = rows.reduce((a, r) => a + r.priceCents, 0);
+  // Category order first, row order within - drag-reordering writes this order,
+  // and it is exactly the order the client's page renders.
+  const orderedRows = useMemo(
+    () => [...rowsByCategory.entries()].flatMap(([, rs]) => rs),
+    [rowsByCategory],
+  );
   const stepReady = [
     !!customer || (clientName.trim().length > 0),
     clientName.trim().length > 0 && title.trim().length > 0,
@@ -272,7 +406,7 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
   const create = async () => {
     setIsCreating(true);
     try {
-      const lines = rows.map((r) => ({
+      const lines = orderedRows.map((r) => ({
         title: r.title,
         description: r.description,
         price_cents: r.priceCents,
@@ -393,8 +527,14 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
         {/* Step 3 - line items */}
         {step === 2 && (
           <div className="space-y-4">
-            {categoryOrder.length === 0 && (
+            {categoryOrder.length === 0 ? (
               <p className="text-sm text-muted-foreground">Start by adding a cost category below.</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Drag any line by its grip: onto another line to bundle them, onto a bundle to add it,
+                onto a category header to move it, or onto a row&apos;s top edge to reorder. The checkboxes
+                still work if you prefer buttons.
+              </p>
             )}
 
             {categoryOrder.map((key) => {
@@ -404,54 +544,126 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
               const draft = draftFor(key);
               return (
                 <div key={key} className="border rounded-lg overflow-hidden" data-testid={`builder-cat-${key}`}>
-                  <div className="flex items-center gap-2 flex-wrap px-4 py-2.5 bg-muted/60 border-b">
+                  <div
+                    {...categoryDropProps(key)}
+                    className={`flex items-center gap-2 flex-wrap px-4 py-2.5 bg-muted/60 border-b transition-colors ${
+                      hoverTarget === `cat-${key}` ? 'outline-dashed outline-2 outline-primary -outline-offset-2' : ''
+                    }`}
+                  >
                     <span className="font-bold text-sm">{cat?.label ?? key}</span>
                     {catBadge(key)}
+                    {hoverTarget === `cat-${key}` && (
+                      <span className="text-[10px] font-bold uppercase text-primary">drop to move here</span>
+                    )}
                     <span className="ml-auto text-xs font-semibold text-muted-foreground">
                       subtotal {usd(subtotal)}
                     </span>
                   </div>
-                  {catRows.map((r) => (
-                    <div key={r.uid} className="flex items-center gap-3 px-4 py-2 border-b text-sm flex-wrap">
-                      <input
-                        type="checkbox"
-                        aria-label="Select for bundling"
-                        checked={selected.has(r.uid)}
-                        onChange={() => toggleSelected(r.uid)}
-                        className="w-4 h-4 accent-[hsl(26,84%,58%)]"
-                      />
-                      <div className="flex-1 min-w-[160px]">
-                        <span className="font-medium">{r.title}</span>
-                        {r.members && (
-                          <span className="ml-2 text-xs text-muted-foreground">
-                            <Boxes className="w-3 h-3 inline mr-1" />
-                            includes {r.members.length} items
-                          </span>
-                        )}
-                        {r.description && <div className="text-xs text-muted-foreground">{r.description}</div>}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleOptional(r.uid)}
-                        className={`text-[10px] font-bold uppercase rounded-[5px] border px-1.5 py-0.5 ${
-                          r.optional ? 'text-teal-700 border-teal-600/40' : 'text-muted-foreground border-border'
-                        }`}
-                        title="Flip whether the client can toggle this line"
+                  {catRows.map((r) =>
+                    r.members ? (
+                      /* The bundle: its own colored block, contents visible and
+                         editable (owner round 6). */
+                      <div
+                        key={r.uid}
+                        {...rowDragProps(r)}
+                        data-testid={`builder-bundle-${r.uid}`}
+                        className={`m-2 rounded-lg border-[1.5px] border-primary/40 border-l-4 border-l-primary bg-primary/5 overflow-hidden cursor-grab ${
+                          hoverTarget === `row-${r.uid}-onto` ? 'outline-dashed outline-2 outline-primary -outline-offset-2' : ''
+                        } ${hoverTarget === `row-${r.uid}-before` ? 'border-t-4 border-t-primary' : ''}`}
                       >
-                        {r.optional ? 'optional' : 'locked'}
-                      </button>
-                      <span className="font-bold whitespace-nowrap">{usd(r.priceCents)}</span>
-                      {r.members ? (
-                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => unbundle(r.uid)} title="Unbundle">
-                          <Undo2 className="w-3.5 h-3.5" />
-                        </Button>
-                      ) : (
+                        <div className="flex items-center gap-2.5 px-3 py-2 border-b border-dashed border-primary/30 flex-wrap">
+                          <GripVertical className="w-4 h-4 text-primary/50 flex-shrink-0" />
+                          <input
+                            value={r.title}
+                            onChange={(e) => renameBundle(r.uid, e.target.value)}
+                            aria-label="Bundle name"
+                            data-testid={`builder-bundle-name-${r.uid}`}
+                            className="font-extrabold text-sm text-primary bg-transparent border-0 border-b border-dashed border-primary/50 focus:outline-none focus:border-solid min-w-[120px] max-w-[240px]"
+                          />
+                          <span className="text-[11px] text-muted-foreground">client sees ONE line at</span>
+                          <span className="font-bold text-sm whitespace-nowrap">{usd(r.priceCents)}</span>
+                          <button
+                            type="button"
+                            onClick={() => toggleOptional(r.uid)}
+                            className={`text-[10px] font-bold uppercase rounded-[5px] border px-1.5 py-0.5 ${
+                              r.optional ? 'text-teal-700 border-teal-600/40' : 'text-muted-foreground border-border'
+                            }`}
+                            title="Flip whether the client can toggle this package"
+                          >
+                            {r.optional ? 'optional' : 'locked'}
+                          </button>
+                          {hoverTarget === `row-${r.uid}-onto` && (
+                            <span className="text-[10px] font-bold uppercase text-primary">drop to add</span>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 ml-auto text-xs"
+                            onClick={() => unbundle(r.uid)}
+                            data-testid={`builder-unbundle-${r.uid}`}
+                          >
+                            <Undo2 className="w-3.5 h-3.5 mr-1" />
+                            Unbundle all
+                          </Button>
+                        </div>
+                        {(r.memberRows ?? []).map((m) => (
+                          <div
+                            key={m.uid}
+                            className="flex items-center gap-2.5 pl-9 pr-3 py-1.5 text-[13px] border-b border-primary/10 last:border-0 flex-wrap"
+                          >
+                            <span className="flex-1 min-w-[140px]">{m.title}</span>
+                            <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">{usd(m.priceCents)}</span>
+                            <button
+                              type="button"
+                              onClick={() => takeOutMember(r.uid, m.uid)}
+                              data-testid={`builder-takeout-${m.uid}`}
+                              className="text-[11px] font-semibold text-muted-foreground border rounded-[5px] px-2 py-0.5 hover:border-primary hover:text-primary"
+                            >
+                              Take out
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div
+                        key={r.uid}
+                        {...rowDragProps(r)}
+                        className={`flex items-center gap-3 px-4 py-2 border-b text-sm flex-wrap cursor-grab bg-white ${
+                          hoverTarget === `row-${r.uid}-onto` ? 'outline-dashed outline-2 outline-primary -outline-offset-2 rounded' : ''
+                        } ${hoverTarget === `row-${r.uid}-before` ? 'border-t-2 border-t-primary' : ''}`}
+                      >
+                        <GripVertical className="w-4 h-4 text-muted-foreground/50 flex-shrink-0" />
+                        <input
+                          type="checkbox"
+                          aria-label="Select for bundling"
+                          checked={selected.has(r.uid)}
+                          onChange={() => toggleSelected(r.uid)}
+                          className="w-4 h-4 accent-[hsl(26,84%,58%)]"
+                        />
+                        <div className="flex-1 min-w-[150px]">
+                          <span className="font-medium">{r.title}</span>
+                          {r.description && <div className="text-xs text-muted-foreground">{r.description}</div>}
+                        </div>
+                        {hoverTarget === `row-${r.uid}-onto` && (
+                          <span className="text-[10px] font-bold uppercase text-primary">drop to bundle</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => toggleOptional(r.uid)}
+                          className={`text-[10px] font-bold uppercase rounded-[5px] border px-1.5 py-0.5 ${
+                            r.optional ? 'text-teal-700 border-teal-600/40' : 'text-muted-foreground border-border'
+                          }`}
+                          title="Flip whether the client can toggle this line"
+                        >
+                          {r.optional ? 'optional' : 'locked'}
+                        </button>
+                        <span className="font-bold whitespace-nowrap">{usd(r.priceCents)}</span>
                         <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => removeRow(r.uid)} title="Remove line">
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
-                      )}
-                    </div>
-                  ))}
+                      </div>
+                    ),
+                  )}
                   <div className="flex gap-2 px-4 py-2.5 flex-wrap">
                     <Input
                       placeholder="Line title"

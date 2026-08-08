@@ -112,9 +112,12 @@ test.describe('proposal builder', () => {
     await page.getByTestId('builder-bundle-name').fill('Demo package');
     await page.getByTestId('builder-bundle-button').click();
 
-    // The bundle shows one price - the members' sum.
-    await expect(page.getByTestId('builder-cat-demolition').getByText('Demo package')).toBeVisible();
+    // The bundle is a visible block (round 6): its name is an inline input,
+    // its price is the members' sum, and both members are listed inside.
+    await expect(page.locator('[data-testid^="builder-bundle-name-"]')).toHaveValue('Demo package');
     await expect(page.getByTestId('builder-cat-demolition').getByText('$4,800.00', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('builder-cat-demolition').getByText('Remove existing cabinets')).toBeVisible();
+    await expect(page.getByTestId('builder-cat-demolition').getByText('Debris haul-away')).toBeVisible();
 
     await page.getByTestId('builder-to-review').click();
     await expect(page.getByText('Kitchen remodel - 12 Maple Ave')).toBeVisible();
@@ -137,6 +140,80 @@ test.describe('proposal builder', () => {
       { title: 'Remove existing cabinets', price_cents: 320000 },
       { title: 'Debris haul-away', price_cents: 160000 },
     ]);
+  });
+
+  test('round 6: Take out re-sums, and at one member the bundle dissolves', async ({ page }) => {
+    await page.goto('/vaca-mgmt/proposals');
+    await page.getByTestId('open-builder').click();
+    await page.getByTestId('customer-search-input').fill('maria');
+    await page.getByTestId('customer-row-7b39c2ba-58f5-4d68-9d5a-2f4f5f27a001').click();
+    await page.locator('#pb-title').fill('T');
+    await page.getByTestId('builder-to-lines').click();
+
+    await page.getByTestId('builder-cat-pick-demolition').click();
+    for (const [t, p] of [['Line A', '100'], ['Line B', '200'], ['Line C', '300']] as const) {
+      await page.getByTestId('builder-line-title-demolition').fill(t);
+      await page.getByTestId('builder-line-price-demolition').fill(p);
+      await page.getByTestId('builder-add-line-demolition').click();
+    }
+    const checkboxes = page.getByTestId('builder-cat-demolition').getByRole('checkbox');
+    await checkboxes.nth(0).check();
+    await checkboxes.nth(1).check();
+    await checkboxes.nth(2).check();
+    await page.getByTestId('builder-bundle-button').click();
+
+    // Three members, $600 total.
+    const bundle = page.locator('[data-testid^="builder-bundle-"][data-testid$="9"], [data-testid^="builder-bundle-"]').first();
+    await expect(bundle.getByText('$600.00', { exact: true })).toBeVisible();
+
+    // Take out one member: the bundle re-sums to the remaining two.
+    await page.locator('[data-testid^="builder-takeout-"]').first().click();
+    await expect(page.locator('[data-testid^="builder-bundle-"]').first().getByText('$500.00', { exact: true })).toBeVisible();
+
+    // Take out another: one member left means no bundle at all.
+    await page.locator('[data-testid^="builder-takeout-"]').first().click();
+    await expect(page.locator('[data-testid^="builder-bundle-name-"]')).toHaveCount(0);
+    // All three lines are standalone again.
+    await expect(page.getByTestId('builder-cat-demolition').getByText('Line A')).toBeVisible();
+    await expect(page.getByTestId('builder-cat-demolition').getByText('Line B')).toBeVisible();
+    await expect(page.getByTestId('builder-cat-demolition').getByText('Line C')).toBeVisible();
+  });
+
+  test('round 6: dragging a line onto another bundles them instantly, auto-named', async ({ page }) => {
+    await page.goto('/vaca-mgmt/proposals');
+    await page.getByTestId('open-builder').click();
+    await page.getByTestId('customer-search-input').fill('maria');
+    await page.getByTestId('customer-row-7b39c2ba-58f5-4d68-9d5a-2f4f5f27a001').click();
+    await page.locator('#pb-title').fill('T');
+    await page.getByTestId('builder-to-lines').click();
+
+    await page.getByTestId('builder-cat-pick-demolition').click();
+    for (const [t, p] of [['Drag me', '150'], ['Onto me', '250']] as const) {
+      await page.getByTestId('builder-line-title-demolition').fill(t);
+      await page.getByTestId('builder-line-price-demolition').fill(p);
+      await page.getByTestId('builder-add-line-demolition').click();
+    }
+
+    // Native HTML5 DnD, dispatched the same way the importer's own drag spec
+    // does it. The drop lands mid-row (below the 30% edge) = the 'onto' zone.
+    await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('[data-testid="builder-cat-demolition"] [draggable="true"]')] as HTMLElement[];
+      const source = rows.find((r) => r.textContent?.includes('Drag me'))!;
+      const target = rows.find((r) => r.textContent?.includes('Onto me'))!;
+      const dt = new DataTransfer();
+      source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+      const rect = target.getBoundingClientRect();
+      const mid = { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height * 0.8 };
+      target.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt, ...mid }));
+      target.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt, ...mid }));
+      source.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+    });
+
+    // Instant auto-named package of the two, price summed.
+    await expect(page.locator('[data-testid^="builder-bundle-name-"]')).toHaveValue('Bundle (2 items)');
+    await expect(page.locator('[data-testid^="builder-bundle-"]').first().getByText('$400.00', { exact: true })).toBeVisible();
+    await expect(page.locator('[data-testid^="builder-bundle-"]').first().getByText('Drag me')).toBeVisible();
+    await expect(page.locator('[data-testid^="builder-bundle-"]').first().getByText('Onto me')).toBeVisible();
   });
 
   test('category creation is admin-only: a collaborator is told to ask their admin', async ({ page }) => {
