@@ -70,15 +70,19 @@ test.describe('the sync module refreshes before it syncs', () => {
     expect(route).toContain('return NextResponse.json(result)');
   });
 
-  test('the daily schedule is wired in vercel.json', async () => {
+  test('the weekly schedule is wired in vercel.json', async () => {
     const { readFileSync } = await import('fs');
     const vercel = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
       crons: { path: string; schedule: string }[];
     };
     const entry = vercel.crons.find((c) => c.path === CRON_PATH);
     expect(entry, 'the cron is registered').toBeTruthy();
-    // Daily, not monthly - the old job ran on the 1st of the month.
-    expect(entry!.schedule.split(' ')[2], 'runs every day of the month').toBe('*');
-    expect(entry!.schedule.split(' ')[3], 'in every month').toBe('*');
+    const [, , dayOfMonth, month, dayOfWeek] = entry!.schedule.split(' ');
+    // Weekly (owner's call), and specifically NOT the old monthly shape: the
+    // job it replaces ran on the 1st of the month, which is what let a broken
+    // sync go eleven months without anyone noticing.
+    expect(dayOfMonth, 'every day of the month is eligible').toBe('*');
+    expect(month, 'in every month').toBe('*');
+    expect(dayOfWeek, 'pinned to one weekday - weekly, not monthly').toMatch(/^[0-6]$/);
   });
 });

@@ -43,14 +43,14 @@ function copyFor(kind: GeoGateKind, tier: GeoTier): { title: string; body: strin
   if (kind === 'referral') {
     return {
       title: 'Referrals are for New Jersey projects',
-      body: 'Lavaca builds exclusively in New Jersey, so we can only take on referred projects here.',
+      body: 'La Vaca GC builds exclusively in New Jersey, so we can only take on referred projects here.',
     };
   }
   return {
     title: 'Estimates are for New Jersey homeowners',
     body: tier === 'intl'
       ? 'Our portfolio and guides are open to everyone, but estimates are for our New Jersey service area.'
-      : 'Lavaca builds exclusively in New Jersey, so we can only quote projects here. You are welcome to browse our work - and if you have a home in NJ, our Home Care program and newsletter are open to you.',
+      : 'La Vaca GC builds exclusively in New Jersey, so we can only quote projects here. You are welcome to browse our work - and if you have a home in NJ, our Home Care program and newsletter are open to you.',
   };
 }
 

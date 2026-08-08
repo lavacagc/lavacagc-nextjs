@@ -11,10 +11,11 @@ import { sendTelegramMessage, escapeTelegramClipped } from '@/lib/notify/telegra
  * diagnosis). New reviews therefore only ever appeared when somebody pressed
  * two buttons in the admin by hand.
  *
- * Daily rather than persistent, per the owner: reviews arrive a handful of
- * times a month, and the six public components that read `google_reviews` are
- * happy to be a few hours behind. The manual Sync button stays for the moment
- * a review lands and it needs to be on the site now.
+ * WEEKLY rather than persistent (owner's call, 2026-08-08 - Monday mornings):
+ * reviews arrive a handful of times a month, so a weekly sweep keeps the six
+ * public components that read `google_reviews` current without a job running
+ * for nothing six days out of seven. The manual Sync button in the admin stays
+ * for the moment a review lands and it needs to be on the site now.
  *
  * A FAILURE IS ANNOUNCED. The whole reason this went unnoticed for months is
  * that a broken sync looked exactly like a working one, so a failed run pings

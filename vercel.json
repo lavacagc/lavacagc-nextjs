@@ -47,7 +47,7 @@
     },
     {
       "path": "/api/cron/sync-reviews",
-      "schedule": "0 10 * * *"
+      "schedule": "0 10 * * 1"
     },
     {
       "path": "/api/cron/seo-maintain",
