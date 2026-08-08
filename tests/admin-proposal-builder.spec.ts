@@ -290,6 +290,190 @@ test.describe('proposal builder', () => {
   });
 });
 
+test.describe('round 9: customer-first proposals page', () => {
+  test.use({ viewport: { width: 1280, height: 1000 } });
+
+  const MARIA_PROPOSAL = {
+    id: '55555555-5555-4555-8555-555555555555',
+    client_name: 'Maria Delgado',
+    client_email: 'maria.delgado@example.com',
+    title: 'Kitchen remodel - 12 Maple Ave',
+    status: 'draft',
+    token: 'e'.repeat(43),
+    line_count: 2,
+    submission_count: 0,
+    latest_total_cents: null,
+    updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+  };
+
+  /** The stored lines the GET answers with - one plain line, one bundle. */
+  const STORED_LINES = [
+    {
+      id: 'aaaaaaa1-0000-4000-8000-000000000001',
+      proposal_id: MARIA_PROPOSAL.id,
+      position: 0,
+      title: 'Tear-out and prep',
+      description: 'Strip to studs',
+      price_cents: 480000,
+      optional: false,
+      category: 'demolition',
+      bundle_members: null,
+    },
+    {
+      id: 'aaaaaaa2-0000-4000-8000-000000000002',
+      proposal_id: MARIA_PROPOSAL.id,
+      position: 1,
+      title: 'Cabinet package',
+      description: '',
+      price_cents: 630050,
+      optional: true,
+      category: 'cabinets',
+      bundle_members: [
+        { title: 'Base cabinets', price_cents: 400000 },
+        { title: 'Crown and trim', price_cents: 230050 },
+      ],
+    },
+  ];
+
+  const rosterJson = (rows: unknown[]) => ({
+    proposals: rows, counts_available: true, total: rows.length, truncated: false,
+  });
+
+  test.beforeEach(async ({ page, context, baseURL }) => {
+    await signInAsAdmin(context, baseURL!);
+    await page.route('**/api/admin/estimate-email/leads*', async (route) => {
+      await route.fulfill({ json: CUSTOMER_HITS });
+    });
+    await page.route('**/api/admin/proposal-categories', async (route) => {
+      await route.fulfill({ json: CATEGORY_LIBRARY });
+    });
+  });
+
+  test('one search bar: picking the customer scopes the page, and Open & modify round-trips the stored lines', async ({ page }) => {
+    const reimports: Array<Record<string, unknown>> = [];
+    let reads = 0;
+    // The [id] route is its own pattern: a glob's `*` stops at `/`, so the
+    // roster pattern below never reaches it.
+    await page.route(`**/api/admin/proposals/${MARIA_PROPOSAL.id}`, async (route) => {
+      if (route.request().method() === 'GET') {
+        reads += 1;
+        await route.fulfill({ json: { proposal: MARIA_PROPOSAL, lines: STORED_LINES } });
+        return;
+      }
+      reimports.push(route.request().postDataJSON());
+      await route.fulfill({ json: { ok: true } });
+    });
+    await page.route('**/api/admin/proposals*', async (route) => {
+      await route.fulfill({ json: rosterJson([MARIA_PROPOSAL]) });
+    });
+
+    await page.goto('/vaca-mgmt/proposals');
+    // Fresh page: the recent list, with the importer folded behind its link.
+    await expect(page.getByTestId('roster-heading')).toHaveText('Recent proposals');
+    await expect(page.getByTestId('csv-importer-card')).toHaveCount(0);
+    await expect(page.getByTestId('open-importer')).toBeVisible();
+
+    // The one search bar finds the PERSON - lead and proposals merged into a
+    // single row that carries the proposal count.
+    await page.getByTestId('roster-search').fill('maria');
+    const hit = page.getByTestId('client-search-popover').getByTestId('client-hit');
+    await expect(hit).toContainText('Maria Delgado');
+    await expect(hit).toContainText('1 proposal');
+    await hit.click();
+    await expect(page.getByTestId('client-header')).toContainText('Maria Delgado');
+    await expect(page.getByTestId('roster-heading')).toContainText('Maria Delgado');
+
+    // Click into the proposal: the builder opens in edit mode holding the
+    // stored lines - the plain line in its category, and the bundle with its
+    // members and ONE summed price.
+    await page.getByTestId('roster-identity').click();
+    await expect(page.getByTestId('proposal-builder')).toBeVisible();
+    expect(reads).toBe(1);
+    await expect(page.getByText(`Edit: ${MARIA_PROPOSAL.title}`)).toBeVisible();
+    await expect(page.getByTestId('builder-edit-client')).toContainText('Maria Delgado');
+    await expect(page.getByTestId('builder-cat-demolition').getByText('Tear-out and prep')).toBeVisible();
+    const cabinets = page.getByTestId('builder-cat-cabinets');
+    await expect(cabinets.getByText('$6,300.50', { exact: true })).toBeVisible();
+    await expect(cabinets.getByText('Base cabinets')).toBeVisible();
+    await expect(cabinets.getByText('Crown and trim')).toBeVisible();
+    await expect(page.locator('[data-testid^="builder-bundle-name-"]')).toHaveValue('Cabinet package');
+
+    // Save replaces the lines on the SAME proposal - the re-import action.
+    await page.getByTestId('builder-to-review').click();
+    const save = page.getByTestId('builder-create');
+    await expect(save).toHaveText('Save changes');
+    await save.click();
+    await expect.poll(() => reimports.length).toBe(1);
+    const body = reimports[0] as {
+      action: string;
+      lines: Array<{ title: string; category: string; price_cents: number; optional: boolean; bundle_members?: Array<{ title: string; price_cents: number }> }>;
+    };
+    expect(body.action).toBe('reimport');
+    expect(body.lines).toHaveLength(2);
+    expect(body.lines[0]).toMatchObject({
+      title: 'Tear-out and prep', category: 'demolition', price_cents: 480000, optional: false,
+    });
+    expect(body.lines[1]).toMatchObject({
+      title: 'Cabinet package', category: 'cabinets', price_cents: 630050, optional: true,
+      bundle_members: [
+        { title: 'Base cabinets', price_cents: 400000 },
+        { title: 'Crown and trim', price_cents: 230050 },
+      ],
+    });
+    await expect(page.getByText('Proposal updated', { exact: true }).first()).toBeVisible();
+  });
+
+  test('a revoked row refuses Open & modify, and names the way back', async ({ page }) => {
+    let reads = 0;
+    await page.route(`**/api/admin/proposals/${MARIA_PROPOSAL.id}`, async (route) => {
+      reads += 1;
+      await route.fulfill({ json: { proposal: MARIA_PROPOSAL, lines: [] } });
+    });
+    await page.route('**/api/admin/proposals*', async (route) => {
+      await route.fulfill({ json: rosterJson([{ ...MARIA_PROPOSAL, status: 'revoked' }]) });
+    });
+
+    await page.goto('/vaca-mgmt/proposals');
+    const row = page.getByTestId(`proposal-${MARIA_PROPOSAL.id}`);
+    await expect(row.getByTestId('edit-hint')).toContainText('Restore to draft to edit');
+    await row.getByTestId('roster-identity').click();
+    await expect(page.getByText('This proposal is revoked', { exact: true }).first()).toBeVisible();
+    await expect(page.getByTestId('proposal-builder')).toHaveCount(0);
+    expect(reads, 'a refused edit never even reads the lines').toBe(0);
+  });
+
+  test('New proposal for the selected customer starts on details with the customer answered', async ({ page }) => {
+    await page.route('**/api/admin/proposals*', async (route) => {
+      await route.fulfill({ json: rosterJson([MARIA_PROPOSAL]) });
+    });
+
+    await page.goto('/vaca-mgmt/proposals');
+    await page.getByTestId('roster-search').fill('maria');
+    await page.getByTestId('client-search-popover').getByTestId('client-hit').click();
+    await page.getByTestId('new-for-client').click();
+
+    await expect(page.getByTestId('proposal-builder')).toBeVisible();
+    // Step 1 is already answered: the chip names the customer, and the page
+    // opens on details rather than making the admin re-find who they had.
+    await expect(page.getByTestId('builder-step-0')).toContainText('Customer: Maria Delgado');
+    await expect(page.locator('#pb-client-name')).toHaveValue('Maria Delgado');
+    await expect(page.locator('#pb-client-email')).toHaveValue('maria.delgado@example.com');
+  });
+
+  test('the importer is one click away, and Hide folds it back', async ({ page }) => {
+    await page.route('**/api/admin/proposals*', async (route) => {
+      await route.fulfill({ json: rosterJson([]) });
+    });
+
+    await page.goto('/vaca-mgmt/proposals');
+    await expect(page.getByTestId('csv-importer-card')).toHaveCount(0);
+    await page.getByTestId('open-importer').click();
+    await expect(page.getByTestId('csv-importer-card')).toBeVisible();
+    await page.getByTestId('close-importer').click();
+    await expect(page.getByTestId('csv-importer-card')).toHaveCount(0);
+  });
+});
+
 test.describe('send service quote - progressive steps', () => {
   test.use({ viewport: { width: 1280, height: 1000 } });
 

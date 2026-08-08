@@ -49,24 +49,79 @@ export function parsePriceToCents(text: string): number | null {
   return Math.round(Number(cleaned) * 100);
 }
 
+/** A stored line as the edit-mode GET returns it. */
+export interface EditableStoredLine {
+  title: string;
+  description: string;
+  price_cents: number;
+  optional: boolean;
+  category: string;
+  bundle_members: { title: string; price_cents: number }[] | null;
+}
+
 interface ProposalBuilderProps {
   onCreated: () => void;
   onClose: () => void;
   /** Scrolls the admin to the CSV importer - the side door. */
   onImportInstead: () => void;
+  /**
+   * Edit mode (round 9's "Open & modify"): the builder loads this proposal's
+   * lines and Save replaces them on the SAME proposal - the client's link
+   * shows the update. Title and client identity stay fixed (re-import
+   * semantics); revoked proposals are refused by the write side.
+   */
+  edit?: { id: string; title: string; clientName: string; clientEmail: string | null; lines: EditableStoredLine[] };
+  /** "New proposal for X": step 1 is already answered. */
+  initialCustomer?: CustomerHit | null;
 }
 
 const STEPS = ['Customer', 'Details', 'Line items', 'Review & create'] as const;
 
 let nextUid = 1;
 
-export function ProposalBuilder({ onCreated, onClose, onImportInstead }: ProposalBuilderProps) {
-  const [step, setStep] = useState(0);
-  const [customer, setCustomer] = useState<CustomerHit | null>(null);
-  const [clientName, setClientName] = useState('');
-  const [clientEmail, setClientEmail] = useState('');
-  const [title, setTitle] = useState('');
-  const [rows, setRows] = useState<BuilderRow[]>([]);
+/** Stored lines back into builder rows - bundles keep their members; the
+ * members' builder-side rows are synthesized in the line's own category (the
+ * per-trade sub-areas of a portion are not stored, as the mock disclosed). */
+function rowsFromStoredLines(lines: EditableStoredLine[]): BuilderRow[] {
+  return lines.map((l) => {
+    if (l.bundle_members && l.bundle_members.length >= 2) {
+      const memberRows: BuilderRow[] = l.bundle_members.map((m) => ({
+        uid: nextUid++,
+        title: m.title,
+        description: '',
+        priceCents: m.price_cents,
+        categoryKey: l.category,
+        optional: l.optional,
+      }));
+      return {
+        uid: nextUid++,
+        title: l.title,
+        description: l.description,
+        priceCents: l.price_cents,
+        categoryKey: l.category,
+        optional: l.optional,
+        members: l.bundle_members.map((m) => ({ title: m.title, price_cents: m.price_cents })),
+        memberRows,
+      };
+    }
+    return {
+      uid: nextUid++,
+      title: l.title,
+      description: l.description,
+      priceCents: l.price_cents,
+      categoryKey: l.category,
+      optional: l.optional,
+    };
+  });
+}
+
+export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, initialCustomer }: ProposalBuilderProps) {
+  const [step, setStep] = useState(edit ? 2 : initialCustomer ? 1 : 0);
+  const [customer, setCustomer] = useState<CustomerHit | null>(initialCustomer ?? null);
+  const [clientName, setClientName] = useState(edit?.clientName ?? initialCustomer?.name ?? '');
+  const [clientEmail, setClientEmail] = useState(edit?.clientEmail ?? initialCustomer?.email ?? '');
+  const [title, setTitle] = useState(edit?.title ?? '');
+  const [rows, setRows] = useState<BuilderRow[]>(() => (edit ? rowsFromStoredLines(edit.lines) : []));
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bundleName, setBundleName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -98,7 +153,9 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
   const libraryByKey = useMemo(() => new Map(library.map((c) => [c.key, c])), [library]);
 
   // Categories currently on the proposal, in the order they were added.
-  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
+  const [categoryOrder, setCategoryOrder] = useState<string[]>(() =>
+    edit ? [...new Set(edit.lines.map((l) => l.category))] : [],
+  );
   const [catQuery, setCatQuery] = useState('');
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
 
@@ -538,24 +595,39 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
         category: r.categoryKey,
         bundle_members: r.members ? toStoredMembers(r.members) : undefined,
       }));
-      const res = await fetch('/api/admin/proposals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_name: clientName.trim(),
-          client_email: clientEmail.trim() || null,
-          title: title.trim(),
-          lead_id: customer?.id ?? null,
-          lines,
-        }),
-      });
+      // Edit mode saves onto the SAME proposal via the re-import action - the
+      // client's existing link shows the update.
+      const res = edit
+        ? await fetch(`/api/admin/proposals/${edit.id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'reimport', lines }),
+        })
+        : await fetch('/api/admin/proposals', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            client_name: clientName.trim(),
+            client_email: clientEmail.trim() || null,
+            title: title.trim(),
+            // `||`, not `??`: a client picked off an existing proposal has no
+            // lead row, and arrives as a hit whose id is '' - that is "no
+            // lead to link", not a lead id for the API to reject.
+            lead_id: customer?.id || null,
+            lines,
+          }),
+        });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Create failed');
-      toast({ title: 'Proposal created', description: `${clientName.trim()} - draft, ready to send from the roster.` });
+      if (!res.ok) throw new Error(data.error || (edit ? 'Save failed' : 'Create failed'));
+      toast(
+        edit
+          ? { title: 'Proposal updated', description: `${clientName.trim()} - the client link now shows the new lines.` }
+          : { title: 'Proposal created', description: `${clientName.trim()} - draft, ready to send from the roster.` },
+      );
       onCreated();
     } catch (err) {
       toast({
-        title: 'Could not create the proposal',
+        title: edit ? 'Could not save the proposal' : 'Could not create the proposal',
         description: err instanceof Error ? err.message : String(err),
         variant: 'destructive',
       });
@@ -578,21 +650,40 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
     <Card data-testid="proposal-builder">
       <CardHeader className="flex flex-row items-start justify-between gap-3 flex-wrap space-y-0">
         <div>
-          <CardTitle>New proposal</CardTitle>
+          <CardTitle>{edit ? `Edit: ${edit.title}` : 'New proposal'}</CardTitle>
           <CardDescription className="mt-1">
-            Build it line by line - or{' '}
-            <button className="underline font-semibold text-primary" onClick={onImportInstead} data-testid="builder-import-instead">
-              import the estimator CSV instead
-            </button>
-            .
+            {edit ? (
+              <>Saving replaces this proposal&apos;s lines on the same client link. Title and client stay as they are.</>
+            ) : (
+              <>
+                Build it line by line - or{' '}
+                <button className="underline font-semibold text-primary" onClick={onImportInstead} data-testid="builder-import-instead">
+                  import the estimator CSV instead
+                </button>
+                .
+              </>
+            )}
           </CardDescription>
         </div>
         <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
       </CardHeader>
       <CardContent className="space-y-5">
-        {/* Stepper */}
+        {/* Stepper. Edit mode fixes customer + details, so those two steps
+            collapse into one static chip and only line items / review remain. */}
         <div className="flex gap-2 flex-wrap">
+          {edit && (
+            <span
+              data-testid="builder-edit-client"
+              className="inline-flex items-center gap-2 border border-green-600/50 rounded-lg px-3 py-1.5 text-sm font-semibold text-green-700"
+            >
+              <span className="w-5 h-5 rounded-full inline-flex items-center justify-center bg-green-600 text-white">
+                <Check className="w-3 h-3" />
+              </span>
+              {clientName}{clientEmail ? ` (${clientEmail})` : ''}
+            </span>
+          )}
           {STEPS.map((label, i) => {
+            if (edit && i < 2) return null;
             const done = i < step;
             const active = i === step;
             return (
@@ -989,10 +1080,10 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
               </span>
               <span className="text-base font-bold">Total {usd(totalCents)}</span>
             </div>
-            <div className="flex justify-between">
-              <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
+            <div className={`flex ${edit ? 'justify-end' : 'justify-between'}`}>
+              {!edit && <Button variant="outline" onClick={() => setStep(1)}>Back</Button>}
               <Button onClick={() => setStep(3)} disabled={!stepReady[2]} data-testid="builder-to-review">
-                Review &amp; create
+                {edit ? 'Review & save' : 'Review & create'}
               </Button>
             </div>
           </div>
@@ -1032,12 +1123,14 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
             <div className="flex justify-end text-base font-bold">Total {usd(totalCents)}</div>
             <p className="text-xs text-muted-foreground">
               Bundles show the client one price; the item titles above are what their page lists as included.
-              Creating makes a DRAFT - you still review and send it from the roster like any imported proposal.
+              {edit
+                ? ' Saving replaces the lines on this proposal - the client’s existing link shows the update.'
+                : ' Creating makes a DRAFT - you still review and send it from the roster like any imported proposal.'}
             </p>
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
               <Button onClick={create} disabled={isCreating} data-testid="builder-create">
-                {isCreating ? 'Creating…' : 'Create draft proposal'}
+                {isCreating ? (edit ? 'Saving…' : 'Creating…') : edit ? 'Save changes' : 'Create draft proposal'}
               </Button>
             </div>
           </div>
