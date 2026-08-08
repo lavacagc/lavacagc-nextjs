@@ -158,7 +158,13 @@ export default function AdminContent() {
           <Tabs value={activeTab} onValueChange={setActiveTab}>
 
           <TabsContent value="dashboard">
-            <AdminDashboard onNavigateToTab={setActiveTab} />
+            <AdminDashboard
+              onNavigateToTab={setActiveTab}
+              onEditPost={(id) => {
+                setEditingPost(id);
+                setActiveTab('new-post');
+              }}
+            />
           </TabsContent>
 
           <TabsContent value="blog">

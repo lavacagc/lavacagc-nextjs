@@ -178,19 +178,26 @@ export default function AdminSidebar({
     }
   }, [expandedGroups, hydrated]);
 
-  // When the active tab changes (e.g. blog editor saves and jumps back to
-  // 'blog' programmatically), auto-open its parent group if closed.
+  // When the active tab CHANGES (e.g. blog editor saves and jumps back to
+  // 'blog' programmatically), auto-open its parent group if closed. Guarded by
+  // a previous-tab ref on purpose: with `expandedGroups` driving the effect,
+  // collapsing the active tab's group re-ran it and re-opened the group in the
+  // same breath, so that group could never be closed at all.
+  const prevActiveTabRef = useRef(activeTab);
   useEffect(() => {
     if (!hydrated) return;
+    if (prevActiveTabRef.current === activeTab) return;
+    prevActiveTabRef.current = activeTab;
     const parent = findParentGroupId(activeTab);
-    if (parent && !expandedGroups.has(parent)) {
+    if (parent) {
       setExpandedGroups((prev) => {
+        if (prev.has(parent)) return prev;
         const next = new Set(prev);
         next.add(parent);
         return next;
       });
     }
-  }, [activeTab, hydrated, expandedGroups]);
+  }, [activeTab, hydrated]);
 
   const toggleGroup = (groupId: string) => {
     setExpandedGroups((prev) => {
