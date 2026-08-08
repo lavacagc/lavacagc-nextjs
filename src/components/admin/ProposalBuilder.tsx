@@ -370,6 +370,130 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
     },
   });
 
+  // ---- whole-section drag (round 7) ---------------------------------------
+  // Sections drag too: drop one on another's TOP EDGE to reorder the proposal,
+  // or on its body to COMBINE the two into a locked-together portion - one
+  // bundle holding every line of both, rendered with each trade as its own
+  // sub-area. Client-side (owner's decision): one package, one price, with the
+  // includes list.
+  const dragCat = useRef<string | null>(null);
+  // A member being rearranged INSIDE a portion - scoped to its own sub-area.
+  const memberDrag = useRef<{ portionUid: number; memberUid: number; categoryKey: string } | null>(null);
+
+  const isPortion = (r: BuilderRow) =>
+    !!r.memberRows && new Set(r.memberRows.map((m) => m.categoryKey)).size > 1;
+
+  const combineCategories = (targetKey: string, draggedKey: string) => {
+    if (targetKey === draggedKey) return;
+    // Computed from the render's rows, not inside the setter: the category
+    // must only leave the board when the portion actually composed, or a lone
+    // line could be stranded in a section the board no longer renders.
+    const targetRows = rows.filter((r) => r.categoryKey === targetKey);
+    const draggedRows = rows.filter((r) => r.categoryKey === draggedKey);
+    if (targetRows.length + draggedRows.length < 2) return;
+    const targetLabel = libraryByKey.get(targetKey)?.label ?? targetKey;
+    const draggedLabel = libraryByKey.get(draggedKey)?.label ?? draggedKey;
+    const portion = composeRowsIntoBundle(
+      [...targetRows, ...draggedRows],
+      `${targetLabel} + ${draggedLabel}`,
+    );
+    if (!portion) return;
+    portion.categoryKey = targetKey;
+    const firstIdx = rows.findIndex((r) => r.categoryKey === targetKey || r.categoryKey === draggedKey);
+    const next = rows.filter((r) => r.categoryKey !== targetKey && r.categoryKey !== draggedKey);
+    next.splice(Math.min(firstIdx, next.length), 0, portion);
+    setRows(next);
+    // The dragged trade's rows now live inside the portion; its empty section
+    // leaves the board (Split apart brings it back).
+    setCategoryOrder((prev) => prev.filter((k) => k !== draggedKey));
+  };
+
+  const reorderCategoryBefore = (targetKey: string, draggedKey: string) => {
+    if (targetKey === draggedKey) return;
+    setCategoryOrder((prev) => {
+      const without = prev.filter((k) => k !== draggedKey);
+      const at = without.indexOf(targetKey);
+      without.splice(at === -1 ? without.length : at, 0, draggedKey);
+      return without;
+    });
+  };
+
+  const sectionDragProps = (key: string) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (dragCat.current === null || dragCat.current === key) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const zone = e.clientY - rect.top < rect.height * 0.25 ? 'before' : 'combine';
+      setHoverTarget(`sec-${key}-${zone}`);
+    },
+    onDragLeave: () => setHoverTarget((h) => (h?.startsWith(`sec-${key}-`) ? null : h)),
+    onDrop: (e: React.DragEvent) => {
+      if (dragCat.current === null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const zone = e.clientY - rect.top < rect.height * 0.25 ? 'before' : 'combine';
+      const dragged = dragCat.current;
+      dragCat.current = null;
+      setHoverTarget(null);
+      if (zone === 'before') reorderCategoryBefore(key, dragged);
+      else combineCategories(key, dragged);
+    },
+  });
+
+  const sectionHandleProps = (key: string) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      dragCat.current = key;
+      e.stopPropagation();
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', `section:${key}`);
+    },
+    onDragEnd: () => {
+      dragCat.current = null;
+      setHoverTarget(null);
+    },
+  });
+
+  // Split a portion back into its trades: rows return to their own categories,
+  // and any category that had left the board comes back at its old spot.
+  const splitPortion = (uid: number) => {
+    const portion = rows.find((r) => r.uid === uid);
+    if (portion?.memberRows) {
+      const keys = [...new Set(portion.memberRows.map((m) => m.categoryKey))];
+      setCategoryOrder((prev) => [...prev, ...keys.filter((k) => !prev.includes(k))]);
+    }
+    unbundle(uid);
+  };
+
+  // Reorder a member within ITS OWN sub-area of a portion (owner round 7: an
+  // Electrical Rough line arranges inside Electrical Rough only).
+  const reorderMemberBefore = (portionUid: number, targetMemberUid: number) => {
+    const drag = memberDrag.current;
+    memberDrag.current = null;
+    setHoverTarget(null);
+    if (!drag || drag.portionUid !== portionUid || drag.memberUid === targetMemberUid) return;
+    setRows((prev) => {
+      const idx = prev.findIndex((r) => r.uid === portionUid);
+      const portion = prev[idx];
+      if (!portion?.memberRows) return prev;
+      const dragged = portion.memberRows.find((m) => m.uid === drag.memberUid);
+      const target = portion.memberRows.find((m) => m.uid === targetMemberUid);
+      // Scoped: a member only moves within its own trade area.
+      if (!dragged || !target || dragged.categoryKey !== target.categoryKey) return prev;
+      const without = portion.memberRows.filter((m) => m.uid !== drag.memberUid);
+      const at = without.findIndex((m) => m.uid === targetMemberUid);
+      without.splice(at, 0, dragged);
+      const recomposed = composeRowsIntoBundle(without, portion.title);
+      if (!recomposed) return prev;
+      recomposed.categoryKey = portion.categoryKey;
+      const next = [...prev];
+      next[idx] = recomposed;
+      return next;
+    });
+  };
+
   // ---- derived -------------------------------------------------------------
   const rowsByCategory = useMemo(() => {
     const m = new Map<string, BuilderRow[]>();
@@ -496,7 +620,7 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
             <p className="text-sm text-muted-foreground mb-3">
               Find the customer, or save someone new - the proposal links to their record.
             </p>
-            <CustomerSearch layout="grid" onSelect={selectCustomer} selectedId={customer?.id} />
+            <CustomerSearch onSelect={selectCustomer} selectedId={customer?.id} />
           </div>
         )}
 
@@ -539,21 +663,129 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
 
             {categoryOrder.map((key) => {
               const cat = libraryByKey.get(key);
-              const catRows = rowsByCategory.get(key) ?? [];
-              const subtotal = catRows.reduce((a, r) => a + r.priceCents, 0);
+              const allCatRows = rowsByCategory.get(key) ?? [];
+              // Cross-trade portions render as their own bounding boxes above
+              // the section frame; everything else stays inside it.
+              const portions = allCatRows.filter(isPortion);
+              const catRows = allCatRows.filter((r) => !isPortion(r));
+              const subtotal = allCatRows.reduce((a, r) => a + r.priceCents, 0);
               const draft = draftFor(key);
               return (
-                <div key={key} className="border rounded-lg overflow-hidden" data-testid={`builder-cat-${key}`}>
+                <div key={key} {...sectionDragProps(key)} data-testid={`builder-section-${key}`}
+                  className={hoverTarget === `sec-${key}-before` ? 'border-t-4 border-t-primary rounded-t' : ''}
+                >
+                  {portions.map((p) => {
+                    const memberKeys = [...new Set((p.memberRows ?? []).map((m) => m.categoryKey))];
+                    return (
+                      <div
+                        key={p.uid}
+                        {...rowDragProps(p)}
+                        data-testid={`builder-portion-${p.uid}`}
+                        className="mb-3 rounded-xl border-2 border-primary/45 border-l-[6px] border-l-primary bg-primary/5 overflow-hidden cursor-grab"
+                      >
+                        <div className="flex items-center gap-2.5 px-3.5 py-2.5 border-b border-dashed border-primary/30 flex-wrap">
+                          <GripVertical className="w-4 h-4 text-primary/50 flex-shrink-0" />
+                          <input
+                            value={p.title}
+                            onChange={(e) => renameBundle(p.uid, e.target.value)}
+                            aria-label="Portion name"
+                            data-testid={`builder-portion-name-${p.uid}`}
+                            className="font-extrabold text-sm text-primary bg-transparent border-0 border-b border-dashed border-primary/50 focus:outline-none focus:border-solid min-w-[140px] max-w-[280px]"
+                          />
+                          <span className="text-[10px] font-bold uppercase tracking-wide rounded-[5px] px-1.5 py-0.5 bg-primary/10 text-primary">
+                            locked together
+                          </span>
+                          <span className="text-xs text-muted-foreground">portion total</span>
+                          <span className="font-bold text-sm whitespace-nowrap">{usd(p.priceCents)}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 ml-auto text-xs"
+                            onClick={() => splitPortion(p.uid)}
+                            data-testid={`builder-split-${p.uid}`}
+                          >
+                            <Undo2 className="w-3.5 h-3.5 mr-1" />
+                            Split apart
+                          </Button>
+                        </div>
+                        {memberKeys.map((mk) => {
+                          const areaRows = (p.memberRows ?? []).filter((m) => m.categoryKey === mk);
+                          const areaTotal = areaRows.reduce((a, m) => a + m.priceCents, 0);
+                          return (
+                            <div key={mk} className="m-2 border rounded-lg overflow-hidden bg-white">
+                              <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/60 border-b text-xs font-bold">
+                                {libraryByKey.get(mk)?.label ?? mk}
+                                <span className="ml-auto font-semibold text-muted-foreground">{usd(areaTotal)}</span>
+                              </div>
+                              {areaRows.map((m) => (
+                                <div
+                                  key={m.uid}
+                                  draggable
+                                  onDragStart={(e) => {
+                                    memberDrag.current = { portionUid: p.uid, memberUid: m.uid, categoryKey: m.categoryKey };
+                                    e.stopPropagation();
+                                    e.dataTransfer.effectAllowed = 'move';
+                                    e.dataTransfer.setData('text/plain', `member:${m.uid}`);
+                                  }}
+                                  onDragEnd={() => { memberDrag.current = null; setHoverTarget(null); }}
+                                  onDragOver={(e) => {
+                                    const d = memberDrag.current;
+                                    if (!d || d.portionUid !== p.uid || d.categoryKey !== m.categoryKey || d.memberUid === m.uid) return;
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setHoverTarget(`member-${m.uid}`);
+                                  }}
+                                  onDragLeave={() => setHoverTarget((h) => (h === `member-${m.uid}` ? null : h))}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    reorderMemberBefore(p.uid, m.uid);
+                                  }}
+                                  className={`flex items-center gap-2.5 px-3 py-1.5 text-[12.5px] border-b last:border-0 flex-wrap cursor-grab ${
+                                    hoverTarget === `member-${m.uid}` ? 'border-t-2 border-t-primary' : ''
+                                  }`}
+                                >
+                                  <GripVertical className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />
+                                  <span className="flex-1 min-w-[130px]">{m.title}</span>
+                                  <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">{usd(m.priceCents)}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => takeOutMember(p.uid, m.uid)}
+                                    data-testid={`builder-takeout-${m.uid}`}
+                                    className="text-[11px] font-semibold text-muted-foreground border rounded-[5px] px-2 py-0.5 hover:border-primary hover:text-primary"
+                                  >
+                                    Take out
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })}
+                        <div className="px-3.5 pb-2 pt-0.5 text-[11.5px] text-muted-foreground">
+                          The client sees ONE line: {p.title} - {usd(p.priceCents)}, listing everything above as included.
+                          Item grips reorder within their own trade area only.
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <div className="border rounded-lg overflow-hidden" data-testid={`builder-cat-${key}`}>
                   <div
                     {...categoryDropProps(key)}
                     className={`flex items-center gap-2 flex-wrap px-4 py-2.5 bg-muted/60 border-b transition-colors ${
                       hoverTarget === `cat-${key}` ? 'outline-dashed outline-2 outline-primary -outline-offset-2' : ''
-                    }`}
+                    } ${hoverTarget === `sec-${key}-combine` ? 'outline-dashed outline-2 outline-primary -outline-offset-2' : ''}`}
                   >
+                    <span {...sectionHandleProps(key)} className="cursor-grab inline-flex" title="Drag the whole section: drop on another to combine, on its top edge to reorder">
+                      <GripVertical className="w-4 h-4 text-muted-foreground/60" />
+                    </span>
                     <span className="font-bold text-sm">{cat?.label ?? key}</span>
                     {catBadge(key)}
                     {hoverTarget === `cat-${key}` && (
                       <span className="text-[10px] font-bold uppercase text-primary">drop to move here</span>
+                    )}
+                    {hoverTarget === `sec-${key}-combine` && (
+                      <span className="text-[10px] font-bold uppercase text-primary">drop to combine into one portion</span>
                     )}
                     <span className="ml-auto text-xs font-semibold text-muted-foreground">
                       subtotal {usd(subtotal)}
@@ -689,6 +921,7 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
                     <Button variant="outline" size="sm" className="h-9" onClick={() => addLine(key)} data-testid={`builder-add-line-${key}`}>
                       Add line
                     </Button>
+                  </div>
                   </div>
                 </div>
               );

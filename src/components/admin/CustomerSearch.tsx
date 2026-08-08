@@ -40,18 +40,12 @@ interface CustomerSearchProps {
   onSelect: (customer: CustomerHit) => void;
   selectedId?: string | null;
   placeholder?: string;
-  /**
-   * 'list' - single narrow column (Send Estimate's sidebar). 'grid' - result
-   * cards spread across the full width (the proposal builder and Send Service
-   * Quote), per the owner's round-5 note: use the real estate.
-   */
-  layout?: 'list' | 'grid';
 }
 
 /** Type-first: nobody is listed until the query reaches this many characters. */
 const MIN_QUERY_CHARS = 2;
 
-export function CustomerSearch({ onSelect, selectedId, placeholder, layout = 'list' }: CustomerSearchProps) {
+export function CustomerSearch({ onSelect, selectedId, placeholder }: CustomerSearchProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CustomerHit[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -161,77 +155,85 @@ export function CustomerSearch({ onSelect, selectedId, placeholder, layout = 'li
   };
 
   const belowMinimum = query.trim().length < MIN_QUERY_CHARS;
-  const grid = layout === 'grid';
+  // The results POPOVER (owner round 7: slimmer - one input row; results hang
+  // over the page instead of pushing it down). Open whenever there is a real
+  // query; selecting clears the query, which closes it.
+  const popoverOpen = !belowMinimum;
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-xl">
       <div className="relative">
-        <Search className={`absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground ${grid ? 'h-5 w-5' : 'h-4 w-4'}`} />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           data-testid="customer-search-input"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={placeholder ?? 'Search by name, email, phone...'}
-          className={grid ? 'pl-10 h-11 text-base' : 'pl-9'}
+          placeholder={placeholder ?? 'Search by name, email, or phone...'}
+          className="pl-9"
         />
-      </div>
 
-      {belowMinimum ? (
-        <div className="text-center py-8 text-muted-foreground" data-testid="customer-search-hint">
-          <p className="text-sm font-semibold text-foreground">Start typing to find a customer</p>
-          <p className="text-sm mt-0.5">Results appear from the second letter - nobody is listed until you ask.</p>
-        </div>
-      ) : (
+      {popoverOpen && (
         <div
-          className={
-            grid
-              ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-[440px] overflow-y-auto'
-              : 'space-y-1 max-h-[440px] overflow-y-auto'
-          }
+          data-testid="customer-search-popover"
+          className="absolute z-50 left-0 right-0 top-full mt-1.5 bg-background border rounded-lg shadow-xl overflow-hidden"
         >
-          {isSearching && <div className="text-sm text-muted-foreground p-2">Searching…</div>}
-          {!isSearching && results.length === 0 && (
-            <div className="text-sm text-muted-foreground p-2">Nobody found.</div>
-          )}
-          {!isSearching && results.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              data-testid={`customer-row-${c.id}`}
-              onClick={() => onSelect(c)}
-              className={`w-full text-left p-3 rounded-md border transition-colors hover:bg-muted/50 ${
-                selectedId === c.id ? 'border-primary bg-primary/5' : 'border-border'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-sm truncate">{c.name ?? '(no name)'}</span>
-                {c.source === 'manual' && (
-                  <span className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-primary/10 text-primary whitespace-nowrap">
-                    saved by you
+          <div className="max-h-72 overflow-y-auto">
+            {isSearching && <div className="text-sm text-muted-foreground px-4 py-3">Searching…</div>}
+            {!isSearching && results.length === 0 && (
+              <div className="text-sm text-muted-foreground px-4 py-3">Nobody found.</div>
+            )}
+            {!isSearching && results.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                data-testid={`customer-row-${c.id}`}
+                onClick={() => {
+                  onSelect(c);
+                  setQuery('');
+                }}
+                className={`w-full text-left px-4 py-2.5 border-b last:border-b-0 transition-colors hover:bg-primary/5 ${
+                  selectedId === c.id ? 'bg-primary/5' : ''
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-sm">
+                    <span className="font-semibold">{c.name ?? '(no name)'}</span>
+                    <span className="text-muted-foreground text-xs">
+                      {' '}· {c.email ?? '-'}{c.phone ? ` · ${c.phone}` : ''}{c.city ? ` · ${c.city}` : ''}
+                    </span>
                   </span>
-                )}
-              </div>
-              <div className="text-xs text-muted-foreground truncate">{c.email ?? '-'}</div>
-              <div className="text-xs text-muted-foreground">
-                {[c.phone, c.city].filter(Boolean).join(' · ') || 'No contact details'}
-              </div>
-            </button>
-          ))}
+                  {c.source === 'manual' && (
+                    <span className="text-[9.5px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-primary/10 text-primary whitespace-nowrap">
+                      saved by you
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            data-testid="customer-add-row"
+            onClick={openAddDialog}
+            className="w-full text-left px-4 py-2.5 bg-muted text-xs font-bold text-primary hover:bg-primary/10"
+          >
+            + Save {query.trim() ? `"${query.trim()}"` : 'someone'} as a new customer
+          </button>
         </div>
       )}
+      </div>
 
-      <Button
-        type="button"
-        variant="outline"
-        className={grid ? 'mx-auto flex' : 'w-full'}
-        data-testid="customer-add-button"
-        onClick={openAddDialog}
-      >
-        <UserPlus className="w-4 h-4 mr-2" />
-        {query.trim() && belowMinimum === false && results.length === 0 && !isSearching
-          ? `Save "${query.trim()}" as a new customer`
-          : 'Save a new customer'}
-      </Button>
+      <div className="flex justify-end mt-1">
+        <button
+          type="button"
+          data-testid="customer-add-button"
+          onClick={openAddDialog}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+        >
+          <UserPlus className="w-3.5 h-3.5" />
+          Save a new customer
+        </button>
+      </div>
 
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent className="max-w-md">

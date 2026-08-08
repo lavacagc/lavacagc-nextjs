@@ -2299,11 +2299,14 @@ test('AC107 sending and booking act on the customer LOADED, never the lookup box
   expect(page).toContain('recipientName: name, recipientEmail: who.email, ccEmails: cc,');
   expect(page).toContain('email: who.email, name, phone:');
 
-  // Switched off on screen as well as refused in the handler, and the line says
-  // which two people the screen is holding rather than only that something is
-  // wrong. A banner is not enough on its own - the handlers are what send.
+  // Switched off on screen as well as refused in the handler. The on-screen
+  // BANNER retired with the free-text box (round 7, 2026-08-08): the customer
+  // typeahead is the only door and selecting runs the lookup atomically, so
+  // the retyped-box state the banner described has no UI path anymore. The
+  // internal guard and both gates stay - they cover the in-flight window and
+  // any future regression.
   expect(page).toContain("const splitIdentity = loadedEmail.current !== ''\n    && email.trim().toLowerCase() !== loadedEmail.current.toLowerCase();");
-  expect(page).toContain('data-testid="sq-identity-split"');
+  expect(page).not.toContain('data-testid="sq-email"');
   expect(page).toContain('&& !splitIdentity;');
   expect(page).toContain('disabled={scheduling || splitIdentity ||');
 });

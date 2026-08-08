@@ -55,6 +55,14 @@ test.describe('sidebar + content registration (source checks)', () => {
     }
   });
 
+  test('the sidebar is an accordion: one open group, remembered', () => {
+    // Round 7: opening a group must close the others, and storage holds at
+    // most one. These pins keep the two accordion writes single-valued.
+    const sidebar = read('src/components/admin/AdminSidebar.tsx');
+    expect(sidebar).toContain("setExpandedGroups((prev) => (prev.has(groupId) ? new Set() : new Set([groupId])));");
+    expect(sidebar).toContain('setExpandedGroups(new Set([parent]));');
+  });
+
   test('the dashboard SEO button targets the live seo tab (the old target blanked the pane)', () => {
     const dashboard = read('src/components/admin/AdminDashboard.tsx');
     expect(dashboard).toContain("onNavigateToTab('seo')");

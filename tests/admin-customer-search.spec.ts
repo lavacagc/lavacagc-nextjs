@@ -70,9 +70,11 @@ test.describe('customer typeahead - Send Estimate', () => {
     await mockCustomerSearch(page);
     await page.goto('/vaca-mgmt/send-estimate');
 
-    // Type-first (round 5): nobody is listed until two characters are typed.
-    await expect(page.getByTestId('customer-search-hint')).toBeVisible();
+    // Type-first (round 5) + popover (round 7): nothing shows until typing,
+    // then results float over the page instead of pushing it down.
+    await expect(page.getByTestId('customer-search-popover')).toHaveCount(0);
     await page.getByTestId('customer-search-input').fill('mar');
+    await expect(page.getByTestId('customer-search-popover')).toBeVisible();
     await expect(page.getByTestId('customer-row-lead-1')).toBeVisible();
     // The manual entry carries its badge.
     await expect(page.getByTestId('customer-row-lead-2').getByText('saved by you')).toBeVisible();
@@ -150,7 +152,9 @@ test.describe('customer typeahead - Send Service Quote', () => {
     await expect(page.getByTestId('customer-row-lead-1')).toBeVisible();
     await page.getByTestId('customer-row-lead-1').click();
 
-    await expect(page.getByTestId('sq-email')).toHaveValue('maria.delgado@example.com');
+    // The free-text box is gone (round 7): the loaded-customer line is the
+    // identity on screen, and the lookup ran for the selected address.
+    await expect(page.getByTestId('sq-loaded')).toContainText('maria.delgado@example.com');
     await expect.poll(() => intakeEmails.length).toBeGreaterThan(0);
     expect(intakeEmails[0]).toBe('maria.delgado@example.com');
   });

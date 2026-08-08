@@ -216,6 +216,55 @@ test.describe('proposal builder', () => {
     await expect(page.locator('[data-testid^="builder-bundle-"]').first().getByText('Onto me')).toBeVisible();
   });
 
+  test('round 7: dropping one section on another combines them into a portion; Split apart restores', async ({ page }) => {
+    await page.goto('/vaca-mgmt/proposals');
+    await page.getByTestId('open-builder').click();
+    await page.getByTestId('customer-search-input').fill('maria');
+    await page.getByTestId('customer-row-7b39c2ba-58f5-4d68-9d5a-2f4f5f27a001').click();
+    await page.locator('#pb-title').fill('T');
+    await page.getByTestId('builder-to-lines').click();
+
+    // Two trades, one line each.
+    await page.getByTestId('builder-cat-pick-demolition').click();
+    await page.getByTestId('builder-line-title-demolition').fill('Tear-out');
+    await page.getByTestId('builder-line-price-demolition').fill('1000');
+    await page.getByTestId('builder-add-line-demolition').click();
+    await page.getByTestId('builder-cat-pick-permits-fees').click();
+    await page.getByTestId('builder-line-title-permits-fees').fill('Township permits');
+    await page.getByTestId('builder-line-price-permits-fees').fill('500');
+    await page.getByTestId('builder-add-line-permits-fees').click();
+
+    // Drag the Permits SECTION (by its header grip) onto the Demolition
+    // section's body - the combine zone.
+    await page.evaluate(() => {
+      const handle = document.querySelector('[data-testid="builder-cat-permits-fees"] [draggable="true"]') as HTMLElement;
+      const target = document.querySelector('[data-testid="builder-section-demolition"]') as HTMLElement;
+      const dt = new DataTransfer();
+      handle.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+      const rect = target.getBoundingClientRect();
+      const mid = { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height * 0.8 };
+      target.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt, ...mid }));
+      target.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt, ...mid }));
+      handle.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+    });
+
+    // The portion: auto-named from both trades, locked together, one total,
+    // both sub-areas inside.
+    const portionName = page.locator('[data-testid^="builder-portion-name-"]');
+    await expect(portionName).toHaveValue('Demolition + Permits & Fees');
+    const portion = page.locator('[data-testid^="builder-portion-"]').first();
+    await expect(portion.getByText('locked together')).toBeVisible();
+    await expect(portion.getByText('$1,500.00', { exact: true })).toBeVisible();
+    await expect(portion.getByText('Tear-out')).toBeVisible();
+    await expect(portion.getByText('Township permits')).toBeVisible();
+
+    // Split apart: both trades return as their own sections.
+    await page.locator('[data-testid^="builder-split-"]').click();
+    await expect(page.locator('[data-testid^="builder-portion-"]')).toHaveCount(0);
+    await expect(page.getByTestId('builder-cat-demolition').getByText('Tear-out')).toBeVisible();
+    await expect(page.getByTestId('builder-cat-permits-fees').getByText('Township permits')).toBeVisible();
+  });
+
   test('category creation is admin-only: a collaborator is told to ask their admin', async ({ page }) => {
     await page.route('**/api/admin/proposal-categories', async (route) => {
       if (route.request().method() === 'POST') {

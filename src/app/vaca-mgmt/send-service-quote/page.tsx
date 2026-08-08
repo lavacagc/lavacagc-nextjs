@@ -1041,7 +1041,6 @@ export default function SendServiceQuotePage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <CustomerSearch
-            layout="grid"
             onSelect={(customer: CustomerHit) => {
               const address = (customer.email ?? '').trim();
               if (!address) {
@@ -1059,38 +1058,23 @@ export default function SendServiceQuotePage() {
             }}
           />
 
-          <div className="flex flex-wrap gap-2">
-            <Input
-              value={email} onChange={(e) => setEmail(e.target.value)}
-              // Gated on `loading` exactly as the button is. The greyed-out
-              // button was the only thing that looked like a lock, and Enter
-              // walked straight past it.
-              onKeyDown={(e) => { if (e.key === 'Enter' && !loading) lookup(); }}
-              placeholder="customer@example.com" className="max-w-sm" data-testid="sq-email"
-            />
-            {/* Arrow on purpose: onClick={lookup} would pass the click event
-                as the overrideEmail argument. */}
-            <Button variant="outline" onClick={() => lookup()} disabled={loading} data-testid="sq-lookup">
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Look up'}
-            </Button>
-          </div>
-
-          {splitIdentity && (
-            // The box is free text and nothing binds it to the card below it,
-            // so it can be retyped at any point after a customer is loaded -
-            // half of a second lookup, abandoned. Everything else here belongs
-            // to whoever WAS loaded, so acting on this state split one action
-            // between two people: it wrote the loaded customer's phone and
-            // address onto the typed customer's record and booked the loaded
-            // customer's services under them.
-            <p className="text-xs font-medium text-destructive" data-testid="sq-identity-split">
-              The box says <strong>{email.trim() || 'nothing'}</strong>, but the name, address,
-              phone and services below were loaded for <strong>{loadedEmail.current}</strong>.
-              Sending and booking are switched off until the two agree - press &quot;Look up&quot; to
-              load whoever is in the box. The visits listed below still belong to{' '}
-              {loadedEmail.current} and still act on them.
+          {/* The free-text email box + Look up button are GONE (owner round 7:
+              redundant beside the search, which already matches emails). The
+              search is now the only door, and because selecting runs the
+              lookup atomically, the retype-the-box identity split can no
+              longer be created by hand. `splitIdentity` stays as the internal
+              guard for the in-flight window between selection and load. */}
+          {loading ? (
+            <p className="text-sm text-muted-foreground inline-flex items-center gap-2" data-testid="sq-loading">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading customer…
             </p>
-          )}
+          ) : loadedEmail.current ? (
+            <p className="text-sm" data-testid="sq-loaded">
+              <span className="text-muted-foreground">Working on:</span>{' '}
+              <span className="font-semibold">{name.trim() || loadedEmail.current}</span>
+              <span className="text-muted-foreground"> ({loadedEmail.current})</span>
+            </p>
+          ) : null}
 
           {homeownerRead === 'unavailable' && (
             // Their record read as `null`, which is also what a walk-in reads

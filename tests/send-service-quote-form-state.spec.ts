@@ -109,8 +109,31 @@ test.describe('send-service-quote form state', () => {
 
   const open = async (page: Page, context: BrowserContext, baseURL: string) => {
     await signInAsAdmin(context, baseURL);
+    // Round 7 removed the free-text email box: the customer typeahead is the
+    // only door. This mock answers ANY query with one matching hit so the
+    // specs can look up arbitrary addresses, same as the box allowed.
+    await page.route('**/api/admin/estimate-email/leads*', (route) => {
+      const q = new URL(route.request().url()).searchParams.get('q') ?? '';
+      const id = 'hit-' + q.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      return route.fulfill({
+        json: {
+          leads: q.trim().length >= 2 ? [{
+            id, name: q.split('@')[0], email: q.toLowerCase(), phone: null,
+            project_type: null, city: null, source: null,
+            created_at: '2026-08-01T12:00:00Z',
+          }] : [],
+        },
+      });
+    });
     await page.goto('/vaca-mgmt/send-service-quote');
     await expect(page.getByText('Send a service quote')).toBeVisible();
+  };
+
+  /** Drive the typeahead: type the address, pick the (mocked) hit. */
+  const lookupVia = async (page: Page, email: string) => {
+    const id = 'hit-' + email.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    await page.getByTestId('customer-search-input').fill(email);
+    await page.getByTestId(`customer-row-${id}`).click();
   };
 
   test('AC101 a second lookup cannot leave the first customer on screen', async ({ page, context, baseURL }) => {
@@ -129,14 +152,12 @@ test.describe('send-service-quote form state', () => {
     await mockAdminApis(page, (email) => (email === 'alice@example.com' ? alice : bob));
     await open(page, context, baseURL!);
 
-    await page.getByTestId('sq-email').fill('alice@example.com');
-    await page.getByTestId('sq-lookup').click();
+    await lookupVia(page, 'alice@example.com');
     await expect(page.getByTestId('sq-scope')).toHaveValue('Clean gutters');
     await expect(page.getByTestId('sq-address')).toHaveValue('14 Maple Ave, West Orange, 07052');
     await expect(page.getByRole('checkbox').first()).toBeChecked();
 
-    await page.getByTestId('sq-email').fill('bob@example.com');
-    await page.getByTestId('sq-lookup').click();
+    await lookupVia(page, 'bob@example.com');
 
     // Nothing of Alice's survives: not the scope sentence the quote mails, not
     // the address the window is booked at, not the services it is booked onto.
@@ -148,56 +169,20 @@ test.describe('send-service-quote form state', () => {
     await expect(page.getByTestId('sq-schedule')).toBeDisabled();
   });
 
-  test('AC107 a retyped lookup box cannot book one customer onto another\'s details', async ({ page, context, baseURL }) => {
-    // No second lookup is needed to reach this - only a box retyped and left,
-    // which is a half-finished second lookup. The IDENTITY came from the box
-    // while the name, address, phone and ticked services all still belonged to
-    // whoever was loaded, so booking wrote Alice's phone and address onto Bob's
-    // customer record and booked Alice's services at Alice's address under him.
-    const alice: StubIntake = {
-      ...blankIntake(),
-      homeowner: { id: '22222222-2222-2222-2222-222222222222', first_name: 'Alice Adams', phone: '555-0100', address: '14 Maple Ave', city: 'West Orange', zip: '07052', status: 'active' },
-      requests: [{
-        id: 'r1', createdAt: '2026-07-01T12:00:00Z', source: 'web', name: 'Alice Adams',
-        phone: '555-0100', address: '14 Maple Ave', city: 'West Orange', zip: '07052',
-        taskKeys: ['gutters'], services: [{ key: 'gutters', title: 'Clean gutters' }],
-      }],
-    };
-    const posted = await mockAdminApis(page, () => alice);
-    const sent: Record<string, unknown>[] = [];
-    await page.route('**/api/admin/service-quote/send', (route) => {
-      sent.push(route.request().postDataJSON());
-      return route.fulfill({ json: { status: 'sent' } });
-    });
-    await open(page, context, baseURL!);
-
-    await page.getByTestId('sq-email').fill('alice@example.com');
-    await page.getByTestId('sq-lookup').click();
-    await expect(page.getByTestId('sq-address')).toHaveValue('14 Maple Ave, West Orange, 07052');
-    await page.getByTestId('sq-qbo').fill('https://app.qbo.intuit.com/x');
-    await page.getByTestId('sq-date').fill('2026-08-05');
-    // Both write buttons are live for the customer actually on screen.
-    await expect(page.getByTestId('sq-send')).toBeEnabled();
-    await expect(page.getByTestId('sq-schedule')).toBeEnabled();
-
-    // Typed at, never submitted.
-    await page.getByTestId('sq-email').fill('bob@example.com');
-    await expect(page.getByTestId('sq-identity-split')).toContainText('bob@example.com');
-    await expect(page.getByTestId('sq-identity-split')).toContainText('alice@example.com');
-    await expect(page.getByTestId('sq-send')).toBeDisabled();
-    await expect(page.getByTestId('sq-schedule')).toBeDisabled();
-
-    // Put the loaded customer back - differently cased, because an address is
-    // not case sensitive and a warning that fired on one would be noise.
-    await page.getByTestId('sq-email').fill('Alice@Example.com');
-    await expect(page.getByTestId('sq-identity-split')).toHaveCount(0);
-    await expect(page.getByTestId('sq-schedule')).toBeEnabled();
-    await page.getByTestId('sq-schedule').click();
-    await expect.poll(() => posted.length).toBe(1);
-    // Booked under the customer whose services and address these are, not under
-    // the string in the box.
-    expect(posted[0].email).toBe('alice@example.com');
-    expect(sent).toHaveLength(0);
+  test('AC107 the retype-the-box identity split can no longer be created', () => {
+    // The free-text email box this AC guarded is GONE (round 7): the customer
+    // typeahead is the only door, and selecting a hit runs the lookup for that
+    // exact address atomically. The split-identity state - a box naming Bob
+    // while Alice's details sit loaded below it - has no UI path anymore.
+    // The internal guard stays for the in-flight window, and these pins keep
+    // it and the send/schedule gates wired to it:
+    const src = readFileSync(join(process.cwd(), 'src/app/vaca-mgmt/send-service-quote/page.tsx'), 'utf8');
+    expect(src).toContain("const splitIdentity = loadedEmail.current !== ''");
+    expect(src).toContain('&& !splitIdentity;');
+    expect(src).toContain('disabled={scheduling || splitIdentity ||');
+    // And the box really is gone.
+    expect(src).not.toContain('data-testid="sq-email"');
+    expect(src).not.toContain('data-testid="sq-lookup"');
   });
 
   test('AC99 re-saving a booked window sends what the window holds, not the last request', async ({ page, context, baseURL }) => {
@@ -223,8 +208,7 @@ test.describe('send-service-quote form state', () => {
     const posted = await mockAdminApis(page, () => intake);
     await open(page, context, baseURL!);
 
-    await page.getByTestId('sq-email').fill('carla@example.com');
-    await page.getByTestId('sq-lookup').click();
+    await lookupVia(page, 'carla@example.com');
     // Before the window is named, the request's own selection stands.
     await expect(page.getByTestId('sq-scope')).toHaveValue('Clean gutters');
 
@@ -263,8 +247,7 @@ test.describe('send-service-quote form state', () => {
     const posted = await mockAdminApis(page, () => intake);
     await open(page, context, baseURL!);
 
-    await page.getByTestId('sq-email').fill('dana@example.com');
-    await page.getByTestId('sq-lookup').click();
+    await lookupVia(page, 'dana@example.com');
     // Awaited: the lookup lands by clearing the form and filling it from this
     // customer, and one of the things it clears is a typed sub (AC98).
     await expect(page.getByTestId('sq-address')).toHaveValue('9 Oak St, Montclair, 07042');
@@ -306,8 +289,7 @@ test.describe('send-service-quote form state', () => {
     await mockAdminApis(page, () => intake);
     await open(page, context, baseURL!);
 
-    await page.getByTestId('sq-email').fill('eve@example.com');
-    await page.getByTestId('sq-lookup').click();
+    await lookupVia(page, 'eve@example.com');
     await expect(page.getByTestId('sq-address')).toHaveValue('9 Oak St, Montclair, 07042');
     await page.getByTestId('sq-date').fill('2026-08-06');
     await page.locator('#sq-from').fill('08:00');
@@ -338,8 +320,7 @@ test.describe('send-service-quote form state', () => {
     await mockAdminApis(page, () => intake);
     await open(page, context, baseURL!);
 
-    await page.getByTestId('sq-email').fill('fay@example.com');
-    await page.getByTestId('sq-lookup').click();
+    await lookupVia(page, 'fay@example.com');
 
     await expect(page.getByTestId('sq-bookings')).toBeVisible();
     await expect(page.getByTestId('sq-bookings-unread'))
@@ -383,8 +364,7 @@ test.describe('send-service-quote form state', () => {
     page.on('dialog', (d) => d.accept());
     await open(page, context, baseURL!);
 
-    await page.getByTestId('sq-email').fill('gil@example.com');
-    await page.getByTestId('sq-lookup').click();
+    await lookupVia(page, 'gil@example.com');
     await expect(page.getByTestId('sq-bookings')).toBeVisible();
     await expect(page.getByTestId('sq-bookings-unread')).toHaveCount(0);
 
@@ -412,8 +392,7 @@ test.describe('send-service-quote form state', () => {
     await mockAdminApis(page, () => intake);
     await open(page, context, baseURL!);
 
-    await page.getByTestId('sq-email').fill('hal@example.com');
-    await page.getByTestId('sq-lookup').click();
+    await lookupVia(page, 'hal@example.com');
 
     await expect(page.getByTestId('sq-homeowner-unread'))
       .toContainText('could NOT be read, so this is not a new customer');
@@ -452,13 +431,11 @@ test.describe('send-service-quote form state', () => {
     ));
     await open(page, context, baseURL!);
 
-    await page.getByTestId('sq-email').fill('dana@example.com');
-    await page.getByTestId('sq-lookup').click();
+    await lookupVia(page, 'dana@example.com');
     await expect(page.getByTestId('sq-address')).toHaveValue('9 Oak St, Montclair, 07042');
     await expect(page.getByTestId('sq-handled')).toBeEnabled();
 
-    await page.getByTestId('sq-email').fill('erin@example.com');
-    await page.getByTestId('sq-lookup').click();
+    await lookupVia(page, 'erin@example.com');
 
     // Nothing of Dana's is left to act on. The buttons are the point: all three
     // fire against the id this page is holding, not against the address typed
@@ -476,39 +453,13 @@ test.describe('send-service-quote form state', () => {
       .toContainText('Nothing below can be marked completed, cancelled or handled');
   });
 
-  test('AC112 a lookup already running cannot be overtaken from the keyboard', async ({ page, context, baseURL }) => {
-    // The "Look up" button is disabled while one runs; the Enter key on the box
-    // was not, and no response was matched to its request. A lookup for A that
-    // FAILED after a lookup for B had already loaded ran the reset and wiped B
-    // off the screen, toasting "Whoever was on screen has been cleared off it"
-    // about a customer who had just loaded correctly.
-    let started = 0;
-    await page.route('**/api/admin/crew', (route) => route.fulfill({ json: { recipients: [] } }));
-    await page.route('**/api/admin/service-quote/intake**', async (route) => {
-      started += 1;
-      // Slow enough that the second Enter lands while this one is still open.
-      await new Promise((r) => setTimeout(r, 1200));
-      await route.fulfill({ status: 500, json: { error: 'read failed' } });
-    });
-    await open(page, context, baseURL!);
-
-    await page.getByTestId('sq-email').fill('first@example.com');
-    await page.getByTestId('sq-email').press('Enter');
-    await expect(page.getByTestId('sq-lookup')).toBeDisabled();
-
-    // Retyping and pressing Enter again does nothing while one is in flight -
-    // the same lock the button has always shown.
-    await page.getByTestId('sq-email').fill('second@example.com');
-    await page.getByTestId('sq-email').press('Enter');
-    await page.getByTestId('sq-email').press('Enter');
-    expect(started).toBe(1);
-
-    await expect(page.getByTestId('sq-lookup')).toBeEnabled({ timeout: 5000 });
-    expect(started).toBe(1);
-
-    // And the guard behind the gate: a response is dropped whole - verdict,
-    // reset and spinner - once it is no longer the lookup being waited on, so a
-    // path added later cannot reopen the race the Enter key opened.
+  test('AC112 a stale lookup answer is dropped whole (ticket guard)', () => {
+    // The Enter-key race this AC drove died with the free-text box (round 7) -
+    // the typeahead is the only lookup trigger and each selection carries its
+    // own address. The ticket guard remains the backstop for rapid successive
+    // selections, so its shape stays pinned: a response is dropped whole -
+    // verdict, reset and spinner - once it is no longer the lookup being
+    // waited on.
     const src = readFileSync(join(process.cwd(), 'src/app/vaca-mgmt/send-service-quote/page.tsx'), 'utf8');
     expect(src).toContain('const ticket = ++lookupTicket.current;');
     expect(src).toContain('const mine = () => lookupTicket.current === ticket;');
@@ -556,22 +507,19 @@ test.describe('send-service-quote form state', () => {
     page.on('dialog', (d) => d.accept());
     await open(page, context, baseURL!);
 
-    await page.getByTestId('sq-email').fill('gina@example.com');
-    await page.getByTestId('sq-lookup').click();
+    await lookupVia(page, 'gina@example.com');
     await expect(page.getByTestId('sq-cancel')).toHaveCount(2);
 
-    // The box is retyped - typed at, never submitted - and then GINA's visit is
-    // called off, because the buttons fire against the id this page holds. The
-    // refresh has to be Gina's too. The longer waits are for the blocking
-    // `window.confirm` each click opens, which Playwright dismisses out of band.
-    await page.getByTestId('sq-email').fill('hank@example.com');
+    // GINA's visit is called off - the buttons fire against the id this page
+    // holds, and the refresh has to be Gina's too (the free-text box that once
+    // let a retyped address hijack this is gone; loadedEmail is the only
+    // identity). The longer waits are for the blocking `window.confirm` each
+    // click opens, which Playwright dismisses out of band.
     await page.getByTestId('sq-cancel').first().click();
     await expect(page.getByTestId('sq-cancel')).toHaveCount(1, { timeout: 15_000 });
     await expect(page.getByTestId('sq-bookings-unread')).toHaveCount(0);
 
-    // And emptied, which used to skip the read entirely and leave the list
-    // reading as freshly re-read.
-    await page.getByTestId('sq-email').fill('');
+    // And the second cancel drains the list entirely.
     await page.getByTestId('sq-cancel').click();
     await expect(page.getByTestId('sq-bookings')).toHaveCount(0, { timeout: 15_000 });
   });

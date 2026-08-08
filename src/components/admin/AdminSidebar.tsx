@@ -118,7 +118,9 @@ function loadExpandedFromStorage(activeTab: string): Set<string> {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return new Set(parsed.filter((x): x is string => typeof x === 'string'));
+        // Accordion: at most ONE open group, even if older storage held several.
+        const first = parsed.find((x): x is string => typeof x === 'string');
+        return first ? new Set([first]) : new Set();
       }
     }
   } catch {
@@ -178,22 +180,15 @@ export default function AdminSidebar({
     prevActiveTabRef.current = activeTab;
     const parent = findParentGroupId(activeTab);
     if (parent) {
-      setExpandedGroups((prev) => {
-        if (prev.has(parent)) return prev;
-        const next = new Set(prev);
-        next.add(parent);
-        return next;
-      });
+      // Accordion: switching into a tab shows ONLY its group.
+      setExpandedGroups(new Set([parent]));
     }
   }, [activeTab, hydrated]);
 
+  // ACCORDION (owner round 7): opening a group closes every other one, so the
+  // menu never shows more than one section. Clicking the open group folds it.
   const toggleGroup = (groupId: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupId)) next.delete(groupId);
-      else next.add(groupId);
-      return next;
-    });
+    setExpandedGroups((prev) => (prev.has(groupId) ? new Set() : new Set([groupId])));
   };
 
   const handleLeafClick = (leafId: string) => {
@@ -296,7 +291,7 @@ export default function AdminSidebar({
                     className={cn(
                       'flex items-center rounded-lg transition-all duration-300 ease-out px-3 py-2.5',
                       isMobile && 'min-h-[48px]',
-                      containsActive
+                      containsActive || isOpen
                         ? 'bg-primary/15 text-primary'
                         : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                     )}
