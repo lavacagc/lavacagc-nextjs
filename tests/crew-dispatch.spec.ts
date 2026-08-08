@@ -2244,7 +2244,12 @@ test('AC106 the refresh re-reads the customer on screen, not the lookup box', ()
   // screen clears it - a ref, because `schedule` books and refreshes in one
   // handler, where a setter's value would not be visible to the call it makes.
   const lookupFn = page.slice(page.indexOf('const lookup ='), page.indexOf('const toggle ='));
-  expect(lookupFn).toContain('loadedEmail.current = email.trim();');
+  // `target` is the address this lookup actually ran for: `(overrideEmail ??
+  // email).trim()`, where overrideEmail comes from the customer typeahead
+  // (2026-08-08). Recording the box's live value here would re-open the
+  // identity split this test guards - the ref must match what was FETCHED.
+  expect(lookupFn).toContain('const target = (overrideEmail ?? email).trim();');
+  expect(lookupFn).toContain('loadedEmail.current = target;');
   const scheduleFn = page.slice(page.indexOf('const schedule = async ()'), page.indexOf('const runRowAction ='));
   expect(scheduleFn).toContain('await refreshBookings();');
   // The person just BOOKED, which the guard in AC107 has already established is

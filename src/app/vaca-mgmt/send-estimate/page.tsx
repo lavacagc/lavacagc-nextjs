@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,18 +10,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Send, Eye, FileText, Search, MailX } from 'lucide-react';
+import { Loader2, Send, Eye, FileText, MailX } from 'lucide-react';
 import { stopDrip } from '@/lib/followups/followUpsApi';
-
-interface LeadHit {
-  id: string;
-  name: string | null;
-  email: string | null;
-  phone: string | null;
-  project_type: string | null;
-  city: string | null;
-  created_at: string;
-}
+import { CustomerSearch, type CustomerHit } from '@/components/admin/CustomerSearch';
 
 const PROJECT_TYPES = [
   'Kitchen Remodeling',
@@ -55,47 +46,14 @@ export default function SendEstimatePage() {
   const [isSending, setIsSending] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
 
-  // Lead search
-  const [leadSearch, setLeadSearch] = useState('');
-  const [leadResults, setLeadResults] = useState<LeadHit[]>([]);
-  const [isSearchingLeads, setIsSearchingLeads] = useState(false);
-
-  const searchLeads = useCallback(async (q: string) => {
-    setIsSearchingLeads(true);
-    try {
-      const res = await fetch(
-        `/api/admin/estimate-email/leads?q=${encodeURIComponent(q)}`,
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Search failed');
-      setLeadResults(data.leads || []);
-    } catch (err) {
-      toast({
-        title: 'Lead search failed',
-        description: err instanceof Error ? err.message : String(err),
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSearchingLeads(false);
-    }
-  }, [toast]);
-
-  // Debounced lead search
-  useEffect(() => {
-    const t = setTimeout(() => {
-      searchLeads(leadSearch);
-    }, 250);
-    return () => clearTimeout(t);
-  }, [leadSearch, searchLeads]);
-
-  const selectLead = (lead: LeadHit) => {
-    setLeadId(lead.id);
-    setRecipientName(lead.name ?? '');
-    setRecipientEmail(lead.email ?? '');
-    if (lead.project_type) setProjectType(lead.project_type);
+  const selectCustomer = (customer: CustomerHit) => {
+    setLeadId(customer.id);
+    setRecipientName(customer.name ?? '');
+    setRecipientEmail(customer.email ?? '');
+    if (customer.project_type) setProjectType(customer.project_type);
     toast({
-      title: 'Lead selected',
-      description: `${lead.name ?? lead.email} — fields prefilled`,
+      title: 'Customer selected',
+      description: `${customer.name ?? customer.email} — fields prefilled`,
     });
   };
 
@@ -261,7 +219,10 @@ export default function SendEstimatePage() {
             Send a customer their QBO estimate with the La Vaca welcome packet.
           </p>
         </div>
-        <Link href="/vaca-mgmt/send-estimate/log">
+        {/* New tab on purpose: the log is a standalone (sidebar-less) page,
+            and in-place navigation out of the admin SPA is the vanishing-nav
+            trap the owner reported on the email log. */}
+        <Link href="/vaca-mgmt/send-estimate/log" target="_blank" rel="noopener">
           <Button variant="outline" size="sm">
             <FileText className="mr-2 h-4 w-4" /> View send log
           </Button>
@@ -269,50 +230,16 @@ export default function SendEstimatePage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Lead picker */}
+        {/* Customer picker */}
         <Card className="lg:col-span-1">
           <CardHeader>
-            <CardTitle className="text-lg">Pick a lead (optional)</CardTitle>
+            <CardTitle className="text-lg">Find the customer</CardTitle>
             <CardDescription>
-              Searches name, email, or phone. Leave blank for one-off sends.
+              Searches name, email, or phone - or save someone new and they are findable forever.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                data-testid="lead-search-input"
-                value={leadSearch}
-                onChange={(e) => setLeadSearch(e.target.value)}
-                placeholder="Search by name, email, phone..."
-                className="pl-9"
-              />
-            </div>
-            <div className="space-y-1 max-h-[480px] overflow-y-auto">
-              {isSearchingLeads && (
-                <div className="text-sm text-muted-foreground p-2">Searching…</div>
-              )}
-              {!isSearchingLeads && leadResults.length === 0 && (
-                <div className="text-sm text-muted-foreground p-2">No leads found.</div>
-              )}
-              {leadResults.map((lead) => (
-                <button
-                  key={lead.id}
-                  type="button"
-                  data-testid={`lead-row-${lead.id}`}
-                  onClick={() => selectLead(lead)}
-                  className={`w-full text-left p-3 rounded-md border transition-colors hover:bg-muted/50 ${
-                    leadId === lead.id ? 'border-primary bg-primary/5' : 'border-border'
-                  }`}
-                >
-                  <div className="font-medium text-sm">{lead.name ?? '(no name)'}</div>
-                  <div className="text-xs text-muted-foreground">{lead.email ?? '—'}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {lead.project_type ?? 'No project type'} · {lead.city ?? 'No city'}
-                  </div>
-                </button>
-              ))}
-            </div>
+          <CardContent>
+            <CustomerSearch onSelect={selectCustomer} selectedId={leadId} />
           </CardContent>
         </Card>
 

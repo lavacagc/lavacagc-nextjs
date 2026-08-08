@@ -12,9 +12,6 @@ import {
   Plus,
   X,
   Inbox,
-  Calculator,
-  DollarSign,
-  Shield,
   FileCheck,
   Mail,
   TrendingUp,
@@ -59,6 +56,7 @@ const NAVIGATION: NavItem[] = [
       { id: 'service-areas', icon: MapPin, label: 'Service Areas' },
       { id: 'projects', icon: FolderKanban, label: 'Projects' },
       { id: 'banners', icon: Megaphone, label: 'Smart Banners' },
+      { id: 'compliance', icon: FileCheck, label: 'Compliance Docs' },
     ],
   },
   {
@@ -79,7 +77,6 @@ const NAVIGATION: NavItem[] = [
     label: 'Customers',
     children: [
       { id: 'leads', icon: Inbox, label: 'Leads' },
-      { id: 'estimates', icon: Calculator, label: 'Calculator Estimates' },
       { id: 'follow-ups', icon: Mail, label: 'Follow-Ups' },
       { id: 'send-estimate', icon: Send, label: 'Send Estimate' },
       { id: 'proposals', icon: FileText, label: 'Proposals' },
@@ -97,15 +94,6 @@ const NAVIGATION: NavItem[] = [
       { id: 'send-service-quote', icon: Wrench, label: 'Send Service Quote' },
       { id: 'crew', icon: HardHat, label: 'Crew' },
       { id: 'releases', icon: Megaphone, label: 'Release Notes' },
-    ],
-  },
-  {
-    id: 'settings',
-    icon: Shield,
-    label: 'Settings',
-    children: [
-      { id: 'pricing', icon: DollarSign, label: 'Pricing Management' },
-      { id: 'compliance', icon: FileCheck, label: 'Compliance Docs' },
     ],
   },
 ];

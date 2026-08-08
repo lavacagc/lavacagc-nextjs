@@ -17,21 +17,21 @@ const read = (p: string) => readFileSync(join(root, p), 'utf8');
 // adding or removing a tab should be a conscious edit here too.
 const EXPECTED_LEAF_IDS = [
   'dashboard',
-  // Content
-  'blog', 'pages', 'services', 'service-areas', 'projects', 'banners',
+  // Content (Compliance Docs moved here when Settings dissolved, 2026-08-08)
+  'blog', 'pages', 'services', 'service-areas', 'projects', 'banners', 'compliance',
   // Marketing
   'seo', 'analytics', 'conversions', 'gmb', 'preferences',
   // Customers
-  'leads', 'estimates', 'follow-ups', 'send-estimate', 'proposals', 'emails',
+  'leads', 'follow-ups', 'send-estimate', 'proposals', 'emails',
   // Home Care
   'home-records', 'home-care-shop', 'send-service-quote', 'crew', 'releases',
-  // Settings
-  'pricing', 'compliance',
 ];
 
 const REMOVED_IDS = [
   'diagnostics', 'ai', 'listings', 'subscribers', 'estimate-log', 'feedback',
   'reports', 'performance', 'uptime', 'non-negotiables', 'seo-suggestions',
+  // Retired with the calculator product (2026-08-08)
+  'estimates', 'pricing',
 ];
 
 test.describe('sidebar + content registration (source checks)', () => {

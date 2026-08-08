@@ -14,21 +14,12 @@ interface LeadRow {
   project_type: string | null;
 }
 
-interface EstimateLeadRow {
-  id: string;
-  created_at: string | null;
-  lead_source: string | null;
-  lead_status: string | null;
-}
-
 interface DashboardMetrics {
   leadsThisWeek: number;
   leadsThisMonth: number;
   leadsBySource: Record<string, number>;
-  leadScoreDistribution: { hot: number; warm: number; cold: number };
   followUpStats: { sent: number; pending: number; failed: number; responded: number };
   totalContactFormLeads: number;
-  totalEstimateLeads: number;
 }
 
 function BarChart({ data, maxValue }: { data: { label: string; value: number; color: string }[]; maxValue: number }) {
@@ -114,14 +105,14 @@ export default function ConversionDashboard() {
       const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString();
 
-      // Fetch all data in parallel
-      const [leadsRes, estimateLeadsRes] = await Promise.all([
-        supabase.from('leads').select('id, created_at, inquiry_type, project_type').order('created_at', { ascending: false }),
-        supabase.from('estimate_leads').select('id, created_at, lead_source, lead_status').order('created_at', { ascending: false }),
-      ]);
+      // One leads query - the calculator funnel (estimate_leads) was retired
+      // with the calculator product (2026-08).
+      const leadsRes = await supabase
+        .from('leads')
+        .select('id, created_at, inquiry_type')
+        .order('created_at', { ascending: false });
 
       const leads = (leadsRes.data || []) as LeadRow[];
-      const estimateLeads = (estimateLeadsRes.data || []) as EstimateLeadRow[];
 
       let followUps: { status: string }[] = [];
       try {
@@ -130,11 +121,7 @@ export default function ConversionDashboard() {
         console.error('Error fetching follow-up queue:', followUpErr);
       }
 
-      // Combine for time-based metrics
-      const allLeadDates = [
-        ...leads.map(l => l.created_at),
-        ...estimateLeads.map(l => l.created_at).filter(Boolean) as string[],
-      ];
+      const allLeadDates = leads.map(l => l.created_at);
 
       const leadsThisWeek = allLeadDates.filter(d => d >= weekAgo).length;
       const leadsThisMonth = allLeadDates.filter(d => d >= monthAgo).length;
@@ -148,17 +135,6 @@ export default function ConversionDashboard() {
         leadsBySource[source] = (leadsBySource[source] || 0) + 1;
       });
 
-      // Estimate/calculator leads
-      estimateLeads.forEach(l => {
-        const source = l.lead_source || 'calculator';
-        leadsBySource[source] = (leadsBySource[source] || 0) + 1;
-      });
-
-      // Lead score distribution based on estimate_leads.lead_status
-      const hot = estimateLeads.filter(l => l.lead_status === 'hot' || l.lead_status === 'converted').length;
-      const warm = estimateLeads.filter(l => l.lead_status === 'warm' || l.lead_status === 'contacted' || l.lead_status === 'new').length;
-      const cold = estimateLeads.filter(l => l.lead_status === 'cold' || l.lead_status === 'lost' || l.lead_status === 'archived').length;
-
       // Follow-up stats
       const followUpStats = {
         sent: followUps.filter(f => f.status === 'sent').length,
@@ -171,10 +147,8 @@ export default function ConversionDashboard() {
         leadsThisWeek,
         leadsThisMonth,
         leadsBySource,
-        leadScoreDistribution: { hot, warm, cold },
         followUpStats,
         totalContactFormLeads: leads.length,
-        totalEstimateLeads: estimateLeads.length,
       });
     } catch (err) {
       console.error('Error fetching metrics:', err);
@@ -214,7 +188,7 @@ export default function ConversionDashboard() {
 
   if (!metrics) return null;
 
-  const totalLeads = metrics.totalContactFormLeads + metrics.totalEstimateLeads;
+  const totalLeads = metrics.totalContactFormLeads;
   const totalFollowUps = metrics.followUpStats.sent + metrics.followUpStats.pending + metrics.followUpStats.failed + metrics.followUpStats.responded;
 
   // Source label mapping
@@ -284,7 +258,6 @@ export default function ConversionDashboard() {
           icon={Target}
           label="Total All Time"
           value={totalLeads}
-          subtitle={`${metrics.totalContactFormLeads} form + ${metrics.totalEstimateLeads} calculator`}
           color="bg-purple-50 border-purple-200 text-purple-900"
         />
         <StatCard
@@ -296,9 +269,8 @@ export default function ConversionDashboard() {
         />
       </div>
 
-      {/* Two Column Layout */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Leads by Source */}
+      {/* Leads by Source */}
+      <div className="grid grid-cols-1 gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Leads by Source</CardTitle>
@@ -313,37 +285,6 @@ export default function ConversionDashboard() {
           </CardContent>
         </Card>
 
-        {/* Lead Score Distribution */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Lead Temperature</CardTitle>
-            <CardDescription>Distribution of estimate leads by status</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <BarChart
-              data={[
-                { label: '🔥 Hot (Converted/Hot)', value: metrics.leadScoreDistribution.hot, color: 'bg-red-500' },
-                { label: '🌡️ Warm (New/Contacted)', value: metrics.leadScoreDistribution.warm, color: 'bg-yellow-500' },
-                { label: '❄️ Cold (Lost/Archived)', value: metrics.leadScoreDistribution.cold, color: 'bg-blue-400' },
-              ]}
-              maxValue={Math.max(
-                metrics.leadScoreDistribution.hot,
-                metrics.leadScoreDistribution.warm,
-                metrics.leadScoreDistribution.cold,
-                1
-              )}
-            />
-
-            {/* Summary */}
-            <div className="mt-4 pt-4 border-t">
-              <div className="flex items-center gap-4 text-sm">
-                <span className="text-muted-foreground">
-                  Total estimate leads: <span className="font-bold text-foreground">{metrics.totalEstimateLeads}</span>
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Follow-up Email Stats */}

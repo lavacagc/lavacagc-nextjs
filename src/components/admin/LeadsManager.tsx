@@ -51,6 +51,8 @@ interface Lead {
   visit_count?: number;
   first_seen?: string;
   referrer?: string;
+  /** 'manual' = saved by the admin from the customer search, not a form lead. */
+  source?: string | null;
 }
 
 interface LeadCardProps {
@@ -86,6 +88,11 @@ function LeadCard({ lead, isExpanded, isSelected, onToggleExpand, onToggleSelect
               </CardTitle>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
+              {lead.source === 'manual' && (
+                <Badge variant="outline" className="text-xs text-primary border-primary/40">
+                  manual entry
+                </Badge>
+              )}
               {(lead.visit_count ?? 0) > 1 && (
                 <Badge className="bg-orange-500 text-white text-xs hover:bg-orange-600">
                   <RotateCcw className="w-3 h-3 mr-1" />

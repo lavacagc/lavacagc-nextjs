@@ -190,11 +190,10 @@ test('AC-R1: every pre-slice admin sidebar capability is still present', () => {
   // deliberately pruned or folded in that change).
   const before = [
     'dashboard',
-    'blog', 'pages', 'services', 'service-areas', 'projects', 'banners',
+    'blog', 'pages', 'services', 'service-areas', 'projects', 'banners', 'compliance',
     'seo', 'analytics', 'conversions', 'gmb', 'preferences',
-    'leads', 'estimates', 'follow-ups', 'send-estimate', 'emails',
+    'leads', 'follow-ups', 'send-estimate', 'emails',
     'home-records', 'home-care-shop', 'send-service-quote', 'crew', 'releases',
-    'pricing', 'compliance',
     'proposals',
   ];
   for (const id of before) {

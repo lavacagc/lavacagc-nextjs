@@ -35,6 +35,7 @@ import { toast } from '@/hooks/use-toast';
 import { Loader2, CalendarPlus, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
 import { scopeSummaryFrom } from '@/lib/homecare/serviceIntake';
 import { easternVisitInstant, chasesAhead, chaseStageLabel } from '@/lib/homecare/visitSchedule';
+import { CustomerSearch, type CustomerHit } from '@/components/admin/CustomerSearch';
 
 interface Service { key: string; title: string; blurb: string; priority: number }
 /** Someone a visit dispatch can be sent to. Managed on /vaca-mgmt/crew. */
@@ -455,13 +456,17 @@ export default function SendServiceQuotePage() {
    */
   const lookupTicket = useRef(0);
 
-  const lookup = useCallback(async () => {
-    if (!email.trim()) return;
+  // `overrideEmail` lets the customer typeahead run the lookup for the address
+  // it just selected in the same tick - the `email` state set alongside it is
+  // still the previous render's value inside this closure.
+  const lookup = useCallback(async (overrideEmail?: string) => {
+    const target = (overrideEmail ?? email).trim();
+    if (!target) return;
     const ticket = ++lookupTicket.current;
     const mine = () => lookupTicket.current === ticket;
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/service-quote/intake?email=${encodeURIComponent(email.trim())}`);
+      const res = await fetch(`/api/admin/service-quote/intake?email=${encodeURIComponent(target)}`);
       const data: Intake = await res.json();
       // Checked before anything is replaced: a 500 body still parses, so an
       // unchecked read would swap a real list of visits for an empty one and
@@ -483,7 +488,7 @@ export default function SendServiceQuotePage() {
       setIntake(data);
       // THIS is who is on screen now, and who a refresh re-reads - not whatever
       // the box holds by the time one runs.
-      loadedEmail.current = email.trim();
+      loadedEmail.current = target;
       // This IS a different customer, so the old list cannot stay on screen -
       // its windows belong to somebody else, and "Mark completed" would aim
       // them at this homeowner. It goes, and the gap is said out loud instead.
@@ -1007,8 +1012,32 @@ export default function SendServiceQuotePage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-lg">1. Who is it for?</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-lg">1. Who is it for?</CardTitle>
+          <CardDescription>
+            Search by name, email, or phone - picking someone runs the full look-up for you.
+            Or save a new customer and they are findable forever.
+          </CardDescription>
+        </CardHeader>
         <CardContent className="space-y-4">
+          <CustomerSearch
+            onSelect={(customer: CustomerHit) => {
+              const address = (customer.email ?? '').trim();
+              if (!address) {
+                toast({
+                  title: 'No email on file',
+                  description: 'This customer has no email address - add one before sending a quote.',
+                  variant: 'destructive',
+                });
+                return;
+              }
+              setEmail(address);
+              // Pass the address explicitly: the state set above is not
+              // visible to lookup()'s closure until the next render.
+              lookup(address);
+            }}
+          />
+
           <div className="flex flex-wrap gap-2">
             <Input
               value={email} onChange={(e) => setEmail(e.target.value)}
@@ -1018,7 +1047,9 @@ export default function SendServiceQuotePage() {
               onKeyDown={(e) => { if (e.key === 'Enter' && !loading) lookup(); }}
               placeholder="customer@example.com" className="max-w-sm" data-testid="sq-email"
             />
-            <Button variant="outline" onClick={lookup} disabled={loading} data-testid="sq-lookup">
+            {/* Arrow on purpose: onClick={lookup} would pass the click event
+                as the overrideEmail argument. */}
+            <Button variant="outline" onClick={() => lookup()} disabled={loading} data-testid="sq-lookup">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Look up'}
             </Button>
           </div>

@@ -126,11 +126,10 @@ test('AC-R1: every pre-slice admin sidebar capability is still present', () => {
   // pruned or folded - see that change's PR for the evidence per tab).
   const before = [
     'dashboard',
-    'blog', 'pages', 'services', 'service-areas', 'projects', 'banners',
+    'blog', 'pages', 'services', 'service-areas', 'projects', 'banners', 'compliance',
     'seo', 'analytics', 'conversions', 'gmb', 'preferences',
-    'leads', 'estimates', 'follow-ups', 'send-estimate', 'emails',
+    'leads', 'follow-ups', 'send-estimate', 'emails',
     'home-records', 'home-care-shop', 'send-service-quote', 'crew', 'releases',
-    'pricing', 'compliance',
   ];
   for (const id of before) {
     expect(sidebar, `sidebar must keep '${id}'`).toContain(`id: '${id}'`);

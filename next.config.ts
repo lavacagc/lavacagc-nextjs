@@ -362,10 +362,13 @@ const nextConfig: NextConfig = {
       // ============================================
       // LEGACY PAGE REDIRECTS
       // ============================================
-      { source: '/free-consultation', destination: '/project-calculator', permanent: true },
-      { source: '/consultation', destination: '/project-calculator', permanent: true },
-      { source: '/estimate', destination: '/project-calculator', permanent: true },
-      { source: '/quote', destination: '/project-calculator', permanent: true },
+      // Straight to the estimate form. These used to point at
+      // /project-calculator, which itself redirects below (calculator retired
+      // 2026-08) - a needless double hop for links in the wild.
+      { source: '/free-consultation', destination: '/free-estimate', permanent: true },
+      { source: '/consultation', destination: '/free-estimate', permanent: true },
+      { source: '/estimate', destination: '/free-estimate', permanent: true },
+      { source: '/quote', destination: '/free-estimate', permanent: true },
 
       // ============================================
       // MALFORMED / MISC REDIRECTS
@@ -376,7 +379,7 @@ const nextConfig: NextConfig = {
       // LEGACY PAGES WITHOUT REDIRECTS (from GSC 404s)
       // ============================================
       { source: '/pricing-plans/:path*', destination: '/services', permanent: true },
-      { source: '/financing', destination: '/project-calculator', permanent: true },
+      { source: '/financing', destination: '/free-estimate', permanent: true },
       { source: '/portfolio-collections/:path*', destination: '/portfolio', permanent: true },
 
       // ============================================

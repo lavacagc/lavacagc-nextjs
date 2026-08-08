@@ -10,7 +10,6 @@ const PAGES_TO_CHECK = [
   // '/buy-and-remodel' is intentionally omitted: the product was retired in
   // 2026-08 and the path now 301s to the homepage (see next.config.ts).
   '/contact',
-  '/project-calculator',
   '/services',
   '/services/kitchen-remodeling',
   '/services/bathroom-renovation',
