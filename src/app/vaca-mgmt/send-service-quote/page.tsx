@@ -1041,6 +1041,7 @@ export default function SendServiceQuotePage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <CustomerSearch
+            layout="grid"
             onSelect={(customer: CustomerHit) => {
               const address = (customer.email ?? '').trim();
               if (!address) {

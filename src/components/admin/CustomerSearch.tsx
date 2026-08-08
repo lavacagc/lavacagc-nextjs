@@ -40,9 +40,18 @@ interface CustomerSearchProps {
   onSelect: (customer: CustomerHit) => void;
   selectedId?: string | null;
   placeholder?: string;
+  /**
+   * 'list' - single narrow column (Send Estimate's sidebar). 'grid' - result
+   * cards spread across the full width (the proposal builder and Send Service
+   * Quote), per the owner's round-5 note: use the real estate.
+   */
+  layout?: 'list' | 'grid';
 }
 
-export function CustomerSearch({ onSelect, selectedId, placeholder }: CustomerSearchProps) {
+/** Type-first: nobody is listed until the query reaches this many characters. */
+const MIN_QUERY_CHARS = 2;
+
+export function CustomerSearch({ onSelect, selectedId, placeholder, layout = 'list' }: CustomerSearchProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CustomerHit[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -73,8 +82,16 @@ export function CustomerSearch({ onSelect, selectedId, placeholder }: CustomerSe
     }
   }, []);
 
-  // Debounced search; the empty query returns the 25 newest people.
+  // Debounced, and TYPE-FIRST (owner's round-5 decision, applied everywhere):
+  // below the minimum the list stays empty instead of showing the 25 newest.
   useEffect(() => {
+    if (query.trim().length < MIN_QUERY_CHARS) {
+      // Invalidate any in-flight search so its late answer can't repopulate.
+      searchStamp.current++;
+      setResults([]);
+      setIsSearching(false);
+      return;
+    }
     const t = setTimeout(() => {
       search(query);
     }, 250);
@@ -143,57 +160,77 @@ export function CustomerSearch({ onSelect, selectedId, placeholder }: CustomerSe
     }
   };
 
+  const belowMinimum = query.trim().length < MIN_QUERY_CHARS;
+  const grid = layout === 'grid';
+
   return (
     <div className="space-y-4">
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Search className={`absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground ${grid ? 'h-5 w-5' : 'h-4 w-4'}`} />
         <Input
           data-testid="customer-search-input"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={placeholder ?? 'Search by name, email, phone...'}
-          className="pl-9"
+          className={grid ? 'pl-10 h-11 text-base' : 'pl-9'}
         />
       </div>
-      <div className="space-y-1 max-h-[440px] overflow-y-auto">
-        {isSearching && <div className="text-sm text-muted-foreground p-2">Searching…</div>}
-        {!isSearching && results.length === 0 && (
-          <div className="text-sm text-muted-foreground p-2">Nobody found.</div>
-        )}
-        {results.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            data-testid={`customer-row-${c.id}`}
-            onClick={() => onSelect(c)}
-            className={`w-full text-left p-3 rounded-md border transition-colors hover:bg-muted/50 ${
-              selectedId === c.id ? 'border-primary bg-primary/5' : 'border-border'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-sm">{c.name ?? '(no name)'}</span>
-              {c.source === 'manual' && (
-                <span className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-primary/10 text-primary">
-                  saved by you
-                </span>
-              )}
-            </div>
-            <div className="text-xs text-muted-foreground">{c.email ?? '-'}</div>
-            <div className="text-xs text-muted-foreground">
-              {[c.phone, c.city].filter(Boolean).join(' · ') || 'No contact details'}
-            </div>
-          </button>
-        ))}
-      </div>
+
+      {belowMinimum ? (
+        <div className="text-center py-8 text-muted-foreground" data-testid="customer-search-hint">
+          <p className="text-sm font-semibold text-foreground">Start typing to find a customer</p>
+          <p className="text-sm mt-0.5">Results appear from the second letter - nobody is listed until you ask.</p>
+        </div>
+      ) : (
+        <div
+          className={
+            grid
+              ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-[440px] overflow-y-auto'
+              : 'space-y-1 max-h-[440px] overflow-y-auto'
+          }
+        >
+          {isSearching && <div className="text-sm text-muted-foreground p-2">Searching…</div>}
+          {!isSearching && results.length === 0 && (
+            <div className="text-sm text-muted-foreground p-2">Nobody found.</div>
+          )}
+          {!isSearching && results.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              data-testid={`customer-row-${c.id}`}
+              onClick={() => onSelect(c)}
+              className={`w-full text-left p-3 rounded-md border transition-colors hover:bg-muted/50 ${
+                selectedId === c.id ? 'border-primary bg-primary/5' : 'border-border'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-sm truncate">{c.name ?? '(no name)'}</span>
+                {c.source === 'manual' && (
+                  <span className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-primary/10 text-primary whitespace-nowrap">
+                    saved by you
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground truncate">{c.email ?? '-'}</div>
+              <div className="text-xs text-muted-foreground">
+                {[c.phone, c.city].filter(Boolean).join(' · ') || 'No contact details'}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
       <Button
         type="button"
         variant="outline"
-        className="w-full"
+        className={grid ? 'mx-auto flex' : 'w-full'}
         data-testid="customer-add-button"
         onClick={openAddDialog}
       >
         <UserPlus className="w-4 h-4 mr-2" />
-        Save a new customer
+        {query.trim() && belowMinimum === false && results.length === 0 && !isSearching
+          ? `Save "${query.trim()}" as a new customer`
+          : 'Save a new customer'}
       </Button>
 
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>

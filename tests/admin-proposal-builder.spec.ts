@@ -90,7 +90,8 @@ test.describe('proposal builder', () => {
     await page.getByTestId('open-builder').click();
     await expect(page.getByTestId('proposal-builder')).toBeVisible();
 
-    // Step 1: pick the customer - name/email carry into step 2.
+    // Step 1: type-first search (round 5), then pick the customer.
+    await page.getByTestId('customer-search-input').fill('maria');
     await page.getByTestId('customer-row-7b39c2ba-58f5-4d68-9d5a-2f4f5f27a001').click();
     await expect(page.locator('#pb-client-name')).toHaveValue('Maria Delgado');
     await page.locator('#pb-title').fill('Kitchen remodel - 12 Maple Ave');
@@ -152,13 +153,14 @@ test.describe('proposal builder', () => {
 
     await page.goto('/vaca-mgmt/proposals');
     await page.getByTestId('open-builder').click();
+    await page.getByTestId('customer-search-input').fill('maria');
     await page.getByTestId('customer-row-7b39c2ba-58f5-4d68-9d5a-2f4f5f27a001').click();
     await page.locator('#pb-title').fill('T');
     await page.getByTestId('builder-to-lines').click();
 
     await page.getByTestId('builder-cat-query').fill('Solar Panels');
     await page.getByTestId('builder-cat-create').click();
-    await expect(page.getByText('ask your admin', { exact: false })).toBeVisible();
+    await expect(page.getByText('ask your admin', { exact: false }).first()).toBeVisible();
   });
 });
 
@@ -192,7 +194,8 @@ test.describe('send service quote - progressive steps', () => {
     await expect(page.getByTestId('sq-step3-waiting')).toBeVisible();
     await expect(page.getByTestId('sq-scope')).toBeHidden();
 
-    // Picking a customer runs the lookup and opens the rest.
+    // Picking a customer (type-first) runs the lookup and opens the rest.
+    await page.getByTestId('customer-search-input').fill('maria');
     await page.getByTestId('customer-row-7b39c2ba-58f5-4d68-9d5a-2f4f5f27a001').click();
     await expect(page.getByTestId('sq-scope')).toBeVisible();
     await expect(page.getByTestId('sq-step2-waiting')).toHaveCount(0);

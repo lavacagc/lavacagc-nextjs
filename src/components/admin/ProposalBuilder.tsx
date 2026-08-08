@@ -356,13 +356,13 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead }: Proposa
           })}
         </div>
 
-        {/* Step 1 - customer */}
+        {/* Step 1 - customer. Full width + grid results (owner's round-5 note). */}
         {step === 0 && (
-          <div className="max-w-md">
+          <div>
             <p className="text-sm text-muted-foreground mb-3">
               Find the customer, or save someone new - the proposal links to their record.
             </p>
-            <CustomerSearch onSelect={selectCustomer} selectedId={customer?.id} />
+            <CustomerSearch layout="grid" onSelect={selectCustomer} selectedId={customer?.id} />
           </div>
         )}
 

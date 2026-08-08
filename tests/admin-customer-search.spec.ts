@@ -70,6 +70,9 @@ test.describe('customer typeahead - Send Estimate', () => {
     await mockCustomerSearch(page);
     await page.goto('/vaca-mgmt/send-estimate');
 
+    // Type-first (round 5): nobody is listed until two characters are typed.
+    await expect(page.getByTestId('customer-search-hint')).toBeVisible();
+    await page.getByTestId('customer-search-input').fill('mar');
     await expect(page.getByTestId('customer-row-lead-1')).toBeVisible();
     // The manual entry carries its badge.
     await expect(page.getByTestId('customer-row-lead-2').getByText('saved by you')).toBeVisible();
@@ -143,6 +146,7 @@ test.describe('customer typeahead - Send Service Quote', () => {
     });
 
     await page.goto('/vaca-mgmt/send-service-quote');
+    await page.getByTestId('customer-search-input').fill('mar');
     await expect(page.getByTestId('customer-row-lead-1')).toBeVisible();
     await page.getByTestId('customer-row-lead-1').click();
 
