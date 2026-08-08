@@ -126,6 +126,12 @@ export default function SendServiceQuotePage() {
   const [email, setEmail] = useState('');
   const [intake, setIntake] = useState<Intake | null>(null);
   const [loading, setLoading] = useState(false);
+  // Progressive disclosure (round 4, owner: "step by step, less intimidating").
+  // A fresh page shows ONLY step 1; the first lookup ATTEMPT - success or
+  // failure, both leave a state worth seeing - expands steps 2 and 3. Nothing
+  // unmounts afterwards, so the identity-split guard's premise (the lookup box
+  // and the loaded details visible TOGETHER) is untouched.
+  const [lookupDone, setLookupDone] = useState(false);
   // What the customer's own REQUEST asked for. The default selection for a
   // window that is not yet on the books, and nothing more.
   const [requestTasks, setRequestTasks] = useState<Set<string>>(new Set());
@@ -462,6 +468,7 @@ export default function SendServiceQuotePage() {
   const lookup = useCallback(async (overrideEmail?: string) => {
     const target = (overrideEmail ?? email).trim();
     if (!target) return;
+    setLookupDone(true);
     const ticket = ++lookupTicket.current;
     const mine = () => lookupTicket.current === ticket;
     setLoading(true);
@@ -1012,12 +1019,25 @@ export default function SendServiceQuotePage() {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">1. Who is it for?</CardTitle>
-          <CardDescription>
-            Search by name, email, or phone - picking someone runs the full look-up for you.
-            Or save a new customer and they are findable forever.
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-3 flex-wrap space-y-0">
+          <div>
+            <CardTitle className="text-lg">1. Who is it for?</CardTitle>
+            <CardDescription className="mt-1">
+              Search by name, email, or phone - picking someone runs the full look-up for you.
+              Or save a new customer and they are findable forever.
+            </CardDescription>
+          </div>
+          {lookupDone && bookings.length > 0 && (
+            <button
+              type="button"
+              data-testid="sq-books-chip"
+              onClick={() => document.querySelector('[data-testid="sq-bookings"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="inline-flex items-center gap-2 border rounded-lg px-3 py-1.5 text-sm font-semibold hover:border-primary transition-colors"
+            >
+              On the books
+              <span className="text-[11px] font-bold rounded-[5px] px-1.5 py-0.5 bg-teal-700/10 text-teal-800">{bookings.length}</span>
+            </button>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
           <CustomerSearch
@@ -1164,8 +1184,15 @@ export default function SendServiceQuotePage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-lg">2. Quote details</CardTitle></CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
+        <CardHeader>
+          <CardTitle className="text-lg">2. Quote details</CardTitle>
+          {!lookupDone && (
+            <CardDescription data-testid="sq-step2-waiting">
+              Opens after you pick a customer in step 1.
+            </CardDescription>
+          )}
+        </CardHeader>
+        <CardContent className={`grid gap-4 md:grid-cols-2${lookupDone ? '' : ' hidden'}`}>
           <div><Label htmlFor="sq-name">Recipient name</Label><Input id="sq-name" value={name} onChange={(e) => setName(e.target.value)} /></div>
           <div><Label htmlFor="sq-cc">CC (optional)</Label><Input id="sq-cc" value={cc} onChange={(e) => setCc(e.target.value)} placeholder="spouse@example.com" /></div>
           <div className="md:col-span-2">
@@ -1197,9 +1224,13 @@ export default function SendServiceQuotePage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">3. Schedule the visit</CardTitle>
-          <CardDescription>Emails the crew with the calendar invite and a confirm link, queues the customer&apos;s 7:30pm night-before reminder, and gives you your own calendar invite.</CardDescription>
+          <CardDescription>
+            {lookupDone
+              ? <>Emails the crew with the calendar invite and a confirm link, queues the customer&apos;s 7:30pm night-before reminder, and gives you your own calendar invite.</>
+              : <span data-testid="sq-step3-waiting">Opens after you pick a customer in step 1. Their booked visits (&quot;On the books&quot;) live here too.</span>}
+          </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
+        <CardContent className={`grid gap-4 md:grid-cols-2${lookupDone ? '' : ' hidden'}`}>
           <div className="md:col-span-2">
             <Label htmlFor="sq-addr">Service address</Label>
             <Input id="sq-addr" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="14 Maple Ave, West Orange, NJ" data-testid="sq-address" />

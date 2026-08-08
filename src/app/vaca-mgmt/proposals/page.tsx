@@ -36,6 +36,7 @@ import {
   RefreshCw, Link2, Send, Ban, Upload, Boxes, X, FileUp, Undo2, Search, RotateCcw, Clock3,
 } from 'lucide-react';
 import { parseProposalCsv, type ParsedProposalLine } from '@/lib/proposals/csv';
+import { ProposalBuilder } from '@/components/admin/ProposalBuilder';
 import {
   composeBundle, lockedMemberTitles, restoreMembers, toStoredMembers, type PreviewBundleMember,
 } from '@/lib/proposals/bundles';
@@ -315,6 +316,9 @@ export default function ProposalsAdminPage() {
   /** What the search box holds, and the term the roster on screen answers. */
   const [search, setSearch] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
+  // The by-hand proposal builder (round 4). The CSV importer below stays as
+  // the side door for when the estimator already made the numbers.
+  const [showBuilder, setShowBuilder] = useState(false);
   /** Matching proposals in total; null when the count could not be read. */
   const [rosterTotal, setRosterTotal] = useState<number | null>(null);
   /**
@@ -814,12 +818,17 @@ export default function ProposalsAdminPage() {
   return (
     <div className="space-y-6" data-testid="proposals-admin">
       <Card>
-        <CardHeader>
-          <CardTitle>Proposals</CardTitle>
-          <CardDescription>
-            Tokenized client proposals built from the estimator&apos;s client-safe CSV. Locked lines are the bones; optional lines and bundles are the client&apos;s switches.
-            {CLIENT_PAGE_LIVE ? null : ' The client page ships in Slice 3, so Send is switched off until then - a proposal email would carry a link that does not resolve yet. Copy link still works for a link you are holding, not sending.'}
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-3 flex-wrap space-y-0">
+          <div>
+            <CardTitle>Proposals</CardTitle>
+            <CardDescription className="mt-1">
+              Tokenized client proposals - built by hand or from the estimator&apos;s client-safe CSV. Locked lines are the bones; optional lines and bundles are the client&apos;s switches.
+              {CLIENT_PAGE_LIVE ? null : ' The client page ships in Slice 3, so Send is switched off until then - a proposal email would carry a link that does not resolve yet. Copy link still works for a link you are holding, not sending.'}
+            </CardDescription>
+          </div>
+          <Button size="sm" onClick={() => setShowBuilder(true)} data-testid="open-builder">
+            New proposal
+          </Button>
         </CardHeader>
         <CardContent>
           {/*
@@ -1074,7 +1083,21 @@ export default function ProposalsAdminPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      {showBuilder && (
+        <ProposalBuilder
+          onCreated={() => {
+            setShowBuilder(false);
+            loadRoster(activeSearch);
+          }}
+          onClose={() => setShowBuilder(false)}
+          onImportInstead={() => {
+            setShowBuilder(false);
+            document.querySelector('[data-testid="csv-importer-card"]')?.scrollIntoView({ behavior: 'smooth' });
+          }}
+        />
+      )}
+
+      <Card data-testid="csv-importer-card">
         <CardHeader>
           <CardTitle>{reimportTarget ? `Re-import for ${reimportTarget.client_name}` : 'Import a proposal CSV'}</CardTitle>
           <CardDescription>

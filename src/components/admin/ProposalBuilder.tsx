@@ -1,0 +1,603 @@
+'use client';
+
+/**
+ * Build a proposal by hand - no estimator CSV required (round 4, 2026-08-08).
+ *
+ * Four steps: customer (the shared CustomerSearch), details, line items
+ * grouped by cost category, review & create. Bundling reuses the SAME pure
+ * module the CSV importer uses (composeBundle / toStoredMembers), so a
+ * hand-built package obeys the identical rules: one client-facing price, the
+ * members' sum, locked the moment any member is locked. Categories come from
+ * the merged library (/api/admin/proposal-categories): the built-in trade
+ * list plus admin-created ones; creating a new category is admin-only and a
+ * collaborator is told to ask their admin.
+ *
+ * The create POST is the importer's own endpoint - a hand-built proposal is
+ * indistinguishable from an imported one downstream (client page, send,
+ * revoke, re-import all unchanged).
+ */
+import { useState, useEffect, useMemo } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { toast } from '@/hooks/use-toast';
+import { Check, Lock, Boxes, Trash2, Undo2 } from 'lucide-react';
+import { CustomerSearch, type CustomerHit } from '@/components/admin/CustomerSearch';
+import { composeBundle, toStoredMembers, type PreviewBundleMember } from '@/lib/proposals/bundles';
+import { type BuilderCategory } from '@/lib/proposals/builderCategories';
+import { usd } from '@/lib/proposals/money';
+
+interface BuilderRow {
+  uid: number;
+  title: string;
+  description: string;
+  priceCents: number;
+  categoryKey: string;
+  optional: boolean;
+  /** Present on a bundle row: the client sees one line; these are inside it. */
+  members?: PreviewBundleMember[];
+  /** Builder-side only: the original rows, so Unbundle restores categories. */
+  memberRows?: BuilderRow[];
+}
+
+/** "$3,200.50", "3200", "3,200" - all become integer cents; null = unparsable. */
+export function parsePriceToCents(text: string): number | null {
+  const cleaned = text.replace(/[$,\s]/g, '');
+  if (!cleaned || !/^\d+(\.\d{1,2})?$/.test(cleaned)) return null;
+  return Math.round(Number(cleaned) * 100);
+}
+
+interface ProposalBuilderProps {
+  onCreated: () => void;
+  onClose: () => void;
+  /** Scrolls the admin to the CSV importer - the side door. */
+  onImportInstead: () => void;
+}
+
+const STEPS = ['Customer', 'Details', 'Line items', 'Review & create'] as const;
+
+let nextUid = 1;
+
+export function ProposalBuilder({ onCreated, onClose, onImportInstead }: ProposalBuilderProps) {
+  const [step, setStep] = useState(0);
+  const [customer, setCustomer] = useState<CustomerHit | null>(null);
+  const [clientName, setClientName] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
+  const [title, setTitle] = useState('');
+  const [rows, setRows] = useState<BuilderRow[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bundleName, setBundleName] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Category library: built-ins + admin-created, one fetch.
+  const [library, setLibrary] = useState<BuilderCategory[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/proposal-categories');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load categories');
+        if (!cancelled) setLibrary(data.categories || []);
+      } catch (err) {
+        if (!cancelled) {
+          toast({
+            title: 'Could not load the category library',
+            description: err instanceof Error ? err.message : String(err),
+            variant: 'destructive',
+          });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const libraryByKey = useMemo(() => new Map(library.map((c) => [c.key, c])), [library]);
+
+  // Categories currently on the proposal, in the order they were added.
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
+  const [catQuery, setCatQuery] = useState('');
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+
+  const catMatches = useMemo(() => {
+    const q = catQuery.trim().toLowerCase();
+    const unused = library.filter((c) => !categoryOrder.includes(c.key));
+    if (!q) return unused;
+    return unused.filter((c) => c.label.toLowerCase().includes(q) || c.key.includes(q));
+  }, [catQuery, library, categoryOrder]);
+
+  const exactMatch = useMemo(
+    () => library.find((c) => c.label.toLowerCase() === catQuery.trim().toLowerCase()),
+    [library, catQuery],
+  );
+
+  const addCategory = (key: string) => {
+    setCategoryOrder((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    setCatQuery('');
+  };
+
+  // Hybrid create: no library match for the typed name → offer to create it.
+  // The server answers 403 with the ask-your-admin line for non-admins.
+  const createCategory = async () => {
+    const label = catQuery.trim();
+    if (!label) return;
+    setIsCreatingCategory(true);
+    try {
+      const res = await fetch('/api/admin/proposal-categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not create the category');
+      setLibrary((prev) => [...prev, data.category]);
+      addCategory(data.category.key);
+      toast({ title: 'Category created', description: `"${data.category.label}" is in your library now.` });
+    } catch (err) {
+      toast({
+        title: 'Could not create the category',
+        description: err instanceof Error ? err.message : String(err),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCreatingCategory(false);
+    }
+  };
+
+  // ---- line entry ----------------------------------------------------------
+  const [draftByCat, setDraftByCat] = useState<Record<string, { title: string; description: string; price: string }>>({});
+  const draftFor = (key: string) => draftByCat[key] ?? { title: '', description: '', price: '' };
+  const setDraft = (key: string, patch: Partial<{ title: string; description: string; price: string }>) =>
+    setDraftByCat((prev) => ({ ...prev, [key]: { ...draftFor(key), ...patch } }));
+
+  const addLine = (categoryKey: string) => {
+    const draft = draftFor(categoryKey);
+    const cents = parsePriceToCents(draft.price);
+    if (!draft.title.trim()) {
+      toast({ title: 'The line needs a title', variant: 'destructive' });
+      return;
+    }
+    if (cents === null) {
+      toast({ title: 'Price not understood', description: 'Try a number like 3200 or $3,200.50.', variant: 'destructive' });
+      return;
+    }
+    const cat = libraryByKey.get(categoryKey);
+    setRows((prev) => [
+      ...prev,
+      {
+        uid: nextUid++,
+        title: draft.title.trim(),
+        description: draft.description.trim(),
+        priceCents: cents,
+        categoryKey,
+        optional: cat?.optional ?? false,
+      },
+    ]);
+    setDraft(categoryKey, { title: '', description: '', price: '' });
+  };
+
+  const removeRow = (uid: number) => {
+    setRows((prev) => prev.filter((r) => r.uid !== uid));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.delete(uid);
+      return next;
+    });
+  };
+
+  const toggleSelected = (uid: number) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
+
+  const toggleOptional = (uid: number) =>
+    setRows((prev) => prev.map((r) => (r.uid === uid ? { ...r, optional: !r.optional } : r)));
+
+  // ---- bundling ------------------------------------------------------------
+  const bundleSelected = () => {
+    const picked = rows.filter((r) => selected.has(r.uid));
+    if (picked.length < 2) return;
+    const composed = composeBundle(
+      picked.map((r) => ({
+        title: r.title,
+        description: r.description,
+        priceCents: r.priceCents,
+        optional: r.optional,
+        members: r.members,
+      })),
+      bundleName.trim() || undefined,
+    );
+    if (!composed) return;
+    // The pure module names the category by keyword-guessing the member title;
+    // here the admin PICKED every category, so the package lands where its
+    // first locked member lives (structure wins), else its first member.
+    const firstLocked = picked.find((r) => !r.optional);
+    const categoryKey = (firstLocked ?? picked[0]).categoryKey;
+    const bundleRow: BuilderRow = {
+      uid: nextUid++,
+      title: composed.title,
+      description: '',
+      priceCents: composed.priceCents,
+      categoryKey,
+      optional: composed.optional,
+      members: composed.members,
+      memberRows: picked.flatMap((r) => r.memberRows ?? [r]),
+    };
+    setRows((prev) => [...prev.filter((r) => !selected.has(r.uid)), bundleRow]);
+    setSelected(new Set());
+    setBundleName('');
+  };
+
+  const unbundle = (uid: number) => {
+    setRows((prev) => {
+      const bundle = prev.find((r) => r.uid === uid);
+      if (!bundle?.memberRows) return prev;
+      return [...prev.filter((r) => r.uid !== uid), ...bundle.memberRows];
+    });
+  };
+
+  // ---- derived -------------------------------------------------------------
+  const rowsByCategory = useMemo(() => {
+    const m = new Map<string, BuilderRow[]>();
+    for (const key of categoryOrder) m.set(key, []);
+    for (const r of rows) {
+      if (!m.has(r.categoryKey)) m.set(r.categoryKey, []);
+      m.get(r.categoryKey)!.push(r);
+    }
+    return m;
+  }, [rows, categoryOrder]);
+
+  const totalCents = rows.reduce((a, r) => a + r.priceCents, 0);
+  const stepReady = [
+    !!customer || (clientName.trim().length > 0),
+    clientName.trim().length > 0 && title.trim().length > 0,
+    rows.length > 0,
+    true,
+  ];
+
+  const selectCustomer = (hit: CustomerHit) => {
+    setCustomer(hit);
+    setClientName(hit.name ?? '');
+    setClientEmail(hit.email ?? '');
+    setStep(1);
+  };
+
+  // ---- create --------------------------------------------------------------
+  const create = async () => {
+    setIsCreating(true);
+    try {
+      const lines = rows.map((r) => ({
+        title: r.title,
+        description: r.description,
+        price_cents: r.priceCents,
+        optional: r.optional,
+        category: r.categoryKey,
+        bundle_members: r.members ? toStoredMembers(r.members) : undefined,
+      }));
+      const res = await fetch('/api/admin/proposals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_name: clientName.trim(),
+          client_email: clientEmail.trim() || null,
+          title: title.trim(),
+          lead_id: customer?.id ?? null,
+          lines,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Create failed');
+      toast({ title: 'Proposal created', description: `${clientName.trim()} - draft, ready to send from the roster.` });
+      onCreated();
+    } catch (err) {
+      toast({
+        title: 'Could not create the proposal',
+        description: err instanceof Error ? err.message : String(err),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const catBadge = (key: string) => {
+    const cat = libraryByKey.get(key);
+    const optional = cat?.optional ?? false;
+    return optional ? (
+      <Badge variant="outline" className="rounded-[5px] text-teal-700 border-teal-600/40 text-[10px] uppercase">client can toggle</Badge>
+    ) : (
+      <Badge variant="outline" className="rounded-[5px] text-[10px] uppercase"><Lock className="w-3 h-3 mr-1" />locked for client</Badge>
+    );
+  };
+
+  return (
+    <Card data-testid="proposal-builder">
+      <CardHeader className="flex flex-row items-start justify-between gap-3 flex-wrap space-y-0">
+        <div>
+          <CardTitle>New proposal</CardTitle>
+          <CardDescription className="mt-1">
+            Build it line by line - or{' '}
+            <button className="underline font-semibold text-primary" onClick={onImportInstead} data-testid="builder-import-instead">
+              import the estimator CSV instead
+            </button>
+            .
+          </CardDescription>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* Stepper */}
+        <div className="flex gap-2 flex-wrap">
+          {STEPS.map((label, i) => {
+            const done = i < step;
+            const active = i === step;
+            return (
+              <button
+                key={label}
+                type="button"
+                onClick={() => { if (i <= step || stepReady.slice(0, i).every(Boolean)) setStep(i); }}
+                data-testid={`builder-step-${i}`}
+                className={`inline-flex items-center gap-2 border rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  active ? 'border-primary bg-primary/10 text-primary' : done ? 'border-green-600/50 text-green-700' : 'border-border text-muted-foreground'
+                }`}
+              >
+                <span className={`w-5 h-5 rounded-full inline-flex items-center justify-center text-[11px] font-bold ${
+                  done ? 'bg-green-600 text-white' : active ? 'bg-primary text-white' : 'bg-muted'
+                }`}>{done ? <Check className="w-3 h-3" /> : i + 1}</span>
+                {i === 0 && customer ? `Customer: ${customer.name ?? customer.email}` : label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Step 1 - customer */}
+        {step === 0 && (
+          <div className="max-w-md">
+            <p className="text-sm text-muted-foreground mb-3">
+              Find the customer, or save someone new - the proposal links to their record.
+            </p>
+            <CustomerSearch onSelect={selectCustomer} selectedId={customer?.id} />
+          </div>
+        )}
+
+        {/* Step 2 - details */}
+        {step === 1 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+            <div className="space-y-1.5">
+              <Label htmlFor="pb-client-name">Client name *</Label>
+              <Input id="pb-client-name" value={clientName} onChange={(e) => setClientName(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pb-client-email">Client email</Label>
+              <Input id="pb-client-email" type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} />
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="pb-title">Proposal title *</Label>
+              <Input id="pb-title" placeholder="Kitchen remodel - 12 Maple Ave" value={title} onChange={(e) => setTitle(e.target.value)} />
+            </div>
+            <div className="md:col-span-2 flex justify-between">
+              <Button variant="outline" onClick={() => setStep(0)}>Back</Button>
+              <Button onClick={() => setStep(2)} disabled={!stepReady[1]} data-testid="builder-to-lines">
+                Continue to line items
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3 - line items */}
+        {step === 2 && (
+          <div className="space-y-4">
+            {categoryOrder.length === 0 && (
+              <p className="text-sm text-muted-foreground">Start by adding a cost category below.</p>
+            )}
+
+            {categoryOrder.map((key) => {
+              const cat = libraryByKey.get(key);
+              const catRows = rowsByCategory.get(key) ?? [];
+              const subtotal = catRows.reduce((a, r) => a + r.priceCents, 0);
+              const draft = draftFor(key);
+              return (
+                <div key={key} className="border rounded-lg overflow-hidden" data-testid={`builder-cat-${key}`}>
+                  <div className="flex items-center gap-2 flex-wrap px-4 py-2.5 bg-muted/60 border-b">
+                    <span className="font-bold text-sm">{cat?.label ?? key}</span>
+                    {catBadge(key)}
+                    <span className="ml-auto text-xs font-semibold text-muted-foreground">
+                      subtotal {usd(subtotal)}
+                    </span>
+                  </div>
+                  {catRows.map((r) => (
+                    <div key={r.uid} className="flex items-center gap-3 px-4 py-2 border-b text-sm flex-wrap">
+                      <input
+                        type="checkbox"
+                        aria-label="Select for bundling"
+                        checked={selected.has(r.uid)}
+                        onChange={() => toggleSelected(r.uid)}
+                        className="w-4 h-4 accent-[hsl(26,84%,58%)]"
+                      />
+                      <div className="flex-1 min-w-[160px]">
+                        <span className="font-medium">{r.title}</span>
+                        {r.members && (
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            <Boxes className="w-3 h-3 inline mr-1" />
+                            includes {r.members.length} items
+                          </span>
+                        )}
+                        {r.description && <div className="text-xs text-muted-foreground">{r.description}</div>}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleOptional(r.uid)}
+                        className={`text-[10px] font-bold uppercase rounded-[5px] border px-1.5 py-0.5 ${
+                          r.optional ? 'text-teal-700 border-teal-600/40' : 'text-muted-foreground border-border'
+                        }`}
+                        title="Flip whether the client can toggle this line"
+                      >
+                        {r.optional ? 'optional' : 'locked'}
+                      </button>
+                      <span className="font-bold whitespace-nowrap">{usd(r.priceCents)}</span>
+                      {r.members ? (
+                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => unbundle(r.uid)} title="Unbundle">
+                          <Undo2 className="w-3.5 h-3.5" />
+                        </Button>
+                      ) : (
+                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => removeRow(r.uid)} title="Remove line">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  <div className="flex gap-2 px-4 py-2.5 flex-wrap">
+                    <Input
+                      placeholder="Line title"
+                      className="flex-1 min-w-[150px] h-9"
+                      value={draft.title}
+                      onChange={(e) => setDraft(key, { title: e.target.value })}
+                      data-testid={`builder-line-title-${key}`}
+                    />
+                    <Input
+                      placeholder="Description (optional)"
+                      className="flex-1 min-w-[150px] h-9"
+                      value={draft.description}
+                      onChange={(e) => setDraft(key, { description: e.target.value })}
+                    />
+                    <Input
+                      placeholder="$"
+                      className="w-28 h-9"
+                      value={draft.price}
+                      onChange={(e) => setDraft(key, { price: e.target.value })}
+                      onKeyDown={(e) => { if (e.key === 'Enter') addLine(key); }}
+                      data-testid={`builder-line-price-${key}`}
+                    />
+                    <Button variant="outline" size="sm" className="h-9" onClick={() => addLine(key)} data-testid={`builder-add-line-${key}`}>
+                      Add line
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Bundle bar */}
+            {selected.size >= 2 && (
+              <div className="flex items-center gap-2 flex-wrap border border-primary/40 bg-primary/5 rounded-lg px-4 py-2.5" data-testid="builder-bundle-bar">
+                <Boxes className="w-4 h-4 text-primary" />
+                <span className="text-sm font-semibold">{selected.size} lines selected</span>
+                <Input
+                  placeholder="Bundle name (e.g. Kitchen package)"
+                  className="flex-1 min-w-[180px] h-9"
+                  value={bundleName}
+                  onChange={(e) => setBundleName(e.target.value)}
+                  data-testid="builder-bundle-name"
+                />
+                <Button size="sm" onClick={bundleSelected} data-testid="builder-bundle-button">
+                  Bundle - client sees one price
+                </Button>
+              </div>
+            )}
+
+            {/* Category picker: hybrid typeahead */}
+            <div className="border border-dashed rounded-lg p-4">
+              <Label htmlFor="pb-cat" className="text-sm">Add a cost category</Label>
+              <Input
+                id="pb-cat"
+                placeholder="Type to search the library..."
+                className="mt-1.5 max-w-sm"
+                value={catQuery}
+                onChange={(e) => setCatQuery(e.target.value)}
+                data-testid="builder-cat-query"
+              />
+              <div className="flex gap-1.5 flex-wrap mt-2.5">
+                {catMatches.slice(0, 14).map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={() => addCategory(c.key)}
+                    data-testid={`builder-cat-pick-${c.key}`}
+                    className="border rounded-full px-3 py-1 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                  >
+                    {c.label}
+                    {c.custom && <span className="ml-1 text-[9px] uppercase text-primary">yours</span>}
+                  </button>
+                ))}
+                {catQuery.trim() && !exactMatch && (
+                  <button
+                    type="button"
+                    onClick={createCategory}
+                    disabled={isCreatingCategory}
+                    data-testid="builder-cat-create"
+                    className="border border-primary rounded-full px-3 py-1 text-xs font-bold text-primary hover:bg-primary/10 transition-colors"
+                  >
+                    {isCreatingCategory ? 'Creating…' : `Create "${catQuery.trim()}" (admin only)`}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-sm text-muted-foreground">
+                {categoryOrder.length} categor{categoryOrder.length === 1 ? 'y' : 'ies'} · {rows.length} line{rows.length === 1 ? '' : 's'}
+              </span>
+              <span className="text-base font-bold">Total {usd(totalCents)}</span>
+            </div>
+            <div className="flex justify-between">
+              <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
+              <Button onClick={() => setStep(3)} disabled={!stepReady[2]} data-testid="builder-to-review">
+                Review &amp; create
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4 - review */}
+        {step === 3 && (
+          <div className="space-y-4 max-w-2xl">
+            <div className="border rounded-lg p-4">
+              <p className="font-bold">{title.trim() || '(untitled)'}</p>
+              <p className="text-sm text-muted-foreground">
+                for {clientName.trim()}{clientEmail.trim() ? ` (${clientEmail.trim()})` : ''}
+              </p>
+            </div>
+            {[...rowsByCategory.entries()].filter(([, rs]) => rs.length > 0).map(([key, rs]) => (
+              <div key={key} className="border rounded-lg overflow-hidden">
+                <div className="px-4 py-2 bg-muted/60 border-b flex items-center gap-2">
+                  <span className="font-bold text-sm">{libraryByKey.get(key)?.label ?? key}</span>
+                  {catBadge(key)}
+                </div>
+                {rs.map((r) => (
+                  <div key={r.uid} className="px-4 py-2 border-b last:border-0 text-sm flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <span className="font-medium">{r.title}</span>
+                      {r.optional && <span className="ml-2 text-[10px] font-bold uppercase text-teal-700">optional</span>}
+                      {r.members && (
+                        <ul className="text-xs text-muted-foreground list-disc list-inside mt-0.5">
+                          {r.members.map((m, i) => <li key={i}>{m.title}</li>)}
+                        </ul>
+                      )}
+                    </div>
+                    <span className="font-bold whitespace-nowrap">{usd(r.priceCents)}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+            <div className="flex justify-end text-base font-bold">Total {usd(totalCents)}</div>
+            <p className="text-xs text-muted-foreground">
+              Bundles show the client one price; the item titles above are what their page lists as included.
+              Creating makes a DRAFT - you still review and send it from the roster like any imported proposal.
+            </p>
+            <div className="flex justify-between">
+              <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
+              <Button onClick={create} disabled={isCreating} data-testid="builder-create">
+                {isCreating ? 'Creating…' : 'Create draft proposal'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
