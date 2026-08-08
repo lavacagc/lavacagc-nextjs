@@ -1,10 +1,23 @@
 name: Playwright E2E
 
+# MANUAL ONLY, on purpose. This job (npm ci + browser download + full build +
+# whole Playwright suite, ~15-30 min) used to run on EVERY push to main and
+# every PR - it was the single biggest consumer of the Actions minutes budget,
+# and it duplicated work that now runs on the Mac before a push can happen:
+# .husky/pre-push runs the production build plus the critical-path smoke specs
+# on every push, and the full suite stays a local command (`npm run test:e2e`).
+#
+# Nothing triggers this automatically anymore. To run it in the cloud (e.g.
+# once minutes exist again, before a launch): GitHub > Actions > Playwright
+# E2E > "Run workflow". `paths` filtering does not apply to workflow_dispatch,
+# which is fine - a manual run is always intentional.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
+
+# If it is dispatched twice, the newer run cancels the older one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   e2e:

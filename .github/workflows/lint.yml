@@ -1,10 +1,55 @@
 name: Lint & Type Check
 
+# Thin cloud safety net - the REAL gate runs locally in .husky/pre-push
+# (typecheck, ESLint, production build, Playwright smoke) before anything can
+# be pushed. CI keeps only these two cheap, env-independent checks to catch
+# the pushes the hook cannot see: `git push --no-verify` and edits made in the
+# GitHub web UI. The expensive checks (build, e2e) deliberately do NOT run
+# here anymore - see .github/workflows/playwright.yml.
+
 on:
   push:
     branches: [main]
+    # Only run when files that lint/typecheck actually reads change. Doc/image
+    # commits (*.md, mockups, screenshots, legal/) no longer burn minutes.
+    # NOTE: GitHub Actions does not support YAML anchors, so this list is
+    # duplicated under pull_request below - keep the two in sync.
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'supabase/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'eslint.config.mjs'
+      - 'next.config.ts'
+      - 'playwright.config.ts'
+      - 'tailwind.config.ts'
+      - 'postcss.config.mjs'
+      - '.github/workflows/lint.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'supabase/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'eslint.config.mjs'
+      - 'next.config.ts'
+      - 'playwright.config.ts'
+      - 'tailwind.config.ts'
+      - 'postcss.config.mjs'
+      - '.github/workflows/lint.yml'
+
+# A newer push to the same branch/PR cancels the run the older push started -
+# only the latest code is worth checking, and cancelled minutes are not billed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
