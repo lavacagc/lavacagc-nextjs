@@ -8,8 +8,6 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
-import { useAuth } from "@/hooks/useAuth";
-import { useBuyRemodelPublished } from "@/lib/listings/publishedClient";
 import { readHcKnown } from "@/lib/homecare/knownClient";
 import { trackEvent } from "@/services/analyticsManager";
 
@@ -57,12 +55,6 @@ const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
-  const { session } = useAuth();
-  const buyRemodelPublished = useBuyRemodelPublished();
-  // Show the Buy + Remodel nav once it's published; admins (logged in) always
-  // see it so they can reach the page to preview before publishing.
-  const showBuyRemodel = buyRemodelPublished || !!session;
-
   // Returning Home Care members get a direct "My Home Care" portal link instead
   // of the public "Home Care" opt-in link — the two are mutually exclusive. The
   // hc_known cookie is non-httpOnly (name hint only); real access is enforced
@@ -74,9 +66,9 @@ const Header = () => {
   }, []);
 
   // The Programs menu holds the homeowner programs. Home Care only appears for
-  // non-members (members use the My Home Care chip); Buy + Remodel only when
-  // published/admin. Hide the whole menu if it would be empty.
-  const showPrograms = showBuyRemodel || !hcKnown;
+  // non-members (members use the My Home Care chip). Hide the whole menu if it
+  // would be empty.
+  const showPrograms = !hcKnown;
 
   const scrollToSection = (sectionId: string) => {
     // Close mobile menu if open
@@ -212,11 +204,6 @@ const Header = () => {
 
               {showPrograms && (
                 <NavDropdown label="Programs">
-                  {showBuyRemodel && (
-                    <Link href="/buy-and-remodel" className={ITEM_CLASS} role="menuitem">
-                      Buy + Remodel
-                    </Link>
-                  )}
                   {!hcKnown && (
                     <Link href="/home-care" className={ITEM_CLASS} role="menuitem">
                       Home Care
@@ -334,15 +321,6 @@ const Header = () => {
                 <div>
                   <p className="font-semibold text-text-primary mb-2">Programs</p>
                   <div className="pl-4 space-y-2">
-                    {showBuyRemodel && (
-                      <button
-                        onClick={() => navigateToPage('/buy-and-remodel')}
-                        className="block text-text-secondary hover:text-primary transition-colors"
-                        aria-label="Go to buy and remodel homes page"
-                      >
-                        Buy + Remodel
-                      </button>
-                    )}
                     {!hcKnown && (
                       <button
                         onClick={() => navigateToPage('/home-care')}

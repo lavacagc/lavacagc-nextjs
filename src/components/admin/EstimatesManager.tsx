@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { stopDrip } from '@/lib/followups/followUpsApi';
+import { csvEscape } from '@/lib/csv';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -62,7 +63,6 @@ interface LeadSelection {
 
 export function EstimatesManager() {
   const [leads, setLeads] = useState<EstimateLead[]>([]);
-  const [filteredLeads, setFilteredLeads] = useState<EstimateLead[]>([]);
   const [selectedLead, setSelectedLead] = useState<EstimateLead | null>(null);
   const [leadSelections, setLeadSelections] = useState<LeadSelection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,11 +83,6 @@ export function EstimatesManager() {
     loadLeads();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadLeads uses showArchived from closure, only re-run when showArchived changes
   }, [showArchived]);
-
-  useEffect(() => {
-    applyFilters();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- applyFilters reads from state already in deps array
-  }, [leads, searchTerm, filterProjectType, filterStatus, filterTimeline, showArchived]);
 
   const loadLeads = async () => {
     try {
@@ -120,13 +115,14 @@ export function EstimatesManager() {
     }
   };
 
-  const applyFilters = () => {
+  // Derived, not state: as a second state array written from an effect, every
+  // filter keystroke double-rendered the whole table.
+  const filteredLeads = useMemo(() => {
     let filtered = [...leads];
 
-    // Search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(lead => 
+      filtered = filtered.filter(lead =>
         lead.first_name?.toLowerCase().includes(term) ||
         lead.last_name?.toLowerCase().includes(term) ||
         lead.email?.toLowerCase().includes(term) ||
@@ -135,23 +131,20 @@ export function EstimatesManager() {
       );
     }
 
-    // Project type filter
     if (filterProjectType !== 'all') {
       filtered = filtered.filter(lead => lead.project_type_name === filterProjectType);
     }
 
-    // Status filter
     if (filterStatus !== 'all') {
       filtered = filtered.filter(lead => lead.lead_status === filterStatus);
     }
 
-    // Timeline filter
     if (filterTimeline !== 'all') {
       filtered = filtered.filter(lead => lead.project_timeline === filterTimeline);
     }
 
-    setFilteredLeads(filtered);
-  };
+    return filtered;
+  }, [leads, searchTerm, filterProjectType, filterStatus, filterTimeline]);
 
   const loadLeadDetails = async (lead: EstimateLead) => {
     setSelectedLead(lead);
@@ -185,7 +178,9 @@ export function EstimatesManager() {
 
       if (error) throw error;
 
-      loadLeads();
+      // Patch the row in place - a full-table refetch per status change
+      // re-downloaded every estimate lead.
+      setLeads(prev => prev.map(l => (l.id === selectedLead.id ? { ...l, lead_status: status } : l)));
       setSelectedLead({ ...selectedLead, lead_status: status });
 
       // Estimate accepted → stop the lead follow-up cycle so we don't keep
@@ -265,7 +260,8 @@ export function EstimatesManager() {
         description: "Notes saved"
       });
 
-      loadLeads();
+      setLeads(prev => prev.map(l => (l.id === selectedLead.id ? { ...l, admin_notes: notes } : l)));
+      setSelectedLead(prev => (prev ? { ...prev, admin_notes: notes } : prev));
     } catch (error) {
       console.error('Error updating notes:', error);
       toast({
@@ -295,7 +291,8 @@ export function EstimatesManager() {
       setShowArchiveDialog(false);
       setLeadToArchive(null);
       setShowDetailDialog(false);
-      loadLeads();
+      // The archived lead leaves the active view; no refetch needed.
+      setLeads(prev => prev.filter(l => l.id !== leadToArchive.id));
     } catch (error) {
       console.error('Error archiving lead:', error);
       toast({
@@ -310,19 +307,21 @@ export function EstimatesManager() {
     if (!leadToDelete) return;
 
     try {
-      // Delete lead selections first
-      await supabase
+      // Child rows first, and every delete is checked: unchecked child deletes
+      // used to let a failure slip through, deleting the parent anyway and
+      // stranding orphaned selections while the toast claimed success.
+      const selectionsDelete = await supabase
         .from('calculator_lead_selections')
         .delete()
         .eq('estimate_lead_id', leadToDelete.id);
+      if (selectionsDelete.error) throw selectionsDelete.error;
 
-      // Delete material estimates
-      await supabase
+      const materialsDelete = await supabase
         .from('material_estimates')
         .delete()
         .eq('lead_id', leadToDelete.id);
+      if (materialsDelete.error) throw materialsDelete.error;
 
-      // Delete the lead
       const { error } = await supabase
         .from('estimate_leads')
         .delete()
@@ -338,7 +337,7 @@ export function EstimatesManager() {
       setShowDeleteDialog(false);
       setLeadToDelete(null);
       setShowDetailDialog(false);
-      loadLeads();
+      setLeads(prev => prev.filter(l => l.id !== leadToDelete.id));
     } catch (error) {
       console.error('Error deleting lead:', error);
       toast({
@@ -364,7 +363,7 @@ export function EstimatesManager() {
       format(new Date(lead.created_at), 'yyyy-MM-dd')
     ]);
 
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+    const csv = [headers, ...rows].map(row => row.map(csvEscape).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');

@@ -33,7 +33,7 @@ function page(origin: string, title: string, body: string): string {
   <div class="wrap"><div class="card">
     <h1>${title}</h1>
     ${body}
-    <a class="btn" href="${origin}/buy-and-remodel/unlock">Re-subscribe to access listings</a>
+    <a class="btn" href="${origin}/">Visit lavacagc.com</a>
     <p class="muted">La Vaca General Contractors · Northern New Jersey</p>
   </div></div>
 </body>
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
     return html(
       origin,
       "You're unsubscribed",
-      "<p>You've been removed from the La Vaca Buy + Remodel newsletter and your listing access has been revoked.</p><p>You can re-subscribe any time to regain access.</p>",
+      "<p>You've been removed from the La Vaca Buy + Remodel newsletter.</p><p>The Buy + Remodel program has since been retired, so no further emails were coming either way - but your preference is now recorded.</p>",
       true,
     );
   } catch (error) {

@@ -242,6 +242,15 @@ const nextConfig: NextConfig = {
       { source: '/unsubscribe', destination: '/unsub', permanent: false },
 
       // ============================================
+      // BUY + REMODEL RETIRED (2026-08)
+      // The product is discontinued; the pages were live and linked from
+      // sent emails, so old URLs 301 home instead of 404ing.
+      // /api/buy-and-remodel/unsubscribe still works and is NOT redirected.
+      // ============================================
+      { source: '/buy-and-remodel', destination: '/', permanent: true },
+      { source: '/buy-and-remodel/:path*', destination: '/', permanent: true },
+
+      // ============================================
       // OLD SERVICE + CITY URL FORMAT REDIRECTS
       // Pattern: /service-city-nj → /locations/city/services/service
       // ============================================

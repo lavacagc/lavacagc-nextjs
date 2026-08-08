@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-import { ACCESS_COOKIE_NAME, verifyAccess } from '@/lib/listings/accessCookie';
 
 // Known bad bot user-agent patterns (scrapers, vulnerability scanners, spam crawlers)
 const BAD_BOT_PATTERNS = [
@@ -74,7 +73,6 @@ function isBadBot(ua: string): boolean {
 // Routes that require Supabase admin session authentication
 const ADMIN_AUTH_ROUTES = [
   '/api/leads/list',
-  '/api/leads/conversations',
   '/api/admin/',
   '/api/banners/admin',
   '/api/feedback/',
@@ -98,7 +96,7 @@ const PUBLIC_ROUTES = [
   '/api/referrals',
   '/api/intake/',       // Tokenized lead intake - auth is the per-session token, self-guarded
   '/api/documents/',
-  '/api/buy-and-remodel/', // Newsletter signup / email-verify / unsubscribe (self-guarded)
+  '/api/buy-and-remodel/', // Unsubscribe only (product retired; links in sent emails must keep working)
   '/api/newsletter/',      // Monthly-newsletter signup (rate-limited, self-guarded)
   '/api/consent/',         // TCPA consent logging (rate-limited, self-guarded)
   '/api/crew/',            // Crew visit confirm - auth is the per-assignment token
@@ -121,79 +119,6 @@ function requiresAdminAuth(pathname: string): boolean {
 
 function requiresCronAuth(pathname: string): boolean {
   return CRON_AUTH_ROUTES.some(route => pathname.startsWith(route));
-}
-
-// "Buy + Remodel" email gate: the gallery (/buy-and-remodel) is a public teaser,
-// but each home's DETAIL page (/buy-and-remodel/<slug>) requires a verified-email
-// access cookie. The unlock/signup page is itself under the prefix and must never
-// be gated (else an infinite redirect loop). The slug `unlock` is reserved.
-//
-// Security: match the unlock page EXACTLY (with optional trailing slash), not by
-// prefix - a `startsWith('/buy-and-remodel/unlock')` would also exempt any listing
-// slug beginning with "unlock" (e.g. /buy-and-remodel/unlocked-colonial), serving
-// it ungated.
-function requiresEmailGate(pathname: string): boolean {
-  if (!pathname.startsWith('/buy-and-remodel/')) return false;
-  if (pathname === '/buy-and-remodel/unlock' || pathname === '/buy-and-remodel/unlock/') return false;
-  return true;
-}
-
-// Authoritative, per-navigation check that the subscriber behind a valid access
-// cookie is still 'active'. This is what makes unsubscribe revoke access
-// immediately - a signed cookie alone would stay valid until expiry. One indexed
-// PostgREST lookup via the service key. Fails CLOSED (any error → not allowed),
-// so a backend hiccup never leaks gated content.
-async function subscriberIsActive(subscriberId: string): Promise<boolean> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const secretKey = process.env.SUPABASE_SECRET_KEY;
-  if (!supabaseUrl || !secretKey) return false;
-  try {
-    const res = await fetch(
-      `${supabaseUrl}/rest/v1/newsletter_subscribers?id=eq.${encodeURIComponent(subscriberId)}&status=eq.active&select=id`,
-      {
-        headers: {
-          apikey: secretKey,
-          Authorization: `Bearer ${secretKey}`,
-          Accept: 'application/json',
-        },
-        signal: AbortSignal.timeout(4000),
-      },
-    );
-    if (!res.ok) return false;
-    const rows = (await res.json()) as unknown[];
-    return Array.isArray(rows) && rows.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-// Whether the Buy + Remodel feature is published to the public. Cached briefly
-// in-instance so we don't hit the DB on every gated navigation. Read with the
-// public anon key (the flag is public-read via RLS). Fails CLOSED (unpublished).
-let publishedCache: { value: boolean; expiresAt: number } | null = null;
-async function isBuyRemodelPublished(): Promise<boolean> {
-  const now = Date.now();
-  if (publishedCache && publishedCache.expiresAt > now) return publishedCache.value;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !anonKey) return false;
-  try {
-    const res = await fetch(
-      `${supabaseUrl}/rest/v1/site_settings?id=eq.1&select=buy_and_remodel_published`,
-      {
-        headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}`, Accept: 'application/json' },
-        signal: AbortSignal.timeout(4000),
-      },
-    );
-    if (!res.ok) return false;
-    const rows = (await res.json()) as Array<{ buy_and_remodel_published?: boolean }>;
-    const value = Array.isArray(rows) && rows.length > 0 && !!rows[0].buy_and_remodel_published;
-    publishedCache = { value, expiresAt: now + 30_000 };
-    return value;
-  } catch {
-    return false;
-  }
 }
 
 async function verifySupabaseSession(request: NextRequest): Promise<boolean> {
@@ -290,27 +215,6 @@ export async function middleware(request: NextRequest) {
         status: 401,
         headers: { 'Content-Type': 'text/plain' },
       });
-    }
-  }
-
-  // --- "Buy + Remodel" email gate (verified-email access cookie) ---
-  // Only enforce the email gate once the feature is PUBLISHED. While unpublished,
-  // fall through so the page server-component can 404 the public (or render an
-  // admin preview) instead of redirecting them to the unlock page.
-  if (requiresEmailGate(pathname) && (await isBuyRemodelPublished())) {
-    const cookie = request.cookies.get(ACCESS_COOKIE_NAME)?.value;
-    const verified = await verifyAccess(cookie);
-    const allowed = verified ? await subscriberIsActive(verified.subscriberId) : false;
-    if (!allowed) {
-      // Logged-in admins can preview gated listings without subscribing. Only
-      // checked on the redirect path so the common visitor never pays for it.
-      const isAdmin = await verifySupabaseSession(request);
-      if (!isAdmin) {
-        const url = request.nextUrl.clone();
-        url.pathname = '/buy-and-remodel/unlock';
-        url.search = `?next=${encodeURIComponent(pathname)}`;
-        return NextResponse.redirect(url);
-      }
     }
   }
 

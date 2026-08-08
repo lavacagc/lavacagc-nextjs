@@ -185,12 +185,16 @@ const record = (over: Partial<SubmissionRecord> = {}): SubmissionRecord => ({
 
 test('AC-R1: every pre-slice admin sidebar capability is still present', () => {
   const sidebar = read('src/components/admin/AdminSidebar.tsx');
+  // Post-2026-08-08 admin-simplification roster (diagnostics, ai, listings,
+  // subscribers, estimate-log, seo-suggestions and the Insights tools were
+  // deliberately pruned or folded in that change).
   const before = [
-    'dashboard', 'diagnostics', 'ai',
-    'blog', 'pages', 'services', 'service-areas', 'projects', 'listings', 'banners',
-    'seo', 'seo-suggestions', 'analytics', 'gmb',
-    'leads', 'subscribers', 'home-records', 'follow-ups', 'send-estimate',
-    'send-service-quote', 'crew', 'estimate-log', 'emails', 'preferences', 'releases',
+    'dashboard',
+    'blog', 'pages', 'services', 'service-areas', 'projects', 'banners',
+    'seo', 'analytics', 'conversions', 'gmb', 'preferences',
+    'leads', 'estimates', 'follow-ups', 'send-estimate', 'emails',
+    'home-records', 'home-care-shop', 'send-service-quote', 'crew', 'releases',
+    'pricing', 'compliance',
     'proposals',
   ];
   for (const id of before) {

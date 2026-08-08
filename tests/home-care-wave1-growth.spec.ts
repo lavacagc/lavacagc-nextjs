@@ -114,8 +114,8 @@ test('the newsletter recipient query cannot be mangled by the minifier', () => {
   // This repo has already lost a cron to exactly one construction: a PostgREST
   // `or=(...)` logic tree built from `+`-concatenated template segments, where
   // a Turbopack minifier bug dropped the trailing `))` from the production
-  // bundle and PostgREST answered PGRST100 (see tests/renderings-cron.spec.ts
-  // and generate-renderings/route.ts). The newsletter is the worse place for it
+  // bundle and PostgREST answered PGRST100 (first hit the retired Buy+Remodel
+  // generate-renderings cron). The newsletter is the worse place for it
   // to come back: it runs `0 14 1 * *` with no retry, so a malformed query
   // means every member silently misses the month with nobody to complain.
   const src = read('src/app/api/cron/home-care-newsletter/route.ts');

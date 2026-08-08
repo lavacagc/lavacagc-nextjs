@@ -22,10 +22,6 @@
       "schedule": "0 9 * * *"
     },
     {
-      "path": "/api/cron/generate-renderings",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/cron/seo-ingest?days=3",
       "schedule": "0 6 * * *"
     },

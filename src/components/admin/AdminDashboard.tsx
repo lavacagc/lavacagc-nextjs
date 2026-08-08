@@ -52,6 +52,8 @@ interface RecentSubmission {
   address?: string;
   urgency_level?: string;
   original_project_type?: string;
+  // The raw DB row the list query returned, for the detail dialog.
+  full?: Record<string, unknown>;
 }
 
 interface BlogPost {
@@ -101,60 +103,23 @@ const [fullSubmissionData, setFullSubmissionData] = useState<any>(null);
   const loadDashboardData = async () => {
     setIsLoading(true);
     try {
-      // Load stats
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const weekAgo = new Date(today);
       weekAgo.setDate(weekAgo.getDate() - 7);
 
-      const [blogsData, projectsData, leadsData, , seoData, estimateLeadsData] = await Promise.all([
-        supabase.from('blog_posts').select('id, published'),
+      // One parallel wave. Count-only stats use head counts so no rows travel;
+      // estimate_leads pulls just the columns its four counters need; one
+      // blog_posts select serves the total, the draft count AND the drafts list.
+      const [blogsData, projectsData, leadsCount, seoCount, estimateLeadsData, recentLeads, recentWarranty] = await Promise.all([
+        supabase
+          .from('blog_posts')
+          .select('id, title, slug, published, created_at, updated_at')
+          .order('updated_at', { ascending: false }),
         supabase.from('projects').select('id, title, challenge, solution, location, featured_image_id'),
-        supabase.from('leads').select('id'),
-        supabase.from('warranty_claims').select('id'),
-        supabase.from('seo_analysis').select('id, score').lt('score', 70),
-        supabase.from('estimate_leads').select('*')
-      ]);
-
-      // Calculate stats
-      const totalBlogs = blogsData.data?.length || 0;
-      const draftPosts = blogsData.data?.filter(post => !post.published).length || 0;
-      const totalProjects = projectsData.data?.length || 0;
-      const incompleteProjects = projectsData.data?.filter(
-        project => !project.featured_image_id || (project.challenge && project.challenge.length < 100)
-      ).length || 0;
-
-      const estimateLeadsToday = estimateLeadsData.data?.filter(lead => 
-        new Date(lead.created_at) >= today
-      ).length || 0;
-      
-      const estimateLeadsWeek = estimateLeadsData.data?.filter(lead => 
-        new Date(lead.created_at) >= weekAgo
-      ).length || 0;
-
-      const assessmentsPending = estimateLeadsData.data?.filter(lead => 
-        lead.assessment_requested && lead.lead_status === 'new'
-      ).length || 0;
-
-      const homeAdditionsManual = estimateLeadsData.data?.filter(lead => 
-        lead.requires_manual_estimate && lead.lead_status === 'new'
-      ).length || 0;
-
-      setStats({
-        totalBlogs,
-        totalProjects,
-        totalLeads: leadsData.data?.length || 0,
-        estimateLeadsToday,
-        estimateLeadsWeek,
-        assessmentsPending,
-        homeAdditionsManual,
-        draftPosts,
-        incompleteProjects,
-        seoIssues: seoData.data?.length || 0
-      });
-
-      // Load recent submissions (only active leads)
-      const [recentLeads, recentWarranty] = await Promise.all([
+        supabase.from('leads').select('*', { count: 'exact', head: true }),
+        supabase.from('seo_analysis').select('*', { count: 'exact', head: true }).lt('score', 70),
+        supabase.from('estimate_leads').select('created_at, lead_status, assessment_requested, requires_manual_estimate'),
         supabase
           .from('leads')
           .select('*')
@@ -167,6 +132,44 @@ const [fullSubmissionData, setFullSubmissionData] = useState<any>(null);
           .order('created_at', { ascending: false })
           .limit(2)
       ]);
+
+      // Calculate stats
+      const totalBlogs = blogsData.data?.length || 0;
+      const draftPostList = (blogsData.data || []).filter(post => !post.published);
+      const draftPosts = draftPostList.length;
+      const totalProjects = projectsData.data?.length || 0;
+      const incompleteProjects = projectsData.data?.filter(
+        project => !project.featured_image_id || (project.challenge && project.challenge.length < 100)
+      ).length || 0;
+
+      const estimateLeadsToday = estimateLeadsData.data?.filter(lead =>
+        new Date(lead.created_at) >= today
+      ).length || 0;
+
+      const estimateLeadsWeek = estimateLeadsData.data?.filter(lead =>
+        new Date(lead.created_at) >= weekAgo
+      ).length || 0;
+
+      const assessmentsPending = estimateLeadsData.data?.filter(lead =>
+        lead.assessment_requested && lead.lead_status === 'new'
+      ).length || 0;
+
+      const homeAdditionsManual = estimateLeadsData.data?.filter(lead =>
+        lead.requires_manual_estimate && lead.lead_status === 'new'
+      ).length || 0;
+
+      setStats({
+        totalBlogs,
+        totalProjects,
+        totalLeads: leadsCount.count || 0,
+        estimateLeadsToday,
+        estimateLeadsWeek,
+        assessmentsPending,
+        homeAdditionsManual,
+        draftPosts,
+        incompleteProjects,
+        seoIssues: seoCount.count || 0
+      });
 
       const submissions: RecentSubmission[] = [
         ...(recentLeads.data?.map(lead => ({
@@ -181,7 +184,8 @@ const [fullSubmissionData, setFullSubmissionData] = useState<any>(null);
           project_type: lead.project_type,
           budget_range: lead.budget_range,
           city: lead.city,
-          address: lead.address
+          address: lead.address,
+          full: lead
         })) || []),
         ...(recentWarranty.data?.map(claim => ({
           id: claim.id,
@@ -194,23 +198,15 @@ const [fullSubmissionData, setFullSubmissionData] = useState<any>(null);
           urgency_level: claim.urgency_level,
           original_project_type: claim.original_project_type,
           address: claim.address,
-          city: claim.city
+          city: claim.city,
+          full: claim
         })) || [])
       ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
 
       setRecentSubmissions(submissions);
+      setDraftPosts(draftPostList.slice(0, 5));
 
-      // Load draft posts
-      const draftPostsData = await supabase
-        .from('blog_posts')
-        .select('id, title, slug, published, created_at, updated_at')
-        .eq('published', false)
-        .order('updated_at', { ascending: false })
-        .limit(5);
-
-      setDraftPosts(draftPostsData.data || []);
-
-      // Load incomplete projects
+      // Incomplete projects derive from the already-fetched projects list
       const incompleteProjectsData = projectsData.data?.filter(
         project => !project.featured_image_id || (project.challenge && project.challenge.length < 100)
       ).slice(0, 5) || [];
@@ -229,34 +225,11 @@ const [fullSubmissionData, setFullSubmissionData] = useState<any>(null);
     }
   };
 
-  const handleSubmissionClick = async (submission: RecentSubmission) => {
+  // The recent-submissions queries already select every column, so the dialog
+  // renders from the row in memory instead of re-fetching it by id.
+  const handleSubmissionClick = (submission: RecentSubmission) => {
     setSelectedSubmission(submission);
-    
-    // Fetch full data for the submission
-    try {
-      if (submission.type === 'lead') {
-        const { data } = await supabase
-          .from('leads')
-          .select('*')
-          .eq('id', submission.id)
-          .single();
-        setFullSubmissionData(data);
-      } else {
-        const { data } = await supabase
-          .from('warranty_claims')
-          .select('*')
-          .eq('id', submission.id)
-          .single();
-        setFullSubmissionData(data);
-      }
-    } catch (error) {
-      console.error('Error fetching submission details:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load submission details",
-        variant: "destructive"
-      });
-    }
+    setFullSubmissionData(submission.full ?? null);
   };
 
   if (isLoading) {
@@ -648,12 +621,12 @@ const [fullSubmissionData, setFullSubmissionData] = useState<any>(null);
                 </div>
               </div>
             </div>
-            <Button 
-              className="w-full mt-4" 
+            <Button
+              className="w-full mt-4"
               variant="outline"
-              onClick={() => onNavigateToTab('sitemap')}
+              onClick={() => onNavigateToTab('seo')}
             >
-              View SEO Dashboard
+              View SEO Suggestions
             </Button>
           </CardContent>
         </Card>

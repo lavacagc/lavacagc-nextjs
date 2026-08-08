@@ -43,6 +43,11 @@ export interface EmailListRow {
  * adding a member to `EmailCategory` fails the build here until the filter
  * offers it. Order is the union's own, which is the order these render in.
  */
+// How many rows one load shows. Sent explicitly and compared against the
+// result size so the header can say "newest N" instead of passing off a
+// truncated page as the whole log.
+const LIST_LIMIT = 100;
+
 const FILTERABLE: Record<EmailCategory, true> = {
   verification: true,
   welcome: true,
@@ -110,6 +115,7 @@ export default function EmailsLogPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
+      params.set('limit', String(LIST_LIMIT));
       if (category) params.set('category', category);
       if (status) params.set('status', status);
       if (submittedQ) params.set('q', submittedQ);
@@ -199,7 +205,9 @@ export default function EmailsLogPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">
-            {rows.length} {rows.length === 1 ? 'email' : 'emails'}
+            {rows.length >= LIST_LIMIT
+              ? `Newest ${LIST_LIMIT} emails (older ones exist - narrow with the filters)`
+              : `${rows.length} ${rows.length === 1 ? 'email' : 'emails'}`}
           </CardTitle>
           <CardDescription>Newest first. Click a row to see the full email that was sent.</CardDescription>
         </CardHeader>

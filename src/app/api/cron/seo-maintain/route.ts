@@ -135,7 +135,6 @@ export async function GET(request: NextRequest) {
       '- /free-estimate (Get a Free Estimate)',
       '- /project-calculator (Project Cost Calculator)',
       '- /portfolio (Our Work)',
-      '- /buy-and-remodel (Homes to Buy + Remodel)',
       ...(linkPosts ?? []).map((p) => `- /blog/${p.slug} (${p.title})`),
     ].join('\n');
     const system = buildSystemPrompt(buildFactLockText(facts ?? []), linkLines);

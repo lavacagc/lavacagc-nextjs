@@ -1,5 +1,7 @@
 /**
- * The admin "process follow-ups" drain, fired by hand from /vaca-mgmt/automation-test.
+ * The admin "process follow-ups" drain. No UI triggers it anymore (the old
+ * automation-test page is gone); it remains as an admin-gated manual escape
+ * hatch for draining the queue by hand.
  *
  * The SECOND consumer of `follow_up_queue`, and the same rule applies to it as
  * to the 09:00 UTC cron: every read goes through `sharedFollowUpQueue`, which

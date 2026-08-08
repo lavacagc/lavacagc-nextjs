@@ -162,10 +162,12 @@ export default function AdminPreferencesPage() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Save failed');
+        // The POST response already carries the authoritative preference row -
+        // re-running loadContact here added a third round trip (including 100
+        // audit rows) per switch flip. The audit trail refreshes on the next
+        // explicit lookup.
         setStreams(data.preferences);
         setExists(true);
-        // Refresh the audit trail after a change.
-        loadContact(activeEmail);
       } catch (err) {
         toast({
           title: 'Save failed',
@@ -177,7 +179,7 @@ export default function AdminPreferencesPage() {
         setSaving(false);
       }
     },
-    [streams, activeEmail, toast, loadContact],
+    [streams, activeEmail, toast],
   );
 
   return (

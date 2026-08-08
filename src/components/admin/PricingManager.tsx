@@ -94,8 +94,12 @@ export function PricingManager() {
 
   useEffect(() => {
     if (selectedProjectType) {
-      loadCategories();
-      loadItems();
+      // Items are filtered by the categories just fetched, NOT the `categories`
+      // state - that state is still the previous render's value in this
+      // closure, which is why the old `loadItems()` call here always queried
+      // with stale (initially empty) category ids and left the options table
+      // blank.
+      loadCategories().then((cats) => loadItems(cats));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadCategories and loadItems depend on selectedProjectType which is in deps
   }, [selectedProjectType]);
@@ -127,7 +131,7 @@ export function PricingManager() {
     }
   };
 
-  const loadCategories = async () => {
+  const loadCategories = async (): Promise<OptionCategory[]> => {
     try {
       const { data, error } = await supabase
         .from('calculator_option_categories')
@@ -137,17 +141,19 @@ export function PricingManager() {
 
       if (error) throw error;
       setCategories(data || []);
+      return data || [];
     } catch (error) {
       console.error('Error loading categories:', error);
+      return [];
     }
   };
 
-  const loadItems = async () => {
+  const loadItems = async (cats: OptionCategory[]) => {
     try {
       const { data, error } = await supabase
         .from('calculator_option_items')
         .select('*')
-        .in('option_category_id', categories.map(c => c.id))
+        .in('option_category_id', cats.map(c => c.id))
         .order('display_order');
 
       if (error) throw error;
@@ -173,7 +179,11 @@ export function PricingManager() {
         description: "Base pricing updated"
       });
 
-      loadProjectTypes();
+      // Patch the edited row in place - a full refetch per field blur re-ran
+      // the whole project-types query five times when tabbing through the form.
+      setProjectTypes(prev =>
+        prev.map(pt => (pt.id === selectedProjectType ? { ...pt, ...updates } : pt)),
+      );
     } catch (error) {
       console.error('Error updating base pricing:', error);
       toast({
@@ -262,7 +272,7 @@ export function PricingManager() {
       setEditingItem(null);
       setItemFormData({});
       setItemMaterials([]);
-      loadItems();
+      loadItems(categories);
     } catch (error) {
       console.error('Error saving item:', error);
       toast({
@@ -316,7 +326,7 @@ export function PricingManager() {
         description: "Option deleted"
       });
 
-      loadItems();
+      loadItems(categories);
     } catch (error) {
       console.error('Error deleting item:', error);
       toast({
@@ -353,7 +363,7 @@ export function PricingManager() {
       });
 
       setShowBulkAdjustDialog(false);
-      loadItems();
+      loadItems(categories);
     } catch (error) {
       console.error('Error adjusting labor:', error);
       toast({
