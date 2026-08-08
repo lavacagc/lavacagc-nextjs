@@ -19,6 +19,7 @@ import Link from "next/link";
 import { ContactTimePicker, type ContactTimePreference } from "@/components/forms/ContactTimePicker";
 import { useRecaptchaChallenge } from "@/components/recaptcha/RecaptchaChallengeProvider";
 import { submitLead } from "@/lib/submitLead";
+import { GeoGateNotice } from "@/components/GeoGateNotice";
 
 interface EstimateFormData {
   firstName: string;
@@ -738,6 +739,7 @@ const EstimateForm = () => {
       </CardHeader>
 
       <CardContent>
+        <GeoGateNotice kind="estimate" />
         <div>
           {renderStep()}
 

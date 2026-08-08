@@ -19,6 +19,7 @@ import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 import { ContactTimePicker, type ContactTimePreference } from "@/components/forms/ContactTimePicker";
 import { useRecaptchaChallenge } from "@/components/recaptcha/RecaptchaChallengeProvider";
 import { submitLead } from "@/lib/submitLead";
+import { GeoGateNotice } from "@/components/GeoGateNotice";
 
 interface QuickEstimateData {
   firstName: string;
@@ -393,6 +394,7 @@ const HomeEstimateForm = () => {
       </CardHeader>
 
       <CardContent className="space-y-4">
+        <GeoGateNotice kind="estimate" />
         {/* Honeypot — hidden from humans, bots auto-fill it */}
         <div className="absolute opacity-0 top-0 left-0 h-0 w-0 -z-10 overflow-hidden" aria-hidden="true" tabIndex={-1}>
           <label htmlFor="he-website">Website</label>

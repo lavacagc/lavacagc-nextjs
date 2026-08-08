@@ -5,6 +5,7 @@ import { CheckCircle, Loader2, MailCheck, Home } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config';
+import { GeoGateNotice } from '@/components/GeoGateNotice';
 
 const RECAPTCHA_ACTION = 'home_care_signup';
 const RECAPTCHA_LOGIN_ACTION = 'home_care_login';
@@ -155,6 +156,7 @@ export default function HomeCareOptInForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="rounded-2xl border border-border bg-card p-7 shadow-card md:p-8">
+      <GeoGateNotice kind="homecare" />
       <input type="text" name="website" value={state.website} onChange={(e) => update('website', e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 opacity-0" />
 
       <div className="mb-5 flex rounded-xl bg-muted p-1 text-sm font-bold">

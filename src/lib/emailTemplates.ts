@@ -498,6 +498,12 @@ export function newLeadNotificationHtml(data: {
    * itemized block so the crew sees where things are. Internal only.
    */
   homeDetails?: string[];
+  /**
+   * The middleware's geo reading for this submission (round 10, Phase A
+   * telemetry) - e.g. "NJ" or "US (outside NJ)". A real customer arriving
+   * under a non-NJ label is the miscategorization the line exists to catch.
+   */
+  geoTier?: string;
 }): string {
   const timeLabel = formatContactTime(data.contactTimePreference as Parameters<typeof formatContactTime>[0]);
 
@@ -576,9 +582,17 @@ export function newLeadNotificationHtml(data: {
            <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;color:#222">${data.projectType || 'Not specified'}</td>
          </tr>
          <tr>
-           <td style="padding:10px 12px;font-weight:600;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;color:#717171">Location</td>
-           <td style="padding:10px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;color:#222">${data.location || 'Not specified'}</td>
+           <td style="padding:10px 12px;font-weight:600;${data.geoTier ? 'border-bottom:1px solid #f0f0f0;' : ''}font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;color:#717171">Location</td>
+           <td style="padding:10px 12px;${data.geoTier ? 'border-bottom:1px solid #f0f0f0;' : ''}font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;color:#222">${data.location || 'Not specified'}</td>
          </tr>
+         ${
+           data.geoTier
+             ? `<tr>
+           <td style="padding:10px 12px;font-weight:600;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;color:#717171">Geo</td>
+           <td style="padding:10px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;color:#222">${escapeHtml(data.geoTier)}</td>
+         </tr>`
+             : ''
+         }
        </table>
      </div>
      ${button('View in Admin Dashboard', `${WEBSITE_URL}/vaca-mgmt`)}

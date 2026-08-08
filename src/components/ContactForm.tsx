@@ -21,6 +21,7 @@ import { getVisitorData } from '@/hooks/useVisitor';
 import { ContactTimePicker, type ContactTimePreference } from "@/components/forms/ContactTimePicker";
 import { useRecaptchaChallenge } from "@/components/recaptcha/RecaptchaChallengeProvider";
 import { submitLead } from "@/lib/submitLead";
+import { GeoGateNotice } from "@/components/GeoGateNotice";
 
 interface ContactFormData {
   firstName: string;
@@ -358,6 +359,7 @@ const ContactForm = () => {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <GeoGateNotice kind="estimate" />
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Honeypot — hidden from humans, bots auto-fill it */}
           <div className="absolute opacity-0 top-0 left-0 h-0 w-0 -z-10 overflow-hidden" aria-hidden="true" tabIndex={-1}>

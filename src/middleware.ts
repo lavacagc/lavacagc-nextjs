@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import {
+  classifyGeo, isGeoTier, GEO_TIER_COOKIE, GEO_TIER_HEADER, GEO_OVERRIDE_COOKIE, type GeoTier,
+} from '@/lib/geo/tier';
 
 // Known bad bot user-agent patterns (scrapers, vulnerability scanners, spam crawlers)
 const BAD_BOT_PATTERNS = [
@@ -156,6 +159,32 @@ function verifyCronSecret(request: NextRequest): { ok: boolean; misconfigured: b
   return { ok: authHeader === `Bearer ${cronSecret}`, misconfigured: false };
 }
 
+/**
+ * Where the visitor is, for the round-10 geo gates - classified once here and
+ * used twice: the `geo_tier` cookie lets static pages swap form vs notice in
+ * the browser, and the stripped-then-set request header is what API routes
+ * trust server-side.
+ *
+ * The local-testing override (`?geo=us` on any URL, or `?geo=off` to clear)
+ * is NON-PRODUCTION only and sticky via its own cookie, so the owner can walk
+ * a whole flow as a Texan without re-appending the param on every click.
+ */
+function resolveGeoTier(request: NextRequest): {
+  tier: GeoTier;
+  /** undefined = leave the override cookie alone; null = clear it. */
+  overrideCookie?: string | null;
+} {
+  const real = classifyGeo(request.headers);
+  if (process.env.NODE_ENV === 'production') return { tier: real };
+
+  const param = request.nextUrl.searchParams.get('geo');
+  if (param === 'off' || param === 'clear') return { tier: real, overrideCookie: null };
+  if (isGeoTier(param)) return { tier: param, overrideCookie: param };
+  const sticky = request.cookies.get(GEO_OVERRIDE_COOKIE)?.value;
+  if (isGeoTier(sticky)) return { tier: sticky };
+  return { tier: real };
+}
+
 // Shared-secret auth for internal server-to-server calls to /api/notify/*.
 // /api/leads/submit needs to fire lead + error notifications without a
 // user session; this header lets it bypass admin auth without exposing the
@@ -218,8 +247,28 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // --- Geo tier (round 10, Phase A: signage + telemetry, no refusals) ---
+  // The incoming header is ALWAYS stripped before ours is set: x-geo-tier is
+  // only ever the middleware's own reading, never a client's claim.
+  const { tier, overrideCookie } = resolveGeoTier(request);
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete(GEO_TIER_HEADER);
+  requestHeaders.set(GEO_TIER_HEADER, tier);
+
   // For good bots and suspected bots: set a header so client-side code can skip analytics
-  const response = NextResponse.next();
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+
+  // Readable by the browser on purpose - static pages stay static and swap
+  // form vs notice client-side off this cookie. Short-lived so a traveler's
+  // tier follows them rather than their first visit.
+  if (request.cookies.get(GEO_TIER_COOKIE)?.value !== tier) {
+    response.cookies.set(GEO_TIER_COOKIE, tier, { path: '/', sameSite: 'lax', maxAge: 3600 });
+  }
+  if (overrideCookie === null) {
+    response.cookies.delete(GEO_OVERRIDE_COOKIE);
+  } else if (overrideCookie !== undefined && request.cookies.get(GEO_OVERRIDE_COOKIE)?.value !== overrideCookie) {
+    response.cookies.set(GEO_OVERRIDE_COOKIE, overrideCookie, { path: '/', sameSite: 'lax' });
+  }
 
   // Detect if this looks like a bot (no UA, or matches known bot patterns)
   const isBot = !ua || isGoodBot(ua) || /bot|crawl|spider|slurp|fetch|preview/i.test(ua);

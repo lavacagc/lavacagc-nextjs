@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
 import { sanitizeLeadForInsert } from '@/lib/leadSanitize';
 import { sendTelegramLead } from '@/lib/notify/telegramLead';
+import { geoTierLabel, GEO_TIER_HEADER } from '@/lib/geo/tier';
 import { sendNewLeadEmail } from '@/lib/notify/newLeadEmail';
 import { sendFormFailureAlert, FormErrorAlertPayload } from '@/lib/notify/formErrorAlert';
 import { createLeadFollowUpSequence } from '@/lib/notify/leadFollowUp';
@@ -550,6 +551,13 @@ export async function POST(request: NextRequest) {
     const contactTimeDetails = (finalLeadData.contact_time_details as string | undefined) || undefined;
     const contactTimezone = (finalLeadData.contact_timezone as string | undefined) || undefined;
 
+    // Round 10, Phase A: where this submission arrived from, per the
+    // middleware's own reading (the incoming header is stripped there, so
+    // this is never a client's claim). Signage-only for now - the tier rides
+    // the notifications so a week of real traffic can prove the
+    // classification before Phase B lets it refuse anything.
+    const geoTier = geoTierLabel(request.headers.get(GEO_TIER_HEADER));
+
     const notifyTasks = [
       withTimeoutPromise(
         sendTelegramLead({
@@ -565,6 +573,7 @@ export async function POST(request: NextRequest) {
           contactTimezone,
           services: requestedServices.length ? requestedServices : undefined,
           homeDetails: homeDetails.length ? homeDetails : undefined,
+          geoTier,
         }),
         6000,
         'telegram-lead'
@@ -586,6 +595,7 @@ export async function POST(request: NextRequest) {
           services: requestedServices.length ? requestedServices : undefined,
           homeDetails: homeDetails.length ? homeDetails : undefined,
           leadId,
+          geoTier,
         }),
         4000,
         'new-lead'

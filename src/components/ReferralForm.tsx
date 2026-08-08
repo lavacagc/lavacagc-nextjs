@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { Send, CheckCircle, Loader2 } from 'lucide-react';
 import { ContactTimePicker, type ContactTimePreference } from '@/components/forms/ContactTimePicker';
+import { GeoGateNotice } from '@/components/GeoGateNotice';
 
 const PROJECT_TYPES = [
   'Kitchen Remodeling',
@@ -137,6 +138,7 @@ export default function ReferralForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <GeoGateNotice kind="referral" />
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Your Information */}
           <div>
