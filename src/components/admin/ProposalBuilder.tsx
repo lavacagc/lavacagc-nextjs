@@ -23,7 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { Check, Lock, Boxes, Trash2, Undo2, GripVertical } from 'lucide-react';
+import { Check, Lock, Boxes, Trash2, Undo2, GripVertical, Plus, ChevronRight } from 'lucide-react';
 import { CustomerSearch, type CustomerHit } from '@/components/admin/CustomerSearch';
 import { composeBundle, toStoredMembers, type PreviewBundleMember } from '@/lib/proposals/bundles';
 import { type BuilderCategory } from '@/lib/proposals/builderCategories';
@@ -159,6 +159,46 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, ini
   const [catQuery, setCatQuery] = useState('');
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
 
+  /**
+   * Sections are an ACCORDION (round 11): one open at a time, the rest
+   * collapsed to a header showing their line count and subtotal. Eight trades
+   * used to be three screens of scrolling with no way to see the shape of the
+   * estimate; collapsed, the whole proposal reads as an outline and the
+   * subtotals stack into a column. Same rule as the admin sidebar, so the two
+   * behave alike.
+   */
+  const [openSection, setOpenSection] = useState<string | null>(() =>
+    edit ? edit.lines[0]?.category ?? null : null,
+  );
+  /** The escape hatch back to the old long view - everything open at once. */
+  const [expandAll, setExpandAll] = useState(false);
+  const sectionIsOpen = (key: string) => expandAll || openSection === key;
+
+  /**
+   * Open a section and bring it into view. Used wherever the app puts work
+   * INTO a section the admin cannot see - adding a category, adding a line
+   * from the quick bar, combining two sections into a portion - because a
+   * write that lands somewhere collapsed reads as nothing happening.
+   */
+  const revealSection = (key: string) => {
+    setOpenSection(key);
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-testid="builder-section-${key}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  };
+
+  const toggleSection = (key: string) => {
+    if (expandAll) {
+      // Collapsing one out of "open all" means leaving that mode, keeping the
+      // one the admin pressed as the open one rather than closing everything.
+      setExpandAll(false);
+      setOpenSection(openSection === key ? null : key);
+      return;
+    }
+    setOpenSection((prev) => (prev === key ? null : key));
+  };
+
   const catMatches = useMemo(() => {
     const q = catQuery.trim().toLowerCase();
     const unused = library.filter((c) => !categoryOrder.includes(c.key));
@@ -174,6 +214,9 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, ini
   const addCategory = (key: string) => {
     setCategoryOrder((prev) => (prev.includes(key) ? prev : [...prev, key]));
     setCatQuery('');
+    // A category you just added opens itself: it is the one you are about to
+    // put lines in, and the picker sits below every other section.
+    revealSection(key);
   };
 
   // Hybrid create: no library match for the typed name → offer to create it.
@@ -210,16 +253,21 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, ini
   const setDraft = (key: string, patch: Partial<{ title: string; description: string; price: string }>) =>
     setDraftByCat((prev) => ({ ...prev, [key]: { ...draftFor(key), ...patch } }));
 
-  const addLine = (categoryKey: string) => {
-    const draft = draftFor(categoryKey);
+  /**
+   * Add a line to a section. `override` is the quick-add bar's own fields -
+   * it names the section rather than living in one, so it cannot read the
+   * per-section draft the in-section row uses.
+   */
+  const addLine = (categoryKey: string, override?: { title: string; description: string; price: string }): boolean => {
+    const draft = override ?? draftFor(categoryKey);
     const cents = parsePriceToCents(draft.price);
     if (!draft.title.trim()) {
       toast({ title: 'The line needs a title', variant: 'destructive' });
-      return;
+      return false;
     }
     if (cents === null) {
       toast({ title: 'Price not understood', description: 'Try a number like 3200 or $3,200.50.', variant: 'destructive' });
-      return;
+      return false;
     }
     const cat = libraryByKey.get(categoryKey);
     setRows((prev) => [
@@ -233,7 +281,27 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, ini
         optional: cat?.optional ?? false,
       },
     ]);
-    setDraft(categoryKey, { title: '', description: '', price: '' });
+    if (!override) setDraft(categoryKey, { title: '', description: '', price: '' });
+    return true;
+  };
+
+  // ---- quick-add bar (round 11) -------------------------------------------
+  // The owner's own idea: one bar that stays with you, naming the section it
+  // writes to. It is the other half of the accordion - collapsed sections make
+  // finding easy but would otherwise make ADDING harder, since you would have
+  // to open a section first.
+  const [quick, setQuick] = useState({ key: '', title: '', price: '' });
+  /** The section the bar writes to; falls back when its pick left the board. */
+  const quickKey = categoryOrder.includes(quick.key) ? quick.key : (categoryOrder[0] ?? '');
+
+  const quickAdd = () => {
+    if (!quickKey) return;
+    const added = addLine(quickKey, { title: quick.title, description: '', price: quick.price });
+    if (!added) return;
+    setQuick((prev) => ({ ...prev, key: quickKey, title: '', price: '' }));
+    // The line landed somewhere that may be collapsed and off-screen - open it
+    // so the admin watches it arrive rather than trusting a toast.
+    revealSection(quickKey);
   };
 
   const removeRow = (uid: number) => {
@@ -419,6 +487,12 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, ini
       if (dragUid.current === null) return;
       e.preventDefault();
       setHoverTarget(`cat-${key}`);
+      // Hovering a LINE over a collapsed header opens that section, so
+      // cross-section drag survives the accordion: hold the line over the
+      // header, the section unfolds, and you drop it exactly where you want.
+      // Section drags are deliberately excluded - a section that unfolds under
+      // a section drag moves the very target being aimed at.
+      if (!sectionIsOpen(key)) setOpenSection(key);
     },
     onDragLeave: () => setHoverTarget((h) => (h === `cat-${key}` ? null : h)),
     onDrop: (e: React.DragEvent) => {
@@ -463,6 +537,9 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, ini
     // The dragged trade's rows now live inside the portion; its empty section
     // leaves the board (Split apart brings it back).
     setCategoryOrder((prev) => prev.filter((k) => k !== draggedKey));
+    // The portion renders inside the target section - open it, or the two
+    // sections appear to have simply vanished.
+    revealSection(targetKey);
   };
 
   const reorderCategoryBefore = (targetKey: string, draggedKey: string) => {
@@ -745,11 +822,72 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, ini
             {categoryOrder.length === 0 ? (
               <p className="text-sm text-muted-foreground">Start by adding a cost category below.</p>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                Drag any line by its grip: onto another line to bundle them, onto a bundle to add it,
-                onto a category header to move it, or onto a row&apos;s top edge to reorder. The checkboxes
-                still work if you prefer buttons.
-              </p>
+              <>
+                {/*
+                  The quick-add bar: type a line, name its section, done - from
+                  anywhere on the step, without opening the section first.
+                  Sticky, because its whole point is being in reach while you
+                  are reading somewhere else.
+                */}
+                <div
+                  className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center gap-2 rounded-lg border-[1.5px] border-primary bg-background px-3 py-2.5"
+                  data-testid="builder-quick-add"
+                >
+                  <Plus className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                  <select
+                    className="h-9 min-w-[9rem] rounded-md border bg-background px-2 text-sm font-semibold"
+                    value={quickKey}
+                    onChange={(e) => setQuick((prev) => ({ ...prev, key: e.target.value }))}
+                    aria-label="Section for the new line"
+                    data-testid="builder-quick-section"
+                  >
+                    {categoryOrder.map((key) => (
+                      <option key={key} value={key}>{libraryByKey.get(key)?.label ?? key}</option>
+                    ))}
+                  </select>
+                  <Input
+                    placeholder="Line title"
+                    className="h-9 min-w-[10rem] flex-1"
+                    value={quick.title}
+                    onChange={(e) => setQuick((prev) => ({ ...prev, title: e.target.value }))}
+                    onKeyDown={(e) => { if (e.key === 'Enter') quickAdd(); }}
+                    data-testid="builder-quick-title"
+                  />
+                  <Input
+                    placeholder="$"
+                    className="h-9 w-24"
+                    value={quick.price}
+                    onChange={(e) => setQuick((prev) => ({ ...prev, price: e.target.value }))}
+                    onKeyDown={(e) => { if (e.key === 'Enter') quickAdd(); }}
+                    data-testid="builder-quick-price"
+                  />
+                  <Button size="sm" className="h-9" onClick={quickAdd} data-testid="builder-quick-add-btn">
+                    Add line
+                  </Button>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    Click a section to open it - one at a time. Drag any line by its grip: onto another
+                    line to bundle them, onto a collapsed section&apos;s header to open it and drop it in,
+                    or onto a row&apos;s top edge to reorder.
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 shrink-0 text-xs"
+                    onClick={() => {
+                      // "Collapse all" means all - leaving one section open
+                      // because it happened to be the accordion's would make
+                      // the button's own label a lie.
+                      if (expandAll) setOpenSection(null);
+                      setExpandAll((v) => !v);
+                    }}
+                    data-testid="builder-expand-all"
+                  >
+                    {expandAll ? 'Collapse all' : 'Open all'}
+                  </Button>
+                </div>
+              </>
             )}
 
             {categoryOrder.map((key) => {
@@ -761,11 +899,12 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, ini
               const catRows = allCatRows.filter((r) => !isPortion(r));
               const subtotal = allCatRows.reduce((a, r) => a + r.priceCents, 0);
               const draft = draftFor(key);
+              const isOpen = sectionIsOpen(key);
               return (
                 <div key={key} {...sectionDragProps(key)} data-testid={`builder-section-${key}`}
                   className={hoverTarget === `sec-${key}-before` ? 'border-t-4 border-t-primary rounded-t' : ''}
                 >
-                  {portions.map((p) => {
+                  {isOpen && portions.map((p) => {
                     const memberKeys = [...new Set((p.memberRows ?? []).map((m) => m.categoryKey))];
                     return (
                       <div
@@ -860,29 +999,57 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, ini
                     );
                   })}
 
-                  <div className="border rounded-lg overflow-hidden" data-testid={`builder-cat-${key}`}>
+                  <div className={`border rounded-lg overflow-hidden ${isOpen ? '' : 'bg-muted/20'}`} data-testid={`builder-cat-${key}`}>
                   <div
                     {...categoryDropProps(key)}
-                    className={`flex items-center gap-2 flex-wrap px-4 py-2.5 bg-muted/60 border-b transition-colors ${
+                    className={`flex items-center gap-2 flex-wrap px-4 py-2.5 bg-muted/60 transition-colors ${isOpen ? 'border-b' : ''} ${
                       hoverTarget === `cat-${key}` ? 'outline-dashed outline-2 outline-primary -outline-offset-2' : ''
                     } ${hoverTarget === `sec-${key}-combine` ? 'outline-dashed outline-2 outline-primary -outline-offset-2' : ''}`}
                   >
                     <span {...sectionHandleProps(key)} className="cursor-grab inline-flex" title="Drag the whole section: drop on another to combine, on its top edge to reorder">
                       <GripVertical className="w-4 h-4 text-muted-foreground/60" />
                     </span>
-                    <span className="font-bold text-sm">{cat?.label ?? key}</span>
-                    {catBadge(key)}
+                    {/*
+                      The header IS the toggle. It keeps its drag handle and
+                      its drop zone either side, so nothing the section could
+                      already do was traded for opening and closing it.
+                    */}
+                    <button
+                      type="button"
+                      onClick={() => toggleSection(key)}
+                      className="flex flex-1 min-w-0 items-center gap-2 flex-wrap text-left"
+                      aria-expanded={isOpen}
+                      data-testid={`builder-section-toggle-${key}`}
+                    >
+                      <ChevronRight className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform ${isOpen ? 'rotate-90' : ''}`} aria-hidden="true" />
+                      <span className="font-bold text-sm">{cat?.label ?? key}</span>
+                      {catBadge(key)}
+                      <span className="text-[11px] text-muted-foreground">
+                        {allCatRows.length} {allCatRows.length === 1 ? 'line' : 'lines'}
+                      </span>
+                      {/* An empty section would ship as a heading with nothing
+                          under it - flagged here rather than discovered by the
+                          client. */}
+                      {allCatRows.length === 0 && (
+                        <span
+                          className="rounded-[5px] border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-700"
+                          data-testid={`builder-empty-flag-${key}`}
+                        >
+                          no lines yet
+                        </span>
+                      )}
+                      <span className="ml-auto text-xs font-semibold text-muted-foreground">
+                        subtotal {usd(subtotal)}
+                      </span>
+                    </button>
                     {hoverTarget === `cat-${key}` && (
                       <span className="text-[10px] font-bold uppercase text-primary">drop to move here</span>
                     )}
                     {hoverTarget === `sec-${key}-combine` && (
                       <span className="text-[10px] font-bold uppercase text-primary">drop to combine into one portion</span>
                     )}
-                    <span className="ml-auto text-xs font-semibold text-muted-foreground">
-                      subtotal {usd(subtotal)}
-                    </span>
                   </div>
-                  {catRows.map((r) =>
+                  {isOpen && catRows.map((r) =>
                     r.members ? (
                       /* The bundle: its own colored block, contents visible and
                          editable (owner round 6). */
@@ -987,6 +1154,7 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, ini
                       </div>
                     ),
                   )}
+                  {isOpen && (
                   <div className="flex gap-2 px-4 py-2.5 flex-wrap">
                     <Input
                       placeholder="Line title"
@@ -1013,6 +1181,7 @@ export function ProposalBuilder({ onCreated, onClose, onImportInstead, edit, ini
                       Add line
                     </Button>
                   </div>
+                  )}
                   </div>
                 </div>
               );

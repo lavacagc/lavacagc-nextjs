@@ -1,4 +1,4 @@
-import { test, expect, type BrowserContext } from '@playwright/test';
+import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 
 /**
  * Round 4 (2026-08-08): the by-hand proposal builder (customer -> details ->
@@ -31,6 +31,20 @@ const CATEGORY_LIBRARY = {
     { key: 'permits-fees', label: 'Permits & Fees', optional: false },
   ],
 };
+
+/**
+ * Open a builder section, if it is not already open.
+ *
+ * Sections are an accordion since round 11 and several actions (adding a
+ * category, combining two sections) open their result by themselves - so a
+ * blind click is as likely to CLOSE the section a test wants to read. Asking
+ * the header what it is before pressing it keeps a spec about its own subject.
+ */
+async function openBuilderSection(page: Page, key: string) {
+  const header = page.getByTestId(`builder-section-toggle-${key}`);
+  if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click();
+  await expect(header).toHaveAttribute('aria-expanded', 'true');
+}
 
 async function signInAsAdmin(context: BrowserContext, baseURL: string) {
   const session = {
@@ -258,11 +272,99 @@ test.describe('proposal builder', () => {
     await expect(portion.getByText('Tear-out')).toBeVisible();
     await expect(portion.getByText('Township permits')).toBeVisible();
 
-    // Split apart: both trades return as their own sections.
+    // Split apart: both trades return as their own sections. Sections are an
+    // accordion since round 11, so each is opened to read it - one at a time
+    // is the product now, not a workaround.
     await page.locator('[data-testid^="builder-split-"]').click();
     await expect(page.locator('[data-testid^="builder-portion-"]')).toHaveCount(0);
+    await openBuilderSection(page, 'demolition');
     await expect(page.getByTestId('builder-cat-demolition').getByText('Tear-out')).toBeVisible();
+    await openBuilderSection(page, 'permits-fees');
     await expect(page.getByTestId('builder-cat-permits-fees').getByText('Township permits')).toBeVisible();
+  });
+
+  /**
+   * Round 11: the owner's own fix for "it is hard to go from piece to piece" -
+   * sections became an accordion (one open at a time, collapsed headers
+   * carrying line count and subtotal) with a sticky quick-add bar that names
+   * the section it writes to, so collapsing never made ADDING harder.
+   */
+  test('round 11: sections are an accordion, and Open all is the way back to the long view', async ({ page }) => {
+    await page.goto('/vaca-mgmt/proposals');
+    await page.getByTestId('open-builder').click();
+    await page.getByTestId('customer-search-input').fill('maria');
+    await page.getByTestId('customer-row-7b39c2ba-58f5-4d68-9d5a-2f4f5f27a001').click();
+    await page.locator('#pb-title').fill('T');
+    await page.getByTestId('builder-to-lines').click();
+
+    // A category you add opens itself - it is the one you are about to fill.
+    await page.getByTestId('builder-cat-pick-demolition').click();
+    await expect(page.getByTestId('builder-line-title-demolition')).toBeVisible();
+    await page.getByTestId('builder-line-title-demolition').fill('Tear-out');
+    await page.getByTestId('builder-line-price-demolition').fill('1000');
+    await page.getByTestId('builder-add-line-demolition').click();
+
+    // Adding a second closes the first: one open at a time.
+    await page.getByTestId('builder-cat-pick-cabinets').click();
+    await expect(page.getByTestId('builder-line-title-cabinets')).toBeVisible();
+    await expect(page.getByTestId('builder-line-title-demolition')).toHaveCount(0);
+    // The collapsed header still says what is inside, which is the whole point.
+    const demoHeader = page.getByTestId('builder-section-toggle-demolition');
+    await expect(demoHeader).toContainText('1 line');
+    await expect(demoHeader).toContainText('$1,000.00');
+    // And an empty section is flagged rather than shipped as a bare heading.
+    await expect(page.getByTestId('builder-empty-flag-cabinets')).toBeVisible();
+
+    // Clicking a header opens it and closes the other.
+    await demoHeader.click();
+    await expect(page.getByTestId('builder-line-title-demolition')).toBeVisible();
+    await expect(page.getByTestId('builder-line-title-cabinets')).toHaveCount(0);
+    await expect(demoHeader).toHaveAttribute('aria-expanded', 'true');
+
+    // Open all is the escape hatch back to the old long view; pressing it
+    // again collapses everything.
+    await page.getByTestId('builder-expand-all').click();
+    await expect(page.getByTestId('builder-line-title-demolition')).toBeVisible();
+    await expect(page.getByTestId('builder-line-title-cabinets')).toBeVisible();
+    await page.getByTestId('builder-expand-all').click();
+    await expect(page.getByTestId('builder-line-title-demolition')).toHaveCount(0);
+    await expect(page.getByTestId('builder-line-title-cabinets')).toHaveCount(0);
+  });
+
+  test('round 11: the quick-add bar writes into any section and opens where the line landed', async ({ page }) => {
+    await page.goto('/vaca-mgmt/proposals');
+    await page.getByTestId('open-builder').click();
+    await page.getByTestId('customer-search-input').fill('maria');
+    await page.getByTestId('customer-row-7b39c2ba-58f5-4d68-9d5a-2f4f5f27a001').click();
+    await page.locator('#pb-title').fill('T');
+    await page.getByTestId('builder-to-lines').click();
+
+    await page.getByTestId('builder-cat-pick-demolition').click();
+    await page.getByTestId('builder-cat-pick-cabinets').click();
+    // Cabinets is the open one now, so Demolition is the section the admin
+    // cannot see - exactly the case the bar exists for.
+    await expect(page.getByTestId('builder-line-title-demolition')).toHaveCount(0);
+
+    await page.getByTestId('builder-quick-section').selectOption('demolition');
+    await page.getByTestId('builder-quick-title').fill('Strip to studs');
+    await page.getByTestId('builder-quick-price').fill('$3,200');
+    await page.getByTestId('builder-quick-add-btn').click();
+
+    // The line landed in the named section, and that section opened so the
+    // admin watches it arrive rather than trusting a toast.
+    const demo = page.getByTestId('builder-cat-demolition');
+    await expect(demo.getByText('Strip to studs')).toBeVisible();
+    await expect(demo.getByText('$3,200.00', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('builder-section-toggle-demolition')).toHaveAttribute('aria-expanded', 'true');
+    // The bar clears itself for the next line.
+    await expect(page.getByTestId('builder-quick-title')).toHaveValue('');
+    await expect(page.getByTestId('builder-quick-price')).toHaveValue('');
+
+    // A titleless line is refused the same way the in-section row refuses it -
+    // the bar is a second door to addLine, not a second set of rules.
+    await page.getByTestId('builder-quick-price').fill('500');
+    await page.getByTestId('builder-quick-add-btn').click();
+    await expect(page.getByText('The line needs a title').first()).toBeVisible();
   });
 
   test('category creation is admin-only: a collaborator is told to ask their admin', async ({ page }) => {
@@ -391,7 +493,10 @@ test.describe('round 9: customer-first proposals page', () => {
     expect(reads).toBe(1);
     await expect(page.getByText(`Edit: ${MARIA_PROPOSAL.title}`)).toBeVisible();
     await expect(page.getByTestId('builder-edit-client')).toContainText('Maria Delgado');
+    // Edit mode opens on the first section (accordion, round 11); the second
+    // is one click away and its header already carries its subtotal.
     await expect(page.getByTestId('builder-cat-demolition').getByText('Tear-out and prep')).toBeVisible();
+    await openBuilderSection(page, 'cabinets');
     const cabinets = page.getByTestId('builder-cat-cabinets');
     await expect(cabinets.getByText('$6,300.50', { exact: true })).toBeVisible();
     await expect(cabinets.getByText('Base cabinets')).toBeVisible();
