@@ -46,16 +46,28 @@ export default function SendEstimatePage() {
   const [isSending, setIsSending] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
 
+  // Round 8: three progressive steps - Customer, The estimate, Personalize &
+  // send. Chips navigate freely; picking a customer auto-advances; a real send
+  // resets to a fresh step 1. Optional extras fold (owner's decision).
+  const [step, setStep] = useState(0);
+  const [showEstimateExtras, setShowEstimateExtras] = useState(false);
+  const [showSendExtras, setShowSendExtras] = useState(false);
+
   const selectCustomer = (customer: CustomerHit) => {
     setLeadId(customer.id);
     setRecipientName(customer.name ?? '');
     setRecipientEmail(customer.email ?? '');
     if (customer.project_type) setProjectType(customer.project_type);
+    setStep(1);
     toast({
       title: 'Customer selected',
       description: `${customer.name ?? customer.email} — fields prefilled`,
     });
   };
+
+  const STEP_LABELS = ['Customer', 'The estimate', 'Personalize & send'] as const;
+  const stepChipLabel = (i: number) =>
+    i === 0 && recipientName.trim() ? recipientName.trim() : STEP_LABELS[i];
 
   const buildPayload = (isTest: boolean) => ({
     leadId,
@@ -170,6 +182,19 @@ export default function SendEstimatePage() {
           title: 'Estimate sent',
           description: `Sent to ${recipientEmail} (Message ID: ${data.messageId ?? 'n/a'})`,
         });
+        // A real send completes the flow: reset to a fresh step 1 for the
+        // next customer (round 8).
+        setLeadId(null);
+        setRecipientName('');
+        setRecipientEmail('');
+        setCcEmails('');
+        setReplyTo('');
+        setProjectType('');
+        setEstimateUrl('');
+        setPortalUrl('');
+        setUpdateCadence('');
+        setPersonalNote('');
+        setStep(0);
       }
     } catch (err) {
       toast({
@@ -212,44 +237,64 @@ export default function SendEstimatePage() {
 
   return (
     <div className="container mx-auto p-6 max-w-5xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">Send Estimate Email</h1>
-          <p className="text-muted-foreground mt-1">
-            Send a customer their QBO estimate with the La Vaca welcome packet.
-          </p>
-        </div>
-        {/* New tab on purpose: the log is a standalone (sidebar-less) page,
-            and in-place navigation out of the admin SPA is the vanishing-nav
-            trap the owner reported on the email log. */}
-        <Link href="/vaca-mgmt/send-estimate/log" target="_blank" rel="noopener">
+      <div className="mb-5">
+        <h1 className="text-3xl font-bold">Send Estimate Email</h1>
+        <p className="text-muted-foreground mt-1">
+          Send a customer their QBO estimate with the La Vaca welcome packet.
+        </p>
+      </div>
+
+      {/* Stepper (round 8): chips navigate freely; the send-log chip opens the
+          standalone page in a new tab - in-place navigation out of the SPA is
+          the vanishing-nav trap the owner reported on the email log. */}
+      <div className="flex gap-2 flex-wrap items-center mb-4">
+        {STEP_LABELS.map((label, i) => {
+          const done = i < step;
+          const active = i === step;
+          return (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setStep(i)}
+              data-testid={`se-step-${i}`}
+              className={`inline-flex items-center gap-2 border rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                active ? 'border-primary bg-primary/10 text-primary' : done ? 'border-green-600/50 text-green-700' : 'border-border text-muted-foreground'
+              }`}
+            >
+              <span className={`w-5 h-5 rounded-full inline-flex items-center justify-center text-[11px] font-bold ${
+                done ? 'bg-green-600 text-white' : active ? 'bg-primary text-white' : 'bg-muted'
+              }`}>{i + 1}</span>
+              {stepChipLabel(i)}
+            </button>
+          );
+        })}
+        <Link href="/vaca-mgmt/send-estimate/log" target="_blank" rel="noopener" className="ml-auto">
           <Button variant="outline" size="sm">
             <FileText className="mr-2 h-4 w-4" /> View send log
           </Button>
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Customer picker */}
-        <Card className="lg:col-span-1">
+      {/* Step 1 - customer */}
+      {step === 0 && (
+        <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Find the customer</CardTitle>
+            <CardTitle className="text-lg">1. Who is this estimate for?</CardTitle>
             <CardDescription>
-              Searches name, email, or phone - or save someone new and they are findable forever.
+              Search by name, email, or phone - or save someone new and they are findable forever.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <CustomerSearch onSelect={selectCustomer} selectedId={leadId} />
           </CardContent>
         </Card>
+      )}
 
-        {/* Form */}
-        <Card className="lg:col-span-2">
+      {/* Step 2 - the estimate */}
+      {step === 1 && (
+        <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Email details</CardTitle>
-            <CardDescription>
-              Preview before sending. Test sends always go to alex@lavacagc.com.
-            </CardDescription>
+            <CardTitle className="text-lg">2. The estimate</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -275,24 +320,14 @@ export default function SendEstimatePage() {
                 />
               </div>
               <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="ccEmails">CC (comma-separated, optional)</Label>
+                <Label htmlFor="estimateUrl">QBO estimate URL * (https only)</Label>
                 <Input
-                  id="ccEmails"
-                  data-testid="field-cc-emails"
-                  value={ccEmails}
-                  onChange={(e) => setCcEmails(e.target.value)}
-                  placeholder="spouse@example.com, designer@example.com"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="replyTo">Reply-to (optional)</Label>
-                <Input
-                  id="replyTo"
-                  data-testid="field-reply-to"
-                  type="email"
-                  value={replyTo}
-                  onChange={(e) => setReplyTo(e.target.value)}
-                  placeholder="info@lavacagc.com"
+                  id="estimateUrl"
+                  data-testid="field-estimate-url"
+                  type="url"
+                  value={estimateUrl}
+                  onChange={(e) => setEstimateUrl(e.target.value)}
+                  placeholder="https://app.qbo.intuit.com/..."
                 />
               </div>
               <div className="space-y-2">
@@ -310,67 +345,127 @@ export default function SendEstimatePage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="estimateUrl">QBO estimate URL * (https only)</Label>
-                <Input
-                  id="estimateUrl"
-                  data-testid="field-estimate-url"
-                  type="url"
-                  value={estimateUrl}
-                  onChange={(e) => setEstimateUrl(e.target.value)}
-                  placeholder="https://app.qbo.intuit.com/..."
-                />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="portalUrl">Customer portal URL (optional, https only)</Label>
-                <Input
-                  id="portalUrl"
-                  data-testid="field-portal-url"
-                  type="url"
-                  value={portalUrl}
-                  onChange={(e) => setPortalUrl(e.target.value)}
-                  placeholder="https://portal.lavacagc.com/..."
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="updateCadence">Update cadence (optional)</Label>
-                <Select
-                  value={updateCadence}
-                  onValueChange={(v) => setUpdateCadence(v as 'daily' | 'weekly' | '')}
-                >
-                  <SelectTrigger id="updateCadence" data-testid="field-update-cadence">
-                    <SelectValue placeholder="Default" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="daily">Daily</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="personalNote">Personal note (optional)</Label>
-                <Textarea
-                  id="personalNote"
-                  data-testid="field-personal-note"
-                  value={personalNote}
-                  onChange={(e) => setPersonalNote(e.target.value)}
-                  rows={3}
-                  maxLength={1000}
-                  placeholder="Hey Sarah — was great meeting you and Mike on Tuesday..."
-                />
-                <div className="text-xs text-muted-foreground">
-                  {personalNote.length} / 1000
+            </div>
+
+            {/* Optional extras, folded (owner's round-8 decision). */}
+            {!showEstimateExtras ? (
+              <button
+                type="button"
+                onClick={() => setShowEstimateExtras(true)}
+                data-testid="se-estimate-extras"
+                className="text-xs font-bold text-primary hover:underline"
+              >
+                + Portal link &amp; update cadence (optional)
+              </button>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="portalUrl">Customer portal URL (optional, https only)</Label>
+                  <Input
+                    id="portalUrl"
+                    data-testid="field-portal-url"
+                    type="url"
+                    value={portalUrl}
+                    onChange={(e) => setPortalUrl(e.target.value)}
+                    placeholder="https://portal.lavacagc.com/..."
+                  />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="updateCadence">Update cadence (optional)</Label>
+                  <Select
+                    value={updateCadence}
+                    onValueChange={(v) => setUpdateCadence(v as 'daily' | 'weekly' | '')}
+                  >
+                    <SelectTrigger id="updateCadence" data-testid="field-update-cadence">
+                      <SelectValue placeholder="Default" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daily">Daily</SelectItem>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-between pt-2">
+              <Button variant="outline" onClick={() => setStep(0)}>Back to customer</Button>
+              <Button onClick={() => setStep(2)} data-testid="se-continue">Continue</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 3 - personalize and send */}
+      {step === 2 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">3. Personalize &amp; send</CardTitle>
+            <CardDescription>
+              Preview before sending. Test sends always go to alex@lavacagc.com.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="personalNote">Personal note (optional)</Label>
+              <Textarea
+                id="personalNote"
+                data-testid="field-personal-note"
+                value={personalNote}
+                onChange={(e) => setPersonalNote(e.target.value)}
+                rows={3}
+                maxLength={1000}
+                placeholder="Hey Sarah — was great meeting you and Mike on Tuesday..."
+              />
+              <div className="text-xs text-muted-foreground">
+                {personalNote.length} / 1000
               </div>
             </div>
 
+            {!showSendExtras ? (
+              <button
+                type="button"
+                onClick={() => setShowSendExtras(true)}
+                data-testid="se-send-extras"
+                className="text-xs font-bold text-primary hover:underline"
+              >
+                + CC and reply-to (optional)
+              </button>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="ccEmails">CC (comma-separated, optional)</Label>
+                  <Input
+                    id="ccEmails"
+                    data-testid="field-cc-emails"
+                    value={ccEmails}
+                    onChange={(e) => setCcEmails(e.target.value)}
+                    placeholder="spouse@example.com, designer@example.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="replyTo">Reply-to (optional)</Label>
+                  <Input
+                    id="replyTo"
+                    data-testid="field-reply-to"
+                    type="email"
+                    value={replyTo}
+                    onChange={(e) => setReplyTo(e.target.value)}
+                    placeholder="info@lavacagc.com"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col md:flex-row gap-2 pt-4 border-t">
+              <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
               <Button
                 type="button"
                 variant="outline"
                 onClick={handlePreview}
                 disabled={isLoadingPreview}
                 data-testid="btn-preview"
+                className="md:ml-auto"
               >
                 {isLoadingPreview ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -391,17 +486,6 @@ export default function SendEstimatePage() {
               </Button>
               <Button
                 type="button"
-                variant="outline"
-                onClick={handleStopFollowUps}
-                disabled={!recipientEmail.trim() || isStopping}
-                className="md:ml-auto text-orange-700 border-orange-200 hover:bg-orange-50 hover:text-orange-800"
-                data-testid="btn-stop-followups"
-              >
-                {isStopping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MailX className="mr-2 h-4 w-4" />}
-                Stop follow-ups
-              </Button>
-              <Button
-                type="button"
                 onClick={() => handleSend(false)}
                 disabled={isSending}
                 data-testid="btn-send"
@@ -410,9 +494,37 @@ export default function SendEstimatePage() {
                 Send to customer
               </Button>
             </div>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleStopFollowUps}
+                disabled={!recipientEmail.trim() || isStopping}
+                className="text-orange-700 hover:bg-orange-50 hover:text-orange-800"
+                data-testid="btn-stop-followups"
+              >
+                {isStopping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MailX className="mr-2 h-4 w-4" />}
+                Stop this customer&apos;s follow-ups
+              </Button>
+            </div>
           </CardContent>
         </Card>
-      </div>
+      )}
+
+      {/* Collapsed placeholders for the steps ahead */}
+      {step === 0 && (
+        <>
+          <button type="button" onClick={() => setStep(1)} className="mt-3 w-full text-left border rounded-lg bg-background px-4 py-3 text-sm font-bold text-muted-foreground flex items-center gap-2.5" data-testid="se-collapsed-1">
+            <span className="w-5 h-5 rounded-full bg-muted inline-flex items-center justify-center text-[11px]">2</span>
+            The estimate <span className="font-medium text-xs">- opens when a customer is picked</span>
+          </button>
+          <button type="button" onClick={() => setStep(2)} className="mt-2 w-full text-left border rounded-lg bg-background px-4 py-3 text-sm font-bold text-muted-foreground flex items-center gap-2.5" data-testid="se-collapsed-2">
+            <span className="w-5 h-5 rounded-full bg-muted inline-flex items-center justify-center text-[11px]">3</span>
+            Personalize &amp; send
+          </button>
+        </>
+      )}
 
       <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
