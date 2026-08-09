@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { Phone, Mail, MessageCircle, AlertCircle } from "lucide-react";
 import { z } from "zod";
 import DOMPurify from "dompurify";
@@ -273,24 +272,12 @@ const ContactForm = () => {
       }
 
       // Send email notification via Edge Function (reCAPTCHA already verified server-side)
-      const { error: emailError } = await supabase.functions.invoke('send-lead-notification', {
-        body: {
-          type: 'contact',
-          data: {
-            firstName: sanitizedData.first_name,
-            lastName: sanitizedData.last_name,
-            email: sanitizedData.email,
-            phone: sanitizedData.phone,
-            message: sanitizedData.message,
-            preferredContactMethod: sanitizedData.preferred_contact_method
-          },
-          recaptchaToken
-        }
-      });
+      // CM-12: the browser used to ALSO invoke the send-lead-notification
+      // edge function here, so every lead produced two owner emails and
+      // submitted the same reCAPTCHA token for a second assessment. The
+      // server path in /api/leads/submit already notifies, cannot be
+      // skipped by a direct caller, and handles its own failures.
 
-      if (emailError) {
-        console.error('Email notification failed:', emailError);
-      }
 
       // Log consent
       try {

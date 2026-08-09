@@ -41,7 +41,20 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 const files = walk(join(ROOT, 'src'));
-const read = (f: string) => readFileSync(f, 'utf8');
+/**
+ * Source with comments stripped.
+ *
+ * Every check below asks a question about CODE. Reading the raw file makes a
+ * comment that merely NAMES an old bug look like the bug - which is exactly
+ * what happened once these findings were fixed and each fix left behind a note
+ * explaining what it replaced. A checker that cannot tell code from prose can
+ * only be satisfied by deleting the explanation, which is the wrong incentive.
+ */
+const read = (f: string) =>
+  readFileSync(f, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
 const rel = (f: string) => relative(ROOT, f);
 const lineOf = (src: string, idx: number) => src.slice(0, idx).split('\n').length;
 

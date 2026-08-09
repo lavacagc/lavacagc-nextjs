@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { analyticsManager } from '@/services/analyticsManager';
+import { isAnalyticsExcluded } from '@/lib/analytics/excluded';
 
 // Re-export functions from analyticsManager for backward compatibility
 export {
@@ -18,7 +19,8 @@ const Analytics = () => {
   const pathname = usePathname();
 
   // Check if current page should be excluded from tracking
-  const isExcludedPage = pathname.startsWith('/admin') || pathname.startsWith('/vaca-mgmt') || pathname.startsWith('/auth');
+  // CM-05: one shared list, also used by the layout's Clarity/Pixel scripts.
+  const isExcludedPage = isAnalyticsExcluded(pathname);
 
   useEffect(() => {
     // Don't initialize GA at all on admin or auth pages

@@ -8,6 +8,9 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+/** Matches the history half below - a queue longer than this needs paging, not a bigger page. */
+const PENDING_CAP = 100;
+
 /**
  * Admin follow_up_queue access, SERVER-SIDE with the secret key.
  *
@@ -38,9 +41,14 @@ export async function GET() {
   const [pending, history] = await Promise.all([
     supabase
       .from('follow_up_queue')
+      // CM-14: uncapped, and every row carries the full rendered email HTML -
+      // so this was both the largest payload on the page and silently
+      // truncated at the server's own ceiling. The history half below already
+      // had a limit; the pending half did not.
       .select('*')
       .eq('status', 'pending')
-      .order('created_at', { ascending: false }),
+      .order('created_at', { ascending: false })
+      .limit(PENDING_CAP),
     supabase
       .from('follow_up_queue')
       .select('*')

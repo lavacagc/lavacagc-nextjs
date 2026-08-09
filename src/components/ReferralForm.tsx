@@ -25,6 +25,7 @@ const PROJECT_TYPES = [
 export default function ReferralForm() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [honeypot, setHoneypot] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [formData, setFormData] = useState<{
     referrerName: string;
@@ -64,7 +65,7 @@ export default function ReferralForm() {
       const response = await fetch('/api/referrals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, website: honeypot }),
       });
 
       const data = await response.json();
@@ -140,6 +141,20 @@ export default function ReferralForm() {
       <CardContent>
         <GeoGateNotice kind="referral" />
         <form onSubmit={handleSubmit} className="space-y-8">
+          {/* Honeypot - hidden from humans, bots auto-fill it. The server
+              answers a filled one with a success it never acted on (CM-08). */}
+          <div className="absolute opacity-0 top-0 left-0 h-0 w-0 -z-10 overflow-hidden" aria-hidden="true" tabIndex={-1}>
+            <label htmlFor="referral-website">Website</label>
+            <input
+              id="referral-website"
+              name="website"
+              type="text"
+              tabIndex={-1}
+              autoComplete="off"
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+            />
+          </div>
           {/* Your Information */}
           <div>
             <h3 className="text-lg font-semibold text-text-primary mb-4">Your Information</h3>

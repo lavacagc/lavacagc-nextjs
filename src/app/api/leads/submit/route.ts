@@ -27,6 +27,26 @@ async function reportFailure(payload: FormErrorAlertPayload): Promise<void> {
   }
 }
 
+/**
+ * CM-03: a rejection the CALLER caused is logged, never alerted.
+ *
+ * The rate limit runs BEFORE validation, so every rejected request used to
+ * cost the owner a Telegram message and an email: five deliberately-invalid
+ * submissions a minute per IP bought roughly ten owner notifications a minute
+ * - low enough traffic to look ordinary, loud enough to be a weapon. And an
+ * alert nobody can act on is not signal anyway; a 400 means the sender sent
+ * something wrong, not that the system is broken.
+ *
+ * /api/consent/log already made exactly this call and says so in its own
+ * comment. This is the same decision, applied where the amplifier actually is.
+ *
+ * Genuine server faults - a failed insert, a dead notification channel, an
+ * unhandled exception - still alert, because those are the owner's problem.
+ */
+function reportClientFault(stage: string, message: string): void {
+  console.warn(`[leads/submit] rejected (${stage}): ${message}`);
+}
+
 // Minimum reCAPTCHA score (0.0–1.0) required to accept a submission.
 // Configurable via RECAPTCHA_MIN_SCORE so the threshold can be tuned without a
 // redeploy. Fail-closed: any unset/out-of-range/malformed value falls back to
@@ -61,6 +81,14 @@ const optStr = (max: number) =>
     .string()
     .nullish()
     .transform((v) => (v == null ? v : v.slice(0, max)));
+/**
+ * The same shape every browser form enforces, and the same one
+ * createLeadFollowUpSequence uses before it agrees to send. Kept deliberately
+ * permissive (no TLD list, no length games) - the job is to reject text that
+ * can never be an address, not to adjudicate exotic but valid ones.
+ */
+const LEAD_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const LeadSubmitSchema = z
   .object({
     recaptchaToken: optStr(5000),
@@ -105,6 +133,13 @@ const LeadSubmitSchema = z
 // existing public.rate_limits table — no new infra, secret, or migration. Fails
 // open (see src/lib/rateLimit.ts).
 const RATE_LIMIT_MAX = 5; // submissions per window, per IP
+/**
+ * Alerts about sanitizer adjustments are budgeted separately from submissions
+ * (CM-03). A form that regressed produces a steady trickle and stays well
+ * inside this; an attacker appending a junk key to every request does not.
+ */
+const SANITIZE_ALERT_MAX = 2;
+const SANITIZE_ALERT_WINDOW_MS = 60 * 60 * 1000;
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 
 // reCAPTCHA outcome reason:
@@ -360,25 +395,31 @@ export async function POST(request: NextRequest) {
     // A v2-challenge re-submit carries recaptchaV2Token instead of a fresh v3
     // token/action, so only require the v3 envelope when no v2 token is present.
     if (!recaptchaV2Token && (!recaptchaToken || !recaptchaAction)) {
-      await reportFailure({
-        stage: 'validation',
-        source: sourceForError,
-        message: 'Missing reCAPTCHA token or action on submit',
-        lead: leadContext,
-      });
+      reportClientFault('validation', 'Missing reCAPTCHA token or action on submit');
       return NextResponse.json(
         { error: 'Missing reCAPTCHA token' },
         { status: 400 }
       );
     }
 
+    // CM-09: the schema accepts `email` as 320 free characters with no format
+    // check, while every one of the six browser forms enforces one. A direct
+    // POST therefore stored an unusable address - and the damage was silent:
+    // createLeadFollowUpSequence regex-checks the address and refuses to send,
+    // so the customer got no acknowledgement and the only trace was a log line.
+    //
+    // An unparseable address is dropped rather than rejecting the whole lead:
+    // if a phone number came with it the lead is still actionable, and losing a
+    // real enquiry over a typo'd email would be a worse bug than the one being
+    // fixed. If it was the ONLY contact method, the "email or phone" check
+    // immediately below catches it and answers 400 as it always did.
+    if (leadFields.email && !LEAD_EMAIL_RE.test(String(leadFields.email))) {
+      console.warn('[leads/submit] dropped unparseable email address');
+      delete (leadFields as Record<string, unknown>).email;
+    }
+
     if (!leadFields.email && !leadFields.phone) {
-      await reportFailure({
-        stage: 'validation',
-        source: sourceForError,
-        message: 'Submission missing both email and phone',
-        lead: leadContext,
-      });
+      reportClientFault('validation', 'Submission missing both email and phone');
       return NextResponse.json(
         { error: 'Email or phone is required' },
         { status: 400 }
@@ -399,13 +440,7 @@ export async function POST(request: NextRequest) {
       const v2Ok = await verifyRecaptchaV2(recaptchaV2Token);
       console.log(`reCAPTCHA v2 checkbox verification: success=${v2Ok}`);
       if (!v2Ok) {
-        await reportFailure({
-          stage: 'recaptcha',
-          source: sourceForError,
-          message: 'reCAPTCHA v2 checkbox verification failed',
-          details: { hint: 'v2 token invalid/expired, or v2 key misconfigured.' },
-          lead: leadContext,
-        });
+        reportClientFault('recaptcha', 'reCAPTCHA v2 checkbox verification failed');
         return NextResponse.json(
           { error: 'reCAPTCHA verification failed' },
           { status: 403 }
@@ -421,20 +456,7 @@ export async function POST(request: NextRequest) {
         if (recaptchaResult.reason === 'low_score' && isRecaptchaV2Configured()) {
           return NextResponse.json({ challenge: 'recaptcha_v2' }, { status: 200 });
         }
-        await reportFailure({
-          stage: 'recaptcha',
-          source: sourceForError,
-          message: `reCAPTCHA verification failed (score=${recaptchaResult.score}, reason=${recaptchaResult.reason})`,
-          details: {
-            action: recaptchaAction,
-            score: recaptchaResult.score,
-            reason: recaptchaResult.reason,
-            hint: !process.env.RECAPTCHA_SECRET_KEY
-              ? 'RECAPTCHA_SECRET_KEY is not set — every submission will fail until it is configured.'
-              : 'Score below threshold or token invalid. Check reCAPTCHA console + siteKey/action match.',
-          },
-          lead: leadContext,
-        });
+        reportClientFault('recaptcha', `reCAPTCHA verification failed (score=${recaptchaResult.score}, reason=${recaptchaResult.reason})`);
         return NextResponse.json(
           { error: 'reCAPTCHA verification failed' },
           { status: 403 }
@@ -442,8 +464,33 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // CM-02: the schema ends in .passthrough(), so unknown keys survive, and
+    // the sanitizer accepts score/tier/scoring_reasons as writable columns.
+    // Combined with the old `if (!finalLeadData.score)` guard, a raw POST of
+    // {"score":100,"tier":"hot"} stored verbatim AND skipped scoring entirely -
+    // paging the owner as a HOT lead on the sender's say-so.
+    //
+    // These three are computed here and nowhere else, so they are stripped
+    // before anything reads them, and scoring now always runs. Stripping at
+    // this chokepoint rather than tightening the schema is deliberate: the
+    // schema is intentionally forgiving so a lead is never lost, and a future
+    // server-owned column added to leadSanitize would otherwise re-open this.
+    const SERVER_OWNED_FIELDS = ['score', 'tier', 'scoring_reasons'] as const;
+    const strippedFields: string[] = [];
+    for (const key of SERVER_OWNED_FIELDS) {
+      if ((leadFields as Record<string, unknown>)[key] !== undefined) {
+        delete (leadFields as Record<string, unknown>)[key];
+        strippedFields.push(key);
+      }
+    }
+    if (strippedFields.length > 0) {
+      // Worth a log line: no legitimate form sends these, so a request that
+      // does is either a probe or an integration doing something unintended.
+      console.warn(`[leads/submit] ignored client-supplied server-owned field(s): ${strippedFields.join(', ')}`);
+    }
+
     let finalLeadData = { ...leadFields };
-    if (!finalLeadData.score) {
+    {
       const scoringInput = prepareLeadForScoring(finalLeadData as Record<string, string | null | undefined>);
       const scoringResult = scoreLead(scoringInput);
       finalLeadData = {
@@ -492,15 +539,31 @@ export async function POST(request: NextRequest) {
     // The lead is saved. If the sanitizer had to change anything to get it
     // past the DB constraints, tell the owner - a form is sending
     // non-standard values and should be fixed before the data quality slips.
+    //
+    // CM-03: this one is ATTACKER-TRIGGERABLE - a single junk key in an
+    // otherwise valid submission produces an adjustment, so it was worth an
+    // extra Telegram and email on every request that included one. It is still
+    // real signal (a form regressing IS worth knowing about), so it is budgeted
+    // rather than removed: a couple an hour per source tells the owner a form
+    // broke; two hundred is someone playing with the endpoint. The log line is
+    // unconditional, so nothing is lost from the record either way.
     if (sanitizeAdjustments.length > 0) {
-      await reportFailure({
-        stage: 'sanitize',
-        severity: 'warning',
-        source: sourceForError,
-        message: `Lead saved after auto-correcting ${sanitizeAdjustments.length} field(s) - a form is sending non-standard values`,
-        details: { adjustments: sanitizeAdjustments },
-        lead: leadContext,
-      });
+      console.warn(`[leads/submit] sanitizer adjusted ${sanitizeAdjustments.length} field(s): ${sanitizeAdjustments.join('; ')}`);
+      const alertBudget = await checkRateLimit(
+        `alert-sanitize:${getClientIp(request)}`,
+        SANITIZE_ALERT_MAX,
+        SANITIZE_ALERT_WINDOW_MS,
+      );
+      if (alertBudget.allowed) {
+        await reportFailure({
+          stage: 'sanitize',
+          severity: 'warning',
+          source: sourceForError,
+          message: `Lead saved after auto-correcting ${sanitizeAdjustments.length} field(s) - a form is sending non-standard values`,
+          details: { adjustments: sanitizeAdjustments },
+          lead: leadContext,
+        });
+      }
     }
 
     // Fire notifications in-process. No self-fetch: Cloudflare would otherwise

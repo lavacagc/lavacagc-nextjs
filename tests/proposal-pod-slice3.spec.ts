@@ -294,22 +294,50 @@ test('AC-R6: every prior email category survives, and the audit filter offers th
   expect(emailsPage).toContain('proposal_delivery: true');
 });
 
-test('AC-R7: analytics is left exactly as it was (owner decision, 5 Aug 2026)', () => {
+test('AC-R7 (SUPERSEDED 9 Aug 2026): analytics is excluded from token-authenticated pages', () => {
+  /*
+   * WHAT THIS USED TO PIN, and why it changed.
+   *
+   * The 5 Aug 2026 decision was to leave the third-party tags alone, and this
+   * test existed to keep them left alone. It is revised rather than deleted,
+   * because a superseded decision should stay legible.
+   *
+   * The chaos audit (9 Aug 2026, finding CM-05) found the acceptance had a
+   * scope the original decision did not consider. Clarity and the Meta Pixel
+   * were mounted globally with NO path condition, so session recording covered
+   * every token-authenticated page - including /crew/confirm/[token], which
+   * renders a customer's name, PHONE NUMBER and ADDRESS, with the capability
+   * token sitting in the recorded URL. The accepted risk was about proposal
+   * prices; this was customer contact details going to Microsoft and Meta, and
+   * a live credential in a replayable recording.
+   *
+   * The owner was shown that distinction and chose to close the whole class.
+   * The tags still exist and are still GPC-gated - what changed is WHERE they
+   * are allowed to run.
+   */
   const layout = read('src/app/layout.tsx');
-  // Both tags, and the GPC guard that is the only thing gating them today.
-  expect(layout).toContain('clarity.ms/tag/');
-  expect(layout).toContain("fbq('init'");
-  expect(layout.match(/navigator\.globalPrivacyControl/g)?.length).toBe(2);
-  // Neither analytics file learned about proposals or about the chrome helper:
-  // the decision was to leave the third-party tags alone, and a test is how it
-  // stays left alone.
-  expect(layout).not.toContain('privatePages');
+  // The tags moved into a gated client component; the layout must no longer
+  // mount them unconditionally.
+  expect(layout).toContain('ThirdPartyAnalytics');
+  expect(layout, 'the raw loaders must not be back in the layout').not.toContain('clarity.ms/tag/');
+
+  // Both loaders, and both GPC guards, still exist - in the component now.
+  const tags = read('src/components/ThirdPartyAnalytics.tsx');
+  expect(tags).toContain('clarity.ms/tag/');
+  expect(tags).toContain("fbq('init'");
+  expect(tags.match(/navigator\.globalPrivacyControl/g)?.length,
+    'both loaders keep the GPC guard').toBe(2);
+  expect(tags, 'and they are gated on the path').toContain('isAnalyticsExcluded');
+
+  // One shared exclusion list, used by the page-view tracker too - two lists is
+  // how the original one drifted out of date.
   const analytics = read('src/components/Analytics.tsx');
-  expect(analytics).toContain("pathname.startsWith('/admin')");
-  expect(analytics).toContain("pathname.startsWith('/vaca-mgmt')");
-  expect(analytics).toContain("pathname.startsWith('/auth')");
-  expect(analytics).not.toContain('proposal');
-  expect(analytics).not.toContain('privatePages');
+  expect(analytics).toContain('isAnalyticsExcluded');
+
+  const excluded = read('src/lib/analytics/excluded.ts');
+  for (const surface of ['/admin', '/vaca-mgmt', '/auth', '/proposal', '/intake', '/crew', '/preferences']) {
+    expect(excluded, `${surface} must be excluded from third-party analytics`).toContain(surface);
+  }
 });
 
 test('AC-R8: the pod needed no DDL - its schema still ends at 20260827000000', () => {

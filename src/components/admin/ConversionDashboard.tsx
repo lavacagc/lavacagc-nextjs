@@ -7,6 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Loader2, TrendingUp, Users, Mail, Target, RefreshCw } from 'lucide-react';
 
+/** Enough to characterise the funnel; bounded so the dashboard cannot pull the whole table. */
+const LEADS_ANALYSIS_CAP = 2000;
+
 interface LeadRow {
   id: string;
   created_at: string;
@@ -110,7 +113,11 @@ export default function ConversionDashboard() {
       const leadsRes = await supabase
         .from('leads')
         .select('id, created_at, inquiry_type')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        // CM-14: uncapped, this silently truncated at the server's own page
+        // ceiling once the table grew - so every funnel metric quietly
+        // under-reported with nothing on screen saying so.
+        .limit(LEADS_ANALYSIS_CAP);
 
       const leads = (leadsRes.data || []) as LeadRow[];
 

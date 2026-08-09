@@ -155,9 +155,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // CM-07: this read had NO limit= clause, so it silently inherited the
+    // server's own row ceiling. With that ceiling at or below RECIPIENT_CAP,
+    // `homeowners.length` could never exceed the number we slice at, so
+    // `truncated` was structurally always 0 - members past the cap were never
+    // mailed AND never reported. Asking for one MORE row than the cap is what
+    // makes truncation detectable at all: if we get cap+1 back, there is at
+    // least one more member than this run can serve.
     const homeowners = (await supabaseRest<HomeownerRow[]>(
       'GET',
-      'homeowners?select=id,first_name,email,unsubscribe_token,access_token&status=eq.active',
+      `homeowners?select=id,first_name,email,unsubscribe_token,access_token&status=eq.active&limit=${RECIPIENT_CAP + 1}`,
     )) ?? [];
     const recipients = homeowners.slice(0, RECIPIENT_CAP);
     const truncated = homeowners.length - recipients.length;

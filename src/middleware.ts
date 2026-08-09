@@ -76,6 +76,14 @@ function isBadBot(ua: string): boolean {
 // Routes that require Supabase admin session authentication
 const ADMIN_AUTH_ROUTES = [
   '/api/leads/list',
+  // CM-01: this queues an email sequence to whatever address it is given, and
+  // was public - one anonymous POST mailed any recipient from the verified
+  // sending domain. It is an INTERNAL entrypoint (its own docblock says so, and
+  // every first-party caller imports createLeadFollowUpSequence directly), so
+  // it now authenticates exactly like /api/notify/*: an admin session, or the
+  // internal shared secret. Exact path, not a '/api/leads/' prefix, because
+  // /api/leads/submit must stay public.
+  '/api/leads/webhook',
   '/api/admin/',
   '/api/banners/admin',
   '/api/feedback/',
@@ -84,6 +92,14 @@ const ADMIN_AUTH_ROUTES = [
   '/vaca-mgmt',
 ];
 
+/**
+ * Routes an internal server-to-server caller may reach with
+ * INTERNAL_WEBHOOK_SECRET instead of a user session. Everything here can send
+ * mail or messages, so the secret is the only alternative to a session - never
+ * "no credential at all".
+ */
+const INTERNAL_SECRET_ROUTES = ['/api/notify/', '/api/leads/webhook'];
+
 // Routes that require CRON_SECRET Bearer token
 const CRON_AUTH_ROUTES = [
   '/api/cron/',
@@ -91,7 +107,6 @@ const CRON_AUTH_ROUTES = [
 
 // Routes that are always public (no auth needed)
 const PUBLIC_ROUTES = [
-  '/api/leads/webhook',
   '/api/webhooks/resend',   // Resend delivery events - auth is the Svix signature
   '/api/preferences',       // Self-service preference center - auth is the token
   '/api/leads/submit',
@@ -230,7 +245,7 @@ export async function middleware(request: NextRequest) {
   if (requiresAdminAuth(pathname)) {
     // Server-to-server internal calls to /api/notify/* can authenticate
     // with INTERNAL_WEBHOOK_SECRET instead of a user session.
-    if (pathname.startsWith('/api/notify/') && verifyInternalSecret(request)) {
+    if (INTERNAL_SECRET_ROUTES.some((r) => pathname.startsWith(r)) && verifyInternalSecret(request)) {
       return NextResponse.next();
     }
     const authenticated = await verifySupabaseSession(request);

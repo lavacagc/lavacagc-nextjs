@@ -8,7 +8,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config';
 import { ChevronRight, ChevronLeft, Calculator, Clock, DollarSign, Home } from "lucide-react";
 import { z } from "zod";
@@ -355,17 +354,12 @@ const EstimateForm = () => {
       }
 
       // Send email notification via Edge Function
-      const { error: emailError } = await supabase.functions.invoke('send-lead-notification', {
-        body: {
-          type: 'estimate',
-          data: formData,
-          recaptchaToken
-        }
-      });
+      // CM-12: the browser used to ALSO invoke the send-lead-notification
+      // edge function here, so every lead produced two owner emails and
+      // submitted the same reCAPTCHA token for a second assessment. The
+      // server path in /api/leads/submit already notifies, cannot be
+      // skipped by a direct caller, and handles its own failures.
 
-      if (emailError) {
-        console.error('Email notification failed:', emailError);
-      }
 
       // Track successful estimate request in GA4
       trackEstimateRequest('estimate_form');

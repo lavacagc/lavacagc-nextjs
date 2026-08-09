@@ -33,6 +33,7 @@ import {
 import { flagAlertMessage, siblingVerdict } from '@/lib/homecare/dispatchAlerts';
 import { readCustomerReminder } from '@/lib/homecare/serviceScheduling';
 import { visitDateLabel, visitTimeWindow, chasesAhead } from '@/lib/homecare/visitSchedule';
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -44,7 +45,34 @@ const bodySchema = z.object({
   note: z.string().trim().max(1000).optional(),
 });
 
+/** Generous for a crew member retrying on bad signal; hostile to guessing. */
+const CONFIRM_RATE_LIMIT = 20;
+const CONFIRM_RATE_WINDOW_MS = 10 * 60 * 1000;
+
 export async function POST(request: NextRequest) {
+  // CM-08 class: this route was public AND unthrottled, by an explicit comment.
+  // The token is genuinely the credential, and it has real entropy - but
+  // nothing bounded how fast someone could guess at it, and a hit PATCHes
+  // dispatch state and fires a Telegram message. A ceiling costs a crew member
+  // nothing (they confirm once, occasionally retrying on bad signal) and takes
+  // unbounded guessing off the table.
+  //
+  // failClosed: a dropped confirm is recoverable - the crew member taps again,
+  // and the owner is chasing them anyway - whereas unbounded guessing during a
+  // database incident is not.
+  const rl = await checkRateLimit(
+    `crew-confirm:${getClientIp(request)}`,
+    CONFIRM_RATE_LIMIT,
+    CONFIRM_RATE_WINDOW_MS,
+    { failClosed: true },
+  );
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: 'Too many attempts. Give it a moment and tap the link again.' },
+      { status: 429 },
+    );
+  }
+
   let raw: unknown;
   try { raw = await request.json(); } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });

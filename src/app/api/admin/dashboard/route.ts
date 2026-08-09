@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+/** 30 days of sends for the health tile. Bounded so a busy month cannot pull an unbounded page. */
+const EMAIL_HEALTH_CAP = 5000;
+
 export const dynamic = 'force-dynamic';
 
 /**
@@ -35,7 +38,9 @@ export async function GET() {
       .from('blog_posts')
       .select('id, title, slug, published, created_at, updated_at')
       .order('updated_at', { ascending: false }),
-    supabase.from('email_log').select('status').gte('created_at', emailsSince),
+    // CM-14: uncapped, this truncated at the server's page ceiling once 30 days
+    // of email exceeded it - so the health tile under-reported and looked fine.
+    supabase.from('email_log').select('status').gte('created_at', emailsSince).limit(EMAIL_HEALTH_CAP),
     supabase.from('leads').select('*', { count: 'exact', head: true }).gte('created_at', leadsSince),
     supabase.from('content_actions').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
     supabase.from('follow_up_queue').select('*', { count: 'exact', head: true }).eq('status', 'pending'),

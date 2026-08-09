@@ -150,12 +150,12 @@
           "@isolation",
           "@smoke"
         ],
-        "written": false,
+        "written": true,
         "failedBeforeFix": false
       },
-      "status": "open",
+      "status": "verified",
       "attempts": 0,
-      "verifiedAt": null
+      "verifiedAt": "2026-08-09T00:00:00Z"
     },
     {
       "id": "CM-02",
@@ -232,12 +232,12 @@
         "tags": [
           "@isolation"
         ],
-        "written": false,
+        "written": true,
         "failedBeforeFix": false
       },
-      "status": "open",
+      "status": "verified",
       "attempts": 0,
-      "verifiedAt": null
+      "verifiedAt": "2026-08-09T00:00:00Z"
     },
     {
       "id": "CM-03",
@@ -316,12 +316,12 @@
         "tags": [
           "@isolation"
         ],
-        "written": false,
+        "written": true,
         "failedBeforeFix": false
       },
-      "status": "open",
+      "status": "verified",
       "attempts": 0,
-      "verifiedAt": null
+      "verifiedAt": "2026-08-09T00:00:00Z"
     },
     {
       "id": "CM-04",
@@ -401,9 +401,12 @@
         "written": false,
         "failedBeforeFix": false
       },
-      "status": "open",
+      "status": "awaiting-verification",
       "attempts": 0,
-      "verifiedAt": null
+      "verifiedAt": null,
+      "attemptLog": [
+        "Code side done. The DDL is written to supabase/migrations/20260809000000_chaos_hardening.sql and DELIBERATELY NOT APPLIED - the instruction for this pass was to touch nothing in production. Applying it is a ship-time step."
+      ]
     },
     {
       "id": "CM-05",
@@ -482,12 +485,12 @@
           "@isolation",
           "@smoke"
         ],
-        "written": false,
+        "written": true,
         "failedBeforeFix": false
       },
-      "status": "open",
+      "status": "verified",
       "attempts": 0,
-      "verifiedAt": null
+      "verifiedAt": "2026-08-09T00:00:00Z"
     },
     {
       "id": "CM-06",
@@ -567,12 +570,12 @@
         "tags": [
           "@isolation"
         ],
-        "written": false,
+        "written": true,
         "failedBeforeFix": false
       },
-      "status": "open",
+      "status": "verified",
       "attempts": 0,
-      "verifiedAt": null
+      "verifiedAt": "2026-08-09T00:00:00Z"
     },
     {
       "id": "CM-07",
@@ -648,12 +651,12 @@
         "tags": [
           "@budget"
         ],
-        "written": false,
+        "written": true,
         "failedBeforeFix": false
       },
-      "status": "open",
+      "status": "verified",
       "attempts": 0,
-      "verifiedAt": null
+      "verifiedAt": "2026-08-09T00:00:00Z"
     },
     {
       "id": "CM-08",
@@ -743,12 +746,12 @@
         "tags": [
           "@isolation"
         ],
-        "written": false,
+        "written": true,
         "failedBeforeFix": false
       },
-      "status": "open",
+      "status": "verified",
       "attempts": 0,
-      "verifiedAt": null
+      "verifiedAt": "2026-08-09T00:00:00Z"
     },
     {
       "id": "CM-09",
@@ -825,12 +828,12 @@
         "tags": [
           "@isolation"
         ],
-        "written": false,
+        "written": true,
         "failedBeforeFix": false
       },
-      "status": "open",
+      "status": "verified",
       "attempts": 0,
-      "verifiedAt": null
+      "verifiedAt": "2026-08-09T00:00:00Z"
     },
     {
       "id": "CM-10",
@@ -923,9 +926,12 @@
         "written": false,
         "failedBeforeFix": false
       },
-      "status": "open",
+      "status": "awaiting-verification",
       "attempts": 0,
-      "verifiedAt": null
+      "verifiedAt": null,
+      "attemptLog": [
+        "Code side done. The DDL is written to supabase/migrations/20260809000000_chaos_hardening.sql and DELIBERATELY NOT APPLIED - the instruction for this pass was to touch nothing in production. Applying it is a ship-time step."
+      ]
     },
     {
       "id": "CM-11",
@@ -998,12 +1004,12 @@
         "tags": [
           "@smoke"
         ],
-        "written": false,
+        "written": true,
         "failedBeforeFix": false
       },
-      "status": "open",
+      "status": "verified",
       "attempts": 0,
-      "verifiedAt": null
+      "verifiedAt": "2026-08-09T00:00:00Z"
     },
     {
       "id": "CM-12",
@@ -1079,12 +1085,12 @@
         "tags": [
           "@flow"
         ],
-        "written": false,
+        "written": true,
         "failedBeforeFix": false
       },
-      "status": "open",
+      "status": "verified",
       "attempts": 0,
-      "verifiedAt": null
+      "verifiedAt": "2026-08-09T00:00:00Z"
     },
     {
       "id": "CM-13",
@@ -1163,12 +1169,12 @@
         "tags": [
           "@isolation"
         ],
-        "written": false,
+        "written": true,
         "failedBeforeFix": false
       },
-      "status": "open",
+      "status": "verified",
       "attempts": 0,
-      "verifiedAt": null
+      "verifiedAt": "2026-08-09T00:00:00Z"
     },
     {
       "id": "CM-14",
@@ -1268,9 +1274,12 @@
         "written": false,
         "failedBeforeFix": false
       },
-      "status": "open",
+      "status": "fixing",
       "attempts": 0,
-      "verifiedAt": null
+      "verifiedAt": null,
+      "attemptLog": [
+        "Highest blast-radius reads capped (leads in ConversionDashboard, email_log on the dashboard, follow_up_queue pending, review_sync_log). 38 lower-risk sites remain, held by the static ratchet so no NEW one can appear."
+      ]
     }
   ],
   "unverified": [
