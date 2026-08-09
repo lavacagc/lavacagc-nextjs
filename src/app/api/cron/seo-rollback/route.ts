@@ -57,6 +57,8 @@ export async function GET(request: NextRequest) {
   }
 
   const now = Date.now();
+  /** How many posts one weekly run reviews. Any remainder is reported, never dropped. */
+  const REVIEW_BATCH = 200;
   const cutoffMs = now - REVIEW_AFTER_DAYS * 86_400_000;
   const windowStart = new Date(now - REVIEW_AFTER_DAYS * 86_400_000).toISOString().slice(0, 10);
 
@@ -64,8 +66,16 @@ export async function GET(request: NextRequest) {
     // Autogen actions that produced a post and haven't been 14-day-reviewed yet.
     const actions = await supabaseRest<ActionRow[]>(
       'GET',
-      'content_actions?select=id,action_type,draft_meta,published_post_id&status=eq.completed&published_post_id=not.is.null',
+      // A BOUNDED BATCH, not a silent cap. Every article ever published stays
+      // 'completed' forever, so this queue only grows - uncapped it would
+      // eventually stop at the server's own ceiling with nothing saying so,
+      // which is how CM-07 shipped a truncation counter that could never fire.
+      // cap+1 makes "there is more" detectable, and the response reports it.
+      // The job runs weekly, so a bounded batch per run is correct behaviour
+      // rather than a compromise.
+      `content_actions?select=id,action_type,draft_meta,published_post_id&status=eq.completed&published_post_id=not.is.null&limit=${REVIEW_BATCH + 1}`,
     );
+    const moreThanOneBatch = (actions ?? []).length > REVIEW_BATCH;
     const pending = (actions ?? []).filter((a) => !a.draft_meta?.rollback && a.published_post_id);
     if (pending.length === 0) {
       return NextResponse.json({ ok: true, reviewed: 0, reverted: 0, note: 'no posts due for 14-day review' });
@@ -146,7 +156,17 @@ export async function GET(request: NextRequest) {
     }
 
     const emailed = digest.length ? (await sendRollbackDigestEmail(digest)).status : 'skipped';
-    return NextResponse.json({ ok: true, reviewed: digest.length, reverted, emailed });
+    // The remainder is REPORTED, never dropped silently - that is the whole
+    // difference between a bounded batch and the truncation bug this pattern
+    // replaces. A non-zero value here means the weekly batch is no longer
+    // keeping up and REVIEW_BATCH should rise.
+    return NextResponse.json({
+      ok: true,
+      reviewed: digest.length,
+      reverted,
+      emailed,
+      ...(moreThanOneBatch ? { moreAwaitingReview: true, batchSize: REVIEW_BATCH } : {}),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('seo-rollback failed:', message);

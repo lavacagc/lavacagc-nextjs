@@ -76,7 +76,12 @@ export async function POST(request: NextRequest) {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const recent = await supabaseRest<{ id: string }[]>(
       'GET',
-      `content_actions?select=id&status=eq.completed&reviewed_at=gte.${weekAgo}`,
+      // Only the ANSWER to "have we hit the cap" is needed, so ask for at most
+      // that many rows. Uncapped, this pulled every completed action of the
+      // past week purely to count them - and silently stopped counting at the
+      // server's own page ceiling, which would have made the guardrail fail
+      // exactly when there was most to guard against (CM-14).
+      `content_actions?select=id&status=eq.completed&reviewed_at=gte.${weekAgo}&limit=${WEEKLY_CAP}`,
     );
     if ((recent?.length ?? 0) >= WEEKLY_CAP) {
       return NextResponse.json(

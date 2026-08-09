@@ -1271,14 +1271,15 @@
           "@budget",
           "@nightly"
         ],
-        "written": false,
+        "written": true,
         "failedBeforeFix": false
       },
-      "status": "fixing",
+      "status": "verified",
       "attempts": 0,
-      "verifiedAt": null,
+      "verifiedAt": "2026-08-09T00:00:00Z",
       "attemptLog": [
-        "Highest blast-radius reads capped (leads in ConversionDashboard, email_log on the dashboard, follow_up_queue pending, review_sync_log). 38 lower-risk sites remain, held by the static ratchet so no NEW one can appear."
+        "Investigated all 38 baselined violations rather than capping them blindly. 33 were FALSE POSITIVES of the checker itself, in four classes: (a) limit= present in a concatenated second template chunk the regex never read, (b) reads bounded by an equality filter on a parent id/email, (c) filters held in a local variable and interpolated, (d) helpers returning a query BUILDER for the caller to finish. The checker was fixed for each; it also reported wrong line numbers because it stripped comments before counting lines.",
+        "The 5 real ones were fixed by category: a counting read now asks for only as many rows as the threshold it tests; two cron work queues became bounded batches that REPORT their remainder rather than dropping it silently; two narrow reads got explicit caps."
       ]
     }
   ],

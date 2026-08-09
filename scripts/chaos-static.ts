@@ -52,8 +52,11 @@ const files = walk(join(ROOT, 'src'));
  */
 const read = (f: string) =>
   readFileSync(f, 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '');
+    // Blank the comment OUT rather than deleting it, preserving every newline.
+    // Deleting shifted every subsequent line, so the numbers this tool printed
+    // pointed at the wrong code - which is worse than not printing them.
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/^([ \t]*)\/\/.*$/gm, (_m, indent) => indent);
 
 const rel = (f: string) => relative(ROOT, f);
 const lineOf = (src: string, idx: number) => src.slice(0, idx).split('\n').length;
@@ -74,17 +77,53 @@ const GROWING_TABLES = [
   'home_records', 'lead_intake_sessions', 'subscriber_activity', 'visit_dispatch',
 ];
 
+/**
+ * Filters that bound a result to one parent's rows regardless of table size.
+ * `homeowner_maintenance?homeowner_id=eq.X` returns that homeowner's few dozen
+ * tasks whether the table holds a thousand rows or a million.
+ */
+const BOUNDED_BY_FILTER =
+  /(?:id|_id|email|token|slug|url|key)=(?:eq|ilike)\.|\.(?:eq|ilike)\(\s*['"][a-z_]*(?:id|email|token|slug)['"]|=in\.\(/i;
+
+/**
+ * How far ABOVE a query to look for the filter that bounds it.
+ *
+ * PostgREST paths are often assembled a line or two earlier - `const filter =
+ * \`&homeowner_id=eq.${id}\`` and then `...${filter}` in the query - so
+ * inspecting the query string alone reported per-member reads as full scans.
+ *
+ * This trades a little precision for a lot of trust: an unrelated equality
+ * filter sitting just above a genuinely unbounded read would hide it. That is
+ * the right way round for a ratchet - a report with false alarms in it gets
+ * switched off, and then it catches nothing at all.
+ */
+const FILTER_LOOKBEHIND = 400;
+
 // ---- CM-14 / CM-07: reads of growing tables with no explicit row cap --------
 for (const file of files) {
   const src = read(file);
 
-  // supabaseRest('GET', 'table?select=...')  - the server-side PostgREST helper
-  const restCalls = [...src.matchAll(/supabaseRest(?:Counted)?[^(]*\(\s*['"]GET['"]\s*,\s*[`'"]([^`'"]+)[`'"]/g)];
+  // supabaseRest('GET', 'table?select=...') - the server-side PostgREST helper.
+  //
+  // The whole ARGUMENT is inspected, not just its first string literal. These
+  // paths are routinely built by concatenating template chunks, and reading
+  // only the first one reported `&limit=50` queries as uncapped - false
+  // positives that make the whole report untrustworthy.
+  const restCalls = [...src.matchAll(/supabaseRest(?:Counted)?[^(]*\(\s*['"]GET['"]\s*,/g)];
   for (const m of restCalls) {
-    const path = m[1];
-    const table = path.split('?')[0].split('/')[0];
+    const argsStart = m.index! + m[0].length;
+    // Up to the end of the call - far enough to cover a multi-line concatenation.
+    const args = src.slice(argsStart, argsStart + 600).split(/\n\s*\)/)[0];
+    const first = /[`'"]([a-z_]+)\?/.exec(args);
+    if (!first) continue;
+    const table = first[1];
     if (!GROWING_TABLES.includes(table)) continue;
-    if (/[?&]limit=/.test(path)) continue;
+    if (/[?&]limit=/.test(args)) continue;
+    // An equality filter on an owning id, or on an email, bounds the result to
+    // one parent's rows however big the table grows. Capping those adds noise
+    // rather than safety.
+    const before = src.slice(Math.max(0, m.index! - FILTER_LOOKBEHIND), m.index!);
+    if (BOUNDED_BY_FILTER.test(args) || BOUNDED_BY_FILTER.test(before)) continue;
     add('uncapped-read', file, lineOf(src, m.index!), `${table} read with no limit= (inherits the server page ceiling)`);
   }
 
@@ -99,6 +138,13 @@ for (const file of files) {
     if (/head:\s*true/.test(stmt)) continue; // count-only, handled below
     if (/\.(insert|update|upsert|delete)\(/.test(stmt)) continue;
     if (!/\.select\(/.test(stmt)) continue;
+    const above = src.slice(Math.max(0, m.index! - FILTER_LOOKBEHIND), m.index!);
+    if (BOUNDED_BY_FILTER.test(stmt) || BOUNDED_BY_FILTER.test(above)) continue;
+    // A helper that RETURNS a query builder has not run anything - its caller
+    // adds the filters and the limit. Only an executed read is this tool's
+    // business.
+    const line = src.slice(src.lastIndexOf('\n', m.index!) + 1, m.index!);
+    if (/\breturn\b/.test(line) && !/\bawait\b/.test(stmt)) continue;
     add('uncapped-read', file, lineOf(src, m.index!), `${table} select with no .limit()/.range()`);
   }
 }
