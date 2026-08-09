@@ -1,0 +1,1294 @@
+{
+  "run": {
+    "id": "chaos-2026-08-09",
+    "mode": "local",
+    "baseUrl": "http://localhost:3000",
+    "phases": [
+      "recon",
+      "telemetry",
+      "coverage-crawl",
+      "adversarial-static",
+      "live-probe"
+    ],
+    "scales": [
+      "small"
+    ],
+    "startedAt": "2026-08-09T00:00:00Z",
+    "coverage": {
+      "routesVisited": 80,
+      "routesUnreached": [
+        "/admin",
+        "/auth",
+        "/bond",
+        "/brand-kit",
+        "/home-care/book",
+        "/home-care/setup",
+        "/insurance",
+        "/leave-a-review",
+        "/license",
+        "/locations/montclair/bathroom-renovation",
+        "/locations/verona/bathroom-renovation",
+        "/lp/basement-finishing",
+        "/lp/bathroom-renovation",
+        "/lp/kitchen-remodel",
+        "/preferences",
+        "/spring-renovation",
+        "/unsub",
+        "/vaca-mgmt",
+        "/vaca-mgmt/crew",
+        "/vaca-mgmt/emails",
+        "/vaca-mgmt/follow-ups",
+        "/vaca-mgmt/home-care-shop",
+        "/vaca-mgmt/home-records",
+        "/vaca-mgmt/preferences",
+        "/vaca-mgmt/proposals",
+        "/vaca-mgmt/releases",
+        "/vaca-mgmt/send-estimate",
+        "/vaca-mgmt/send-estimate/log",
+        "/vaca-mgmt/send-service-quote"
+      ],
+      "notTested": [
+        "Generated load and N+1 measurement at medium/large scale - the database is production and every table is small (largest ~12k rows), so synthetic load would prove nothing and risk real data. Query-count instrumentation is proposed instead.",
+        "The stochastic monkey - not run, because the only running app instance talks to the production database.",
+        "Actual email delivery from CM-01 - proving it further would mean emailing a real person.",
+        "Anonymous enumeration of intake-photos - inconclusive: the bucket is empty, so the LIST probe could not distinguish RLS from emptiness.",
+        "Coverage crawl DID run (80 routes as anonymous and as admin, both passing). It ran against the STUB build, so database-driven route families (services, locations, blog, projects) render empty there - those paths were spot-checked 200 in production instead, and `npm run test:links` is the live-backend sweep that covers them properly.",
+        "Dead-control detection (clicking every button to find ones that do nothing). The upstream crawler does this; it was removed here because the only available build talks to the production database and a mis-clicked control writes real data. Needs a seeded local stack."
+      ]
+    },
+    "residue": [
+      "No rows written, no emails sent, no files uploaded. Two side-effect-free probes against production: GET /api/health/forms and POST /api/leads/webhook with an empty body (rejected at validation before any write)."
+    ]
+  },
+  "findings": [
+    {
+      "id": "CM-01",
+      "severity": "S1",
+      "title": "Unauthenticated endpoint sends marketing email from your domain to any address",
+      "surface": "POST /api/leads/webhook",
+      "category": "rate-limit",
+      "foundBy": "recon+live probe",
+      "reproducible": "always",
+      "evidence": {
+        "repro": [
+          "curl -X POST https://www.lavacagc.com/api/leads/webhook -H 'Content-Type: application/json' -d '{}'",
+          "Observed: HTTP 400 {\"error\":\"Name and email required\"} - proving the route is public, unauthenticated and processing anonymous input",
+          "A body of {\"name\":\"x\",\"email\":\"victim@example.com\"} would enqueue instant_ack + 24h + 48h + 7d messages"
+        ],
+        "expected": "An endpoint that causes outbound email requires authentication, a rate limit, or a captcha",
+        "actual": "No auth, no rate limit, no captcha, no schema. Only brake is a per-address dedupe that does nothing across distinct addresses.",
+        "impact": "Anyone can send La Vaca-branded email to arbitrary recipients. Burns Resend quota, and sustained abuse degrades sending-domain reputation - which silently breaks deliverability for ALL mail including proposal links and receipts."
+      },
+      "rootCause": "'/api/leads/webhook' is listed in PUBLIC_ROUTES (src/middleware.ts:94) and the route hands the raw body straight to createLeadFollowUpSequence (src/app/api/leads/webhook/route.ts:15) with no validation or throttle.",
+      "remediation": {
+        "approach": "This route exists only for internal callers, and its own docblock says internal callers should import the function directly. Remove it from PUBLIC_ROUTES and require INTERNAL_WEBHOOK_SECRET like /api/notify/*. If an external caller genuinely needs it, keep the secret and add a per-email rate limit.",
+        "files": [
+          "src/middleware.ts",
+          "src/app/api/leads/webhook/route.ts"
+        ],
+        "sketch": "// middleware.ts - delete '/api/leads/webhook' from PUBLIC_ROUTES\n// add to the internal-secret carve-out used by /api/notify/*\nif (pathname.startsWith('/api/leads/webhook') && !verifyInternalSecret(request)) {\n  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });\n}",
+        "alsoApplyTo": [
+          "/api/notify/new-lead",
+          "/api/notify/telegram-lead",
+          "/api/notify/form-error"
+        ],
+        "effort": "S",
+        "risk": "Low. Grep shows no first-party caller: the lead route imports createLeadFollowUpSequence directly."
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "CM-01-A",
+          "type": "negative",
+          "statement": "An anonymous POST to /api/leads/webhook is refused with 401 and enqueues nothing",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/webhook-auth.spec.ts",
+            "grep": "@isolation CM-01",
+            "expect": "401"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-01-B",
+          "type": "positive",
+          "statement": "A POST carrying x-internal-secret still creates the follow-up sequence",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/webhook-auth.spec.ts",
+            "grep": "@isolation CM-01",
+            "expect": "200"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-01-C",
+          "type": "systemic",
+          "statement": "No route that sends email or Telegram is reachable without auth, a captcha or a rate limit",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/spend-paths.spec.ts",
+            "grep": "@isolation spend-paths",
+            "expect": "every outbound-capable public route is gated"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-01-D",
+          "type": "negative",
+          "statement": "follow_up_queue gains no row from the anonymous attempt",
+          "verify": {
+            "kind": "sql",
+            "sql": "select count(*) from follow_up_queue where lead_email = 'chaos-probe@example.invalid'",
+            "expect": "0"
+          },
+          "status": "pending"
+        }
+      ],
+      "regressionTest": {
+        "path": "tests/chaos/regressions/webhook-auth.spec.ts",
+        "tags": [
+          "@isolation",
+          "@smoke"
+        ],
+        "written": false,
+        "failedBeforeFix": false
+      },
+      "status": "open",
+      "attempts": 0,
+      "verifiedAt": null
+    },
+    {
+      "id": "CM-02",
+      "severity": "S2",
+      "title": "A raw POST can forge its own lead score and page you as a HOT lead",
+      "surface": "POST /api/leads/submit",
+      "category": "input-validation",
+      "foundBy": "recon",
+      "reproducible": "always",
+      "evidence": {
+        "repro": [
+          "LeadSubmitSchema ends in .passthrough() (src/app/api/leads/submit/route.ts:100), so unknown keys survive",
+          "sanitizeLeadForInsert accepts 'tier' (leadSanitize.ts:72), 'score' (:86) and 'scoring_reasons' (:88) as writable columns",
+          "route.ts:445 'if (!finalLeadData.score)' skips scoreLead entirely when the caller supplied one"
+        ],
+        "expected": "Lead score and tier are computed server-side from the lead's own content and are not client-writable",
+        "actual": "A body containing {\"score\":100,\"tier\":\"hot\"} is stored verbatim and short-circuits scoring; the Telegram alert then renders 'New HOT Lead' / 'Score: 100/100'",
+        "impact": "The prioritisation signal the owner acts on can be forged by anyone. Also poisons every downstream report that groups by tier, and there is no range check - negative or absurd scores store fine."
+      },
+      "rootCause": "Trust boundary: .passthrough() lets caller-controlled keys reach the sanitizer, and the scoring step treats a caller-supplied score as authoritative.",
+      "remediation": {
+        "approach": "Strip server-owned columns from the request before sanitising, and always score server-side. Do not rely on the schema alone - the sanitizer is the chokepoint.",
+        "files": [
+          "src/app/api/leads/submit/route.ts",
+          "src/lib/leadSanitize.ts"
+        ],
+        "sketch": "const SERVER_OWNED = ['score','tier','scoring_reasons'] as const;\nfor (const k of SERVER_OWNED) delete (leadFields as Record<string, unknown>)[k];\n// then score unconditionally\nconst scoringResult = scoreLead(prepareLeadForScoring(leadFields));",
+        "alsoApplyTo": [
+          "any future server-computed column added to leadSanitize's TEXT_COLUMNS/INTEGER_COLUMNS"
+        ],
+        "effort": "S",
+        "risk": "Low. No form sends these fields today."
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "CM-02-A",
+          "type": "negative",
+          "statement": "A submit carrying score:100/tier:hot stores the server-computed score, not 100",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/lead-score-integrity.spec.ts",
+            "grep": "@isolation CM-02",
+            "expect": "stored score != 100"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-02-B",
+          "type": "positive",
+          "statement": "A normal submission still gets a computed score and tier",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/lead-score-integrity.spec.ts",
+            "grep": "@isolation CM-02",
+            "expect": "score is a number 0-100 and tier in hot|warm|cold"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-02-C",
+          "type": "systemic",
+          "statement": "No server-owned column is writable through the public submit path",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/lead-score-integrity.spec.ts",
+            "grep": "@isolation CM-02",
+            "expect": "every SERVER_OWNED key is stripped before sanitise"
+          },
+          "status": "pending"
+        }
+      ],
+      "regressionTest": {
+        "path": "tests/chaos/regressions/lead-score-integrity.spec.ts",
+        "tags": [
+          "@isolation"
+        ],
+        "written": false,
+        "failedBeforeFix": false
+      },
+      "status": "open",
+      "attempts": 0,
+      "verifiedAt": null
+    },
+    {
+      "id": "CM-03",
+      "severity": "S2",
+      "title": "Rejected submissions alert you - so the rate limit buys an attacker 10 messages a minute",
+      "surface": "POST /api/leads/submit",
+      "category": "amplification",
+      "foundBy": "recon",
+      "reproducible": "always",
+      "evidence": {
+        "repro": [
+          "checkRateLimit runs at route.ts:348, BEFORE the validation checks at :362 (recaptcha) and :375 (contact required)",
+          "Each of those failure paths calls reportFailure (:363, :376, :424) which fires 1 Telegram + 1 Resend (formErrorAlert.ts:83,124)",
+          "One junk key in an otherwise valid body triggers the sanitize warning alert at :495 - another Telegram + Resend"
+        ],
+        "expected": "A rejected request is cheap; alerting is reserved for failures the owner can act on",
+        "actual": "5 deliberately-invalid requests per minute per IP produce ~10 owner notifications per minute per IP",
+        "impact": "An attacker can flood the owner's phone and inbox, and burn Resend quota, at 5 requests a minute - low enough to look like normal traffic. The consent route already solved this exact problem (consent/log/route.ts:48-50 deliberately does not alert on 429/400)."
+      },
+      "rootCause": "Validation failures are treated as system faults worth alerting on, and the alert sits inside the rate-limited path rather than behind its own budget.",
+      "remediation": {
+        "approach": "Do not alert on client-fault rejections (400/429). Alert only on server faults (5xx, DB write failures), and put a separate low ceiling on alerting itself.",
+        "files": [
+          "src/app/api/leads/submit/route.ts",
+          "src/lib/notify/formErrorAlert.ts"
+        ],
+        "sketch": "// mirror consent/log: skip alerting for client-caused rejections\nif (status >= 500) await reportFailure(...);\n// and cap alerts independently of the request limit\nconst alertBudget = await checkRateLimit(`alert:${ip}`, 2, 60*60*1000);",
+        "alsoApplyTo": [
+          "/api/referrals",
+          "/api/newsletter/subscribe",
+          "/api/home-care/subscribe"
+        ],
+        "effort": "S",
+        "risk": "Low, but note the trade-off: genuine misconfiguration that causes mass 400s becomes quieter, so keep a daily digest."
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "CM-03-A",
+          "type": "negative",
+          "statement": "20 invalid submissions produce zero owner alerts",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/alert-amplification.spec.ts",
+            "grep": "@isolation CM-03",
+            "expect": "0 telegram/resend calls"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-03-B",
+          "type": "positive",
+          "statement": "A genuine server-side failure still alerts once",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/alert-amplification.spec.ts",
+            "grep": "@isolation CM-03",
+            "expect": "exactly 1 alert"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-03-C",
+          "type": "systemic",
+          "statement": "No public route fires an owner alert on a 4xx it generated itself",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/alert-amplification.spec.ts",
+            "grep": "@isolation CM-03",
+            "expect": "no alert on any 4xx path"
+          },
+          "status": "pending"
+        }
+      ],
+      "regressionTest": {
+        "path": "tests/chaos/regressions/alert-amplification.spec.ts",
+        "tags": [
+          "@isolation"
+        ],
+        "written": false,
+        "failedBeforeFix": false
+      },
+      "status": "open",
+      "attempts": 0,
+      "verifiedAt": null
+    },
+    {
+      "id": "CM-04",
+      "severity": "S2",
+      "title": "Server-side database role has no statement timeout - one bad query can hold a connection for two minutes",
+      "surface": "database role configuration",
+      "category": "missing-limit",
+      "foundBy": "live SQL",
+      "reproducible": "always",
+      "evidence": {
+        "repro": [
+          "select rolname, rolconfig from pg_roles where rolname in ('anon','authenticated','service_role')"
+        ],
+        "expected": "Every role has a statement timeout short enough that a runaway query cannot exhaust the connection pool",
+        "actual": "anon = 3s, authenticated = 8s, service_role = (none) -> falls back to the database default of 120s",
+        "measured": {
+          "dbTimeMs": 120000
+        },
+        "impact": "Every server-side query in this app runs as service_role (SUPABASE_SECRET_KEY). A single pathological query holds a pooled connection for two minutes; a handful exhausts the pool and takes the whole site down. This is the limit that protects the database from bugs nobody predicted, and it is the one that is missing."
+      },
+      "rootCause": "service_role was never given a rolconfig statement_timeout, so it inherits the 120s database default.",
+      "remediation": {
+        "approach": "Set a statement timeout on service_role. 15s is generous for every query this app legitimately makes (the slowest measured route is far below it) while bounding the damage of a runaway one.",
+        "files": [
+          "supabase/migrations/<new>_service_role_statement_timeout.sql"
+        ],
+        "sketch": "ALTER ROLE service_role SET statement_timeout = '15s';\n-- long-running maintenance jobs that genuinely need more should raise it\n-- per-transaction: SET LOCAL statement_timeout = '60s';",
+        "effort": "S",
+        "risk": "Medium - a cron doing a genuinely long job would now be cut off. Audit the crons first; raise per-transaction where needed.",
+        "limitProposed": {
+          "name": "service_role statement_timeout",
+          "value": "15s",
+          "justification": "Well above every measured query; far below the 120s that lets one query monopolise a connection."
+        }
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "CM-04-A",
+          "type": "negative",
+          "statement": "service_role can no longer run a query longer than the timeout",
+          "verify": {
+            "kind": "sql",
+            "sql": "select rolconfig from pg_roles where rolname='service_role'",
+            "expect": "contains statement_timeout=15s"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-04-B",
+          "type": "positive",
+          "statement": "Every cron route still completes inside the timeout",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/cron-budget.spec.ts",
+            "grep": "@budget CM-04",
+            "expect": "all cron handlers complete"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-04-C",
+          "type": "systemic",
+          "statement": "No role is left without a statement timeout",
+          "verify": {
+            "kind": "sql",
+            "sql": "select rolname from pg_roles where rolname in ('anon','authenticated','service_role','authenticator') and (rolconfig is null or not (array_to_string(rolconfig,',') like '%statement_timeout%'))",
+            "expect": "0 rows"
+          },
+          "status": "pending"
+        }
+      ],
+      "regressionTest": {
+        "path": "tests/chaos/regressions/cron-budget.spec.ts",
+        "tags": [
+          "@budget"
+        ],
+        "written": false,
+        "failedBeforeFix": false
+      },
+      "status": "open",
+      "attempts": 0,
+      "verifiedAt": null
+    },
+    {
+      "id": "CM-05",
+      "severity": "S2",
+      "title": "Capability tokens and customer PII are recorded by third-party analytics",
+      "surface": "/crew/confirm/[token], /intake/[token], /proposal/[token], /preferences?token=",
+      "category": "other",
+      "foundBy": "recon",
+      "reproducible": "always",
+      "evidence": {
+        "repro": [
+          "src/app/layout.tsx:108-128 loads Microsoft Clarity (session recording) and Meta Pixel on EVERY page, gated only on hostname and GPC - no path exclusion",
+          "src/components/Analytics.tsx:21 excludes only /admin, /vaca-mgmt and /auth from GA",
+          "src/app/crew/confirm/[token]/page.tsx renders the customer's name, phone and address"
+        ],
+        "expected": "Pages authenticated by a URL token, and pages showing customer PII, are excluded from session recording and third-party pixels",
+        "actual": "Clarity replays those pages - including the token in the recorded URL - and Meta Pixel receives the URL",
+        "impact": "The token IS the credential: anyone with access to the Clarity account (or a breach of it) can replay the session and reuse a live token. Customer address and phone are exported to Microsoft and Meta without consent, which is also a privacy-policy and GPC-compliance problem. NOTE: the proposal-page case was previously accepted as a known risk; the crew-confirm page (address + phone) and intake (lead PII) extend beyond what was accepted."
+      },
+      "rootCause": "Analytics is mounted globally in the root layout with an exclusion list that predates the token-authenticated surfaces.",
+      "remediation": {
+        "approach": "Move the exclusion decision into one shared predicate used by BOTH the layout scripts and Analytics.tsx, and add every token-authenticated path to it.",
+        "files": [
+          "src/app/layout.tsx",
+          "src/components/Analytics.tsx",
+          "src/lib/analytics/excluded.ts (new)"
+        ],
+        "sketch": "export const ANALYTICS_EXCLUDED = [/^\\/admin/,/^\\/vaca-mgmt/,/^\\/auth/,/^\\/proposal\\//,/^\\/intake\\//,/^\\/crew\\//,/^\\/preferences/];\nexport const isAnalyticsExcluded = (p: string) => ANALYTICS_EXCLUDED.some(rx => rx.test(p));\n// layout: render the Clarity/Pixel <Script> only when !isAnalyticsExcluded(pathname)",
+        "alsoApplyTo": [
+          "any future token-authenticated route"
+        ],
+        "effort": "M",
+        "risk": "Low. Losing analytics on these pages is the intent."
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "CM-05-A",
+          "type": "negative",
+          "statement": "No Clarity or Meta Pixel request is made from a token-authenticated page",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/analytics-exclusion.spec.ts",
+            "grep": "@isolation CM-05",
+            "expect": "zero requests to clarity.ms or facebook.net"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-05-B",
+          "type": "positive",
+          "statement": "Analytics still loads on ordinary marketing pages",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/analytics-exclusion.spec.ts",
+            "grep": "@isolation CM-05",
+            "expect": "clarity script present on /"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-05-C",
+          "type": "systemic",
+          "statement": "Every route segment carrying a [token] param is in the exclusion list",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/analytics-exclusion.spec.ts",
+            "grep": "@isolation CM-05",
+            "expect": "each token route matches isAnalyticsExcluded"
+          },
+          "status": "pending"
+        }
+      ],
+      "regressionTest": {
+        "path": "tests/chaos/regressions/analytics-exclusion.spec.ts",
+        "tags": [
+          "@isolation",
+          "@smoke"
+        ],
+        "written": false,
+        "failedBeforeFix": false
+      },
+      "status": "open",
+      "attempts": 0,
+      "verifiedAt": null
+    },
+    {
+      "id": "CM-06",
+      "severity": "S2",
+      "title": "Rate limiter fails open, so every limit disappears exactly when the database is struggling",
+      "surface": "src/lib/rateLimit.ts",
+      "category": "rate-limit",
+      "foundBy": "recon",
+      "reproducible": "always",
+      "evidence": {
+        "repro": [
+          "rateLimit.ts:136 missing key/URL -> {allowed:true}",
+          "rateLimit.ts:151 any query error -> {allowed:true}",
+          "rateLimit.ts:194 any exception -> {allowed:true}"
+        ],
+        "expected": "A limiter that cannot check its budget makes a deliberate, observable decision",
+        "actual": "It silently allows, with only a console.error",
+        "impact": "Every endpoint whose sole protection is a rate limit becomes unprotected during a database incident. It is also a feedback loop: load slows the DB, the limiter's own query errors, the limiter opens, and the load is admitted at full rate. Compounds CM-03 (alert flooding) and CM-08 (ungated referrals)."
+      },
+      "rootCause": "Availability was chosen over protection, silently and without an alarm.",
+      "remediation": {
+        "approach": "Keep failing open for genuine outages - refusing real customers is worse - but make it loud and bounded: count the failures, alert once per window, and fail CLOSED for the endpoints whose abuse is expensive (anything that sends email or spends money).",
+        "files": [
+          "src/lib/rateLimit.ts"
+        ],
+        "sketch": "export async function checkRateLimit(bucket, limit, windowMs, options) {\n  // ...\n  if (error) {\n    void noteLimiterDegraded(bucket);           // alert once per window\n    return { allowed: options.failClosed !== true, degraded: true };\n  }\n}\n// callers that spend money pass failClosed: true",
+        "alsoApplyTo": [
+          "/api/leads/submit",
+          "/api/home-care/subscribe",
+          "/api/home-care/login",
+          "/api/proposal/[token]/submit",
+          "/api/intake/[token]/message"
+        ],
+        "effort": "M",
+        "risk": "Medium - failing closed can reject legitimate traffic during an outage, which is why only the spend paths get it."
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "CM-06-A",
+          "type": "negative",
+          "statement": "With the limiter's backing store erroring, a spend-path request is refused",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/rate-limit-degraded.spec.ts",
+            "grep": "@isolation CM-06",
+            "expect": "429"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-06-B",
+          "type": "positive",
+          "statement": "With the store healthy, traffic under the limit still passes",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/rate-limit-degraded.spec.ts",
+            "grep": "@isolation CM-06",
+            "expect": "200"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-06-C",
+          "type": "systemic",
+          "statement": "Every limiter fail-open path emits a degraded signal",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/rate-limit-degraded.spec.ts",
+            "grep": "@isolation CM-06",
+            "expect": "degraded:true on all three branches"
+          },
+          "status": "pending"
+        }
+      ],
+      "regressionTest": {
+        "path": "tests/chaos/regressions/rate-limit-degraded.spec.ts",
+        "tags": [
+          "@isolation"
+        ],
+        "written": false,
+        "failedBeforeFix": false
+      },
+      "status": "open",
+      "attempts": 0,
+      "verifiedAt": null
+    },
+    {
+      "id": "CM-07",
+      "severity": "S2",
+      "title": "Member release email silently drops everyone past the thousandth recipient",
+      "surface": "POST /api/admin/releases/send",
+      "category": "missing-limit",
+      "foundBy": "recon",
+      "reproducible": "always",
+      "evidence": {
+        "repro": [
+          "releases/send/route.ts:158-160 reads homeowners?status=eq.active with NO limit= clause",
+          "RECIPIENT_CAP = 1000 (:40); recipients = homeowners.slice(0, 1000) (:162)",
+          "truncated = homeowners.length - recipients.length (:163)"
+        ],
+        "expected": "If more members exist than can be mailed in one run, the admin is told",
+        "actual": "PostgREST applies its own default row ceiling to an uncapped request, so homeowners.length can never exceed the cap the code slices at. truncated is therefore structurally always 0.",
+        "impact": "Past the ceiling, members silently never receive the release and the UI reports zero truncation. Latent today (4 active members) and certain at scale. The guard the author wrote cannot fire.",
+        "invariantBroken": "A truncation counter must be computed from a total the caller controls, never from a page the server sized."
+      },
+      "rootCause": "The row cap is implicit (PostgREST's default) rather than explicit, so the code cannot distinguish 'exactly 1000' from 'at least 1000'.",
+      "remediation": {
+        "approach": "Ask for one more row than the cap so truncation is detectable, or read an exact count. Then either mail in batches or report honestly.",
+        "files": [
+          "src/app/api/admin/releases/send/route.ts"
+        ],
+        "sketch": "const rows = await supabaseRest<HomeownerRow[]>('GET',\n  `homeowners?select=...&status=eq.active&limit=${RECIPIENT_CAP + 1}`);\nconst truncated = Math.max(0, rows.length - RECIPIENT_CAP);\nconst recipients = rows.slice(0, RECIPIENT_CAP);",
+        "alsoApplyTo": [
+          "every uncapped read listed in chaos/recon-queries.md - the same implicit-ceiling trap"
+        ],
+        "effort": "S",
+        "risk": "Low."
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "CM-07-A",
+          "type": "negative",
+          "statement": "With more active members than the cap, truncated is greater than zero",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/release-truncation.spec.ts",
+            "grep": "@budget CM-07",
+            "expect": "truncated > 0"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-07-B",
+          "type": "positive",
+          "statement": "With fewer members than the cap, all are mailed and truncated is 0",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/release-truncation.spec.ts",
+            "grep": "@budget CM-07",
+            "expect": "truncated == 0"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-07-C",
+          "type": "systemic",
+          "statement": "No query relies on the server's implicit row ceiling: every read that feeds a count or a cap sets limit= explicitly",
+          "verify": {
+            "kind": "command",
+            "command": "npm run chaos:lint:uncapped",
+            "expect": "exit 0"
+          },
+          "status": "pending"
+        }
+      ],
+      "regressionTest": {
+        "path": "tests/chaos/regressions/release-truncation.spec.ts",
+        "tags": [
+          "@budget"
+        ],
+        "written": false,
+        "failedBeforeFix": false
+      },
+      "status": "open",
+      "attempts": 0,
+      "verifiedAt": null
+    },
+    {
+      "id": "CM-08",
+      "severity": "S2",
+      "title": "Referral form endpoint is completely ungated",
+      "surface": "POST /api/referrals",
+      "category": "rate-limit",
+      "foundBy": "recon",
+      "reproducible": "always",
+      "evidence": {
+        "repro": [
+          "middleware.ts:99 lists /api/referrals as public",
+          "referrals/route.ts contains no checkRateLimit, no reCAPTCHA verification and no honeypot",
+          "request.json() at :6 has no body-size cap",
+          "the insert at :67 writes straight to the referrals table"
+        ],
+        "expected": "A public write endpoint has at least one of: captcha, rate limit, honeypot",
+        "actual": "It has none, and no length caps on names or message - the browser's maxLength attributes are the only bound that exists",
+        "impact": "Anyone can write unlimited rows, of unlimited size, into a production table the owner is expected to act on. The referral pipeline becomes untrustworthy and the table becomes a storage cost."
+      },
+      "rootCause": "The route predates the hardening applied to /api/leads/submit and never received it.",
+      "remediation": {
+        "approach": "Apply the pattern /api/home-care/subscribe already uses: body cap, honeypot, per-IP rate limit, reCAPTCHA, and server-side length caps.",
+        "files": [
+          "src/app/api/referrals/route.ts",
+          "src/components/ReferralForm.tsx"
+        ],
+        "sketch": "const body = await readJsonCapped(request, MAX_BODY_BYTES);\nif (body.website) return NextResponse.json({ success: true });   // honeypot\nconst rl = await checkRateLimit(`referrals:${ip}`, 5, 60_000);\nif (!rl.allowed) return NextResponse.json({ error: 'Too many' }, { status: 429 });\nconst parsed = ReferralSchema.parse(body);   // with .max() on every string",
+        "alsoApplyTo": [
+          "/api/newsletter/subscribe (no max length on email)"
+        ],
+        "effort": "M",
+        "risk": "Low, but the form must send the honeypot field and surface a 429 politely."
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "CM-08-A",
+          "type": "negative",
+          "statement": "The 6th referral in a minute from one IP is refused with 429",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/referrals-gated.spec.ts",
+            "grep": "@isolation CM-08",
+            "expect": "429"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-08-B",
+          "type": "negative",
+          "statement": "A 1MB referral body is refused rather than stored",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/referrals-gated.spec.ts",
+            "grep": "@isolation CM-08",
+            "expect": "413 or 400"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-08-C",
+          "type": "positive",
+          "statement": "A normal referral from the form still succeeds",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/referrals-gated.spec.ts",
+            "grep": "@isolation CM-08",
+            "expect": "200 and one row"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-08-D",
+          "type": "systemic",
+          "statement": "Every public write endpoint has a captcha, a rate limit or a honeypot",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/spend-paths.spec.ts",
+            "grep": "@isolation spend-paths",
+            "expect": "no ungated public write route"
+          },
+          "status": "pending"
+        }
+      ],
+      "regressionTest": {
+        "path": "tests/chaos/regressions/referrals-gated.spec.ts",
+        "tags": [
+          "@isolation"
+        ],
+        "written": false,
+        "failedBeforeFix": false
+      },
+      "status": "open",
+      "attempts": 0,
+      "verifiedAt": null
+    },
+    {
+      "id": "CM-09",
+      "severity": "S2",
+      "title": "Server accepts data every browser form rejects, including unvalidated email",
+      "surface": "POST /api/leads/submit",
+      "category": "input-validation",
+      "foundBy": "recon",
+      "reproducible": "always",
+      "evidence": {
+        "repro": [
+          "email: optStr(320) with NO format check (route.ts:72) while all six forms enforce z.string().email() or a regex",
+          "phone optStr(60), zip optStr(20), first/last name optStr(200), city optStr(200) - no server regex against client rules at ContactForm.tsx:44,49,58 and EstimateForm.tsx:52,67,76,80",
+          "/api/home-care/subscribe already does it right: z.string().email().max(320)"
+        ],
+        "expected": "The server is at least as strict as the browser, because the browser is not a security control",
+        "actual": "The client is stricter on email format, phone shape, ZIP shape, name charset and length caps",
+        "impact": "A direct POST stores unusable contact data. The email case is the worst: garbage passes the schema, the lead row is created, and then createLeadFollowUpSequence refuses to send (leadFollowUp.ts:122) - so the customer gets no acknowledgement and the only trace is a log line. That is silent lead damage, the failure class this project already has history with."
+      },
+      "rootCause": "The submit schema was written to be maximally forgiving (optStr truncates rather than rejects) so a lead is never lost, and format checking was never added back at the layer that could reject safely.",
+      "remediation": {
+        "approach": "Keep the forgiving posture for optional fields, but validate the two that decide whether the lead is contactable at all. Reject an unparseable email outright rather than storing a lead that can never be answered.",
+        "files": [
+          "src/app/api/leads/submit/route.ts"
+        ],
+        "sketch": "email: z.string().trim().max(320).email().nullish(),\nphone: z.string().trim().max(60).regex(PHONE_RE).nullish(),\nzip_code: z.string().trim().max(20).regex(/^\\d{5}(-\\d{4})?$/).nullish(),",
+        "alsoApplyTo": [
+          "/api/referrals",
+          "/api/newsletter/subscribe"
+        ],
+        "effort": "M",
+        "risk": "Medium - tightening a lead intake path can reject real submissions. Ship behind a log-only mode first: record what WOULD have been rejected for a week before enforcing."
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "CM-09-A",
+          "type": "negative",
+          "statement": "A submit with email 'not-an-email' is refused and writes no lead row",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/lead-validation-parity.spec.ts",
+            "grep": "@isolation CM-09",
+            "expect": "400, 0 rows"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-09-B",
+          "type": "positive",
+          "statement": "Every payload the six browser forms can legitimately produce is still accepted",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/lead-validation-parity.spec.ts",
+            "grep": "@isolation CM-09",
+            "expect": "200 for all form fixtures"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-09-C",
+          "type": "systemic",
+          "statement": "For each field, the server rule is at least as strict as the strictest client rule",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/lead-validation-parity.spec.ts",
+            "grep": "@isolation CM-09",
+            "expect": "no field where client is stricter"
+          },
+          "status": "pending"
+        }
+      ],
+      "regressionTest": {
+        "path": "tests/chaos/regressions/lead-validation-parity.spec.ts",
+        "tags": [
+          "@isolation"
+        ],
+        "written": false,
+        "failedBeforeFix": false
+      },
+      "status": "open",
+      "attempts": 0,
+      "verifiedAt": null
+    },
+    {
+      "id": "CM-10",
+      "severity": "S2",
+      "title": "Customer intake photos are stored in a world-readable bucket",
+      "surface": "storage bucket intake-photos",
+      "category": "file-upload",
+      "foundBy": "live SQL",
+      "reproducible": "always",
+      "evidence": {
+        "repro": [
+          "select id, public from storage.buckets -> intake-photos public = true",
+          "photo/route.ts:119 uses getPublicUrl, so the stored URL never expires",
+          "object path is `${session.id}/${Date.now()}-${name}` - the session UUID makes an individual URL unguessable"
+        ],
+        "expected": "Photos of the inside of a customer's home are served through signed, expiring URLs",
+        "actual": "The bucket is public; URLs are permanent and require no authentication once known",
+        "impact": "LATENT TODAY - the bucket currently holds zero objects, so nothing is exposed yet. The moment intake photos are used, every uploaded photo becomes permanently world-readable to anyone who obtains the URL, and CM-05 actively exports URLs to third-party analytics.",
+        "measured": {
+          "rowsReturned": 0
+        }
+      },
+      "rootCause": "The bucket was created with public = true and the upload path uses getPublicUrl rather than a signed URL.",
+      "remediation": {
+        "approach": "Flip the bucket private, add an owner-scoped RLS policy, and serve through createSignedUrl with a short expiry. Do it before the intake photo flow carries real customers.",
+        "files": [
+          "supabase/migrations/<new>_intake_photos_private.sql",
+          "src/app/api/intake/[token]/photo/route.ts"
+        ],
+        "sketch": "update storage.buckets set public = false where id = 'intake-photos';\n-- read policy: only the service role, since the app proxies reads\n// route: const { data } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 60);",
+        "alsoApplyTo": [
+          "compliance-documents (public, 3 objects - confirm this is intended)"
+        ],
+        "effort": "M",
+        "risk": "Low while the bucket is empty - this is the cheapest moment to fix it."
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "CM-10-A",
+          "type": "negative",
+          "statement": "The bucket is not public",
+          "verify": {
+            "kind": "sql",
+            "sql": "select public from storage.buckets where id='intake-photos'",
+            "expect": "false"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-10-B",
+          "type": "negative",
+          "statement": "An unauthenticated GET of a known object path is refused",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/intake-photo-privacy.spec.ts",
+            "grep": "@isolation CM-10",
+            "expect": "400 or 403"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-10-C",
+          "type": "positive",
+          "statement": "The intake session that uploaded a photo can still display it",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/intake-photo-privacy.spec.ts",
+            "grep": "@isolation CM-10",
+            "expect": "signed URL resolves 200"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-10-D",
+          "type": "systemic",
+          "statement": "No bucket holding customer-supplied private content is public",
+          "verify": {
+            "kind": "sql",
+            "sql": "select id from storage.buckets where public = true and id in ('intake-photos','calculator-pdfs','compliance-documents')",
+            "expect": "no bucket containing customer PII"
+          },
+          "status": "pending"
+        }
+      ],
+      "regressionTest": {
+        "path": "tests/chaos/regressions/intake-photo-privacy.spec.ts",
+        "tags": [
+          "@isolation"
+        ],
+        "written": false,
+        "failedBeforeFix": false
+      },
+      "status": "open",
+      "attempts": 0,
+      "verifiedAt": null
+    },
+    {
+      "id": "CM-11",
+      "severity": "S3",
+      "title": "Public endpoint discloses which secrets are configured",
+      "surface": "GET /api/health/forms",
+      "category": "error-handling",
+      "foundBy": "live probe",
+      "reproducible": "always",
+      "evidence": {
+        "repro": [
+          "curl https://www.lavacagc.com/api/health/forms -> HTTP 200 with the full env inventory"
+        ],
+        "expected": "A diagnostics endpoint requires a key",
+        "actual": "The guard is `if (diagKey) { ... }` (health/forms/route.ts:15-21) - when DIAGNOSTICS_KEY is unset the check is skipped entirely. It is unset in production.",
+        "impact": "No secret values leak, so this is not a credential breach. What leaks is a reconnaissance map: internal env var names, their roles, and which protections are absent - it tells an attacker where to push."
+      },
+      "rootCause": "The guard fails open when its own key is missing.",
+      "remediation": {
+        "approach": "Fail closed: no key configured means the endpoint is unavailable, not unprotected.",
+        "files": [
+          "src/app/api/health/forms/route.ts"
+        ],
+        "sketch": "const diagKey = process.env.DIAGNOSTICS_KEY;\nif (!diagKey) return NextResponse.json({ error: 'not available' }, { status: 404 });\nif (request.nextUrl.searchParams.get('key') !== diagKey) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });",
+        "alsoApplyTo": [
+          "any other endpoint guarded by an optional env var"
+        ],
+        "effort": "S",
+        "risk": "Low. Set DIAGNOSTICS_KEY in Vercel at the same time or the endpoint goes dark."
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "CM-11-A",
+          "type": "negative",
+          "statement": "With no DIAGNOSTICS_KEY set, the endpoint returns 404 and no env data",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/health-forms-guard.spec.ts",
+            "grep": "@smoke CM-11",
+            "expect": "404, body has no 'env' key"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-11-B",
+          "type": "positive",
+          "statement": "With the key set and supplied, the report still renders",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/health-forms-guard.spec.ts",
+            "grep": "@smoke CM-11",
+            "expect": "200 with env"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-11-C",
+          "type": "systemic",
+          "statement": "No route treats a missing guard secret as permission to proceed",
+          "verify": {
+            "kind": "command",
+            "command": "grep -rn 'if (.*Key) {' src/app/api | grep -v 'return'",
+            "expect": "no fail-open guard remains"
+          },
+          "status": "pending"
+        }
+      ],
+      "regressionTest": {
+        "path": "tests/chaos/regressions/health-forms-guard.spec.ts",
+        "tags": [
+          "@smoke"
+        ],
+        "written": false,
+        "failedBeforeFix": false
+      },
+      "status": "open",
+      "attempts": 0,
+      "verifiedAt": null
+    },
+    {
+      "id": "CM-12",
+      "severity": "S3",
+      "title": "Every lead sends you two owner emails and assesses the same captcha token twice",
+      "surface": "ContactForm, EstimateForm, HomeEstimateForm",
+      "category": "other",
+      "foundBy": "recon",
+      "reproducible": "always",
+      "evidence": {
+        "repro": [
+          "ContactForm.tsx:276, EstimateForm.tsx:358, HomeEstimateForm.tsx:296 all invoke the send-lead-notification edge function from the browser",
+          "src/app/api/leads/submit/route.ts:585 ALSO sends sendNewLeadEmail server-side for the same lead"
+        ],
+        "expected": "One lead, one owner notification",
+        "actual": "Two owner emails per lead from those three forms, plus the same reCAPTCHA token submitted for a second assessment",
+        "impact": "Doubles Resend spend on the highest-volume path, doubles inbox noise on the notification the owner actually reads, and wastes reCAPTCHA Enterprise assessments. Live today on every real lead, not latent."
+      },
+      "rootCause": "The server-side notification was added later and the browser-side edge-function call was never removed.",
+      "remediation": {
+        "approach": "Delete the browser-side invoke. The server path is strictly better: it cannot be skipped by a direct caller, and it already handles failures.",
+        "files": [
+          "src/components/ContactForm.tsx",
+          "src/components/EstimateForm.tsx",
+          "src/components/HomeEstimateForm.tsx"
+        ],
+        "sketch": "// remove the supabase.functions.invoke('send-lead-notification', ...) block\n// the server already notified in /api/leads/submit",
+        "alsoApplyTo": [
+          "the deployed send-lead-notification edge function, which can then be undeployed"
+        ],
+        "effort": "S",
+        "risk": "Low - verify the server path notifies for every one of the three forms before deleting."
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "CM-12-A",
+          "type": "negative",
+          "statement": "Submitting the contact form triggers exactly one owner notification",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/single-owner-alert.spec.ts",
+            "grep": "@flow CM-12",
+            "expect": "1 notification"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-12-B",
+          "type": "positive",
+          "statement": "The owner notification still contains the lead's details",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/single-owner-alert.spec.ts",
+            "grep": "@flow CM-12",
+            "expect": "name and contact present"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-12-C",
+          "type": "systemic",
+          "statement": "No browser component invokes send-lead-notification",
+          "verify": {
+            "kind": "command",
+            "command": "grep -rn \"send-lead-notification\" src/",
+            "expect": "no matches"
+          },
+          "status": "pending"
+        }
+      ],
+      "regressionTest": {
+        "path": "tests/chaos/regressions/single-owner-alert.spec.ts",
+        "tags": [
+          "@flow"
+        ],
+        "written": false,
+        "failedBeforeFix": false
+      },
+      "status": "open",
+      "attempts": 0,
+      "verifiedAt": null
+    },
+    {
+      "id": "CM-13",
+      "severity": "S3",
+      "title": "An oversized number in a submission destroys the lead with a 500",
+      "surface": "POST /api/leads/submit",
+      "category": "input-validation",
+      "foundBy": "recon",
+      "reproducible": "always",
+      "evidence": {
+        "repro": [
+          "square_footage and visit_count are absent from LeadSubmitSchema, so they ride .passthrough() uncapped",
+          "leadSanitize.ts:131 Math.trunc accepts 9e99 because Number.isFinite(9e99) is true",
+          "PostgREST rejects the value for an int4 column, insertLead errors, route.ts:459-473 returns 500 and the submission is gone"
+        ],
+        "expected": "A bad number is clamped or rejected with a 400; the lead is never lost",
+        "actual": "The lead is lost with a 500 - the exact failure mode the sanitizer was written to prevent",
+        "impact": "A real customer filling in an implausible square footage loses their enquiry entirely, and the owner never learns it existed."
+      },
+      "rootCause": "Integer columns are trusted to be in range because Number.isFinite passed, without checking int4 bounds.",
+      "remediation": {
+        "approach": "Clamp integer columns to the column's real range in the sanitizer, and give the known numeric fields explicit schema bounds.",
+        "files": [
+          "src/lib/leadSanitize.ts",
+          "src/app/api/leads/submit/route.ts"
+        ],
+        "sketch": "const INT4_MAX = 2147483647;\nconst n = Math.trunc(value);\nif (!Number.isSafeInteger(n) || Math.abs(n) > INT4_MAX) { adjustments.push(`${key}: out of range, dropped`); continue; }\n// schema: square_footage: z.number().int().min(0).max(1_000_000).nullish()",
+        "alsoApplyTo": [
+          "visit_count",
+          "price_anchor_shown",
+          "score"
+        ],
+        "effort": "S",
+        "risk": "Low."
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "CM-13-A",
+          "type": "negative",
+          "statement": "A submission with square_footage 9e99 still creates the lead",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/lead-numeric-bounds.spec.ts",
+            "grep": "@isolation CM-13",
+            "expect": "200 and a lead row"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-13-B",
+          "type": "positive",
+          "statement": "A normal square_footage is stored unchanged",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/lead-numeric-bounds.spec.ts",
+            "grep": "@isolation CM-13",
+            "expect": "value preserved"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-13-C",
+          "type": "systemic",
+          "statement": "No integer column can be written a value outside its range",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/lead-numeric-bounds.spec.ts",
+            "grep": "@isolation CM-13",
+            "expect": "all INTEGER_COLUMNS clamped"
+          },
+          "status": "pending"
+        }
+      ],
+      "regressionTest": {
+        "path": "tests/chaos/regressions/lead-numeric-bounds.spec.ts",
+        "tags": [
+          "@isolation"
+        ],
+        "written": false,
+        "failedBeforeFix": false
+      },
+      "status": "open",
+      "attempts": 0,
+      "verifiedAt": null
+    },
+    {
+      "id": "CM-14",
+      "severity": "S3",
+      "title": "Reads that grow with the business have no row cap",
+      "surface": "~45 call sites; see chaos/recon-queries.md",
+      "category": "missing-limit",
+      "foundBy": "recon",
+      "reproducible": "always",
+      "evidence": {
+        "repro": [
+          "ConversionDashboard.tsx:110 reads leads with no .limit()",
+          "admin/dashboard/route.ts:38 reads a 30-day email_log slice with no cap, plus three exact counts",
+          "admin/follow-ups/route.ts:39 selects * from follow_up_queue where each row carries full rendered email HTML",
+          "portfolio/page.tsx:92 and ProjectGallery.tsx:121 issue one project_images query per project"
+        ],
+        "expected": "Query count stays flat as row count grows, and every read of a growing table states its ceiling",
+        "actual": "Roughly 45 reads have no explicit cap and silently inherit the server's ceiling; several loops issue one query per row",
+        "impact": "LATENT. Today the largest table is ~12k rows and the rest are in the hundreds, so nothing is slow and no load test would show anything. After launch these become slow pages, truncated dashboards that silently under-report, and - combined with CM-04's missing statement timeout - a route that can hold connections long enough to affect the whole site.",
+        "measured": {
+          "scale": "small",
+          "rowsReturned": 12059
+        }
+      },
+      "rootCause": "PostgREST returns a bounded page by default, so an uncapped read looks correct in every test written against small data.",
+      "remediation": {
+        "approach": "Treat it as one class, not 45 bugs. Add an explicit cap to every read of a growing table, make the cap visible in the response so truncation is never silent, and add a lint that fails the build on a new uncapped read.",
+        "files": [
+          "src/lib/notify/supabase-rest.ts",
+          "src/components/admin/ConversionDashboard.tsx",
+          "src/app/api/admin/dashboard/route.ts",
+          "src/app/api/admin/follow-ups/route.ts",
+          "scripts/lint-uncapped-reads.ts (new)"
+        ],
+        "sketch": "// make the ceiling explicit and detectable in the shared helper\nexport async function supabaseRestPage<T>(path: string, cap: number) {\n  const rows = await supabaseRest<T[]>('GET', `${path}&limit=${cap + 1}`);\n  return { rows: rows.slice(0, cap), truncated: rows.length > cap };\n}",
+        "alsoApplyTo": [
+          "every row in the uncapped-reads table in chaos/recon-queries.md"
+        ],
+        "effort": "L",
+        "risk": "Low per site, but there are many; do the growing tables first (leads, email_log, follow_up_queue, homeowners, seo_metrics)."
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "CM-14-A",
+          "type": "budget",
+          "statement": "Query count for each instrumented route does not grow as rows grow",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/budgets.spec.ts",
+            "grep": "@budget CM-14",
+            "expect": "maxQueriesGrowthRatio <= 1.2 between small and large"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-14-B",
+          "type": "positive",
+          "statement": "Every list view still shows its data at small scale",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/list-views.spec.ts",
+            "grep": "@flow CM-14",
+            "expect": "rows rendered"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-14-C",
+          "type": "systemic",
+          "statement": "A newly added uncapped read of a growing table fails the build",
+          "verify": {
+            "kind": "command",
+            "command": "npm run chaos:lint:uncapped",
+            "expect": "exit 0"
+          },
+          "status": "pending"
+        },
+        {
+          "id": "CM-14-D",
+          "type": "negative",
+          "statement": "A truncated list reports truncation rather than showing a silently short list",
+          "verify": {
+            "kind": "test",
+            "path": "tests/chaos/regressions/list-views.spec.ts",
+            "grep": "@flow CM-14",
+            "expect": "truncated flag surfaced"
+          },
+          "status": "pending"
+        }
+      ],
+      "regressionTest": {
+        "path": "tests/chaos/budgets.spec.ts",
+        "tags": [
+          "@budget",
+          "@nightly"
+        ],
+        "written": false,
+        "failedBeforeFix": false
+      },
+      "status": "open",
+      "attempts": 0,
+      "verifiedAt": null
+    }
+  ],
+  "unverified": [
+    {
+      "note": "homeowners.access_token never expires and is never rotated; it buys a 30-day session that can book paid work at the member's address.",
+      "why": "Reported by source recon; the lifecycle claim is sound from the code but no probe was run against a live member token, and doing so would touch a real customer's account."
+    },
+    {
+      "note": "The intake session token has no expiry column and no revocation check.",
+      "why": "Source-confirmed by recon; not probed, because a live intake token belongs to a real lead."
+    },
+    {
+      "note": "/api/crew/confirm is deliberately unthrottled and PATCHes dispatch state.",
+      "why": "Documented as intentional in the route; brute-force resistance rests entirely on token entropy, which was not independently measured."
+    },
+    {
+      "note": "An unauthenticated read of seo_metrics returned 2 rows, implying a public RLS policy on that table.",
+      "why": "Observed while testing something else; not investigated. Worth a look - it may be intentional."
+    }
+  ]
+}

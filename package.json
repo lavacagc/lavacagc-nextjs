@@ -22,7 +22,14 @@
     "perf": "node scripts/perf-run.mjs",
     "audit": "ts-node scripts/site-audit.ts",
     "audit:prod": "SITE_URL=https://www.lavacagc.com ts-node scripts/site-audit.ts",
-    "prepare": "husky"
+    "prepare": "husky",
+    "chaos:static": "ts-node scripts/chaos-static.ts",
+    "chaos:static:baseline": "ts-node scripts/chaos-static.ts --baseline",
+    "chaos:crawl": "E2E_STUB_BACKEND=1 playwright test tests/chaos/crawler.spec.ts --project=chromium",
+    "chaos:smoke": "E2E_STUB_BACKEND=1 playwright test --project=chromium --grep @smoke",
+    "chaos:isolation": "E2E_STUB_BACKEND=1 playwright test --project=chromium --grep @isolation",
+    "chaos:budget": "E2E_STUB_BACKEND=1 playwright test --project=chromium --grep @budget",
+    "chaos:regressions": "E2E_STUB_BACKEND=1 playwright test tests/chaos/regressions --project=chromium"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

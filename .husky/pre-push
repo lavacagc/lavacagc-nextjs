@@ -63,7 +63,7 @@ done
 [ "$PUSHING_CODE" = "1" ] || exit 0
 
 # --- 1/4 TypeScript ---------------------------------------------------------
-echo "pre-push [1/4] TypeScript type check (tsc --noEmit)..."
+echo "pre-push [1/5] TypeScript type check (tsc --noEmit)..."
 # tsc reads .next/types/, which only `next build` writes - and a FAILED build
 # leaves stale files there referencing routes that no longer exist, breaking
 # tsc with a phantom error. Reset to exactly what CI stubs before its
@@ -71,9 +71,22 @@ echo "pre-push [1/4] TypeScript type check (tsc --noEmit)..."
 rm -rf .next/types
 mkdir -p .next/types
 touch .next/types/routes.d.ts
-npm run typecheck || fail "TypeScript found type errors (step 1/4)."
+npm run typecheck || fail "TypeScript found type errors (step 1/5)."
 
-# --- 2/4 ESLint on the pushed files only ------------------------------------
+# --- 2/5 Chaos static checks ------------------------------------------------
+# Structural invariants distilled from the chaos-monkey run (chaos/findings.json):
+# uncapped reads of growing tables, guards that fail open when their own secret
+# is missing, analytics mounted on token-authenticated pages, duplicated owner
+# alerts, and public routes that can send outbound with nothing in front of them.
+#
+# RATCHET, not a wall. Known violations are recorded in chaos/static-baseline.json
+# and do not block; only NEW ones do. That baseline is a debt register - shrink it
+# with `npm run chaos:static:baseline` as findings close, never grow it silently.
+# Costs about a second, which is why it lives here rather than in CI.
+echo "pre-push [2/5] Chaos static checks (new-violation ratchet)..."
+npm run chaos:static || fail "a NEW structural violation was introduced (step 2/5). See the list above; chaos/findings.json explains each class."
+
+# --- 3/5 ESLint on the pushed files only ------------------------------------
 sort -u "$LINT_LIST" >"$LINT_LIST.sorted"
 # A file can be renamed/deleted after the pushed commit on an unusual push;
 # lint only paths that exist in the working tree.
@@ -83,19 +96,19 @@ while read -r f; do
 done <"$LINT_LIST.sorted"
 
 if [ -s "$LINT_LIST" ]; then
-  echo "pre-push [2/4] ESLint on $(wc -l <"$LINT_LIST" | tr -d ' ') changed file(s)..."
-  tr '\n' '\0' <"$LINT_LIST" | xargs -0 eslint --max-warnings 0 || fail "ESLint found problems in the files you are pushing (step 2/4)."
+  echo "pre-push [3/5] ESLint on $(wc -l <"$LINT_LIST" | tr -d ' ') changed file(s)..."
+  tr '\n' '\0' <"$LINT_LIST" | xargs -0 eslint --max-warnings 0 || fail "ESLint found problems in the files you are pushing (step 3/5)."
 else
-  echo "pre-push [2/4] ESLint: no JS/TS files changed in this push - skipped."
+  echo "pre-push [3/5] ESLint: no JS/TS files changed in this push - skipped."
 fi
 
-# --- 3/4 Production build ---------------------------------------------------
-echo "pre-push [3/4] Production build (next build, stub env - a few minutes)..."
-npm run test:build || fail "the production build failed (step 3/4)."
+# --- 4/5 Production build ---------------------------------------------------
+echo "pre-push [4/5] Production build (next build, stub env - a few minutes)..."
+npm run test:build || fail "the production build failed (step 4/5)."
 
-# --- 4/4 Playwright smoke ---------------------------------------------------
-echo "pre-push [4/4] Playwright smoke tests (critical path)..."
-npm run test:smoke || fail "smoke tests failed (step 4/4). Report: npm run test:report"
+# --- 5/5 Playwright smoke ---------------------------------------------------
+echo "pre-push [5/5] Playwright smoke tests (critical path)..."
+npm run test:smoke || fail "smoke tests failed (step 5/5). Report: npm run test:report"
 
 echo ""
-echo "pre-push: all 4 checks passed - pushing."
+echo "pre-push: all 5 checks passed - pushing."

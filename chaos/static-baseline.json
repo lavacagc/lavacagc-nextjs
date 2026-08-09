@@ -1,0 +1,308 @@
+[
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/admin/content-actions/apply/route.ts",
+    "line": 58,
+    "detail": "content_actions read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/admin/content-actions/apply/route.ts",
+    "line": 124,
+    "detail": "seo_metrics read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/admin/content-actions/draft/route.ts",
+    "line": 84,
+    "detail": "content_actions read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/admin/content-actions/stage/route.ts",
+    "line": 49,
+    "detail": "content_actions read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/admin/content-actions/stage/route.ts",
+    "line": 77,
+    "detail": "content_actions read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/admin/home-care/home-records/route.ts",
+    "line": 136,
+    "detail": "homeowners read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/admin/releases/send/route.ts",
+    "line": 158,
+    "detail": "homeowners read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/admin/service-quote/complete/route.ts",
+    "line": 69,
+    "detail": "homeowner_maintenance read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/admin/service-quote/intake/route.ts",
+    "line": 110,
+    "detail": "visit_dispatch read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/admin/service-quote/intake/route.ts",
+    "line": 206,
+    "detail": "leads read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/admin/service-quote/intake/route.ts",
+    "line": 283,
+    "detail": "homeowner_maintenance read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/admin/service-quote/intake/route.ts",
+    "line": 290,
+    "detail": "homeowner_maintenance read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/cron/monthly-newsletter/route.ts",
+    "line": 169,
+    "detail": "email_log read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/cron/seo-maintain/route.ts",
+    "line": 230,
+    "detail": "content_actions read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/cron/seo-rollback/route.ts",
+    "line": 65,
+    "detail": "content_actions read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/cron/seo-rollback/route.ts",
+    "line": 90,
+    "detail": "seo_metrics read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/cron/seo-suggest/route.ts",
+    "line": 47,
+    "detail": "content_actions read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/cron/visit-dispatch-escalation/route.ts",
+    "line": 76,
+    "detail": "homeowner_maintenance read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/cron/visit-dispatch-escalation/route.ts",
+    "line": 128,
+    "detail": "homeowners read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/cron/visit-dispatch-escalation/route.ts",
+    "line": 140,
+    "detail": "visit_dispatch read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/cron/visit-reminders/route.ts",
+    "line": 96,
+    "detail": "homeowner_maintenance read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/cron/visit-reminders/route.ts",
+    "line": 117,
+    "detail": "homeowners read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/cron/visit-reminders/route.ts",
+    "line": 140,
+    "detail": "follow_up_queue read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/home-care/task/route.ts",
+    "line": 33,
+    "detail": "homeowner_maintenance read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/webhooks/resend/route.ts",
+    "line": 214,
+    "detail": "email_log read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/home-care/checklist/page.tsx",
+    "line": 66,
+    "detail": "homeowner_maintenance read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/home-care/checklist/page.tsx",
+    "line": 70,
+    "detail": "homeowner_maintenance read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/components/admin/ConversionDashboard.tsx",
+    "line": 111,
+    "detail": "leads select with no .limit()/.range()"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/hooks/useGMBConfig.tsx",
+    "line": 153,
+    "detail": "review_sync_log select with no .limit()/.range()"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/lib/homecare/dispatch.ts",
+    "line": 97,
+    "detail": "visit_dispatch read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/lib/homecare/dispatch.ts",
+    "line": 521,
+    "detail": "homeowner_maintenance read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/lib/homecare/homeRecords.ts",
+    "line": 32,
+    "detail": "home_records read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/lib/homecare/homeRecords.ts",
+    "line": 56,
+    "detail": "home_records read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/lib/homecare/retention.ts",
+    "line": 154,
+    "detail": "homeowners read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/lib/homecare/serviceScheduling.ts",
+    "line": 180,
+    "detail": "homeowner_maintenance read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/lib/homecare/serviceScheduling.ts",
+    "line": 289,
+    "detail": "homeowner_maintenance read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/lib/homecare/serviceScheduling.ts",
+    "line": 510,
+    "detail": "follow_up_queue read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/lib/homecare/serviceScheduling.ts",
+    "line": 570,
+    "detail": "follow_up_queue read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/lib/notify/cancelFollowUps.ts",
+    "line": 79,
+    "detail": "follow_up_queue select with no .limit()/.range()"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/lib/notify/cancelFollowUps.ts",
+    "line": 83,
+    "detail": "follow_up_queue select with no .limit()/.range()"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/lib/notify/cancelFollowUps.ts",
+    "line": 158,
+    "detail": "follow_up_queue select with no .limit()/.range()"
+  },
+  {
+    "check": "fail-open-guard",
+    "file": "src/app/api/health/forms/route.ts",
+    "line": 15,
+    "detail": "guard runs only when DIAGNOSTICS_KEY is set - unset means unguarded, not unavailable"
+  },
+  {
+    "check": "analytics-on-token-page",
+    "file": "src/components/Analytics.tsx",
+    "line": 1,
+    "detail": "/crew is token-authenticated but is not in the analytics exclusion list"
+  },
+  {
+    "check": "analytics-on-token-page",
+    "file": "src/components/Analytics.tsx",
+    "line": 1,
+    "detail": "/intake is token-authenticated but is not in the analytics exclusion list"
+  },
+  {
+    "check": "analytics-on-token-page",
+    "file": "src/components/Analytics.tsx",
+    "line": 1,
+    "detail": "/proposal is token-authenticated but is not in the analytics exclusion list"
+  },
+  {
+    "check": "analytics-on-token-page",
+    "file": "src/app/layout.tsx",
+    "line": 112,
+    "detail": "session recording is mounted globally with no path exclusion"
+  },
+  {
+    "check": "duplicate-owner-alert",
+    "file": "src/components/ContactForm.tsx",
+    "line": 276,
+    "detail": "browser invokes send-lead-notification; /api/leads/submit already notifies server-side"
+  },
+  {
+    "check": "duplicate-owner-alert",
+    "file": "src/components/EstimateForm.tsx",
+    "line": 358,
+    "detail": "browser invokes send-lead-notification; /api/leads/submit already notifies server-side"
+  },
+  {
+    "check": "duplicate-owner-alert",
+    "file": "src/components/HomeEstimateForm.tsx",
+    "line": 296,
+    "detail": "browser invokes send-lead-notification; /api/leads/submit already notifies server-side"
+  },
+  {
+    "check": "unthrottled-token-spend",
+    "file": "src/app/api/crew/confirm/route.ts",
+    "line": 1,
+    "detail": "/api/crew/confirm authenticates by URL token but has no rate limit - token guessing is unbounded"
+  },
+  {
+    "check": "ungated-spend-path",
+    "file": "src/app/api/leads/webhook/route.ts",
+    "line": 1,
+    "detail": "/api/leads/webhook is public and can send outbound, with no auth, token, captcha or rate limit"
+  }
+]
