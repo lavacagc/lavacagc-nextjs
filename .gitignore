@@ -75,3 +75,4 @@ supabase/.temp/
 /scripts/crew-dispatch-preview.ts
 /scripts/newsletter-samples.ts
 /scripts/seo-live-check.ts
+.codemap/report.json
