@@ -9,7 +9,7 @@ import { Star, Shield, Award, CheckCircle } from 'lucide-react';
 import ReviewsBottomCTA from '@/components/ReviewsBottomCTA';
 
 export const metadata: Metadata = {
-  title: 'Customer Reviews | 5-Star Rated NJ Contractor | La Vaca GC',
+  title: 'Customer Reviews | 5-Star Rated NJ Contractor',
   description:
     'Read verified customer reviews for La Vaca General Contractors. 5-star rated home remodeling contractor serving Northern New Jersey. See what homeowners say about our kitchen, bathroom, and basement renovations.',
   keywords:

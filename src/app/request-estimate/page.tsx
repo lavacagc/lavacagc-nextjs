@@ -9,7 +9,7 @@ import RequestEstimateForm from "@/components/services/RequestEstimateForm";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Request a Service Opening | La Vaca General Contractors",
+  title: "Request a Service Opening",
   description:
     "Tell us what you need. We'll confirm the right visit — residential or commercial — and follow up within one business day. Limited weekly service openings in Northern NJ.",
   openGraph: {

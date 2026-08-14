@@ -34,7 +34,7 @@ export const generateBlogPostMetadata = ({
   const description = excerpt || content.substring(0, 160);
 
   return {
-    title: `${title} | La Vaca General Contractors`,
+    title: `${title}`,
     description,
     alternates: {
       canonical: canonicalUrl,

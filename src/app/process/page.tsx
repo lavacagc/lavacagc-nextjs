@@ -6,7 +6,7 @@ import HowToSchema from '@/components/seo/HowToSchema';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Our Process & Client Portal | Transparent Home Remodeling | La Vaca General Contractors',
+  title: 'Our Process & Client Portal | Transparent Home Remodeling',
   description:
     'See our 6-step remodeling process and the client portal every La Vaca project includes. Daily photo updates, material selections, digital contracts, and complete project transparency.',
   keywords:

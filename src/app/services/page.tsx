@@ -19,7 +19,7 @@ import ServicesBottomTabs from "@/components/services/ServicesBottomTabs";
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Services Hub | Home & Commercial Property Care | La Vaca GC",
+  title: "Services Hub | Home & Commercial Property Care",
   description:
     "One place to start. Homeowners and property managers in Northern NJ pick the right track — residential repairs + property care or commercial turnovers, storefronts, and walkthroughs. Both meet the same licensed GC team.",
   openGraph: {

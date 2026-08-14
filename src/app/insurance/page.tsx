@@ -5,7 +5,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 
 export const metadata: Metadata = {
-  title: 'Insurance Certificate | La Vaca General Contractors',
+  title: 'Insurance Certificate',
   robots: {
     index: false,
     follow: false,

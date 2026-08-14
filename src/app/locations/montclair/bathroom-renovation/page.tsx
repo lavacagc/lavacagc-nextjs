@@ -12,7 +12,7 @@ const canonicalUrl = `${BUSINESS_INFO.url}/locations/${slug}`;
 const targetKeyword = "bathroom renovation in Montclair NJ";
 
 export const metadata: Metadata = {
-  title: `${service} in ${town}, NJ | La Vaca General Contractors`,
+  title: `${service} in ${town}, NJ`,
   description:
     "Bathroom renovation in Montclair, NJ for older homes, primary suites, hall baths, and tile showers. Licensed NJ contractor, se habla español, serving Essex County.",
   keywords: [targetKeyword, "Montclair bathroom remodel", "bathroom contractor Montclair NJ"],

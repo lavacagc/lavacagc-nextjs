@@ -13,7 +13,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const description = page?.meta_description || 'Transform your home this spring with La Vaca General Contractors.';
 
   return {
-    title: `${title} | La Vaca General Contractors`,
+    title: `${title}`,
     description,
     openGraph: {
       title: `${title} | La Vaca General Contractors`,

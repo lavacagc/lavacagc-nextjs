@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Home Remodeling Blog & Resources | La Vaca General Contractors',
+  title: 'Home Remodeling Blog & Resources',
   description: 'Expert insights on home remodeling trends, costs, and permits in Northern NJ. Get professional advice from Bergen County\'s trusted contractors.',
   keywords: 'home remodeling blog, kitchen trends Bergen County, bathroom costs Essex County, NJ permits, construction advice',
   openGraph: {

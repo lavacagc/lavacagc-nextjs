@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import UnsubClient from './UnsubClient';
 
 export const metadata: Metadata = {
-  title: 'Unsubscribe · La Vaca General Contractors',
+  title: 'Unsubscribe',
   robots: { index: false, follow: false },
 };
 

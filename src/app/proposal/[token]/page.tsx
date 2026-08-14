@@ -37,7 +37,7 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
   // No client name, no project: a browser tab and a history entry are read by
   // whoever is looking over their shoulder.
-  title: 'Your proposal | La Vaca General Contractors',
+  title: 'Your proposal',
   robots: { index: false, follow: false },
 };
 

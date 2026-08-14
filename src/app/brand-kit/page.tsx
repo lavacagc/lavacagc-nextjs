@@ -3,7 +3,7 @@ import Image from "next/image";
 import { CopyButton } from "./copy-button";
 
 export const metadata: Metadata = {
-  title: "Brand Kit — La Vaca General Contractors",
+  title: "Brand Kit",
   description: "La Vaca GC brand guidelines, logos, colors, and typography.",
   robots: { index: false, follow: false },
 };

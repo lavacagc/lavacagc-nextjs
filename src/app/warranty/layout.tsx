@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: '5-Year Warranty Information | La Vaca General Contractors',
+  title: '5-Year Warranty Information',
   description: 'Learn about our comprehensive 5-year warranty on home remodeling projects. Quality craftsmanship backed by our commitment to excellence.',
   openGraph: {
     title: '5-Year Warranty Information | La Vaca General Contractors',

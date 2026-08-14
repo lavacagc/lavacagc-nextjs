@@ -53,7 +53,7 @@ const HOME_IMAGE_CARDS = [
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Home Services in Northern NJ | Repairs, Audits & Property Care | La Vaca GC",
+  title: "Home Services in Northern NJ | Repairs, Audits & Property Care",
   description:
     "Residential home services from a licensed NJ general contractor — safety audits, sump tests, weatherstripping, storm prep, paint refreshes, punch-list days, and drywall repair. Limited weekly openings across Bergen, Essex, Morris, and Passaic counties.",
   openGraph: {

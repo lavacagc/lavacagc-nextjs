@@ -8,7 +8,7 @@ import WarrantyFormWrapper from '@/components/WarrantyFormWrapper';
 import CallTrackingWrapper from '@/components/CallTrackingWrapper';
 
 export const metadata: Metadata = {
-  title: '5-Year Two-Tier Warranty | Home Remodeling Guarantee | La Vaca General Contractors',
+  title: '5-Year Two-Tier Warranty | Home Remodeling Guarantee',
   description:
     'Two-tier warranty protection: Year 1 comprehensive coverage on all materials and workmanship, Years 2-5 structural coverage on major systems and building envelope.',
   keywords:

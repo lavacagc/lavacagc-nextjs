@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import PreferencesClient from './PreferencesClient';
 
 export const metadata: Metadata = {
-  title: 'Email preferences · La Vaca General Contractors',
+  title: 'Email preferences',
   robots: { index: false, follow: false },
 };
 

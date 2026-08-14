@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Admin Authentication | La Vaca General Contractors',
+  title: 'Admin Authentication',
   description: 'Sign in to access the admin dashboard',
   robots: 'noindex, nofollow',
 }

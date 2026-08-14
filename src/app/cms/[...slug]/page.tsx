@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   if (!page) return { title: 'Page Not Found' };
 
   return {
-    title: `${page.title} | La Vaca General Contractors`,
+    title: `${page.title}`,
     description: page.meta_description || undefined,
     openGraph: {
       title: `${page.title} | La Vaca General Contractors`,

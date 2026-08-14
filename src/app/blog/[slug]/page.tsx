@@ -87,7 +87,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
 
   if (!post) {
     return {
-      title: 'Blog Post Not Found | La Vaca General Contractors',
+      title: 'Blog Post Not Found',
       description: 'The requested blog post could not be found.',
     };
   }

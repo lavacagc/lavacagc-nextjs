@@ -90,7 +90,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   if (!service) {
     return {
-      title: 'Service Not Found | La Vaca General Contractors',
+      title: 'Service Not Found',
       description: 'The requested service could not be found.',
     };
   }
