@@ -19,7 +19,7 @@ import IntakeThread from './IntakeThread';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'A few quick details | La Vaca General Contractors',
+  title: 'A few quick details',
   robots: { index: false, follow: false },
 };
 

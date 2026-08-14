@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Data Rights Request | La Vaca General Contractors',
+  title: 'Data Rights Request',
   description: 'Exercise your data privacy rights. Request access, deletion, or correction of your personal information.',
   robots: 'noindex, follow',
   alternates: {

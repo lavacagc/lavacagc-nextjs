@@ -154,7 +154,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   if (!project) {
     return {
-      title: 'Project Not Found | La Vaca General Contractors',
+      title: 'Project Not Found',
       description: 'The requested project could not be found.',
     };
   }

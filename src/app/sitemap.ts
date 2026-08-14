@@ -208,7 +208,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // Service-location combination pages (e.g., /locations/alpine/services/kitchen-remodeling)
   // These are the actual page URLs - the old format (/kitchen-remodeling-alpine-nj) redirects to these
-  services.forEach(service => {
+  //
+  // NOTE: must stay in sync with the SERVICES map in
+  // src/app/locations/[city]/services/[service]/page.tsx. 'whole-home-remodeling'
+  // is deliberately NOT a city-level page - next.config.ts 301s those 18 URLs to
+  // /services/whole-home-remodeling - so listing it here would advertise 18
+  // permanently-redirecting URLs in the sitemap.
+  const cityServices = services.filter(s => s !== 'whole-home-remodeling')
+  cityServices.forEach(service => {
     locations.forEach(location => {
       routes.push({
         url: `${baseUrl}/locations/${location}/services/${service}`,

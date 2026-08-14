@@ -15,7 +15,7 @@ const supabase = createClient(
 );
 
 export const metadata: Metadata = {
-  title: 'Project Portfolio | Home Renovation Case Studies | La Vaca General Contractors',
+  title: 'Project Portfolio | Home Renovation Case Studies',
   description:
     'Explore our completed home renovation projects in Northern NJ. View before/after photos, budgets, timelines, and client testimonials. Kitchen remodels, bathroom renovations, and more.',
   keywords:

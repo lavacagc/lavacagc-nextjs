@@ -13,7 +13,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const description = page?.meta_description || 'Transform your kitchen with NJ\'s trusted remodeling experts.';
 
   return {
-    title: `${title} | Free Estimate | La Vaca GC`,
+    title: `${title} | Free Estimate`,
     description,
     robots: { index: false, follow: false },
     openGraph: {

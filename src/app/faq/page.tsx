@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Home Remodeling FAQ | 50+ Answers to Common Questions | La Vaca GC',
+  title: 'Home Remodeling FAQ | 50+ Answers to Common Questions',
   description:
     'Get expert answers to frequently asked questions about home remodeling in New Jersey. Costs, timelines, choosing contractors, kitchen and bathroom renovation tips.',
   keywords:

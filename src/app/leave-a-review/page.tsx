@@ -6,7 +6,7 @@ import LeaveReviewClient from '@/components/LeaveReviewClient';
 import { BUSINESS_INFO } from '@/components/StructuredData';
 
 export const metadata: Metadata = {
-  title: 'Leave a Review | Share Your Experience | La Vaca GC',
+  title: 'Leave a Review | Share Your Experience',
   description:
     'Share your experience with La Vaca General Contractors. Your feedback helps us improve and helps other homeowners make informed decisions about their renovation projects.',
   openGraph: {

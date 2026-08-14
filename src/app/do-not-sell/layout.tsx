@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Do Not Sell or Share My Personal Information | La Vaca General Contractors',
+  title: 'Do Not Sell or Share My Personal Information',
   description: 'California residents: Exercise your right to opt out of the sale or sharing of your personal information under CCPA/CPRA.',
   robots: 'noindex, follow',
   alternates: {

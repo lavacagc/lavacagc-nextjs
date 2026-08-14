@@ -52,7 +52,7 @@ const COMMERCIAL_IMAGE_CARDS = [
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Commercial Property Services in NJ | Make-Ready, CCO Prep, Documentation | La Vaca GC",
+  title: "Commercial Property Services in NJ | Make-Ready, CCO Prep, Documentation",
   description:
     "Documented commercial property care for Northern NJ landlords and property managers — tenant make-ready, storefront refresh, CCO pre-inspection, move-in/move-out documentation, storm dispatch, and property walkthroughs from a licensed GC.",
   openGraph: {

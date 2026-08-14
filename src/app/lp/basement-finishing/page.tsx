@@ -13,7 +13,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const description = page?.meta_description || 'Unlock your basement\'s full potential with NJ\'s expert contractors.';
 
   return {
-    title: `${title} | Free Estimate | La Vaca GC`,
+    title: `${title} | Free Estimate`,
     description,
     robots: { index: false, follow: false },
     openGraph: {

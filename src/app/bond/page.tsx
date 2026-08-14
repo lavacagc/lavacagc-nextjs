@@ -5,7 +5,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 
 export const metadata: Metadata = {
-  title: 'Compliance Bond | La Vaca General Contractors',
+  title: 'Compliance Bond',
   robots: {
     index: false,
     follow: false,

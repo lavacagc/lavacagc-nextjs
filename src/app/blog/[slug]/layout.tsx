@@ -18,7 +18,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
     if (!post) {
       return {
-        title: 'Blog Post Not Found - La Vaca General Contractors',
+        title: 'Blog Post Not Found',
         description: 'The blog post you are looking for could not be found.',
       }
     }
@@ -48,7 +48,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   } catch (error) {
     console.error('Error generating metadata:', error)
     return {
-      title: 'Blog Post - La Vaca General Contractors',
+      title: 'Blog Post',
       description: 'Read our blog for expert insights on home remodeling.',
     }
   }

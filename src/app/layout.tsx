@@ -26,8 +26,8 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.lavacagc.com'),
   title: {
-    default: 'Home Renovation & Remodeling Contractor NJ | Kitchen, Bathroom & Additions',
-    template: '%s | La Vaca General Contractors'
+    default: 'Home Remodeling Contractor in Northern NJ | La Vaca GC',
+    template: '%s | La Vaca GC'
   },
   description: 'Transform your NJ home with La Vaca GC\'s expert kitchen & bathroom remodeling, home additions, and renovation services. Licensed contractors. Free estimates. Call today!',
   keywords: ['home remodeling', 'kitchen renovation', 'bathroom remodeling', 'basement finishing', 'Northern New Jersey contractor', 'Alpine', 'Short Hills', 'Saddle River', 'Essex Fells'],

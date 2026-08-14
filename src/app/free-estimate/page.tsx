@@ -200,7 +200,7 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   const config = SERVICE_CONFIG[service] || SERVICE_CONFIG.general;
 
   return {
-    title: `${config.title} | Free Estimate | La Vaca GC`,
+    title: `${config.title} | Free Estimate`,
     description: config.description,
     robots: { index: false, follow: false },
     openGraph: {

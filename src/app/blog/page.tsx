@@ -16,7 +16,7 @@ const supabase = createClient(
 );
 
 export const metadata: Metadata = {
-  title: 'Home Remodeling Blog & Resources | La Vaca General Contractors',
+  title: 'Home Remodeling Blog & Resources',
   description: 'Expert insights on home remodeling trends, costs, and permits in Northern NJ. Get professional advice on kitchen renovations, bathroom upgrades, and home additions from licensed contractors.',
   keywords: 'home remodeling blog, NJ renovation tips, kitchen remodel cost, bathroom renovation guide, home addition permits NJ',
   openGraph: {
