@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -12,49 +12,7 @@ import { useScrollTracking } from "@/hooks/useScrollTracking";
 import { useHorizontalScrollTracking } from "@/hooks/useHorizontalScrollTracking";
 import { trackEvent } from "@/services/analyticsManager";
 import { ScrollHint } from "@/components/ScrollHint";
-
-// Lazy video component - only loads video when visible in viewport
-const LazyVideo = ({ src, title }: { src: string; title: string }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '100px', threshold: 0.1 }
-    );
-
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
-
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <div ref={containerRef} className="w-full h-64 bg-muted">
-      {isVisible && (
-        <video
-          ref={videoRef}
-          src={src}
-          className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-300"
-          muted
-          playsInline
-          loop
-          autoPlay
-          preload="metadata"
-          aria-label={`Project video for ${title}`}
-        />
-      )}
-    </div>
-  );
-};
+import { LazyProjectVideo } from "@/components/LazyProjectVideo";
 
 interface Project {
   id: string;
@@ -153,6 +111,18 @@ const ProjectGallery = () => {
     const videoExtensions = ['.mov', '.mp4', '.webm', '.ogg'];
     return videoExtensions.some(ext => url.toLowerCase().endsWith(ext));
   };
+
+  /**
+   * A still to show while a project's video is not playing.
+   *
+   * Uses a photograph the project already has rather than anything new, so
+   * this costs no extra storage and no upload: the card shows real work the
+   * moment it renders instead of a grey rectangle. Returns undefined when a
+   * project is video-only, and LazyProjectVideo falls back to preloading metadata
+   * so such a card is not left blank.
+   */
+  const getPosterImage = (project: Project) =>
+    project.project_images?.find(img => !isVideo(img.image_url))?.image_url;
 
   const getProjectDescription = (project: Project) => {
     return project.challenge || project.solution || 'Quality construction and renovation services.';
@@ -257,9 +227,10 @@ const ProjectGallery = () => {
                   <Card key={project.id} data-track="true" className="group overflow-hidden hover:shadow-elegant transition-all duration-300 hover:-translate-y-2 bg-card border-2 hover:border-primary/20 flex-shrink-0 w-80">
                      <div className="relative overflow-hidden">
                        {isVideo(getProjectImage(project)) ? (
-                         <LazyVideo
+                         <LazyProjectVideo
                            src={getProjectImage(project)}
                            title={project.title}
+                           poster={getPosterImage(project)}
                          />
                        ) : (
                          <Image
