@@ -18,9 +18,9 @@ import {
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Homeowner Resource Center | Renovation Guides & Tips for NJ Homeowners',
+  title: 'NJ Renovation Guides for Homeowners',
   description:
-    'Free renovation guides for NJ homeowners. Learn about building permits, renovation timelines, choosing materials, financing options, and working with contractors.',
+    'Free guides on New Jersey building permits, realistic renovation timelines, choosing materials and financing a remodel of your home.',
   keywords: [
     'homeowner resources',
     'renovation guide NJ',

@@ -21,6 +21,7 @@ interface DbLeadRow {
   phone: string | null;
   project_type: string | null;
   city: string | null;
+  source: string | null;
   created_at: string;
 }
 
@@ -31,10 +32,12 @@ interface LeadHit {
   phone: string | null;
   project_type: string | null;
   city: string | null;
+  /** 'manual' = saved by the admin from the customer search, not a form lead. */
+  source: string | null;
   created_at: string;
 }
 
-const SELECT_COLS = 'id,first_name,last_name,email,phone,project_type,city,created_at';
+const SELECT_COLS = 'id,first_name,last_name,email,phone,project_type,city,source,created_at';
 
 export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get('q')?.trim() ?? '';
@@ -66,6 +69,7 @@ export async function GET(request: NextRequest) {
         phone: r.phone,
         project_type: r.project_type,
         city: r.city,
+        source: r.source,
         created_at: r.created_at,
       };
     });

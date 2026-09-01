@@ -27,6 +27,8 @@ export interface NewLeadEmailPayload {
   homeDetails?: string[];
   /** Lead row id, for linking the audit row back to the lead. */
   leadId?: string | null;
+  /** The middleware's geo reading for this submission (Phase A telemetry). */
+  geoTier?: string;
 }
 
 export interface NewLeadEmailResult {
@@ -56,6 +58,7 @@ export async function sendNewLeadEmail(payload: NewLeadEmailPayload): Promise<Ne
     services,
     homeDetails,
     leadId,
+    geoTier,
   } = payload;
 
   const notificationEmail = cleanEnv(process.env.LEAD_NOTIFICATION_EMAIL) || 'alex@vacamoo.com';
@@ -82,6 +85,7 @@ export async function sendNewLeadEmail(payload: NewLeadEmailPayload): Promise<Ne
       contactTimezone,
       services,
       homeDetails,
+      geoTier,
     }),
     category: 'lead_notification',
     leadId: leadId ?? null,

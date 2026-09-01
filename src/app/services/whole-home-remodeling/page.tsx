@@ -8,9 +8,9 @@ import { CheckCircle, Clock, Home, Sparkles, Shield } from 'lucide-react';
 import CallTrackingWrapper from '@/components/CallTrackingWrapper';
 
 export const metadata: Metadata = {
-  title: 'Whole Home Remodeling Services in Northern NJ',
+  title: 'Whole Home Remodeling in Northern NJ',
   description:
-    'Transform your entire home with La Vaca General Contractors. Complete whole-home renovations in Northern New Jersey including kitchens, bathrooms, living spaces, and more. Licensed, insured, 5-star rated.',
+    'Full-house renovations in Northern NJ. Kitchens, baths, flooring and layout changes managed end to end by one licensed contractor.',
   keywords:
     'whole home remodeling NJ, complete home renovation, full house remodel Northern New Jersey, home transformation, La Vaca General Contractors',
   openGraph: {

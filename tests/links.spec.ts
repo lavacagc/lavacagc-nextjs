@@ -7,10 +7,9 @@ const PAGES_TO_CHECK = [
   '/process',
   '/blog',
   '/portfolio',
-  // '/buy-and-remodel' is intentionally omitted: it's an admin-gated feature
-  // (404 until published). Its access is covered by tests/listings-gate.spec.ts.
+  // '/buy-and-remodel' is intentionally omitted: the product was retired in
+  // 2026-08 and the path now 301s to the homepage (see next.config.ts).
   '/contact',
-  '/project-calculator',
   '/services',
   '/services/kitchen-remodeling',
   '/services/bathroom-renovation',

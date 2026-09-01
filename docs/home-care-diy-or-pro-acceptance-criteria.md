@@ -125,7 +125,7 @@ Its stub honours PostgREST's `merge-duplicates` and row filters precisely so thi
 
 *Covered* for the newsletter by `tests/home-care-newsletter.spec.ts` ("the newsletter quotes no price, whatever the catalog carries", whose fixtures still carry `est_cost` so it can only pass if the builder ignores them) and for `costLabel`'s surviving rules by the test beside it, both in CI.
 *Proved in a browser* for the checklist and its open shelf by `tests/home-care-diy-kit-shelf.spec.ts` S8, gated on `HC_SHELF_E2E`.
-**Not covered:** the public `ChecklistPreview` has no price assertion in `tests/home-care-checklist-preview.spec.ts`, so that surface is held by review and by the component's own comment.
+**Covered:** `tests/home-care-checklist-preview.spec.ts` AC8 asserts the component carries no dollar figure and no cost field, and that the sentence above it on `/home-care` no longer promises "a rough cost".
 
 ## DP8 - Deploying ahead of the migration cannot break the portal
 

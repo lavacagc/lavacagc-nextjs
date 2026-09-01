@@ -11,8 +11,11 @@ export async function GET() {
   }
 
   try {
+    // 200, not 50: the client splits this one response into the Active AND
+    // Archived tabs, so a low cap silently empties Archived once enough newer
+    // active leads exist.
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/leads?select=*&order=created_at.desc&limit=50`,
+      `${SUPABASE_URL}/rest/v1/leads?select=*&order=created_at.desc&limit=200`,
       {
         headers: {
           'apikey': secretKey,

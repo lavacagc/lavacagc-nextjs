@@ -11,7 +11,13 @@ import { test, expect } from '@playwright/test';
  */
 test.describe('GPC loader guard', () => {
   test('both ad-tech loader scripts carry the GPC guard in the served page', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    // The loaders moved out of the raw layout HTML and into a client
+    // component gated on the pathname (chaos finding CM-05), so they are
+    // injected after hydration rather than being present in the served
+    // markup. Waiting for the network to settle is what makes the assertion
+    // below measure the same thing it always did: the shipped loaders carry the
+    // guard.
+    await page.goto('/', { waitUntil: 'networkidle' });
     const html = await page.content();
 
     // The exact guard both loaders must carry, alongside the existing hostname gate.

@@ -14,6 +14,7 @@ import { priceAnchorFor } from '@/lib/intake/pricing';
 import { lookupByToken, recordAnswer, mirrorToLead, markOpened, countPhotosForScoring, recordRouting } from '@/lib/intake/session';
 import { scoreIntake, routeIntake } from '@/lib/intake/scoring';
 import { sendCompletionAlert } from '@/lib/intake/completionAlert';
+import { sendIntakePhotos } from '@/lib/intake/photoDelivery';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 
@@ -205,6 +206,27 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
     if (outcome !== 'sent') {
       // Loud, because the whole point of the flow is that the call is informed.
       console.error(`[intake] completion alert for session ${session.id} was ${outcome}`);
+    }
+
+    // The photos themselves, as an album under the brief. The alert has always
+    // said "Photos 2 attached" without attaching anything, so the images were
+    // only reachable by querying the database.
+    //
+    // AFTER the brief and never in front of it: this fetches and uploads real
+    // image data, and the text is the part that must not be delayed. It is also
+    // deliberately not awaited into the response path's success - a photo that
+    // fails to send must never turn a captured lead into an error, so the
+    // result is logged and the request continues either way.
+    if (photoCount && photoCount > 0) {
+      const delivered = await sendIntakePhotos(
+        session.id,
+        `Photos from ${contact?.first_name ?? session.first_name ?? 'this lead'}`,
+      );
+      if (delivered.status !== 'sent') {
+        console.error(
+          `[intake] photos for session ${session.id} were ${delivered.status}: ${delivered.reason ?? 'no reason'}`,
+        );
+      }
     }
   }
 

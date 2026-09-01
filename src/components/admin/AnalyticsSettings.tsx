@@ -42,6 +42,14 @@ const AnalyticsSettings = () => {
     updateConfig({ [field]: value });
   };
 
+  // The two ID inputs are uncontrolled (defaultValue keyed to the saved value)
+  // and persist once on blur. Wired to onChange as controlled inputs, they
+  // fired one Supabase UPDATE + toast + refetch per keystroke.
+  const commitDraft = (field: 'ga4_measurement_id' | 'gtm_container_id', draft: string) => {
+    const saved = (config?.[field] || '') as string;
+    if (draft.trim() !== saved) handleConfigUpdate(field, draft.trim());
+  };
+
   const handleEventSubmit = () => {
     const eventData = {
       ...eventForm,
@@ -118,8 +126,9 @@ const AnalyticsSettings = () => {
                 <Input
                   id="ga4_id"
                   placeholder="G-XXXXXXXXXX"
-                  value={config?.ga4_measurement_id || ''}
-                  onChange={(e) => handleConfigUpdate('ga4_measurement_id', e.target.value)}
+                  key={`ga4-${config?.ga4_measurement_id || ''}`}
+                  defaultValue={config?.ga4_measurement_id || ''}
+                  onBlur={(e) => commitDraft('ga4_measurement_id', e.target.value)}
                 />
                 <p className="text-sm text-muted-foreground">
                   Find this in Google Analytics under Admin → Data Streams
@@ -131,8 +140,9 @@ const AnalyticsSettings = () => {
                 <Input
                   id="gtm_id"
                   placeholder="GTM-XXXXXXX"
-                  value={config?.gtm_container_id || ''}
-                  onChange={(e) => handleConfigUpdate('gtm_container_id', e.target.value)}
+                  key={`gtm-${config?.gtm_container_id || ''}`}
+                  defaultValue={config?.gtm_container_id || ''}
+                  onBlur={(e) => commitDraft('gtm_container_id', e.target.value)}
                 />
               </div>
 

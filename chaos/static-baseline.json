@@ -1,0 +1,14 @@
+[
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/cron/seo-rollback/route.ts",
+    "line": 65,
+    "detail": "content_actions read with no limit= (inherits the server page ceiling)"
+  },
+  {
+    "check": "uncapped-read",
+    "file": "src/app/api/cron/seo-suggest/route.ts",
+    "line": 47,
+    "detail": "content_actions read with no limit= (inherits the server page ceiling)"
+  }
+]

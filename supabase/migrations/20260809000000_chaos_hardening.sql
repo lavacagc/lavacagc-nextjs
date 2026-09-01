@@ -1,0 +1,58 @@
+-- Chaos-monkey remediation: CM-04 and CM-10.
+--
+-- NOT APPLIED. Written during the remediation pass and deliberately left
+-- unapplied, because the owner's instruction for that pass was to touch
+-- nothing in production. Both statements below change LIVE infrastructure
+-- rather than application code, so they run when the branch ships - see
+-- chaos/remediation-plan.md.
+--
+-- Apply with:  supabase db push        (or via the SQL editor, in order)
+-- Verify with: the acceptance criteria quoted above each statement.
+
+-- ---------------------------------------------------------------------------
+-- CM-04 (S2): service_role has no statement timeout.
+--
+-- Measured on production: anon = 3s, authenticated = 8s, authenticator = 8s,
+-- service_role = (none), which means it inherits the database default of
+-- 120s. EVERY server-side query in this app runs as service_role, because
+-- that is the key SUPABASE_SECRET_KEY carries. So one pathological query can
+-- hold a pooled connection for two minutes, and a handful can exhaust the
+-- pool and take the whole site down.
+--
+-- This is the limit that bounds the damage of bugs nobody has found yet,
+-- which is why it is the highest-leverage line in the whole remediation.
+--
+-- 15s is chosen to sit far above anything this app legitimately does (the
+-- slowest real query measured during the audit was in the low milliseconds;
+-- the largest table holds ~12k rows) and far below the point where a runaway
+-- query monopolises a connection.
+--
+-- Acceptance: select rolconfig from pg_roles where rolname = 'service_role';
+--             -> must contain statement_timeout=15s
+--
+-- If a maintenance job ever genuinely needs longer, it should raise the limit
+-- for its own transaction only - SET LOCAL statement_timeout = '60s' - rather
+-- than reverting this.
+ALTER ROLE service_role SET statement_timeout = '15s';
+
+-- ---------------------------------------------------------------------------
+-- CM-10 (S2): customer intake photos live in a world-readable bucket.
+--
+-- storage.buckets.public = true for 'intake-photos', and the upload route uses
+-- getPublicUrl, so every uploaded photo gets a permanent unauthenticated URL.
+-- Object paths are scoped by an unguessable session UUID, so an individual
+-- photo is not enumerable from the outside - but the URL never expires, and
+-- CM-05 was actively exporting page URLs to third-party analytics.
+--
+-- The bucket currently holds ZERO objects, which makes this the cheapest
+-- moment this fix will ever have: nothing is exposed yet, and nothing needs
+-- migrating.
+--
+-- Flipping the bucket private stops anonymous reads. The application must then
+-- serve photos through a signed URL - see the note in
+-- src/app/api/intake/[token]/photo/route.ts. Do NOT apply this without that
+-- code change, or admin-side photo display breaks.
+--
+-- Acceptance: select public from storage.buckets where id = 'intake-photos';
+--             -> false
+update storage.buckets set public = false where id = 'intake-photos';

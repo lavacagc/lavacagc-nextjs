@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Download, RefreshCw, Radio } from 'lucide-react';
 import { STREAMS, STREAM_KEYS, type StreamKey } from '@/lib/preferences/streams';
+import HomeCareMemberLookup from '@/components/admin/HomeCareMemberLookup';
 
 type StreamState = Record<StreamKey, boolean>;
 
@@ -162,10 +163,12 @@ export default function AdminPreferencesPage() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Save failed');
+        // The POST response already carries the authoritative preference row -
+        // re-running loadContact here added a third round trip (including 100
+        // audit rows) per switch flip. The audit trail refreshes on the next
+        // explicit lookup.
         setStreams(data.preferences);
         setExists(true);
-        // Refresh the audit trail after a change.
-        loadContact(activeEmail);
       } catch (err) {
         toast({
           title: 'Save failed',
@@ -177,7 +180,7 @@ export default function AdminPreferencesPage() {
         setSaving(false);
       }
     },
-    [streams, activeEmail, toast, loadContact],
+    [streams, activeEmail, toast],
   );
 
   return (
@@ -282,6 +285,12 @@ export default function AdminPreferencesPage() {
           </Card>
         </div>
       )}
+
+      {/* Everything else known about the address that was just looked up. The
+          preference centre answers "may we mail them"; this answers "are they a
+          Home Care member and did their sign-in link go out", which is the
+          question the public login endpoint deliberately refuses to answer. */}
+      {loaded && <HomeCareMemberLookup email={activeEmail} />}
 
       {/* Broadcast suppression sync */}
       <Card className="mt-8">

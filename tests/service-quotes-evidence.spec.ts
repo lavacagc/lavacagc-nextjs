@@ -405,8 +405,10 @@ test.describe('service quotes: admin, portal and cron (live UI)', () => {
       // it recompiles, and a page that lost one never hydrates at all.
       await page.goto('/vaca-mgmt/send-service-quote', { waitUntil: 'load', timeout: 60_000 });
       await expect(page.getByText('Send a service quote')).toBeVisible({ timeout: 20_000 });
-      await page.getByTestId('sq-email').fill(MEMBER_EMAIL);
-      await page.getByTestId('sq-lookup').click();
+      // Round 7: the free-text box is gone - the typeahead is the only door.
+      // The REST stub answers the search, so the member appears as a hit.
+      await page.getByTestId('customer-search-input').fill(MEMBER_EMAIL);
+      await page.locator('[data-testid^="customer-row-"]').first().click();
       // IN1+IN2: the task keys in the lead message resolved to catalog titles,
       // pre-selected, and rolled into the scope summary the email carries.
       await expect(page.getByTestId('sq-scope')).toHaveValue(/gutters/i, { timeout: 10_000 });

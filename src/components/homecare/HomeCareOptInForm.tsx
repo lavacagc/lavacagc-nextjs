@@ -5,6 +5,7 @@ import { CheckCircle, Loader2, MailCheck, Home } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config';
+import { GeoGateNotice } from '@/components/GeoGateNotice';
 
 const RECAPTCHA_ACTION = 'home_care_signup';
 const RECAPTCHA_LOGIN_ACTION = 'home_care_login';
@@ -141,20 +142,48 @@ export default function HomeCareOptInForm() {
         <h2 className="text-2xl font-extrabold tracking-tight text-text-primary">Check your email</h2>
         <p className="mt-3 max-w-prose text-base leading-relaxed text-text-muted">
           {isLogin ? (
-            <>If <strong>{state.email.trim()}</strong> is a La Vaca Home Care member, we just sent a sign-in link. Click it to open your checklist — it expires in 48 hours.</>
+            <>If <strong>{state.email.trim()}</strong> is a La Vaca Home Care member, we just sent a sign-in link. Click it to open your checklist - it expires in 48 hours.</>
           ) : (
             <>We sent a confirmation link to <strong>{state.email.trim()}</strong>. Click it to set up your seasonal home plan. The link expires in 48 hours.</>
           )}
         </p>
-        <button type="button" onClick={() => setSent(false)} className="mt-4 text-sm font-semibold text-primary underline underline-offset-2">
-          Use a different email
-        </button>
+        {/* The escape hatch for the case this panel cannot distinguish.
+            "If that address is a member" is deliberately non-committal - the
+            endpoint must not reveal who is in the program - but on its own it
+            strands the person it is most likely describing: someone who never
+            had a plan, or whose signup never completed. They wait for an email
+            that was correctly never sent, and conclude the site is broken.
+            Offering the way in costs nothing and leaks nothing: it is shown to
+            every login attempt, member or not. */}
+        {isLogin && (
+          <p className="mt-3 max-w-prose text-sm leading-relaxed text-text-muted">
+            Nothing after a few minutes? You may not have a plan yet.
+          </p>
+        )}
+        {/* Both actions share one row rather than stacking: globals.css gives
+            every button a 44px minimum, so an inline one inside the paragraph
+            above would sit 44px tall in the middle of a sentence. */}
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-x-6 text-sm font-semibold text-primary">
+          {isLogin && (
+            <button
+              type="button"
+              onClick={() => { switchMode('signup'); setSent(false); }}
+              className="underline underline-offset-2"
+            >
+              Create your free home plan
+            </button>
+          )}
+          <button type="button" onClick={() => setSent(false)} className="underline underline-offset-2">
+            Use a different email
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
     <form onSubmit={handleSubmit} noValidate className="rounded-2xl border border-border bg-card p-7 shadow-card md:p-8">
+      <GeoGateNotice kind="homecare" />
       <input type="text" name="website" value={state.website} onChange={(e) => update('website', e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 opacity-0" />
 
       <div className="mb-5 flex rounded-xl bg-muted p-1 text-sm font-bold">
@@ -202,8 +231,8 @@ export default function HomeCareOptInForm() {
 
       <p className="mt-4 text-xs leading-relaxed text-text-muted">
         {isLogin
-          ? 'Enter the email you signed up with and we’ll send a one-tap sign-in link — no password to remember.'
-          : 'We’ll email a seasonal maintenance checklist a few times a year. No account, no spam — unsubscribe anytime.'}
+          ? 'Enter the email you signed up with and we’ll send a one-tap sign-in link - no password to remember.'
+          : 'We’ll email a seasonal maintenance checklist a few times a year. No account, no spam - unsubscribe anytime.'}
       </p>
 
       <style jsx>{`

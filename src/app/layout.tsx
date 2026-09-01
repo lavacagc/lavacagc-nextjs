@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
-import Script from 'next/script'
 import './globals.css'
 import { Providers } from '@/components/providers'
 import { Toaster } from '@/components/ui/toaster'
@@ -16,6 +15,7 @@ import SectionTracker from '@/components/SectionTracker'
 import VisitorTracker from '@/components/VisitorTracker'
 import SmartBanner from '@/components/SmartBanner'
 import { RecaptchaChallengeProvider } from '@/components/recaptcha/RecaptchaChallengeProvider'
+import { ThirdPartyAnalytics } from '@/components/ThirdPartyAnalytics';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -102,30 +102,34 @@ export default function RootLayout({
         />
       </head>
       <body className={inter.className}>
-        {/* Microsoft Clarity - session recordings + heatmaps (free) */}
-        {/* Microsoft Clarity — production only, skip Vercel preview deploys */}
-        {/* Clarity auto-filters bot sessions — no need to block client-side */}
-        <Script id="microsoft-clarity" strategy="afterInteractive">
-          {`if(window.location.hostname==='www.lavacagc.com' && !navigator.globalPrivacyControl){
-            (function(c,l,a,r,i,t,y){
-              c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-              t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-              y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-            })(window, document, "clarity", "script", "vxrwpc3fhq");
-          }`}
-        </Script>
-        {/* Facebook Pixel (1461944528853241) — hardcoded, GTM malware scanner kept killing it */}
-        <Script id="facebook-pixel" strategy="afterInteractive">
-          {`if(window.location.hostname==='www.lavacagc.com' && !navigator.globalPrivacyControl){
-            !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-            n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
-            n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
-            t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
-            document,'script','https://connect.facebook.net/en_US/fbevents.js');
-            fbq('init','1461944528853241');
-            fbq('track','PageView');
-          }`}
-        </Script>
+        {/*
+          Cloudflare Scrape Shield's Email Address Obfuscation rewrites every
+          address it finds in our HTML at the edge, then restores it in the DOM
+          with an injected script (/cdn-cgi/scripts/.../email-decode.min.js).
+          That restore races React hydration, and on /contact it lost: the TCPA
+          consent label in ContactForm renders the address as BARE TEXT, which
+          Cloudflare replaces with an <a class="__cf_email__">[email protected]</a>
+          ELEMENT, so React found markup where it had sent text and threw
+          minified error #418 on production - regenerating the whole page tree
+          on the client. Reproduced 2026-08-06 on www.lavacagc.com/contact.
+
+          <!--email_off--> is Cloudflare's documented opt-out, and it has to be
+          an HTML comment, which is why this is dangerouslySetInnerHTML: React
+          has no API for comment nodes. Bracketing the whole body covers the
+          addresses in CMS-authored pages too (/privacy-policy carries 11), not
+          just the ones we render from components.
+
+          Nothing is given up by opting out. The obfuscation was already
+          defeated on this site: `info@lavacagc.com` appears 8 times in plain
+          text in the production HTML of /contact - in the JSON-LD business
+          schema and in the RSC flight payload - and Cloudflare rewrites
+          neither. It cost us hydration and bought no protection.
+        */}
+        <span hidden dangerouslySetInnerHTML={{ __html: '<!--email_off-->' }} />
+
+        {/* CM-05: Clarity + Meta Pixel, excluded from token-authenticated
+            pages. See src/lib/analytics/excluded.ts. */}
+        <ThirdPartyAnalytics />
         <noscript>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img height="1" width="1" style={{display:'none'}}
@@ -159,6 +163,10 @@ export default function RootLayout({
             </RecaptchaChallengeProvider>
           </TooltipProvider>
         </Providers>
+        {/* Closes the Cloudflare email-obfuscation opt-out opened at the top of
+            <body>. Both markers must be present: an unclosed <!--email_off-->
+            is undefined behaviour, not a permanent opt-out. */}
+        <span hidden dangerouslySetInnerHTML={{ __html: '<!--email_on-->' }} />
       </body>
     </html>
   )

@@ -91,8 +91,30 @@ export function bundleSumError(lines: ProposalLineInput[]): string | null {
   return null;
 }
 
+/**
+ * One proposal with its stored lines, for the builder's edit mode (round 9):
+ * "Open & modify" loads exactly what the client's page renders. Revoked
+ * proposals load too - the CALLER decides read-only; the write side already
+ * refuses them in replaceLines.
+ */
+export async function readProposalWithLines(
+  proposalId: string,
+): Promise<{ proposal: ProposalRow; lines: StoredLine[] } | null> {
+  const rows = await supabaseRest<ProposalRow[]>(
+    'GET',
+    `proposals?select=*&id=eq.${proposalId}&limit=1`,
+  );
+  const proposal = rows?.[0];
+  if (!proposal) return null;
+  const lines = (await supabaseRest<StoredLine[]>(
+    'GET',
+    `proposal_lines?select=${STORED_LINE_COLUMNS}&proposal_id=eq.${proposalId}&order=position.asc&limit=${MAX_LINES}`,
+  )) ?? [];
+  return { proposal, lines };
+}
+
 /** A proposal_lines row exactly as it is stored, for snapshot-and-restore. */
-interface StoredLine {
+export interface StoredLine {
   id: string;
   proposal_id: string;
   position: number;

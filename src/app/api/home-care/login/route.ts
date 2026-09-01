@@ -1,30 +1,42 @@
 /**
- * La Vaca Home Care — magic-link login.
+ * La Vaca Home Care - magic-link login.
  *
- * A returning, already-verified homeowner enters just their email and we send a
- * fresh sign-in link (the same verify-token flow as onboarding; clicking it sets
- * the hc_access cookie and lands them on their checklist). We ALWAYS respond with
+ * A returning homeowner enters just their email and we send a fresh sign-in
+ * link (the same verify-token flow as onboarding; clicking it sets the
+ * hc_access cookie and lands them on their checklist). We ALWAYS respond with
  * a generic success so this endpoint can't be used to enumerate who is a member.
+ *
+ * That generic answer is right facing the public and was wrong facing US. Every
+ * outcome here used to be indistinguishable from every other: an address that
+ * belongs to nobody produced no email, no log line and no `email_log` row -
+ * byte-identical to a broken mailer. On 2026-08-06 the owner's own sign-in link
+ * "never arrived", and answering why took a database session. So each outcome
+ * now logs exactly one line naming itself (see `logOutcome`), with the address
+ * masked so the logs never become a membership list. The HTTP response is
+ * untouched: the caller still learns nothing.
  */
 import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { verifyRecaptcha } from '@/lib/recaptchaVerify';
-import {
-  findHomeownerByEmail,
-  updateHomeowner,
-  newToken,
-  hoursFromNow,
-  normalizeEmail,
-} from '@/lib/homecare/homeowners';
-import { sendHomeCareVerificationEmail } from '@/lib/notify/sendHomeCareEmails';
+import { maskEmail } from '@/lib/maskEmail';
+import { findHomeownerByEmail, normalizeEmail } from '@/lib/homecare/homeowners';
+import { canSendSignInLink, issueSignInLink } from '@/lib/homecare/signInLink';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const MAX_BODY_BYTES = 8 * 1024;
 const RECAPTCHA_ACTION = 'home_care_login';
-const VERIFY_TOKEN_TTL_HOURS = 48;
+
+/** Every way this endpoint can end, as one line a human can grep for. */
+type LoginOutcome = 'sent' | 'no_member' | 'not_sendable' | 'throttled' | 'send_failed';
+
+function logOutcome(outcome: LoginOutcome, email: string, detail?: string) {
+  console.info(
+    `[home-care/login] ${outcome} for ${maskEmail(email)}${detail ? ` (${detail})` : ''}`,
+  );
+}
 
 const optStr = (max: number) => z.string().max(max).nullish();
 const Schema = z
@@ -34,15 +46,6 @@ const Schema = z
     honeypot: optStr(500),
   })
   .passthrough();
-
-function buildVerifyUrl(origin: string, token: string): string {
-  const u = new URL(`${origin}/api/home-care/verify`);
-  u.searchParams.set('token', token);
-  return u.toString();
-}
-function buildUnsubscribeUrl(origin: string, token: string): string {
-  return `${origin}/api/home-care/unsubscribe?token=${encodeURIComponent(token)}`;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -87,27 +90,29 @@ export async function POST(request: NextRequest) {
     // response latency despite the generic body. `after()` runs post-response on
     // Vercel's runtime (unlike a naked fire-and-forget, which gets killed), so
     // the email still sends reliably while every caller sees the same fast 200.
-    if (emailRl.allowed) {
+    if (!emailRl.allowed) {
+      logOutcome('throttled', normEmail, 'per-email limit');
+    } else {
       after(async () => {
         try {
-          // Only send a link to an already-verified (active) member. Silent
-          // otherwise — never reveal whether an email is in the program.
+          // Only send a link to a member we are still allowed to mail. Silent
+          // otherwise - never reveal whether an email is in the program.
           const existing = await findHomeownerByEmail(normEmail);
-          if (existing && existing.status === 'active') {
-            const verifyToken = newToken();
-            await updateHomeowner(existing.id, {
-              verify_token: verifyToken,
-              verify_token_expires_at: hoursFromNow(VERIFY_TOKEN_TTL_HOURS),
-            });
-            await sendHomeCareVerificationEmail({
-              to: normEmail,
-              firstName: existing.first_name,
-              verifyUrl: buildVerifyUrl(origin, verifyToken),
-              unsubscribeUrl: buildUnsubscribeUrl(origin, existing.unsubscribe_token),
-            });
+          if (!existing) {
+            logOutcome('no_member', normEmail);
+            return;
           }
+          if (!canSendSignInLink(existing)) {
+            logOutcome('not_sendable', normEmail, `status=${existing.status}`);
+            return;
+          }
+          const send = await issueSignInLink(existing, origin);
+          // A send that Resend refused leaves an email_log row, but only this
+          // line says which login attempt it belonged to.
+          if (send.status === 'sent') logOutcome('sent', normEmail, `status=${existing.status}`);
+          else logOutcome('send_failed', normEmail, send.error ?? send.status);
         } catch (err) {
-          console.error('Home Care login (deferred send) error:', err);
+          console.error(`[home-care/login] deferred send threw for ${maskEmail(normEmail)}:`, err);
         }
       });
     }

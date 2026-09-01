@@ -98,3 +98,16 @@ test('AC7: preview uses no emoji on the Home Care page (owner style rule)', () =
   // No characters in the emoji/pictograph ranges anywhere in the component.
   expect(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(component)).toBe(false);
 });
+
+test('AC8 (DP7): the public preview quotes no price', () => {
+  // The checklist stopped quoting prices (owner, 6 Aug 2026), and this preview
+  // renders directly below the sentence on /home-care that used to promise "a
+  // rough cost". Held here rather than by a rendered assertion because the
+  // component is a fixed illustration with hardcoded sample tasks - the way
+  // pricing would come back is somebody editing that data, which is exactly
+  // what a source assertion catches.
+  expect(/\$\s?\d/.test(component)).toBe(false);
+  expect(component).not.toMatch(/est_cost|price_band|priceBand|\bcost\b/);
+  // And the sentence above it no longer promises one either.
+  expect(page).not.toContain('a rough cost');
+});

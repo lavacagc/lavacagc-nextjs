@@ -66,10 +66,6 @@ function buildLineup(issueLabel: string): Omit<MonthlyNewsletterPayload, 'unsubs
         url: blog('kitchen-remodel-cost-northern-nj-2026'),
       },
     ],
-    buyRemodel: {
-      text: 'New this month: hand-picked homes to buy and remodel, each with a full estimate.',
-      url: `${SITE_URL}/buy-and-remodel`,
-    },
   };
 }
 

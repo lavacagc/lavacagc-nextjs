@@ -1,16 +1,22 @@
 'use client';
 
 /**
- * Customers -> Proposals (Proposal Pod, Slice 2).
+ * Customers -> Proposals (Proposal Pod, Slice 2; customer-first since round 9).
  *
- * Two panels:
- *  - The roster: every proposal with status, submissions, and the lifecycle
- *    buttons (Copy link, Send, Re-import, Revoke, and Restore to draft on a
- *    row that has been revoked).
- *  - The importer: paste or drop the estimator's client-safe CSV, review the
- *    parsed preview - the category registry's locked/optional badge on every
- *    line with a per-line override switch - COMBINE lines into named bundles,
- *    then Create (draft) and Send.
+ * One search bar drives the page. Typing searches PEOPLE - saved customers
+ * (leads) and the clients on existing proposals together, so a client who only
+ * ever arrived as a CSV import stays findable - and selecting someone scopes
+ * the page to them: their proposals with the lifecycle buttons (Copy link,
+ * Send, Revoke, Restore), Open & modify (loads the proposal into the builder;
+ * Save replaces its lines on the same client link), and a New-proposal button
+ * pre-filled with them. With nobody selected the page lists the most recent
+ * proposals, so the day's work is one glance away.
+ *
+ * The importer: paste or drop the estimator's client-safe CSV, review the
+ * parsed preview - the category registry's locked/optional badge on every
+ * line with a per-line override switch - COMBINE lines into named bundles,
+ * then Create (draft) and Send. Collapsed behind one click since round 9
+ * (building by hand is the front door now), and armed re-imports open it.
  *
  * The preview runs entirely in the browser: parseProposalCsv and the category
  *  registry are pure modules, so nothing exists server-side until Create.
@@ -34,8 +40,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import {
   RefreshCw, Link2, Send, Ban, Upload, Boxes, X, FileUp, Undo2, Search, RotateCcw, Clock3,
+  Pencil, UserRound, Loader2,
 } from 'lucide-react';
 import { parseProposalCsv, type ParsedProposalLine } from '@/lib/proposals/csv';
+import { ProposalBuilder, type EditableStoredLine } from '@/components/admin/ProposalBuilder';
+import type { CustomerHit } from '@/components/admin/CustomerSearch';
 import {
   composeBundle, lockedMemberTitles, restoreMembers, toStoredMembers, type PreviewBundleMember,
 } from '@/lib/proposals/bundles';
@@ -89,6 +98,59 @@ interface RosterEntry {
   latest_total_cents: number | null;
   updated_at: string;
 }
+
+/**
+ * A person the search bar can land on - merged from two sources so both kinds
+ * of client resolve to one row: saved customers (leads, which carry a phone
+ * and an id the builder links new proposals to) and the client names already
+ * on proposals (which may never have had a lead row at all).
+ */
+interface ClientHit {
+  key: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  leadId: string | null;
+  proposalCount: number;
+}
+
+/** One identity per person: email when there is one, otherwise the name. */
+const clientKey = (email: string | null, name: string) =>
+  (email?.trim().toLowerCase()) || `name:${name.trim().toLowerCase()}`;
+
+/**
+ * Merge the two searches. Lead hits come first (they carry the richer
+ * identity), then proposal clients fold in - a lead who also has proposals
+ * gains the count, a proposal-only client gains a row of their own.
+ */
+function mergeClientHits(leads: CustomerHit[], proposals: RosterEntry[]): ClientHit[] {
+  const map = new Map<string, ClientHit>();
+  for (const l of leads) {
+    const name = l.name?.trim() || l.email || 'Unknown';
+    const key = clientKey(l.email, name);
+    if (!map.has(key)) {
+      map.set(key, { key, name, email: l.email, phone: l.phone, leadId: l.id, proposalCount: 0 });
+    }
+  }
+  for (const p of proposals) {
+    const key = clientKey(p.client_email, p.client_name);
+    const existing = map.get(key);
+    if (existing) existing.proposalCount += 1;
+    else map.set(key, { key, name: p.client_name, email: p.client_email, phone: null, leadId: null, proposalCount: 1 });
+  }
+  return [...map.values()].slice(0, 12);
+}
+
+/** Does this roster row belong to the selected person? Email decides when both
+ * sides have one; the exact name carries clients whose proposals were imported
+ * without an email. Either match keeps the row - a client can have both kinds. */
+function belongsTo(p: RosterEntry, c: ClientHit): boolean {
+  if (c.email && p.client_email && p.client_email.trim().toLowerCase() === c.email.trim().toLowerCase()) return true;
+  return p.client_name.trim().toLowerCase() === c.name.trim().toLowerCase();
+}
+
+/** How many recent proposals the fresh page lists before pointing at search. */
+const RECENT_LIMIT = 8;
 
 /**
  * The drag-and-drop payload type a preview row starts a drag with, and the only
@@ -315,6 +377,28 @@ export default function ProposalsAdminPage() {
   /** What the search box holds, and the term the roster on screen answers. */
   const [search, setSearch] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
+  // ---- the one search bar (round 9) ----
+  /** The person the page is scoped to; null is the fresh recent-proposals view. */
+  const [selectedClient, setSelectedClient] = useState<ClientHit | null>(null);
+  const [clientHits, setClientHits] = useState<ClientHit[]>([]);
+  const [searchBusy, setSearchBusy] = useState(false);
+  /** The popover only shows while focus is inside the search - the usual combobox rule. */
+  const [searchFocused, setSearchFocused] = useState(false);
+  /** Guards against a slow earlier people-search landing over a newer one. */
+  const peopleStamp = useRef(0);
+  // The by-hand proposal builder (round 4). The CSV importer below stays as
+  // the side door for when the estimator already made the numbers.
+  const [showBuilder, setShowBuilder] = useState(false);
+  /** "Open & modify": the proposal loaded into the builder for editing. */
+  const [editTarget, setEditTarget] = useState<{
+    id: string; title: string; clientName: string; clientEmail: string | null; lines: EditableStoredLine[];
+  } | null>(null);
+  /** The row whose lines are being fetched, so its button can say so. */
+  const [editLoading, setEditLoading] = useState<string | null>(null);
+  /** Pre-fills the builder's customer step ("+ New proposal for X"). */
+  const [builderCustomer, setBuilderCustomer] = useState<CustomerHit | null>(null);
+  /** The importer is collapsed until asked for (round 9). */
+  const [showImporter, setShowImporter] = useState(false);
   /** Matching proposals in total; null when the count could not be read. */
   const [rosterTotal, setRosterTotal] = useState<number | null>(null);
   /**
@@ -359,6 +443,111 @@ export default function ProposalsAdminPage() {
     }
   }, []);
   useEffect(() => { loadRoster(''); }, [loadRoster]);
+
+  /**
+   * The people search behind the one bar: debounced and TYPE-FIRST (nobody is
+   * listed until two characters, the owner's standing rule), asking BOTH
+   * sources at once so a saved customer and an import-only client land in the
+   * same list. Either source failing alone is tolerated - the other still
+   * answers - but both failing says so instead of showing "no matches" for a
+   * person who exists.
+   */
+  useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) { setClientHits([]); setSearchBusy(false); return; }
+    const stamp = ++peopleStamp.current;
+    setSearchBusy(true);
+    const timer = window.setTimeout(async () => {
+      const [leadsRes, proposalsRes] = await Promise.allSettled([
+        fetch(`/api/admin/estimate-email/leads?q=${encodeURIComponent(q)}`).then(async (r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return (await r.json()).leads as CustomerHit[];
+        }),
+        fetch(`/api/admin/proposals?search=${encodeURIComponent(q)}`).then(async (r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return (await r.json()).proposals as RosterEntry[];
+        }),
+      ]);
+      if (stamp !== peopleStamp.current) return;
+      setSearchBusy(false);
+      if (leadsRes.status === 'rejected' && proposalsRes.status === 'rejected') {
+        toast({ title: 'Search failed', description: 'Could not reach the server - try again.', variant: 'destructive' });
+        setClientHits([]);
+        return;
+      }
+      setClientHits(mergeClientHits(
+        leadsRes.status === 'fulfilled' ? leadsRes.value ?? [] : [],
+        proposalsRes.status === 'fulfilled' ? proposalsRes.value ?? [] : [],
+      ));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [search, toast]);
+
+  /** Land on a person: scope the roster to them, server-side, and clear the box. */
+  const selectClient = useCallback((hit: ClientHit) => {
+    setSelectedClient(hit);
+    setSearch('');
+    setClientHits([]);
+    // The scoped read uses the strongest term the person has - their email
+    // when they have one - and belongsTo() trims title-only lookalikes out of
+    // whatever the OR-search returns.
+    void loadRoster(hit.email ?? hit.name);
+  }, [loadRoster]);
+
+  const clearClient = useCallback(() => {
+    setSelectedClient(null);
+    void loadRoster('');
+  }, [loadRoster]);
+
+  /** The CustomerHit the builder pre-fills from the selected person. An empty
+   * id is a person with no lead row - the builder sends lead_id null then. */
+  const builderHitFor = (c: ClientHit): CustomerHit => ({
+    id: c.leadId ?? '',
+    name: c.name,
+    email: c.email,
+    phone: c.phone,
+    project_type: null,
+    city: null,
+    source: null,
+    created_at: '',
+  });
+
+  /**
+   * "Open & modify": read the proposal's lines and hand them to the builder.
+   * Revoked rows never get here - the button is disabled with the reason - and
+   * the server refuses a revoked re-import anyway, so this stays a plain read.
+   */
+  const openEdit = async (p: RosterEntry) => {
+    if (editLoading) return;
+    setEditLoading(p.id);
+    try {
+      const res = await fetch(`/api/admin/proposals/${p.id}`);
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.proposal) {
+        throw new Error(typeof body?.error === 'string' ? body.error : `HTTP ${res.status}`);
+      }
+      setShowBuilder(false);
+      setBuilderCustomer(null);
+      setEditTarget({
+        id: p.id,
+        title: body.proposal.title,
+        clientName: body.proposal.client_name,
+        clientEmail: body.proposal.client_email,
+        lines: body.lines ?? [],
+      });
+      requestAnimationFrame(() => {
+        document.querySelector('[data-testid="proposal-builder"]')?.scrollIntoView({ behavior: 'smooth' });
+      });
+    } catch (err) {
+      toast({
+        title: 'Could not open the proposal',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setEditLoading(null);
+    }
+  };
 
   // ---- import preview state ----
   const [rows, setRows] = useState<PreviewRow[]>([]);
@@ -640,7 +829,12 @@ export default function ProposalsAdminPage() {
     if (!confirmDiscard()) return;
     resetImporter();
     setReimportTarget(p);
-    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    // The importer is collapsed by default since round 9, and an armed
+    // re-import with no importer on screen would be a scroll to nothing.
+    setShowImporter(true);
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    });
   }, [confirmDiscard, resetImporter]);
 
   const cancelReimport = useCallback(() => {
@@ -690,7 +884,10 @@ export default function ProposalsAdminPage() {
       resetImporter();
       setClientName(''); setClientEmail(''); setProposalTitle('');
       setReimportTarget(null);
-      if (!wasReimport) setSearch('');
+      // A new proposal may be for somebody OTHER than the person the page is
+      // scoped to, and a scope that hides it invites a duplicate create - so
+      // the whole selection clears, and the row lands atop the recent list.
+      if (!wasReimport) { setSearch(''); setSelectedClient(null); }
       await loadRoster(wasReimport ? activeSearch : '');
     } catch (err) {
       toast({ title: 'Could not save', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
@@ -811,80 +1008,166 @@ export default function ProposalsAdminPage() {
       : s === 'revoked' ? <Badge variant="destructive">revoked</Badge>
         : <Badge variant="secondary">draft</Badge>;
 
+  /**
+   * What the list actually shows. Scoped to the selected person when there is
+   * one - belongsTo() trims the title-only lookalikes the OR-search let in -
+   * and the most recent few otherwise, because with search finding people the
+   * unscoped list's job is "what changed lately", not "everything".
+   */
+  const visibleRoster = useMemo(() => {
+    if (roster === null) return null;
+    if (selectedClient) return roster.filter((p) => belongsTo(p, selectedClient));
+    return roster.slice(0, RECENT_LIMIT);
+  }, [roster, selectedClient]);
+
   return (
     <div className="space-y-6" data-testid="proposals-admin">
       <Card>
-        <CardHeader>
-          <CardTitle>Proposals</CardTitle>
-          <CardDescription>
-            Tokenized client proposals built from the estimator&apos;s client-safe CSV. Locked lines are the bones; optional lines and bundles are the client&apos;s switches.
-            {CLIENT_PAGE_LIVE ? null : ' The client page ships in Slice 3, so Send is switched off until then - a proposal email would carry a link that does not resolve yet. Copy link still works for a link you are holding, not sending.'}
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-3 flex-wrap space-y-0">
+          <div>
+            <CardTitle>Proposals</CardTitle>
+            <CardDescription className="mt-1">
+              Search a customer to see and edit their proposals, or start a new one. Locked lines are the bones; optional lines and bundles are the client&apos;s switches.
+              {CLIENT_PAGE_LIVE ? null : ' The client page ships in Slice 3, so Send is switched off until then - a proposal email would carry a link that does not resolve yet. Copy link still works for a link you are holding, not sending.'}
+            </CardDescription>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => {
+              setEditTarget(null);
+              setBuilderCustomer(null);
+              setShowBuilder(true);
+            }}
+            data-testid="open-builder"
+          >
+            New proposal
+          </Button>
         </CardHeader>
         <CardContent>
           {/*
-            The roster is capped, so search is how every proposal stays
-            reachable: the lifecycle buttons - Revoke above all - live inside a
-            row, and a row that falls off the end of the page takes them with it.
+            The one search bar (round 9): it finds PEOPLE, and picking one is
+            what filters the page. The roster is capped, so this is also how
+            every proposal stays reachable - the lifecycle buttons live inside
+            a row, and a row past the cap can only be reached through its
+            client. Type-first, like every other search on the admin.
           */}
-          <form
-            className="mb-3 flex flex-wrap items-center gap-2"
-            onSubmit={(e) => { e.preventDefault(); loadRoster(search); }}
+          <div
+            className="relative mb-3"
+            onFocus={() => setSearchFocused(true)}
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSearchFocused(false);
+            }}
           >
-            <Input
-              className="h-11 min-w-48 flex-1"
-              type="search"
-              placeholder="Search by client name, email or proposal title"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search proposals"
-              data-testid="roster-search"
-            />
-            {/*
-              The buttons travel together. Once the field claims the whole line -
-              which it does from about 360px down - they share the line beneath
-              it and split it between them, rather than each dropping to a line
-              of its own at half width, looking left behind rather than placed.
-            */}
-            <div className="flex w-full gap-2 sm:w-auto">
-              <Button type="submit" variant="outline" size="sm" className="h-11 flex-1 sm:flex-none" data-testid="roster-search-btn">
-                <Search className="mr-1 h-4 w-4" />Search
-              </Button>
-              {activeSearch ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-11 flex-1 sm:flex-none"
-                  onClick={() => { setSearch(''); loadRoster(''); }}
-                  data-testid="roster-search-clear"
-                >
-                  <X className="mr-1 h-4 w-4" />Clear
-                </Button>
-              ) : null}
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input
+                className="h-11 pl-9"
+                type="search"
+                placeholder="Search customers by name or email - pick one to see their proposals"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search customers"
+                data-testid="roster-search"
+              />
             </div>
-          </form>
+            {searchFocused && search.trim().length >= 2 && (
+              <div
+                className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-lg border bg-background shadow-lg"
+                data-testid="client-search-popover"
+              >
+                {searchBusy ? (
+                  <p className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Searching…
+                  </p>
+                ) : clientHits.length === 0 ? (
+                  <p className="p-3 text-sm text-muted-foreground" data-testid="client-search-empty">
+                    Nobody matches &quot;{search.trim()}&quot;. Somebody brand new is saved from the
+                    builder&apos;s customer step - press New proposal.
+                  </p>
+                ) : (
+                  clientHits.map((hit) => (
+                    <button
+                      key={hit.key}
+                      type="button"
+                      className="flex w-full items-center gap-3 border-b px-3 py-2.5 text-left transition-colors last:border-0 hover:bg-muted/60"
+                      onClick={() => selectClient(hit)}
+                      data-testid="client-hit"
+                    >
+                      <UserRound className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">{hit.name}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {hit.email ?? 'no email on file'}{hit.phone ? ` · ${hit.phone}` : ''}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {hit.proposalCount > 0
+                          ? `${hit.proposalCount} ${plural(hit.proposalCount, 'proposal')}`
+                          : 'no proposals yet'}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Who the page is scoped to - the mock's client header. */}
+          {selectedClient && (
+            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 p-3" data-testid="client-header">
+              <UserRound className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold">{selectedClient.name}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {selectedClient.email ?? 'no email on file'}
+                  {selectedClient.phone ? ` · ${selectedClient.phone}` : ''}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                className="h-11"
+                onClick={() => {
+                  setEditTarget(null);
+                  setBuilderCustomer(builderHitFor(selectedClient));
+                  setShowBuilder(true);
+                  requestAnimationFrame(() => {
+                    document.querySelector('[data-testid="proposal-builder"]')?.scrollIntoView({ behavior: 'smooth' });
+                  });
+                }}
+                data-testid="new-for-client"
+              >
+                New proposal for {selectedClient.name.split(' ')[0]}
+              </Button>
+              <Button size="sm" variant="ghost" className="h-11" onClick={clearClient} data-testid="client-clear">
+                <X className="mr-1 h-4 w-4" />Clear
+              </Button>
+            </div>
+          )}
           {rosterError ? (
             <div className="flex items-center justify-between rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
               <span>{rosterError}</span>
               <Button size="sm" variant="outline" onClick={() => loadRoster(activeSearch)}><RefreshCw className="mr-1 h-4 w-4" />Retry</Button>
             </div>
-          ) : roster === null ? (
+          ) : visibleRoster === null ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : roster.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {activeSearch
-                ? `No proposals match "${activeSearch}". Clear the search to see the whole roster.`
-                : 'No proposals yet - import a CSV below to create the first one.'}
+          ) : visibleRoster.length === 0 ? (
+            <p className="text-sm text-muted-foreground" data-testid="roster-empty">
+              {selectedClient
+                ? `No proposals for ${selectedClient.name} yet - the New proposal button above starts one for them.`
+                : 'No proposals yet - press New proposal to build the first one, or import the estimator’s CSV.'}
             </p>
           ) : (
             <div className="space-y-2" data-testid="roster">
-              {rosterTruncated ? (
+              <p className="text-sm font-semibold" data-testid="roster-heading">
+                {selectedClient
+                  ? `${selectedClient.name}’s proposals (${visibleRoster.length})`
+                  : 'Recent proposals'}
+              </p>
+              {!selectedClient && roster !== null && (roster.length > RECENT_LIMIT || rosterTruncated) ? (
                 <p className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground" data-testid="roster-truncated">
-                  {rosterTotal != null && rosterTotal > roster.length
-                    ? `Showing ${roster.length} of ${rosterTotal}${activeSearch ? ' matching' : ''} proposals, most recently updated first.`
-                    : `Showing the first ${roster.length}${activeSearch ? ' matching' : ''} proposals, most recently updated first.`}
-                  {' '}Search by client name, email or title to reach any of the rest - every proposal stays revocable.
+                  Showing the {visibleRoster.length} most recently updated
+                  {rosterTotal != null ? ` of ${rosterTotal} proposals` : ' proposals'} - search a
+                  customer above to reach everyone else. Every proposal stays revocable through its client.
                 </p>
               ) : null}
               {countsAvailable ? null : (
@@ -892,7 +1175,7 @@ export default function ProposalsAdminPage() {
                   Line and submission counts could not be read just now, so they are shown as unknown. Everything else on this roster - Copy link, Re-import, Revoke - still works.
                 </p>
               )}
-              {roster.map((p) => (
+              {visibleRoster.map((p) => (
                 <div key={p.id} className="rounded-lg border p-3" data-testid={`proposal-${p.id}`}>
                   {/*
                     Same two shapes as a preview row, same breakpoint.
@@ -932,12 +1215,38 @@ export default function ProposalsAdminPage() {
                       asking the document for a scrollbar this shell can never
                       grow. B32 is the proof that check can fail.
                     */}
-                    <div className="min-w-0 flex-1 lg:min-w-[15rem]" data-testid="roster-identity">
-                      <div className="md:flex md:flex-wrap md:items-baseline md:gap-2">
-                        <div className="font-semibold">{p.client_name}</div>
-                        <div className="line-clamp-2 text-sm text-muted-foreground">{p.title}</div>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
+                    {/*
+                      The identity column is the row's click-into target since
+                      round 9 - "previous proposals that you can click into and
+                      modify", in the owner's words - and it became a BUTTON
+                      rather than gaining one: the actions cluster's widths are
+                      pinned by B29/B31 down to the pixel, and the identity
+                      column is the one part of the row that is already flexible.
+                      Its outer geometry is untouched (no padding was added, for
+                      exactly that reason), so the measured columns still hold.
+                      A revoked row keeps the target but the click says why it
+                      will not open - the same posture as Re-import's refusal.
+                    */}
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 rounded-md text-left transition-colors hover:bg-muted/40 lg:min-w-[15rem]"
+                      data-testid="roster-identity"
+                      onClick={() => {
+                        if (p.status === 'revoked') {
+                          toast({
+                            title: 'This proposal is revoked',
+                            description: 'Restore it to draft first - then it can be opened and edited.',
+                          });
+                          return;
+                        }
+                        void openEdit(p);
+                      }}
+                    >
+                      <span className="block md:flex md:flex-wrap md:items-baseline md:gap-2">
+                        <span className="block font-semibold">{p.client_name}</span>
+                        <span className="block line-clamp-2 text-sm text-muted-foreground">{p.title}</span>
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
                         {p.line_count == null || p.submission_count == null ? (
                           'Counts unavailable'
                         ) : (
@@ -946,7 +1255,19 @@ export default function ProposalsAdminPage() {
                             {p.latest_total_cents != null ? ` · latest ${dollars(p.latest_total_cents)}` : ''}
                           </>
                         )}
-                      </div>
+                      </span>
+                      <span
+                        className={cn(
+                          'mt-1 flex items-center gap-1.5 text-xs font-semibold',
+                          p.status === 'revoked' ? 'text-muted-foreground' : 'text-primary',
+                        )}
+                        data-testid="edit-hint"
+                      >
+                        <Pencil className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        {p.status === 'revoked'
+                          ? 'Restore to draft to edit'
+                          : editLoading === p.id ? 'Opening…' : 'Open & modify'}
+                      </span>
                       {/*
                         A draft whose window has run out. Said on the ROW rather
                         than left for the client to discover, because this is
@@ -960,7 +1281,7 @@ export default function ProposalsAdminPage() {
                         there rather than an obstacle to sharing this one.
                       */}
                       {draftLinkHasExpired(p) ? (
-                        <div
+                        <span
                           className="mt-1 flex items-start gap-1.5 text-xs font-medium text-amber-700"
                           data-testid="link-expired-hint"
                         >
@@ -969,9 +1290,9 @@ export default function ProposalsAdminPage() {
                             Link expired after {DRAFT_WINDOW_HOURS}h - any copy already shared has
                             stopped opening. Copying it again refreshes it.
                           </span>
-                        </div>
+                        </span>
                       ) : null}
-                    </div>
+                    </button>
                     <div className="shrink-0 md:order-2">{statusBadge(p.status)}</div>
                   </div>
                   {/*
@@ -1074,8 +1395,70 @@ export default function ProposalsAdminPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
+      {(showBuilder || editTarget) && (
+        <ProposalBuilder
+          // Keyed so an edit initializes fresh rows for ITS proposal - the
+          // builder reads `edit` in state initializers, which run once.
+          key={editTarget ? `edit-${editTarget.id}` : builderCustomer ? `for-${builderCustomer.id || builderCustomer.email || builderCustomer.name}` : 'new'}
+          edit={editTarget ?? undefined}
+          initialCustomer={builderCustomer}
+          onCreated={() => {
+            // An edit, or a proposal built FOR the person on screen, lands in
+            // the scoped list the admin is looking at. A proposal built from
+            // the header button can be for anyone, and a scope that hides the
+            // row it just made invites a duplicate - so that path clears out
+            // to the recent list, where the new row is on top.
+            const keepScope = editTarget != null || (builderCustomer != null && selectedClient != null);
+            setShowBuilder(false);
+            setEditTarget(null);
+            setBuilderCustomer(null);
+            if (keepScope) {
+              void loadRoster(activeSearch);
+            } else {
+              setSelectedClient(null);
+              setSearch('');
+              void loadRoster('');
+            }
+          }}
+          onClose={() => {
+            setShowBuilder(false);
+            setEditTarget(null);
+            setBuilderCustomer(null);
+          }}
+          onImportInstead={() => {
+            setShowBuilder(false);
+            setShowImporter(true);
+            requestAnimationFrame(() => {
+              document.querySelector('[data-testid="csv-importer-card"]')?.scrollIntoView({ behavior: 'smooth' });
+            });
+          }}
+        />
+      )}
+
+      {/*
+        The importer is one click away rather than a whole card of paste box
+        and drop zone under every visit (round 9): building by hand is the
+        front door now, and the estimator's CSV is the side door for when the
+        numbers already exist. An armed re-import opens it by itself above.
+      */}
+      {!showImporter && (
+        <p className="text-sm text-muted-foreground">
+          Have an estimator CSV instead?{' '}
+          <button
+            type="button"
+            className="font-semibold text-primary underline"
+            onClick={() => setShowImporter(true)}
+            data-testid="open-importer"
+          >
+            Import a proposal CSV
+          </button>
+        </p>
+      )}
+
+      {showImporter && (
+      <Card data-testid="csv-importer-card">
+        <CardHeader className="flex flex-row items-start justify-between gap-3 flex-wrap space-y-0">
+          <div>
           <CardTitle>{reimportTarget ? `Re-import for ${reimportTarget.client_name}` : 'Import a proposal CSV'}</CardTitle>
           <CardDescription>
             {reimportTarget
@@ -1085,6 +1468,17 @@ export default function ProposalsAdminPage() {
               <Button size="sm" variant="ghost" className="ml-2" onClick={cancelReimport}><X className="mr-1 h-4 w-4" />Cancel re-import</Button>
             ) : null}
           </CardDescription>
+          </div>
+          {/*
+            Collapsing keeps the preview - nothing is discarded, so nothing is
+            asked. A collapse WITH a target armed would hide the card that
+            names where the next Create lands, so that state keeps the card.
+          */}
+          {!reimportTarget && (
+            <Button size="sm" variant="ghost" onClick={() => setShowImporter(false)} data-testid="close-importer">
+              Hide
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {reimportTarget ? (
@@ -1400,6 +1794,7 @@ export default function ProposalsAdminPage() {
           )}
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }

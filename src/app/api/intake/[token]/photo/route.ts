@@ -15,6 +15,13 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const BUCKET = 'intake-photos';
+/**
+ * How long a freshly-signed photo URL stays valid. Long enough for the owner
+ * to open the alert and look at the photos in the same sitting; short enough
+ * that a URL leaking later (into analytics, a Referer header, a forwarded
+ * email) is worth nothing (CM-10).
+ */
+const SIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
 const MAX_FILES = 6;
 /**
  * A ceiling on the whole session, not just one request.
@@ -116,14 +123,26 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
         .upload(path, file, { contentType: file.type, upsert: false });
       if (error) throw new Error(error.message);
 
-      const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
+      // CM-10: this used to call getPublicUrl, which mints a permanent
+      // unauthenticated URL for a photo of the inside of a customer's home.
+      // A signed URL expires, and - unlike the public one - it keeps working
+      // after the bucket is made private by the accompanying migration
+      // (20260809000000_chaos_hardening.sql), which is why the two must ship
+      // together.
+      //
+      // storagePath is the durable reference; the signed URL is a temporary
+      // view of it. Anything that needs to display a photo later should sign
+      // the path again rather than storing a URL that outlives its own expiry.
+      const { data: signed } = await supabase.storage
+        .from(BUCKET)
+        .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
       await recordPhoto({
         sessionId: session.id,
         leadId: session.lead_id,
         storagePath: path,
-        publicUrl: pub?.publicUrl ?? null,
+        publicUrl: signed?.signedUrl ?? null,
       });
-      uploaded.push(pub?.publicUrl ?? path);
+      uploaded.push(signed?.signedUrl ?? path);
     } catch (err) {
       console.error(`[intake] photo upload failed for ${file.name}:`, err);
       failed.push(file.name);

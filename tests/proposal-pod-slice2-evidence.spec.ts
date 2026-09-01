@@ -162,6 +162,10 @@ async function signIn(context: BrowserContext, baseURL: string) {
 
 /** Paste the way a human does, so onPaste is what fires. */
 async function pasteCsv(page: Page, text: string) {
+  // The importer is collapsed behind one click since round 9 - open it the way
+  // an admin does when the box is not already on screen.
+  const opener = page.getByTestId('open-importer');
+  if (await opener.isVisible()) await opener.click();
   await page.getByTestId('csv-paste').click();
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
   await page.keyboard.press(`${mod}+A`);
@@ -253,8 +257,6 @@ const geometry = (page: Page) => page.evaluate(() => {
     }
   });
 
-  const search = box('[data-testid="roster-search-btn"]');
-  const clear = box('[data-testid="roster-search-clear"]');
   return {
     viewport,
     widest,
@@ -265,9 +267,8 @@ const geometry = (page: Page) => page.evaluate(() => {
     // the row's tick, and measuring that reports a 20px checkbox as the name.
     bundleName: box('[data-testid="bundle-row"] input[aria-label="Bundle name"]'),
     identity: box('[data-testid="roster-identity"]'),
-    searchRow: search && clear
-      ? { sameLine: search.top === clear.top, search: search.width, clear: clear.width }
-      : null,
+    // Round 9 folded Search/Clear into the one people-search bar.
+    searchBox: box('[data-testid="roster-search"]'),
   };
 });
 
@@ -546,11 +547,8 @@ test.describe('Proposal Pod slice 2 - evidence capture', () => {
     await expect(page.getByTestId('bundle-row')).toHaveCount(1);
     await nameBundle(page.getByTestId('bundle-row'), 'Spa shower package');
 
-    // Search for something both rows answer, so Clear is on screen beside it -
-    // the pair the crowding pass put back on one line.
-    await page.getByTestId('roster-search').fill('a');
-    await page.getByTestId('roster-search-btn').click();
-    await expect(page.getByTestId('roster-search-clear')).toBeVisible();
+    // Both rows are on screen already - the fresh page lists the most recent
+    // proposals, and the seed holds two.
     await expect(page.getByText('Rachel Morales')).toBeVisible();
     await expect(page.getByText('Yusuf Adeyemi')).toBeVisible();
 
@@ -569,8 +567,7 @@ test.describe('Proposal Pod slice 2 - evidence capture', () => {
         `  row tick target ${seen.tick!.width}x${seen.tick!.height}px`,
         `  bundle name field ${seen.bundleName!.width}px wide`,
         `  client identity column ${seen.identity!.width}px wide`,
-        `  Search ${seen.searchRow!.search}px and Clear ${seen.searchRow!.clear}px`
-        + `, ${seen.searchRow!.sameLine ? 'sharing one line' : 'ON SEPARATE LINES'}`,
+        `  people-search bar ${seen.searchBox!.width}px wide`,
       ].join('\n'));
 
       expect(seen.widest.right, `${width}px: nothing is wider than the viewport`)
@@ -579,7 +576,7 @@ test.describe('Proposal Pod slice 2 - evidence capture', () => {
       expect(seen.undersized, `${width}px: every control clears the house 44px`).toEqual([]);
       expect(seen.tick!.width, `${width}px: the tick target`).toBeGreaterThanOrEqual(44);
       expect(seen.tick!.height, `${width}px: the tick target`).toBeGreaterThanOrEqual(44);
-      expect(seen.searchRow!.sameLine, `${width}px: Search and Clear share a line`).toBe(true);
+      expect(seen.searchBox!.height, `${width}px: the search bar keeps the house 44px`).toBeGreaterThanOrEqual(44);
     }
 
     // The nice-to-have the owner asked for: on a desktop the icon opens its

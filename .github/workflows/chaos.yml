@@ -1,0 +1,129 @@
+name: Chaos runners
+
+# THE TIERS EXIST; ONLY TIER 1 RUNS AUTOMATICALLY, AND IT IS ALMOST FREE.
+#
+# The chaos-monkey playbook prescribes three CI tiers (PR smoke, merge suite,
+# nightly at scale). This repo deliberately keeps CI thin because Actions
+# minutes are the scarce resource - the real gate is .husky/pre-push, and
+# Playwright is manual-dispatch only (see playwright.yml). Wiring three
+# automatic tiers here would quietly undo that decision.
+#
+# So the split is by COST, not by ceremony:
+#
+#   Tier 1  static invariants   ~20s, no build, no browser   -> runs on PR/push
+#   Tier 2  isolation + budget  needs a build + chromium     -> manual dispatch
+#   Tier 3  crawl + nightly     needs a build + long crawl   -> manual dispatch
+#
+# Tier 1 is the one that matters day to day: it enforces the *classes* found in
+# chaos/findings.json against every change, for about the cost of a lint run.
+# Flip tiers 2 and 3 onto a schedule the moment minutes exist - the jobs are
+# written and working, only their `on:` triggers are conservative.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/chaos-static.ts'
+      - 'chaos/static-baseline.json'
+      - '.github/workflows/chaos.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'scripts/chaos-static.ts'
+      - 'chaos/static-baseline.json'
+      - '.github/workflows/chaos.yml'
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: 'Which tier to run'
+        required: true
+        default: 'tier2'
+        type: choice
+        options: [tier2, tier3]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --- Tier 1 -------------------------------------------------------------
+  # Structural invariants only. No build, no browser, no database. A NEW
+  # violation of a known bug class fails the build; the existing backlog is
+  # baselined in chaos/static-baseline.json and does not.
+  static:
+    name: 'Tier 1 - static invariants'
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Chaos static checks
+        run: npm run chaos:static
+
+  # --- Tier 2 -------------------------------------------------------------
+  # The regression tests written from confirmed findings, plus query budgets.
+  # Each finding graduates into here when its fix lands, tagged @isolation or
+  # @budget, and never has to be re-found by hand again.
+  regressions:
+    name: 'Tier 2 - isolation + budget'
+    if: github.event_name == 'workflow_dispatch' && inputs.tier == 'tier2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: mkdir -p .next/types && touch .next/types/routes.d.ts
+      - run: npx playwright install --with-deps chromium
+      - name: Build (same script the local suite uses)
+        run: npm run test:build
+      - name: Isolation + budget suites
+        run: ./node_modules/.bin/playwright test --project=chromium --grep "@isolation|@budget"
+        env:
+          CI: 'true'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chaos-tier2-report
+          path: playwright-report/
+          retention-days: 7
+
+  # --- Tier 3 -------------------------------------------------------------
+  # The coverage crawl: every route as anonymous and as admin, asserting no
+  # 404, no 5xx, no uncaught error, no error leak, and - the output worth
+  # reading - which routes nothing links to.
+  crawl:
+    name: 'Tier 3 - coverage crawl'
+    if: github.event_name == 'workflow_dispatch' && inputs.tier == 'tier3'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: mkdir -p .next/types && touch .next/types/routes.d.ts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:build
+      - name: Crawl every route as every role
+        run: ./node_modules/.bin/playwright test tests/chaos/crawler.spec.ts --project=chromium
+        env:
+          CI: 'true'
+      - name: Upload crawl output
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chaos-crawl
+          path: chaos/crawl-*.json
+          retention-days: 14

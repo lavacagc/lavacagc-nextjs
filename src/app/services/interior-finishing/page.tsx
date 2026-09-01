@@ -20,9 +20,9 @@ import {
 } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Drywall & Interior Finishing Contractor Northern NJ | La Vaca',
+  title: 'Drywall & Interior Finishing in NJ',
   description:
-    'Expert drywall, flooring & trim contractor in Bergen, Essex & Morris counties. Level 5 finishing, LVP installation. Licensed. Serving Montclair, Alpine, Morristown.',
+    'Level 5 drywall finishing, LVP flooring and trim across Bergen, Essex and Morris counties. Licensed, serving Montclair and Alpine.',
   keywords:
     'drywall contractor NJ, interior finishing NJ, skim coat specialist, level 5 drywall, flooring installation, LVP flooring NJ, trim work, baseboard installation, interior painting, Bergen County, Essex County, Morris County, Montclair, Short Hills, Morristown, La Vaca General Contractors',
   openGraph: {

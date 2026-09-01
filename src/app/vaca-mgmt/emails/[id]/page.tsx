@@ -99,7 +99,9 @@ export default function EmailDetailPage() {
   return (
     <div className="container mx-auto p-6 max-w-5xl">
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/vaca-mgmt/emails">
+        {/* Back into the admin SPA (with its sidebar), not the sidebar-less
+            standalone list - that strand was the vanishing-nav bug. */}
+        <Link href="/vaca-mgmt">
           <Button variant="ghost" size="sm">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to all emails
           </Button>

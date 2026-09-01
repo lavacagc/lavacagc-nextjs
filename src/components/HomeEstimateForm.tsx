@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config';
 import { ChevronDown, ChevronUp, Calculator, CheckCircle } from "lucide-react";
 import { z } from "zod";
@@ -19,6 +18,7 @@ import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 import { ContactTimePicker, type ContactTimePreference } from "@/components/forms/ContactTimePicker";
 import { useRecaptchaChallenge } from "@/components/recaptcha/RecaptchaChallengeProvider";
 import { submitLead } from "@/lib/submitLead";
+import { GeoGateNotice } from "@/components/GeoGateNotice";
 
 interface QuickEstimateData {
   firstName: string;
@@ -292,26 +292,12 @@ const HomeEstimateForm = () => {
       }
 
       // Send email notification with reCAPTCHA verification
-      const { error: emailError } = await supabase.functions.invoke('send-lead-notification', {
-        body: {
-          type: 'estimate',
-          data: {
-            firstName: formData.firstName,
-            lastName: formData.lastName,
-            email: formData.email,
-            phone: formData.phone,
-            zipCode: formData.zipCode,
-            projectType: formData.projectType,
-            budgetRange: formData.budgetRange,
-            preferredContactMethod: 'phone'
-          },
-          recaptchaToken
-        }
-      });
+      // CM-12: the browser used to ALSO invoke the send-lead-notification
+      // edge function here, so every lead produced two owner emails and
+      // submitted the same reCAPTCHA token for a second assessment. The
+      // server path in /api/leads/submit already notifies, cannot be
+      // skipped by a direct caller, and handles its own failures.
 
-      if (emailError) {
-        console.error('Email notification failed:', emailError);
-      }
 
       // Track successful estimate request in GA4
       trackEstimateRequest('home_quick_form');
@@ -393,6 +379,7 @@ const HomeEstimateForm = () => {
       </CardHeader>
 
       <CardContent className="space-y-4">
+        <GeoGateNotice kind="estimate" />
         {/* Honeypot — hidden from humans, bots auto-fill it */}
         <div className="absolute opacity-0 top-0 left-0 h-0 w-0 -z-10 overflow-hidden" aria-hidden="true" tabIndex={-1}>
           <label htmlFor="he-website">Website</label>

@@ -3,6 +3,27 @@ import { defineConfig, devices } from '@playwright/test';
 /** Suites that run against a local stub rather than a browser - see the `node` project. */
 const NODE_SUITES = /service-quotes-e2e\.spec\.ts/;
 
+/**
+ * The chaos coverage crawler is excluded from the default run on purpose.
+ *
+ * It walks up to 80 routes in one test and listens on the page console the
+ * whole time, so alongside a fully-parallel suite it picks up other workers'
+ * noise and occasionally times out - it passed alone and failed in the same
+ * commit when the rest of the suite ran beside it. A crawl is a sweep, not a
+ * unit test.
+ *
+ * Run it deliberately with `npm run chaos:crawl`, which is also what CI tier 3
+ * calls (.github/workflows/chaos.yml).
+ */
+const CHAOS_SWEEPS = /chaos\/crawler\.spec\.ts/;
+
+/**
+ * ...but `npm run chaos:crawl` must still be able to run it. That script sets
+ * CHAOS_SWEEP=1, which drops the ignore - otherwise the sweep would be
+ * unreachable from anywhere, which is a worse bug than the flake it fixes.
+ */
+const IGNORED = process.env.CHAOS_SWEEP ? [NODE_SUITES] : [NODE_SUITES, CHAOS_SWEEPS];
+
 export default defineConfig({
   testDir: './tests',
   /**
@@ -38,12 +59,12 @@ export default defineConfig({
     },
     {
       name: 'chromium',
-      testIgnore: NODE_SUITES,
+      testIgnore: IGNORED,
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'mobile',
-      testIgnore: NODE_SUITES,
+      testIgnore: IGNORED,
       use: {
         ...devices['Pixel 5'],
         // Use Chromium for mobile instead of WebKit for better compatibility
