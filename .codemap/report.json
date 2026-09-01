@@ -1,0 +1,1608 @@
+{
+  "schema": "codemap-report/1",
+  "generatedAt": "2026-08-14T17:51:22.093Z",
+  "baseline": true,
+  "comparedAgainst": null,
+  "git": {
+    "sha": "05287c9883888377c644f7f1312e5fff4e07afe6",
+    "shortSha": "05287c9",
+    "branch": "seo/phase-2-titles-meta",
+    "subject": "SEO: single brand suffix in titles, shorten template, drop redirecting URLs from sitemap (#102)",
+    "author": "lavacagc",
+    "committedAt": "2026-08-14T13:24:11-04:00"
+  },
+  "totals": {
+    "files": 574,
+    "testFiles": 0,
+    "loc": 100021,
+    "edges": 1688,
+    "modules": 18,
+    "entries": 194,
+    "externalPackages": 64
+  },
+  "changed": {
+    "addedFiles": [
+      "src/app/about/page.tsx",
+      "src/app/admin/[...catchAll]/page.tsx",
+      "src/app/admin/page.tsx",
+      "src/app/api/admin/analyze-project/route.ts",
+      "src/app/api/admin/broadcasts/sync-suppression/route.ts",
+      "src/app/api/admin/content-actions/apply/route.ts",
+      "src/app/api/admin/content-actions/draft/route.ts",
+      "src/app/api/admin/content-actions/route.ts",
+      "src/app/api/admin/content-actions/stage/route.ts",
+      "src/app/api/admin/crew/route.ts",
+      "src/app/api/admin/emails/[id]/route.ts",
+      "src/app/api/admin/emails/route.ts",
+      "src/app/api/admin/estimate-email/_schema.ts",
+      "src/app/api/admin/estimate-email/leads/route.ts",
+      "src/app/api/admin/estimate-email/log/route.ts",
+      "src/app/api/admin/estimate-email/preview/route.ts",
+      "src/app/api/admin/estimate-email/send/route.ts",
+      "src/app/api/admin/follow-ups/route.ts",
+      "src/app/api/admin/home-care/home-records/route.ts",
+      "src/app/api/admin/home-care/parse-amazon/route.ts",
+      "src/app/api/admin/home-care/product-image/route.ts",
+      "src/app/api/admin/home-care/products/[id]/route.ts",
+      "src/app/api/admin/home-care/products/route.ts",
+      "src/app/api/admin/keyword-research/route.ts",
+      "src/app/api/admin/listings/import/route.ts",
+      "src/app/api/admin/listings/verify/route.ts",
+      "src/app/api/admin/preferences/route.ts",
+      "src/app/api/admin/proposals/[id]/route.ts",
+      "src/app/api/admin/proposals/route.ts",
+      "src/app/api/admin/releases/route.ts",
+      "src/app/api/admin/releases/send/route.ts",
+      "src/app/api/admin/service-quote/_schema.ts",
+      "src/app/api/admin/service-quote/complete/route.ts",
+      "src/app/api/admin/service-quote/dispatch/route.ts",
+      "src/app/api/admin/service-quote/intake/route.ts",
+      "src/app/api/admin/service-quote/schedule/route.ts",
+      "src/app/api/admin/service-quote/send/route.ts",
+      "src/app/api/admin/subscribers/route.ts",
+      "src/app/api/banners/admin/route.ts",
+      "src/app/api/banners/route.ts",
+      "src/app/api/buy-and-remodel/subscribe/route.ts",
+      "src/app/api/buy-and-remodel/track/route.ts",
+      "src/app/api/buy-and-remodel/unsubscribe/route.ts",
+      "src/app/api/buy-and-remodel/verify/route.ts",
+      "src/app/api/consent/log/route.ts",
+      "src/app/api/crew/confirm/route.ts",
+      "src/app/api/cron/generate-renderings/route.ts",
+      "src/app/api/cron/health/route.ts",
+      "src/app/api/cron/home-care-newsletter/route.ts",
+      "src/app/api/cron/intake-chase/route.ts",
+      "src/app/api/cron/monthly-newsletter/route.ts",
+      "src/app/api/cron/publish/route.ts",
+      "src/app/api/cron/resend-sync/route.ts",
+      "src/app/api/cron/send-follow-ups/route.ts",
+      "src/app/api/cron/seo-ingest/route.ts",
+      "src/app/api/cron/seo-maintain/route.ts",
+      "src/app/api/cron/seo-report/route.ts",
+      "src/app/api/cron/seo-rollback/route.ts",
+      "src/app/api/cron/seo-suggest/route.ts",
+      "src/app/api/cron/visit-dispatch-escalation/route.ts",
+      "src/app/api/cron/visit-reminders/route.ts",
+      "src/app/api/documents/[type]/route.ts",
+      "src/app/api/feedback/create/route.ts",
+      "src/app/api/feedback/list/route.ts",
+      "src/app/api/feedback/update/route.ts",
+      "src/app/api/follow-up/route.ts",
+      "src/app/api/health/forms/route.ts",
+      "src/app/api/home-care/access/route.ts",
+      "src/app/api/home-care/login/route.ts",
+      "src/app/api/home-care/profile/route.ts",
+      "src/app/api/home-care/record/route.ts",
+      "src/app/api/home-care/subscribe/route.ts",
+      "src/app/api/home-care/task/route.ts",
+      "src/app/api/home-care/unsubscribe/route.ts",
+      "src/app/api/home-care/verify/route.ts",
+      "src/app/api/home-care/visit.ics/route.ts",
+      "src/app/api/intake/[token]/answer/route.ts",
+      "src/app/api/intake/[token]/message/route.ts",
+      "src/app/api/intake/[token]/photo/route.ts",
+      "src/app/api/leads/conversations/route.ts",
+      "src/app/api/leads/list/route.ts",
+      "src/app/api/leads/submit/route.ts",
+      "src/app/api/leads/webhook/route.ts",
+      "src/app/api/newsletter/subscribe/route.ts",
+      "src/app/api/notify/form-error/route.ts",
+      "src/app/api/notify/new-lead/route.ts",
+      "src/app/api/notify/telegram-lead/route.ts",
+      "src/app/api/preferences/route.ts",
+      "src/app/api/preferences/unsubscribe-by-email/route.ts",
+      "src/app/api/preferences/unsubscribe/route.ts",
+      "src/app/api/proposal/[token]/submit/route.ts",
+      "src/app/api/referrals/route.ts",
+      "src/app/api/webhooks/resend/route.ts",
+      "src/app/auth/layout.tsx",
+      "src/app/auth/page.tsx",
+      "src/app/blog/[slug]/layout.tsx",
+      "src/app/blog/[slug]/page.tsx",
+      "src/app/blog/layout.tsx",
+      "src/app/blog/page.tsx",
+      "src/app/blog/preview/[slug]/page.tsx",
+      "src/app/bond/page.tsx",
+      "src/app/brand-kit/copy-button.tsx",
+      "src/app/brand-kit/page.tsx",
+      "src/app/buy-and-remodel/[slug]/page.tsx",
+      "src/app/buy-and-remodel/page.tsx",
+      "src/app/buy-and-remodel/unlock/page.tsx",
+      "src/app/cms/[...slug]/page.tsx",
+      "src/app/commercial-services/page.tsx",
+      "src/app/contact/page.tsx",
+      "src/app/crew/confirm/[token]/CrewConfirmActions.tsx",
+      "src/app/crew/confirm/[token]/page.tsx",
+      "src/app/data-rights/layout.tsx",
+      "src/app/data-rights/page.tsx",
+      "src/app/do-not-sell/layout.tsx",
+      "src/app/do-not-sell/page.tsx",
+      "src/app/faq/page.tsx",
+      "src/app/free-estimate/page.tsx",
+      "src/app/home-care/book/page.tsx",
+      "src/app/home-care/checklist/page.tsx",
+      "src/app/home-care/guides/[season]/page.tsx",
+      "src/app/home-care/page.tsx",
+      "src/app/home-care/setup/page.tsx",
+      "src/app/home-care/whats-new/page.tsx",
+      "src/app/home-services/page.tsx",
+      "src/app/insurance/page.tsx",
+      "src/app/intake/[token]/IntakeThread.tsx",
+      "src/app/intake/[token]/page.tsx",
+      "src/app/layout.tsx",
+      "src/app/leave-a-review/page.tsx",
+      "src/app/license/page.tsx",
+      "src/app/locations/[city]/page.tsx",
+      "src/app/locations/[city]/services/[service]/page.tsx",
+      "src/app/locations/[city]/services/page.tsx",
+      "src/app/locations/montclair/bathroom-renovation/page.tsx",
+      "src/app/locations/page.tsx",
+      "src/app/locations/verona/bathroom-renovation/page.tsx",
+      "src/app/lp/basement-finishing/page.tsx",
+      "src/app/lp/bathroom-renovation/page.tsx",
+      "src/app/lp/kitchen-remodel/page.tsx",
+      "src/app/not-found.tsx",
+      "src/app/page.tsx",
+      "src/app/portfolio/layout.tsx",
+      "src/app/portfolio/page.tsx",
+      "src/app/preferences/PreferencesClient.tsx",
+      "src/app/preferences/page.tsx",
+      "src/app/privacy-policy/layout.tsx",
+      "src/app/privacy-policy/page.tsx",
+      "src/app/process/layout.tsx",
+      "src/app/process/page.tsx",
+      "src/app/project-calculator/layout.tsx",
+      "src/app/project-calculator/page.tsx",
+      "src/app/project-calculator/result/[leadId]/page.tsx",
+      "src/app/projects/[slug]/page.tsx",
+      "src/app/proposal/[token]/ProposalView.tsx",
+      "src/app/proposal/[token]/page.tsx",
+      "src/app/referral/page.tsx",
+      "src/app/request-estimate/page.tsx",
+      "src/app/resources/[slug]/page.tsx",
+      "src/app/resources/page.tsx",
+      "src/app/reviews/page.tsx",
+      "src/app/robots.ts",
+      "src/app/services/[slug]/page.tsx",
+      "src/app/services/interior-finishing/page.tsx",
+      "src/app/services/page.tsx",
+      "src/app/services/whole-home-remodeling/page.tsx",
+      "src/app/sitemap.ts",
+      "src/app/spring-renovation/page.tsx",
+      "src/app/terms-and-conditions/layout.tsx",
+      "src/app/terms-and-conditions/page.tsx",
+      "src/app/unsub/UnsubClient.tsx",
+      "src/app/unsub/page.tsx",
+      "src/app/vaca-mgmt/analytics/page.tsx",
+      "src/app/vaca-mgmt/automation-test/page.tsx",
+      "src/app/vaca-mgmt/crew/page.tsx",
+      "src/app/vaca-mgmt/emails/[id]/page.tsx",
+      "src/app/vaca-mgmt/emails/page.tsx",
+      "src/app/vaca-mgmt/feedback/page.tsx",
+      "src/app/vaca-mgmt/follow-ups/page.tsx",
+      "src/app/vaca-mgmt/home-care-shop/page.tsx",
+      "src/app/vaca-mgmt/home-records/page.tsx",
+      "src/app/vaca-mgmt/layout.tsx",
+      "src/app/vaca-mgmt/page.tsx",
+      "src/app/vaca-mgmt/performance/page.tsx",
+      "src/app/vaca-mgmt/preferences/page.tsx",
+      "src/app/vaca-mgmt/proposals/page.tsx",
+      "src/app/vaca-mgmt/releases/page.tsx",
+      "src/app/vaca-mgmt/send-estimate/log/page.tsx",
+      "src/app/vaca-mgmt/send-estimate/page.tsx",
+      "src/app/vaca-mgmt/send-service-quote/page.tsx",
+      "src/app/warranty/layout.tsx",
+      "src/app/warranty/page.tsx",
+      "src/components/ABTesting.tsx",
+      "src/components/AdminContent.tsx",
+      "src/components/Analytics.tsx",
+      "src/components/BeforeAfterGallery.tsx",
+      "src/components/BeforeAfterSlider.tsx",
+      "src/components/BlogPostGrid.tsx",
+      "src/components/Breadcrumb.tsx",
+      "src/components/CMSPageLayout.tsx",
+      "src/components/CMSPageRenderer.tsx",
+      "src/components/CalculatorResultsPage.tsx",
+      "src/components/CallTrackingWrapper.tsx",
+      "src/components/CanonicalUrl.tsx",
+      "src/components/CityLandingClient.tsx",
+      "src/components/ClientLeadGenWidgets.tsx",
+      "src/components/ComplianceDocuments.tsx",
+      "src/components/ContactForm.tsx",
+      "src/components/ContactHeroPhone.tsx",
+      "src/components/ContactTrustBadges.tsx",
+      "src/components/CookieConsent.tsx",
+      "src/components/DynamicSitemap.tsx",
+      "src/components/EstimateForm.tsx",
+      "src/components/ExitIntentPopup.tsx",
+      "src/components/FinancingCalculator.tsx",
+      "src/components/Footer.tsx",
+      "src/components/FreeEstimateLanding.tsx",
+      "src/components/GoogleMaps.tsx",
+      "src/components/Header.tsx",
+      "src/components/HeatMap.tsx",
+      "src/components/Hero.tsx",
+      "src/components/HomeEstimateForm.tsx",
+      "src/components/HorizontalNav.tsx",
+      "src/components/ImageLightbox.tsx",
+      "src/components/InactivityTimer.tsx",
+      "src/components/IntakeInvite.tsx",
+      "src/components/LandingPageHeader.tsx",
+      "src/components/LandingPageLeadForm.tsx",
+      "src/components/LazySection.tsx",
+      "src/components/LeaveReviewClient.tsx",
+      "src/components/ListingsGallery.tsx",
+      "src/components/LocalSEOContent.tsx",
+      "src/components/LocalSEOSchema.tsx",
+      "src/components/LocationServiceClient.tsx",
+      "src/components/MarkdownContent.tsx",
+      "src/components/MobileContactBanner.tsx",
+      "src/components/MobileSwipeGallery.tsx",
+      "src/components/NAPInfo.tsx",
+      "src/components/OptimizedImage.tsx",
+      "src/components/PageViewTracker.tsx",
+      "src/components/PortfolioContent.tsx",
+      "src/components/ProcessPageClient.tsx",
+      "src/components/ProjectCase.tsx",
+      "src/components/ProjectDetailClient.tsx",
+      "src/components/ProjectGallery.tsx",
+      "src/components/ProjectImageGallery.tsx",
+      "src/components/ReferralForm.tsx",
+      "src/components/ReviewToast.tsx",
+      "src/components/ReviewsBottomCTA.tsx",
+      "src/components/ReviewsPageClient.tsx",
+      "src/components/SEOSchema.tsx",
+      "src/components/ScrollHint.tsx",
+      "src/components/ScrollToEstimateButton.tsx",
+      "src/components/SectionTracker.tsx",
+      "src/components/ServiceAreas.tsx",
+      "src/components/ServiceDetailClient.tsx",
+      "src/components/Services.tsx",
+      "src/components/SmartBanner.tsx",
+      "src/components/SocialProofPopup.tsx",
+      "src/components/StickyCTA.tsx",
+      "src/components/StructuredData.tsx",
+      "src/components/TeamMember.tsx",
+      "src/components/TestimonialCard.tsx",
+      "src/components/Testimonials.tsx",
+      "src/components/TrackedSection.tsx",
+      "src/components/UnifiedCalculator.tsx",
+      "src/components/VisitorTracker.tsx",
+      "src/components/WarrantyForm.tsx",
+      "src/components/WarrantyFormWrapper.tsx",
+      "src/components/WhyChoose.tsx",
+      "src/components/admin/AIContentAssistant.tsx",
+      "src/components/admin/ActiveDripsList.tsx",
+      "src/components/admin/AdminDashboard.tsx",
+      "src/components/admin/AdminSidebar.tsx",
+      "src/components/admin/AnalyticsSettings.tsx",
+      "src/components/admin/BannerManager.tsx",
+      "src/components/admin/BlogPostEditor.tsx",
+      "src/components/admin/BlogPostGenerator.tsx",
+      "src/components/admin/BlogPostList.tsx",
+      "src/components/admin/BrokenLinkDetector.tsx",
+      "src/components/admin/BulkSEOEditor.tsx",
+      "src/components/admin/CMSPageEditor.tsx",
+      "src/components/admin/ComplianceDocumentsManager.tsx",
+      "src/components/admin/ConversionDashboard.tsx",
+      "src/components/admin/DiagnosticTool.tsx",
+      "src/components/admin/EstimatesManager.tsx",
+      "src/components/admin/GMBSettings.tsx",
+      "src/components/admin/HeadshotCropper.tsx",
+      "src/components/admin/HomeCareShopManager.tsx",
+      "src/components/admin/LeadsManager.tsx",
+      "src/components/admin/ListingsManager.tsx",
+      "src/components/admin/MarkdownEditor.tsx",
+      "src/components/admin/NonNegotiablesManager.tsx",
+      "src/components/admin/PageSpeedMonitor.tsx",
+      "src/components/admin/PortfolioManager.tsx",
+      "src/components/admin/PricingManager.tsx",
+      "src/components/admin/ProjectUploadSystem.tsx",
+      "src/components/admin/ProjectsEditor.tsx",
+      "src/components/admin/RedirectManager.tsx",
+      "src/components/admin/ReportsPage.tsx",
+      "src/components/admin/RichTextEditor.tsx",
+      "src/components/admin/SEODashboard.tsx",
+      "src/components/admin/SEOEditor.tsx",
+      "src/components/admin/SeoSuggestionsDashboard.tsx",
+      "src/components/admin/ServiceAreasEditor.tsx",
+      "src/components/admin/ServicesEditor.tsx",
+      "src/components/admin/SubscribersDashboard.tsx",
+      "src/components/admin/UptimeMonitor.tsx",
+      "src/components/admin/project-steps/ProjectBasicInfoStep.tsx",
+      "src/components/admin/project-steps/ProjectDetailsStep.tsx",
+      "src/components/admin/project-steps/ProjectPhotosStep.tsx",
+      "src/components/admin/project-steps/ProjectSEOStep.tsx",
+      "src/components/admin/ui/AdminCheckbox.tsx",
+      "src/components/admin/ui/AdminRadioGroup.tsx",
+      "src/components/calculator/CalculatorLayout.tsx",
+      "src/components/calculator/ProgressBar.tsx",
+      "src/components/calculator/ProgressIndicator.tsx",
+      "src/components/calculator/ProjectTypeSelector.tsx",
+      "src/components/calculator/steps/AdditionalFeaturesStep.tsx",
+      "src/components/calculator/steps/ConfirmationStep.tsx",
+      "src/components/calculator/steps/ContactInfoStep.tsx",
+      "src/components/calculator/steps/DimensionsStep.tsx",
+      "src/components/calculator/steps/EstimateResultsStep.tsx",
+      "src/components/calculator/steps/MaterialOptionsStep.tsx",
+      "src/components/calculator/steps/OptionalUpgradesStep.tsx",
+      "src/components/calculator/steps/PDFUploadStep.tsx",
+      "src/components/calculator/steps/ProjectOverviewStep.tsx",
+      "src/components/calculator/steps/ProjectTypeSelectionStep.tsx",
+      "src/components/calculator/steps/QualityLevelStep.tsx",
+      "src/components/calculator/steps/ResultsStep.tsx",
+      "src/components/calculator/steps/SquareFootageStep.tsx",
+      "src/components/forms/ContactTimePicker.tsx",
+      "src/components/gallery/PhotoGallery.tsx",
+      "src/components/homecare/ChecklistPreview.tsx",
+      "src/components/homecare/DiyKitShelf.tsx",
+      "src/components/homecare/HomeCareBanner.tsx",
+      "src/components/homecare/HomeCareBookingForm.tsx",
+      "src/components/homecare/HomeCareChecklistClient.tsx",
+      "src/components/homecare/HomeCareOptInForm.tsx",
+      "src/components/homecare/HomeCareRecordCapture.tsx",
+      "src/components/homecare/HomeCareSetupWizard.tsx",
+      "src/components/homecare/UpcomingVisitCard.tsx",
+      "src/components/listings/FooterBuyRemodelLink.tsx",
+      "src/components/listings/ListingPhotos.tsx",
+      "src/components/listings/ListingsUnlockForm.tsx",
+      "src/components/listings/PreviewBanner.tsx",
+      "src/components/listings/SubscriberGreeting.tsx",
+      "src/components/mobile/AMPBlogPost.tsx",
+      "src/components/mobile/ClickToCall.tsx",
+      "src/components/mobile/MobileContactBanner.tsx",
+      "src/components/mobile/MobileNavigation.tsx",
+      "src/components/mobile/MobileOptimizedButton.tsx",
+      "src/components/mobile/MobileSEO.tsx",
+      "src/components/mobile/MobileTestingUtils.tsx",
+      "src/components/mobile/index.ts",
+      "src/components/providers.tsx",
+      "src/components/recaptcha/RecaptchaChallengeProvider.tsx",
+      "src/components/seo/FAQSection.tsx",
+      "src/components/seo/HowToSchema.tsx",
+      "src/components/seo/OptimizedList.tsx",
+      "src/components/seo/PricingTable.tsx",
+      "src/components/seo/ReviewSchema.tsx",
+      "src/components/seo/SpeakableSchema.tsx",
+      "src/components/seo/TableOfContents.tsx",
+      "src/components/seo/index.ts",
+      "src/components/services/RequestEstimateForm.tsx",
+      "src/components/services/ServiceImageGrid.tsx",
+      "src/components/services/ServiceTile.tsx",
+      "src/components/services/ServicesBottomTabs.tsx",
+      "src/components/services/ServicesTrustBar.tsx",
+      "src/components/services/serviceData.ts",
+      "src/components/ui/accordion.tsx",
+      "src/components/ui/alert-dialog.tsx",
+      "src/components/ui/alert.tsx",
+      "src/components/ui/avatar.tsx",
+      "src/components/ui/badge.tsx",
+      "src/components/ui/breadcrumb.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/calendar.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/carousel.tsx",
+      "src/components/ui/chart.tsx",
+      "src/components/ui/checkbox-icon.tsx",
+      "src/components/ui/checkbox.tsx",
+      "src/components/ui/collapsible.tsx",
+      "src/components/ui/command.tsx",
+      "src/components/ui/dialog.tsx",
+      "src/components/ui/drawer.tsx",
+      "src/components/ui/dropdown-menu.tsx",
+      "src/components/ui/form.tsx",
+      "src/components/ui/input.tsx",
+      "src/components/ui/label.tsx",
+      "src/components/ui/popover.tsx",
+      "src/components/ui/progress.tsx",
+      "src/components/ui/radio-group.tsx",
+      "src/components/ui/scroll-area.tsx",
+      "src/components/ui/select.tsx",
+      "src/components/ui/separator.tsx",
+      "src/components/ui/sheet.tsx",
+      "src/components/ui/sidebar.tsx",
+      "src/components/ui/skeleton.tsx",
+      "src/components/ui/slider.tsx",
+      "src/components/ui/sonner.tsx",
+      "src/components/ui/switch.tsx",
+      "src/components/ui/table.tsx",
+      "src/components/ui/tabs.tsx",
+      "src/components/ui/textarea.tsx",
+      "src/components/ui/toast.tsx",
+      "src/components/ui/toaster.tsx",
+      "src/components/ui/toggle.tsx",
+      "src/components/ui/tooltip.tsx",
+      "src/components/ui/use-toast.ts",
+      "src/data/faqData.ts",
+      "src/data/locationData.ts",
+      "src/data/resourceContent.tsx",
+      "src/data/resourceData.ts",
+      "src/data/seo-blog-posts-batch2.ts",
+      "src/data/seo-blog-posts-batch3.ts",
+      "src/data/seo-blog-posts-batch4.ts",
+      "src/data/seoContent.ts",
+      "src/hooks/use-mobile.tsx",
+      "src/hooks/use-toast.ts",
+      "src/hooks/useAnalyticsConfig.tsx",
+      "src/hooks/useAuth.tsx",
+      "src/hooks/useBannerState.ts",
+      "src/hooks/useCalculator.tsx",
+      "src/hooks/useCalculatorOptions.tsx",
+      "src/hooks/useGMBConfig.tsx",
+      "src/hooks/useHorizontalScrollTracking.tsx",
+      "src/hooks/useProjectTypes.tsx",
+      "src/hooks/useSEOStats.ts",
+      "src/hooks/useScrollTracking.tsx",
+      "src/hooks/useVisitor.ts",
+      "src/integrations/supabase/client.ts",
+      "src/integrations/supabase/server.ts",
+      "src/integrations/supabase/types.ts",
+      "src/lib/bannerRules.ts",
+      "src/lib/calculator/optionCatalog.ts",
+      "src/lib/click-fraud-detector.ts",
+      "src/lib/cms.ts",
+      "src/lib/emailTemplates.ts",
+      "src/lib/envClean.ts",
+      "src/lib/followups/activeDrips.ts",
+      "src/lib/followups/followUpsApi.ts",
+      "src/lib/homecare/accessCookie.ts",
+      "src/lib/homecare/accessErrors.ts",
+      "src/lib/homecare/amazonListing.ts",
+      "src/lib/homecare/cost.ts",
+      "src/lib/homecare/dispatch.ts",
+      "src/lib/homecare/dispatchAlerts.ts",
+      "src/lib/homecare/dispatchEmail.ts",
+      "src/lib/homecare/emailLinks.ts",
+      "src/lib/homecare/emailShell.ts",
+      "src/lib/homecare/guides.ts",
+      "src/lib/homecare/homeRecords.ts",
+      "src/lib/homecare/homeowners.ts",
+      "src/lib/homecare/ics.ts",
+      "src/lib/homecare/knownClient.ts",
+      "src/lib/homecare/lifecycleEmails.ts",
+      "src/lib/homecare/newsletter.ts",
+      "src/lib/homecare/newsletterRun.ts",
+      "src/lib/homecare/productAdmin.ts",
+      "src/lib/homecare/productShelf.ts",
+      "src/lib/homecare/products.ts",
+      "src/lib/homecare/profile.ts",
+      "src/lib/homecare/records.ts",
+      "src/lib/homecare/releaseAssets.ts",
+      "src/lib/homecare/releaseEmail.ts",
+      "src/lib/homecare/retention.ts",
+      "src/lib/homecare/season.ts",
+      "src/lib/homecare/selection.ts",
+      "src/lib/homecare/serviceEmails.ts",
+      "src/lib/homecare/serviceIntake.ts",
+      "src/lib/homecare/serviceScheduling.ts",
+      "src/lib/homecare/shelfPosition.ts",
+      "src/lib/homecare/staffAccess.ts",
+      "src/lib/homecare/staffAllowlist.ts",
+      "src/lib/homecare/taskChoice.ts",
+      "src/lib/homecare/visitSchedule.ts",
+      "src/lib/intake/chase.ts",
+      "src/lib/intake/completionAlert.ts",
+      "src/lib/intake/flow.ts",
+      "src/lib/intake/offScript.ts",
+      "src/lib/intake/pricing.ts",
+      "src/lib/intake/scoring.ts",
+      "src/lib/intake/serviceArea.ts",
+      "src/lib/intake/session.ts",
+      "src/lib/leadSanitize.ts",
+      "src/lib/leadScoring.ts",
+      "src/lib/listings/accessCookie.ts",
+      "src/lib/listings/columns.ts",
+      "src/lib/listings/imageCheck.ts",
+      "src/lib/listings/published.ts",
+      "src/lib/listings/publishedClient.ts",
+      "src/lib/listings/renderingPrompt.ts",
+      "src/lib/listings/sampleData.ts",
+      "src/lib/listings/submitUnlock.ts",
+      "src/lib/listings/subscriberActivity.ts",
+      "src/lib/listings/subscribers.ts",
+      "src/lib/notify/cancelFollowUps.ts",
+      "src/lib/notify/formErrorAlert.ts",
+      "src/lib/notify/formatContactTime.ts",
+      "src/lib/notify/leadFollowUp.ts",
+      "src/lib/notify/monthlyNewsletterEmail.ts",
+      "src/lib/notify/newLeadEmail.ts",
+      "src/lib/notify/redactEmailBody.ts",
+      "src/lib/notify/resendAudience.ts",
+      "src/lib/notify/sendEmail.ts",
+      "src/lib/notify/sendEstimateEmail.ts",
+      "src/lib/notify/sendHomeCareEmails.ts",
+      "src/lib/notify/sendListingsEmails.ts",
+      "src/lib/notify/sendRollbackDigestEmail.ts",
+      "src/lib/notify/sendSeoReportEmail.ts",
+      "src/lib/notify/sendStagedDraftEmail.ts",
+      "src/lib/notify/senders.ts",
+      "src/lib/notify/supabase-rest.ts",
+      "src/lib/notify/telegramLead.ts",
+      "src/lib/notify/telegramMessage.ts",
+      "src/lib/preferences/preferences.ts",
+      "src/lib/preferences/streams.ts",
+      "src/lib/privatePages.ts",
+      "src/lib/projects/gallery.ts",
+      "src/lib/proposals/bundles.ts",
+      "src/lib/proposals/categories.ts",
+      "src/lib/proposals/clientPage.ts",
+      "src/lib/proposals/csv.ts",
+      "src/lib/proposals/deliveryEmail.ts",
+      "src/lib/proposals/linkWindow.ts",
+      "src/lib/proposals/money.ts",
+      "src/lib/proposals/ownerAlert.ts",
+      "src/lib/proposals/publicView.ts",
+      "src/lib/proposals/store.ts",
+      "src/lib/proposals/submit.ts",
+      "src/lib/proposals/token.ts",
+      "src/lib/rateLimit.ts",
+      "src/lib/recaptcha-config.ts",
+      "src/lib/recaptchaVerify.ts",
+      "src/lib/seo/draftGuardrails.ts",
+      "src/lib/seo/ga4-client.ts",
+      "src/lib/seo/google-auth.ts",
+      "src/lib/seo/gsc-client.ts",
+      "src/lib/seo/maintainedArticles.ts",
+      "src/lib/seo/report.ts",
+      "src/lib/seo/reportEmail.ts",
+      "src/lib/seo/rollback.ts",
+      "src/lib/seo/scoring.ts",
+      "src/lib/seo/stageToBlog.ts",
+      "src/lib/seo/supabase-rest.ts",
+      "src/lib/seo/url.ts",
+      "src/lib/submitLead.ts",
+      "src/lib/supabase-server.ts",
+      "src/lib/supabase/client.ts",
+      "src/lib/supabase/server.ts",
+      "src/lib/utils.ts",
+      "src/middleware.ts",
+      "src/services/analyticsManager.ts",
+      "src/services/calculatorService.ts",
+      "src/types/calculator.ts",
+      "src/types/cms.ts",
+      "src/utils/cdn.ts",
+      "src/utils/heicConverter.ts",
+      "src/utils/imageOptimization.ts",
+      "src/utils/mobileOptimization.ts",
+      "src/utils/performanceMonitor.ts",
+      "src/utils/scrollTracking.ts",
+      "supabase/functions/_shared/formulaEvaluator.ts",
+      "supabase/functions/_shared/internalLinks.ts",
+      "supabase/functions/_shared/openai.ts",
+      "supabase/functions/calculate-estimate/index.ts",
+      "supabase/functions/enhance-blog-content/index.ts",
+      "supabase/functions/generate-blog-image/index.ts",
+      "supabase/functions/generate-blog-post/index.ts",
+      "supabase/functions/publish-scheduled-articles/index.ts",
+      "supabase/functions/send-lead-notification/index.ts",
+      "supabase/functions/send-warranty-notification/index.ts"
+    ],
+    "removedFiles": [],
+    "changedFiles": [],
+    "addedModules": [
+      "(root)",
+      "_shared",
+      "app",
+      "calculate-estimate",
+      "components",
+      "data",
+      "enhance-blog-content",
+      "generate-blog-image",
+      "generate-blog-post",
+      "hooks",
+      "integrations",
+      "lib",
+      "publish-scheduled-articles",
+      "send-lead-notification",
+      "send-warranty-notification",
+      "services",
+      "types",
+      "utils"
+    ],
+    "removedModules": [],
+    "newModuleEdges": [
+      {
+        "from": "app",
+        "to": "lib"
+      },
+      {
+        "from": "app",
+        "to": "components"
+      },
+      {
+        "from": "components",
+        "to": "lib"
+      },
+      {
+        "from": "components",
+        "to": "hooks"
+      },
+      {
+        "from": "components",
+        "to": "integrations"
+      },
+      {
+        "from": "components",
+        "to": "services"
+      },
+      {
+        "from": "app",
+        "to": "hooks"
+      },
+      {
+        "from": "components",
+        "to": "app"
+      },
+      {
+        "from": "app",
+        "to": "data"
+      },
+      {
+        "from": "components",
+        "to": "utils"
+      },
+      {
+        "from": "app",
+        "to": "integrations"
+      },
+      {
+        "from": "components",
+        "to": "data"
+      },
+      {
+        "from": "hooks",
+        "to": "integrations"
+      },
+      {
+        "from": "hooks",
+        "to": "services"
+      },
+      {
+        "from": "components",
+        "to": "types"
+      },
+      {
+        "from": "hooks",
+        "to": "utils"
+      },
+      {
+        "from": "lib",
+        "to": "integrations"
+      },
+      {
+        "from": "services",
+        "to": "integrations"
+      },
+      {
+        "from": "services",
+        "to": "hooks"
+      },
+      {
+        "from": "enhance-blog-content",
+        "to": "_shared"
+      },
+      {
+        "from": "generate-blog-post",
+        "to": "_shared"
+      },
+      {
+        "from": "hooks",
+        "to": "components"
+      },
+      {
+        "from": "hooks",
+        "to": "types"
+      },
+      {
+        "from": "lib",
+        "to": "types"
+      },
+      {
+        "from": "lib",
+        "to": "components"
+      },
+      {
+        "from": "(root)",
+        "to": "lib"
+      },
+      {
+        "from": "services",
+        "to": "types"
+      },
+      {
+        "from": "calculate-estimate",
+        "to": "_shared"
+      },
+      {
+        "from": "generate-blog-image",
+        "to": "_shared"
+      }
+    ],
+    "droppedModuleEdges": [],
+    "addedEdges": 1688,
+    "removedEdges": 0
+  },
+  "excess": {
+    "godFiles": [
+      {
+        "path": "src/integrations/supabase/types.ts",
+        "loc": 2152,
+        "exports": 8,
+        "fanIn": 5,
+        "module": "integrations",
+        "reason": "2152 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/DiagnosticTool.tsx",
+        "loc": 1164,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "1164 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/CMSPageEditor.tsx",
+        "loc": 997,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "997 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/data/locationData.ts",
+        "loc": 971,
+        "exports": 8,
+        "fanIn": 10,
+        "module": "data",
+        "reason": "971 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/homecare/HomeCareChecklistClient.tsx",
+        "loc": 953,
+        "exports": 3,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "953 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/PricingManager.tsx",
+        "loc": 950,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "950 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/data/faqData.ts",
+        "loc": 947,
+        "exports": 5,
+        "fanIn": 1,
+        "module": "data",
+        "reason": "947 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/project-steps/ProjectPhotosStep.tsx",
+        "loc": 922,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "922 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/EstimatesManager.tsx",
+        "loc": 902,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "902 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/lib/emailTemplates.ts",
+        "loc": 846,
+        "exports": 19,
+        "fanIn": 7,
+        "module": "lib",
+        "reason": "846 LOC (p90 is 393), 19 exports"
+      },
+      {
+        "path": "src/components/admin/BlogPostEditor.tsx",
+        "loc": 844,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "844 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/app/vaca-mgmt/send-service-quote/page.tsx",
+        "loc": 840,
+        "exports": 2,
+        "fanIn": 1,
+        "module": "app",
+        "reason": "840 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/LeadsManager.tsx",
+        "loc": 840,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "840 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/ListingsManager.tsx",
+        "loc": 835,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "835 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/WarrantyForm.tsx",
+        "loc": 798,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "798 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/AdminDashboard.tsx",
+        "loc": 795,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "795 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/app/vaca-mgmt/proposals/page.tsx",
+        "loc": 791,
+        "exports": 2,
+        "fanIn": 1,
+        "module": "app",
+        "reason": "791 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/data/seo-blog-posts-batch4.ts",
+        "loc": 766,
+        "exports": 2,
+        "fanIn": 0,
+        "module": "data",
+        "reason": "766 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/AIContentAssistant.tsx",
+        "loc": 762,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "762 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/PortfolioManager.tsx",
+        "loc": 738,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "738 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/EstimateForm.tsx",
+        "loc": 726,
+        "exports": 1,
+        "fanIn": 0,
+        "module": "components",
+        "reason": "726 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/app/services/interior-finishing/page.tsx",
+        "loc": 717,
+        "exports": 3,
+        "fanIn": 0,
+        "module": "app",
+        "reason": "717 LOC (p90 is 393)"
+      },
+      {
+        "path": "supabase/functions/calculate-estimate/index.ts",
+        "loc": 712,
+        "exports": 0,
+        "fanIn": 0,
+        "module": "calculate-estimate",
+        "reason": "712 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/data/seo-blog-posts-batch2.ts",
+        "loc": 711,
+        "exports": 2,
+        "fanIn": 0,
+        "module": "data",
+        "reason": "711 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/project-steps/ProjectDetailsStep.tsx",
+        "loc": 671,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "671 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/ProjectUploadSystem.tsx",
+        "loc": 638,
+        "exports": 2,
+        "fanIn": 5,
+        "module": "components",
+        "reason": "638 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/lib/homecare/dispatch.ts",
+        "loc": 623,
+        "exports": 33,
+        "fanIn": 7,
+        "module": "lib",
+        "reason": "623 LOC (p90 is 393), 33 exports"
+      },
+      {
+        "path": "src/components/admin/HomeCareShopManager.tsx",
+        "loc": 620,
+        "exports": 2,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "620 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/app/locations/[city]/page.tsx",
+        "loc": 573,
+        "exports": 4,
+        "fanIn": 0,
+        "module": "app",
+        "reason": "573 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/ui/sidebar.tsx",
+        "loc": 571,
+        "exports": 24,
+        "fanIn": 0,
+        "module": "components",
+        "reason": "571 LOC (p90 is 393), 24 exports"
+      },
+      {
+        "path": "src/components/HomeEstimateForm.tsx",
+        "loc": 570,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "570 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/data/resourceContent.tsx",
+        "loc": 566,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "data",
+        "reason": "566 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/services/RequestEstimateForm.tsx",
+        "loc": 559,
+        "exports": 2,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "559 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/CMSPageRenderer.tsx",
+        "loc": 530,
+        "exports": 2,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "530 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/ContactForm.tsx",
+        "loc": 521,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "521 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/ProcessPageClient.tsx",
+        "loc": 516,
+        "exports": 2,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "516 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/app/api/leads/submit/route.ts",
+        "loc": 504,
+        "exports": 2,
+        "fanIn": 0,
+        "module": "app",
+        "reason": "504 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/ProjectsEditor.tsx",
+        "loc": 504,
+        "exports": 1,
+        "fanIn": 0,
+        "module": "components",
+        "reason": "504 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/services/serviceData.ts",
+        "loc": 504,
+        "exports": 7,
+        "fanIn": 4,
+        "module": "components",
+        "reason": "504 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/services/analyticsManager.ts",
+        "loc": 499,
+        "exports": 14,
+        "fanIn": 22,
+        "module": "services",
+        "reason": "499 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/app/vaca-mgmt/send-estimate/page.tsx",
+        "loc": 484,
+        "exports": 2,
+        "fanIn": 1,
+        "module": "app",
+        "reason": "484 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/app/home-services/page.tsx",
+        "loc": 475,
+        "exports": 4,
+        "fanIn": 0,
+        "module": "app",
+        "reason": "475 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/data/seo-blog-posts-batch3.ts",
+        "loc": 469,
+        "exports": 2,
+        "fanIn": 0,
+        "module": "data",
+        "reason": "469 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/calculator/steps/ResultsStep.tsx",
+        "loc": 460,
+        "exports": 1,
+        "fanIn": 0,
+        "module": "components",
+        "reason": "460 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/ServiceDetailClient.tsx",
+        "loc": 455,
+        "exports": 2,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "455 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/GMBSettings.tsx",
+        "loc": 448,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "448 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/SmartBanner.tsx",
+        "loc": 447,
+        "exports": 2,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "447 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/lib/listings/columns.ts",
+        "loc": 444,
+        "exports": 26,
+        "fanIn": 6,
+        "module": "lib",
+        "reason": "444 LOC (p90 is 393), 26 exports"
+      },
+      {
+        "path": "src/components/admin/project-steps/ProjectSEOStep.tsx",
+        "loc": 440,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "440 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/app/services/whole-home-remodeling/page.tsx",
+        "loc": 436,
+        "exports": 3,
+        "fanIn": 0,
+        "module": "app",
+        "reason": "436 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/app/warranty/page.tsx",
+        "loc": 433,
+        "exports": 3,
+        "fanIn": 0,
+        "module": "app",
+        "reason": "433 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/lib/proposals/store.ts",
+        "loc": 427,
+        "exports": 20,
+        "fanIn": 2,
+        "module": "lib",
+        "reason": "427 LOC (p90 is 393), 20 exports"
+      },
+      {
+        "path": "src/components/admin/BannerManager.tsx",
+        "loc": 419,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "419 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/FreeEstimateLanding.tsx",
+        "loc": 407,
+        "exports": 2,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "407 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/app/data-rights/page.tsx",
+        "loc": 402,
+        "exports": 2,
+        "fanIn": 0,
+        "module": "app",
+        "reason": "402 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/ConversionDashboard.tsx",
+        "loc": 397,
+        "exports": 2,
+        "fanIn": 2,
+        "module": "components",
+        "reason": "397 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/components/admin/ComplianceDocumentsManager.tsx",
+        "loc": 396,
+        "exports": 1,
+        "fanIn": 1,
+        "module": "components",
+        "reason": "396 LOC (p90 is 393)"
+      },
+      {
+        "path": "src/lib/intake/chase.ts",
+        "loc": 246,
+        "exports": 22,
+        "fanIn": 1,
+        "module": "lib",
+        "reason": "22 exports"
+      },
+      {
+        "path": "src/lib/intake/session.ts",
+        "loc": 231,
+        "exports": 17,
+        "fanIn": 6,
+        "module": "lib",
+        "reason": "17 exports"
+      },
+      {
+        "path": "src/lib/homecare/profile.ts",
+        "loc": 219,
+        "exports": 16,
+        "fanIn": 6,
+        "module": "lib",
+        "reason": "16 exports"
+      },
+      {
+        "path": "src/lib/preferences/preferences.ts",
+        "loc": 189,
+        "exports": 16,
+        "fanIn": 22,
+        "module": "lib",
+        "reason": "16 exports"
+      },
+      {
+        "path": "src/lib/homecare/emailShell.ts",
+        "loc": 172,
+        "exports": 32,
+        "fanIn": 6,
+        "module": "lib",
+        "reason": "32 exports"
+      },
+      {
+        "path": "src/types/cms.ts",
+        "loc": 172,
+        "exports": 21,
+        "fanIn": 4,
+        "module": "types",
+        "reason": "21 exports"
+      },
+      {
+        "path": "src/lib/homecare/visitSchedule.ts",
+        "loc": 139,
+        "exports": 26,
+        "fanIn": 12,
+        "module": "lib",
+        "reason": "26 exports"
+      },
+      {
+        "path": "src/lib/homecare/products.ts",
+        "loc": 94,
+        "exports": 21,
+        "fanIn": 8,
+        "module": "lib",
+        "reason": "21 exports"
+      }
+    ],
+    "hubFiles": [
+      {
+        "path": "src/components/ui/button.tsx",
+        "fanIn": 117,
+        "module": "components"
+      },
+      {
+        "path": "src/components/ui/card.tsx",
+        "fanIn": 103,
+        "module": "components"
+      },
+      {
+        "path": "src/hooks/use-toast.ts",
+        "fanIn": 64,
+        "module": "hooks"
+      },
+      {
+        "path": "src/integrations/supabase/client.ts",
+        "fanIn": 57,
+        "module": "integrations"
+      },
+      {
+        "path": "src/lib/utils.ts",
+        "fanIn": 55,
+        "module": "lib"
+      },
+      {
+        "path": "src/lib/notify/supabase-rest.ts",
+        "fanIn": 53,
+        "module": "lib"
+      },
+      {
+        "path": "src/components/Footer.tsx",
+        "fanIn": 47,
+        "module": "components"
+      },
+      {
+        "path": "src/components/Header.tsx",
+        "fanIn": 47,
+        "module": "components"
+      },
+      {
+        "path": "src/components/ui/badge.tsx",
+        "fanIn": 47,
+        "module": "components"
+      },
+      {
+        "path": "src/components/ui/input.tsx",
+        "fanIn": 46,
+        "module": "components"
+      },
+      {
+        "path": "src/components/ui/label.tsx",
+        "fanIn": 41,
+        "module": "components"
+      },
+      {
+        "path": "src/components/ui/select.tsx",
+        "fanIn": 29,
+        "module": "components"
+      },
+      {
+        "path": "src/components/ui/textarea.tsx",
+        "fanIn": 28,
+        "module": "components"
+      },
+      {
+        "path": "src/lib/envClean.ts",
+        "fanIn": 28,
+        "module": "lib"
+      },
+      {
+        "path": "src/lib/preferences/preferences.ts",
+        "fanIn": 22,
+        "module": "lib"
+      },
+      {
+        "path": "src/services/analyticsManager.ts",
+        "fanIn": 22,
+        "module": "services"
+      },
+      {
+        "path": "src/components/CallTrackingWrapper.tsx",
+        "fanIn": 21,
+        "module": "components"
+      },
+      {
+        "path": "src/lib/notify/sendEmail.ts",
+        "fanIn": 21,
+        "module": "lib"
+      },
+      {
+        "path": "src/lib/rateLimit.ts",
+        "fanIn": 20,
+        "module": "lib"
+      },
+      {
+        "path": "src/lib/homecare/homeowners.ts",
+        "fanIn": 17,
+        "module": "lib"
+      },
+      {
+        "path": "src/components/Breadcrumb.tsx",
+        "fanIn": 16,
+        "module": "components"
+      },
+      {
+        "path": "src/components/ui/dialog.tsx",
+        "fanIn": 16,
+        "module": "components"
+      },
+      {
+        "path": "src/components/ui/checkbox.tsx",
+        "fanIn": 12,
+        "module": "components"
+      },
+      {
+        "path": "src/components/ui/switch.tsx",
+        "fanIn": 12,
+        "module": "components"
+      },
+      {
+        "path": "src/lib/homecare/accessCookie.ts",
+        "fanIn": 12,
+        "module": "lib"
+      },
+      {
+        "path": "src/lib/homecare/visitSchedule.ts",
+        "fanIn": 12,
+        "module": "lib"
+      },
+      {
+        "path": "src/lib/recaptcha-config.ts",
+        "fanIn": 12,
+        "module": "lib"
+      }
+    ],
+    "leakyModules": [
+      {
+        "name": "app",
+        "cohesion": 0.017,
+        "files": 191,
+        "outgoing": 683
+      },
+      {
+        "name": "hooks",
+        "cohesion": 0.077,
+        "files": 13,
+        "outgoing": 12
+      }
+    ],
+    "deadWeight": []
+  },
+  "deltas": [
+    {
+      "name": "orphans",
+      "count": 47,
+      "previousCount": 0,
+      "introduced": [
+        "src/app/not-found.tsx",
+        "src/app/robots.ts",
+        "src/app/sitemap.ts",
+        "src/components/ABTesting.tsx",
+        "src/components/BeforeAfterGallery.tsx",
+        "src/components/EstimateForm.tsx",
+        "src/components/HeatMap.tsx",
+        "src/components/InactivityTimer.tsx",
+        "src/components/LazySection.tsx",
+        "src/components/LocalSEOContent.tsx",
+        "src/components/MobileContactBanner.tsx",
+        "src/components/MobileSwipeGallery.tsx",
+        "src/components/OptimizedImage.tsx",
+        "src/components/ProjectCase.tsx",
+        "src/components/ProjectImageGallery.tsx",
+        "src/components/SocialProofPopup.tsx",
+        "src/components/TestimonialCard.tsx",
+        "src/components/admin/ProjectsEditor.tsx",
+        "src/components/admin/RichTextEditor.tsx",
+        "src/components/admin/SEOEditor.tsx",
+        "src/components/calculator/CalculatorLayout.tsx",
+        "src/components/calculator/ProgressIndicator.tsx",
+        "src/components/calculator/ProjectTypeSelector.tsx",
+        "src/components/calculator/steps/EstimateResultsStep.tsx",
+        "src/components/calculator/steps/OptionalUpgradesStep.tsx",
+        "src/components/calculator/steps/ResultsStep.tsx",
+        "src/components/calculator/steps/SquareFootageStep.tsx",
+        "src/components/mobile/MobileOptimizedButton.tsx",
+        "src/components/ui/breadcrumb.tsx",
+        "src/components/ui/chart.tsx",
+        "src/components/ui/drawer.tsx",
+        "src/components/ui/form.tsx",
+        "src/components/ui/sidebar.tsx",
+        "src/components/ui/toggle.tsx",
+        "src/components/ui/use-toast.ts",
+        "src/data/seo-blog-posts-batch2.ts",
+        "src/data/seo-blog-posts-batch3.ts",
+        "src/data/seo-blog-posts-batch4.ts",
+        "src/data/seoContent.ts",
+        "src/hooks/useProjectTypes.tsx",
+        "src/lib/click-fraud-detector.ts",
+        "src/lib/homecare/cost.ts",
+        "src/lib/supabase/client.ts",
+        "src/utils/cdn.ts",
+        "src/utils/imageOptimization.ts",
+        "src/utils/mobileOptimization.ts",
+        "src/utils/performanceMonitor.ts"
+      ],
+      "resolved": []
+    },
+    {
+      "name": "testOnly",
+      "count": 0,
+      "previousCount": 0,
+      "introduced": [],
+      "resolved": []
+    },
+    {
+      "name": "cycles",
+      "count": 2,
+      "previousCount": 0,
+      "introduced": [
+        [
+          "src/components/admin/ProjectUploadSystem.tsx",
+          "src/components/admin/project-steps/ProjectBasicInfoStep.tsx",
+          "src/components/admin/project-steps/ProjectDetailsStep.tsx",
+          "src/components/admin/project-steps/ProjectPhotosStep.tsx",
+          "src/components/admin/project-steps/ProjectSEOStep.tsx"
+        ],
+        [
+          "src/lib/homecare/retention.ts",
+          "src/lib/notify/formErrorAlert.ts",
+          "src/lib/notify/sendEmail.ts",
+          "src/lib/preferences/preferences.ts"
+        ]
+      ],
+      "resolved": []
+    },
+    {
+      "name": "unresolved",
+      "count": 10,
+      "previousCount": 0,
+      "introduced": [
+        {
+          "from": "src/app/about/page.tsx",
+          "specifier": "@/assets/alex-headshot.png"
+        },
+        {
+          "from": "src/app/about/page.tsx",
+          "specifier": "@/assets/veronica-headshot.jpg"
+        },
+        {
+          "from": "src/app/layout.tsx",
+          "specifier": "./globals.css"
+        },
+        {
+          "from": "src/components/Footer.tsx",
+          "specifier": "@/assets/logo.png"
+        },
+        {
+          "from": "src/components/FreeEstimateLanding.tsx",
+          "specifier": "@/assets/logo.png"
+        },
+        {
+          "from": "src/components/Header.tsx",
+          "specifier": "@/assets/logo.png"
+        },
+        {
+          "from": "src/components/LandingPageHeader.tsx",
+          "specifier": "@/assets/logo.png"
+        },
+        {
+          "from": "src/hooks/useScrollTracking.tsx",
+          "specifier": "@/types/analytics"
+        },
+        {
+          "from": "src/lib/seo/ga4-client.ts",
+          "specifier": "./fixtures/ga4.json"
+        },
+        {
+          "from": "src/lib/seo/gsc-client.ts",
+          "specifier": "./fixtures/gsc.json"
+        }
+      ],
+      "resolved": []
+    },
+    {
+      "name": "unusedDeps",
+      "count": 5,
+      "previousCount": 0,
+      "introduced": [
+        "autoprefixer",
+        "postcss",
+        "react-dom",
+        "tailwindcss",
+        "tailwindcss-animate"
+      ],
+      "resolved": []
+    },
+    {
+      "name": "undeclaredDeps",
+      "count": 12,
+      "previousCount": 0,
+      "introduced": [
+        " }, { status: 400 });\n  }\n  if (rows.length > MAX_ROWS) {\n    return NextResponse.json({ error: `Too many rows (max ${MAX_ROWS})` }, { status: 413 });\n  }\n\n  \n  const ip = getClientIp(request);\n  const rl = await checkRateLimit(`listings-import:${ip}`, 20, 5 * 60 * 1000);\n  if (!rl.allowed) {\n    return NextResponse.json(\n      { error: ",
+        "svix",
+        "fs",
+        "path",
+        "\n                      disabled={busy || p.status === ",
+        ", description: ",
+        ", {\n        method: ",
+        ">\n        <TabsList>\n          <TabsTrigger value=",
+        ">Import<",
+        " className=",
+        "crypto",
+        "https:"
+      ],
+      "resolved": []
+    },
+    {
+      "name": "depsOnlyUsedInTests",
+      "count": 0,
+      "previousCount": 0,
+      "introduced": [],
+      "resolved": []
+    },
+    {
+      "name": "junkFiles",
+      "count": 0,
+      "previousCount": 0,
+      "introduced": [],
+      "resolved": []
+    },
+    {
+      "name": "identicalFiles",
+      "count": 0,
+      "previousCount": 0,
+      "introduced": [],
+      "resolved": []
+    }
+  ]
+}

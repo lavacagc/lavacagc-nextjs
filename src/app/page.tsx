@@ -7,8 +7,8 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Premium Home Remodeling Northern New Jersey',
-  description: 'Transform your home with Northern NJ\'s trusted renovation experts. Kitchen remodeling, bathroom renovation, basement finishing & home additions. Licensed, bonded & insured.',
+  title: 'Home Remodeling in Northern New Jersey',
+  description: 'Kitchen, bath, basement and addition remodeling across Northern NJ. Licensed and insured, with fixed pricing and daily photo updates.',
   keywords: 'home remodeling northern new jersey, kitchen remodeling nj, bathroom renovation nj, basement finishing nj, home additions nj, general contractor nj',
   openGraph: {
     title: 'Premium Home Remodeling Northern New Jersey | La Vaca General Contractors',

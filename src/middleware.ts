@@ -254,11 +254,24 @@ export async function middleware(request: NextRequest) {
       if (pathname.startsWith('/api/')) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
-      // For /vaca-mgmt pages, return 401 before serving any JS
-      return new NextResponse('Unauthorized', {
-        status: 401,
-        headers: { 'Content-Type': 'text/plain' },
-      });
+      // A PAGE request gets sent to the sign-in screen rather than a dead end.
+      //
+      // This used to answer a bare 401 with a twelve-byte 'Unauthorized' body.
+      // The security intent was right - serve no admin JS to someone who is not
+      // signed in - but there was no way FORWARD from it: any device without a
+      // session cookie (a phone, a different laptop) hit plain text with no
+      // login form and no link, which browsers render as an unreachable page.
+      // The sign-in screen existed at /auth the whole time; nothing pointed at
+      // it.
+      //
+      // The redirect keeps the property that mattered: still no admin code is
+      // served here. `next` carries the page they actually wanted so signing in
+      // returns them to it instead of dumping them on the dashboard root. It is
+      // validated as a same-origin path on the way back out (see /auth), so it
+      // cannot be used to bounce anyone to another site.
+      const signIn = new URL('/auth', request.url);
+      signIn.searchParams.set('next', pathname + request.nextUrl.search);
+      return NextResponse.redirect(signIn);
     }
   }
 

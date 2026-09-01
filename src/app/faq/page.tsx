@@ -15,9 +15,9 @@ import {
 } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Home Remodeling FAQ | 50+ Answers to Common Questions',
+  title: 'Home Remodeling FAQ for NJ Homeowners',
   description:
-    'Get expert answers to frequently asked questions about home remodeling in New Jersey. Costs, timelines, choosing contractors, kitchen and bathroom renovation tips.',
+    'Answers on remodel costs, timelines, permits and choosing a contractor in New Jersey, including what a kitchen or bath job actually runs.',
   keywords:
     'home remodeling FAQ, renovation questions NJ, kitchen remodel cost, bathroom renovation timeline, contractor questions, home improvement FAQ, New Jersey contractor',
   openGraph: {

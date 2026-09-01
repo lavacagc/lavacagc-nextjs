@@ -245,7 +245,12 @@ test.describe('User Flow Tests', () => {
     });
 
     test('location service subpages work', async ({ page }) => {
-      await page.goto('/locations/alpine/services/kitchen-remodeling');
+      // domcontentloaded, not the default 'load'. A third-party embed that
+      // never finishes holds the load event open forever, and this test then
+      // fails at the 30s timeout describing a page that actually rendered
+      // fine. The Maps facade (src/components/GoogleMaps.tsx) removed the one
+      // frame that did that - this makes the test independent of the next one.
+      await page.goto('/locations/alpine/services/kitchen-remodeling', { waitUntil: 'domcontentloaded' });
 
       // Page should load without errors
       await expect(page.locator('h1')).toBeVisible();

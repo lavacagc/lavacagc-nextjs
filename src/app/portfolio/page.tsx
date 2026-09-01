@@ -15,9 +15,9 @@ const supabase = createClient(
 );
 
 export const metadata: Metadata = {
-  title: 'Project Portfolio | Home Renovation Case Studies',
+  title: 'Renovation Portfolio: NJ Before & After',
   description:
-    'Explore our completed home renovation projects in Northern NJ. View before/after photos, budgets, timelines, and client testimonials. Kitchen remodels, bathroom renovations, and more.',
+    'Completed kitchen, bath and whole-home projects across Northern NJ with before and after photos, real budgets and client feedback.',
   keywords:
     'home renovation portfolio, NJ remodeling projects, before after photos, kitchen remodel examples, bathroom renovation gallery, contractor portfolio',
   openGraph: {

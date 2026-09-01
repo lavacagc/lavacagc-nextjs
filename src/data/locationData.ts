@@ -958,22 +958,25 @@ export const getLocationMetaTitle = (location: string, service?: string): string
     };
 
     const serviceName = serviceMap[service] || service;
-    // Pattern: "[Service] Contractor [City] NJ" — keyword-first like JMC, Magnolia, Blackbirdz (#1-3 rankers)
-    // Brand appended by root layout template: "| La Vaca General Contractors"
-    return `${serviceName} Contractor in ${loc.name}, NJ | Free Estimate`;
+    // Keyword-first, and short enough to survive Google's ~60-char display
+    // limit AFTER the root template appends " | La Vaca GC" (13 chars). The
+    // longest combination in the data - "Bathroom Renovation in West Caldwell,
+    // NJ" - lands at 53 including the suffix. Dropping "Contractor" and
+    // "| Free Estimate" is what bought the room: neither earned its width, and
+    // the second was a duplicated call-to-action the description already makes.
+    return `${serviceName} in ${loc.name}, NJ`;
   }
 
-  // Pattern: "Kitchen, Bathroom & Basement Remodeling [City] NJ" — specific services beat generic "home remodeling"
-  // Competitors ranking #1-3 (JMC, Magnolia, G&L Sons) all lead with specific service keywords
-  // Brand appended by root layout template: "| La Vaca General Contractors"
-  return `Kitchen, Bathroom & Basement Remodeling in ${loc.name}, NJ`;
+  // Two highest-value services rather than three: "Kitchen, Bathroom &
+  // Basement Remodeling in West Caldwell, NJ" was 56 characters before the
+  // suffix and got truncated mid-phrase. This worst case is 59 with the suffix.
+  return `Kitchen & Bath Remodeling in ${loc.name}, NJ`;
 };
 
 export const getLocationMetaDescription = (location: string, service?: string): string => {
   const loc = getLocationBySlug(location);
   if (!loc) return "";
   
-  const neighborhoods = loc.neighborhoods.slice(0, 2).join(", ");
   const zipCode = loc.zipCodes[0];
   
   if (service) {
@@ -986,11 +989,12 @@ export const getLocationMetaDescription = (location: string, service?: string): 
     };
 
     const serviceName = serviceMap[service] || service;
-    // Competitor-proven pattern: specific service + city + trust + differentiator + phone CTA
-    return `Trusted ${serviceName} contractor in ${loc.name}, NJ. 100% transparent pricing, daily photo updates on your project — no surprises. Licensed & insured, 5-star rated. Serving ${neighborhoods} (${zipCode}). Call (201) 614-5930 for your free estimate.`;
+    // 120-155 characters, which is what Google actually renders. The previous
+    // version ran to ~280 and was cut off mid-sentence, so the phone number at
+    // the end was never displayed. One concrete specific (the ZIP) earns its
+    // place; the stacked trust adjectives did not.
+    return `Licensed ${serviceName} contractor in ${loc.name}, NJ (${zipCode}). Transparent fixed pricing and daily photo updates. Free estimate: (201) 614-5930.`;
   }
 
-  // Competitor-proven: lead with services (JMC, Magnolia, G&L Sons pattern) + La Vaca differentiator
-  // Key insight: competitors ranking #1-5 all list specific services, include phone, and mention trust signals
-  return `Top-rated kitchen, bathroom & basement remodeling contractor in ${loc.name}, NJ. 100% transparent pricing and daily updates on your project — you'll always know exactly what's happening. Licensed, insured, 5-star reviewed. Serving ${neighborhoods} (${zipCode}). Call (201) 614-5930.`;
+  return `Kitchen, bath and basement remodeling in ${loc.name}, NJ (${zipCode}). Fixed pricing agreed up front and daily photo updates. Free estimate: (201) 614-5930.`;
 };
