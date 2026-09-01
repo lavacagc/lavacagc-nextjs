@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Download, RefreshCw, Radio } from 'lucide-react';
 import { STREAMS, STREAM_KEYS, type StreamKey } from '@/lib/preferences/streams';
+import HomeCareMemberLookup from '@/components/admin/HomeCareMemberLookup';
 
 type StreamState = Record<StreamKey, boolean>;
 
@@ -282,6 +283,12 @@ export default function AdminPreferencesPage() {
           </Card>
         </div>
       )}
+
+      {/* Everything else known about the address that was just looked up. The
+          preference centre answers "may we mail them"; this answers "are they a
+          Home Care member and did their sign-in link go out", which is the
+          question the public login endpoint deliberately refuses to answer. */}
+      {loaded && <HomeCareMemberLookup email={activeEmail} />}
 
       {/* Broadcast suppression sync */}
       <Card className="mt-8">

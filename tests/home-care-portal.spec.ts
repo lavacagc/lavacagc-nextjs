@@ -8,17 +8,26 @@ const root = process.cwd();
 // returning-member block, "My Home Care" header link). File-level assertions in
 // the same style as home-care.spec.ts — the runtime flow is cookie/DB-gated.
 
-test('login route exists, is non-enumerating, and reuses the magic-link flow', () => {
+// WHO gets a link, WHAT the endpoint answers, and how an address is masked are
+// all covered behaviourally in home-care-login-outcomes.spec.ts. What is left
+// here is the one property no unit test can see: that the route still defers
+// its work past the response. Asserted on the source because the thing being
+// guarded IS a structural choice about where code runs, and its absence is
+// invisible at runtime - a synchronous send still sends, it just does so in a
+// time that differs measurably between a member and a stranger.
+test('login route keeps its lookup and send behind after()', () => {
   const p = join(root, 'src/app/api/home-care/login/route.ts');
   expect(existsSync(p)).toBe(true);
   const src = readFileSync(p, 'utf8');
-  expect(src).toContain("existing.status === 'active'"); // only actives get a link
-  expect(src).toContain('sendHomeCareVerificationEmail');
+  expect(src).toContain('after(async () =>');
   expect(src).toContain('home_care_login');
   expect(src).toContain('honeypot');
   expect(src).toContain('checkRateLimit');
-  // Always returns generic success (never reveals membership).
+  // Every path out of the endpoint is the same generic success.
   expect(src).toContain('return NextResponse.json({ ok: true })');
+  // The membership decision belongs to the shared helper, so the support-path
+  // resend cannot drift from what the member experiences.
+  expect(src).toContain('canSendSignInLink');
 });
 
 test('opt-in form has an email-only login mode posting to the login route', () => {
