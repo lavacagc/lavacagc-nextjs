@@ -29,6 +29,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { LeadIntakePanel } from '@/components/admin/LeadIntakePanel';
 
 interface Lead {
   id: string;
@@ -144,6 +145,11 @@ function LeadCard({ lead, isExpanded, isSelected, onToggleExpand, onToggleSelect
               <p className="text-sm mt-1">{lead.message}</p>
             </div>
           )}
+
+          {/* What they told us in the intake chat. Renders nothing for the many
+              leads that never entered it, and only fetches once the card is
+              open, because this whole block is inside `isExpanded`. */}
+          <LeadIntakePanel key={lead.id} leadId={lead.id} />
 
           {lead.project_timeline && (
             <div className="text-sm">
