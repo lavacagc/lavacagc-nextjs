@@ -11,6 +11,7 @@ import { useScrollTracking } from '@/hooks/useScrollTracking';
 import { useHorizontalScrollTracking } from '@/hooks/useHorizontalScrollTracking';
 import { trackEvent } from '@/services/analyticsManager';
 import { ScrollHint } from '@/components/ScrollHint';
+import { LazyProjectVideo } from '@/components/LazyProjectVideo';
 
 interface Project {
   id: string;
@@ -66,6 +67,16 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
     const featured = project.project_images?.find(img => img.is_featured);
     return featured?.image_url || project.project_images?.[0]?.image_url || '/placeholder.svg';
   };
+
+  /**
+   * A still for a project whose card is a video.
+   *
+   * Uses a photograph the project already has, so the card shows real work
+   * immediately instead of a grey box - and so the video underneath can be
+   * `preload="none"`. Undefined when a project is video-only.
+   */
+  const getPosterImage = (project: Project) =>
+    project.project_images?.find(img => img.media_type !== 'video')?.image_url;
 
   const getProjectDescription = (project: Project) => {
     return project.challenge || project.solution || 'Quality construction and renovation services.';
@@ -171,13 +182,11 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
                     }}
                   >
                     {(project.project_images?.find(img => img.is_featured) || project.project_images?.[0])?.media_type === 'video' ? (
-                      <video
+                      <LazyProjectVideo
                         src={getProjectImage(project)}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
+                        title={project.title}
+                        poster={getPosterImage(project)}
+                        className="h-full w-full"
                       />
                     ) : (
                       <Image
