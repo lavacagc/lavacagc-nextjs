@@ -75,3 +75,6 @@ supabase/.temp/
 /scripts/crew-dispatch-preview.ts
 /scripts/newsletter-samples.ts
 /scripts/seo-live-check.ts
+
+# perf harness transient outputs (baseline.json IS committed)
+/perf/.tmp/

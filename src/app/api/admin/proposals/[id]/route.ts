@@ -30,7 +30,7 @@ import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { cleanEnv } from '@/lib/envClean';
 import {
   ProposalLinesSchema, ProposalConflictError, bundleSumError, markSent, replaceLines,
-  restoreProposal, revokeProposal, touchProposal, type ProposalRow,
+  restoreProposal, revokeProposal, touchProposal, readProposalWithLines, type ProposalRow,
 } from '@/lib/proposals/store';
 import { CLIENT_PAGE_LIVE, CLIENT_PAGE_NOT_LIVE_MESSAGE } from '@/lib/proposals/clientPage';
 import { DRAFT_WINDOW_HOURS } from '@/lib/proposals/publicView';
@@ -65,6 +65,23 @@ const ActionSchema = z.discriminatedUnion('action', [
  * now says.
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * GET - one proposal with its stored lines, for the builder's edit mode
+ * (round 9's "Open & modify"). Admin-gated by middleware like the rest.
+ */
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  if (!UUID.test(id)) return NextResponse.json({ error: 'Bad id' }, { status: 400 });
+  try {
+    const result = await readProposalWithLines(id);
+    if (!result) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json(result);
+  } catch (err) {
+    console.error('proposal read failed:', err);
+    return NextResponse.json({ error: 'Could not load the proposal' }, { status: 500 });
+  }
+}
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

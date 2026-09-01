@@ -12,24 +12,19 @@ import { BlogPostList } from '@/components/admin/BlogPostList';
 import { ServicesEditor } from '@/components/admin/ServicesEditor';
 import { ServiceAreasEditor } from '@/components/admin/ServiceAreasEditor';
 import { ProjectUploadSystem } from '@/components/admin/ProjectUploadSystem';
-import SEODashboard from '@/components/admin/SEODashboard';
 import { AdminDashboard } from '@/components/admin/AdminDashboard';
-import { AIContentAssistant } from '@/components/admin/AIContentAssistant';
-import { DiagnosticTool } from '@/components/admin/DiagnosticTool';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import AnalyticsSettings from '@/components/admin/AnalyticsSettings';
 import { GMBSettings } from '@/components/admin/GMBSettings';
 import { LeadsManager } from '@/components/admin/LeadsManager';
-import { EstimatesManager } from '@/components/admin/EstimatesManager';
 import dynamic from 'next/dynamic';
 
-// Dynamically import follow-ups and feedback pages
+// Dynamically import the follow-ups page
 const FollowUpsPage = dynamic(() => import('@/app/vaca-mgmt/follow-ups/page'), { ssr: false });
-const FeedbackPage = dynamic(() => import('@/app/vaca-mgmt/feedback/page'), { ssr: false });
-// Send-estimate + estimate-email-log are also embedded as tabs. The standalone
-// routes at /vaca-mgmt/send-estimate{,/log} continue to work for direct links.
+// Send-estimate is also embedded as a tab. The standalone routes at
+// /vaca-mgmt/send-estimate{,/log} continue to work for direct links; the
+// estimate log itself is reached from the Send Estimate page or the Email Log.
 const SendEstimatePage = dynamic(() => import('@/app/vaca-mgmt/send-estimate/page'), { ssr: false });
-const EstimateLogPage = dynamic(() => import('@/app/vaca-mgmt/send-estimate/log/page'), { ssr: false });
 // Send-service-quote is the one-visit sibling of send-estimate and sits beside
 // it, so the owner finds it without knowing the URL.
 const SendServiceQuotePage = dynamic(() => import('@/app/vaca-mgmt/send-service-quote/page'), { ssr: false });
@@ -40,18 +35,11 @@ const HomeCareShopPage = dynamic(() => import('@/app/vaca-mgmt/home-care-shop/pa
 const CrewPage = dynamic(() => import('@/app/vaca-mgmt/crew/page'), { ssr: false });
 const PreferencesAdminPage = dynamic(() => import('@/app/vaca-mgmt/preferences/page'), { ssr: false });
 const ReleasesAdminPage = dynamic(() => import('@/app/vaca-mgmt/releases/page'), { ssr: false });
-const PageSpeedMonitor = dynamic(() => import('@/components/admin/PageSpeedMonitor'), { ssr: false });
 const ConversionDashboard = dynamic(() => import('@/components/admin/ConversionDashboard'), { ssr: false });
-const SubscribersDashboard = dynamic(() => import('@/components/admin/SubscribersDashboard'), { ssr: false });
 const SeoSuggestionsDashboard = dynamic(() => import('@/components/admin/SeoSuggestionsDashboard'), { ssr: false });
-const UptimeMonitor = dynamic(() => import('@/components/admin/UptimeMonitor'), { ssr: false });
 const CMSPageEditor = dynamic(() => import('@/components/admin/CMSPageEditor').then(m => ({ default: m.CMSPageEditor })), { ssr: false });
-import { PricingManager } from '@/components/admin/PricingManager';
 import { BannerManager } from '@/components/admin/BannerManager';
-import { NonNegotiablesManager } from '@/components/admin/NonNegotiablesManager';
 import { ComplianceDocumentsManager } from '@/components/admin/ComplianceDocumentsManager';
-import { ListingsManager } from '@/components/admin/ListingsManager';
-import { ReportsPage } from '@/components/admin/ReportsPage';
 import { LogOut, Menu } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
@@ -168,15 +156,13 @@ export default function AdminContent() {
           <Tabs value={activeTab} onValueChange={setActiveTab}>
 
           <TabsContent value="dashboard">
-            <AdminDashboard onNavigateToTab={setActiveTab} />
-          </TabsContent>
-
-          <TabsContent value="diagnostics">
-            <DiagnosticTool />
-          </TabsContent>
-
-          <TabsContent value="ai">
-            <AIContentAssistant />
+            <AdminDashboard
+              onNavigateToTab={setActiveTab}
+              onEditPost={(id) => {
+                setEditingPost(id);
+                setActiveTab('new-post');
+              }}
+            />
           </TabsContent>
 
           <TabsContent value="blog">
@@ -245,16 +231,12 @@ export default function AdminContent() {
             />
           </TabsContent>
 
-          <TabsContent value="listings">
-            <ListingsManager />
-          </TabsContent>
-
           <TabsContent value="banners">
             <BannerManager />
           </TabsContent>
 
           <TabsContent value="seo">
-            <SEODashboard />
+            <SeoSuggestionsDashboard />
           </TabsContent>
 
           <TabsContent value="analytics">
@@ -269,10 +251,6 @@ export default function AdminContent() {
             <LeadsManager />
           </TabsContent>
 
-          <TabsContent value="subscribers">
-            <SubscribersDashboard />
-          </TabsContent>
-
           <TabsContent value="follow-ups">
             <FollowUpsPage />
           </TabsContent>
@@ -283,10 +261,6 @@ export default function AdminContent() {
 
           <TabsContent value="send-service-quote">
             <SendServiceQuotePage />
-          </TabsContent>
-
-          <TabsContent value="estimate-log">
-            <EstimateLogPage />
           </TabsContent>
 
           <TabsContent value="emails">
@@ -317,44 +291,12 @@ export default function AdminContent() {
             <ReleasesAdminPage />
           </TabsContent>
 
-          <TabsContent value="feedback">
-            <FeedbackPage />
-          </TabsContent>
-
-          <TabsContent value="estimates">
-            <EstimatesManager />
-          </TabsContent>
-
-          <TabsContent value="pricing">
-            <PricingManager />
-          </TabsContent>
-
-          <TabsContent value="non-negotiables">
-            <NonNegotiablesManager />
-          </TabsContent>
-
           <TabsContent value="compliance">
             <ComplianceDocumentsManager />
           </TabsContent>
 
-          <TabsContent value="reports">
-            <ReportsPage />
-          </TabsContent>
-
           <TabsContent value="conversions">
             <ConversionDashboard />
-          </TabsContent>
-
-          <TabsContent value="seo-suggestions">
-            <SeoSuggestionsDashboard />
-          </TabsContent>
-
-          <TabsContent value="performance">
-            <PageSpeedMonitor />
-          </TabsContent>
-
-          <TabsContent value="uptime">
-            <UptimeMonitor />
           </TabsContent>
 
           <TabsContent value="new-post">

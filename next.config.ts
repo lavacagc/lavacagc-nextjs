@@ -4,6 +4,26 @@ const nextConfig: NextConfig = {
   // Enable React strict mode for better development experience
   reactStrictMode: true,
 
+  // Logging discipline (two halves of one policy):
+  //
+  // PRODUCTION (Vercel builds only - VERCEL=1 is set there and never locally):
+  // strip routine console.log/info/debug chatter at compile time, keep
+  // console.warn/error. Production logs then carry only warnings and errors.
+  // No log files are written on Vercel (stdout only, platform-retained with a
+  // bounded window), so nothing can grow unbounded there.
+  //
+  // LOCAL (dev, test builds, perf builds): nothing is stripped - the full
+  // console output stays available for diagnosing test failures, and `next
+  // dev` additionally logs every server fetch with its full URL below.
+  compiler: {
+    removeConsole: process.env.VERCEL ? { exclude: ['error', 'warn'] } : false,
+  },
+  logging: {
+    fetches: {
+      fullUrl: true,
+    },
+  },
+
   // Several modules create a Supabase client at module scope, which throws
   // during `next build` page-data collection when these vars are unset. The
   // no-mistakes gate builds in a secret-free worktree, so fall back to inert
@@ -222,6 +242,15 @@ const nextConfig: NextConfig = {
       { source: '/unsubscribe', destination: '/unsub', permanent: false },
 
       // ============================================
+      // BUY + REMODEL RETIRED (2026-08)
+      // The product is discontinued; the pages were live and linked from
+      // sent emails, so old URLs 301 home instead of 404ing.
+      // /api/buy-and-remodel/unsubscribe still works and is NOT redirected.
+      // ============================================
+      { source: '/buy-and-remodel', destination: '/', permanent: true },
+      { source: '/buy-and-remodel/:path*', destination: '/', permanent: true },
+
+      // ============================================
       // OLD SERVICE + CITY URL FORMAT REDIRECTS
       // Pattern: /service-city-nj → /locations/city/services/service
       // ============================================
@@ -333,10 +362,13 @@ const nextConfig: NextConfig = {
       // ============================================
       // LEGACY PAGE REDIRECTS
       // ============================================
-      { source: '/free-consultation', destination: '/project-calculator', permanent: true },
-      { source: '/consultation', destination: '/project-calculator', permanent: true },
-      { source: '/estimate', destination: '/project-calculator', permanent: true },
-      { source: '/quote', destination: '/project-calculator', permanent: true },
+      // Straight to the estimate form. These used to point at
+      // /project-calculator, which itself redirects below (calculator retired
+      // 2026-08) - a needless double hop for links in the wild.
+      { source: '/free-consultation', destination: '/free-estimate', permanent: true },
+      { source: '/consultation', destination: '/free-estimate', permanent: true },
+      { source: '/estimate', destination: '/free-estimate', permanent: true },
+      { source: '/quote', destination: '/free-estimate', permanent: true },
 
       // ============================================
       // MALFORMED / MISC REDIRECTS
@@ -347,7 +379,7 @@ const nextConfig: NextConfig = {
       // LEGACY PAGES WITHOUT REDIRECTS (from GSC 404s)
       // ============================================
       { source: '/pricing-plans/:path*', destination: '/services', permanent: true },
-      { source: '/financing', destination: '/project-calculator', permanent: true },
+      { source: '/financing', destination: '/free-estimate', permanent: true },
       { source: '/portfolio-collections/:path*', destination: '/portfolio', permanent: true },
 
       // ============================================

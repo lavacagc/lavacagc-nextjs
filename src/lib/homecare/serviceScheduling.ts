@@ -510,7 +510,10 @@ export async function readCustomerReminder(
     rows = (await supabaseRest<ReminderQueueRow[]>(
       'GET',
       `follow_up_queue?select=id,lead_email,visit_start,status,created_at` +
-        `&follow_up_type=eq.${VISIT_REMINDER_TYPE}&visit_start=eq.${encodeURIComponent(key)}`,
+        // One visit slot's reminders. The equality filters already bound this
+        // to a handful of rows; the explicit cap states that rather than
+        // leaving the ceiling to the server (CM-14).
+        `&follow_up_type=eq.${VISIT_REMINDER_TYPE}&visit_start=eq.${encodeURIComponent(key)}&limit=200`,
     )) ?? [];
   } catch (err) {
     console.error(

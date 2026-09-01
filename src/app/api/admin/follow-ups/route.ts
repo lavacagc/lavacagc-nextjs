@@ -8,6 +8,9 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+/** Matches the history half below - a queue longer than this needs paging, not a bigger page. */
+const PENDING_CAP = 100;
+
 /**
  * Admin follow_up_queue access, SERVER-SIDE with the secret key.
  *
@@ -29,16 +32,40 @@ export async function GET() {
   const supabase = serviceClient();
   if (!supabase) return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
 
-  const { data, error } = await supabase
-    .from('follow_up_queue')
-    .select('*')
-    .order('created_at', { ascending: false });
+  // Bounded, in two parts: the queue is append-only and shared by every
+  // sequence, and each row carries the full rendered email HTML, so an
+  // unbounded read grows forever. Pending rows are the actionable set (the
+  // Active Drips view is built from them), so they are ALWAYS fetched in full -
+  // a pure recency cap could silently drop an old still-pending drip email.
+  // Sent/failed/cancelled history is capped at the newest 100.
+  const [pending, history] = await Promise.all([
+    supabase
+      .from('follow_up_queue')
+      // CM-14: uncapped, and every row carries the full rendered email HTML -
+      // so this was both the largest payload on the page and silently
+      // truncated at the server's own ceiling. The history half below already
+      // had a limit; the pending half did not.
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(PENDING_CAP),
+    supabase
+      .from('follow_up_queue')
+      .select('*')
+      .neq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(100),
+  ]);
 
+  const error = pending.error || history.error;
   if (error) {
     console.error('follow-ups list error:', error);
     return NextResponse.json({ error: 'Failed to load follow-ups' }, { status: 500 });
   }
-  return NextResponse.json({ rows: data ?? [] });
+  const rows = [...(pending.data ?? []), ...(history.data ?? [])].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+  return NextResponse.json({ rows });
 }
 
 export async function POST(request: NextRequest) {

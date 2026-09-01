@@ -28,6 +28,9 @@ export default function FollowUpsPage() {
   const [view, setView] = useState<'drips' | 'all'>('drips');
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('pending');
+  const [reviewName, setReviewName] = useState('');
+  const [reviewEmail, setReviewEmail] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
   const fetchFollowUps = useCallback(async () => {
     setLoading(true);
@@ -122,6 +125,36 @@ export default function FollowUpsPage() {
     } catch (error) {
       console.error('Error resending follow-up:', error);
       toast({ title: 'Error', description: 'Failed to resend follow-up', variant: 'destructive' });
+    }
+  };
+
+  // Enroll a customer in the day-0/3/7 review-request sequence. This lived on
+  // its own "Feedback Requests" tab, but the sequence lands in the same
+  // follow_up_queue this page already shows, so the form belongs here.
+  const handleRequestReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewName.trim() || !reviewEmail.trim()) {
+      toast({ title: 'Error', description: 'Customer name and email are required', variant: 'destructive' });
+      return;
+    }
+    setReviewSubmitting(true);
+    try {
+      const res = await fetch('/api/feedback/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerName: reviewName.trim(), email: reviewEmail.trim() }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to create the review sequence');
+      toast({ title: 'Review request queued', description: `${reviewName.trim()} will get the day 0/3/7 review emails.` });
+      setReviewName('');
+      setReviewEmail('');
+      fetchFollowUps();
+    } catch (error) {
+      console.error('Error creating review request:', error);
+      toast({ title: 'Error', description: 'Failed to create the review request', variant: 'destructive' });
+    } finally {
+      setReviewSubmitting(false);
     }
   };
 
@@ -281,6 +314,42 @@ export default function FollowUpsPage() {
               </div>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Request a review</CardTitle>
+          <CardDescription>
+            Enroll a customer in the review-request sequence (emails on day 0, 3, and 7).
+            The sequence appears above once queued.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleRequestReview} className="flex flex-col sm:flex-row gap-3 sm:items-end">
+            <div className="flex-1 max-w-xs">
+              <label htmlFor="review-name" className="text-sm font-medium block mb-1.5">Customer name</label>
+              <Input
+                id="review-name"
+                value={reviewName}
+                onChange={e => setReviewName(e.target.value)}
+                placeholder="Jane Smith"
+              />
+            </div>
+            <div className="flex-1 max-w-xs">
+              <label htmlFor="review-email" className="text-sm font-medium block mb-1.5">Email</label>
+              <Input
+                id="review-email"
+                type="email"
+                value={reviewEmail}
+                onChange={e => setReviewEmail(e.target.value)}
+                placeholder="jane@example.com"
+              />
+            </div>
+            <Button type="submit" disabled={reviewSubmitting}>
+              {reviewSubmitting ? 'Queueing…' : 'Queue review emails'}
+            </Button>
+          </form>
         </CardContent>
       </Card>
     </div>

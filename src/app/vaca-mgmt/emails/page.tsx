@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
-import { RefreshCw, Search, MailOpen, MousePointerClick, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Search, MailOpen, MousePointerClick, AlertTriangle, ExternalLink } from 'lucide-react';
 import type { EmailCategory } from '@/lib/notify/sendEmail';
 
 export interface EmailListRow {
@@ -43,6 +43,11 @@ export interface EmailListRow {
  * adding a member to `EmailCategory` fails the build here until the filter
  * offers it. Order is the union's own, which is the order these render in.
  */
+// How many rows one load shows. Sent explicitly and compared against the
+// result size so the header can say "newest N" instead of passing off a
+// truncated page as the whole log.
+const LIST_LIMIT = 100;
+
 const FILTERABLE: Record<EmailCategory, true> = {
   verification: true,
   welcome: true,
@@ -82,7 +87,12 @@ function statusBadge(row: EmailListRow) {
         : s === 'skipped'
           ? 'outline'
           : 'secondary';
-  return <Badge variant={variant as 'default' | 'secondary' | 'destructive' | 'outline'}>{s}</Badge>;
+  // rounded-[5px]: the owner vetoed pill-shaped status chips (2026-08-08).
+  return (
+    <Badge className="rounded-[5px]" variant={variant as 'default' | 'secondary' | 'destructive' | 'outline'}>
+      {s}
+    </Badge>
+  );
 }
 
 function catLabel(c: string) {
@@ -110,6 +120,7 @@ export default function EmailsLogPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
+      params.set('limit', String(LIST_LIMIT));
       if (category) params.set('category', category);
       if (status) params.set('status', status);
       if (submittedQ) params.set('q', submittedQ);
@@ -131,6 +142,32 @@ export default function EmailsLogPage() {
   useEffect(() => {
     fetchLog();
   }, [fetchLog]);
+
+  // In-tab detail drawer. The list row already carries every field except the
+  // stored HTML body, which is fetched on open.
+  const [detailRow, setDetailRow] = useState<EmailListRow | null>(null);
+  const [detailHtml, setDetailHtml] = useState<string | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const openDetail = useCallback(async (row: EmailListRow) => {
+    setDetailRow(row);
+    setDetailHtml(null);
+    setDetailLoading(true);
+    try {
+      const res = await fetch(`/api/admin/emails/${row.id}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load the email');
+      setDetailHtml((data.row?.html as string | null) ?? null);
+    } catch (err) {
+      toast({
+        title: 'Failed to load the email body',
+        description: err instanceof Error ? err.message : String(err),
+        variant: 'destructive',
+      });
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [toast]);
 
   return (
     <div className="container mx-auto p-6 max-w-6xl">
@@ -199,7 +236,9 @@ export default function EmailsLogPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">
-            {rows.length} {rows.length === 1 ? 'email' : 'emails'}
+            {rows.length >= LIST_LIMIT
+              ? `Newest ${LIST_LIMIT} emails (older ones exist - narrow with the filters)`
+              : `${rows.length} ${rows.length === 1 ? 'email' : 'emails'}`}
           </CardTitle>
           <CardDescription>Newest first. Click a row to see the full email that was sent.</CardDescription>
         </CardHeader>
@@ -213,13 +252,18 @@ export default function EmailsLogPage() {
           ) : (
             <div className="space-y-2">
               {rows.map((row) => (
-                <Link
+                // A button, not a Link: the detail opens in the drawer beside
+                // the list. Navigating to the standalone page stranded the
+                // admin outside the SPA - the sidebar vanished and stayed gone
+                // through every back-navigation (owner bug report 2026-08-08).
+                <button
                   key={row.id}
-                  href={`/vaca-mgmt/emails/${row.id}`}
+                  type="button"
+                  onClick={() => openDetail(row)}
                   data-testid={`email-row-${row.id}`}
-                  className="block border rounded-md p-4 hover:bg-muted/50 transition-colors"
+                  className="block w-full text-left border rounded-md p-4 hover:bg-muted/50 transition-colors"
                 >
-                  <div className="flex items-start justify-between gap-4 mb-1">
+                  <div className="flex items-center justify-between gap-4 mb-1">
                     <div className="min-w-0">
                       <div className="font-semibold truncate">{row.subject}</div>
                       <div className="text-sm text-muted-foreground truncate">
@@ -235,7 +279,7 @@ export default function EmailsLogPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <Badge variant="outline" className="capitalize font-normal">
+                    <Badge variant="outline" className="capitalize font-normal rounded-[5px]">
                       {catLabel(row.category)}
                     </Badge>
                     {row.open_count > 0 && (
@@ -254,12 +298,77 @@ export default function EmailsLogPage() {
                       </span>
                     )}
                   </div>
-                </Link>
+                </button>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      <Sheet open={!!detailRow} onOpenChange={(open) => { if (!open) setDetailRow(null); }}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto" data-testid="email-detail-drawer">
+          {detailRow && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="pr-8 text-left">{detailRow.subject}</SheetTitle>
+                <SheetDescription className="text-left">
+                  to {detailRow.to_name ? `${detailRow.to_name} (${detailRow.to_email})` : detailRow.to_email}
+                  {' · '}{catLabel(detailRow.category)}
+                  {' · '}{new Date(detailRow.created_at).toLocaleString()}
+                </SheetDescription>
+              </SheetHeader>
+              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                {statusBadge(detailRow)}
+                {detailRow.delivered_at && (
+                  <span className="text-xs text-muted-foreground">
+                    delivered {new Date(detailRow.delivered_at).toLocaleString()}
+                  </span>
+                )}
+                {detailRow.open_count > 0 && (
+                  <span className="text-xs text-emerald-600 inline-flex items-center gap-1">
+                    <MailOpen className="h-3.5 w-3.5" /> opened {detailRow.open_count} time{detailRow.open_count === 1 ? '' : 's'}
+                  </span>
+                )}
+                {detailRow.click_count > 0 && (
+                  <span className="text-xs text-blue-600 inline-flex items-center gap-1">
+                    <MousePointerClick className="h-3.5 w-3.5" /> {detailRow.click_count} click{detailRow.click_count === 1 ? '' : 's'}
+                  </span>
+                )}
+                {detailRow.bounced_at && (
+                  <span className="text-xs text-destructive inline-flex items-center gap-1">
+                    <AlertTriangle className="h-3.5 w-3.5" /> bounced {new Date(detailRow.bounced_at).toLocaleString()}
+                  </span>
+                )}
+              </div>
+              <div className="mt-4 border rounded-md overflow-hidden bg-white">
+                {detailLoading ? (
+                  <div className="py-16 text-center text-sm text-muted-foreground">Loading the email…</div>
+                ) : detailHtml ? (
+                  <iframe
+                    title="Email preview"
+                    sandbox=""
+                    srcDoc={detailHtml}
+                    className="w-full h-[60vh] border-0"
+                    data-testid="drawer-html-iframe"
+                  />
+                ) : (
+                  <div className="py-16 text-center text-sm text-muted-foreground">
+                    No stored HTML body for this email.
+                  </div>
+                )}
+              </div>
+              <a
+                href={`/vaca-mgmt/emails/${detailRow.id}`}
+                target="_blank"
+                rel="noopener"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary mt-3 hover:underline"
+              >
+                <ExternalLink className="h-3.5 w-3.5" /> Open as its own page
+              </a>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

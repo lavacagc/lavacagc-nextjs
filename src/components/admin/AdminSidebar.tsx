@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard,
   Activity,
-  Bot,
   FileText,
   PanelTop,
   Wrench,
@@ -13,21 +12,13 @@ import {
   Plus,
   X,
   Inbox,
-  Calculator,
-  DollarSign,
-  Shield,
-  BarChart,
   FileCheck,
   Mail,
-  MessageSquare,
-  Gauge,
   TrendingUp,
   HeartPulse,
   Megaphone,
   ChevronRight,
   Send,
-  History,
-  Home,
   Users,
   KeyRound,
   Package,
@@ -54,8 +45,6 @@ const isGroup = (item: NavItem): item is NavGroup => 'children' in item;
 // keys in AdminContent.tsx exactly.
 const NAVIGATION: NavItem[] = [
   { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { id: 'diagnostics', icon: Activity, label: 'Diagnostics' },
-  { id: 'ai', icon: Bot, label: 'AI Assistant' },
   {
     id: 'content',
     icon: FileText,
@@ -66,8 +55,8 @@ const NAVIGATION: NavItem[] = [
       { id: 'services', icon: Wrench, label: 'Services' },
       { id: 'service-areas', icon: MapPin, label: 'Service Areas' },
       { id: 'projects', icon: FolderKanban, label: 'Projects' },
-      { id: 'listings', icon: Home, label: 'Home Listings' },
       { id: 'banners', icon: Megaphone, label: 'Smart Banners' },
+      { id: 'compliance', icon: FileCheck, label: 'Compliance Docs' },
     ],
   },
   {
@@ -75,10 +64,11 @@ const NAVIGATION: NavItem[] = [
     icon: Globe,
     label: 'Marketing',
     children: [
-      { id: 'seo', icon: Globe, label: 'SEO/Sitemap' },
-      { id: 'seo-suggestions', icon: TrendingUp, label: 'SEO Suggestions' },
+      { id: 'seo', icon: Globe, label: 'SEO' },
       { id: 'analytics', icon: Activity, label: 'Analytics' },
+      { id: 'conversions', icon: TrendingUp, label: 'Conversions' },
       { id: 'gmb', icon: Activity, label: 'Google Reviews' },
+      { id: 'preferences', icon: Users, label: 'Subscriptions' },
     ],
   },
   {
@@ -87,42 +77,23 @@ const NAVIGATION: NavItem[] = [
     label: 'Customers',
     children: [
       { id: 'leads', icon: Inbox, label: 'Leads' },
-      { id: 'subscribers', icon: Users, label: 'Subscribers' },
+      { id: 'follow-ups', icon: Mail, label: 'Follow-Ups' },
+      { id: 'send-estimate', icon: Send, label: 'Send Estimate' },
+      { id: 'proposals', icon: FileText, label: 'Proposals' },
+      { id: 'emails', icon: Mail, label: 'Email Log' },
+    ],
+  },
+  {
+    id: 'home-care',
+    icon: HeartPulse,
+    label: 'Home Care',
+    children: [
       // Need-to-know: the page 403s for admins not on the Home Care staff list.
       { id: 'home-records', icon: KeyRound, label: 'Home Records' },
       { id: 'home-care-shop', icon: Package, label: 'Home Care Shop' },
-      { id: 'follow-ups', icon: Mail, label: 'Follow-Ups' },
-      { id: 'send-estimate', icon: Send, label: 'Send Estimate' },
       { id: 'send-service-quote', icon: Wrench, label: 'Send Service Quote' },
-      { id: 'proposals', icon: FileText, label: 'Proposals' },
       { id: 'crew', icon: HardHat, label: 'Crew' },
-      { id: 'estimate-log', icon: History, label: 'Estimate Log' },
-      { id: 'emails', icon: Mail, label: 'Email Tracking' },
-      { id: 'preferences', icon: Users, label: 'Subscriptions' },
       { id: 'releases', icon: Megaphone, label: 'Release Notes' },
-      { id: 'feedback', icon: MessageSquare, label: 'Feedback Requests' },
-      { id: 'estimates', icon: Calculator, label: 'Calculator Estimates' },
-    ],
-  },
-  {
-    id: 'settings',
-    icon: Shield,
-    label: 'Settings',
-    children: [
-      { id: 'pricing', icon: DollarSign, label: 'Pricing Management' },
-      { id: 'non-negotiables', icon: Shield, label: 'Non-Negotiables' },
-      { id: 'compliance', icon: FileCheck, label: 'Compliance Docs' },
-    ],
-  },
-  {
-    id: 'insights',
-    icon: BarChart,
-    label: 'Insights',
-    children: [
-      { id: 'reports', icon: BarChart, label: 'Reports' },
-      { id: 'conversions', icon: TrendingUp, label: 'Conversions' },
-      { id: 'performance', icon: Gauge, label: 'PageSpeed' },
-      { id: 'uptime', icon: HeartPulse, label: 'Uptime' },
     ],
   },
 ];
@@ -147,7 +118,9 @@ function loadExpandedFromStorage(activeTab: string): Set<string> {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return new Set(parsed.filter((x): x is string => typeof x === 'string'));
+        // Accordion: at most ONE open group, even if older storage held several.
+        const first = parsed.find((x): x is string => typeof x === 'string');
+        return first ? new Set([first]) : new Set();
       }
     }
   } catch {
@@ -195,27 +168,27 @@ export default function AdminSidebar({
     }
   }, [expandedGroups, hydrated]);
 
-  // When the active tab changes (e.g. blog editor saves and jumps back to
-  // 'blog' programmatically), auto-open its parent group if closed.
+  // When the active tab CHANGES (e.g. blog editor saves and jumps back to
+  // 'blog' programmatically), auto-open its parent group if closed. Guarded by
+  // a previous-tab ref on purpose: with `expandedGroups` driving the effect,
+  // collapsing the active tab's group re-ran it and re-opened the group in the
+  // same breath, so that group could never be closed at all.
+  const prevActiveTabRef = useRef(activeTab);
   useEffect(() => {
     if (!hydrated) return;
+    if (prevActiveTabRef.current === activeTab) return;
+    prevActiveTabRef.current = activeTab;
     const parent = findParentGroupId(activeTab);
-    if (parent && !expandedGroups.has(parent)) {
-      setExpandedGroups((prev) => {
-        const next = new Set(prev);
-        next.add(parent);
-        return next;
-      });
+    if (parent) {
+      // Accordion: switching into a tab shows ONLY its group.
+      setExpandedGroups(new Set([parent]));
     }
-  }, [activeTab, hydrated, expandedGroups]);
+  }, [activeTab, hydrated]);
 
+  // ACCORDION (owner round 7): opening a group closes every other one, so the
+  // menu never shows more than one section. Clicking the open group folds it.
   const toggleGroup = (groupId: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupId)) next.delete(groupId);
-      else next.add(groupId);
-      return next;
-    });
+    setExpandedGroups((prev) => (prev.has(groupId) ? new Set() : new Set([groupId])));
   };
 
   const handleLeafClick = (leafId: string) => {
@@ -318,7 +291,7 @@ export default function AdminSidebar({
                     className={cn(
                       'flex items-center rounded-lg transition-all duration-300 ease-out px-3 py-2.5',
                       isMobile && 'min-h-[48px]',
-                      containsActive
+                      containsActive || isOpen
                         ? 'bg-primary/15 text-primary'
                         : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                     )}

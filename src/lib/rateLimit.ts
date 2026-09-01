@@ -24,6 +24,14 @@ export interface RateLimitResult {
   allowed: boolean;
   /** Seconds until the window resets, when blocked. */
   retryAfter?: number;
+  /**
+   * CM-06: true when the limiter could not consult its backing store and
+   * ALLOWED the request as a result. Callers that spend money should treat a
+   * degraded allow as suspicious; everyone else can ignore it. Without this
+   * flag the three fail-open paths below were indistinguishable from a genuine
+   * "under the limit", which is why nobody noticed the limiter was optional.
+   */
+  degraded?: boolean;
 }
 
 /**
@@ -74,6 +82,17 @@ export interface RateLimitOptions {
    * lands on the exact error page the tokenized links exist to prevent.
    */
   consume?: boolean;
+  /**
+   * CM-06: when the limiter cannot reach its backing store it ALLOWS by
+   * default, because refusing real customers during a database blip is worse
+   * than admitting a burst. Callers where a dropped request costs nothing -
+   * and where unbounded abuse is expensive - can invert that.
+   *
+   * Deliberately NOT set on /api/leads/submit: a lost lead is the most
+   * expensive outcome on that path, so it stays fail-open and merely reports
+   * `degraded`.
+   */
+  failClosed?: boolean;
 }
 
 /**
@@ -133,7 +152,10 @@ export async function checkRateLimit(
 ): Promise<RateLimitResult> {
   const consume = options.consume !== false;
   const secretKey = process.env.SUPABASE_SECRET_KEY;
-  if (!secretKey || !SUPABASE_URL) return { allowed: true }; // fail open
+  if (!secretKey || !SUPABASE_URL) {
+    // No store configured: nothing can be counted. Fail open, but say so.
+    return { allowed: options.failClosed !== true, degraded: true };
+  }
 
   const supabase = createClient(SUPABASE_URL, secretKey, { auth: { persistSession: false } });
   const now = Date.now();
@@ -147,8 +169,8 @@ export async function checkRateLimit(
       .limit(1);
 
     if (error) {
-      console.error('rate-limit lookup failed (allowing):', error.message);
-      return { allowed: true }; // fail open
+      console.error('rate-limit lookup failed:', error.message);
+      return { allowed: options.failClosed !== true, degraded: true };
     }
 
     const existing = rows?.[0];
@@ -190,7 +212,7 @@ export async function checkRateLimit(
     }
     return { allowed: true };
   } catch (err) {
-    console.error('rate-limit check failed (allowing):', err);
-    return { allowed: true }; // fail open
+    console.error('rate-limit check failed:', err);
+    return { allowed: options.failClosed !== true, degraded: true };
   }
 }

@@ -1,0 +1,742 @@
+{
+  "recordedAt": "2026-08-08T02:33:02.067Z",
+  "note": "Recorded by npm run perf. Re-record on purpose with: npm run perf -- --reset-baseline",
+  "lighthouse": {
+    "homepage": {
+      "score": 99,
+      "lcpMs": 857,
+      "fcpMs": 329,
+      "tbtMs": 0,
+      "cls": 0.025,
+      "totalBytes": 1169414,
+      "requestCount": 92
+    },
+    "request-estimate": {
+      "score": 100,
+      "lcpMs": 730,
+      "fcpMs": 325,
+      "tbtMs": 0,
+      "cls": 0.025,
+      "totalBytes": 1203858,
+      "requestCount": 95
+    },
+    "home-care": {
+      "score": 100,
+      "lcpMs": 732,
+      "fcpMs": 325,
+      "tbtMs": 0,
+      "cls": 0.029,
+      "totalBytes": 1204861,
+      "requestCount": 98
+    },
+    "service-interior": {
+      "score": 100,
+      "lcpMs": 710,
+      "fcpMs": 324,
+      "tbtMs": 0,
+      "cls": 0.025,
+      "totalBytes": 1179777,
+      "requestCount": 92
+    }
+  },
+  "actions": {
+    "load-homepage": {
+      "requests": 36,
+      "app": 36,
+      "supabase": 0,
+      "thirdParty": 0,
+      "prefetch": 54,
+      "browserSupabaseBlockedByCsp": 13,
+      "urls": [
+        {
+          "url": "/",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+          "count": 1
+        },
+        {
+          "url": "/_next/image?q,url,w",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/86f9a5cc20b78f3a.css",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0ab1d833c91081ca.css",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/045d180472bb15bc.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/a5057a4072b656bd.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/64de2ce8cd259478.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/1ebec0ac3c9920a0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/f84e4851a37690d0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/turbopack-e4d182eaa73a3411.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/19957f1edeeb441a.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0fb250a87adec706.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/58d0c58451e73f21.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/535a1832cb03e512.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/64faf22e9434b8b8.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/8f1240712717bf50.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/f7569d4b03564a61.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/5beb93c51c6edb55.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/8a445809c7a94820.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/1f5a3cb052ec75de.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/fb9126b0dfabbfd2.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/9554f829d2c6b3dd.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/e6a1daee93ec8ece.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/f5c44bcbda5cd6b7.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/80ca85f0730c1139.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/247e32d5cfe41d59.js",
+          "count": 1
+        },
+        {
+          "url": "/api/banners",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/873a2e1b08ab95be.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/d028247c376889d9.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0394034fcce6a9f0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/497e6cf93d5079e0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0b1e14b5675fb047.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/b11d204aff508629.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/04db45c95fbe3a9e.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/a96cdaf7c948dea7.js",
+          "count": 1
+        }
+      ],
+      "queries": [],
+      "queryCount": 0,
+      "loadMs": 146
+    },
+    "load-request-estimate": {
+      "requests": 38,
+      "app": 38,
+      "supabase": 0,
+      "thirdParty": 0,
+      "prefetch": 54,
+      "browserSupabaseBlockedByCsp": 2,
+      "urls": [
+        {
+          "url": "/_next/image?q,url,w",
+          "count": 2
+        },
+        {
+          "url": "/request-estimate",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/86f9a5cc20b78f3a.css",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0ab1d833c91081ca.css",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/045d180472bb15bc.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/a5057a4072b656bd.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/64de2ce8cd259478.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/1ebec0ac3c9920a0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/f84e4851a37690d0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/turbopack-e4d182eaa73a3411.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/19957f1edeeb441a.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0fb250a87adec706.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/58d0c58451e73f21.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/535a1832cb03e512.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/64faf22e9434b8b8.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/8f1240712717bf50.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/f7569d4b03564a61.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/5beb93c51c6edb55.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/8a445809c7a94820.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/8642ce8917acb054.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/04db45c95fbe3a9e.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/80ca85f0730c1139.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/247e32d5cfe41d59.js",
+          "count": 1
+        },
+        {
+          "url": "/api/banners",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/d028247c376889d9.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/1f5a3cb052ec75de.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0394034fcce6a9f0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/9554f829d2c6b3dd.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/497e6cf93d5079e0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/873a2e1b08ab95be.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0b1e14b5675fb047.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/b11d204aff508629.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/a96cdaf7c948dea7.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/fb9126b0dfabbfd2.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/e6a1daee93ec8ece.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/f5c44bcbda5cd6b7.js",
+          "count": 1
+        }
+      ],
+      "queries": [],
+      "queryCount": 0,
+      "loadMs": 98
+    },
+    "load-home-care": {
+      "requests": 37,
+      "app": 37,
+      "supabase": 0,
+      "thirdParty": 0,
+      "prefetch": 59,
+      "browserSupabaseBlockedByCsp": 4,
+      "urls": [
+        {
+          "url": "/home-care",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+          "count": 1
+        },
+        {
+          "url": "/_next/image?q,url,w",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/86f9a5cc20b78f3a.css",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0ab1d833c91081ca.css",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/045d180472bb15bc.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/a5057a4072b656bd.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/64de2ce8cd259478.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/1ebec0ac3c9920a0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/f84e4851a37690d0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/turbopack-e4d182eaa73a3411.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/19957f1edeeb441a.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0fb250a87adec706.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/58d0c58451e73f21.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/535a1832cb03e512.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/64faf22e9434b8b8.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/8f1240712717bf50.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/f7569d4b03564a61.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/5beb93c51c6edb55.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/8a445809c7a94820.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/662aefe50f7eaf24.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/9554f829d2c6b3dd.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/1f5a3cb052ec75de.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/80ca85f0730c1139.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/247e32d5cfe41d59.js",
+          "count": 1
+        },
+        {
+          "url": "/api/banners",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/04db45c95fbe3a9e.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/d028247c376889d9.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0394034fcce6a9f0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/497e6cf93d5079e0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/873a2e1b08ab95be.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0b1e14b5675fb047.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/b11d204aff508629.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/a96cdaf7c948dea7.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/fb9126b0dfabbfd2.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/e6a1daee93ec8ece.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/f5c44bcbda5cd6b7.js",
+          "count": 1
+        }
+      ],
+      "queries": [],
+      "queryCount": 0,
+      "loadMs": 100
+    },
+    "load-service-interior": {
+      "requests": 36,
+      "app": 36,
+      "supabase": 0,
+      "thirdParty": 0,
+      "prefetch": 54,
+      "browserSupabaseBlockedByCsp": 2,
+      "urls": [
+        {
+          "url": "/services/interior-finishing",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+          "count": 1
+        },
+        {
+          "url": "/_next/image?q,url,w",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/86f9a5cc20b78f3a.css",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0ab1d833c91081ca.css",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/045d180472bb15bc.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/a5057a4072b656bd.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/64de2ce8cd259478.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/1ebec0ac3c9920a0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/f84e4851a37690d0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/turbopack-e4d182eaa73a3411.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/19957f1edeeb441a.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0fb250a87adec706.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/58d0c58451e73f21.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/535a1832cb03e512.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/64faf22e9434b8b8.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/8f1240712717bf50.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/f7569d4b03564a61.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/5beb93c51c6edb55.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/8a445809c7a94820.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0b1e14b5675fb047.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/1f5a3cb052ec75de.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/80ca85f0730c1139.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/247e32d5cfe41d59.js",
+          "count": 1
+        },
+        {
+          "url": "/api/banners",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/fb9126b0dfabbfd2.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/9554f829d2c6b3dd.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/e6a1daee93ec8ece.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/f5c44bcbda5cd6b7.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/a96cdaf7c948dea7.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/04db45c95fbe3a9e.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/d028247c376889d9.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/0394034fcce6a9f0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/497e6cf93d5079e0.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/873a2e1b08ab95be.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/b11d204aff508629.js",
+          "count": 1
+        }
+      ],
+      "queries": [],
+      "queryCount": 0,
+      "loadMs": 93
+    },
+    "submit-estimate-request": {
+      "requests": 6,
+      "app": 6,
+      "supabase": 0,
+      "thirdParty": 0,
+      "prefetch": 89,
+      "browserSupabaseBlockedByCsp": 0,
+      "urls": [
+        {
+          "url": "/api/leads/submit",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/a12f6a21ef8c5a45.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/a1a0334135221d40.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/7d6ee9a47340e261.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/3d9cf2142eaf83fa.js",
+          "count": 1
+        },
+        {
+          "url": "/_next/static/chunks/ae50c3b0d3101a8a.js",
+          "count": 1
+        }
+      ],
+      "queries": [
+        {
+          "query": "WITH pgrst_source AS (UPDATE \"public\".\"rate_limits\" SET \"count\" = \"pgrst_body\".\"count\", \"last_reset\" = \"pgrst_body\".\"last_reset\" FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"count\", \"last_reset\" FROM json_to_record(pgrst_payload.json_data) AS _(\"count\" integer, \"last_reset\" timestamp with time zone) ) pgrst_body  WHERE  \"public\".\"rate_limits\".\"id\" = $2 RETURNING $3) SELECT $4 AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, array[]::text[] AS header, $5::text AS body, nullif(current_setting($6, $7), $8) AS response_headers, nullif(current_setting($9, $10), $11) AS response_status, $12 AS response_inserted FROM (SELECT * FROM pgrst_source) _postgrest_t",
+          "calls": 1,
+          "mean_ms": 0.04
+        },
+        {
+          "query": "WITH pgrst_source AS ( SELECT \"public\".\"rate_limits\".\"id\", \"public\".\"rate_limits\".\"count\", \"public\".\"rate_limits\".\"last_reset\" FROM \"public\".\"rate_limits\" WHERE  \"public\".\"rate_limits\".\"ip_address\" = $1  ORDER BY \"public\".\"rate_limits\".\"last_reset\" DESC  LIMIT $2 OFFSET $3 )  SELECT $4::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $5) AS body, nullif(current_setting($6, $7), $8) AS response_headers, nullif(current_setting($9, $10), $11) AS response_status, $12 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+          "calls": 1,
+          "mean_ms": 0.03
+        },
+        {
+          "query": "WITH pgrst_source AS ( SELECT \"public\".\"follow_up_queue\".\"id\", \"public\".\"follow_up_queue\".\"status\" FROM \"public\".\"follow_up_queue\" WHERE  \"public\".\"follow_up_queue\".\"lead_email\" = $1 AND  \"public\".\"follow_up_queue\".\"follow_up_type\" = ANY ($2)  AND  \"public\".\"follow_up_queue\".\"status\" = ANY ($3)    LIMIT $4 OFFSET $5 )  SELECT $6::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $7) AS body, nullif(current_setting($8, $9), $10) AS response_headers, nullif(current_setting($11, $12), $13) AS response_status, $14 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+          "calls": 1,
+          "mean_ms": 0.02
+        },
+        {
+          "query": "WITH pgrst_source AS (INSERT INTO \"public\".\"leads\"(\"city\", \"contact_time_preference\", \"contact_timezone\", \"email\", \"first_name\", \"inquiry_type\", \"last_name\", \"message\", \"phone\", \"preferred_contact_method\", \"project_timeline\", \"project_type\", \"score\", \"scoring_reasons\", \"source\", \"tier\") SELECT \"pgrst_body\".\"city\", \"pgrst_body\".\"contact_time_preference\", \"pgrst_body\".\"contact_timezone\", \"pgrst_body\".\"email\", \"pgrst_body\".\"first_name\", \"pgrst_body\".\"inquiry_type\", \"pgrst_body\".\"last_name\", \"pgrst_body\".\"message\", \"pgrst_body\".\"phone\", \"pgrst_body\".\"preferred_contact_method\", \"pgrst_body\".\"project_timeline\", \"pgrst_body\".\"project_type\", \"pgrst_body\".\"score\", \"pgrst_body\".\"scoring_reasons\", \"pgrst_body\".\"source\", \"pgrst_body\".\"tier\" FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"city\", \"contact_time_preference\", \"contact_timezone\", \"email\", \"first_name\", \"inquiry_type\", \"last_name\", \"message\", \"phone\", \"preferred_contact_method\", \"project_timeline\", \"project_type\", \"score\", \"scoring_reasons\", \"source\", \"tier\" FROM json_to_record(pgrst_payload.json_data) AS _(\"city\" text, \"contact_time_preference\" text, \"contact_timezone\" text, \"email\" text, \"first_name\" text, \"inquiry_type\" text, \"last_name\" text, \"message\" text, \"phone\" text, \"preferred_contact_method\" text, \"project_timeline\" text, \"project_type\" text, \"score\" integer, \"scoring_reasons\" text[], \"source\" text, \"tier\" text) ) pgrst_body  RETURNING \"public\".\"leads\".*) SELECT $2 AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, array[]::text[] AS header, coalesce(json_agg(_postgrest_t), $3) AS body, nullif(current_setting($4, $5), $6) AS response_headers, nullif(current_setting($7, $8), $9) AS response_status, $10 AS response_inserted FROM (SELECT \"leads\".* FROM \"pgrst_source\" AS \"leads\"   ) _postgrest_t",
+          "calls": 1,
+          "mean_ms": 0.17
+        },
+        {
+          "query": "WITH pgrst_source AS (INSERT INTO \"public\".\"lead_intake_sessions\"(\"answers\", \"current_step\", \"first_name\", \"lead_id\", \"project_type\", \"status\", \"token\") SELECT \"pgrst_body\".\"answers\", \"pgrst_body\".\"current_step\", \"pgrst_body\".\"first_name\", \"pgrst_body\".\"lead_id\", \"pgrst_body\".\"project_type\", \"pgrst_body\".\"status\", \"pgrst_body\".\"token\" FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"answers\", \"current_step\", \"first_name\", \"lead_id\", \"project_type\", \"status\", \"token\" FROM json_to_record(pgrst_payload.json_data) AS _(\"answers\" jsonb, \"current_step\" text, \"first_name\" text, \"lead_id\" uuid, \"project_type\" text, \"status\" text, \"token\" text) ) pgrst_body  RETURNING \"public\".\"lead_intake_sessions\".*) SELECT $2 AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, array[]::text[] AS header, coalesce(json_agg(_postgrest_t), $3) AS body, nullif(current_setting($4, $5), $6) AS response_headers, nullif(current_setting($7, $8), $9) AS response_status, $10 AS response_inserted FROM (SELECT \"lead_intake_sessions\".* FROM \"pgrst_source\" AS \"lead_intake_sessions\"   ) _postgrest_t",
+          "calls": 1,
+          "mean_ms": 0.36
+        }
+      ],
+      "queryCount": 5
+    }
+  }
+}

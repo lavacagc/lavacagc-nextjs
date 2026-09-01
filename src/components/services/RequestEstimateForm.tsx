@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { RECAPTCHA_SITE_KEY } from "@/lib/recaptcha-config";
 import { useRecaptchaChallenge } from "@/components/recaptcha/RecaptchaChallengeProvider";
 import { submitLead } from "@/lib/submitLead";
+import { GeoGateNotice } from "@/components/GeoGateNotice";
 import IntakeInvite from "@/components/IntakeInvite";
 import {
   COMMERCIAL_INTEREST_OPTIONS,
@@ -317,6 +318,7 @@ export default function RequestEstimateForm() {
       autoComplete="on"
       className="rounded-3xl border border-border bg-card p-7 shadow-elegant md:p-9"
     >
+      <GeoGateNotice kind="estimate" />
       {/* honeypot */}
       <input
         type="text"

@@ -343,14 +343,15 @@ test.describe('admin /vaca-mgmt/preferences page', () => {
       'unchecked',
     );
 
-    // The data-state flip above is optimistic, so the POST and the post-save
-    // audit refresh (a second lookup GET) land asynchronously — wait for them.
+    // The data-state flip above is optimistic, so the POST lands
+    // asynchronously — wait for it.
     await expect.poll(() => adminPosts.length).toBe(1);
     expect(adminPosts[0].email).toBe(OWNER);
     expect(adminPosts[0].changes).toEqual({ home_care: false });
-    // The post-save audit refresh also re-reads the pinned contact.
-    await expect.poll(() => lookupEmails.length).toBe(2);
-    expect(lookupEmails).toEqual([OWNER, OWNER]);
+    // Exactly ONE lookup: the toggle applies the POST response directly, and
+    // the 2026-08 admin simplification removed the redundant post-save
+    // re-lookup (it re-downloaded the 100-row audit trail per switch flip).
+    expect(lookupEmails).toEqual([OWNER]);
     // Card header still shows the contact being managed, not the input text.
     await expect(page.getByText(OWNER)).toBeVisible();
 

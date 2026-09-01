@@ -12,6 +12,7 @@ import { RECAPTCHA_SITE_KEY } from '@/lib/recaptcha-config'
 import { ContactTimePicker, type ContactTimePreference } from '@/components/forms/ContactTimePicker'
 import { useRecaptchaChallenge } from '@/components/recaptcha/RecaptchaChallengeProvider'
 import { submitLead } from '@/lib/submitLead'
+import { GeoGateNotice } from '@/components/GeoGateNotice'
 import IntakeInvite from '@/components/IntakeInvite'
 
 interface LandingPageLeadFormProps {
@@ -240,6 +241,7 @@ const LandingPageLeadForm: React.FC<LandingPageLeadFormProps> = ({
         <h3 className="text-xl md:text-2xl font-bold text-text-primary">{heading}</h3>
         <p className="text-sm text-text-secondary mt-1">{subheading}</p>
       </div>
+      <GeoGateNotice kind="estimate" />
       <form onSubmit={handleSubmit} className="space-y-4">
         <input type="hidden" name="source" value={source} />
         {/* Honeypot — hidden from humans, bots auto-fill it */}

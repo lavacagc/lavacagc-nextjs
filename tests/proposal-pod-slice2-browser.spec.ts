@@ -149,6 +149,7 @@ async function openRoster(
 ) {
   await signInAsAdmin(context, baseURL);
   await stubLifecycle(page);
+  await stubLeads(page);
   await page.route('**/api/admin/proposals*', async (route) => {
     if (route.request().method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
     await route.fulfill({ json: roster });
@@ -157,9 +158,35 @@ async function openRoster(
   await expect(page.getByTestId('proposals-admin')).toBeVisible();
 }
 
+/**
+ * The people search asks the leads endpoint alongside the proposals one, and
+ * an unstubbed request there aims at the real route, whose Supabase this build
+ * does not have. The page tolerates one source failing - these tests exercise
+ * the proposal-derived hits - but a deterministic empty answer keeps the
+ * console clean and the timing honest.
+ */
+async function stubLeads(page: Page) {
+  await page.route('**/api/admin/estimate-email/leads*', async (route) => {
+    await route.fulfill({ json: { leads: [] } });
+  });
+}
+
+/**
+ * Round 9: the search bar finds PEOPLE. Type a term, then land on the person
+ * by name - the popover row carries the merged identity - and wait for the
+ * page to scope itself to them.
+ */
+async function pickClient(page: Page, term: string, name: string) {
+  await page.getByTestId('roster-search').fill(term);
+  await page.getByTestId('client-search-popover').getByTestId('client-hit')
+    .filter({ hasText: name }).click();
+  await expect(page.getByTestId('client-header')).toContainText(name);
+}
+
 async function openProposals(page: Page, context: BrowserContext, baseURL: string) {
   await signInAsAdmin(context, baseURL);
   await stubLifecycle(page);
+  await stubLeads(page);
   // The glob keeps the query string in scope - the roster read carries ?search.
   await page.route('**/api/admin/proposals*', async (route) => {
     if (route.request().method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
@@ -202,6 +229,7 @@ async function openProposalsTab(
 ) {
   await signInAsAdmin(context, baseURL);
   await stubLifecycle(page);
+  await stubLeads(page);
   await page.route('**/api/admin/proposals*', async (route) => {
     if (route.request().method() !== 'GET') { await route.fulfill({ json: { ok: true } }); return; }
     await route.fulfill({ json: roster });
@@ -317,6 +345,10 @@ const toastTitle = (page: Page, text: string) => page.getByText(text, { exact: t
  * pasting a corrected export does, rather than splicing at the caret.
  */
 async function pasteCsv(page: Page, text: string) {
+  // The importer is collapsed behind one click since round 9 - open it the way
+  // an admin does when the box is not already on screen.
+  const opener = page.getByTestId('open-importer');
+  if (await opener.isVisible()) await opener.click();
   const box = page.getByTestId('csv-paste');
   await box.click();
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -616,30 +648,32 @@ test.describe('proposals admin, in the browser', () => {
     await expect(combine).toContainText('(select 2+)');
   });
 
-  test('B6 (AC6j): a proposal past the roster cap is still reachable - and revocable - by search', async ({ page, context, baseURL }) => {
+  test('B6 (AC6j): a proposal past the roster cap is still reachable - and revocable - through its client', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
 
     // The page stops at the cap and says so rather than reading as the estate.
     await expect(page.getByTestId('roster-truncated')).toContainText('of 312');
     await expect(page.getByText('Zeta Vanterpool')).toHaveCount(0);
 
-    // Search reaches it, and its lifecycle controls come with the row.
-    await page.getByTestId('roster-search').fill('Zeta');
-    await page.getByTestId('roster-search-btn').click();
+    // The search finds the PERSON - merged from the proposals themselves, so a
+    // client who never had a lead row still resolves - and picking them scopes
+    // the page to their proposals, lifecycle controls included.
+    await pickClient(page, 'Zeta', 'Zeta Vanterpool');
     const row = page.getByTestId('proposal-22222222-2222-2222-2222-222222222222');
     await expect(row).toBeVisible();
     await expect(row.getByRole('button', { name: /revoke/i })).toBeEnabled();
     await expect(page.getByText('Rachel Morales')).toHaveCount(0);
-    // One match is the whole result, so nothing claims to be truncated.
+    // A scoped list is that client's whole estate, so nothing claims truncation.
     await expect(page.getByTestId('roster-truncated')).toHaveCount(0);
 
-    // Searching the email column finds it too.
-    await page.getByTestId('roster-search').fill('zeta@example.com');
-    await page.getByTestId('roster-search-btn').click();
+    // The email reaches the same person.
+    await page.getByTestId('client-clear').click();
+    await expect(page.getByText('Rachel Morales')).toBeVisible();
+    await pickClient(page, 'zeta@example.com', 'Zeta Vanterpool');
     await expect(row).toBeVisible();
 
-    // Clear puts the whole roster back.
-    await page.getByTestId('roster-search-clear').click();
+    // Clear puts the recent list back.
+    await page.getByTestId('client-clear').click();
     await expect(page.getByText('Rachel Morales')).toBeVisible();
   });
 
@@ -906,8 +940,7 @@ test.describe('proposals admin, in the browser', () => {
 
   test('B15 (AC10k): Re-import is refused on a revoked row before any work is composed', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
-    await page.getByTestId('roster-search').fill('Yusuf');
-    await page.getByTestId('roster-search-btn').click();
+    await pickClient(page, 'Yusuf', 'Yusuf Adeyemi');
     const row = page.getByTestId('proposal-33333333-3333-3333-3333-333333333333');
     await expect(row).toBeVisible();
     await expect(row.getByText('revoked', { exact: true })).toBeVisible();
@@ -937,7 +970,7 @@ test.describe('proposals admin, in the browser', () => {
     await expect(send).toHaveText(/re-send/i);
 
     // A live proposal is unaffected.
-    await page.getByTestId('roster-search-clear').click();
+    await page.getByTestId('client-clear').click();
     await expect(page.getByTestId('reimport-btn').first()).toBeEnabled();
   });
 
@@ -965,7 +998,7 @@ test.describe('proposals admin, in the browser', () => {
         },
       });
     });
-    await page.getByTestId('roster-search-btn').click();
+    await pickClient(page, 'Yusuf', 'Yusuf Adeyemi');
     const row = page.getByTestId(`proposal-${REVOKED.id}`);
     await expect(row.getByText('revoked', { exact: true })).toBeVisible();
 
@@ -1111,15 +1144,16 @@ test.describe('proposals admin, in the browser', () => {
     });
 
     const notice = page.getByTestId('roster-truncated');
-    await expect(notice).toContainText('Showing the first 1 proposals');
-    await expect(notice).toContainText('Search by client name, email or title');
+    await expect(notice).toContainText('Showing the 1 most recently updated proposals');
+    await expect(notice).toContainText('search a customer above');
     // The number only fills in when it is known - no "of null", no invented total.
     await expect(notice).not.toContainText('of null');
     await expect(notice).not.toContainText('undefined');
   });
 
-  test('B21 (AC6n): a created proposal is visible on the roster, never hidden by the search that was open', async ({ page, context, baseURL }) => {
+  test('B21 (AC6n): a created proposal is visible on the roster, never hidden by the client that was open', async ({ page, context, baseURL }) => {
     await signInAsAdmin(context, baseURL!);
+    await stubLeads(page);
     const terms: (string | null)[] = [];
     const posted: unknown[] = [];
     await page.route('**/api/admin/proposals*', async (route) => {
@@ -1138,11 +1172,10 @@ test.describe('proposals admin, in the browser', () => {
     await page.goto('/vaca-mgmt/proposals');
     await expect(page.getByTestId('proposals-admin')).toBeVisible();
 
-    // A search is open, as it would be after reaching a client to check their
+    // A client is open, as they would be after reaching them to check their
     // existing proposal before writing the next one.
-    await page.getByTestId('roster-search').fill('Zeta');
-    await page.getByTestId('roster-search-btn').click();
-    await expect(page.getByText('Zeta Vanterpool')).toBeVisible();
+    await pickClient(page, 'Zeta', 'Zeta Vanterpool');
+    await expect(page.getByText('Kitchen gut renovation')).toBeVisible();
 
     await pasteCsv(page, CSV);
     await expect(page.getByTestId('line-row')).toHaveCount(3);
@@ -1152,10 +1185,11 @@ test.describe('proposals admin, in the browser', () => {
     await expect(toastTitle(page, 'Proposal created (draft)')).toBeVisible();
     expect(posted).toHaveLength(1);
 
-    // Reloading under whatever term happened to be in the box hid the brand new
+    // Reloading under whichever client happened to be open hid the brand new
     // proposal entirely - and a create that looks like it did nothing gets
     // pressed again, which is a duplicate proposal for a real client. So the
-    // search clears and the whole roster comes back.
+    // whole selection clears and the recent list comes back, new row on top.
+    await expect(page.getByTestId('client-header')).toHaveCount(0);
     await expect(page.getByTestId('roster-search')).toHaveValue('');
     await expect(page.getByText('Rachel Morales')).toBeVisible();
     expect(terms[terms.length - 1], 'the reload after Create carries no term').toBeNull();
@@ -1270,6 +1304,11 @@ test.describe('proposals admin, in the browser', () => {
 
   test('B24 (AC10n): the drop zone takes a dropped file, and a dragged text imports through the paste door', async ({ page, context, baseURL }) => {
     await openProposals(page, context, baseURL!);
+    // The importer is collapsed since round 9, and a file can only be dropped
+    // on a zone that is on screen - so this test opens it the way an admin
+    // holding a CSV does, through the link.
+    await page.getByTestId('open-importer').click();
+    await expect(page.getByTestId('csv-importer-card')).toBeVisible();
 
     /** Drop something on an element, and report whether the default was taken away. */
     const dropOn = (selector: string, payload: { file?: string; text?: string }) =>
@@ -1370,9 +1409,11 @@ test.describe('proposals admin, in the browser', () => {
 
   test('B25: a slow search that lands last never overwrites the search that replaced it', async ({ page, context, baseURL }) => {
     await signInAsAdmin(context, baseURL!);
+    await stubLeads(page);
     // The first search is held open until the second has answered, so the two
     // land in the OPPOSITE order to the one they were asked in. This is the
-    // ordinary shape of two searches typed a moment apart.
+    // ordinary shape of two terms typed a moment apart - the debounce fires
+    // for the first while the second is still being typed.
     let release: () => void = () => {};
     const held = new Promise<void>((resolve) => { release = resolve; });
     const answer = (proposals: unknown[]) => ({
@@ -1390,24 +1431,29 @@ test.describe('proposals admin, in the browser', () => {
     await page.goto('/vaca-mgmt/proposals');
     await expect(page.getByTestId('proposals-admin')).toBeVisible();
 
+    // The Zeta lookup fires and is held open; Yusuf replaces it and answers.
     await page.getByTestId('roster-search').fill('Zeta');
-    await page.getByTestId('roster-search-btn').click();
+    await page.waitForRequest((r) => r.url().includes('search=Zeta'));
     await page.getByTestId('roster-search').fill('Yusuf');
-    await page.getByTestId('roster-search-btn').click();
-    await expect(page.getByText('Yusuf Adeyemi')).toBeVisible();
+    const popover = page.getByTestId('client-search-popover');
+    await expect(popover.getByTestId('client-hit')).toContainText('Yusuf Adeyemi');
 
-    // Now let the superseded one answer. Whichever response lands last used to
-    // win, so the box read "Yusuf" above Zeta's row - and on a roster whose
-    // whole job past the cap is reaching a proposal in order to revoke it, the
-    // wrong row under the right search term is not cosmetic.
+    // Now let the superseded one answer. Whichever response landed last used
+    // to win, so the box read "Yusuf" above Zeta's people - and a popover
+    // offering the wrong person under the right term selects the wrong
+    // client's proposals to revoke. The stamp drops the stale answer instead.
     const stale = page.waitForResponse((r) => r.url().includes('search=Zeta'));
     release();
     await stale;
     await page.waitForTimeout(300);
 
     await expect(page.getByTestId('roster-search')).toHaveValue('Yusuf');
-    await expect(page.getByText('Yusuf Adeyemi')).toBeVisible();
-    await expect(page.getByText('Zeta Vanterpool')).toHaveCount(0);
+    await expect(popover.getByTestId('client-hit')).toContainText('Yusuf Adeyemi');
+    await expect(popover).not.toContainText('Zeta Vanterpool');
+
+    // And the person it offers is the person it opens.
+    await popover.getByTestId('client-hit').click();
+    await expect(page.getByTestId('client-header')).toContainText('Yusuf Adeyemi');
   });
 
   test('B18: at 390px a line name keeps its width whether or not the toggle wrapped', async ({ page, context, baseURL }) => {

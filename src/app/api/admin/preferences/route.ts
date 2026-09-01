@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { csvEscape } from '@/lib/csv';
 import {
   getOrCreateByEmail,
   applyUpdate,
@@ -47,13 +48,6 @@ interface PrefRow extends EmailPreferences {
   created_at?: string;
 }
 
-function csvEscape(v: unknown): string {
-  let s = v === null || v === undefined ? '' : String(v);
-  // Neutralize spreadsheet formula injection: a cell starting with = + - @ or a
-  // tab/CR executes as a formula when the export is opened in Excel/Sheets.
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;

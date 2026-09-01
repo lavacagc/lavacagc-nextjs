@@ -151,8 +151,11 @@ export const useSyncLogs = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('review_sync_log')
+        // CM-14: one row per sync run, forever - the history panel only ever
+        // shows the recent ones.
         .select('*')
-        .order('started_at', { ascending: false });
+        .order('started_at', { ascending: false })
+        .limit(50);
 
       if (error) throw error;
       return data;

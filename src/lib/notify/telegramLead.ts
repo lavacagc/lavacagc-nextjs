@@ -31,6 +31,13 @@ export interface TelegramLeadPayload {
    * knowing where things are.
    */
   homeDetails?: string[];
+  /**
+   * Where the submission arrived from, per the middleware's geo reading
+   * (round 10, Phase A telemetry). A week of NJ leads reading "NJ" is what
+   * clears the classification to start refusing; a real customer arriving as
+   * "US (outside NJ)" is the miscategorization this line exists to catch.
+   */
+  geoTier?: string;
 }
 
 // Telegram parse_mode:'HTML' requires &, <, > in text to be escaped. A stray
@@ -72,6 +79,7 @@ export async function sendTelegramLead(payload: TelegramLeadPayload): Promise<Te
     contactTimezone,
     services,
     homeDetails,
+    geoTier,
   } = payload;
 
   // Defensive clean — env values pasted in dashboards can carry stray whitespace,
@@ -128,6 +136,7 @@ export async function sendTelegramLead(payload: TelegramLeadPayload): Promise<Te
   if (estimate) lines.push(`💰 <b>Estimate:</b> $${Math.round(estimate).toLocaleString()}`);
   if (score !== undefined) lines.push(`⭐ <b>Score:</b> ${score}/100`);
   if (source) lines.push(`📊 <b>Source:</b> ${esc(source)}`);
+  if (geoTier) lines.push(`<b>Geo:</b> ${esc(geoTier)}`);
 
   const message = lines.join('\n');
   const telegramApiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;

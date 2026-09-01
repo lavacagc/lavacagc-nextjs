@@ -35,6 +35,7 @@ import { toast } from '@/hooks/use-toast';
 import { Loader2, CalendarPlus, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
 import { scopeSummaryFrom } from '@/lib/homecare/serviceIntake';
 import { easternVisitInstant, chasesAhead, chaseStageLabel } from '@/lib/homecare/visitSchedule';
+import { CustomerSearch, type CustomerHit } from '@/components/admin/CustomerSearch';
 
 interface Service { key: string; title: string; blurb: string; priority: number }
 /** Someone a visit dispatch can be sent to. Managed on /vaca-mgmt/crew. */
@@ -125,6 +126,12 @@ export default function SendServiceQuotePage() {
   const [email, setEmail] = useState('');
   const [intake, setIntake] = useState<Intake | null>(null);
   const [loading, setLoading] = useState(false);
+  // Progressive disclosure (round 4, owner: "step by step, less intimidating").
+  // A fresh page shows ONLY step 1; the first lookup ATTEMPT - success or
+  // failure, both leave a state worth seeing - expands steps 2 and 3. Nothing
+  // unmounts afterwards, so the identity-split guard's premise (the lookup box
+  // and the loaded details visible TOGETHER) is untouched.
+  const [lookupDone, setLookupDone] = useState(false);
   // What the customer's own REQUEST asked for. The default selection for a
   // window that is not yet on the books, and nothing more.
   const [requestTasks, setRequestTasks] = useState<Set<string>>(new Set());
@@ -455,13 +462,18 @@ export default function SendServiceQuotePage() {
    */
   const lookupTicket = useRef(0);
 
-  const lookup = useCallback(async () => {
-    if (!email.trim()) return;
+  // `overrideEmail` lets the customer typeahead run the lookup for the address
+  // it just selected in the same tick - the `email` state set alongside it is
+  // still the previous render's value inside this closure.
+  const lookup = useCallback(async (overrideEmail?: string) => {
+    const target = (overrideEmail ?? email).trim();
+    if (!target) return;
+    setLookupDone(true);
     const ticket = ++lookupTicket.current;
     const mine = () => lookupTicket.current === ticket;
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/service-quote/intake?email=${encodeURIComponent(email.trim())}`);
+      const res = await fetch(`/api/admin/service-quote/intake?email=${encodeURIComponent(target)}`);
       const data: Intake = await res.json();
       // Checked before anything is replaced: a 500 body still parses, so an
       // unchecked read would swap a real list of visits for an empty one and
@@ -483,7 +495,7 @@ export default function SendServiceQuotePage() {
       setIntake(data);
       // THIS is who is on screen now, and who a refresh re-reads - not whatever
       // the box holds by the time one runs.
-      loadedEmail.current = email.trim();
+      loadedEmail.current = target;
       // This IS a different customer, so the old list cannot stay on screen -
       // its windows belong to somebody else, and "Mark completed" would aim
       // them at this homeowner. It goes, and the gap is said out loud instead.
@@ -1007,38 +1019,62 @@ export default function SendServiceQuotePage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-lg">1. Who is it for?</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Input
-              value={email} onChange={(e) => setEmail(e.target.value)}
-              // Gated on `loading` exactly as the button is. The greyed-out
-              // button was the only thing that looked like a lock, and Enter
-              // walked straight past it.
-              onKeyDown={(e) => { if (e.key === 'Enter' && !loading) lookup(); }}
-              placeholder="customer@example.com" className="max-w-sm" data-testid="sq-email"
-            />
-            <Button variant="outline" onClick={lookup} disabled={loading} data-testid="sq-lookup">
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Look up'}
-            </Button>
+        <CardHeader className="flex flex-row items-start justify-between gap-3 flex-wrap space-y-0">
+          <div>
+            <CardTitle className="text-lg">1. Who is it for?</CardTitle>
+            <CardDescription className="mt-1">
+              Search by name, email, or phone - picking someone runs the full look-up for you.
+              Or save a new customer and they are findable forever.
+            </CardDescription>
           </div>
-
-          {splitIdentity && (
-            // The box is free text and nothing binds it to the card below it,
-            // so it can be retyped at any point after a customer is loaded -
-            // half of a second lookup, abandoned. Everything else here belongs
-            // to whoever WAS loaded, so acting on this state split one action
-            // between two people: it wrote the loaded customer's phone and
-            // address onto the typed customer's record and booked the loaded
-            // customer's services under them.
-            <p className="text-xs font-medium text-destructive" data-testid="sq-identity-split">
-              The box says <strong>{email.trim() || 'nothing'}</strong>, but the name, address,
-              phone and services below were loaded for <strong>{loadedEmail.current}</strong>.
-              Sending and booking are switched off until the two agree - press &quot;Look up&quot; to
-              load whoever is in the box. The visits listed below still belong to{' '}
-              {loadedEmail.current} and still act on them.
-            </p>
+          {lookupDone && bookings.length > 0 && (
+            <button
+              type="button"
+              data-testid="sq-books-chip"
+              onClick={() => document.querySelector('[data-testid="sq-bookings"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="inline-flex items-center gap-2 border rounded-lg px-3 py-1.5 text-sm font-semibold hover:border-primary transition-colors"
+            >
+              On the books
+              <span className="text-[11px] font-bold rounded-[5px] px-1.5 py-0.5 bg-teal-700/10 text-teal-800">{bookings.length}</span>
+            </button>
           )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <CustomerSearch
+            onSelect={(customer: CustomerHit) => {
+              const address = (customer.email ?? '').trim();
+              if (!address) {
+                toast({
+                  title: 'No email on file',
+                  description: 'This customer has no email address - add one before sending a quote.',
+                  variant: 'destructive',
+                });
+                return;
+              }
+              setEmail(address);
+              // Pass the address explicitly: the state set above is not
+              // visible to lookup()'s closure until the next render.
+              lookup(address);
+            }}
+          />
+
+          {/* The free-text email box + Look up button are GONE (owner round 7:
+              redundant beside the search, which already matches emails). The
+              search is now the only door, and because selecting runs the
+              lookup atomically, the retype-the-box identity split can no
+              longer be created by hand. `splitIdentity` stays as the internal
+              guard for the in-flight window between selection and load. */}
+          {loading ? (
+            <p className="text-sm text-muted-foreground inline-flex items-center gap-2" data-testid="sq-loading">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading customer…
+            </p>
+          ) : loadedEmail.current ? (
+            <p className="text-sm" data-testid="sq-loaded">
+              <span className="text-muted-foreground">Working on:</span>{' '}
+              <span className="font-semibold">{name.trim() || loadedEmail.current}</span>
+              <span className="text-muted-foreground"> ({loadedEmail.current})</span>
+            </p>
+          ) : null}
 
           {homeownerRead === 'unavailable' && (
             // Their record read as `null`, which is also what a walk-in reads
@@ -1133,8 +1169,15 @@ export default function SendServiceQuotePage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-lg">2. Quote details</CardTitle></CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
+        <CardHeader>
+          <CardTitle className="text-lg">2. Quote details</CardTitle>
+          {!lookupDone && (
+            <CardDescription data-testid="sq-step2-waiting">
+              Opens after you pick a customer in step 1.
+            </CardDescription>
+          )}
+        </CardHeader>
+        <CardContent className={`grid gap-4 md:grid-cols-2${lookupDone ? '' : ' hidden'}`}>
           <div><Label htmlFor="sq-name">Recipient name</Label><Input id="sq-name" value={name} onChange={(e) => setName(e.target.value)} /></div>
           <div><Label htmlFor="sq-cc">CC (optional)</Label><Input id="sq-cc" value={cc} onChange={(e) => setCc(e.target.value)} placeholder="spouse@example.com" /></div>
           <div className="md:col-span-2">
@@ -1166,9 +1209,13 @@ export default function SendServiceQuotePage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">3. Schedule the visit</CardTitle>
-          <CardDescription>Emails the crew with the calendar invite and a confirm link, queues the customer&apos;s 7:30pm night-before reminder, and gives you your own calendar invite.</CardDescription>
+          <CardDescription>
+            {lookupDone
+              ? <>Emails the crew with the calendar invite and a confirm link, queues the customer&apos;s 7:30pm night-before reminder, and gives you your own calendar invite.</>
+              : <span data-testid="sq-step3-waiting">Opens after you pick a customer in step 1. Their booked visits (&quot;On the books&quot;) live here too.</span>}
+          </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
+        <CardContent className={`grid gap-4 md:grid-cols-2${lookupDone ? '' : ' hidden'}`}>
           <div className="md:col-span-2">
             <Label htmlFor="sq-addr">Service address</Label>
             <Input id="sq-addr" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="14 Maple Ave, West Orange, NJ" data-testid="sq-address" />

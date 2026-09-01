@@ -10,6 +10,7 @@ import { isPrivateTokenPage } from '@/lib/privatePages';
 import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
 import { readHcKnown } from '@/lib/homecare/knownClient';
 import { trackEvent } from '@/services/analyticsManager';
+import { GeoGateNotice } from '@/components/GeoGateNotice';
 
 /**
  * Exit-intent popup: catches visitors leaving without converting and offers the
@@ -197,6 +198,7 @@ const ExitIntentPopup = () => {
               </DialogDescription>
             </DialogHeader>
 
+            <GeoGateNotice kind="newsletter" className="mt-3 mb-0" />
             <form onSubmit={submit} className="mt-2 space-y-2" data-testid="newsletter-form">
               <label htmlFor="newsletter-email" className="sr-only">Email address</label>
               <Input

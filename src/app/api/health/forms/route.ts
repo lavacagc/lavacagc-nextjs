@@ -12,12 +12,19 @@ export const dynamic = 'force-dynamic';
  * Protected by ?key=<DIAGNOSTICS_KEY> if DIAGNOSTICS_KEY is set in env.
  */
 export async function GET(request: NextRequest) {
+  // CM-11: this used to read `if (diagKey) { ...check... }`, so an UNSET
+  // DIAGNOSTICS_KEY skipped the check entirely and published the whole env
+  // inventory to anyone. It was unset in production - confirmed by a plain
+  // curl returning 200 with the full report.
+  //
+  // Fail CLOSED instead: no key configured means the endpoint is unavailable,
+  // not unprotected. A missing secret must never read as permission.
   const diagKey = process.env.DIAGNOSTICS_KEY;
-  if (diagKey) {
-    const provided = request.nextUrl.searchParams.get('key');
-    if (provided !== diagKey) {
-      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-    }
+  if (!diagKey) {
+    return NextResponse.json({ error: 'not available' }, { status: 404 });
+  }
+  if (request.nextUrl.searchParams.get('key') !== diagKey) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
   const required = {

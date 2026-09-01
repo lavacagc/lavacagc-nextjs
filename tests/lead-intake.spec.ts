@@ -86,10 +86,11 @@ test.describe('AC1 - the LLM chat is gone', () => {
     }
   });
 
-  test('the chat_conversations table keeps its readers and its other writer', () => {
-    // The table is NOT ours to drop: LeaveReviewClient writes to it as a
-    // fallback store, and /api/leads/conversations reads it.
-    expect(existsSync(join(process.cwd(), 'src/app/api/leads/conversations/route.ts'))).toBe(true);
+  test('the chat_conversations table keeps its remaining writer', () => {
+    // The table is NOT ours to drop: LeaveReviewClient still writes to it as a
+    // fallback store. (Its admin reader, /api/leads/conversations and the
+    // Leads "Chats" sub-tab, was removed in the 2026-08 admin simplification -
+    // the chatbot that fed it was already gone.)
     expect(read('src/components/LeaveReviewClient.tsx')).toContain('chat_conversations');
   });
 });

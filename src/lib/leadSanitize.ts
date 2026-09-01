@@ -83,6 +83,9 @@ const TEXT_COLUMNS = [
   'finish_level',
   'price_reaction',
 ] as const;
+/** Postgres int4 upper bound - anything past it fails the insert outright. */
+const INT4_MAX = 2147483647;
+
 const INTEGER_COLUMNS = ['square_footage', 'score', 'visit_count', 'price_anchor_shown'] as const;
 const TIMESTAMP_COLUMNS = ['first_seen'] as const;
 const ARRAY_COLUMNS = ['scoring_reasons'] as const;
@@ -127,11 +130,21 @@ export function sanitizeLeadForInsert(fields: Record<string, unknown>): LeadSani
     if (raw === undefined || raw === null) continue;
     if (typeof raw === 'string' && raw.trim() === '') continue;
     const num = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw.trim()) : NaN;
-    if (Number.isFinite(num)) {
-      lead[col] = Math.trunc(num);
-    } else {
+    if (!Number.isFinite(num)) {
       adjustments.push(`${col}: dropped non-numeric value ${JSON.stringify(raw)}`);
+      continue;
     }
+    // CM-13: Number.isFinite(9e99) is true, so the old code happily trunc'd it
+    // and handed an out-of-range value to an int4 column. PostgREST rejected
+    // the whole insert, the route answered 500, and the customer's enquiry was
+    // GONE - the precise failure this sanitizer exists to prevent. Out of range
+    // is a bad field, not a bad lead: drop the field, keep the lead, say so.
+    const truncated = Math.trunc(num);
+    if (!Number.isSafeInteger(truncated) || Math.abs(truncated) > INT4_MAX) {
+      adjustments.push(`${col}: dropped out-of-range value ${JSON.stringify(raw)}`);
+      continue;
+    }
+    lead[col] = truncated;
   }
 
   for (const col of TIMESTAMP_COLUMNS) {

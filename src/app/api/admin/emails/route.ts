@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import type { EmailCategory } from '@/lib/notify/sendEmail';
 
 /**
  * GET /api/admin/emails?category=&status=&q=&limit=
@@ -34,13 +35,34 @@ interface EmailListRow {
   sent_at: string | null;
 }
 
-// Whitelist the values we let flow into a PostgREST eq filter. Keep in sync with
-// EmailCategory in src/lib/notify/sendEmail.ts.
-const ALLOWED_CATEGORY = new Set([
-  'verification', 'welcome', 'estimate', 'lead_followup', 'lead_notification',
-  'home_care_newsletter', 'buy_remodel', 'seo_report', 'staged_draft',
-  'rollback_digest', 'form_error', 'feedback_request', 'broadcast', 'release', 'other',
-]);
+// Whitelist the values we let flow into a PostgREST eq filter. A `Record` over
+// the `EmailCategory` union (same trick as the client page) so the compiler
+// enforces sync: this list started as a bare array and drifted six categories
+// behind, silently returning the UNfiltered log for the missing ones.
+const FILTERABLE: Record<EmailCategory, true> = {
+  verification: true,
+  welcome: true,
+  estimate: true,
+  lead_followup: true,
+  lead_notification: true,
+  home_care_newsletter: true,
+  buy_remodel: true,
+  seo_report: true,
+  staged_draft: true,
+  rollback_digest: true,
+  form_error: true,
+  feedback_request: true,
+  broadcast: true,
+  release: true,
+  service_quote: true,
+  visit_reminder: true,
+  crew_dispatch: true,
+  crew_dispatch_cancelled: true,
+  proposal_delivery: true,
+  proposal_submission: true,
+  other: true,
+};
+const ALLOWED_CATEGORY = new Set(Object.keys(FILTERABLE));
 const ALLOWED_STATUS = new Set([
   'queued', 'sent', 'failed', 'error', 'skipped',
   'delivered', 'opened', 'clicked', 'bounced', 'complained', 'delivery_delayed',

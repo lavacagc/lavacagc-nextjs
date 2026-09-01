@@ -24,16 +24,18 @@ test('the SeoSuggestionsDashboard component exists and calls the content-actions
   expect(src).toContain('export default function SeoSuggestionsDashboard');
 });
 
-test('AdminContent registers the seo-suggestions section', () => {
+test('AdminContent registers the seo section (SeoSuggestionsDashboard owns the SEO tab)', () => {
   const src = read('src/components/AdminContent.tsx');
   expect(src).toMatch(/import\(['"]@\/components\/admin\/SeoSuggestionsDashboard['"]\)/);
-  expect(src).toMatch(/value="seo-suggestions"/);
+  // The 2026-08 admin simplification renamed the tab id from 'seo-suggestions'
+  // to 'seo' when the old SEODashboard was removed.
+  expect(src).toMatch(/value="seo"/);
   expect(src).toContain('<SeoSuggestionsDashboard />');
 });
 
-test('AdminSidebar exposes the SEO Suggestions nav item', () => {
+test('AdminSidebar exposes the SEO nav item', () => {
   const src = read('src/components/admin/AdminSidebar.tsx');
-  expect(src).toMatch(/id:\s*'seo-suggestions'/);
+  expect(src).toMatch(/id:\s*'seo'/);
 });
 
 test('the supporting API routes exist', () => {

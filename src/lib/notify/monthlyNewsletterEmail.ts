@@ -53,10 +53,6 @@ export interface MonthlyNewsletterPayload {
     ctaUrl: string; // → /home-care
   };
   picks: NewsletterLink[]; // two small cost-guide picks
-  buyRemodel: {
-    text: string;
-    url: string;
-  };
   /** CAN-SPAM: a working per-recipient unsubscribe URL. */
   unsubscribeUrl: string;
   /** Optional preference-center URL for a "manage preferences" link. */
@@ -77,7 +73,7 @@ function button(label: string, href: string): string {
 }
 
 export function buildMonthlyNewsletterHtml(payload: MonthlyNewsletterPayload): string {
-  const { issueLabel, hero, checklist, picks, buyRemodel, unsubscribeUrl, preferencesUrl } = payload;
+  const { issueLabel, hero, checklist, picks, unsubscribeUrl, preferencesUrl } = payload;
   const preheader = escapeHtml(hero.blurb).slice(0, 140);
 
   const bullets = checklist.bullets
@@ -152,15 +148,7 @@ export function buildMonthlyNewsletterHtml(payload: MonthlyNewsletterPayload): s
         </table>
       </div>
 
-      <!-- 4. Buy + Remodel teaser -->
-      <div style="padding:16px 40px 24px 40px">
-        <p style="font-family:${FF};color:${MUTED};margin:0;font-size:14px;line-height:22px">
-          🏡 ${escapeHtml(buyRemodel.text)}
-          <a href="${escapeHtml(buyRemodel.url)}" style="color:${NAVY};text-decoration:underline;font-weight:600">See the homes →</a>
-        </p>
-      </div>
-
-      <!-- 5. CAN-SPAM footer -->
+      <!-- 4. CAN-SPAM footer -->
       <div style="background-color:#f7f9fc;border-top:1px solid ${HAIRLINE};padding:24px 40px;text-align:center">
         <p style="font-family:${FF};color:${MUTED};font-size:12px;line-height:18px;margin:0">
           You're receiving La Vaca's monthly home journal because you asked to hear from us.

@@ -98,9 +98,7 @@ export async function POST(request: NextRequest) {
 
     const linkLines = [
       '- /free-estimate (Get a Free Estimate)',
-      '- /project-calculator (Project Cost Calculator)',
       '- /portfolio (Our Work)',
-      '- /buy-and-remodel (Homes to Buy + Remodel)',
       ...(posts ?? []).map((p) => `- /blog/${p.slug} (${p.title})`),
     ].join('\n');
 

@@ -34,6 +34,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  /** Recent suggestions consulted for dedupe - newest first, so the cap keeps the relevant ones. */
+  const DEDUPE_SCAN = 5000;
   const now = new Date();
   const { startDate, endDate } = reportWindow(now);
   const dryRun = new URL(request.url).searchParams.get('dryRun') === '1';
@@ -46,7 +48,13 @@ export async function GET(request: NextRequest) {
       supabaseRest<PostRow[]>('GET', 'blog_posts?select=id,slug&published=eq.true'),
       supabaseRest<ExistingAction[]>(
         'GET',
-        'content_actions?select=action_type,target_post_id,target_query,status',
+        // Read for DEDUPE - it answers "have we already suggested this". It had
+      // no filter at all, so it grew with every suggestion ever made and would
+      // silently truncate at the server's ceiling; past that point the job
+      // would start re-suggesting things it had already proposed. Capped
+      // explicitly and ordered newest-first, so the rows it keeps are the ones
+      // that matter for dedupe (CM-14).
+      `content_actions?select=action_type,target_post_id,target_query,status&order=created_at.desc&limit=${DEDUPE_SCAN}`,
       ),
     ]);
 

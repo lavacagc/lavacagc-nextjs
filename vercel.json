@@ -22,10 +22,6 @@
       "schedule": "0 9 * * *"
     },
     {
-      "path": "/api/cron/generate-renderings",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/cron/seo-ingest?days=3",
       "schedule": "0 6 * * *"
     },
@@ -48,6 +44,10 @@
     {
       "path": "/api/cron/resend-sync",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/sync-reviews",
+      "schedule": "0 10 * * 1"
     },
     {
       "path": "/api/cron/seo-maintain",

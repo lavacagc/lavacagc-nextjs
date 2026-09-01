@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-import { ACCESS_COOKIE_NAME, verifyAccess } from '@/lib/listings/accessCookie';
+import {
+  classifyGeo, isGeoTier, GEO_TIER_COOKIE, GEO_TIER_HEADER, GEO_OVERRIDE_COOKIE, type GeoTier,
+} from '@/lib/geo/tier';
 
 // Known bad bot user-agent patterns (scrapers, vulnerability scanners, spam crawlers)
 const BAD_BOT_PATTERNS = [
@@ -74,7 +76,14 @@ function isBadBot(ua: string): boolean {
 // Routes that require Supabase admin session authentication
 const ADMIN_AUTH_ROUTES = [
   '/api/leads/list',
-  '/api/leads/conversations',
+  // CM-01: this queues an email sequence to whatever address it is given, and
+  // was public - one anonymous POST mailed any recipient from the verified
+  // sending domain. It is an INTERNAL entrypoint (its own docblock says so, and
+  // every first-party caller imports createLeadFollowUpSequence directly), so
+  // it now authenticates exactly like /api/notify/*: an admin session, or the
+  // internal shared secret. Exact path, not a '/api/leads/' prefix, because
+  // /api/leads/submit must stay public.
+  '/api/leads/webhook',
   '/api/admin/',
   '/api/banners/admin',
   '/api/feedback/',
@@ -83,6 +92,14 @@ const ADMIN_AUTH_ROUTES = [
   '/vaca-mgmt',
 ];
 
+/**
+ * Routes an internal server-to-server caller may reach with
+ * INTERNAL_WEBHOOK_SECRET instead of a user session. Everything here can send
+ * mail or messages, so the secret is the only alternative to a session - never
+ * "no credential at all".
+ */
+const INTERNAL_SECRET_ROUTES = ['/api/notify/', '/api/leads/webhook'];
+
 // Routes that require CRON_SECRET Bearer token
 const CRON_AUTH_ROUTES = [
   '/api/cron/',
@@ -90,7 +107,6 @@ const CRON_AUTH_ROUTES = [
 
 // Routes that are always public (no auth needed)
 const PUBLIC_ROUTES = [
-  '/api/leads/webhook',
   '/api/webhooks/resend',   // Resend delivery events - auth is the Svix signature
   '/api/preferences',       // Self-service preference center - auth is the token
   '/api/leads/submit',
@@ -98,7 +114,7 @@ const PUBLIC_ROUTES = [
   '/api/referrals',
   '/api/intake/',       // Tokenized lead intake - auth is the per-session token, self-guarded
   '/api/documents/',
-  '/api/buy-and-remodel/', // Newsletter signup / email-verify / unsubscribe (self-guarded)
+  '/api/buy-and-remodel/', // Unsubscribe only (product retired; links in sent emails must keep working)
   '/api/newsletter/',      // Monthly-newsletter signup (rate-limited, self-guarded)
   '/api/consent/',         // TCPA consent logging (rate-limited, self-guarded)
   '/api/crew/',            // Crew visit confirm - auth is the per-assignment token
@@ -121,79 +137,6 @@ function requiresAdminAuth(pathname: string): boolean {
 
 function requiresCronAuth(pathname: string): boolean {
   return CRON_AUTH_ROUTES.some(route => pathname.startsWith(route));
-}
-
-// "Buy + Remodel" email gate: the gallery (/buy-and-remodel) is a public teaser,
-// but each home's DETAIL page (/buy-and-remodel/<slug>) requires a verified-email
-// access cookie. The unlock/signup page is itself under the prefix and must never
-// be gated (else an infinite redirect loop). The slug `unlock` is reserved.
-//
-// Security: match the unlock page EXACTLY (with optional trailing slash), not by
-// prefix - a `startsWith('/buy-and-remodel/unlock')` would also exempt any listing
-// slug beginning with "unlock" (e.g. /buy-and-remodel/unlocked-colonial), serving
-// it ungated.
-function requiresEmailGate(pathname: string): boolean {
-  if (!pathname.startsWith('/buy-and-remodel/')) return false;
-  if (pathname === '/buy-and-remodel/unlock' || pathname === '/buy-and-remodel/unlock/') return false;
-  return true;
-}
-
-// Authoritative, per-navigation check that the subscriber behind a valid access
-// cookie is still 'active'. This is what makes unsubscribe revoke access
-// immediately - a signed cookie alone would stay valid until expiry. One indexed
-// PostgREST lookup via the service key. Fails CLOSED (any error → not allowed),
-// so a backend hiccup never leaks gated content.
-async function subscriberIsActive(subscriberId: string): Promise<boolean> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const secretKey = process.env.SUPABASE_SECRET_KEY;
-  if (!supabaseUrl || !secretKey) return false;
-  try {
-    const res = await fetch(
-      `${supabaseUrl}/rest/v1/newsletter_subscribers?id=eq.${encodeURIComponent(subscriberId)}&status=eq.active&select=id`,
-      {
-        headers: {
-          apikey: secretKey,
-          Authorization: `Bearer ${secretKey}`,
-          Accept: 'application/json',
-        },
-        signal: AbortSignal.timeout(4000),
-      },
-    );
-    if (!res.ok) return false;
-    const rows = (await res.json()) as unknown[];
-    return Array.isArray(rows) && rows.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-// Whether the Buy + Remodel feature is published to the public. Cached briefly
-// in-instance so we don't hit the DB on every gated navigation. Read with the
-// public anon key (the flag is public-read via RLS). Fails CLOSED (unpublished).
-let publishedCache: { value: boolean; expiresAt: number } | null = null;
-async function isBuyRemodelPublished(): Promise<boolean> {
-  const now = Date.now();
-  if (publishedCache && publishedCache.expiresAt > now) return publishedCache.value;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !anonKey) return false;
-  try {
-    const res = await fetch(
-      `${supabaseUrl}/rest/v1/site_settings?id=eq.1&select=buy_and_remodel_published`,
-      {
-        headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}`, Accept: 'application/json' },
-        signal: AbortSignal.timeout(4000),
-      },
-    );
-    if (!res.ok) return false;
-    const rows = (await res.json()) as Array<{ buy_and_remodel_published?: boolean }>;
-    const value = Array.isArray(rows) && rows.length > 0 && !!rows[0].buy_and_remodel_published;
-    publishedCache = { value, expiresAt: now + 30_000 };
-    return value;
-  } catch {
-    return false;
-  }
 }
 
 async function verifySupabaseSession(request: NextRequest): Promise<boolean> {
@@ -229,6 +172,32 @@ function verifyCronSecret(request: NextRequest): { ok: boolean; misconfigured: b
   }
   const authHeader = request.headers.get('authorization');
   return { ok: authHeader === `Bearer ${cronSecret}`, misconfigured: false };
+}
+
+/**
+ * Where the visitor is, for the round-10 geo gates - classified once here and
+ * used twice: the `geo_tier` cookie lets static pages swap form vs notice in
+ * the browser, and the stripped-then-set request header is what API routes
+ * trust server-side.
+ *
+ * The local-testing override (`?geo=us` on any URL, or `?geo=off` to clear)
+ * is NON-PRODUCTION only and sticky via its own cookie, so the owner can walk
+ * a whole flow as a Texan without re-appending the param on every click.
+ */
+function resolveGeoTier(request: NextRequest): {
+  tier: GeoTier;
+  /** undefined = leave the override cookie alone; null = clear it. */
+  overrideCookie?: string | null;
+} {
+  const real = classifyGeo(request.headers);
+  if (process.env.NODE_ENV === 'production') return { tier: real };
+
+  const param = request.nextUrl.searchParams.get('geo');
+  if (param === 'off' || param === 'clear') return { tier: real, overrideCookie: null };
+  if (isGeoTier(param)) return { tier: param, overrideCookie: param };
+  const sticky = request.cookies.get(GEO_OVERRIDE_COOKIE)?.value;
+  if (isGeoTier(sticky)) return { tier: sticky };
+  return { tier: real };
 }
 
 // Shared-secret auth for internal server-to-server calls to /api/notify/*.
@@ -276,7 +245,7 @@ export async function middleware(request: NextRequest) {
   if (requiresAdminAuth(pathname)) {
     // Server-to-server internal calls to /api/notify/* can authenticate
     // with INTERNAL_WEBHOOK_SECRET instead of a user session.
-    if (pathname.startsWith('/api/notify/') && verifyInternalSecret(request)) {
+    if (INTERNAL_SECRET_ROUTES.some((r) => pathname.startsWith(r)) && verifyInternalSecret(request)) {
       return NextResponse.next();
     }
     const authenticated = await verifySupabaseSession(request);
@@ -293,29 +262,28 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // --- "Buy + Remodel" email gate (verified-email access cookie) ---
-  // Only enforce the email gate once the feature is PUBLISHED. While unpublished,
-  // fall through so the page server-component can 404 the public (or render an
-  // admin preview) instead of redirecting them to the unlock page.
-  if (requiresEmailGate(pathname) && (await isBuyRemodelPublished())) {
-    const cookie = request.cookies.get(ACCESS_COOKIE_NAME)?.value;
-    const verified = await verifyAccess(cookie);
-    const allowed = verified ? await subscriberIsActive(verified.subscriberId) : false;
-    if (!allowed) {
-      // Logged-in admins can preview gated listings without subscribing. Only
-      // checked on the redirect path so the common visitor never pays for it.
-      const isAdmin = await verifySupabaseSession(request);
-      if (!isAdmin) {
-        const url = request.nextUrl.clone();
-        url.pathname = '/buy-and-remodel/unlock';
-        url.search = `?next=${encodeURIComponent(pathname)}`;
-        return NextResponse.redirect(url);
-      }
-    }
-  }
+  // --- Geo tier (round 10, Phase A: signage + telemetry, no refusals) ---
+  // The incoming header is ALWAYS stripped before ours is set: x-geo-tier is
+  // only ever the middleware's own reading, never a client's claim.
+  const { tier, overrideCookie } = resolveGeoTier(request);
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete(GEO_TIER_HEADER);
+  requestHeaders.set(GEO_TIER_HEADER, tier);
 
   // For good bots and suspected bots: set a header so client-side code can skip analytics
-  const response = NextResponse.next();
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+
+  // Readable by the browser on purpose - static pages stay static and swap
+  // form vs notice client-side off this cookie. Short-lived so a traveler's
+  // tier follows them rather than their first visit.
+  if (request.cookies.get(GEO_TIER_COOKIE)?.value !== tier) {
+    response.cookies.set(GEO_TIER_COOKIE, tier, { path: '/', sameSite: 'lax', maxAge: 3600 });
+  }
+  if (overrideCookie === null) {
+    response.cookies.delete(GEO_OVERRIDE_COOKIE);
+  } else if (overrideCookie !== undefined && request.cookies.get(GEO_OVERRIDE_COOKIE)?.value !== overrideCookie) {
+    response.cookies.set(GEO_OVERRIDE_COOKIE, overrideCookie, { path: '/', sameSite: 'lax' });
+  }
 
   // Detect if this looks like a bot (no UA, or matches known bot patterns)
   const isBot = !ua || isGoodBot(ua) || /bot|crawl|spider|slurp|fetch|preview/i.test(ua);

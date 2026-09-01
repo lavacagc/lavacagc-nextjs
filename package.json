@@ -11,15 +11,25 @@
     "test": "E2E_STUB_BACKEND=1 playwright test",
     "test:build": "bash scripts/test-build.sh",
     "test:e2e": "npm run test:build && E2E_STUB_BACKEND=1 playwright test",
+    "test:e2e:verbose": "npm run test:build && E2E_STUB_BACKEND=1 DEBUG=pw:api,pw:webserver playwright test",
     "test:ui": "E2E_STUB_BACKEND=1 playwright test --ui",
     "test:headed": "E2E_STUB_BACKEND=1 playwright test --headed",
     "test:links": "npm run build && E2E_LIVE_BACKEND=1 playwright test tests/links.spec.ts",
     "test:flows": "E2E_STUB_BACKEND=1 playwright test tests/flows.spec.ts",
     "test:mobile": "E2E_STUB_BACKEND=1 playwright test --project=mobile",
+    "test:smoke": "E2E_STUB_BACKEND=1 RESEND_API_KEY= playwright test tests/flows.spec.ts tests/request-estimate-form.spec.ts tests/home-care-capture.spec.ts tests/lead-submit-validation.spec.ts --project=chromium",
     "test:report": "playwright show-report playwright-report",
+    "perf": "node scripts/perf-run.mjs",
     "audit": "ts-node scripts/site-audit.ts",
     "audit:prod": "SITE_URL=https://www.lavacagc.com ts-node scripts/site-audit.ts",
-    "prepare": "husky"
+    "prepare": "husky",
+    "chaos:static": "ts-node scripts/chaos-static.ts",
+    "chaos:static:baseline": "ts-node scripts/chaos-static.ts --baseline",
+    "chaos:crawl": "CHAOS_SWEEP=1 E2E_STUB_BACKEND=1 playwright test tests/chaos/crawler.spec.ts --project=chromium",
+    "chaos:smoke": "E2E_STUB_BACKEND=1 playwright test --project=chromium --grep @smoke",
+    "chaos:isolation": "E2E_STUB_BACKEND=1 playwright test --project=chromium --grep @isolation",
+    "chaos:budget": "E2E_STUB_BACKEND=1 playwright test --project=chromium --grep @budget",
+    "chaos:regressions": "E2E_STUB_BACKEND=1 playwright test tests/chaos/regressions --project=chromium"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -77,7 +87,6 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.2",
     "web-vitals": "^5.1.0",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -89,6 +98,7 @@
     "eslint": "^9",
     "eslint-config-next": "^16.1.6",
     "husky": "^9.1.7",
+    "lighthouse": "^13.4.1",
     "lint-staged": "^16.2.7",
     "ts-node": "^10.9.2",
     "typescript": "^5"
