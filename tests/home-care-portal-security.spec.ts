@@ -44,5 +44,11 @@ test('login send runs after() so response latency does not reveal membership', (
   const returnIdx = src.lastIndexOf('return NextResponse.json({ ok: true })');
   expect(afterIdx).toBeGreaterThan(-1);
   expect(returnIdx).toBeGreaterThan(afterIdx);
-  expect(src.slice(afterIdx, returnIdx)).toContain('sendHomeCareVerificationEmail');
+  // Both halves of the membership-dependent work: the lookup that decides, and
+  // the helper that mints the token and sends. `issueSignInLink` is the send -
+  // it wraps sendHomeCareVerificationEmail so the admin resend path cannot
+  // drift from this one.
+  const deferred = src.slice(afterIdx, returnIdx);
+  expect(deferred).toContain('findHomeownerByEmail');
+  expect(deferred).toContain('issueSignInLink');
 });

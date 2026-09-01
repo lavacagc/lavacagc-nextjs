@@ -102,6 +102,31 @@ export default function RootLayout({
         />
       </head>
       <body className={inter.className}>
+        {/*
+          Cloudflare Scrape Shield's Email Address Obfuscation rewrites every
+          address it finds in our HTML at the edge, then restores it in the DOM
+          with an injected script (/cdn-cgi/scripts/.../email-decode.min.js).
+          That restore races React hydration, and on /contact it lost: the TCPA
+          consent label in ContactForm renders the address as BARE TEXT, which
+          Cloudflare replaces with an <a class="__cf_email__">[email protected]</a>
+          ELEMENT, so React found markup where it had sent text and threw
+          minified error #418 on production - regenerating the whole page tree
+          on the client. Reproduced 2026-08-06 on www.lavacagc.com/contact.
+
+          <!--email_off--> is Cloudflare's documented opt-out, and it has to be
+          an HTML comment, which is why this is dangerouslySetInnerHTML: React
+          has no API for comment nodes. Bracketing the whole body covers the
+          addresses in CMS-authored pages too (/privacy-policy carries 11), not
+          just the ones we render from components.
+
+          Nothing is given up by opting out. The obfuscation was already
+          defeated on this site: `info@lavacagc.com` appears 8 times in plain
+          text in the production HTML of /contact - in the JSON-LD business
+          schema and in the RSC flight payload - and Cloudflare rewrites
+          neither. It cost us hydration and bought no protection.
+        */}
+        <span hidden dangerouslySetInnerHTML={{ __html: '<!--email_off-->' }} />
+
         {/* CM-05: Clarity + Meta Pixel, excluded from token-authenticated
             pages. See src/lib/analytics/excluded.ts. */}
         <ThirdPartyAnalytics />
@@ -138,6 +163,10 @@ export default function RootLayout({
             </RecaptchaChallengeProvider>
           </TooltipProvider>
         </Providers>
+        {/* Closes the Cloudflare email-obfuscation opt-out opened at the top of
+            <body>. Both markers must be present: an unclosed <!--email_off-->
+            is undefined behaviour, not a permanent opt-out. */}
+        <span hidden dangerouslySetInnerHTML={{ __html: '<!--email_on-->' }} />
       </body>
     </html>
   )

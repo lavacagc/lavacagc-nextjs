@@ -3,7 +3,12 @@
 // named import of a type resolves at runtime and fails with
 // "does not provide an export named 'Page'" before any audit code runs.
 import { chromium, devices } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
+// Explicit `.ts` extension, and not optional: this file is executed by Node's
+// own type-stripping ESM loader, which resolves specifiers literally and cannot
+// find an extensionless one. `allowImportingTsExtensions` in tsconfig.json is
+// what keeps `npm run typecheck` happy with it.
+import { cityPathsFromSitemapXml } from './lib/sitemap-city-paths.ts';
 
 interface AuditResult {
   category: string;
@@ -14,7 +19,9 @@ interface AuditResult {
 
 const SITE_URL = process.env.SITE_URL || 'http://localhost:3000';
 
-const ALL_PAGES = [
+// Routes that exist as files. Safe to hardcode: adding one means editing
+// src/app, so this list moves with it.
+const STATIC_PAGES = [
   '/',
   '/about',
   '/process',
@@ -32,19 +39,47 @@ const ALL_PAGES = [
   '/warranty',
   '/data-rights',
   '/do-not-sell',
-  '/locations/alpine',
-  '/locations/caldwell',
-  '/locations/essex-fells',
-  '/locations/fairfield',
-  '/locations/livingston',
-  '/locations/millburn',
-  '/locations/montclair',
-  '/locations/saddle-river',
-  '/locations/short-hills',
-  '/locations/verona',
-  '/locations/west-caldwell',
-  '/locations/west-orange',
 ];
+
+// `/locations/*` is NOT hardcoded, deliberately. The town list lives in the
+// database and in src/data/locationData.ts, and a copy pinned here drifts away
+// from both without anything failing: this list carried '/locations/fairfield'
+// for its whole life, which is not a service area anywhere in the site and
+// answered 404 in production every single run. An audit that reports a 404 for
+// a page we never published is noise, and noise is what stopped anyone reading
+// the 33 failures this script prints.
+//
+// The sitemap is the right source because it is what we ASK search engines to
+// crawl, so a URL in it that 404s is a genuine defect and belongs in the audit,
+// while a town that has quietly disappeared from the sitemap stops being
+// audited on the next run rather than a year later. Cost: two extra HTTP
+// requests before the sweep starts.
+//
+// This does not check the sitemap against the DATABASE - `npm run test:links`
+// owns that, and it is the check that catches an active service_areas row with
+// no page behind it.
+async function publishedLocationPaths(request: APIRequestContext): Promise<string[]> {
+  const url = `${SITE_URL}/sitemap.xml`;
+  const response = await request.get(url, { timeout: 30000 });
+  if (!response.ok()) {
+    throw new Error(
+      `Could not read ${url} (HTTP ${response.status()}). The audit derives its ` +
+        `/locations/* paths from the sitemap, so it cannot run without it.`
+    );
+  }
+
+  const paths = cityPathsFromSitemapXml(await response.text());
+
+  if (paths.length === 0) {
+    throw new Error(
+      `${url} published no /locations/<city> URLs. That is either a broken ` +
+        `sitemap or a broken filter here - both are worth failing on, because ` +
+        `auditing silently fewer pages reads exactly like a clean run.`
+    );
+  }
+
+  return paths;
+}
 
 async function auditPage(page: Page, path: string): Promise<AuditResult[]> {
   const results: AuditResult[] = [];
@@ -229,7 +264,6 @@ async function auditPage(page: Page, path: string): Promise<AuditResult[]> {
 async function runFullAudit() {
   console.log('🔍 Starting Full Site Audit');
   console.log(`📍 Target: ${SITE_URL}`);
-  console.log(`📄 Pages to audit: ${ALL_PAGES.length}`);
   console.log('━'.repeat(60));
 
   const browser = await chromium.launch();
@@ -239,6 +273,16 @@ async function runFullAudit() {
   // audit measured that filter instead of the site.
   const context = await browser.newContext({ ...devices['Desktop Chrome'] });
   const page = await context.newPage();
+
+  // Fetched through the browser context so the sitemap request carries the same
+  // real-Chrome UA as the sweep; a bare fetch() is answered 403 by our own
+  // bad-bot filter.
+  const locationPages = await publishedLocationPaths(context.request);
+  const ALL_PAGES = [...STATIC_PAGES, ...locationPages];
+  console.log(
+    `📄 Pages to audit: ${ALL_PAGES.length} (${STATIC_PAGES.length} static + ` +
+      `${locationPages.length} from ${SITE_URL}/sitemap.xml)`
+  );
 
   const allResults: { path: string; results: AuditResult[] }[] = [];
   let totalPass = 0;

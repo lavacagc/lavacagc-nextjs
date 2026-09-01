@@ -332,7 +332,13 @@ test.describe('admin /vaca-mgmt/preferences page', () => {
 
     await page.getByTestId('admin-pref-email').fill(OWNER);
     await page.getByRole('button', { name: 'Look up' }).click();
-    await expect(page.getByText(OWNER)).toBeVisible();
+    // The HEADING specifically, not "the address appears somewhere on the page".
+    // The member-lookup panel added alongside this one also prints the address
+    // in its own description, so a bare text match now resolves to two elements
+    // and fails on strict mode. Naming the heading is also the stronger
+    // assertion: under the loose locator, the neighbouring panel's prose alone
+    // would have satisfied this even if the contact card never rendered.
+    await expect(page.getByRole('heading', { name: OWNER })).toBeVisible();
 
     // Retype a different address WITHOUT submitting the lookup form…
     await page.getByTestId('admin-pref-email').fill('someone.else@example.com');
@@ -353,7 +359,9 @@ test.describe('admin /vaca-mgmt/preferences page', () => {
     // re-lookup (it re-downloaded the 100-row audit trail per switch flip).
     expect(lookupEmails).toEqual([OWNER]);
     // Card header still shows the contact being managed, not the input text.
-    await expect(page.getByText(OWNER)).toBeVisible();
+    // Matched as a heading for the same reason as above: the neighbouring
+    // member-lookup panel also prints the address in its description.
+    await expect(page.getByRole('heading', { name: OWNER })).toBeVisible();
 
     // Let the 0.3s knob/track CSS transition finish so the screenshot shows
     // the settled off state, then confirm nothing flipped it back.
