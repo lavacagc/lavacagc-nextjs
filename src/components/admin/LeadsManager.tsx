@@ -40,6 +40,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { LeadIntakePanel } from '@/components/admin/LeadIntakePanel';
 
 interface Lead {
   id: string;
@@ -373,6 +374,11 @@ export function LeadsManager() {
                 <p className="text-sm mt-1">{lead.message}</p>
               </div>
             )}
+
+            {/* What they told us in the intake chat. Renders nothing for the
+                many leads that never entered it, and only fetches when the
+                card is actually open. */}
+            <LeadIntakePanel key={lead.id} leadId={lead.id} />
 
             {lead.project_timeline && (
               <div className="text-sm">

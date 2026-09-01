@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,8 +16,39 @@ const authSchema = z.object({
   password: z.string().min(6, { message: "Password must be at least 6 characters" }),
 });
 
-export default function Auth() {
+/**
+ * Where to go after signing in.
+ *
+ * The middleware puts the page the visitor actually wanted in `next` when it
+ * bounces them here, so signing in returns them there instead of always
+ * dumping them on the dashboard root.
+ *
+ * ONLY a same-origin path is honoured. A `next` of `//evil.example` or
+ * `https://evil.example` would otherwise turn this login screen into an open
+ * redirect - a phishing primitive, and a nasty one on a page that just asked
+ * for a password. Anything that is not a single-slash-prefixed local path
+ * falls back to the dashboard.
+ */
+function safeNext(raw: string | null): string {
+  if (!raw) return '/vaca-mgmt';
+  if (!raw.startsWith('/') || raw.startsWith('//')) return '/vaca-mgmt';
+  return raw;
+}
+
+/**
+ * The form itself, split out so the page can wrap it in Suspense.
+ *
+ * `useSearchParams` opts a component into client-side rendering, and Next
+ * refuses to prerender a static page containing one unless it sits behind a
+ * Suspense boundary - the production build fails outright rather than shipping
+ * a page that would hydrate oddly. Splitting the component is the documented
+ * fix, and it costs nothing: the fallback below is only ever visible for the
+ * instant before hydration.
+ */
+function AuthForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = safeNext(searchParams.get('next'));
   const { signIn, user, loading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -29,9 +60,9 @@ export default function Auth() {
   // Redirect if already authenticated
   useEffect(() => {
     if (user && !loading) {
-      router.push('/vaca-mgmt');
+      router.push(next);
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, next]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -70,7 +101,7 @@ export default function Auth() {
           title: "Welcome Back",
           description: "You have been signed in successfully.",
         });
-        router.push('/vaca-mgmt');
+        router.push(next);
       }
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
@@ -175,5 +206,19 @@ export default function Auth() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function Auth() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+          Loading…
+        </div>
+      }
+    >
+      <AuthForm />
+    </Suspense>
   );
 }

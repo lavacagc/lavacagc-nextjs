@@ -19,7 +19,8 @@
     "test:report": "playwright show-report playwright-report",
     "audit": "ts-node scripts/site-audit.ts",
     "audit:prod": "SITE_URL=https://www.lavacagc.com ts-node scripts/site-audit.ts",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:smoke": "E2E_STUB_BACKEND=1 RESEND_API_KEY= playwright test tests/flows.spec.ts tests/request-estimate-form.spec.ts tests/lead-submit-validation.spec.ts --project=chromium"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

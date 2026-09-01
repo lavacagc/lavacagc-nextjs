@@ -1,0 +1,83 @@
+#!/bin/sh
+# Local pre-push gate.
+#
+# WHY IT LIVES HERE AND NOT IN CI. Actions minutes are the scarce resource on
+# this project, so CI stays deliberately thin (see .github/workflows/lint.yml)
+# and the real gate runs on the machine before anything leaves it. That is the
+# same split the SpecNook repo uses, and this hook is modelled on it.
+#
+# main had only a pre-commit hook, so nothing checked a push at all - the
+# heavier gate existed only on an unshipped branch. This restores it.
+#
+# Escape hatch, for a genuine emergency only: git push --no-verify
+set -u
+
+fail() {
+  echo ""
+  echo "pre-push: PUSH BLOCKED - $1" >&2
+  echo "pre-push: fix it and push again (or 'git push --no-verify' in a real emergency)." >&2
+  exit 1
+}
+
+# Step 4 reuses a server already listening on :3000, and a leftover `npm run
+# dev` there serves a DIFFERENT baked env than the suite expects (see
+# CLAUDE.md). Fail in a second rather than after a multi-minute build.
+if lsof -ti :3000 -sTCP:LISTEN >/dev/null 2>&1; then
+  fail "something is already listening on port 3000 (a dev server?). Stop it first - the smoke tests would silently test the wrong server."
+fi
+
+# Which files this push actually changes, so ESLint stays proportional.
+ZERO="0000000000000000000000000000000000000000"
+LINT_LIST=$(mktemp)
+trap 'rm -f "$LINT_LIST"' EXIT
+PUSHING_CODE=0
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [ "$local_sha" = "$ZERO" ] && continue   # branch deletion pushes no code
+  PUSHING_CODE=1
+  if [ "$remote_sha" = "$ZERO" ] || ! git cat-file -e "$remote_sha" 2>/dev/null; then
+    base=$(git merge-base "$local_sha" origin/main 2>/dev/null || echo "")
+  else
+    base="$remote_sha"
+  fi
+  if [ -n "$base" ]; then
+    git diff --name-only --diff-filter=d "$base" "$local_sha" -- '*.ts' '*.tsx' '*.js' '*.jsx' >>"$LINT_LIST"
+  else
+    git ls-files -- '*.ts' '*.tsx' '*.js' '*.jsx' >>"$LINT_LIST"
+  fi
+done
+[ "$PUSHING_CODE" = "1" ] || exit 0
+
+# --- 1/4 TypeScript ---------------------------------------------------------
+# tsc reads .next/types, and a FAILED build leaves stale files there naming
+# routes that no longer exist - a phantom error that looks like a real one.
+# Reset to exactly what CI stubs.
+echo "pre-push [1/4] TypeScript type check..."
+rm -rf .next
+mkdir -p .next/types
+touch .next/types/routes.d.ts
+npm run typecheck || fail "TypeScript found type errors (step 1/4)."
+
+# --- 2/4 ESLint on the pushed files only ------------------------------------
+sort -u "$LINT_LIST" -o "$LINT_LIST"
+LINT_FILES=""
+while read -r f; do
+  [ -f "$f" ] && LINT_FILES="$LINT_FILES $f"
+done <"$LINT_LIST"
+if [ -n "$LINT_FILES" ]; then
+  echo "pre-push [2/4] ESLint on changed files..."
+  # shellcheck disable=SC2086
+  eslint --max-warnings 0 $LINT_FILES || fail "ESLint found problems in the files you are pushing (step 2/4)."
+else
+  echo "pre-push [2/4] ESLint: no JS/TS files changed in this push - skipped."
+fi
+
+# --- 3/4 Production build ---------------------------------------------------
+echo "pre-push [3/4] Production build (stub env - a few minutes)..."
+npm run test:build || fail "the production build failed (step 3/4)."
+
+# --- 4/4 Playwright smoke ---------------------------------------------------
+echo "pre-push [4/4] Playwright smoke tests (critical path)..."
+npm run test:smoke || fail "smoke tests failed (step 4/4). Report: npm run test:report"
+
+echo ""
+echo "pre-push: all 4 checks passed - pushing."
