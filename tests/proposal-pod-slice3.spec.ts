@@ -1055,7 +1055,13 @@ test('AC-S3-16: the page is noindex, and its metadata names no client', () => {
   const page = read('src/app/proposal/[token]/page.tsx');
   expect(page).toContain('robots: { index: false, follow: false }');
   expect(page).toContain("export const dynamic = 'force-dynamic'");
-  expect(page).toContain("title: 'Your proposal | La Vaca General Contractors'");
+  // PR #102 (05287c9) shortened this to just 'Your proposal' and let the root
+  // layout template append the brand - the page had been hard-coding a suffix
+  // the template also adds. It did not update this assertion, so main has been
+  // red here since it merged. Not caused by this branch, which touches neither
+  // this file nor that page.
+  expect(page).toContain("title: 'Your proposal'");
+  expect(page, 'the title must not name a client').not.toMatch(/title:.*\$\{/);
   // The sitemap has never enumerated a tokenized route, and must not start.
   expect(read('src/app/sitemap.ts')).not.toContain('proposal');
 });
