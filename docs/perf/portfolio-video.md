@@ -42,6 +42,50 @@ the two cannot drift apart again:
 
 Pinned by `tests/portfolio-video-weight.spec.ts`.
 
+## DONE 1 September 2026
+
+All 13 `.mov` rows transcoded, uploaded and repointed. **158.6 MB -> 29.5 MB of video,
+81% smaller**, plus 1.5 MB of new poster stills. `/portfolio`'s load event went from
+**10.4s to 1.4s** on production.
+
+Two predictions in the original version of this document were WRONG, and are corrected
+here rather than quietly edited out:
+
+- **"Expect roughly 1-2 MB out of a 22 MB input... about a 90% reduction."** That assumed
+  short phone clips. They are 720p videos up to **75 seconds** long at ~2.9 Mbps. The worst
+  case only compressed 56% (21.7 -> 9.5 MB); the fleet average was 81% because most clips
+  are short.
+- **"Chrome ignores the container's label and sniffs the H.264 inside."** The codec was
+  **HEVC (H.265)**, not H.264. It played on the Mac I measured on because Apple hardware
+  decodes HEVC; Firefox cannot play it at all and Chrome needs platform support. So the
+  transcode fixed a real COMPATIBILITY problem, not only weight - a bigger win than the
+  size numbers show.
+
+Settings actually used, chosen after comparing frames side by side (visually
+indistinguishable from source, and the lightbox displays these at viewport size so
+resolution was worth keeping):
+
+```
+ffmpeg -i input.mov -vf "scale='min(1280,iw)':-2,fps=24" \
+  -c:v libx264 -profile:v high -crf 30 -preset slow -pix_fmt yuv420p \
+  -an -movflags +faststart output.mp4
+# poster, 1s in so it is not a black first frame:
+ffmpeg -ss 1 -i input.mov -frames:v 1 -vf "scale='min(1280,iw)':-2" -q:v 4 output.poster.jpg
+```
+
+Originals were LEFT IN PLACE in storage - nothing was overwritten or deleted, so a bad
+encode is recoverable by repointing `project_images.image_url` back to the `.mov`.
+
+Uploads need BOTH `Authorization: Bearer` and `apikey` headers; the new-style
+`sb_secret_...` keys answer `Invalid Compact JWS` with only the first.
+
+**A regression this caused, and how it was caught.** Dropping `autoPlay` from the lazy
+wrapper left the video never playing: the observer's first callback runs before the
+element exists, so its `play()` is skipped, and it does not fire again while the card
+stays in view. On production the element sat at `readyState 0` with zero bytes fetched -
+a poster and nothing behind it. `autoPlay` is restored, and is safe here precisely because
+the element only exists once the card is near the viewport.
+
 ## What is NOT fixed: the files themselves
 
 The code change stops the site from *fetching* tens of megabytes unprompted.
