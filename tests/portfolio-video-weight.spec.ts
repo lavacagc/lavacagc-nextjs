@@ -72,12 +72,27 @@ test.describe('project video weight', () => {
     }
   });
 
-  test('the shared wrapper never autoplays, never preloads with a poster, and pauses off screen', async () => {
+  test('the shared wrapper mounts lazily, posters instead of preloading, and pauses off screen', async () => {
     const src = codeOnly(read(SHARED));
 
-    // autoPlay hands the download decision to the browser, which is precisely
-    // what bypassed the observer before.
-    expect(src, 'autoPlay must not come back').not.toMatch(/\bautoPlay\b/);
+    // REVISED CRITERION, deliberately, and the reason is recorded rather than
+    // quietly dropped. This first read "autoPlay must not come back", which was
+    // wrong: it named the wrong culprit. `autoPlay` was never the problem - an
+    // EAGERLY RENDERED element was. Enforcing the ban shipped a video to
+    // production that never played at all, because the observer's first
+    // callback runs before the element exists, so its play() is skipped and it
+    // does not fire again while the card stays in view. Found on the live site:
+    // readyState 0, zero bytes fetched.
+    //
+    // What actually has to hold is that the element does not EXIST until the
+    // card is near the viewport. That is the property below, and it is the one
+    // that bounds the download.
+    expect(src, 'the element must be gated on mount, not rendered eagerly').toMatch(
+      /\{mounted && \(/,
+    );
+    expect(src, 'mounting must be driven by an IntersectionObserver').toContain(
+      'new IntersectionObserver',
+    );
 
     // With a poster there is nothing worth prefetching; without one, metadata
     // keeps the card from being blank.
@@ -95,14 +110,13 @@ test.describe('project video weight', () => {
     expect(src, 'must pause when it leaves').toMatch(/video\.pause\(\)/);
   });
 
-  test('the wrapper is identifiable in the DOM so a live-backend check can find it', async ({
-    page,
-  }) => {
-    // The stub build has no projects, so this deliberately asserts only that
-    // the page renders and the marker exists in source - not that any card
-    // appeared. Claiming otherwise is the trap the header describes.
+  test('the wrapper is identifiable in the DOM so a live-backend check can find it', async () => {
+    // Source only, and the navigation this used to do has been REMOVED rather
+    // than adjusted. It asserted /portfolio returns 200, which is data
+    // dependent: production serves it, the stub build has no projects and
+    // returns 404. That is precisely the trap this file's header describes, and
+    // I walked into it one line below writing the warning. A spec in the
+    // stub-backed suite must not assert on anything only real content provides.
     expect(read(SHARED)).toContain('data-testid="lazy-project-video"');
-    const res = await page.goto('/portfolio');
-    expect(res?.status(), '/portfolio must still render').toBe(200);
   });
 });
