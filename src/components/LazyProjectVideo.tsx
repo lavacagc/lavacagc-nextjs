@@ -59,12 +59,17 @@ export function LazyProjectVideo({
       ([entry]) => {
         if (entry.isIntersecting) setMounted(true);
 
+        // On the FIRST intersection this ref is still null - the element does
+        // not exist until the setMounted above has rendered - so nothing can be
+        // played here and `autoPlay` on the element is what starts it. This
+        // branch handles every LATER crossing: pause on the way out, resume on
+        // the way back in.
         const video = videoRef.current;
         if (!video) return;
         if (entry.isIntersecting) {
-          // play() returns a promise that rejects if the element is removed or
-          // the browser refuses autoplay. Neither is worth a console error on a
-          // page that is otherwise working.
+          // play() rejects if the element is torn down mid-promise or the
+          // browser declines. Neither is worth a console error on a page that
+          // is otherwise working.
           void video.play().catch(() => {});
         } else if (!video.paused) {
           video.pause();
@@ -88,9 +93,19 @@ export function LazyProjectVideo({
           muted
           loop
           playsInline
-          // Deliberately NO autoPlay - the observer owns starting and stopping,
-          // so playback is decided in one place instead of split between the
-          // browser and us.
+          // autoPlay is SAFE here and was not safe before, which is the whole
+          // point of this component. The element only exists once the card is
+          // near the viewport, so autoPlay can no longer start a download for
+          // something the visitor may never look at - the failure that had
+          // /portfolio fetching ~124 MB on load.
+          //
+          // It is also NECESSARY. Removing it looked tidier - "the observer
+          // owns playback" - and shipped a video that never played: the
+          // observer's first callback runs before the element exists, so its
+          // play() call is skipped, and it does not fire again while the card
+          // stays in view. Caught on production by a video sitting at
+          // readyState 0 with zero bytes fetched.
+          autoPlay
           preload={poster ? 'none' : 'metadata'}
           aria-label={`Project video for ${title}`}
         />
