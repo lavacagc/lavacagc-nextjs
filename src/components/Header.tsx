@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Phone, Menu, X, Home } from "lucide-react";
 import logo from "@/assets/logo.png";
@@ -10,6 +10,7 @@ import Image from "next/image";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 import { readHcKnown } from "@/lib/homecare/knownClient";
 import { trackEvent } from "@/services/analyticsManager";
+import { setMobileMenuOpen as publishMobileMenuOpen } from "@/hooks/useMobileMenuState";
 
 const ITEM_CLASS =
   "block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors";
@@ -69,6 +70,73 @@ const Header = () => {
   // non-members (members use the My Home Care chip). Hide the whole menu if it
   // would be empty.
   const showPrograms = !hcKnown;
+
+  // Tell the bottom-pinned chrome - the StickyCTA bar, the SmartBanner cards
+  // and the ReviewToast - to get out of the way while the menu is open. They
+  // are all fixed to the bottom of the viewport, which is where the menu's last
+  // entries are. See useMobileMenuState for why they gate on this flag rather
+  // than on a breakpoint.
+  useEffect(() => {
+    publishMobileMenuOpen(mobileMenuOpen);
+  }, [mobileMenuOpen]);
+  // Always publish `false` on unmount. Every page renders its own <Header>, so
+  // navigating away from a page with the menu open unmounts this instance while
+  // the flag still reads `true`, and the chrome would stay hidden on the next
+  // page with no menu left to explain why.
+  useEffect(() => () => publishMobileMenuOpen(false), []);
+
+  // Close the menu when the viewport crosses to the desktop layout. The toggle
+  // and the menu are BOTH `lg:hidden`, so a menu opened at 900px and then
+  // widened past 1024px would otherwise stay open with no X button on screen to
+  // clear it - and, now that the chrome subscribes to that flag, would strand
+  // the chrome hidden on a viewport where it belongs. Listening only for the
+  // crossing is enough: `mobileMenuOpen` starts false and the only thing that
+  // sets it true is a toggle that does not exist at this width.
+  useEffect(() => {
+    const mql = window.matchMedia('(min-width: 1024px)');
+    const closeOnDesktop = (e: MediaQueryListEvent) => {
+      if (e.matches) setMobileMenuOpen(false);
+    };
+    mql.addEventListener('change', closeOnDesktop);
+    return () => mql.removeEventListener('change', closeOnDesktop);
+  }, []);
+
+  // The menu lives inside a `sticky` header that stays pinned at the top, so a
+  // menu taller than the viewport is not reachable by scrolling the page - its
+  // overflow is simply cut off (measured 188px, including the phone number, on
+  // a 390x844 phone). Cap it to the space actually left below the header and
+  // let it scroll itself. Measured rather than a `calc(100dvh - ...)` guess:
+  // the header row has three heights across breakpoints, the promo bar above it
+  // scrolls away, and a SmartBanner can offset the whole header.
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = menuRef.current;
+    if (!mobileMenuOpen || !el) return;
+
+    const fitToViewport = () => {
+      const top = el.getBoundingClientRect().top;
+      el.style.maxHeight = `${Math.max(160, window.innerHeight - top)}px`;
+    };
+    fitToViewport();
+
+    // A SmartBanner top bar mounting - or being dismissed - while the menu is
+    // already open rewrites --smart-banner-height, which slides this header's
+    // sticky `top` without firing either a resize or a scroll. Re-measure when
+    // that transition lands, or the cap keeps the height of the old position
+    // and the menu runs off the bottom of the viewport again.
+    const header = el.closest('header');
+    const onHeaderSettled = (e: TransitionEvent) => {
+      if (e.propertyName === 'top') fitToViewport();
+    };
+    header?.addEventListener('transitionend', onHeaderSettled);
+    window.addEventListener('resize', fitToViewport);
+    window.addEventListener('scroll', fitToViewport, { passive: true });
+    return () => {
+      header?.removeEventListener('transitionend', onHeaderSettled);
+      window.removeEventListener('resize', fitToViewport);
+      window.removeEventListener('scroll', fitToViewport);
+    };
+  }, [mobileMenuOpen]);
 
   const scrollToSection = (sectionId: string) => {
     // Close mobile menu if open
@@ -265,7 +333,13 @@ const Header = () => {
 
         {/* Mobile/Tablet Menu */}
         {mobileMenuOpen && (
-          <div id="mobile-menu" className="lg:hidden bg-background border-t border-border" role="navigation" aria-label="Mobile navigation">
+          <div
+            id="mobile-menu"
+            ref={menuRef}
+            className="lg:hidden bg-background border-t border-border overflow-y-auto overscroll-contain"
+            role="navigation"
+            aria-label="Mobile navigation"
+          >
             <div className="container mx-auto px-4 py-4 space-y-4">
               {/* Returning member portal access, surfaced first. */}
               {hcKnown && (

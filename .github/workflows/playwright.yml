@@ -20,6 +20,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A failure inside "Set up job", before any step below starts, is an
+  # infrastructure incident and not a test regression. `lint.yml` records both
+  # signatures and why no workflow-level change avoids them. Note this job
+  # reports the runner-acquisition one as a 15-minute failure with an empty
+  # `--log-failed`, which reads like a suite timeout but is not one.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30

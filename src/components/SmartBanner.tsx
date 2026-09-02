@@ -8,6 +8,7 @@ import { useVisitor } from '@/hooks/useVisitor';
 import { type BannerRule } from '@/lib/bannerRules';
 import { trackEvent } from '@/services/analyticsManager';
 import { setBannerVisible } from '@/hooks/useBannerState';
+import { useMobileMenuOpen } from '@/hooks/useMobileMenuState';
 
 const DISMISS_KEY = 'lavaca_banner_dismiss';
 
@@ -102,6 +103,12 @@ function evaluateRule(
 function TopBar({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void }) {
   const d = rule.display;
   const barRef = useRef<HTMLDivElement>(null);
+  // The mobile card is pinned over the bottom of an open hamburger menu (and at
+  // z-[60] it outranks the header), so stand it down while the menu is open.
+  // Only the mobile card: the desktop top bar is what --smart-banner-height
+  // measures, and hiding that would shift the whole header out from under the
+  // menu the visitor is reading.
+  const menuOpen = useMobileMenuOpen();
 
   // Reserve real layout space for the fixed desktop bar so it pushes the page
   // (sticky header + hero) DOWN instead of covering it. globals.css consumes
@@ -157,7 +164,7 @@ function TopBar({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void }
       </div>
 
       {/* Mobile: bottom floating stacked card (Concept A) */}
-      <div className={`md:hidden fixed bottom-20 left-3 right-3 z-[60] ${d.bgColor} ${d.textColor} rounded-2xl shadow-2xl animate-in slide-in-from-bottom duration-500`}>
+      <div className={`md:hidden ${menuOpen ? 'hidden' : ''} fixed bottom-20 left-3 right-3 z-[60] ${d.bgColor} ${d.textColor} rounded-2xl shadow-2xl animate-in slide-in-from-bottom duration-500`}>
         <div className="p-4 pr-14 text-center">
           <p className="font-bold text-base leading-snug">
             {d.icon && <span className="mr-1">{d.icon}</span>}
@@ -191,10 +198,17 @@ function TopBar({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void }
 // ---- SLIDE-IN COMPONENT ----
 function SlideIn({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void }) {
   const d = rule.display;
+  // Same reason as TopBar's mobile card: these are pinned over the bottom of an
+  // open hamburger menu, at a z-index above the header. BOTH cards stand down,
+  // including the desktop one - it appears from 768px, but the menu is
+  // `lg:hidden` and so stays open-able to 1023px, which leaves this card on the
+  // menu's last entries on a tablet in portrait. `hidden md:block` cannot be
+  // cancelled by appending `hidden` (the md rule wins), so swap the whole pair.
+  const menuOpen = useMobileMenuOpen();
   return (
     <>
       {/* Desktop: bottom-right card */}
-      <div className={`hidden md:block fixed bottom-4 right-4 z-[60] max-w-sm rounded-xl shadow-2xl ${d.bgColor} ${d.textColor} animate-in slide-in-from-right duration-500`}>
+      <div className={`${menuOpen ? 'hidden' : 'hidden md:block'} fixed bottom-4 right-4 z-[60] max-w-sm rounded-xl shadow-2xl ${d.bgColor} ${d.textColor} animate-in slide-in-from-right duration-500`}>
         <div className="p-4">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1">
@@ -226,7 +240,7 @@ function SlideIn({ rule, onDismiss }: { rule: BannerRule; onDismiss: () => void 
       </div>
 
       {/* Mobile: bottom floating stacked card (same as Concept A) */}
-      <div className={`md:hidden fixed bottom-20 left-3 right-3 z-[60] ${d.bgColor} ${d.textColor} rounded-2xl shadow-2xl animate-in slide-in-from-bottom duration-500`}>
+      <div className={`md:hidden ${menuOpen ? 'hidden' : ''} fixed bottom-20 left-3 right-3 z-[60] ${d.bgColor} ${d.textColor} rounded-2xl shadow-2xl animate-in slide-in-from-bottom duration-500`}>
         <div className="p-4 pr-14 text-center">
           {d.title && (
             <p className="font-bold text-base leading-snug">

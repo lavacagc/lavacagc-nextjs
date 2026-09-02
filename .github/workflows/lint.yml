@@ -52,6 +52,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A run that fails inside "Set up job", with no step below having started, is
+  # a GitHub Actions incident rather than a defect in this repo. Both jobs on a
+  # single push failed that way on 2026-08-06, with the two usual signatures:
+  #
+  #   "Failed to resolve action download info. Error: Service Unavailable"
+  #   "The job was not acquired by Runner of type hosted"
+  #
+  # The first is a 503 from the service that resolves `uses:` refs, the second
+  # is runner allocation giving up. Neither is reachable from a workflow file:
+  # both happen before the runner executes anything this file says, so there is
+  # no `uses:` pin, cache setting or step reordering that avoids them, and
+  # pinning actions to a commit SHA does not help because the runner still has
+  # to resolve the ref through the same service. The response is to re-run the
+  # job, not to change code.
+  #
+  # Check that reading before assuming it: the tell is a log whose last line is
+  # in "Set up job" and which never reaches `npm ci`. Anything that fails at or
+  # after `npm ci` is a real failure and reproduces locally, since every step
+  # below runs the same command a developer runs.
   check:
     runs-on: ubuntu-latest
     steps:

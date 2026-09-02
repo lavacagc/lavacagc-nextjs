@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -44,6 +44,25 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
   >([]);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const router = useRouter();
+
+  // On mobile the filter chips are a single scrollable row, so a deep-linked
+  // filter (?filter=Basement Finishing) could start selected but off-screen.
+  // Center the active chip on mount by adjusting ONLY the chip row's scrollLeft
+  // (never scrollIntoView, which would scroll every ancestor including the
+  // window - PortfolioContent is lazy-loaded far below the hero/lead form on
+  // FreeEstimateLanding, so touching window scroll would yank the visitor down
+  // the page). No-op in the desktop wrap layout where the row never overflows.
+  const selectedChipRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const chip = selectedChipRef.current;
+    const row = chip?.parentElement;
+    if (!chip || !row) return;
+    if (row.scrollWidth <= row.clientWidth + 1) return;
+    const rowRect = row.getBoundingClientRect();
+    const chipRect = chip.getBoundingClientRect();
+    row.scrollLeft += chipRect.left - rowRect.left - (row.clientWidth - chipRect.width) / 2;
+    // Mount only: after that the user is driving the scroll themselves.
+  }, []);
 
   // Scroll tracking for portfolio section
   const portfolioSectionRef = useScrollTracking({
@@ -123,19 +142,27 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
 
   return (
     <>
-      {/* Filter Section */}
-      <section className="py-8 bg-white sticky top-[calc(88px+var(--smart-banner-height,0px))] transition-[top] duration-300 z-40 border-b">
+      {/* Filter Section — on mobile the chips are ONE horizontally-scrollable row
+          (this bar is sticky, so a wrapping chip grid would permanently cover
+          half the viewport above the project scrollers); sm+ keeps the wrap. */}
+      <section className="py-3 sm:py-8 bg-white sticky top-[calc(88px+var(--smart-banner-height,0px))] transition-[top] duration-300 z-40 border-b">
         <div className="container mx-auto px-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
             <div className="flex items-center gap-2">
-              <Filter className="h-5 w-5 text-text-secondary" />
-              <span className="font-medium text-text-primary">Filter by Type:</span>
+              <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-text-secondary" />
+              <span className="font-medium text-sm sm:text-base text-text-primary">Filter by Type:</span>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            {/* w-[calc(100%+2rem)], not w-full: `width:100%` resolves against the
+                container's CONTENT box, so -mx-4 would only SHIFT that box left
+                and the row would bleed off the left screen edge while stopping
+                32px short of the right. The extra 2rem is what the two negative
+                margins give back. All of it resets at sm:, where the row wraps. */}
+            <div className="w-[calc(100%+2rem)] sm:w-auto -mx-4 px-4 sm:mx-0 sm:px-0 flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {categories.map((category) => (
                 <Button
                   key={category}
+                  ref={selectedFilter === category ? selectedChipRef : undefined}
                   onClick={() => {
                     setSelectedFilter(category);
                     // Track filter interaction
@@ -146,7 +173,7 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
                   }}
                   variant={selectedFilter === category ? 'default' : 'outline'}
                   size="sm"
-                  className={selectedFilter === category ? 'bg-primary' : ''}
+                  className={`shrink-0 ${selectedFilter === category ? 'bg-primary' : ''}`}
                 >
                   {category}
                 </Button>
