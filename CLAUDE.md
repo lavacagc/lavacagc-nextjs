@@ -150,6 +150,21 @@ Note `test:e2e` leaves `.next` built against a stub Supabase, and `test:links`
 replaces it with a real one - run `npm run test:build` before returning to the
 rest of the suite, or `npm run build` before serving the app for anything else.
 
+#### CI runs the `chromium` project only - a mobile-only assertion pins its own viewport
+
+`.github/workflows/playwright.yml` runs `playwright test --project=chromium`, so
+the `mobile` project (Pixel 5) that `playwright.config.ts` defines runs only when
+you ask for it locally with `npm run test:mobile`, never on a PR.
+A spec whose assertion only means something at phone or tablet width therefore
+has to state that width itself, with a `test.use({ viewport: ... })` in its
+`describe`, rather than inherit it from the project's device profile.
+Left to the profile it runs at desktop width on every PR, where it either fails
+for a reason unrelated to what it pins or passes without the layout it was
+written for ever being on screen.
+`tests/header-nav.spec.ts` is the worked example, at 390x844 and at 820x1024 for
+the 768-1023px band where the hamburger menu still exists but the page chrome is
+already desktop.
+
 `npm run lint`, `npm run typecheck` and `npm run build` are the gauntlet the
 **no-mistakes gate runs for you** on every ship - see *Shipping changes* below.
 Run them by hand only for quick local iteration, not as a manual pre-push
