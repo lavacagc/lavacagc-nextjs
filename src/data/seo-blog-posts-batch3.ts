@@ -140,7 +140,7 @@ export const seoBlogPostsBatch3: BlogPost[] = [
 
 <p>Your basement holds tremendous potential for expanding your living space and enhancing your home's value. Whether you envision a family entertainment center, home office, guest suite, or fitness room, professional remodeling transforms that unused space into an area your family will enjoy for years.</p>
 
-<p>Ready to explore the possibilities for your North Caldwell basement? Contact <strong>La Vaca General Contractors</strong> at <strong>(201) 241-1580</strong> or visit <strong>lavacagc.com</strong> for a free consultation. We'll assess your space, discuss your vision, and provide a detailed proposal outlining how we can transform your basement into the functional, beautiful space you deserve.</p>
+<p>Ready to explore the possibilities for your North Caldwell basement? Contact <strong>La Vaca General Contractors</strong> at <strong>(201) 212-4917</strong> or visit <strong>lavacagc.com</strong> for a free consultation. We'll assess your space, discuss your vision, and provide a detailed proposal outlining how we can transform your basement into the functional, beautiful space you deserve.</p>
 
 <p>Don't let valuable square footage go to waste. Let's create something amazing together.</p>
     `
@@ -299,7 +299,7 @@ export const seoBlogPostsBatch3: BlogPost[] = [
 
 <p>Whether you're planning a complete transformation or a thoughtful update, <strong>La Vaca General Contractors</strong> brings the expertise and craftsmanship your project deserves. We'll guide you through every decision, handle all the details, and deliver a kitchen you'll love for years to come.</p>
 
-<p>Contact us today at <strong>(201) 241-1580</strong> or visit <strong>lavacagc.com</strong> to schedule your free consultation. Let's start planning your perfect Saddle River kitchen together.</p>
+<p>Contact us today at <strong>(201) 212-4917</strong> or visit <strong>lavacagc.com</strong> to schedule your free consultation. Let's start planning your perfect Saddle River kitchen together.</p>
     `
   },
   {
@@ -452,7 +452,7 @@ export const seoBlogPostsBatch3: BlogPost[] = [
 
 <p><strong>La Vaca General Contractors</strong> serves Livingston homeowners with integrity, quality craftsmanship, and personalized service. We're invested in your satisfaction and committed to delivering results that exceed your expectations.</p>
 
-<p>Ready to discuss your home remodeling project? Contact us at <strong>(201) 241-1580</strong> or visit <strong>lavacagc.com</strong> for a free consultation. Let's explore how we can transform your Livingston home together.</p>
+<p>Ready to discuss your home remodeling project? Contact us at <strong>(201) 212-4917</strong> or visit <strong>lavacagc.com</strong> for a free consultation. Let's explore how we can transform your Livingston home together.</p>
     `
   },
   {
@@ -615,7 +615,7 @@ export const seoBlogPostsBatch3: BlogPost[] = [
 
 <p><strong>La Vaca General Contractors</strong> brings years of experience and a commitment to excellence to every Livingston bathroom project. We'll guide you through design decisions, manage every aspect of construction, and deliver a beautiful bathroom that enhances your home and your daily life.</p>
 
-<p>Ready to start planning your bathroom transformation? Contact us at <strong>(201) 241-1580</strong> or visit <strong>lavacagc.com</strong> for a free consultation. Let's create the bathroom you've been dreaming about.</p>
+<p>Ready to start planning your bathroom transformation? Contact us at <strong>(201) 212-4917</strong> or visit <strong>lavacagc.com</strong> for a free consultation. Let's create the bathroom you've been dreaming about.</p>
     `
   },
   {
@@ -774,7 +774,7 @@ export const seoBlogPostsBatch3: BlogPost[] = [
 
 <p><strong>La Vaca General Contractors</strong> understands the expectations Alpine homeowners bring to luxury remodeling projects. We deliver the meticulous attention to detail, quality craftsmanship, and exceptional results that homes in this prestigious community demand.</p>
 
-<p>Ready to begin planning your luxury kitchen transformation? Contact us at <strong>(201) 241-1580</strong> or visit <strong>lavacagc.com</strong> to schedule a private consultation. Let's create an exceptional kitchen that elevates your Alpine home to new heights of beauty and functionality.</p>
+<p>Ready to begin planning your luxury kitchen transformation? Contact us at <strong>(201) 212-4917</strong> or visit <strong>lavacagc.com</strong> to schedule a private consultation. Let's create an exceptional kitchen that elevates your Alpine home to new heights of beauty and functionality.</p>
     `
   }
 ];

@@ -69,7 +69,7 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="text-center md:text-left">
               <h2 className="text-white text-xl md:text-2xl font-bold">Get Your Free Estimate Today</h2>
-              <p className="text-white/90 text-sm md:text-base">Call us: <a href="tel:2016145930" className="font-bold hover:underline">(201) 614-5930</a></p>
+              <p className="text-white/90 text-sm md:text-base">Call us: <a href="tel:2012124917" className="font-bold hover:underline">(201) 212-4917</a></p>
             </div>
             <Button
               size="lg"
@@ -311,9 +311,9 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
                 className="text-lg px-8 py-6 border-2"
                 asChild
               >
-                <a href="tel:2016145930">
+                <a href="tel:2012124917">
                   <Phone className="mr-2 h-5 w-5" />
-                  Call (201) 614-5930
+                  Call (201) 212-4917
                 </a>
               </Button>
             </div>
@@ -455,7 +455,7 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
               <ArrowRight className="h-5 w-5" />
             </Link>
             <a
-              href="tel:2016142814"
+              href="tel:2012124917"
               onClick={() => {
                 trackPhoneClick();
                 trackEvent('cta_click', {
@@ -467,7 +467,7 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
               className="inline-flex items-center justify-center gap-2 rounded-md text-base font-semibold bg-white/10 border border-white/30 text-white hover:bg-white hover:text-primary h-14 px-10 transition-all duration-300 cursor-pointer"
             >
               <Phone className="h-5 w-5" />
-              Call (201) 614-2814
+              Call (201) 212-4917
             </a>
           </div>
           <p className="text-sm opacity-70">Licensed &amp; Insured — HIC# 13VH13373800</p>

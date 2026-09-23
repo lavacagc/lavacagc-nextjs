@@ -993,8 +993,8 @@ export const getLocationMetaDescription = (location: string, service?: string): 
     // version ran to ~280 and was cut off mid-sentence, so the phone number at
     // the end was never displayed. One concrete specific (the ZIP) earns its
     // place; the stacked trust adjectives did not.
-    return `Licensed ${serviceName} contractor in ${loc.name}, NJ (${zipCode}). Transparent fixed pricing and daily photo updates. Free estimate: (201) 614-5930.`;
+    return `Licensed ${serviceName} contractor in ${loc.name}, NJ (${zipCode}). Transparent fixed pricing and daily photo updates. Free estimate: (201) 212-4917.`;
   }
 
-  return `Kitchen, bath and basement remodeling in ${loc.name}, NJ (${zipCode}). Fixed pricing agreed up front and daily photo updates. Free estimate: (201) 614-5930.`;
+  return `Kitchen, bath and basement remodeling in ${loc.name}, NJ (${zipCode}). Fixed pricing agreed up front and daily photo updates. Free estimate: (201) 212-4917.`;
 };
