@@ -67,7 +67,7 @@ const MobileContactBanner: React.FC = () => {
         <div className="flex items-center justify-between p-3">
           <div className="flex-1 flex items-center space-x-2">
             <ClickToCall
-              phoneNumber="(201) 555-0123"
+              phoneNumber="(201) 212-4917"
               variant="default"
               className="flex-1 bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-sm"
               size="sm"

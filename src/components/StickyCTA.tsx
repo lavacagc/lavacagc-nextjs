@@ -72,7 +72,7 @@ export default function StickyCTA() {
     <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white/95 backdrop-blur-sm border-t border-border shadow-lg safe-area-bottom">
       <div className="flex items-center gap-3 px-4 py-3">
         <a
-          href="tel:2016142814"
+          href="tel:2012124917"
           onClick={() => {
             trackPhoneClick();
             trackEvent('cta_click', {

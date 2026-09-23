@@ -51,7 +51,7 @@ export default function ReviewsBottomCTA() {
             </Link>
           </div>
           <a
-            href="tel:2016142814"
+            href="tel:2012124917"
             onClick={() => {
               trackPhoneClick();
               trackEvent('cta_click', {
@@ -63,7 +63,7 @@ export default function ReviewsBottomCTA() {
             className="inline-flex items-center justify-center gap-2 text-white/90 hover:text-white text-lg transition-colors cursor-pointer"
           >
             <Phone className="h-5 w-5" />
-            Or call us: (201) 614-2814
+            Or call us: (201) 212-4917
           </a>
         </div>
       </div>

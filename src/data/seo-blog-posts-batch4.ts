@@ -140,7 +140,7 @@ export const seoBlogPostsBatch4: BlogPost[] = [
       
       <p>Whether you're envisioning a minor update or a complete transformation, the right contractor makes all the difference. <em>La Vaca General Contractors</em> has the experience, expertise, and commitment to quality that Millburn homeowners deserve.</p>
       
-      <p>We'd love to discuss your project and provide a detailed consultation. Call us today at <strong>(201) 241-1580</strong> or visit <strong>lavacagc.com</strong> to schedule your free in-home estimate. Let's bring your renovation vision to life.</p>
+      <p>We'd love to discuss your project and provide a detailed consultation. Call us today at <strong>(201) 212-4917</strong> or visit <strong>lavacagc.com</strong> to schedule your free in-home estimate. Let's bring your renovation vision to life.</p>
     `,
     author: "La Vaca Team",
     date: "2026-02-27",
@@ -390,7 +390,7 @@ export const seoBlogPostsBatch4: BlogPost[] = [
       
       <p>Our commitment to quality, transparent communication, and customer satisfaction has made us a trusted name in Millburn remodeling. We're not satisfied until you love your new space.</p>
       
-      <p>Ready to discuss your project? Call <strong>(201) 241-1580</strong> or visit <strong>lavacagc.com</strong> to schedule your free consultation. Let's transform your Millburn home together.</p>
+      <p>Ready to discuss your project? Call <strong>(201) 212-4917</strong> or visit <strong>lavacagc.com</strong> to schedule your free consultation. Let's transform your Millburn home together.</p>
     `,
     author: "La Vaca Team",
     date: "2026-02-27",
@@ -623,7 +623,7 @@ export const seoBlogPostsBatch4: BlogPost[] = [
       
       <p><em>La Vaca General Contractors</em> brings the expertise, craftsmanship, and attention to detail needed to create a beautiful, functional basement that enhances your Morristown home and lifestyle.</p>
       
-      <p>Let's discuss your basement remodeling vision. Call <strong>(201) 241-1580</strong> or visit <strong>lavacagc.com</strong> to schedule your free consultation and estimate. Your dream basement is within reach.</p>
+      <p>Let's discuss your basement remodeling vision. Call <strong>(201) 212-4917</strong> or visit <strong>lavacagc.com</strong> to schedule your free consultation and estimate. Your dream basement is within reach.</p>
     `,
     author: "La Vaca Team",
     date: "2026-02-27",
@@ -865,7 +865,7 @@ export const seoBlogPostsBatch4: BlogPost[] = [
       
       <p><strong>La Vaca General Contractors</strong> brings the expertise, craftsmanship, and attention to detail needed to create bathrooms that exceed expectations. From initial design through final installation, we're committed to delivering results you'll love for years to come.</p>
       
-      <p>Ready to discuss your bathroom remodeling project? Call <strong>(201) 241-1580</strong> or visit <strong>lavacagc.com</strong> to schedule your free consultation. Let's create the bathroom you've been dreaming of.</p>
+      <p>Ready to discuss your bathroom remodeling project? Call <strong>(201) 212-4917</strong> or visit <strong>lavacagc.com</strong> to schedule your free consultation. Let's create the bathroom you've been dreaming of.</p>
     `,
     author: "La Vaca Team",
     date: "2026-02-27",
@@ -1083,7 +1083,7 @@ export const seoBlogPostsBatch4: BlogPost[] = [
       
       <p><strong>La Vaca General Contractors</strong> brings the expertise, craftsmanship, and attention to detail that luxury homes demand. We understand the unique expectations of Saddle River homeowners and consistently deliver results that exceed those expectations.</p>
       
-      <p>Let's discuss your remodeling vision and create a plan that brings it to life. Call <strong>(201) 241-1580</strong> or visit <strong>lavacagc.com</strong> to schedule your consultation. Your dream home awaits.</p>
+      <p>Let's discuss your remodeling vision and create a plan that brings it to life. Call <strong>(201) 212-4917</strong> or visit <strong>lavacagc.com</strong> to schedule your consultation. Your dream home awaits.</p>
     `,
     author: "La Vaca Team",
     date: "2026-02-27",

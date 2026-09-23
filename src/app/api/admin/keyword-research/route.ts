@@ -143,7 +143,7 @@ Respond in this exact JSON format:
     }
   ],
   "suggestedTitle": "SEO title under 60 chars that includes the primary keyword naturally. Must include the city/town. Format: [Service] in [City] | Before & After | La Vaca GC",
-  "suggestedMetaDescription": "Meta description under 155 chars with CTA. Must reference the transformation and include a call to action like 'See the transformation' or 'Get a free estimate'. Include phone: (201) 614-2814",
+  "suggestedMetaDescription": "Meta description under 155 chars with CTA. Must reference the transformation and include a call to action like 'See the transformation' or 'Get a free estimate'. Include phone: (201) 212-4917",
   "suggestedSlug": "url-friendly-slug-with-keywords",
   "titleVariations": [
     "3-5 alternative title options targeting different keywords from the list, each under 60 chars"

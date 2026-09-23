@@ -151,8 +151,8 @@ const AMPBlogPost: React.FC<AMPBlogPostProps> = ({
             <div className="bg-gradient-to-r from-primary to-accent-tangerine text-white rounded-lg p-6 mt-8 text-center">
               <h3 className="text-xl font-bold mb-2 text-white">Ready to Start Your Remodeling Project?</h3>
               <p className="mb-4 text-white/90">Get a free estimate from Northern NJ&apos;s trusted renovation experts.</p>
-              <a href="tel:(201)555-0123" className="inline-block bg-white/20 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/30 transition-colors no-underline">
-                Call (201) 555-0123
+              <a href="tel:+12012124917" className="inline-block bg-white/20 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/30 transition-colors no-underline">
+                Call (201) 212-4917
               </a>
             </div>
           </article>
@@ -206,10 +206,10 @@ const AMPBlogPost: React.FC<AMPBlogPostProps> = ({
           <h3 className="text-xl font-bold mb-2 text-white">Ready to Start Your Remodeling Project?</h3>
           <p className="mb-4 text-white/90">Get a free estimate from Northern NJ&apos;s trusted renovation experts.</p>
           <a
-            href="tel:(201)555-0123"
+            href="tel:+12012124917"
             className="inline-block bg-white/20 text-white font-semibold px-6 py-3 rounded-lg hover:bg-white/30 transition-colors no-underline"
           >
-            Call (201) 555-0123
+            Call (201) 212-4917
           </a>
         </div>
       </article>

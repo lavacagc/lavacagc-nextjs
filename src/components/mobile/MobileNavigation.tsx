@@ -97,8 +97,8 @@ const MobileNavigation: React.FC = () => {
           {/* Mobile-specific CTA section */}
           <div className="absolute bottom-6 left-6 right-6 space-y-3 border-t pt-6">
             <ClickToCall
-              phoneNumber="(201) 555-0123"
-              displayNumber="(201) 555-0123"
+              phoneNumber="(201) 212-4917"
+              displayNumber="(201) 212-4917"
               className="w-full bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button"
               size="lg"
             >

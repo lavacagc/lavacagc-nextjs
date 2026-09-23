@@ -32,7 +32,7 @@ export default function ContactPage() {
               Let&apos;s Talk About Your Project
             </h1>
             <p className="text-lg text-text-secondary max-w-2xl mx-auto mb-6">
-              Call us now or leave your details below — we&apos;ll get back to you within 2 hours.
+              Call us now or leave your details below — we&apos;ll get back to you within 24 hours.
             </p>
             {/* Prominent Phone Number */}
             <ContactHeroPhone />
@@ -73,10 +73,10 @@ export default function ContactPage() {
                   <div>
                     <h3 className="font-semibold text-text-primary text-sm">Phone</h3>
                     <CallTrackingWrapper
-                      href="tel:2016142814"
+                      href="tel:2012124917"
                       className="text-primary hover:underline font-medium"
                     >
-                      (201) 614-2814
+                      (201) 212-4917
                     </CallTrackingWrapper>
                   </div>
                 </div>
