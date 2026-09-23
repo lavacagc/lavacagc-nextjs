@@ -29,19 +29,33 @@ LANGUAGE sql IMMUTABLE AS $$
            '2012124917', 'g')
 $$;
 
-UPDATE public.blog_posts SET
-  title            = pg_temp.single_phone(title),
-  excerpt          = pg_temp.single_phone(excerpt),
-  content          = pg_temp.single_phone(content),
-  meta_title       = pg_temp.single_phone(meta_title),
-  meta_description = pg_temp.single_phone(meta_description)
-WHERE concat_ws(' ', title, excerpt, content, meta_title, meta_description)
-      IS DISTINCT FROM pg_temp.single_phone(concat_ws(' ', title, excerpt, content, meta_title, meta_description));
+-- Both tables are dashboard-created (prod-only), so a from-empty Supabase
+-- Preview replay has at most a stub of them. Each UPDATE runs only where every
+-- column it touches exists: always on production, never on an empty preview.
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'blog_posts'
+        AND column_name IN ('title', 'excerpt', 'content', 'meta_title', 'meta_description')) = 5 THEN
+    UPDATE public.blog_posts SET
+      title            = pg_temp.single_phone(title),
+      excerpt          = pg_temp.single_phone(excerpt),
+      content          = pg_temp.single_phone(content),
+      meta_title       = pg_temp.single_phone(meta_title),
+      meta_description = pg_temp.single_phone(meta_description)
+    WHERE concat_ws(' ', title, excerpt, content, meta_title, meta_description)
+          IS DISTINCT FROM pg_temp.single_phone(concat_ws(' ', title, excerpt, content, meta_title, meta_description));
+  END IF;
 
-UPDATE public.projects SET
-  seo_title        = pg_temp.single_phone(seo_title),
-  meta_description = pg_temp.single_phone(meta_description),
-  challenge        = pg_temp.single_phone(challenge),
-  solution         = pg_temp.single_phone(solution)
-WHERE concat_ws(' ', seo_title, meta_description, challenge, solution)
-      IS DISTINCT FROM pg_temp.single_phone(concat_ws(' ', seo_title, meta_description, challenge, solution));
+  IF (SELECT count(*) FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'projects'
+        AND column_name IN ('seo_title', 'meta_description', 'challenge', 'solution')) = 4 THEN
+    UPDATE public.projects SET
+      seo_title        = pg_temp.single_phone(seo_title),
+      meta_description = pg_temp.single_phone(meta_description),
+      challenge        = pg_temp.single_phone(challenge),
+      solution         = pg_temp.single_phone(solution)
+    WHERE concat_ws(' ', seo_title, meta_description, challenge, solution)
+          IS DISTINCT FROM pg_temp.single_phone(concat_ws(' ', seo_title, meta_description, challenge, solution));
+  END IF;
+END $$;
