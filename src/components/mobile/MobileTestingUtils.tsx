@@ -20,7 +20,7 @@ const MobileTestingUtils: React.FC<MobileTestingUtilsProps> = () => {
     "mainEntity": {
       "@type": "LocalBusiness",
       "name": "La Vaca General Contractors",
-      "telephone": "(201) 555-0123",
+      "telephone": "(201) 212-4917",
       "address": {
         "@type": "PostalAddress",
         "addressRegion": "NJ",
@@ -30,7 +30,7 @@ const MobileTestingUtils: React.FC<MobileTestingUtilsProps> = () => {
     "potentialAction": [
       {
         "@type": "CallAction",
-        "target": "tel:+12015550123"
+        "target": "tel:+12012124917"
       },
       {
         "@type": "ContactAction",

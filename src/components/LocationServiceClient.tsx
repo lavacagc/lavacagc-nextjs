@@ -14,10 +14,10 @@ export function GetEstimateButton() {
       <Button size="lg" onClick={handleGetEstimate} className="text-lg">
         Get Free Estimate
       </Button>
-      <CallTrackingWrapper href="tel:2019312726">
+      <CallTrackingWrapper href="tel:2012124917">
         <Button size="lg" variant="outline" className="text-lg">
           <Phone className="w-5 h-5 mr-2" />
-          Call (201) 931-2726
+          Call (201) 212-4917
         </Button>
       </CallTrackingWrapper>
     </div>

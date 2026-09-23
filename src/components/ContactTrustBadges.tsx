@@ -33,12 +33,12 @@ export default function ContactTrustBadges() {
   return (
     <section ref={badgesRef} className="py-6 bg-background border-b border-border">
       <div className="container mx-auto px-4">
-        {/* Mobile: only "Response within 2 hours" */}
+        {/* Mobile: only "Response within 24 hours" */}
         <div className="flex md:hidden items-center justify-center gap-2">
           <div className="bg-green-100 p-2 rounded-full">
             <Zap className="h-5 w-5 text-green-600" />
           </div>
-          <span className="font-semibold text-text-primary text-sm">Response within 2 hours</span>
+          <span className="font-semibold text-text-primary text-sm">Response within 24 hours</span>
         </div>
         {/* Desktop: all three badges */}
         <div className="hidden md:flex items-center justify-center gap-10">
@@ -46,7 +46,7 @@ export default function ContactTrustBadges() {
             <div className="bg-green-100 p-2 rounded-full">
               <Zap className="h-5 w-5 text-green-600" />
             </div>
-            <span className="font-semibold text-text-primary">Response within 2 hours</span>
+            <span className="font-semibold text-text-primary">Response within 24 hours</span>
           </div>
           <div className="flex items-center gap-2 text-base">
             <div className="bg-blue-100 p-2 rounded-full">

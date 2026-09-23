@@ -63,7 +63,7 @@ const MobileSEO: React.FC<MobileSEOProps> = ({
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
     "name": "La Vaca General Contractors",
-    "telephone": "(201) 555-0123",
+    "telephone": "(201) 212-4917",
     "url": canonicalUrl || "https://ajsconstructionnj.com",
     ...(location && {
       "areaServed": {

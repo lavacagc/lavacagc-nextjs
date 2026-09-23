@@ -72,13 +72,13 @@ const UTM_CONTENT_MAP: Record<string, {
     headline: 'NJ\'s Highest-Rated General Contractor',
     subheadline: '5.0★ on Google with every review verified. See what transparent pricing and daily updates look like.',
     formHeading: 'Get Your Free Estimate',
-    formSubheading: 'Join our 5-star clients. We respond within 2 hours.',
+    formSubheading: 'Join our 5-star clients. We respond within 24 hours.',
   },
   'top-rated-contractors-in-fort-lee': {
     headline: 'Fort Lee\'s Top-Rated Renovation Contractor',
     subheadline: 'Licensed, insured, and trusted by your neighbors. Get a free, detailed estimate for your project.',
     formHeading: 'Get Your Free Estimate',
-    formSubheading: 'Serving Fort Lee and Northern NJ. We respond within 2 hours.',
+    formSubheading: 'Serving Fort Lee and Northern NJ. We respond within 24 hours.',
   },
   'review-sean-hot-wetbar-b': {
     headline: 'From Unfinished Basement to Stunning Wet Bar',
@@ -105,7 +105,7 @@ const UTM_CONTENT_MAP: Record<string, {
     headline: 'Spring Schedules Are Filling Up Fast',
     subheadline: 'Lock in spring pricing before summer rates kick in. Free estimate, no obligation — start as early as next month.',
     formHeading: 'Lock In Spring Pricing',
-    formSubheading: 'Limited spring spots available. We respond within 2 hours.',
+    formSubheading: 'Limited spring spots available. We respond within 24 hours.',
   },
   'spring-slots-B': {
     headline: 'Only a Few Spring Slots Left',
@@ -163,7 +163,7 @@ const UTM_CONTENT_MAP: Record<string, {
     subheadline: 'Lock in spring pricing before summer rates kick in. Free estimate, no obligation.',
     city: 'montclair',
     formHeading: 'Lock In Spring Pricing',
-    formSubheading: 'Limited spring spots. We respond within 2 hours.',
+    formSubheading: 'Limited spring spots. We respond within 24 hours.',
   },
   'alpine-stats-B': {
     headline: 'Alpine\'s Trusted Renovation Contractor',

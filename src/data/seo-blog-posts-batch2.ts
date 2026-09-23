@@ -191,7 +191,7 @@ export const seoBlogPostsBatch2: BlogPost[] = [
 
 <p>We serve homeowners throughout Livingston – from Northland to Hillside Terrace, Collins Terrace to East Livingston – with quality craftsmanship and transparent pricing. As a <strong>Licensed & Insured</strong> contractor (<strong>NJ HIC #13VH13373800</strong>), we handle everything from permits to final inspection.</p>
 
-<p>Call us today at <strong>(201) 241-1580</strong> to schedule your free basement assessment. Or visit <strong>lavacagc.com</strong> to view our portfolio and learn more about our services. Let's turn that underutilized basement into your favorite room in the house.</p>
+<p>Call us today at <strong>(201) 212-4917</strong> to schedule your free basement assessment. Or visit <strong>lavacagc.com</strong> to view our portfolio and learn more about our services. Let's turn that underutilized basement into your favorite room in the house.</p>
 
 <h2>Frequently Asked Questions</h2>
 
@@ -423,7 +423,7 @@ export const seoBlogPostsBatch2: BlogPost[] = [
 
 <p>We've built our reputation in Livingston on quality work and transparent communication. From initial consultation through final walkthrough, we treat your home with the respect it deserves and your vision with the attention to detail it requires.</p>
 
-<p>Call us today at <strong>(201) 241-1580</strong> to schedule your free kitchen consultation. Or visit <strong>lavacagc.com</strong> to see examples of our work and learn more about our process. Let's create the kitchen you've been dreaming about.</p>
+<p>Call us today at <strong>(201) 212-4917</strong> to schedule your free kitchen consultation. Or visit <strong>lavacagc.com</strong> to see examples of our work and learn more about our process. Let's create the kitchen you've been dreaming about.</p>
 
 <h2>Frequently Asked Questions</h2>
 
@@ -655,7 +655,7 @@ export const seoBlogPostsBatch2: BlogPost[] = [
 
 <p><strong>La Vaca General Contractors</strong> brings the experience, craftsmanship, and local knowledge to deliver additions that enhance your home's functionality, beauty, and value. We've helped families throughout Short Hills, Wyoming, Glenwood, and South Mountain create the space they need while staying in the communities they love.</p>
 
-<p>Call us at <strong>(201) 241-1580</strong> to schedule your free consultation. Or visit <strong>lavacagc.com</strong> to see our portfolio and learn more about our approach. Let's discuss how an addition can transform your Millburn home.</p>
+<p>Call us at <strong>(201) 212-4917</strong> to schedule your free consultation. Or visit <strong>lavacagc.com</strong> to see our portfolio and learn more about our approach. Let's discuss how an addition can transform your Millburn home.</p>
 
 <h2>Frequently Asked Questions</h2>
 
@@ -885,7 +885,7 @@ export const seoBlogPostsBatch2: BlogPost[] = [
 
 <p>We've built our reputation throughout Morristown, Morris Plains, Madison, and Morris County on quality work, transparent communication, and treating every home like our own. As a <strong>Licensed & Insured</strong> contractor (<strong>NJ HIC #13VH13373800</strong>), we handle everything from design through final inspection with professionalism you can trust.</p>
 
-<p>Call us today at <strong>(201) 241-1580</strong> to schedule your free bathroom consultation. Or visit <strong>lavacagc.com</strong> to view our portfolio and learn more about our renovation process. Let's create the bathroom you've been dreaming about.</p>
+<p>Call us today at <strong>(201) 212-4917</strong> to schedule your free bathroom consultation. Or visit <strong>lavacagc.com</strong> to view our portfolio and learn more about our renovation process. Let's create the bathroom you've been dreaming about.</p>
 
 <h2>Frequently Asked Questions</h2>
 
@@ -1136,7 +1136,7 @@ export const seoBlogPostsBatch2: BlogPost[] = [
 
 <p>We've built our reputation throughout Millburn Township on quality craftsmanship, transparent pricing, and treating every home with respect. From Short Hills to South Mountain, Wyoming to Glenwood, we understand your neighborhood and your needs.</p>
 
-<p>Call us today at <strong>(201) 241-1580</strong> to schedule your free basement assessment. Or visit <strong>lavacagc.com</strong> to view our portfolio and learn more about our approach. Let's unlock your basement's potential together.</p>
+<p>Call us today at <strong>(201) 212-4917</strong> to schedule your free basement assessment. Or visit <strong>lavacagc.com</strong> to view our portfolio and learn more about our approach. Let's unlock your basement's potential together.</p>
 
 <h2>Frequently Asked Questions</h2>
 
