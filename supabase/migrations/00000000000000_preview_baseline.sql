@@ -74,3 +74,37 @@ CREATE TABLE IF NOT EXISTS public.follow_up_queue (
   email_body text NOT NULL,
   created_at timestamptz DEFAULT now()
 );
+
+-- app_role / user_roles / has_role() are prod-only (dashboard-created). The RLS
+-- policies in 20260808120000_create_proposal_categories call
+-- has_role(auth.uid(), 'admin'::app_role), so a from-empty preview replay aborts
+-- with `type "app_role" does not exist`. Shapes copied from the generated
+-- src/integrations/supabase/types.ts. Every object is guarded so production's
+-- real definitions are never replaced: no CREATE OR REPLACE.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE n.nspname = 'public' AND t.typname = 'app_role'
+  ) THEN
+    CREATE TYPE public.app_role AS ENUM ('admin', 'user');
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.user_roles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  role public.app_role NOT NULL,
+  created_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+DO $$
+BEGIN
+  IF to_regprocedure('public.has_role(uuid, public.app_role)') IS NULL THEN
+    CREATE FUNCTION public.has_role(_user_id uuid, _role public.app_role)
+    RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+    AS 'SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = _role)';
+  END IF;
+END $$;
