@@ -61,8 +61,10 @@ const STEPS: Array<[StringKey, StringKey]> = [
 ];
 
 const FAQ: Array<[StringKey, StringKey]> = [
+  ['faqOneStopQ', 'faqOneStopA'],
   ['faqPriceQ', 'faqPriceA'],
   ['faqSpeedQ', 'faqSpeedA'],
+  ['faqHomeQ', 'faqHomeA'],
   ['faqPayQ', 'faqPayA'],
 ];
 

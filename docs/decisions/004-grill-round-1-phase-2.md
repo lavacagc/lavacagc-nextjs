@@ -1,7 +1,9 @@
 # Grill round 1 - Phase 2: admin pricing, SEO feedback loop, Claude-run articles
 
+Status: decided 2026-10-29 (Q7 to Q13, all as recommended).
+
 Asked of Alex on the Lavish review page, 2026-10-29, while he was present.
-Recommended answers are marked; nothing below is decided until he answers.
+Answered 2026-10-29 on the review page: all six as recommended. Each ➡️ line below is now the decision.
 
 Request in his words: "add instructions on how to take the pictures, make the hero text less wordy and easier to read, we want the message to be quick and convenient; modify the pricing and the services from the admin side, optimised for SEO by potentially using the open-seo repo; routes so Claude Code can add projects, optimise for SEO based on feedback from GA and open-seo, and edit or publish articles for SEO with Claude without my supervision, using the grill-me skill to make sure the article is sane, factual and plain English for SEO, AEO and local SEO."
 
@@ -42,3 +44,9 @@ Already done on the branch: photo-taking tips in the request flow, shorter hero 
 ❓ **Q12** - **Sequencing**: Phase 2 on a new branch after PR #104 merges, with the same structure (audit, acceptance criteria, Opus builders, independent reviews).
 
 ➡️ Yes. #104 is validated; stacking Phase 2 on it would re-validate 100 commits.
+
+---
+
+❓ **Q13** - **The blog editor's own AI buttons** (found by the Phase 2 audit): three Supabase edge functions (generate-blog-post, enhance-blog-content, generate-blog-image) call OpenAI with the same key behind the editor's Generate, Enhance and featured-image buttons; a fourth button calls a `generate-blog-seo` function that does not exist in the repo.
+
+➡️ Remove them too; the editor stays a plain editor. Answered 2026-10-29: remove.

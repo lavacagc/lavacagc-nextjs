@@ -2,7 +2,7 @@ import { test, expect, type Page, type APIRequestContext } from '@playwright/tes
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
-import { HOME_SERVICES_CATALOG, SERVICE_SLUGS, COUNTIES, t } from '../src/lib/home-services/catalog';
+import { HOME_SERVICES_CATALOG, SERVICE_SLUGS, COUNTIES, t, getService } from '../src/lib/home-services/catalog';
 import { s } from '../src/lib/home-services/i18n';
 import { brandedTitle } from '../src/lib/home-services/seo';
 import { bannerRules } from '../src/lib/bannerRules';
@@ -457,7 +457,7 @@ test.describe('browser', () => {
     });
     expect((svc.offers.priceSpecification as Record<string, unknown>).minPrice).toBeUndefined();
     const drywall = (await jsonLdNodes(request, '/home-services/drywall-patching')).find((n) => n['@type'] === 'Service') as { offers: Record<string, unknown> };
-    expect(drywall.offers.price).toBe('249.00');
+    expect(drywall.offers.price).toBe((getService('drywall-patching')!.startingPriceCents / 100).toFixed(2));
     expect(drywall.offers.priceSpecification).toBeUndefined();
   });
 

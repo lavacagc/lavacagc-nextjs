@@ -88,7 +88,7 @@ const Hero = ({ cta }: HeroProps) => {
           {/* Subheading */}
           <p className="text-xl md:text-2xl text-text-secondary mb-8 max-w-3xl mx-auto leading-relaxed">
             Kitchens, baths, basements and the small jobs in between.
-            <span className="font-semibold text-secondary"> Firm prices. Licensed crews. Northern NJ.</span>
+            <span className="font-semibold text-secondary"> One stop. Firm prices. Licensed crews. Northern NJ.</span>
           </p>
 
           {/* CTA Buttons: server-rendered by src/lib/cta/HeroCta.tsx and passed

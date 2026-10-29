@@ -9,10 +9,10 @@ import type { L, Lang } from './catalog';
 
 export const STRINGS = {
   // Landing page
-  heroEyebrow: { en: 'Home services, priced up front', es: 'Servicios para el hogar con precios claros' },
-  heroTitle: { en: 'Pick a service. See the price. Send photos.', es: 'Elija un servicio. Vea el precio. Envíe fotos.' },
-  heroBody: { en: 'A firm quote from your photos, usually the same day. Licensed NJ contractor serving Essex, Morris and Bergen Counties.', es: 'Cotización firme con sus fotos, normalmente el mismo día. Contratista con licencia en NJ en los condados de Essex, Morris y Bergen.' },
-  servicesTitle: { en: 'Seven services, starting prices shown', es: 'Siete servicios con precio inicial' },
+  heroEyebrow: { en: 'Your one-stop shop for home services', es: 'Su tienda única para servicios del hogar' },
+  heroTitle: { en: 'Pick your services. See the price. Sit back.', es: 'Elija sus servicios. Vea el precio. Relájese.' },
+  heroBody: { en: 'One request, a firm quote from your photos the same day, and vetted crews doing the work while you sit back. Licensed NJ contractor for Essex, Morris and Bergen Counties.', es: 'Una sola solicitud, cotización firme con sus fotos el mismo día, y equipos verificados haciendo el trabajo mientras usted se relaja. Contratista con licencia en NJ para Essex, Morris y Bergen.' },
+  servicesTitle: { en: 'Seven services, one stop, prices up front', es: 'Siete servicios, un solo lugar, precios claros' },
   servicesIntro: { en: 'Tap the services you want, then request them together. Tap a price to see what it includes.', es: 'Toque los servicios que quiere y solicítelos juntos. Toque un precio para ver qué incluye.' },
   startingAt: { en: 'Starting at', es: 'Desde' },
   whatsIncluded: { en: "What's included", es: 'Qué incluye' },
@@ -30,7 +30,7 @@ export const STRINGS = {
   step3: { en: 'Schedule', es: 'Agende' },
   step3Body: { en: 'Pick a start window that works for you.', es: 'Elija una ventana de inicio que le convenga.' },
   step4: { en: 'Done', es: 'Listo' },
-  step4Body: { en: 'Vetted crew does the work. You pay La Vaca, never the crew.', es: 'Un equipo verificado hace el trabajo. Usted le paga a La Vaca, nunca al equipo.' },
+  step4Body: { en: 'Sit back. A vetted crew does the work and sends photos when done. You pay La Vaca, never the crew.', es: 'Relájese. Un equipo verificado hace el trabajo y envía fotos al terminar. Usted le paga a La Vaca, nunca al equipo.' },
   trustTitle: { en: 'Licensed, insured, local', es: 'Con licencia, asegurados, locales' },
   trustHic: { en: 'NJ HIC# 13VH13373800', es: 'NJ HIC# 13VH13373800' },
   trustInsured: { en: 'Insured, with a one-year workmanship warranty', es: 'Asegurados, con garantía de mano de obra de un año' },
@@ -42,6 +42,10 @@ export const STRINGS = {
   faqSpeedQ: { en: 'How fast can you schedule?', es: '¿Qué tan rápido pueden agendar?' },
   faqSpeedA: { en: 'Most services start within one to two weeks. Tell us if it is urgent and we will say what is possible.', es: 'La mayoría de los servicios empiezan en una o dos semanas. Díganos si es urgente y le diremos qué es posible.' },
   faqPayQ: { en: 'How do I pay?', es: '¿Cómo pago?' },
+  faqOneStopQ: { en: 'Can I book several services at once?', es: '¿Puedo pedir varios servicios a la vez?' },
+  faqOneStopA: { en: 'Yes, that is the point. Tick every service you need and send one request. You get one firm price, one schedule and one point of contact, and the crews come in order while you sit back.', es: 'Sí, de eso se trata. Marque todos los servicios que necesita y envíe una sola solicitud. Recibe un solo precio firme, una sola agenda y un solo contacto, y los equipos llegan en orden mientras usted se relaja.' },
+  faqHomeQ: { en: 'Do I need to be home?', es: '¿Tengo que estar en casa?' },
+  faqHomeA: { en: 'Usually not. Most services need access at the start and a few minutes at the end; the crew sends photos when done and you approve before the final payment.', es: 'Normalmente no. La mayoría de los servicios necesitan acceso al inicio y unos minutos al final; el equipo envía fotos al terminar y usted aprueba antes del pago final.' },
   faqPayA: { en: '70% when you sign the quote, 30% when the job is done and you are happy. You pay La Vaca directly; the crew never bills you.', es: '70% al firmar la cotización y 30% cuando el trabajo esté terminado y usted satisfecho. Le paga directamente a La Vaca; el equipo nunca le cobra.' },
   homeCareTitle: { en: 'Want the small stuff handled all year?', es: '¿Quiere que lo pequeño se atienda todo el año?' },
   homeCareBody: { en: 'La Vaca Home Care is a free seasonal checklist for your home, with one-tap booking when you want us to handle an item.', es: 'La Vaca Home Care es una lista de mantenimiento gratuita por temporada para su casa, con reserva de un toque cuando quiera que lo hagamos nosotros.' },
@@ -96,8 +100,8 @@ export const STRINGS = {
   close: { en: 'Close', es: 'Cerrar' },
 
   // Slice A additions (landing, service pages, request flow)
-  metaTitle: { en: 'Home Services in Essex, Morris & Bergen County NJ', es: 'Servicios para el hogar en Essex, Morris y Bergen NJ' },
-  metaDescription: { en: 'Cabinet painting, HVAC and duct cleaning, home cleaning, exterior painting, gutters and drywall with starting prices. Essex, Morris and Bergen Counties.', es: 'Pintura de gabinetes, limpieza de HVAC y ductos, limpieza, pintura exterior, canaletas y drywall con precios iniciales. Essex, Morris y Bergen.' },
+  metaTitle: { en: 'Home Services in Essex, Morris & Bergen NJ, Priced Up Front', es: 'Servicios del hogar en Essex, Morris y Bergen, con precio' },
+  metaDescription: { en: 'One-stop home services in Essex, Morris and Bergen NJ: cabinet painting, HVAC, ducts, cleaning, exterior painting, gutters, drywall. Firm prices up front.', es: 'Servicios del hogar en un solo lugar en Essex, Morris y Bergen NJ: gabinetes, HVAC, ductos, limpieza, pintura exterior, canaletas, drywall. Precios firmes.' },
   heroCta: { en: 'See services and prices', es: 'Ver servicios y precios' },
   servicesNav: { en: 'Home services', es: 'Servicios para el hogar' },
   serviceDetails: { en: 'Details for each service', es: 'Detalles de cada servicio' },
