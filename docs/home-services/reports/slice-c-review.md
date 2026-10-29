@@ -160,11 +160,24 @@ That is caused by the local DB schema and is unrelated to this slice.
 
 ## Claims I could not reproduce, or that changed
 
-- **The two hero-trust-badges failures.** They pass now: 5 of 5.
-  The rig has since gained the `google_reviews` table (`to_regclass` returns it), added by coordinator commit `edd94ce`.
-  Both tests pass against this slice's code with the table present, which proves the developer's attribution.
-  The failures were environmental, and the slice does not break those tests.
-  For that reason I did not run them on a base worktree.
+- **The two hero-trust-badges failures.** The developer's environmental attribution stands.
+  The rig now has `public.google_reviews` with 3 rows, added with coordinator commit `edd94ce`.
+  I could not drop a shared table, so I simulated its absence in the browser.
+  `Testimonials.tsx` reads the table client side.
+  A scratch copy of the spec answered `/rest/v1/google_reviews` with PostgREST's missing-table 404 (`PGRST205`), and also stubbed `/api/cta/event` so the runs wrote no rows.
+  I ran the two "scrolls testimonials" tests in each combination.
+  The base was a scratch worktree at `fc6fe33`, served with `next dev --webpack` because Turbopack rejects a symlinked `node_modules`.
+  The spec and `Testimonials.tsx` are byte-identical between the base and this slice.
+
+  | Code | Table | Result |
+  | --- | --- | --- |
+  | Slice `a0e9df2` | present | 2 passed |
+  | Slice `a0e9df2` | simulated absent | 2 failed, waiting for `#testimonials` (`locator.waitFor: Timeout 15000ms exceeded`) |
+  | Base `fc6fe33` | present | 2 passed |
+  | Base `fc6fe33` | simulated absent | 2 failed, same timeout |
+
+  The failure follows the table, not the code, and the slice does not break those tests.
+  The scratch spec and worktree were removed afterwards.
 - **The admin flow on the production build.** I could not sign in there, because the production CSP correctly blocks the local Supabase host in `connect-src`.
   The admin visual check was done on the dev server.
   At 1440 px and 390 px there is no horizontal page overflow, and the tables scroll inside their cards.
@@ -174,7 +187,8 @@ That is caused by the local DB schema and is unrelated to this slice.
 
 ## Leftover state on the shared rig
 
-`cta_events` holds exactly the developer's 8 untagged rows: ids 205-208 and 355-358.
+Update: at the time of the follow-up runs, `cta_events` was empty, so someone has since removed the rows below.
+At review time, `cta_events` held exactly the developer's 8 untagged rows: ids 205-208 and 355-358.
 They come from 4 visitors at 07:00:06 and 07:04:27 UTC.
 They currently drive the admin report: primary A has 2 views and B has 2 views, so a single real request on B already shows a 50.0% request rate.
 I recommend deleting them, because they match the signature of the rows my own hero-trust-badges run created.
