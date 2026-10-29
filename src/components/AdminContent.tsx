@@ -37,6 +37,11 @@ const PreferencesAdminPage = dynamic(() => import('@/app/vaca-mgmt/preferences/p
 const ReleasesAdminPage = dynamic(() => import('@/app/vaca-mgmt/releases/page'), { ssr: false });
 const ConversionDashboard = dynamic(() => import('@/components/admin/ConversionDashboard'), { ssr: false });
 const SeoSuggestionsDashboard = dynamic(() => import('@/components/admin/SeoSuggestionsDashboard'), { ssr: false });
+// Home Services build (docs/home-services/acceptance-criteria.md).
+const ServiceRequestsManager = dynamic(() => import('@/components/admin/home-services/ServiceRequestsManager'), { ssr: false });
+const SubsManager = dynamic(() => import('@/components/admin/home-services/SubsManager'), { ssr: false });
+const PricingReport = dynamic(() => import('@/components/admin/home-services/PricingReport'), { ssr: false });
+const CtaTestsDashboard = dynamic(() => import('@/components/admin/home-services/CtaTestsDashboard'), { ssr: false });
 const CMSPageEditor = dynamic(() => import('@/components/admin/CMSPageEditor').then(m => ({ default: m.CMSPageEditor })), { ssr: false });
 import { BannerManager } from '@/components/admin/BannerManager';
 import { ComplianceDocumentsManager } from '@/components/admin/ComplianceDocumentsManager';
@@ -297,6 +302,22 @@ export default function AdminContent() {
 
           <TabsContent value="conversions">
             <ConversionDashboard />
+          </TabsContent>
+
+          <TabsContent value="service-requests">
+            <ServiceRequestsManager />
+          </TabsContent>
+
+          <TabsContent value="subs">
+            <SubsManager />
+          </TabsContent>
+
+          <TabsContent value="pricing-report">
+            <PricingReport />
+          </TabsContent>
+
+          <TabsContent value="cta-tests">
+            <CtaTestsDashboard />
           </TabsContent>
 
           <TabsContent value="new-post">

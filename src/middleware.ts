@@ -119,6 +119,14 @@ const PUBLIC_ROUTES = [
   '/api/consent/',         // TCPA consent logging (rate-limited, self-guarded)
   '/api/crew/',            // Crew visit confirm - auth is the per-assignment token
   '/api/proposal/',        // Client proposal submit - auth is the per-proposal token, self-guarded
+  // Home Services build (docs/home-services/acceptance-criteria.md, SEC). Each
+  // of these is self-guarded: honeypot + timing + rate limit + reCAPTCHA on the
+  // request routes, a per-recipient token on the offer routes, a rate limit on
+  // the CTA event sink, and a constant-time bearer token on the ingest route.
+  '/api/home-services/',
+  '/api/offers/',
+  '/api/cta/',
+  '/api/projects/ingest',
 ];
 
 function isPublicRoute(pathname: string): boolean {

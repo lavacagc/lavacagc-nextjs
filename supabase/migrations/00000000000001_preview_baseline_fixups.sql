@@ -50,3 +50,34 @@ CREATE TABLE IF NOT EXISTS public.follow_up_queue (
   email_body text NOT NULL,
   created_at timestamptz DEFAULT now()
 );
+
+-- app_role / user_roles / has_role: created in the dashboard on production and
+-- referenced by 20260808120000_create_proposal_categories (policies call
+-- has_role(auth.uid(), 'admin'::app_role)). Without them a from-scratch replay
+-- (local `supabase db reset`, a preview branch) stops at that migration. All
+-- three are guarded, so production is untouched.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'app_role') THEN
+    CREATE TYPE public.app_role AS ENUM ('admin', 'moderator', 'user');
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.user_roles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  role public.app_role NOT NULL,
+  UNIQUE (user_id, role)
+);
+
+CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role public.app_role)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = _role
+  );
+$$;

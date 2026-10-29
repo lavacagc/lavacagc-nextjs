@@ -22,6 +22,9 @@ import {
   Users,
   KeyRound,
   Package,
+  ClipboardList,
+  BarChart3,
+  FlaskConical,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -69,6 +72,8 @@ const NAVIGATION: NavItem[] = [
       { id: 'conversions', icon: TrendingUp, label: 'Conversions' },
       { id: 'gmb', icon: Activity, label: 'Google Reviews' },
       { id: 'preferences', icon: Users, label: 'Subscriptions' },
+      // Home Services build (docs/home-services): hero button multivariate tests.
+      { id: 'cta-tests', icon: FlaskConical, label: 'CTA Tests' },
     ],
   },
   {
@@ -81,6 +86,10 @@ const NAVIGATION: NavItem[] = [
       { id: 'send-estimate', icon: Send, label: 'Send Estimate' },
       { id: 'proposals', icon: FileText, label: 'Proposals' },
       { id: 'emails', icon: Mail, label: 'Email Log' },
+      // Home Services build (docs/home-services): priced-service requests, subs, bids.
+      { id: 'service-requests', icon: ClipboardList, label: 'Service Requests' },
+      { id: 'subs', icon: HardHat, label: 'Subs' },
+      { id: 'pricing-report', icon: BarChart3, label: 'Pricing Report' },
     ],
   },
   {

@@ -20,9 +20,11 @@ const EXPECTED_LEAF_IDS = [
   // Content (Compliance Docs moved here when Settings dissolved, 2026-08-08)
   'blog', 'pages', 'services', 'service-areas', 'projects', 'banners', 'compliance',
   // Marketing
-  'seo', 'analytics', 'conversions', 'gmb', 'preferences',
+  'seo', 'analytics', 'conversions', 'gmb', 'preferences', 'cta-tests',
   // Customers
   'leads', 'follow-ups', 'send-estimate', 'proposals', 'emails',
+  // Home Services build (2026-10-29)
+  'service-requests', 'subs', 'pricing-report',
   // Home Care
   'home-records', 'home-care-shop', 'send-service-quote', 'crew', 'releases',
 ];
