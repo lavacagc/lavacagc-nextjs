@@ -212,6 +212,18 @@ Who: no-mistakes daemon v1.41 (Claude Code CLI, Opus per ~/.no-mistakes/config.y
 
 Subagents are named in the board by role (builder slice A, reviewer B) with their model, so the record shows who built and who reviewed what.
 
+The same board lives persistently at the bottom of the terminal, in the Claude Code status line (`~/.claude/statusline.mjs`, refreshed every 5 seconds):
+the first line is the model, folder and branch; the no-mistakes gate for this repo appears by itself, read from the daemon's state, with bar, step, ETA from past runs, agent and model, branch and PR.
+Every other long job (a builder or reviewer subagent, a Lavish poll, a Playwright run, a CI wait) is shown there only if it writes a progress file, so start one when the job starts and finish it when it ends:
+
+```sh
+node ~/.claude/progress.mjs start <job> <total-steps> "<role> · <model> · <what>"   # PROGRESS_EXPECTED_MS=600000 for a time-based job
+node ~/.claude/progress.mjs set <job> <done> "<current step>"
+node ~/.claude/progress.mjs done <job> ok|failed
+```
+
+The file names the job's pid (`PROGRESS_PID` when the writer is not the job itself); a job whose process is gone disappears from the bar.
+
 ## Shipping changes - the no-mistakes gate
 
 Every change ships through the **no-mistakes** gate (`/no-mistakes`), not by
