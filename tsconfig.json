@@ -44,5 +44,11 @@
   "exclude": [
     "node_modules",
     "supabase"
-  ]
+  ],
+  "ts-node": {
+    "compilerOptions": {
+      "module": "commonjs",
+      "moduleResolution": "node"
+    }
+  }
 }

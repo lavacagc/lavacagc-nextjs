@@ -238,7 +238,7 @@ export default function FreeEstimateLanding({
                 </div>
                 <div className="flex items-center gap-1.5 md:gap-2 text-xs md:text-sm text-white/90">
                   <Clock className="h-4 w-4 md:h-5 md:w-5 text-primary flex-shrink-0" />
-                  <span>2-Hour Response</span>
+                  <span>24-Hour Response</span>
                 </div>
                 <div className="flex items-center gap-1.5 md:gap-2 text-xs md:text-sm text-white/90">
                   <Award className="h-4 w-4 md:h-5 md:w-5 text-primary flex-shrink-0" />
@@ -283,7 +283,7 @@ export default function FreeEstimateLanding({
                 source={formSource}
                 projectType={projectType}
                 heading={formHeading || 'Get Your Free Estimate'}
-                subheading={formSubheading || "Tell us about your project — we'll respond within 2 hours."}
+                subheading={formSubheading || "Tell us about your project — we'll respond within 24 hours."}
                 buttonText="Get My Free Estimate →"
               />
             </div>
@@ -298,7 +298,7 @@ export default function FreeEstimateLanding({
             source={formSource}
             projectType={projectType}
             heading={formHeading || 'Get Your Free Estimate'}
-            subheading={formSubheading || "Tell us about your project — we'll respond within 2 hours."}
+            subheading={formSubheading || "Tell us about your project — we'll respond within 24 hours."}
             buttonText="Get My Free Estimate →"
           />
         </div>

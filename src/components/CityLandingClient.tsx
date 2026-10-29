@@ -24,9 +24,9 @@ export function CityHeroButtons({ cityName }: CityHeroButtonsProps) {
       >
         Get Free {cityName} Estimate
       </Button>
-      <CallTrackingWrapper href="tel:2019312726">
+      <CallTrackingWrapper href="tel:2012124917">
         <Button variant="outline" size="lg">
-          Call (201) 931-2726
+          Call (201) 212-4917
         </Button>
       </CallTrackingWrapper>
     </div>
@@ -92,9 +92,9 @@ export function CityCTAButtons() {
       >
         Get Free Estimate
       </Button>
-      <CallTrackingWrapper href="tel:2019312726">
+      <CallTrackingWrapper href="tel:2012124917">
         <Button size="lg" className="bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-elegant">
-          Call (201) 931-2726
+          Call (201) 212-4917
         </Button>
       </CallTrackingWrapper>
     </div>
