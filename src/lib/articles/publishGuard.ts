@@ -147,7 +147,7 @@ function mergeSpans(spans: Span[], text: string): Span[] {
   const out: Span[] = [];
   for (const span of sorted) {
     const last = out[out.length - 1];
-    if (last && (span.start <= last.end || /^\s*(?:-|–|—|to|and|or)?\s*$/i.test(text.slice(last.end, span.start)))) {
+    if (last && (span.start <= last.end || /^\s*(?:-|\u2013|\u2014|to|and|or)?\s*$/i.test(text.slice(last.end, span.start)))) {
       last.end = Math.max(last.end, span.end);
     } else {
       out.push({ ...span });
