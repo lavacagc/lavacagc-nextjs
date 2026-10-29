@@ -130,6 +130,9 @@ const PUBLIC_ROUTES = [
   // by a per-IP rate limit and the signed visitor cookie, the veto by its
   // signed token and a rate limit. src/lib/experiments/auth.server.ts.
   '/api/experiments/',
+  // The sitemap route handler behind the /sitemap.xml rewrite. The matcher
+  // already skips it; listed so it stays public if the matcher ever changes.
+  '/api/sitemap',
 ];
 
 function isPublicRoute(pathname: string): boolean {
@@ -396,6 +399,8 @@ export const config = {
   // Pages and API routes only. Static assets, the image optimizer, fonts and
   // favicons never needed the bot filter, the geo cookie or the admin check,
   // and they were most of half a million invocations a month
-  // (docs/cost-review.md).
-  matcher: ['/((?!_next/static|_next/image|favicon\\.ico|images/|fonts/|logo\\.|robots\\.txt|sitemap\\.xml).*)'],
+  // (docs/cost-review.md). The sitemap is skipped at both of its paths:
+  // /sitemap.xml is a rewrite to the /api/sitemap route handler
+  // (next.config.ts), and crawlers must reach either without the bot filter.
+  matcher: ['/((?!_next/static|_next/image|favicon\\.ico|images/|fonts/|logo\\.|robots\\.txt|sitemap\\.xml|api/sitemap).*)'],
 };

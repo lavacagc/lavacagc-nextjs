@@ -88,7 +88,7 @@ test.describe('no AI in the project upload path (source checks)', () => {
       'src/app/portfolio/page.tsx',
       'src/app/free-estimate/page.tsx',
       'src/components/ProjectGallery.tsx',
-      'src/app/sitemap.ts',
+      'src/lib/sitemap.ts',
     ];
     for (const f of readers) {
       const src = read(f);
@@ -147,24 +147,24 @@ test.describe('ingest token check (direct import)', () => {
 
 test.describe('project revalidation paths', () => {
   test('a visibility change drops the project page, portfolio, homepage and sitemap', () => {
-    expect(projectPagePaths('kitchen-essex')).toEqual(['/projects/kitchen-essex', '/portfolio', '/', '/sitemap.xml']);
-    expect(projectPagePaths()).toEqual(['/portfolio', '/', '/sitemap.xml']);
-    expect(projectPagePaths('../evil')).toEqual(['/portfolio', '/', '/sitemap.xml']);
+    expect(projectPagePaths('kitchen-essex')).toEqual(['/projects/kitchen-essex', '/portfolio', '/', '/api/sitemap', '/sitemap.xml']);
+    expect(projectPagePaths()).toEqual(['/portfolio', '/', '/api/sitemap', '/sitemap.xml']);
+    expect(projectPagePaths('../evil')).toEqual(['/portfolio', '/', '/api/sitemap', '/sitemap.xml']);
     expect(read('src/lib/projects/http.ts')).toContain('projectPagePaths(slug)');
   });
 
   test('the sitemap is ISR and a failed database read throws instead of listing nothing', () => {
-    const src = read('src/app/sitemap.ts');
-    expect(src).toMatch(/export const revalidate = \d+/);
+    expect(read('src/app/api/sitemap/route.ts')).toMatch(/export const revalidate = \d+/);
+    const src = read('src/lib/sitemap.ts');
     expect(src).toContain("readOrThrow('blog posts'");
     expect(src).toContain("readOrThrow('projects'");
     expect(src).toMatch(/throw new Error\(`sitemap: /);
   });
 
   test('the sitemap reads carry the sitemap tag, and all three writers expire it', () => {
-    // revalidatePath('/sitemap.xml') alone does not refresh the metadata route on Vercel.
+    // The writers revalidate '/api/sitemap' (projectPagePaths, blogPagePaths) and expire the tag.
     expect(SITEMAP_TAG).toBe('sitemap');
-    expect(read('src/app/sitemap.ts')).toMatch(/unstable_cache\([\s\S]*tags: \[SITEMAP_TAG\], revalidate: 3600/);
+    expect(read('src/lib/sitemap.ts')).toMatch(/unstable_cache\([\s\S]*tags: \[SITEMAP_TAG\], revalidate: 3600/);
     for (const file of ['src/lib/articles/revalidate.ts', 'src/lib/projects/http.ts', 'src/app/api/admin/revalidate/route.ts']) {
       expect(read(file), file).toContain('revalidateTag(SITEMAP_TAG, { expire: 0 })');
     }

@@ -57,7 +57,7 @@ test.describe('source checks', () => {
   });
 
   test('LP10: the sitemap lists /home-services and every catalog service page', () => {
-    const src = read('src/app/sitemap.ts');
+    const src = read('src/lib/sitemap.ts');
     expect(src).toContain('`${baseUrl}/home-services`');
     // Active services only, from the table (CAT4); the fixed slugs stand in when the read fails.
     expect(src).toContain('await getCatalog()');

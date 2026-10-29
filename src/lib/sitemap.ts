@@ -1,15 +1,39 @@
-import { MetadataRoute } from 'next'
+/**
+ * Every entry of the public sitemap, served as XML by the route handler at
+ * src/app/api/sitemap/route.ts and reached at /sitemap.xml through a rewrite
+ * in next.config.ts. Why it is not a src/app/sitemap.ts metadata route any
+ * more is explained there.
+ *
+ * The database lists are the only parts that change between deploys. Each is
+ * cached under SITEMAP_TAG, which every blog and project writer expires
+ * (revalidateArticlePages, revalidateProjectPages and /api/admin/revalidate)
+ * along with revalidatePath('/api/sitemap').
+ */
+import type { MetadataRoute } from 'next'
 import { unstable_cache } from 'next/cache'
 import { PHASE_PRODUCTION_BUILD } from 'next/constants'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { Database } from '@/integrations/supabase/types'
+import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '@/integrations/supabase/types'
 import { getAllResourceSlugs } from '@/data/resourceData'
 import { SERVICE_SLUGS } from '@/lib/home-services/catalog'
 import { getCatalog } from '@/lib/home-services/catalogData'
 import { SITEMAP_TAG } from '@/lib/revalidate'
 
-// Create a static client for build-time data fetching (no cookies/SSR)
-function getStaticSupabaseClient() {
+export const SITE_URL = 'https://www.lavacagc.com'
+
+export type SitemapDb = SupabaseClient<Database>
+export type SitemapPost = { slug: string; updated_at: string }
+export type SitemapProject = { url_slug: string; updated_at: string }
+
+/** Where the changing parts of the sitemap come from. */
+export interface SitemapSources {
+  posts: () => Promise<SitemapPost[]>
+  projects: () => Promise<SitemapProject[]>
+  homeServiceSlugs: () => Promise<string[]>
+}
+
+// A static client for data fetching (no cookies), so the route stays cacheable.
+function getStaticSupabaseClient(): SitemapDb {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   return createSupabaseClient<Database>(supabaseUrl, supabaseKey)
@@ -17,30 +41,37 @@ function getStaticSupabaseClient() {
 
 const isBuildOffVercel = () => process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD && !process.env.VERCEL
 
-// Each database list is cached under SITEMAP_TAG, which every blog and project
-// writer expires. A failed read throws inside the cache, so it is never stored.
-function cachedRows<T>(
-  key: string,
-  read: () => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
-): () => Promise<T[]> {
-  return unstable_cache(async () => {
-    const { data, error } = await read()
-    if (error) throw new Error(error.message)
-    return data ?? []
-  }, ['sitemap', key], { tags: [SITEMAP_TAG], revalidate: 3600 })
+type RowsResult<T> = PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+
+/** Published blog posts only: a draft or an unpublished post is never listed. */
+export function selectPublishedPosts(db: SitemapDb): RowsResult<SitemapPost> {
+  return db
+    .from('blog_posts')
+    .select('slug, updated_at, published')
+    .eq('published', true)
+    .order('updated_at', { ascending: false })
 }
 
-const readPosts = cachedRows('blog-posts', () => getStaticSupabaseClient()
-  .from('blog_posts')
-  .select('slug, updated_at, published')
-  .eq('published', true)
-  .order('updated_at', { ascending: false }))
+/** Active projects only: a draft project is never listed. */
+export function selectActiveProjects(db: SitemapDb): RowsResult<SitemapProject> {
+  return db
+    .from('projects')
+    .select('url_slug, updated_at, active')
+    .eq('active', true)
+    .order('updated_at', { ascending: false })
+}
 
-const readProjects = cachedRows('projects', () => getStaticSupabaseClient()
-  .from('projects')
-  .select('url_slug, updated_at, active')
-  .eq('active', true)
-  .order('updated_at', { ascending: false }))
+async function rowsOrThrow<T>(read: () => RowsResult<T>): Promise<T[]> {
+  const { data, error } = await read()
+  if (error) throw new Error(error.message)
+  return data ?? []
+}
+
+// Each database list is cached under SITEMAP_TAG, which every blog and project
+// writer expires. A failed read throws inside the cache, so it is never stored.
+function cachedRows<T>(key: string, read: () => RowsResult<T>): () => Promise<T[]> {
+  return unstable_cache(() => rowsOrThrow(read), ['sitemap', key], { tags: [SITEMAP_TAG], revalidate: 3600 })
+}
 
 async function readOrThrow<T>(what: string, read: () => Promise<T[]>): Promise<T[]> {
   try {
@@ -53,18 +84,39 @@ async function readOrThrow<T>(what: string, read: () => Promise<T[]>): Promise<T
   }
 }
 
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = 'https://www.lavacagc.com'
-  const currentDate = new Date()
-  // Only the services the admin has switched on get an entry (CAT4). The read
-  // is the same tagged cache the pages use; if it fails the seven fixed slugs
-  // stand in, so a database blip never empties the sitemap.
-  const homeServiceSlugs = await getCatalog()
-    .then((services) => services.map((service) => service.slug))
-    .catch((err) => {
+/**
+ * The sources the live sitemap uses: the tagged caches above, and the home
+ * services catalog (the same tagged cache the pages use). If the catalog read
+ * fails the seven fixed slugs stand in, so a database blip never empties the
+ * sitemap of its service pages.
+ */
+export const cachedSitemapSources: SitemapSources = {
+  posts: cachedRows('blog-posts', () => selectPublishedPosts(getStaticSupabaseClient())),
+  projects: cachedRows('projects', () => selectActiveProjects(getStaticSupabaseClient())),
+  homeServiceSlugs: async () => {
+    try {
+      return (await getCatalog()).map((service) => service.slug)
+    } catch (err) {
       console.error('sitemap: home services read failed, listing every slug:', err instanceof Error ? err.message : String(err))
       return [...SERVICE_SLUGS]
-    })
+    }
+  },
+}
+
+/** Uncached sources over a given client (scripts and unit tests, outside Next). */
+export function sitemapSourcesFrom(db: SitemapDb, homeServiceSlugs: readonly string[] = SERVICE_SLUGS): SitemapSources {
+  return {
+    posts: () => rowsOrThrow(() => selectPublishedPosts(db)),
+    projects: () => rowsOrThrow(() => selectActiveProjects(db)),
+    homeServiceSlugs: async () => [...homeServiceSlugs],
+  }
+}
+
+export async function buildSitemapEntries(sources: SitemapSources = cachedSitemapSources): Promise<MetadataRoute.Sitemap> {
+  const baseUrl = SITE_URL
+  const currentDate = new Date()
+  // Only the services the admin has switched on get an entry (CAT4).
+  const homeServiceSlugs = await sources.homeServiceSlugs()
   // Home services pages come in English and Spanish (?lang=es); both entries
   // carry the same hreflang set the pages declare in <head>.
   const homeServicesAlternates = (suffix: string) => ({
@@ -306,8 +358,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Builds off Vercel (pre-push, CI, the gate) point at a stub or at nothing,
   // so there the database entries are left out and the build goes on.
   const [posts, projects] = await Promise.all([
-    readOrThrow('blog posts', readPosts),
-    readOrThrow('projects', readProjects),
+    readOrThrow('blog posts', sources.posts),
+    readOrThrow('projects', sources.projects),
   ])
 
   posts.forEach(post => {
@@ -330,14 +382,3 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return routes
 }
-
-
-// ISR, explicit: the sitemap regenerates at least hourly. On-demand refresh
-// does NOT come from revalidatePath('/sitemap.xml'): on Vercel that call does
-// not take effect for this metadata route (2026-10-29, an article published at
-// 20:47Z was still missing at 21:00Z, x-vercel-cache HIT, while the hourly
-// regeneration at 20:37Z had picked up one published at 20:28Z). So the post
-// and project reads above are cached under SITEMAP_TAG, and every blog and
-// project writer (revalidateArticlePages, revalidateProjectPages and
-// /api/admin/revalidate) expires that tag alongside the path.
-export const revalidate = 3600;
