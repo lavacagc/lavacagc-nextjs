@@ -20,6 +20,12 @@
 --    on that publish; this column is the audit trail. Written only by
 --    /api/admin/articles/<id>/publish with an admin session. Guarded like the
 --    other blog_posts columns because the table has no migration of its own.
+--
+-- 3. blog_posts.publish_nonce: a random value stamped on every draft-to-live
+--    publish and carried in the signed one-tap unpublish link, so a link works
+--    only for the publication it was minted for. published_at alone is not
+--    enough: an unpublish and republish within one second truncate to the same
+--    second (slice G review, fix 2).
 
 DO $$
 BEGIN
@@ -38,5 +44,6 @@ BEGIN
 
   IF to_regclass('public.blog_posts') IS NOT NULL THEN
     ALTER TABLE public.blog_posts ADD COLUMN IF NOT EXISTS review_override jsonb;
+    ALTER TABLE public.blog_posts ADD COLUMN IF NOT EXISTS publish_nonce text;
   END IF;
 END $$;

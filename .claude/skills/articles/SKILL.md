@@ -10,7 +10,9 @@ The site's publish guard is the last gate: it holds any article with a price cla
 Your job is that the guard never has to hold yours.
 
 Everything runs through one CLI, `scripts/ingest-article.mjs` (full flags: `node scripts/ingest-article.mjs --help`, the API: `docs/articles-ingest.md`).
-It needs `PROJECT_INGEST_TOKEN` in the shell; `--site` defaults to production, so pass `--site http://localhost:<port>` on the local rig.
+It needs `PROJECT_INGEST_TOKEN` in the shell.
+`--site` defaults to the LIVE site: on the local rig, a dry run or a test, pass `--site http://localhost:<port>` on every command, or you publish to production.
+Write `article.md` and `faq.json` in a scratch folder outside the repo (for example `$TMPDIR/articles/<slug>/`), never in the working tree.
 
 ## 1. Read the feedback
 
@@ -30,6 +32,7 @@ In this order, take the first that applies:
 2. An open action from the summary (`new`, `refresh` or `consolidate`); keep its id.
 3. A decaying page that is a blog post (it shows `post <id>`): a refresh of that post.
 4. A new-article candidate query with real impressions.
+5. Nothing above (an empty feedback and no topic from Alex): one question homeowners ask about a home service, for one county in `counties`; say in the report that you chose it.
 
 Write down, before drafting: the target (new post, or the post id you refresh), the action id if any, the one question the article answers, and the town and county it is for.
 
@@ -42,13 +45,13 @@ The shape, every item required:
 - `##` sections for the rest; at least one.
 - At least three internal links, such as `/home-services/<slug>`, `/services/<slug>`, `/locations/<slug>`, `/free-estimate`, `/process`.
 - One FAQ block of 2 to 6 real questions in `faq.json` (required when the title starts with How, What, Why, When, Should, Can, Does or Is).
-- At least one town and one county from `counties`, and the `service_area` fact sentence, worded as the fact says.
+- At least one county from `counties` and a town inside one of those counties (only `counties` decides where; never a town outside them), and the `service_area` fact sentence, worded as the fact says.
 - Phone and license exactly as the locked facts give them, or not at all.
 
 Claims you leave out (the guard holds them, so write around them):
 
 - **Prices**: no dollar amounts, per-square-foot prices, "starting at", "costs N", discounts or percentages off.
-  The one exception is a home-services starting price quoted exactly as `/home-services` shows it, in a paragraph that names that service.
+  The one exception is a home service's starting price (the main price on `/home-services`, not a second line such as "Two story from $349"), quoted exactly, as a starting price, in a paragraph that names that service; never inside "save", "off" or "discount" wording.
 - **Legal**: no permits, code compliance, warranties, guarantees, insured, bonded, liability, lawsuits, ADA, OSHA, EPA, lead-safe, asbestos or mold remediation.
   The one exception is a locked `claim_*` fact sentence, quoted verbatim.
   Explain what the homeowner should ask their town or check themselves instead of promising anything.
@@ -84,7 +87,8 @@ node scripts/ingest-article.mjs publish <post id> [--action <action id>]
 ```
 
 - Exit 0: it is live. Report the URL, the unpublish link and the Telegram status it printed.
-- Exit 2: the guard held it and printed the reasons. Fix each reason in `article.md`, `patch`, and `publish` again.
+- Exit 2: the guard held it and printed the reasons. "paragraph N" counts every blank-line block, headings and lists included.
+  Fix each reason in `article.md`, `patch`, and `publish` again.
   If a reason is a claim the article cannot do without, stop and leave it held for Alex; report the reasons and the admin link.
   Only Alex can publish over a hold ("Publish anyway" in the admin); never work around the guard.
 - Exit 1: an error; report it.

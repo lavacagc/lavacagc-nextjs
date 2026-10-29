@@ -15,7 +15,7 @@ Every new article passes every item; a refresh passes every item it touches.
 
 ## Local SEO
 
-- [ ] At least one town and one county from `counties` in the feedback, in the opening or the first `##` section, used naturally.
+- [ ] At least one town and one county, the county from `counties` in the feedback and the town inside it, in the opening or the first `##` section, used naturally.
 - [ ] The `service_area` fact sentence, worded as the fact says.
 - [ ] Local specifics that are true and need no promise: housing stock, seasons and weather, what a homeowner should ask their town.
 - [ ] Internal links that keep the visit local and on a path: the matching `/home-services/<slug>` or `/services/<slug>` page, a `/locations/<slug>` page for the town or county when one exists, and `/free-estimate`.

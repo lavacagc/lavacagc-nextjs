@@ -345,12 +345,12 @@ export default function AdminContent() {
                 <BlogPostEditor
                   postId={editingPost}
                   onSave={() => {
+                    // The editor shows its own result toast (saved, scheduled,
+                    // published, or "Published anyway"); with one toast on
+                    // screen at a time (TOAST_LIMIT 1), a second one here would
+                    // replace it before Alex reads it (slice G review, fix 3).
                     setEditingPost(null);
                     setActiveTab('blog');
-                    toast({
-                      title: "Success",
-                      description: "Blog post saved successfully!"
-                    });
                   }}
                   onCancel={() => {
                     setEditingPost(null);

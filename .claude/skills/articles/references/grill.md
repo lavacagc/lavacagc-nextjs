@@ -9,7 +9,7 @@ Fix every fail in the draft and grill again; the draft is ready only when every 
 | Source | Where you read it | What it settles |
 | --- | --- | --- |
 | `content_facts` | `facts` in `node scripts/ingest-article.mjs feedback` (locked rows only) | `phone_main`, `hic_number`, `email_info`, `service_area`, `current_year`, and any approved `claim_*` sentence |
-| `COUNTIES` | `counties` in the same feedback (from `src/lib/home-services/catalog.ts`) | The counties the home services cover; towns must sit in one of them |
+| `COUNTIES` | `counties` in the same feedback (from `src/lib/home-services/catalog.ts`) | The only counties an article may target; every town named must sit in one of them (check the town's county, for example on its `/locations/<slug>` page) |
 | The service-area sentence | the `service_area` fact | How the article states where La Vaca works |
 | The feedback endpoint | `GET /api/articles/seo-feedback` (the `feedback` command) | Which queries and pages the article targets, and their numbers |
 | The site itself | the live page you link to (`/home-services/<slug>`, `/services/<slug>`, `/locations/<slug>`) | What a service includes, its published starting price, and that the link resolves |
@@ -21,13 +21,13 @@ General knowledge about remodeling is a source only for statements a homeowner c
 - [ ] Every factual sentence is traced to a source above; list sentence and source. A sentence with no source is rewritten as general guidance or cut.
 - [ ] Phone and license appear only exactly as `phone_main` and `hic_number`, or not at all.
 - [ ] The year, when used, is `current_year`.
-- [ ] Every town named is in a county from `COUNTIES` (or in the `service_area` sentence); no town La Vaca does not serve.
+- [ ] Every town named is in a county from `COUNTIES`; the `service_area` sentence does not widen that list (it names Union county, which the home services do not cover).
 - [ ] The `service_area` fact sentence is in the article, worded as the fact says.
 - [ ] No number about La Vaca (jobs done, years in business, ratings, review counts) unless a source above states it.
 
 ## 2. Claims the guard holds
 
-- [ ] No price: no dollar amount, per-unit price, "starting at", "costs N", estimate or quote figure, discount or percentage off, unless it is a home-services starting price exactly as the service page shows it, in a paragraph naming that service.
+- [ ] No price: no dollar amount, per-unit price, "starting at", "costs N" (a year-shaped number counts), estimate or quote figure, discount, or percentage off (in digits or words), unless it is a home service's main starting price exactly as the service page shows it, in its unit, stated as a starting price in a paragraph naming that service.
 - [ ] No legal claim: permit, code compliant, to code, building code, warranty, guarantee, insured, bonded, liability, lawsuit, legal, ADA, OSHA, EPA, lead-safe, asbestos, mold remediation; unless the sentence is a locked `claim_*` fact, verbatim.
 - [ ] The title, the FAQ questions and answers, the excerpt and the meta description pass the same two checks.
 

@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { announceHeld, announcePublished, runPublishGuard } from '@/lib/articles/publishFlow';
 import { revalidateArticlePages } from '@/lib/articles/revalidate';
-import { getArticle, holdArticle } from '@/lib/articles/writer';
+import { getArticle, holdArticle, newPublishNonce } from '@/lib/articles/writer';
 import { siteOrigin } from '@/lib/projects/http';
 
 export const dynamic = 'force-dynamic';
@@ -91,14 +91,15 @@ export async function GET(request: NextRequest) {
           await announceHeld(origin, full, verdict.reasons);
           continue;
         }
+        const nonce = newPublishNonce();
         await supabaseRest(
           'PATCH',
           `blog_posts?id=eq.${post.id}`,
-          { published: true, published_at: now, review_hold: null, scheduled_publish_at: null, created_at: now, updated_at: now }
+          { published: true, published_at: now, publish_nonce: nonce, review_hold: null, scheduled_publish_at: null, created_at: now, updated_at: now }
         );
         published.push(post.title);
         slugs.push(post.slug);
-        live.push({ ...full, published: true, published_at: now });
+        live.push({ ...full, published: true, published_at: now, publish_nonce: nonce });
       } catch (err) {
         console.error(`Failed to publish "${post.title}":`, err);
       }

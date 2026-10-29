@@ -134,7 +134,7 @@ A token `patch` of a post that is already live is checked too, so a live article
 It checks, in order, and holds the article on any reason:
 
 1. The fact-lock (`validateDraft`): at least three internal links, any phone number equals `phone_main`, any HIC number equals `hic_number`.
-2. Price claims: dollar amounts, per-square-foot or per-linear-foot prices, "starting at", "from $", "costs", "cost of", "price(s)", "estimate(s) of", "quote(s) of" followed by a number, and percentages next to off, save, discount or cheaper. A home-services starting price, exactly as the catalog shows it, in a paragraph that names that service, is allowed. A bare year ("in 2026") is not a price.
+2. Price claims: dollar amounts, per-square-foot or per-linear-foot prices, "starting at", "from $", "costs", "cost of", "price(s)", "estimate(s) of", "quote(s) of" followed by a number (a year-shaped number too: "costs 2000"), and percentages, in digits or words, next to off, save, discount or cheaper. A home service's starting price, exactly as the Services & Prices table holds it and in its unit, stated as a starting price (never inside save, off or discount wording) in a paragraph that names that service, is allowed. A year in prose ("in 2026", "since 2020") is not a price.
 3. Legal claims: permit, code compliant, to code, building code, warranty, guarantee(d), insured, bonded, liability, lawsuit, legal(ly), ADA, OSHA, lead-safe, EPA, asbestos, mold remediation. A sentence that is, verbatim, the value of a locked `claim_*` fact in `content_facts` is allowed; the seeded `claim_license` and `claim_insurance` are unlocked placeholders until Alex approves their wording.
 4. Shape: the opening paragraph is 25 to 70 words with no link, there is at least one `##` heading, and a title starting with How, What, Why, When, Should, Can, Does or Is has a FAQ of 2 to 6 items.
 
@@ -158,7 +158,7 @@ When the guard holds it: `Article held for review: <title> <adminUrl>` and the f
 The admin's own publishes from the editor or list send nothing.
 
 The link opens `/articles/unpublish/<token>`, a page with the title, the slug and one Unpublish button; opening it changes nothing, the button does.
-The token is `base64url(postId.publishedAtUnix).HMAC-SHA256(INTERNAL_WEBHOOK_SECRET)`, valid 7 days, and only while the post is still live with that publish date: once used, or after the article is published again, the link answers 410.
+The token is `base64url(postId.publishedAtUnix.publishNonce).HMAC-SHA256(INTERNAL_WEBHOOK_SECRET)`, valid 7 days, and only while the post is still live with that publication's random `publish_nonce`: once used, or after the article is published again (even within the same second), the link answers 410.
 After the button Alex gets `Article unpublished: <title> <url>`.
 
 The publish response carries `unpublish_url` and `telegram` (`sent`, `not_configured` or `failed`), and the CLI prints both; Telegram never decides whether the publish happens.

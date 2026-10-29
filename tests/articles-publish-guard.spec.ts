@@ -12,7 +12,7 @@ import { announceHeld, announcePublished } from '../src/lib/articles/publishFlow
 import { renderUnpublishPage } from '../src/lib/articles/unpublishPage';
 import { isAnalyticsExcluded } from '../src/lib/analytics/excluded';
 import { isPrivateTokenPage } from '../src/lib/privatePages';
-import { HOME_SERVICES_CATALOG } from '../src/lib/home-services/catalog';
+import { HOME_SERVICES_SEED } from '../src/lib/home-services/catalogSeed';
 import type { Fact } from '../src/lib/seo/draftGuardrails';
 
 /**
@@ -47,7 +47,7 @@ const FACTS: Fact[] = [
   { key: 'claim_license', value: 'PLACEHOLDER - Alex replaces: La Vaca General Contractors is a licensed New Jersey home improvement contractor.', lock: false },
   { key: 'claim_insurance', value: 'PLACEHOLDER - Alex replaces: La Vaca General Contractors is fully insured.', lock: false },
 ];
-const CATALOG = catalogPricesFrom(HOME_SERVICES_CATALOG);
+const CATALOG = catalogPricesFrom(HOME_SERVICES_SEED);
 const facts = (extra: Fact[] = []): PublishFacts => ({ contentFacts: [...FACTS, ...extra], catalogPrices: CATALOG });
 
 /** 40 words, no link, no claim: a clean answer-first opening. */
@@ -118,10 +118,34 @@ test.describe('PG1: checkPublishable', () => {
       .toEqual(['Price claim: "starts at $2,095" in paragraph 3']);
   });
 
-  test('a range is one claim, and a year is not a price', () => {
+  test('a range is one claim, and a year in prose is not a price', () => {
     expect(reasonsOf(article('Most kitchens land between $9,000 to $12,000 all in.')))
       .toEqual(['Price claim: "$9,000 to $12,000" in paragraph 3']);
     expect(reasonsOf(article('The cost of a kitchen remodel in 2026 depends on the cabinets you keep.'))).toEqual([]);
+    expect(reasonsOf(article('Prices rose since 2020 across the county.'))).toEqual([]);
+  });
+
+  test('fix 1: a year-shaped number right after a price word is a price', () => {
+    expect(reasonsOf(article('A small bathroom costs 2000 or more.'))).toEqual(['Price claim: "costs 2000" in paragraph 3']);
+    expect(reasonsOf(article('A small bathroom costs 1950 or more.'))).toEqual(['Price claim: "costs 1950" in paragraph 3']);
+    expect(reasonsOf(article('The cost of 2000 covers the doors.'))).toEqual(['Price claim: "cost of 2000" in paragraph 3']);
+  });
+
+  test('fix 1 (review advisories): a catalog price only as the starting price, in its own unit; worded discounts; whole locked sentences', () => {
+    // A catalog amount inside saving or discount wording is a claim.
+    expect(reasonsOf(article('Save $2,095 on cabinet repainting this month.'))).toEqual(['Price claim: "Save $2,095" in paragraph 3']);
+    expect(reasonsOf(article('Cabinet repainting is $2,095 off this week.'))).toEqual(['Price claim: "$2,095" in paragraph 3']);
+    // The unit must match the catalog's.
+    expect(reasonsOf(article('Exterior painting is $2.95 per linear foot.'))).toEqual(['Price claim: "$2.95 per linear foot" in paragraph 3']);
+    expect(reasonsOf(article('Exterior painting is $2.95 per square foot.'))).toEqual([]);
+    // Worded percentages.
+    expect(reasonsOf(article('Get twenty percent off the second room.'))).toEqual(['Price claim: "twenty percent off" in paragraph 3']);
+    expect(reasonsOf(article('Spring jobs are half off.'))).toEqual(['Price claim: "half off" in paragraph 3']);
+    // A locked sentence counts only as a whole sentence.
+    const locked: Fact = { key: 'claim_insurance', value: 'La Vaca General Contractors is fully insured.', lock: true };
+    const f: PublishFacts = { contentFacts: [...FACTS, locked], catalogPrices: CATALOG };
+    expect(reasonsOf(article('It is not true that La Vaca General Contractors is fully insured.'), f).length).toBe(1);
+    expect(reasonsOf(article('Good news. La Vaca General Contractors is fully insured. Ask for it.'), f)).toEqual([]);
   });
 
   const LEGAL_CASES: Array<[string, string]> = [
@@ -240,19 +264,33 @@ test.describe('PG1: checkPublishable', () => {
 const SECRET = 's'.repeat(40);
 const POST_ID = '11111111-2222-4333-8444-555555555555';
 const PUBLISHED_AT = '2026-10-30T12:00:00.123456+00:00';
+const NONCE = 'n0nceN0nce-abc_12345678';
+const PUB = { id: POST_ID, published_at: PUBLISHED_AT, publish_nonce: NONCE };
 
 test.describe('TG: the signed unpublish link', () => {
-  test('the token is base64url(id.publishedAtUnix).HMAC and reads back', () => {
-    const token = signUnpublishToken(POST_ID, PUBLISHED_AT, SECRET)!;
+  test('the token is base64url(id.publishedAtUnix.nonce).HMAC and reads back', () => {
+    const token = signUnpublishToken(PUB, SECRET)!;
     const [payload, signature] = token.split('.');
-    expect(Buffer.from(payload, 'base64url').toString()).toBe(`${POST_ID}.${Math.floor(Date.parse(PUBLISHED_AT) / 1000)}`);
+    const unix = Math.floor(Date.parse(PUBLISHED_AT) / 1000);
+    expect(Buffer.from(payload, 'base64url').toString()).toBe(`${POST_ID}.${unix}.${NONCE}`);
     expect(signature).toMatch(/^[A-Za-z0-9_-]{43}$/);
     const now = Date.parse(PUBLISHED_AT) + 60_000;
-    expect(readUnpublishToken(token, now, SECRET)).toEqual({ ok: true, postId: POST_ID, publishedAtUnix: Math.floor(Date.parse(PUBLISHED_AT) / 1000) });
+    expect(readUnpublishToken(token, now, SECRET)).toEqual({ ok: true, postId: POST_ID, publishedAtUnix: unix, nonce: NONCE });
+  });
+
+  test('fix 2: two publications in the same second get different links, and only the current one is accepted', () => {
+    const first = signUnpublishToken(PUB, SECRET)!;
+    const second = signUnpublishToken({ ...PUB, published_at: '2026-10-30T12:00:00.900+00:00', publish_nonce: 'otherNonce_987654321' }, SECRET)!;
+    expect(second).not.toBe(first);
+    const reading = readUnpublishToken(first, Date.parse(PUBLISHED_AT), SECRET);
+    if (!reading.ok) throw new Error('expected a valid reading');
+    // Same second, new publication: the old link is dead.
+    expect(isTokenCurrent(reading, { published: true, published_at: '2026-10-30T12:00:00.900+00:00', publish_nonce: 'otherNonce_987654321' })).toBe(false);
+    expect(signUnpublishToken({ ...PUB, publish_nonce: '' }, SECRET)).toBeNull();
   });
 
   test('TG2 (pure): tampered, expired, short-secret and republished links are refused', () => {
-    const token = signUnpublishToken(POST_ID, PUBLISHED_AT, SECRET)!;
+    const token = signUnpublishToken(PUB, SECRET)!;
     const now = Date.parse(PUBLISHED_AT);
     const flip = (s: string, i: number) => s.slice(0, i) + (s[i] === 'A' ? 'B' : 'A') + s.slice(i + 1);
     expect(readUnpublishToken(flip(token, token.length - 2), now, SECRET)).toEqual({ ok: false, reason: 'bad_signature' });
@@ -261,14 +299,15 @@ test.describe('TG: the signed unpublish link', () => {
     expect(readUnpublishToken('nonsense', now, SECRET)).toEqual({ ok: false, reason: 'malformed' });
     expect(readUnpublishToken(token, now + UNPUBLISH_LINK_TTL_SECONDS * 1000 - 1000, SECRET).ok).toBe(true);
     expect(readUnpublishToken(token, now + UNPUBLISH_LINK_TTL_SECONDS * 1000 + 1000, SECRET)).toEqual({ ok: false, reason: 'expired' });
-    expect(signUnpublishToken(POST_ID, PUBLISHED_AT, null)).toBeNull();
+    expect(signUnpublishToken(PUB, null)).toBeNull();
     expect(readUnpublishToken(token, now, null)).toEqual({ ok: false, reason: 'disabled' });
 
     const reading = readUnpublishToken(token, now, SECRET);
     if (!reading.ok) throw new Error('expected a valid reading');
-    expect(isTokenCurrent(reading, { published: true, published_at: PUBLISHED_AT })).toBe(true);
-    expect(isTokenCurrent(reading, { published: false, published_at: PUBLISHED_AT })).toBe(false);
-    expect(isTokenCurrent(reading, { published: true, published_at: '2026-10-31T09:00:00+00:00' })).toBe(false);
+    expect(isTokenCurrent(reading, { published: true, published_at: PUBLISHED_AT, publish_nonce: NONCE })).toBe(true);
+    expect(isTokenCurrent(reading, { published: false, published_at: PUBLISHED_AT, publish_nonce: NONCE })).toBe(false);
+    expect(isTokenCurrent(reading, { published: true, published_at: '2026-10-31T09:00:00+00:00', publish_nonce: NONCE })).toBe(false);
+    expect(isTokenCurrent(reading, { published: true, published_at: PUBLISHED_AT, publish_nonce: null })).toBe(false);
   });
 
   test('SEC2: the signature is compared with timingSafeEqual', () => {
@@ -302,10 +341,10 @@ test.describe('TG: Telegram messages and the outgoing request (fetch mocked)', (
     process.env.TELEGRAM_BOT_TOKEN = 'test-bot-token';
     process.env.TELEGRAM_CHAT_ID = '4242';
     process.env.INTERNAL_WEBHOOK_SECRET = SECRET;
-    const live = { id: POST_ID, title: 'Cabinets <fast> & clean', slug: 'cabinets-fast', published_at: PUBLISHED_AT };
+    const live = { id: POST_ID, title: 'Cabinets <fast> & clean', slug: 'cabinets-fast', published_at: PUBLISHED_AT, publish_nonce: NONCE };
     const out = await announcePublished('https://www.lavacagc.com', live);
     expect(out.telegram).toBe('sent');
-    const token = signUnpublishToken(POST_ID, PUBLISHED_AT, SECRET)!;
+    const token = signUnpublishToken(PUB, SECRET)!;
     expect(out.unpublishUrl).toBe(`https://www.lavacagc.com/articles/unpublish/${token}`);
 
     expect(calls).toHaveLength(1);
@@ -336,7 +375,7 @@ test.describe('TG: Telegram messages and the outgoing request (fetch mocked)', (
     delete process.env.TELEGRAM_BOT_TOKEN;
     delete process.env.TELEGRAM_CHAT_ID;
     process.env.INTERNAL_WEBHOOK_SECRET = SECRET;
-    const out = await announcePublished('https://www.lavacagc.com', { id: POST_ID, title: 'T', slug: 't', published_at: PUBLISHED_AT });
+    const out = await announcePublished('https://www.lavacagc.com', { id: POST_ID, title: 'T', slug: 't', published_at: PUBLISHED_AT, publish_nonce: NONCE });
     expect(out.telegram).toBe('not_configured');
     expect(out.unpublishUrl).toMatch(/\/articles\/unpublish\//);
     expect(calls).toHaveLength(0);
@@ -452,7 +491,7 @@ test.describe('SK: the articles skill', () => {
 
   test('SEO3: the local-SEO checklist requires a town, a county and the service-area sentence', () => {
     const aeo = read('.claude/skills/articles/references/aeo-local-seo.md');
-    expect(aeo).toMatch(/At least one town and one county from `counties`/);
+    expect(aeo).toMatch(/At least one town and one county, the county from `counties`/);
     expect(aeo).toContain('`service_area` fact sentence');
   });
 });
@@ -489,8 +528,16 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
   const cronSecret = env.CRON_SECRET;
   const secret = env.INTERNAL_WEBHOOK_SECRET;
   const service = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` };
-  const ip = `198.51.100.${(Date.now() % 200) + 20}`;
+  /**
+   * This run's own client IP (198.18.0.0/15, the benchmarking range), sent on
+   * every call that is rate limited, so the buckets `articles:<ip>` and
+   * `article-unpublish:<ip>` are ours alone and cleanup touches nothing else
+   * on the shared rig (slice G review, fix 4).
+   */
+  const octet = () => Math.floor(Math.random() * 254) + 1;
+  const ip = `198.18.${octet()}.${octet()}`;
   const auth = { Authorization: `Bearer ${token}`, 'cf-connecting-ip': ip };
+  const asClient = { 'cf-connecting-ip': ip };
 
   async function rest<T = unknown>(request: APIRequestContext, method: string, path: string, data?: unknown): Promise<T> {
     const res = await request.fetch(`${supabaseUrl}/rest/v1/${path}`, {
@@ -504,8 +551,9 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
   }
 
   async function clearRateLimits(request: APIRequestContext) {
-    await request.delete(`${supabaseUrl}/rest/v1/rate_limits?ip_address=like.articles:*`, { headers: service });
-    await request.delete(`${supabaseUrl}/rest/v1/rate_limits?ip_address=like.article-unpublish:*`, { headers: service });
+    // Only this run's two buckets; never a wildcard.
+    const own = [`"articles:${ip}"`, `"article-unpublish:${ip}"`].join(',');
+    await request.delete(`${supabaseUrl}/rest/v1/rate_limits?ip_address=in.(${encodeURIComponent(own)})`, { headers: service });
   }
 
   async function signIn(page: Page) {
@@ -524,7 +572,7 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
 
   const body = (...middle: string[]) => article(...middle).content;
   const row = async (request: APIRequestContext, id: string) =>
-    (await rest<Array<Record<string, unknown>>>(request, 'GET', `blog_posts?select=published,published_at,review_hold,review_override,content,scheduled_publish_at&id=eq.${id}`))[0];
+    (await rest<Array<Record<string, unknown>>>(request, 'GET', `blog_posts?select=published,published_at,publish_nonce,review_hold,review_override,content,scheduled_publish_at&id=eq.${id}`))[0];
   const status = async (request: APIRequestContext, path: string) => (await request.get(path, { maxRedirects: 0 })).status();
   const localPath = (url: string) => url.replace(/^https?:\/\/[^/]+/, '');
 
@@ -660,6 +708,11 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
     const res = await published;
     expect(res.status()).toBe(200);
     expect(await res.json()).toMatchObject({ published: true, overridden: true, slug: heldSlug });
+    // Fix 3: Alex sees that his override was recorded; no generic toast replaces it.
+    await expect(page.getByText('Published over the review hold; your override is recorded.')).toBeVisible();
+    await page.waitForTimeout(1500);
+    await expect(page.getByText('Published over the review hold; your override is recorded.')).toBeVisible();
+    await expect(page.getByText('Blog post saved successfully!')).toHaveCount(0);
 
     const r = await row(request, heldId);
     expect(r.published).toBe(true);
@@ -727,7 +780,7 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
     const r = await row(request, post.id);
     expect(r.published).toBe(true);
     // The link is the one the Telegram carries: signed for this id and this published_at.
-    const expected = unpublishLink(new URL(out.url).origin, signUnpublishToken(post.id, r.published_at as string, secret)!);
+    const expected = unpublishLink(new URL(out.url).origin, signUnpublishToken({ id: post.id, published_at: r.published_at as string, publish_nonce: r.publish_nonce as string }, secret)!);
     expect(liveLink).toBe(expected);
     expect(await status(request, `/blog/${post.slug}`)).toBe(200);
     // Warm the cached copies, so on a production build TG1 proves the one-tap unpublish revalidates them.
@@ -750,6 +803,8 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
   });
 
   test('TG1: opening the link renders the one-button page; the button unpublishes and the page says so', async ({ page, request }) => {
+    // The button's POST is rate limited by IP: send this run's IP so the bucket is ours.
+    await page.setExtraHTTPHeaders(asClient);
     await page.goto(localPath(liveLink));
     await expect(page.getByRole('heading', { name: 'Unpublish this article?' })).toBeVisible();
     await expect(page.getByTestId('unpublish-title')).toHaveText(`${PREFIX} Clean Timeline`);
@@ -770,7 +825,7 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
   test('TG2: a used, tampered, expired or superseded link renders 410 and changes nothing', async ({ request }) => {
     // Used: the post is down now.
     expect(await status(request, localPath(liveLink))).toBe(410);
-    expect((await request.post(localPath(liveLink).replace('/articles/unpublish/', '/api/articles/unpublish/'))).status()).toBe(410);
+    expect((await request.post(localPath(liveLink).replace('/articles/unpublish/', '/api/articles/unpublish/'), { headers: asClient })).status()).toBe(410);
 
     // Republished: the old link stays dead, the new one works.
     const again = await (await request.post(`/api/articles/ingest/${liveId}/publish`, { headers: auth })).json();
@@ -782,16 +837,17 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
     // Tampered.
     const tampered = again.unpublish_url.replace(/.$/, (c: string) => (c === 'A' ? 'B' : 'A'));
     expect(await status(request, localPath(tampered))).toBe(410);
-    const tamperedPost = await request.post(localPath(tampered).replace('/articles/unpublish/', '/api/articles/unpublish/'));
+    const tamperedPost = await request.post(localPath(tampered).replace('/articles/unpublish/', '/api/articles/unpublish/'), { headers: asClient });
     expect(tamperedPost.status()).toBe(410);
     expect(await tamperedPost.text()).toContain('This link no longer works');
 
     // Expired: published 8 days ago, and the link for that publication.
     const old = new Date(Date.now() - 8 * 86_400_000).toISOString();
     await rest(request, 'PATCH', `blog_posts?id=eq.${liveId}`, { published_at: old });
-    const expired = signUnpublishToken(liveId, old, secret)!;
+    const nonce = (await row(request, liveId)).publish_nonce as string;
+    const expired = signUnpublishToken({ id: liveId, published_at: old, publish_nonce: nonce }, secret)!;
     expect(await status(request, `/articles/unpublish/${expired}`)).toBe(410);
-    expect((await request.post(`/api/articles/unpublish/${expired}`)).status()).toBe(410);
+    expect((await request.post(`/api/articles/unpublish/${expired}`, { headers: asClient })).status()).toBe(410);
 
     // None of that changed anything.
     expect((await row(request, liveId)).published).toBe(true);
@@ -822,6 +878,31 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
     // The placeholders are unlocked, so they are not offered as quotable.
     expect(keys).not.toContain('claim_license');
     expect(fb.counties).toEqual(['Essex', 'Morris', 'Bergen']);
+  });
+
+  test('a price edited in Services & Prices is the price the guard allows on the next publish', async ({ page, request }) => {
+    await signIn(page);
+    const [seed] = await rest<Array<{ price_display_en: string; price_display_es: string; starting_price_cents: number }>>(
+      request, 'GET', 'home_services?select=price_display_en,price_display_es,starting_price_cents&slug=eq.cabinet-repainting');
+    const edit = (data: Record<string, unknown>) => page.request.patch('/api/admin/home-services/cabinet-repainting', { data });
+    const newPost = async (amount: string) => create(request, `Catalog ${amount.replace(/\D/g, '')}`, body(`Cabinet repainting starts at ${amount} for a standard kitchen.`));
+    const publish = async (id: string) => request.post(`/api/articles/ingest/${id}/publish`, { headers: auth });
+    try {
+      const before = await newPost('$2,195');
+      expect((await publish(before.id)).status()).toBe(409);
+
+      expect((await edit({ price_display_en: '$2,195', price_display_es: '$2,195', starting_price_cents: 219500 })).status()).toBe(200);
+      const after = await newPost('$2,195');
+      expect((await publish(after.id)).status()).toBe(200);
+      // The old price is no longer the published one.
+      const old = await newPost(seed.price_display_en);
+      const held = await publish(old.id);
+      expect(held.status()).toBe(409);
+      expect((await held.json()).hold).toEqual([`Price claim: "starts at ${seed.price_display_en}" in paragraph 3`]);
+      await request.post(`/api/articles/ingest/${after.id}/unpublish`, { headers: auth });
+    } finally {
+      expect((await edit(seed)).status()).toBe(200);
+    }
   });
 
   test('the publish cron runs the guard: a held post stays a draft with its schedule cleared, a clean one goes live', async ({ request }) => {

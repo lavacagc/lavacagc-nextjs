@@ -110,3 +110,39 @@ No new environment variable is added.
 - `loadCatalogPrices()` reads the code catalog (`HOME_SERVICES_CATALOG`), because slice E's `getCatalog()` is not on this branch; the follow-ups say to switch it when E merges, so an admin price change is what the guard allows.
 - The Telegram messages were never sent to a real bot: the rig has none by design, and the brief forbids the production bot. The outgoing request is proven by the mocked-fetch specs only.
 - The `service_area` fact names Union county, which `COUNTIES` does not; left for Alex in the follow-ups rather than changed.
+
+## Fix round 1
+
+Review: `docs/phase-2/reports/slice-g-review.md` (REJECT, four fixes), taken with `git merge --ff-only f8ac613`.
+Then `git merge feat/phase-2-admin-catalog-articles-experiments` (Phase 2 branch at `4ddfa0f`, slice E merged), clean.
+
+### The four fixes
+
+| Fix | Change | Evidence |
+| --- | --- | --- |
+| 1. `costs 2000` passed | `PRICE_WORD_RE` now skips a 19xx or 20xx number only when it reads as a year in prose (right after in, since, during, until or through), so `costs 2000`, `costs 1950` and `cost of 2000` are claims and "the cost of a kitchen remodel in 2026" is not. Review advisories folded in: a catalog amount inside save, off, discount, rebate, deal or sale wording is a claim ("Save $2,095 on cabinet repainting" holds); a quoted unit must match the catalog's ("$2.95 per linear foot" holds for exterior painting, "per square foot" passes); worded percentages ("twenty percent off", "half off") are claims; a locked `claim_*` sentence is honoured only as a whole sentence ("It is not true that ..." holds). | `fix 1: a year-shaped number right after a price word is a price`; `fix 1 (review advisories): ...`; `a range is one claim, and a year in prose is not a price` |
+| 2. Same-second republish revived an old link | Every draft-to-live publish (writer and cron) stamps a random `publish_nonce` (128 bits, new column in `20261030000002_content_facts_claims.sql`); the token is `base64url(postId.publishedAtUnix.nonce).HMAC`, and a link is current only while the live post carries that nonce. This extends the contract's token by the nonce. | Pure `fix 2: two publications in the same second get different links, and only the current one is accepted`; live `TG2` unchanged (back-to-back unpublish and republish) passed 5 runs in a row on the production build. |
+| 3. Override toast replaced | `AdminContent`'s `onSave` no longer shows its generic "Blog post saved successfully!" toast; the editor already shows the result of every save (saved, scheduled, published, published anyway), and with one toast at a time the generic one replaced it. | Live `PG3` now asserts "Published over the review hold; your override is recorded." is still visible 1.5 s later and the generic toast never appears. |
+| 4. Specs wiped every rate-limit bucket | `tests/articles-publish-guard.spec.ts` uses one per-run client IP in 198.18.0.0/15 on every rate-limited call (including the browser's unpublish POST, via `setExtraHTTPHeaders`) and deletes exactly `articles:<ip>` and `article-unpublish:<ip>`. `tests/articles-ingest.spec.ts` already had slice F's scoped cleanup from the merge. | After the runs: 0 `slice-g-%` posts, 0 rate-limit rows for the run's IPs. |
+
+### Also in this round
+
+- `loadCatalogPrices()` reads `getCatalog()` (slice E's table, active services only, cache tag invalidated on every admin save); the pure mapping takes the seed in tests.
+  Live `a price edited in Services & Prices is the price the guard allows on the next publish`: $2,195 is held, the admin route sets cabinet repainting to $2,195, a new post at $2,195 publishes, a post at the old $2,095 is now held, and the seed price is restored (verified `$2,095` in the table afterwards).
+- The skill takes the reviewer's seven notes (98 lines): the `--site` warning, a scratch folder outside the repo for the draft files, a rule for an empty feedback, towns only inside a county from `counties` (the Union county in the `service_area` sentence does not widen it), the main starting price only and never as a saving, and that "paragraph N" counts every block, headings included.
+- `HOME_SERVICES_CATALOG` is gone from `catalog.ts` after slice E; the guard spec builds its catalog from `HOME_SERVICES_SEED`.
+- Rig: `psql -f supabase/migrations/20261030000002_content_facts_claims.sql` re-applied (adds `publish_nonce`; the other statements are no-ops), then `NOTIFY pgrst, 'reload schema'`.
+
+### Commands and results
+
+| Command | Result |
+| --- | --- |
+| `npm run typecheck`, `npm run lint` | clean |
+| `npm run chaos:static` | total 0, NEW 0 |
+| `npm run build` (rig env) | exit 0 |
+| `TEST_URL=http://localhost:3119 E2E_LIVE_BACKEND=1 E2E_ISR=1 playwright test tests/articles-publish-guard.spec.ts tests/articles-ingest.spec.ts tests/seo-suggestions-ui.spec.ts tests/seo-draft-guardrails.spec.ts --project=chromium` (production build) | 120 passed, 1 skipped (ART1 over HTTP, stub only) |
+| Same build, `tests/articles-publish-guard.spec.ts` alone, 5 runs in a row | 77 passed each time (TG2 included) |
+| `npm run test:e2e -- <the slice G stub subset> tests/home-services-catalog.spec.ts --project=chromium` (`.env.local` aside) | exit 0, 253 passed, 49 skipped (live-backend specs) |
+
+Advisories not taken in this round: naming the section instead of the paragraph number in reasons (the skill now explains the count instead), the `Referrer-Policy` header being overridden by the global one (the meta tag and `rel=noreferrer` still apply), a redirect after the unpublish POST, routing admin edits of live posts through the guard, and an "Overridden" note in the list.
+The `.next` in the worktree is again the stub build from `test:e2e`.

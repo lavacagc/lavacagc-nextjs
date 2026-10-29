@@ -11,7 +11,7 @@
  *
  * Server-only.
  */
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { slugify } from '@/lib/projects/slug';
 import type { Fact } from '@/lib/seo/draftGuardrails';
@@ -40,6 +40,8 @@ export interface ArticleRow {
   faq: FaqItem[] | null;
   published: boolean;
   published_at: string | null;
+  /** Random per publication; the one-tap unpublish link carries it (migration 20261030000002). */
+  publish_nonce: string | null;
   review_hold: { reasons: string[]; checked_at: string } | null;
   /** Who cleared a hold with "Publish anyway" (migration 20261030000002). */
   review_override: { by: string; at: string; reasons: string[] } | null;
@@ -50,7 +52,7 @@ export interface ArticleRow {
 
 const ROW_COLUMNS = [
   'id', 'title', 'slug', 'content', 'category', 'excerpt', 'meta_title', 'meta_description',
-  'meta_keywords', 'featured_image', 'faq', 'published', 'published_at', 'review_hold', 'review_override', 'source',
+  'meta_keywords', 'featured_image', 'faq', 'published', 'published_at', 'publish_nonce', 'review_hold', 'review_override', 'source',
   'created_at', 'updated_at',
 ].join(',');
 
@@ -192,6 +194,11 @@ export function mergeArticle(post: ArticleRow, input: ArticleUpdate): ArticleRow
   return { ...post, ...fields, slug: input.slug || post.slug };
 }
 
+/** 128 random bits, base64url: what makes each publication's unpublish link unique. */
+export function newPublishNonce(): string {
+  return randomBytes(16).toString('base64url');
+}
+
 /**
  * Go live (ART4). `published_at` is stamped on the transition from draft to
  * live only; publishing a post that is already live keeps its date (a refresh
@@ -209,7 +216,9 @@ export async function publishArticle(
   const now = new Date().toISOString();
   await supabaseRest('PATCH', `blog_posts?id=eq.${post.id}`, {
     published: true,
-    ...(post.published && post.published_at ? {} : { published_at: now }),
+    // A new publication gets a new date and a new nonce, which retires every
+    // unpublish link minted for an earlier one, however close in time.
+    ...(post.published && post.published_at ? {} : { published_at: now, publish_nonce: newPublishNonce() }),
     review_hold: null,
     ...(opts.override ? { review_override: { by: opts.override.by, at: now, reasons: opts.override.reasons } } : {}),
     scheduled_publish_at: null,

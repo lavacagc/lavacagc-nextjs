@@ -24,15 +24,15 @@ export async function runPublishGuard(candidate: PublishCandidate, contentFacts?
 }
 
 /** The signed one-tap link for this publication, or null without INTERNAL_WEBHOOK_SECRET. */
-export function unpublishUrlFor(origin: string, live: Pick<ArticleRow, 'id' | 'published_at'>): string | null {
-  if (!live.published_at) return null;
-  const token = signUnpublishToken(live.id, live.published_at);
+export function unpublishUrlFor(origin: string, live: Pick<ArticleRow, 'id' | 'published_at' | 'publish_nonce'>): string | null {
+  if (!live.published_at || !live.publish_nonce) return null;
+  const token = signUnpublishToken({ id: live.id, published_at: live.published_at, publish_nonce: live.publish_nonce });
   return token ? unpublishLink(origin, token) : null;
 }
 
 export async function announcePublished(
   origin: string,
-  live: Pick<ArticleRow, 'id' | 'title' | 'slug' | 'published_at'>,
+  live: Pick<ArticleRow, 'id' | 'title' | 'slug' | 'published_at' | 'publish_nonce'>,
 ): Promise<{ telegram: TelegramOutcome; unpublishUrl: string | null }> {
   const unpublishUrl = unpublishUrlFor(origin, live);
   const telegram = await notifyArticlePublished({

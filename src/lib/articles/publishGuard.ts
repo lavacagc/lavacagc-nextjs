@@ -120,8 +120,12 @@ function maskLockedSentences(text: string, locked: string[]): string {
     for (;;) {
       const at = lower.indexOf(sentence, from);
       if (at < 0) break;
-      out = out.slice(0, at) + ' '.repeat(sentence.length) + out.slice(at + sentence.length);
       from = at + sentence.length;
+      // Only the sentence as a whole: "It is not true that <fact>" is not the fact.
+      const startsSentence = at === 0 || /[.!?:]["')\]]?\s+$/.test(text.slice(0, at));
+      const endsSentence = /^[.!?]?["')\]]?(?:\s|$)/.test(text.slice(at + sentence.length));
+      if (!startsSentence || !endsSentence) continue;
+      out = out.slice(0, at) + ' '.repeat(sentence.length) + out.slice(at + sentence.length);
     }
   }
   return out;
@@ -171,13 +175,28 @@ const CURRENCY_RE = new RegExp(CURRENCY_SOURCE, 'gi');
 /** A per-unit price phrase standing on its own ("priced per square foot"). */
 const UNIT_ONLY_RE = /\bper\s+(?:sq\.?\s*ft\.?|square\s+f(?:oo|ee)t|linear\s+f(?:oo|ee)t)/gi;
 /**
- * A price word followed within 40 characters by a number. A bare four-digit
- * year (2026) is not a price: "the cost of a kitchen remodel in 2026" is the
- * most common title on the subject and says nothing about money.
+ * A price word followed within 40 characters by a number, year-shaped or not
+ * ("costs 2000" is a price). The one thing skipped is a year in prose: a
+ * four-digit 19xx or 20xx right after in, since, during, until or through
+ * ("the cost of a kitchen remodel in 2026" is the most common title on the
+ * subject and says nothing about money).
  */
-const PRICE_WORD_RE = /\b(?:start(?:s|ing)?\s+at|from(?=\s*\$)|costs|cost\s+of|prices?|priced|estimates?\s+of|quotes?\s+of)\b[^.!?\n]{0,40}?(?:\$\s?)?(?<!\d)(?!(?:19|20)\d\d\b)\d(?:[\d,]*\d)?(?:\.\d+)?/gi;
+const PRICE_WORD_RE = /\b(?:start(?:s|ing)?\s+at|from(?=\s*\$)|costs|cost\s+of|prices?|priced|estimates?\s+of|quotes?\s+of)\b[^.!?\n]{0,40}?(?:\$\s?)?(?<!\d)(?!(?<=\b(?:in|since|during|until|through)\s)(?:19|20)\d\d\b)\d(?:[\d,]*\d)?(?:\.\d+)?/gi;
 /** A percentage next to a discount word, either way round. */
-const PERCENT_RE = /\b(?:save|saving|savings|discount(?:ed)?|off|cheaper)\b[^.!?\n]{0,20}?\d+(?:\.\d+)?\s?(?:%|percent\b)|\d+(?:\.\d+)?\s?(?:%|percent\b)[^.!?\n]{0,20}?\b(?:off|save|savings?|discount(?:ed)?|cheaper)\b/gi;
+const PERCENT_RE = /\b(?:save|saving|savings|discount(?:ed)?|off|cheaper)\b[^.!?\n]{0,20}?\d+(?:\.\d+)?\s?(?:%|percent\b)|\d+(?:\.\d+)?\s?(?:%|percent\b)[^.!?\n]{0,20}?\b(?:off|save|savings?|discount(?:ed)?|cheaper)\b|\b(?:half|(?:five|ten|fifteen|twenty|twenty-five|thirty|forty|fifty|sixty|seventy|seventy-five)\s+percent)\s+(?:off|cheaper|discount|savings?)\b|\bsave\s+(?:half|(?:five|ten|fifteen|twenty|twenty-five|thirty|forty|fifty)\s+percent)\b/gi;
+/**
+ * Discount wording just before an amount: "Save $2,095", "$500 off". A catalog
+ * price is allowed only as the starting price for its service, never as a
+ * saving, so an amount in this wording is a claim even when it equals one.
+ */
+const DISCOUNT_BEFORE_RE = /\b(?:save|saving|savings|discount(?:ed|s)?|rebate|off|cheaper|deal|sale)\b[^.!?\n$]{0,15}$/i;
+const DISCOUNT_AFTER_RE = /^[^.!?\n]{0,6}\b(?:off|discount|savings?|cheaper|rebate)\b/i;
+/** The unit a price is quoted in, so "$2.95 per linear foot" is not the catalog's "$2.95 / sq ft". */
+function unitKind(text: string): 'sqft' | 'linear' | null {
+  if (/sq\.?\s*ft|square\s+f(?:oo|ee)t|pie²|pie\s+cuadrado/i.test(text)) return 'sqft';
+  if (/linear\s+f(?:oo|ee)t|lin\.?\s*ft/i.test(text)) return 'linear';
+  return null;
+}
 
 /** "$2,095" -> 2095, "$2.95 / sq ft" -> 2.95, "9k dollars" -> 9000. NaN when there is no number. */
 export function amountValue(text: string): number {
@@ -197,12 +216,12 @@ function namesService(paragraph: string, price: CatalogPrice): boolean {
   });
 }
 
-/** The published amounts a paragraph may quote: priceDisplay of every service it names. */
-function allowedAmounts(paragraph: string, prices: CatalogPrice[]): number[] {
+/** The published prices a paragraph may quote: priceDisplay of every service it names, with its unit. */
+function allowedAmounts(paragraph: string, prices: CatalogPrice[]): Array<{ value: number; unit: ReturnType<typeof unitKind> }> {
   return prices
     .filter((p) => namesService(paragraph, p))
-    .flatMap((p) => p.priceDisplays.map(amountValue))
-    .filter((n) => Number.isFinite(n));
+    .flatMap((p) => p.priceDisplays.map((d) => ({ value: amountValue(d), unit: unitKind(d) })))
+    .filter((a) => Number.isFinite(a.value));
 }
 
 function priceClaims(text: string, prices: CatalogPrice[]): Array<{ claim: string; allowed: boolean }> {
@@ -217,9 +236,14 @@ function priceClaims(text: string, prices: CatalogPrice[]): Array<{ claim: strin
   const out: Array<{ claim: string; allowed: boolean }> = [];
   for (const span of money) {
     // A percentage claim inside this span is reported on its own below.
-    const claim = text.slice(span.start, span.end).trim();
-    const amounts = [...claim.matchAll(new RegExp(CURRENCY_SOURCE, 'gi'))].map((m) => amountValue(m[0]));
-    const ok = amounts.length > 0 && amounts.every((a) => allowed.some((p) => Math.abs(p - a) < 0.005));
+    const before = DISCOUNT_BEFORE_RE.exec(text.slice(Math.max(0, span.start - 40), span.start));
+    const discounted = !!before || DISCOUNT_AFTER_RE.test(text.slice(span.end));
+    const start = before ? span.start - before[0].length : span.start;
+    const claim = text.slice(start, span.end).trim();
+    const amounts = [...claim.matchAll(new RegExp(CURRENCY_SOURCE, 'gi'))].map((m) => ({ value: amountValue(m[0]), unit: unitKind(m[0]) }));
+    const ok = !discounted && amounts.length > 0 && amounts.every((a) => allowed.some(
+      (p) => Math.abs(p.value - a.value) < 0.005 && (a.unit === null || a.unit === p.unit),
+    ));
     out.push({ claim, allowed: ok });
   }
   for (const span of mergeSpans(percent, text)) {
