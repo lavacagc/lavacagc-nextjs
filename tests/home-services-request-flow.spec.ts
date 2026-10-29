@@ -60,8 +60,22 @@ const rest = async <T = unknown>(path: string, init: RequestInit = {}): Promise<
 
 const run = randomBytes(3).toString('hex');
 let ipCounter = 0;
-const freshIp = () => `10.${(parseInt(run, 16) % 200) + 20}.${Math.floor(Math.random() * 250)}.${++ipCounter}`;
-const freshPhone = () => `973555${String(Math.floor(1000 + Math.random() * 8999))}`;
+// Every IP, phone and request id this suite hands the server, so cleanup can
+// remove exactly the rate-limit buckets it created and nothing another run or
+// another builder is using (review note on the shared rate_limits table).
+const usedIps = new Set<string>();
+const usedPhones = new Set<string>();
+const usedIds = new Set<string>();
+const freshIp = () => {
+  const ip = `10.${(parseInt(run, 16) % 200) + 20}.${Math.floor(Math.random() * 250)}.${++ipCounter}`;
+  usedIps.add(ip);
+  return ip;
+};
+const freshPhone = () => {
+  const phone = `973555${String(Math.floor(1000 + Math.random() * 8999))}`;
+  usedPhones.add(phone);
+  return phone;
+};
 // One token: the flow splits its single Name field on whitespace into first and last name.
 const tag = (label: string) => `ZZTEST-A-${label}-${run}`;
 
@@ -163,8 +177,14 @@ async function cleanup() {
   }
   await rest(`leads?first_name=like.ZZTEST-A*`, { method: 'DELETE' });
   await rest(`follow_up_queue?lead_email=like.zztest-a*`, { method: 'DELETE' });
-  for (const prefix of ['hs-request', 'hs-photo', 'hs-verify', 'hs-resend']) {
-    await rest(`rate_limits?ip_address=like.${prefix}*`, { method: 'DELETE' });
+  const buckets = [
+    ...[...usedIps].flatMap((ip) => ['hs-request', 'hs-photo', 'hs-photo-day', 'hs-verify', 'hs-resend'].map((p) => `${p}:${ip}`)),
+    ...[...usedPhones].map((phone) => `hs-request-phone:${phone}`),
+    ...[...usedIds].flatMap((id) => [`hs-verify-req:${id}`, `hs-resend-req:${id}`]),
+  ];
+  for (let i = 0; i < buckets.length; i += 40) {
+    const list = buckets.slice(i, i + 40).map((b) => `"${b}"`).join(',');
+    await rest(`rate_limits?ip_address=in.(${encodeURIComponent(list)})`, { method: 'DELETE' });
   }
 }
 
@@ -333,7 +353,9 @@ for (const lang of ['en', 'es'] as const) {
   test(`RF10${lang === 'es' ? ' RF13' : ''}: the same address and services within 24 h merge, and the UI says so (${lang})`, async ({ page, request }) => {
     const address = `${run} ${lang} Merge Ln`;
     const name = tag(`Merge${lang}`);
-    const first = await postRequest(request, apiBody({ address, first_name: name, answers: { 'gutter-cleaning': { stories: '1' } } }), freshIp());
+    // Same person: the dedupe key includes the phone (review D3), so the repeat uses the same number.
+    const phone = freshPhone();
+    const first = await postRequest(request, apiBody({ address, phone, first_name: name, answers: { 'gutter-cleaning': { stories: '1' } } }), freshIp());
     expect(first.status()).toBe(200);
     const firstBody = await first.json();
     expect(firstBody.merged).toBe(false);
@@ -346,7 +368,7 @@ for (const lang of ['en', 'es'] as const) {
     await fillDetails(page, `${address.toUpperCase()}.`);
     await flow.getByRole('button', { name: L('Continue', 'Continuar') }).click();
     await flow.locator('#hs-name').fill(name);
-    await flow.locator('#hs-phone').fill(freshPhone());
+    await flow.locator('#hs-phone').fill(`(${phone.slice(0, 3)}) ${phone.slice(3, 6)}-${phone.slice(6)}`);
     await flow.locator('#hs-consent').check();
     await page.waitForTimeout(5_200);
     const submitted = page.waitForResponse('**/api/home-services/request');
@@ -369,17 +391,121 @@ for (const lang of ['en', 'es'] as const) {
   });
 }
 
+test('D1: photos survive closing and reopening the sheet, and are submitted', async ({ page }) => {
+  await preparePage(page);
+  await page.goto('/home-services');
+  const name = tag('Reopen');
+  let flow = await openFlowWith(page, ['gutter-cleaning']);
+  await flow.getByTestId('photo-input').setInputFiles([IMAGE, join(process.cwd(), 'public/images/commercial-card-make-ready.png')]);
+  await expect(flow.locator('[data-testid=photo-thumb][data-status=done]')).toHaveCount(2, { timeout: 30_000 });
+  await fillDetails(page, `${run} Reopen Rd`);
+
+  // Close with the X, look around, reopen from the bar.
+  await flow.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByTestId('request-flow')).toHaveCount(0);
+  await page.getByTestId('request-bar').getByRole('button').click();
+  flow = page.getByTestId('request-flow');
+  await expect(flow.locator('[data-testid=photo-thumb][data-status=done]')).toHaveCount(2);
+  await expect(flow.locator('#hs-address')).toHaveValue(`${run} Reopen Rd`);
+
+  // Close with Back this time, and reopen again.
+  await page.goBack();
+  await expect(page.getByTestId('request-flow')).toHaveCount(0);
+  await page.getByTestId('request-bar').getByRole('button').click();
+  flow = page.getByTestId('request-flow');
+  await expect(flow.locator('[data-testid=photo-thumb][data-status=done]')).toHaveCount(2);
+
+  await flow.getByRole('button', { name: 'Continue' }).click();
+  await flow.locator('#hs-name').fill(name);
+  await flow.locator('#hs-phone').fill(freshPhone());
+  await flow.locator('#hs-consent').check();
+  await page.waitForTimeout(5_200);
+  const submitted = page.waitForResponse('**/api/home-services/request');
+  await flow.getByRole('button', { name: 'Send my request' }).click();
+  expect((await (await submitted).json()).ok).toBe(true);
+
+  const [row] = await requestsFor(name);
+  const photos = await rest<Array<{ storage_path: string; draft_token: string | null }>>(`lead_photos?select=storage_path,draft_token&request_id=eq.${row.id}`);
+  expect(photos).toHaveLength(2);
+  for (const p of photos) {
+    expect(p.draft_token).toBeNull();
+    expect(p.storage_path.startsWith(`requests/${row.id}/`)).toBe(true);
+  }
+});
+
 test('RF6: honeypot and a sub-five-second submit both answer 200 and save nothing', async ({ request }) => {
   const honeyName = tag('Honey');
   const fastName = tag('Fast');
+  // D10: the silent answer has exactly the shape of a success, with a fresh random id.
+  const silentShape = {
+    ok: true,
+    request_id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
+    status: 'new',
+    verification: 'skipped',
+    merged: false,
+  };
   const honey = await postRequest(request, apiBody({ first_name: honeyName, honeypot: 'https://spam.example' }), freshIp());
   expect(honey.status()).toBe(200);
-  expect((await honey.json()).ok).toBe(true);
+  const honeyBody = await honey.json();
+  expect(honeyBody).toEqual(silentShape);
   const fast = await postRequest(request, apiBody({ first_name: fastName, started_at: Date.now() - 1_000 }), freshIp());
   expect(fast.status()).toBe(200);
-  expect((await fast.json()).ok).toBe(true);
+  const fastBody = await fast.json();
+  expect(fastBody).toEqual(silentShape);
+  expect(fastBody.request_id).not.toBe(honeyBody.request_id);
   expect(await requestsFor(honeyName)).toHaveLength(0);
   expect(await requestsFor(fastName)).toHaveLength(0);
+  expect(await rest(`home_service_requests?select=id&id=in.(${honeyBody.request_id},${fastBody.request_id})`)).toHaveLength(0);
+});
+
+test('D3: the same address and services from two phones are two requests, each with its own lead', async ({ request }) => {
+  const address = `${run} Two Phones Ave`;
+  const nameA = tag('PhoneA');
+  const nameB = tag('PhoneB');
+  const a = await postRequest(request, apiBody({ address, first_name: nameA, phone: freshPhone() }), freshIp());
+  const b = await postRequest(request, apiBody({ address, first_name: nameB, phone: freshPhone() }), freshIp());
+  expect(a.status()).toBe(200);
+  expect(b.status()).toBe(200);
+  const bodyA = await a.json();
+  const bodyB = await b.json();
+  expect(bodyA.merged).toBe(false);
+  expect(bodyB.merged).toBe(false);
+  expect(bodyB.request_id).not.toBe(bodyA.request_id);
+  const [rowA] = await requestsFor(nameA);
+  const [rowB] = await requestsFor(nameB);
+  expect(rowA.merged_count).toBe(0);
+  expect(rowB.merged_count).toBe(0);
+  expect(rowA.lead_id).toBeTruthy();
+  expect(rowB.lead_id).toBeTruthy();
+  expect(rowB.lead_id).not.toBe(rowA.lead_id);
+});
+
+test('D11: a five-digit ZIP decides by itself; Montclair with ZIP 07920 is declined', async ({ request }) => {
+  const res = await postRequest(request, apiBody({ zip: '07920', town: 'Montclair', first_name: tag('TownRescue') }), freshIp());
+  expect(res.status()).toBe(403);
+  expect(await res.json()).toEqual({ error: 'out_of_area' });
+  expect(await requestsFor(tag('TownRescue'))).toHaveLength(0);
+});
+
+test('D8: photo uploads are capped at 60 per IP per day as well as 30 per 10 minutes', async ({ request }) => {
+  const ip = freshIp();
+  const jpeg = { name: 'p.jpg', mimeType: 'image/jpeg', buffer: Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64)]) };
+  // A bucket already at the daily cap (as 60 uploads earlier today would leave it).
+  await rest('rate_limits', { method: 'POST', body: JSON.stringify([{ ip_address: `hs-photo-day:${ip}`, count: 60, last_reset: new Date().toISOString() }]) });
+  const blocked = await request.post('/api/home-services/photos', { multipart: { photo: jpeg }, headers: { 'x-forwarded-for': ip } });
+  expect(blocked.status()).toBe(429);
+  // Under the cap the same upload goes through (and is removed again).
+  const other = freshIp();
+  const ok = await request.post('/api/home-services/photos', { multipart: { photo: jpeg }, headers: { 'x-forwarded-for': other } });
+  expect(ok.status()).toBe(200);
+  const { id, draft_token: token } = await ok.json();
+  const [row] = await rest<Array<{ storage_path: string }>>(`lead_photos?select=storage_path&id=eq.${id}`);
+  await rest(`lead_photos?draft_token=eq.${token}`, { method: 'DELETE' });
+  await fetch(`${SUPA}/storage/v1/object/service-request-photos`, {
+    method: 'DELETE',
+    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prefixes: [row.storage_path] }),
+  });
 });
 
 test('RF4 county gate at the API: 07601 Hackensack is accepted, 07920 Basking Ridge is out of area', async ({ request }) => {
@@ -437,6 +563,7 @@ test('RF8 (partial): the code field verifies a held request and flips it to new'
       verify_sends: 1,
     }]),
   });
+  usedIds.add(held.id);
 
   await preparePage(page);
   await page.route('**/api/home-services/request', (route) =>
@@ -468,6 +595,7 @@ test('RF8 (partial): the code field verifies a held request and flips it to new'
 });
 
 test('SEC3: verify answers the same for an unknown request and a wrong code', async ({ request }) => {
+  usedIds.add('00000000-0000-4000-8000-000000000000');
   const unknown = await request.post('/api/home-services/verify', {
     data: { request_id: '00000000-0000-4000-8000-000000000000', code: '1234' },
     headers: { 'x-forwarded-for': freshIp() },

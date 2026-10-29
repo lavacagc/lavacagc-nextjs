@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
@@ -22,6 +22,23 @@ import { sanitizeLeadForInsert } from '../src/lib/leadSanitize';
 const ROOT = process.cwd();
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 
+/** JSON-LD nodes in the server-rendered HTML of a path (what a crawler sees, before any hydration). */
+async function jsonLdNodes(request: APIRequestContext, path: string): Promise<Array<Record<string, unknown>>> {
+  const html = await (await request.get(path)).text();
+  return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1]) as Record<string, unknown>);
+}
+
+const decode = (v: string) => v.replace(/&amp;/g, '&');
+function linkHref(html: string, rel: string): string | null {
+  const m = html.match(new RegExp(`<link rel="${rel}" href="([^"]+)"`));
+  return m ? decode(m[1]) : null;
+}
+function hreflang(html: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const m of html.matchAll(/<link rel="alternate" hrefLang="([^"]+)" href="([^"]+)"/g)) out[m[1]] = decode(m[2]);
+  return out;
+}
+
 test.describe('source checks', () => {
   test('LP6: the landing page no longer renders the old nine-tile catalog, image grid or /request-estimate CTAs', () => {
     const src = read('src/app/home-services/page.tsx');
@@ -36,6 +53,7 @@ test.describe('source checks', () => {
     const src = read('src/app/sitemap.ts');
     expect(src).toContain('`${baseUrl}/home-services`');
     expect(src).toMatch(/SERVICE_SLUGS\.map\(\(slug\) => \(\{\s*url: `\$\{baseUrl\}\/home-services\/\$\{slug\}`/);
+    expect(src).toContain('url: `${baseUrl}/home-services${suffix}?lang=es`');
   });
 
   test('catalog: seven services, each with exactly three tap groups of two to four options', () => {
@@ -75,14 +93,18 @@ test.describe('source checks', () => {
     expect(problems).toEqual([]);
   });
 
-  test('RF4 service area: county ZIPs are in (07601 Hackensack), others out (07920 Basking Ridge), scorer ZIPs and towns still count', () => {
+  test('RF4 service area: county ZIPs are in (07601 Hackensack), others out (07920 Basking Ridge), scorer ZIPs still count, towns only without a ZIP', () => {
     expect(isInServiceArea({ zip: '07601' })).toBe(true);
     expect(countyForZip('07601')).toBe('Bergen');
     expect(isInServiceArea({ zip: '07920' })).toBe(false);
     expect(countyForZip('07920')).toBeNull();
     expect(isInServiceArea({ zip: '07042-1234' })).toBe(true); // ZIP+4 typed
     expect(isInServiceArea({ zip: '07065' })).toBe(true); // Rahway: scorer list, Union County
-    expect(isInServiceArea({ zip: '99999', town: 'Montclair' })).toBe(true); // town rescue
+    // D11: a five-digit ZIP decides alone; the town only counts when the ZIP is missing or malformed.
+    expect(isInServiceArea({ zip: '07920', town: 'Montclair' })).toBe(false);
+    expect(isInServiceArea({ zip: '99999', town: 'Montclair' })).toBe(false);
+    expect(isInServiceArea({ zip: '', town: 'Montclair' })).toBe(true);
+    expect(isInServiceArea({ zip: '070', town: 'Montclair' })).toBe(true);
     expect(isInServiceArea({ zip: '08540' })).toBe(false);
   });
 
@@ -177,6 +199,55 @@ test.describe('browser', () => {
     await expect(page.getByTestId('request-bar')).toHaveCount(0);
   });
 
+  test('D2: Back with the price sheet open closes the sheet and stays on the page; the X leaves no #price behind', async ({ page }) => {
+    await quiet(page);
+    await page.goto('/home-services');
+    const before = page.url();
+    await page.getByTestId('price-gutter-cleaning').click();
+    await expect(page.getByTestId('price-sheet')).toBeVisible();
+    await expect(page).toHaveURL(`${before}#price`);
+    await page.goBack();
+    await expect(page.getByTestId('price-sheet')).toHaveCount(0);
+    await expect(page).toHaveURL(before);
+    await expect(page.locator('h1')).toBeVisible();
+
+    await page.getByTestId('price-drywall-patching').click();
+    await expect(page.getByTestId('price-sheet')).toBeVisible();
+    await page.getByTestId('price-sheet').getByRole('button', { name: 'Close' }).click();
+    await expect(page.getByTestId('price-sheet')).toHaveCount(0);
+    await expect(page).toHaveURL(before);
+    await expect(page.locator('[data-testid=card-drywall-patching] button[aria-pressed]')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('D5: on a 390x844 phone the out-of-area message shows under the ZIP, above the footer, and a refused Continue focuses the ZIP', async ({ page }) => {
+    await quiet(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/home-services?lang=es');
+    await page.locator('[data-testid=card-cabinet-repainting] button[aria-pressed]').click();
+    await page.locator('[data-testid=card-gutter-cleaning] button[aria-pressed]').click();
+    await page.getByTestId('request-bar').getByRole('button').click();
+    const flow = page.getByTestId('request-flow');
+    await flow.locator('#hs-address').fill('12 Valley Rd');
+    await flow.locator('#hs-zip').fill('07920');
+    await flow.locator('#hs-zip').blur();
+
+    const placement = () =>
+      page.evaluate(() => {
+        const err = document.getElementById('hs-zip-error')!.getBoundingClientRect();
+        const zip = document.getElementById('hs-zip')!.getBoundingClientRect();
+        const footer = document.querySelector('[data-testid=request-flow] footer')!.getBoundingClientRect();
+        return { underZip: err.top >= zip.bottom && err.top - zip.bottom <= 24, visible: err.top >= 0 && err.bottom <= footer.top, focus: document.activeElement?.id };
+      });
+    await expect(flow.getByTestId('zip-error')).toContainText('Aún no atendemos ese código postal');
+    await expect.poll(placement).toMatchObject({ underZip: true, visible: true });
+
+    // Scrolled away, a refused Continue brings it back with focus on the ZIP.
+    await flow.locator('.overflow-y-auto').evaluate((el) => el.scrollTo({ top: 0 }));
+    await flow.getByRole('button', { name: 'Continuar' }).click();
+    await expect(flow.getByTestId('step-details')).toBeVisible();
+    await expect.poll(placement).toEqual({ underZip: true, visible: true, focus: 'hs-zip' });
+  });
+
   test('LP3: the price opens what is included and what raises it, without toggling the card', async ({ page }) => {
     await quiet(page);
     await page.goto('/home-services');
@@ -245,6 +316,15 @@ test.describe('browser', () => {
     await expect(page.getByTestId('request-flow')).toHaveCount(0);
     await expect(page).toHaveURL(/\/home-services\/drywall-patching$/);
 
+    // Loaded with #request (a direct link, a reload, or a tap before hydration):
+    // the flow opens, and closing strips the hash without leaving the page.
+    await page.goto('/home-services/drywall-patching#request');
+    await expect(page.getByTestId('request-flow')).toBeVisible();
+    await expect(page.getByTestId('details-drywall-patching')).toBeVisible();
+    await page.getByTestId('request-flow').getByRole('button', { name: 'Close' }).click();
+    await expect(page.getByTestId('request-flow')).toHaveCount(0);
+    await expect(page).toHaveURL(/\/home-services\/drywall-patching$/);
+
     // The commercial page keeps the older form.
     await page.goto('/commercial-services');
     await expect(quote()).toHaveAttribute('href', '/request-estimate');
@@ -280,7 +360,7 @@ test.describe('browser', () => {
     expect(cookie?.value).toBe('en');
   });
 
-  test('LP8 SEO1 SEO2: a service page carries its SEO, card, lists, FAQ and Service JSON-LD, and preselects the flow', async ({ page }) => {
+  test('LP8 SEO1 SEO2: a service page carries its SEO, card, lists, FAQ and Service JSON-LD, and preselects the flow', async ({ page, request }) => {
     await quiet(page);
     const service = HOME_SERVICES_CATALOG.find((x) => x.slug === 'gutter-cleaning')!;
     await page.goto(`/home-services/${service.slug}`);
@@ -294,17 +374,19 @@ test.describe('browser', () => {
     await expect(page.getByTestId('raises-list').locator('li')).toHaveCount(service.raisesPrice.length);
     await expect(page.getByTestId('service-faq-list').locator('details')).toHaveCount(service.faq.length);
 
-    const blocks = await page.locator('script[type="application/ld+json"]').allTextContents();
-    const nodes = blocks.map((b) => JSON.parse(b) as Record<string, unknown>);
+    // Structured data is read from the SERVER HTML, which is what crawlers get
+    // (review D4): on a dev server a site-wide footer hydration mismatch can
+    // make React re-render the layout and leave a second copy in the DOM.
+    const nodes = await jsonLdNodes(request, `/home-services/${service.slug}`);
     const svc = nodes.find((n) => n['@type'] === 'Service') as { offers: unknown; provider: unknown; areaServed: Array<{ name: string }>; aggregateRating?: unknown };
     expect(svc).toBeTruthy();
     expect(svc.offers).toMatchObject({ price: (service.startingPriceCents / 100).toFixed(2), priceCurrency: 'USD' });
     expect(svc.provider).toEqual({ '@id': 'https://www.lavacagc.com/#organization' });
     expect(svc.areaServed.map((a) => a.name)).toEqual(COUNTIES.map((c) => `${c} County, NJ`));
     expect(svc.aggregateRating).toBeUndefined();
-    // The page adds no organization node of its own (the layout already has the one).
-    const pageOrgs = nodes.filter((n) => n['@id'] === 'https://www.lavacagc.com/#organization' && n['@type'] !== undefined);
-    expect(pageOrgs.length, blocks.map((b) => b.slice(0, 100)).join('\n')).toBeLessThanOrEqual(1);
+    // Exactly one organization node: the layout's.
+    const orgs = nodes.filter((n) => n['@id'] === 'https://www.lavacagc.com/#organization' && n['@type'] !== undefined);
+    expect(orgs).toHaveLength(1);
 
     await page.getByTestId('request-this').click();
     await expect(page.getByTestId('request-flow')).toBeVisible();
@@ -336,9 +418,42 @@ test.describe('browser', () => {
     expect(decodeURIComponent(cookies.find((c) => c.name === 'lv_utm')?.value ?? '')).toContain('"utm_source":"cl"');
   });
 
-  test('LP10: /sitemap.xml lists the landing page and the seven service pages', async ({ request }) => {
+  test('LP10 D6: /sitemap.xml lists the landing page and the seven service pages, in English and Spanish', async ({ request }) => {
     const xml = await (await request.get('/sitemap.xml')).text();
-    expect(xml).toContain('<loc>https://www.lavacagc.com/home-services</loc>');
-    for (const slug of SERVICE_SLUGS) expect(xml).toContain(`<loc>https://www.lavacagc.com/home-services/${slug}</loc>`);
+    for (const path of ['', ...SERVICE_SLUGS.map((slug) => `/${slug}`)]) {
+      expect(xml).toContain(`<loc>https://www.lavacagc.com/home-services${path}</loc>`);
+      expect(xml).toContain(`<loc>https://www.lavacagc.com/home-services${path}?lang=es</loc>`);
+    }
+  });
+
+  test('D6: ?lang=es pages are self-canonical and every version carries hreflang en, es and x-default', async ({ request }) => {
+    for (const path of ['/home-services', '/home-services/gutter-cleaning']) {
+      const en = `https://www.lavacagc.com${path}`;
+      const es = `${en}?lang=es`;
+      for (const [query, canonical] of [['', en], ['?lang=es', es]] as const) {
+        const html = await (await request.get(`${path}${query}`)).text();
+        expect(linkHref(html, 'canonical'), `${path}${query}`).toBe(canonical);
+        expect(hreflang(html), `${path}${query}`).toEqual({ en, es, 'x-default': en });
+      }
+    }
+  });
+
+  test('D12: exterior painting offers a unit price per square foot with the minimum; flat prices keep price', async ({ request }) => {
+    const exterior = HOME_SERVICES_CATALOG.find((x) => x.slug === 'exterior-painting')!;
+    const svc = (await jsonLdNodes(request, '/home-services/exterior-painting')).find((n) => n['@type'] === 'Service') as { offers: Record<string, unknown> };
+    expect(svc.offers.price).toBeUndefined();
+    expect(svc.offers).toMatchObject({
+      priceCurrency: 'USD',
+      priceSpecification: {
+        '@type': 'UnitPriceSpecification',
+        price: (exterior.startingPriceCents / 100).toFixed(2),
+        priceCurrency: 'USD',
+        unitText: 'per square foot',
+        minPrice: (exterior.minimumCents! / 100).toFixed(2),
+      },
+    });
+    const drywall = (await jsonLdNodes(request, '/home-services/drywall-patching')).find((n) => n['@type'] === 'Service') as { offers: Record<string, unknown> };
+    expect(drywall.offers.price).toBe('249.00');
+    expect(drywall.offers.priceSpecification).toBeUndefined();
   });
 });
