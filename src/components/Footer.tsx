@@ -40,7 +40,7 @@ const Footer = () => {
 
           {/* Company Pages */}
           <div>
-            <h4 className="font-bold text-lg mb-6">Company</h4>
+            <h2 className="font-bold text-lg mb-6">Company</h2>
             <ul className="space-y-3 text-sm text-secondary-foreground">
               <li><Link href="/about" className="hover:text-primary transition-colors">About Us</Link></li>
               <li><Link href="/process" className="hover:text-primary transition-colors">Our Process</Link></li>
@@ -56,19 +56,20 @@ const Footer = () => {
 
           {/* Services */}
           <div>
-            <h4 className="font-bold text-lg mb-6">Our Services</h4>
+            <h2 className="font-bold text-lg mb-6">Our Services</h2>
             <ul className="space-y-3 text-sm text-secondary-foreground">
               <li><Link href="/services/kitchen-remodeling" className="hover:text-primary transition-colors">Kitchen Remodeling</Link></li>
               <li><Link href="/services/bathroom-renovation" className="hover:text-primary transition-colors">Bathroom Renovations</Link></li>
               <li><Link href="/services/basement-finishing" className="hover:text-primary transition-colors">Basement Finishing</Link></li>
               <li><Link href="/services/home-additions" className="hover:text-primary transition-colors">Home Additions</Link></li>
               <li><Link href="/services/interior-finishing" className="hover:text-primary transition-colors">Interior Finishing</Link></li>
+              <li><Link href="/home-services" className="hover:text-primary transition-colors">Home Services, Priced Up Front</Link></li>
             </ul>
           </div>
 
           {/* Service Areas */}
           <div className="sm:col-span-2">
-            <h4 className="font-bold text-lg mb-6">Service Areas</h4>
+            <h2 className="font-bold text-lg mb-6">Service Areas</h2>
             <ul className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-secondary-foreground">
               <li><Link href="/locations/alpine" className="hover:text-primary transition-colors">Alpine, NJ</Link></li>
               <li><Link href="/locations/bloomfield" className="hover:text-primary transition-colors">Bloomfield, NJ</Link></li>

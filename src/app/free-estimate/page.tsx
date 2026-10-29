@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import FreeEstimateLanding from '@/components/FreeEstimateLanding';
 
-export const revalidate = 60;
+// Hourly: reads projects, reviews and blog posts, whose editors do not revalidate this path, so a change can take up to an hour to show here (docs/cost-review.md).
+export const revalidate = 3600;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
@@ -244,6 +245,8 @@ async function getProjects(): Promise<Project[]> {
       .select(`
         id, title, location, service_types, challenge, solution, url_slug
       `)
+      // Drafts and archived projects are active=false and must never render publicly.
+      .eq('active', true)
       .order('created_at', { ascending: false });
 
     if (error || !data) return [];

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
+import { requestRevalidate } from '@/lib/revalidate';
 import { Plus, Edit, Trash2, Save, X } from 'lucide-react';
 
 interface Service {
@@ -93,11 +94,14 @@ export function ServicesEditor() {
         if (error) throw error;
       }
 
+      const revalidated = await requestRevalidate(['/services']);
       setEditingService(null);
       loadServices();
       toast({
         title: "Success",
-        description: "Service saved successfully"
+        description: revalidated
+          ? "Service saved successfully"
+          : "Service saved, but the public page may take up to an hour to update"
       });
     } catch (error) {
       console.error('Error saving service:', error);
@@ -121,7 +125,8 @@ export function ServicesEditor() {
         .eq('id', id);
 
       if (error) throw error;
-      
+
+      void requestRevalidate(['/services']);
       loadServices();
       toast({
         title: "Success",

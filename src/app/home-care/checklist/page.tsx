@@ -143,7 +143,7 @@ export default async function ChecklistPage({ searchParams }: { searchParams: Pr
 
   // Captured once per request. This is a server component rendered fresh on
   // every load (force-dynamic), so there is no memoised-render concern.
-  // eslint-disable-next-line react-hooks/purity
+   
   const nowMs = Date.now();
   const season = currentSeason();
   const [allTasks, profileRows, doneRows, homeRecords] = await Promise.all([

@@ -87,7 +87,7 @@ export default function SectionTracker() {
           if (!hasEventBeenTracked(eventKey)) {
             markEventAsTracked(eventKey);
 
-            // eslint-disable-next-line react-hooks/purity -- Date.now() is called inside throttled scroll handler, not during render
+             
             const now = Date.now();
             const timeOnPage = Math.round(
               (now - pageLoadTime.current) / 1000

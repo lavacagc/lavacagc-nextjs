@@ -29,6 +29,9 @@ Skip for docs, `.gitignore`, `CLAUDE.md`, memory, internal scripts.
 - **curl needs browser UA** — middleware 403s default `curl/X.Y.Z`. Use `Mozilla/5.0 (Macintosh) AppleWebKit/537.36 ...`.
 - **Clarity + FB Pixel gated** on `www.lavacagc.com` **and** `!navigator.globalPrivacyControl` (`src/app/layout.tsx`) — with Global Privacy Control on in your browser they never load, even on prod. Locally use `new Function('return 1+1')()` eval probe instead.
 - **Vercel preview = 401** (Deployment Protection). Use local dev + queue prod re-verification.
+- **Local Supabase rig** (`docs/local-rig.md`) for anything that writes: a production build there cannot sign in to the admin or read `google_reviews` from the browser, because the CSP allows `127.0.0.1` only under `NODE_ENV=development`. Use `next dev` for admin and live-backend specs, the production build for CSP, headers and Lighthouse.
+- **Cold dev server** renders the first parallel page loads in ~35 s; curl the pages you will test before running specs or they time out.
+- **Agent worktrees under `.claude/worktrees/`** are inside the repo; ESLint ignores them (eslint.config.mjs). If `npm run lint` ever reports six figures of problems, that ignore was lost.
 
 ## See helpers/
 

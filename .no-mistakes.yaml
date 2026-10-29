@@ -12,7 +12,7 @@ allow_repo_commands: true
 
 commands:
   # ESLint. Fast, env-independent.
-  lint: "npm run lint"
+  lint: "{ [ -d node_modules/.bin ] || npm ci --no-audit --no-fund; } && npm run lint"
   # Deterministic, secret-free gate: `next build` runs the TS type-check, ESLint,
   # and compiles every route. We DON'T run the Playwright suite here — the gate's
   # disposable worktree has no Supabase/Resend/reCAPTCHA secrets, so many specs
@@ -34,4 +34,10 @@ commands:
   # scripts/ alike. `npx` stays only for one-off tools the repo does NOT depend
   # on - `npx playwright install`, `npx supabase`, `npx tsx` - where fetching
   # from the registry is the whole point.
-  test: "npm run typecheck && npm run build"
+  #
+  # The gate worktree is a fresh checkout with no node_modules. Until 2026-10-29
+  # the test step only passed because the Opus review agent happened to run
+  # `npm ci` for its own typecheck; a docs-only run (nothing to review) then
+  # failed with `sh: tsc: command not found`. Install when missing, so the step
+  # does not depend on what the reviewer felt like doing.
+  test: "{ [ -d node_modules/.bin ] || npm ci --no-audit --no-fund; } && npm run typecheck && npm run build"

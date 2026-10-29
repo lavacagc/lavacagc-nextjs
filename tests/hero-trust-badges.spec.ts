@@ -1,4 +1,5 @@
-import { test, expect, devices } from '@playwright/test';
+import { devices } from '@playwright/test';
+import { test, expect } from './helpers/ctaEventStub';
 import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
 
 // Test the clickable trust badges in the Hero component on mobile.

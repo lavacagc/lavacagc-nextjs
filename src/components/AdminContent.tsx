@@ -13,7 +13,7 @@ import { ServicesEditor } from '@/components/admin/ServicesEditor';
 import { ServiceAreasEditor } from '@/components/admin/ServiceAreasEditor';
 import { ProjectUploadSystem } from '@/components/admin/ProjectUploadSystem';
 import { AdminDashboard } from '@/components/admin/AdminDashboard';
-import AdminSidebar from '@/components/admin/AdminSidebar';
+import AdminSidebar, { ADMIN_TAB_IDS } from '@/components/admin/AdminSidebar';
 import AnalyticsSettings from '@/components/admin/AnalyticsSettings';
 import { GMBSettings } from '@/components/admin/GMBSettings';
 import { LeadsManager } from '@/components/admin/LeadsManager';
@@ -37,6 +37,11 @@ const PreferencesAdminPage = dynamic(() => import('@/app/vaca-mgmt/preferences/p
 const ReleasesAdminPage = dynamic(() => import('@/app/vaca-mgmt/releases/page'), { ssr: false });
 const ConversionDashboard = dynamic(() => import('@/components/admin/ConversionDashboard'), { ssr: false });
 const SeoSuggestionsDashboard = dynamic(() => import('@/components/admin/SeoSuggestionsDashboard'), { ssr: false });
+// Home Services build (docs/home-services/acceptance-criteria.md).
+const ServiceRequestsManager = dynamic(() => import('@/components/admin/home-services/ServiceRequestsManager'), { ssr: false });
+const SubsManager = dynamic(() => import('@/components/admin/home-services/SubsManager'), { ssr: false });
+const PricingReport = dynamic(() => import('@/components/admin/home-services/PricingReport'), { ssr: false });
+const CtaTestsDashboard = dynamic(() => import('@/components/admin/home-services/CtaTestsDashboard'), { ssr: false });
 const CMSPageEditor = dynamic(() => import('@/components/admin/CMSPageEditor').then(m => ({ default: m.CMSPageEditor })), { ssr: false });
 import { BannerManager } from '@/components/admin/BannerManager';
 import { ComplianceDocumentsManager } from '@/components/admin/ComplianceDocumentsManager';
@@ -47,11 +52,18 @@ export default function AdminContent() {
   const router = useRouter();
   const { user, loading, signOut } = useAuth();
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTabRaw] = useState('dashboard');
+  // Deep links: `?tab=<id>` opens that tab, and `?project=<id>` (the admin_url
+  // the project APIs return, `?tab=projects&project=<id>`) opens Projects, where
+  // ProjectUploadSystem opens that project's edit form.
+  // (Nothing tab-dependent renders before auth resolves, so no hydration gap.)
+  const [activeTab, setActiveTabRaw] = useState(() => {
+    if (typeof window === 'undefined') return 'dashboard';
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('project')) return 'projects';
+    const tab = params.get('tab');
+    return tab && ADMIN_TAB_IDS.includes(tab) ? tab : 'dashboard';
+  });
   const [editingPost, setEditingPost] = useState<string | null>(null);
-  const [projectMode, setProjectMode] = useState<'manage' | 'upload' | 'edit'>('manage');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [editingProject, setEditingProject] = useState<any>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -60,13 +72,10 @@ export default function AdminContent() {
     }
   }, [user, loading, router]);
 
-  // Reset project mode when switching to projects tab
+  // The Projects tab keeps its own state (manager vs form) and resets on
+  // remount, so switching tabs needs no bookkeeping here.
   const setActiveTab = useCallback((tab: string) => {
     setActiveTabRaw(tab);
-    if (tab === 'projects') {
-      setProjectMode('manage');
-      setEditingProject(null);
-    }
   }, []);
 
   const handleSignOut = async () => {
@@ -217,18 +226,7 @@ export default function AdminContent() {
           </TabsContent>
 
           <TabsContent value="projects">
-            <ProjectUploadSystem
-              mode={projectMode}
-              onModeChange={(mode, project) => {
-                setProjectMode(mode);
-                if (mode === 'edit' && project) {
-                  setEditingProject(project);
-                } else if (mode === 'manage' || mode === 'upload') {
-                  setEditingProject(null);
-                }
-              }}
-              editProject={editingProject}
-            />
+            <ProjectUploadSystem />
           </TabsContent>
 
           <TabsContent value="banners">
@@ -297,6 +295,22 @@ export default function AdminContent() {
 
           <TabsContent value="conversions">
             <ConversionDashboard />
+          </TabsContent>
+
+          <TabsContent value="service-requests">
+            <ServiceRequestsManager />
+          </TabsContent>
+
+          <TabsContent value="subs">
+            <SubsManager />
+          </TabsContent>
+
+          <TabsContent value="pricing-report">
+            <PricingReport />
+          </TabsContent>
+
+          <TabsContent value="cta-tests">
+            <CtaTestsDashboard />
           </TabsContent>
 
           <TabsContent value="new-post">

@@ -142,7 +142,7 @@ those 33 failures were that analytics noise.
 
 Anything headless you point at this site must identify as a real browser.
 The bad-bot filter in `src/middleware.ts` matches `/headlesschrome/i` and answers
-403 on every path, which is why `scripts/site-audit.ts` and
+403 on every page and API route, which is why `scripts/site-audit.ts` and
 `playwright.config.ts` both use `devices['Desktop Chrome']`.
 A first-party tool that skips this measures the bot filter, not the site.
 
@@ -156,6 +156,12 @@ Run them by hand only for quick local iteration, not as a manual pre-push
 checklist. The Playwright suite is deliberately NOT in that gauntlet: it needs
 `.env.local` secrets the gate's worktree does not have, so browser-level
 verification stays a **manual pre-gate step**.
+
+## Where to look
+
+- Testing off production: `docs/local-rig.md` (local Supabase, admin sign-in, dev versus production build on the rig).
+- Home Services build (priced services, request flow, bids, CTA tests, portfolio drafts): `docs/home-services/` (audit, acceptance criteria, follow-ups, reports) and `docs/decisions/`.
+- Claude Code project ingest: `docs/projects-ingest.md`.
 
 ## Path Aliases
 
@@ -183,6 +189,41 @@ Required in `.env.local`:
 - Images are optimized via Next.js Image component with Supabase storage
 - Security headers are configured in `next.config.ts`
 
+## Progress board in the CLI (standing rule, added 2026-10-29)
+
+Alex follows the work from the terminal, so every long-running phase gets a progress board in the reply, refreshed whenever a step changes state.
+Post one when a phase starts, when it moves, and when it ends; never let more than one step pass silently.
+The board has, in this order:
+
+- A one-line title: what is running, on which branch or commit.
+- A bar and a percent, counted in steps done out of steps total, with an estimated time to completion from the measured durations of the steps already finished (say "no estimate yet" rather than invent one).
+- One line per step: name, state (done, running, pending, failed), measured duration, and round when it has one.
+- A "Who" line per active worker: the agent (pipeline daemon, a named builder or reviewer subagent, the Lavish poll, me) and the model it runs on, or "model unknown" when the tool does not expose it.
+
+Format, so it reads the same every time:
+
+```
+Pipeline run 3 · no-mistakes · feat/home-services-request-flow @ 776297a
+[██████░░░░] 6/9 · 67% · ETA ~5 min (review 4m38s, test 3m11s measured)
+  intent done 0s · rebase done 2s · review done 4m38s (fix round 1) · test done 3m11s
+  document running 29s · lint pending · push pending · pr pending · ci pending
+Who: no-mistakes daemon v1.41 (Claude Code CLI, Opus per ~/.no-mistakes/config.yaml) on document · Fable 5.1 driving the gates · Lavish poll idle, waiting on Q7-Q12
+```
+
+Subagents are named in the board by role (builder slice A, reviewer B) with their model, so the record shows who built and who reviewed what.
+
+The same board lives persistently at the bottom of the terminal, in the Claude Code status line (`~/.claude/statusline.mjs`, refreshed every 5 seconds):
+the first line is the model, folder and branch; the no-mistakes gate for this repo appears by itself, read from the daemon's state, with bar, step, ETA from past runs, agent and model, branch and PR.
+Every other long job (a builder or reviewer subagent, a Lavish poll, a Playwright run, a CI wait) is shown there only if it writes a progress file, so start one when the job starts and finish it when it ends:
+
+```sh
+node ~/.claude/progress.mjs start <job> <total-steps> "<role> · <model> · <what>"   # PROGRESS_EXPECTED_MS=600000 for a time-based job
+node ~/.claude/progress.mjs set <job> <done> "<current step>"
+node ~/.claude/progress.mjs done <job> ok|failed
+```
+
+The file names the job's pid (`PROGRESS_PID` when the writer is not the job itself); a job whose process is gone disappears from the bar.
+
 ## Shipping changes - the no-mistakes gate
 
 Every change ships through the **no-mistakes** gate (`/no-mistakes`), not by
@@ -190,7 +231,8 @@ hand. The gate runs one pipeline - review → test → lint → docs → push �
 in a disposable worktree, auto-applies safe fixes, escalates judgement calls, and
 only forwards to `origin` + opens the PR once every check is green. Config lives
 in `.no-mistakes.yaml` (gate commands: `npm run lint`, and
-`npm run typecheck && npm run build`).
+`npm run typecheck && npm run build`, each preceded by `npm ci` when the fresh
+worktree has no `node_modules`).
 That file also owns a repo-wide rule worth knowing before you add any script,
 workflow step or hook: pinned dependencies are invoked through `npm run`, never
 `npx` - a bare `npx tsc` runs an unrelated registry package that type-checks

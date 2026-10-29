@@ -61,7 +61,7 @@ const Header = () => {
   // server-side.
   const [hcKnown, setHcKnown] = useState<string | null>(null);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of a client-only cookie after mount
+     
     setHcKnown(readHcKnown());
   }, []);
 

@@ -1,5 +1,10 @@
 import type { NextConfig } from "next";
 
+// The Home Services request flow loads Google Places autocomplete only when
+// this key is set at build time, so the CSP widens only then (and never for
+// an unrelated script host). See docs/home-services/00-site-audit.md C7.
+const PLACES = Boolean(process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY);
+
 const nextConfig: NextConfig = {
   // Enable React strict mode for better development experience
   reactStrictMode: true,
@@ -58,6 +63,13 @@ const nextConfig: NextConfig = {
         hostname: 'xrvbrnrbnyfdwkfdoepq.supabase.co',
         pathname: '/storage/v1/object/**',
       },
+      // The local Supabase stack (see memory: local-supabase-rig) serves
+      // storage from 127.0.0.1, so a project seeded there crashed next/image
+      // on the homepage for every builder sharing the rig. Dev only: the
+      // production allowlist stays exactly the hosted project above.
+      ...(process.env.NODE_ENV === 'development'
+        ? [{ protocol: 'http' as const, hostname: '127.0.0.1', pathname: '/storage/v1/object/**' }]
+        : []),
     ],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
@@ -128,7 +140,7 @@ const nextConfig: NextConfig = {
               // Additional script-src hosts:
               // - static.cloudflareinsights.com — CF Web Analytics beacon (Cloudflare auto-injects)
               // - googleads.g.doubleclick.net — Google Ads viewthroughconversion script (AW-16788190390)
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://api.ipify.org https://www.google.com https://www.gstatic.com https://www.recaptcha.net https://recaptcha.google.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://static.cloudflareinsights.com https://googleads.g.doubleclick.net",
+              `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${PLACES ? 'https://maps.googleapis.com ' : ''}https://www.googletagmanager.com https://www.google-analytics.com https://api.ipify.org https://www.google.com https://www.gstatic.com https://www.recaptcha.net https://recaptcha.google.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://static.cloudflareinsights.com https://googleads.g.doubleclick.net`,
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               // *.googleusercontent.com — reviewer avatar photos from Google Reviews (Testimonials component)
               // https://www.lavacagc.com — explicit host needed for the
@@ -138,9 +150,13 @@ const nextConfig: NextConfig = {
               // Additional img-src hosts:
               // - c.bing.com — Clarity ↔ Bing identity sync pixel
               // - googleads.g.doubleclick.net — Google Ads conversion-tracking 1x1 img
-              "img-src 'self' data: blob: https://www.lavacagc.com https://lavacagc.com https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://www.googletagmanager.com https://www.google.com https://www.gstatic.com https://*.googleusercontent.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://fonts.gstatic.com https://c.bing.com https://googleads.g.doubleclick.net",
+              `img-src 'self' data: blob: ${PLACES ? 'https://maps.gstatic.com https://maps.googleapis.com ' : ''}${process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:* http://localhost:* ' : ''}https://www.lavacagc.com https://lavacagc.com https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://www.googletagmanager.com https://www.google.com https://www.gstatic.com https://*.googleusercontent.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://fonts.gstatic.com https://c.bing.com https://googleads.g.doubleclick.net`,
               "font-src 'self' https://fonts.gstatic.com https://r2cdn.perplexity.ai",
-              "media-src 'self' https://xrvbrnrbnyfdwkfdoepq.supabase.co",
+              // blob: so the admin project form can preview a video while it uploads
+              // (the preview is a createObjectURL of the picked file; without
+              // blob: it is blocked until the storage URL replaces it). The
+              // development branch mirrors connect-src for the local rig.
+              `media-src 'self' blob: ${process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:* http://localhost:* ' : ''}https://xrvbrnrbnyfdwkfdoepq.supabase.co`,
               // Additional connect-src hosts:
               // - *.a.run.app and *.on.aws — Meta Pixel's CAPI Lite event-ingestion endpoints
               //   live on dynamically-routed Cloud Run / AWS App Runner instances (the exact
@@ -162,7 +178,7 @@ const nextConfig: NextConfig = {
               // build), so the exception is absent from those runs - which stub
               // the network with page.route and never need it. The production
               // header is byte-identical to before.
-              `connect-src 'self' data: blob: ${process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:* http://localhost:* ' : ''}https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://api.ipify.org https://www.google.com https://www.recaptcha.net https://recaptcha.google.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://stats.g.doubleclick.net https://ad.doubleclick.net https://*.a.run.app https://*.on.aws`,
+              `connect-src 'self' data: blob: ${PLACES ? 'https://maps.googleapis.com ' : ''}${process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:* http://localhost:* ' : ''}https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://api.ipify.org https://www.google.com https://www.recaptcha.net https://recaptcha.google.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://stats.g.doubleclick.net https://ad.doubleclick.net https://*.a.run.app https://*.on.aws`,
               "worker-src 'self' blob:",
               "frame-src 'self' https://www.googletagmanager.com https://www.google.com https://www.recaptcha.net https://recaptcha.google.com",
               "frame-ancestors 'self'",

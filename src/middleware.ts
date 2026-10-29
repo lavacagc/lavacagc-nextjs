@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr';
 import {
   classifyGeo, isGeoTier, GEO_TIER_COOKIE, GEO_TIER_HEADER, GEO_OVERRIDE_COOKIE, type GeoTier,
 } from '@/lib/geo/tier';
+import { mintVisitorCookieEdge, VISITOR_COOKIE_EDGE } from '@/lib/cta/visitor.edge';
 
 // Known bad bot user-agent patterns (scrapers, vulnerability scanners, spam crawlers)
 const BAD_BOT_PATTERNS = [
@@ -119,6 +120,14 @@ const PUBLIC_ROUTES = [
   '/api/consent/',         // TCPA consent logging (rate-limited, self-guarded)
   '/api/crew/',            // Crew visit confirm - auth is the per-assignment token
   '/api/proposal/',        // Client proposal submit - auth is the per-proposal token, self-guarded
+  // Home Services build (docs/home-services/acceptance-criteria.md, SEC). Each
+  // of these is self-guarded: honeypot + timing + rate limit + reCAPTCHA on the
+  // request routes, a per-recipient token on the offer routes, a rate limit on
+  // the CTA event sink, and a constant-time bearer token on the ingest route.
+  '/api/home-services/',
+  '/api/offers/',
+  '/api/cta/',
+  '/api/projects/ingest',
 ];
 
 function isPublicRoute(pathname: string): boolean {
@@ -222,6 +231,19 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(destination, { status: 301 });
   }
 
+  // The production deployment is also reachable at its *.vercel.app alias,
+  // which bypasses Cloudflare. Off Cloudflare, cf-connecting-ip is whatever the
+  // caller sends, so every per-IP rate limit on the site could be rotated past
+  // one request at a time (security review S-02, 2026-10-29). Sending that
+  // host to the canonical one closes the path without touching the header
+  // trust order that real customers depend on. Preview deployments keep their
+  // vercel.app hosts (VERCEL_ENV is 'preview' there) and sit behind Vercel's
+  // own deployment protection.
+  if (process.env.VERCEL_ENV === 'production' && host.endsWith('.vercel.app')) {
+    const destination = `https://www.lavacagc.com${request.nextUrl.pathname}${request.nextUrl.search}`;
+    return NextResponse.redirect(destination, { status: 301 });
+  }
+
   // Block known bad bots (unless they're spoofing a good bot UA)
   if (ua && isBadBot(ua) && !isGoodBot(ua)) {
     return new NextResponse('Forbidden', { status: 403 });
@@ -298,8 +320,20 @@ export async function middleware(request: NextRequest) {
     response.cookies.set(GEO_OVERRIDE_COOKIE, overrideCookie, { path: '/', sameSite: 'lax' });
   }
 
-  // Detect if this looks like a bot (no UA, or matches known bot patterns)
+  // The CTA counting id is issued with the first homepage response, so the
+  // view and click beacons never depend on each other's Set-Cookie (see
+  // src/lib/cta/visitor.edge.ts). Only the homepage renders the hero, only
+  // humans are counted, and a visitor who already has one keeps it.
   const isBot = !ua || isGoodBot(ua) || /bot|crawl|spider|slurp|fetch|preview/i.test(ua);
+  if (pathname === '/' && !isBot && !request.cookies.get(VISITOR_COOKIE_EDGE.name)) {
+    const minted = await mintVisitorCookieEdge();
+    if (minted) {
+      const secure = request.nextUrl.protocol === 'https:' || request.headers.get('x-forwarded-proto') === 'https';
+      response.cookies.set(VISITOR_COOKIE_EDGE.name, minted, VISITOR_COOKIE_EDGE.options(secure));
+    }
+  }
+
+  // Detect if this looks like a bot (no UA, or matches known bot patterns)
   if (isBot) {
     response.headers.set('x-is-bot', '1');
   }
@@ -308,5 +342,9 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: '/:path*',
+  // Pages and API routes only. Static assets, the image optimizer, fonts and
+  // favicons never needed the bot filter, the geo cookie or the admin check,
+  // and they were most of half a million invocations a month
+  // (docs/cost-review.md).
+  matcher: ['/((?!_next/static|_next/image|favicon\\.ico|images/|fonts/|logo\\.|robots\\.txt|sitemap\\.xml).*)'],
 };

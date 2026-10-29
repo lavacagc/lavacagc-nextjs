@@ -93,13 +93,8 @@ export default function RootLayout({
             that helper alongside. */}
         <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
         <link rel="dns-prefetch" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
-        {/* Preload hero video for faster LCP */}
-        <link 
-          rel="preload" 
-          href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/hero-videos/hero-background-1.mp4`} 
-          as="video" 
-          type="video/mp4"
-        />
+        {/* The hero video is fetched by the homepage's own <video> tag; a root-layout
+            preload made every page on the site download 3.7 MB (docs/cost-review.md). */}
       </head>
       <body className={inter.className}>
         {/*

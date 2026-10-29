@@ -9,8 +9,8 @@ import Link from 'next/link';
 import { getAllLocations } from '@/data/locationData';
 import { MapPin } from 'lucide-react';
 
-// Revalidate every 60 seconds (ISR - Incremental Static Regeneration)
-export const revalidate = 60;
+// Hourly: the services editor revalidates /services and every page below it on save (/api/admin/revalidate, docs/cost-review.md).
+export const revalidate = 3600;
 
 // Server-side Supabase client (trim to handle any whitespace in env vars)
 const supabase = createClient(

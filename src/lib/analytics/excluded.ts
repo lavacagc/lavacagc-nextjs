@@ -26,6 +26,7 @@ export const ANALYTICS_EXCLUDED_PATTERNS: RegExp[] = [
   /^\/proposal\//,     // client proposal - token-authenticated, shows prices
   /^\/intake\//,       // tokenized lead intake - shows the lead's own answers
   /^\/crew\//,         // crew visit confirm - shows customer name, phone, address
+  /^\/offer\//,        // sub job offer - token in the URL; the winner sees the full address
   /^\/preferences/,    // email preference centre - token in the query string
   /^\/unsub/,          // unsubscribe - carries an address or a token
 ];

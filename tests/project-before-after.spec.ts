@@ -98,13 +98,20 @@ test.describe('Project detail — photo lightbox (live backend)', () => {
   test('clicking a project photo opens a cycling lightbox with a counter', async ({ page, request }) => {
     test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
 
-    // Reach a project detail page via the portfolio list.
+    // Reach a project detail page via the portfolio list, the way a visitor does.
+    // The cards navigate with router.push from a "View Details" button, not an
+    // <a href>; the old `a[href^="/projects/"]` lookup never matched, so this
+    // test skipped on every run, live backend or not (fixed in slice D).
     await page.goto('/portfolio', { waitUntil: 'domcontentloaded' });
-    const firstCard = page.locator('a[href^="/projects/"]').first();
-    test.skip((await firstCard.count()) === 0, 'No projects published in this env.');
-    const href = await firstCard.getAttribute('href');
-    test.skip(!href, 'No project link.');
-    await page.goto(href!, { waitUntil: 'domcontentloaded' });
+    const viewDetails = page.getByRole('button', { name: 'View Details' }).first();
+    test.skip((await viewDetails.count()) === 0, 'No projects published in this env.');
+    // The button slides in on hover (300 ms); clicking mid-slide lands on the card
+    // behind it, which opens the portfolio lightbox instead of navigating.
+    await viewDetails.hover();
+    await expect(viewDetails).toHaveCSS('opacity', '1');
+    await page.waitForTimeout(350);
+    await viewDetails.click();
+    await page.waitForURL(/\/projects\/[^/]+$/, { timeout: 30_000 });
 
     const grid = page.getByTestId('project-photo-grid');
     test.skip((await grid.count()) === 0, 'Project has no photos.');
@@ -112,13 +119,18 @@ test.describe('Project detail — photo lightbox (live backend)', () => {
 
     const lightbox = page.getByTestId('project-lightbox');
     await expect(lightbox).toBeVisible();
-    await expect(lightbox.getByText(/^\d+ \/ \d+$/)).toBeVisible();
-    const startCounter = await lightbox.getByText(/^\d+ \/ \d+$/).textContent();
 
-    const total = Number((startCounter ?? '1 / 1').split('/')[1].trim());
-    if (total > 1) {
+    // PhotoGallery shows the "n / total" counter and the arrows only when there
+    // is more than one item; a single-photo project has neither.
+    const items = await lightbox.locator('[role="group"][aria-roledescription="slide"]').count();
+    const counter = lightbox.getByText(/^\d+ \/ \d+$/);
+    if (items > 1) {
+      await expect(counter).toHaveText(new RegExp(`^\\d+ / ${items}$`));
+      const before = await counter.textContent();
       await lightbox.locator('button:has(svg.lucide-arrow-right)').click();
-      await expect(lightbox.getByText(/^2 \/ /)).toBeVisible();
+      await expect(counter).not.toHaveText(before ?? '');
+    } else {
+      await expect(counter).toHaveCount(0);
     }
 
     await page.keyboard.press('Escape');

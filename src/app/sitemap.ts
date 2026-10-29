@@ -2,6 +2,7 @@ import { MetadataRoute } from 'next'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { Database } from '@/integrations/supabase/types'
 import { getAllResourceSlugs } from '@/data/resourceData'
+import { SERVICE_SLUGS } from '@/lib/home-services/catalog'
 
 // Create a static client for build-time data fetching (no cookies/SSR)
 function getStaticSupabaseClient() {
@@ -13,6 +14,15 @@ function getStaticSupabaseClient() {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://www.lavacagc.com'
   const currentDate = new Date()
+  // Home services pages come in English and Spanish (?lang=es); both entries
+  // carry the same hreflang set the pages declare in <head>.
+  const homeServicesAlternates = (suffix: string) => ({
+    languages: {
+      en: `${baseUrl}/home-services${suffix}`,
+      es: `${baseUrl}/home-services${suffix}?lang=es`,
+      'x-default': `${baseUrl}/home-services${suffix}`,
+    },
+  })
 
   // Static routes
   const routes: MetadataRoute.Sitemap = [
@@ -39,7 +49,26 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: currentDate,
       changeFrequency: 'monthly',
       priority: 0.9,
+      alternates: homeServicesAlternates(''),
     },
+    // One page per priced home service (LP10), from the catalog so a new
+    // service cannot ship without its sitemap entry.
+    ...SERVICE_SLUGS.map((slug) => ({
+      url: `${baseUrl}/home-services/${slug}`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly' as const,
+      priority: 0.8,
+      alternates: homeServicesAlternates(`/${slug}`),
+    })),
+    // The Spanish versions are their own canonical URLs (?lang=es), the ones
+    // Spanish listing links use, so they are listed too.
+    ...['', ...SERVICE_SLUGS.map((slug) => `/${slug}`)].map((suffix) => ({
+      url: `${baseUrl}/home-services${suffix}?lang=es`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly' as const,
+      priority: 0.7,
+      alternates: homeServicesAlternates(suffix),
+    })),
     {
       url: `${baseUrl}/commercial-services`,
       lastModified: currentDate,

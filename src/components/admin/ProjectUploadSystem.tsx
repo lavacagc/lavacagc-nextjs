@@ -1,740 +1,552 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+'use client';
+
+/**
+ * The Projects tab: the Portfolio Manager, and the single-page project form.
+ *
+ * Decision 002 (docs/decisions/002-grill-round-1-project-upload.md): one
+ * scrolling form, no wizard and no AI. Required: title, location, one service
+ * type, one photo. Save writes a DRAFT through /api/admin/projects; Publish is
+ * a separate click on the draft card. Six clicks from photos to draft:
+ * Add New Project, drop photos, title, location, a service, Save draft.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, ArrowRight, Grid, Loader2, Trash2 } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-
-import { ProjectBasicInfoStep } from './project-steps/ProjectBasicInfoStep';
-import { ProjectPhotosStep } from './project-steps/ProjectPhotosStep';
-import { ProjectDetailsStep } from './project-steps/ProjectDetailsStep';
-import { ProjectSEOStep } from './project-steps/ProjectSEOStep';
+import { cn } from '@/lib/utils';
+import { SERVICE_TYPES, type ImageCategory, type ProjectStatus } from '@/lib/projects/fields';
+import {
+  currentMonth, defaultAltText, defaultMetaDescription, defaultSeoTitle, deriveSlug,
+} from '@/lib/projects/slug';
 import { PortfolioManager } from './PortfolioManager';
+import { StatusBadge } from './projects/StatusBadge';
+import { ApiError, projectsApi } from './projects/api';
+import { MoreDetailsSection } from './projects/MoreDetailsSection';
+import { PairLinker } from './projects/PairLinker';
+import { PhotoGrid } from './projects/PhotoGrid';
+import { SeoSection } from './projects/SeoSection';
+import { isImageFile, isVideoFile, uploadMedia } from './projects/upload';
+import type { FormImage, FormTarget, ProjectFormFields, TouchedDefaults } from './projects/types';
 
-interface Project {
-  id: string;
-  title: string;
-  location: string;
-  service_types: string[];
-  date_completed: string;
-  budget_range: string;
-  featured: boolean;
-  active: boolean;
-  sort_order: number;
-  created_at: string;
-  client_first_name: string;
-  testimonial_rating: number;
-  featured_image_id?: string;
-  challenge: string;
-  solution: string;
-  materials_used: string[];
-  special_features: string[];
-  duration: string;
-  testimonial_text: string;
-  seo_title: string;
-  meta_description: string;
-  url_slug: string;
-  focus_keyword: string;
-  project_images?: Array<{
-    id: string;
-    image_category: string;
-    image_url: string;
-    is_featured: boolean;
-  }>;
+// ---------------------------------------------------------------------------
+// Tab container
+// ---------------------------------------------------------------------------
+
+/** Reads `?project=<id>` (the admin_url the ingest API hands back) once. */
+function projectFromUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  const id = new URLSearchParams(window.location.search).get('project');
+  return id && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
 }
 
-export interface ProjectFormData {
-  // Basic Info
-  title: string;
-  client_first_name: string;
-  location: string;
-  service_types: string[];
-  date_completed: string;
-  budget_range: string;
-  
-  // Photos
-  images: Array<{
-    file?: File;
-    url?: string;
-    media_type?: 'image' | 'video';
-    category: 'before' | 'during' | 'after';
-    alt_text: string;
-    is_featured: boolean;
-    sort_order: number;
-    room?: string;
-    /** Shared id linking a before image to an after image as one comparison pair. */
-    pair_key?: string;
-    /** Optional pair label (e.g. "Kitchen"); persisted to project_images.caption. */
-    caption?: string;
-  }>;
-  
-  // Details
-  challenge: string;
-  solution: string;
-  materials_used: string[];
-  special_features: string[];
-  duration: string;
-  testimonial_text: string;
-  testimonial_rating: number;
-  
-  // SEO
-  seo_title: string;
-  meta_description: string;
-  url_slug: string;
-  focus_keyword: string;
+function clearProjectParam() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('project')) return;
+  url.searchParams.delete('project');
+  window.history.replaceState(null, '', url.toString());
 }
 
-const initialFormData: ProjectFormData = {
+export function ProjectUploadSystem() {
+  const [target, setTarget] = useState<FormTarget | null>(() => {
+    const id = projectFromUrl();
+    return id ? { kind: 'edit', id } : null;
+  });
+
+  const close = useCallback(() => {
+    clearProjectParam();
+    setTarget(null);
+    window.scrollTo({ top: 0 });
+  }, []);
+
+  if (!target) {
+    return (
+      <PortfolioManager
+        onNewProject={(preloadUrls) => setTarget({ kind: 'new', preloadUrls })}
+        onEditProject={(id) => setTarget({ kind: 'edit', id })}
+      />
+    );
+  }
+  return <ProjectForm key={target.kind === 'edit' ? target.id : 'new'} target={target} onClose={close} />;
+}
+
+// ---------------------------------------------------------------------------
+// Form
+// ---------------------------------------------------------------------------
+
+const EMPTY_FIELDS: ProjectFormFields = {
   title: '',
-  client_first_name: '',
   location: '',
   service_types: [],
+  client_first_name: '',
   date_completed: '',
   budget_range: '',
-  images: [],
+  duration: '',
   challenge: '',
   solution: '',
   materials_used: [],
   special_features: [],
-  duration: '',
   testimonial_text: '',
   testimonial_rating: 5,
   seo_title: '',
   meta_description: '',
   url_slug: '',
-  focus_keyword: ''
+  focus_keyword: '',
 };
 
-const steps = [
-  { id: 1, title: 'Photos', description: 'Upload images (auto-generates content)' },
-  { id: 2, title: 'Basic Info', description: 'Project details and location' },
-  { id: 3, title: 'Details', description: 'Project story and testimonials' },
-  { id: 4, title: 'SEO', description: 'Search optimization' }
-];
+let keySeq = 0;
+const newKey = () => `img-${Date.now().toString(36)}-${(keySeq += 1)}`;
+const newPairKey = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `pair-${newKey()}`;
 
-interface ProjectUploadSystemProps {
-  mode: 'upload' | 'manage' | 'edit';
-  onModeChange: (mode: 'upload' | 'manage' | 'edit', project?: Project) => void;
-  editProject?: Project;
+/** Fill each derived field the owner has not typed over. */
+function withDefaults(f: ProjectFormFields, touched: TouchedDefaults): ProjectFormFields {
+  return {
+    ...f,
+    seo_title: touched.seo_title ? f.seo_title : defaultSeoTitle(f.title, f.location),
+    meta_description: touched.meta_description
+      ? f.meta_description
+      : f.title ? defaultMetaDescription(f.challenge, f.solution, f.service_types, f.location) : '',
+    url_slug: touched.url_slug ? f.url_slug : deriveSlug(f.title, f.location),
+  };
 }
 
-export function ProjectUploadSystem({ mode, onModeChange, editProject }: ProjectUploadSystemProps) {
-  const [currentStep, setCurrentStep] = useState(1);
-  const [formData, setFormData] = useState<ProjectFormData>(initialFormData);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
+/** Default alt text follows category, services and location until the owner edits it. */
+function withAltDefaults(images: FormImage[], f: ProjectFormFields): FormImage[] {
+  return images.map((img) => img.altTouched
+    ? img
+    : { ...img, alt_text: defaultAltText(img.category, f.service_types, f.location) });
+}
 
-  // Load project data when editing
+function mediaTypeFromUrl(url: string): 'image' | 'video' {
+  return /\.(mp4|m4v|mov|webm)(\?|$)/i.test(url) ? 'video' : 'image';
+}
+
+type Errors = Partial<Record<'title' | 'location' | 'service_types' | 'images', string>>;
+
+function ProjectForm({ target, onClose }: { target: FormTarget; onClose: () => void }) {
+  const isEdit = target.kind === 'edit';
+  const [fields, setFields] = useState<ProjectFormFields>(() => ({ ...EMPTY_FIELDS, date_completed: currentMonth() }));
+  const [touched, setTouched] = useState<TouchedDefaults>({ seo_title: false, meta_description: false, url_slug: false });
+  // A new draft from storage photos: attached as After, no re-upload.
+  const [images, setImages] = useState<FormImage[]>(() => (target.kind === 'new' ? target.preloadUrls ?? [] : [])
+    .map((url, i) => ({
+      key: newKey(),
+      url,
+      previewUrl: url,
+      media_type: mediaTypeFromUrl(url),
+      category: 'after' as ImageCategory,
+      alt_text: defaultAltText('after', [], ''),
+      altTouched: false,
+      is_featured: i === 0,
+      status: 'ready' as const,
+      name: url.split('/').pop(),
+    })));
+  const [status, setStatus] = useState<ProjectStatus | null>(null);
+  const [loading, setLoading] = useState(isEdit);
+  const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<Errors>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [areas, setAreas] = useState<string[]>([]);
+  const fieldsRef = useRef(fields);
+  fieldsRef.current = fields;
+  /** Once the owner places the star, it stays where they put it. */
+  const starTouched = useRef(isEdit);
+
+  // Location suggestions: service_areas is an existing, publicly readable table.
   useEffect(() => {
-    if (mode === 'edit' && editProject) {
-      populateFormFromProject(editProject);
-    } else if (mode === 'upload') {
-      setFormData(initialFormData);
-      setCurrentStep(1);
-    }
-  }, [mode, editProject]);
-
-  const populateFormFromProject = async (project: Project) => {
-    // Fetch project images
-    let projectImages: ProjectFormData['images'] = [];
-    try {
-      const { data: images } = await supabase
-        .from('project_images')
-        .select('*')
-        .eq('project_id', project.id)
-        .order('sort_order');
-
-      projectImages = (images || []).map(img => ({
-        url: img.image_url,
-        media_type: (img.media_type || 'image') as 'image' | 'video',
-        category: (img.image_category || 'after') as 'before' | 'during' | 'after',
-        alt_text: img.alt_text || '',
-        is_featured: img.is_featured,
-        sort_order: img.sort_order,
-        pair_key: img.pair_key || undefined,
-        caption: img.caption || undefined,
-      }));
-    } catch (error) {
-      console.error('Error loading project images:', error);
-    }
-
-    setFormData({
-      title: project.title,
-      client_first_name: project.client_first_name || '',
-      location: project.location,
-      service_types: project.service_types,
-      date_completed: project.date_completed || '',
-      budget_range: project.budget_range || '',
-      images: projectImages,
-      challenge: project.challenge || '',
-      solution: project.solution || '',
-      materials_used: project.materials_used || [],
-      special_features: project.special_features || [],
-      duration: project.duration || '',
-      testimonial_rating: project.testimonial_rating || 0,
-      testimonial_text: project.testimonial_text || '',
-      seo_title: project.seo_title || '',
-      meta_description: project.meta_description || '',
-      url_slug: project.url_slug || '',
-      focus_keyword: project.focus_keyword || ''
+    supabase.from('service_areas').select('name').eq('active', true).order('name').then(({ data }) => {
+      if (data) setAreas(data.map((a: { name: string }) => a.name));
     });
-  };
+  }, []);
 
-  const updateFormData = (updates: Partial<ProjectFormData>) => {
-    setFormData(prev => ({ ...prev, ...updates }));
-  };
+  // Editing: load the project and its media through the admin API.
+  useEffect(() => {
+    if (target.kind !== 'edit') return;
+    let cancelled = false;
+    projectsApi.get(target.id).then(({ project: p }) => {
+      if (cancelled) return;
+      const s = (k: string) => (typeof p[k] === 'string' ? (p[k] as string) : '');
+      const list = (k: string) => (Array.isArray(p[k]) ? (p[k] as string[]) : []);
+      const loaded: ProjectFormFields = {
+        title: s('title'),
+        location: s('location'),
+        service_types: list('service_types'),
+        client_first_name: s('client_first_name'),
+        date_completed: s('date_completed').slice(0, 7),
+        budget_range: s('budget_range'),
+        duration: s('duration'),
+        challenge: s('challenge'),
+        solution: s('solution'),
+        materials_used: list('materials_used'),
+        special_features: list('special_features'),
+        testimonial_text: s('testimonial_text'),
+        testimonial_rating: typeof p.testimonial_rating === 'number' && p.testimonial_rating > 0 ? p.testimonial_rating : 5,
+        seo_title: s('seo_title'),
+        meta_description: s('meta_description'),
+        url_slug: s('url_slug'),
+        focus_keyword: s('focus_keyword'),
+      };
+      const t: TouchedDefaults = {
+        seo_title: !!loaded.seo_title,
+        meta_description: !!loaded.meta_description,
+        url_slug: !!loaded.url_slug,
+      };
+      const rows = (Array.isArray(p.project_images) ? p.project_images : []) as Array<Record<string, unknown>>;
+      rows.sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
+      const imgs: FormImage[] = rows.map((r) => {
+        const url = String(r.image_url ?? '');
+        const category = (['before', 'during', 'after'].includes(String(r.image_category)) ? r.image_category : 'after') as ImageCategory;
+        return {
+          key: newKey(),
+          url,
+          previewUrl: url,
+          media_type: r.media_type === 'video' ? 'video' : mediaTypeFromUrl(url),
+          category,
+          alt_text: typeof r.alt_text === 'string' ? r.alt_text : '',
+          altTouched: typeof r.alt_text === 'string' && r.alt_text.length > 0,
+          is_featured: r.is_featured === true,
+          pair_key: typeof r.pair_key === 'string' ? r.pair_key : undefined,
+          caption: typeof r.caption === 'string' ? r.caption : undefined,
+          status: 'ready',
+        };
+      });
+      setTouched(t);
+      setFields(withDefaults(loaded, t));
+      setImages(withAltDefaults(imgs, loaded));
+      setStatus((p.status as ProjectStatus) ?? (p.active ? 'published' : 'archived'));
+      setLoading(false);
+    }).catch((err) => {
+      if (cancelled) return;
+      toast({ title: 'Could not open the project', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
+      onClose();
+    });
+    return () => { cancelled = true; };
+  }, [target, onClose]);
 
-  // Discard draft and clean up temporary images
-  const discardDraft = async () => {
-    setIsLoading(true);
-    try {
-      // Get all draft image URLs
-      const draftImageUrls = formData.images
-        .map(img => img.url)
-        .filter(url => url.includes('/drafts/'));
+  const update = useCallback((patch: Partial<ProjectFormFields>, touchedKey?: keyof TouchedDefaults) => {
+    const nextTouched = touchedKey ? { ...touched, [touchedKey]: true } : touched;
+    if (touchedKey) setTouched(nextTouched);
+    const next = withDefaults({ ...fieldsRef.current, ...patch }, nextTouched);
+    setFields(next);
+    if ('service_types' in patch || 'location' in patch) setImages((prev) => withAltDefaults(prev, next));
+    setErrors((e) => {
+      const copy = { ...e };
+      for (const k of Object.keys(patch)) delete copy[k as keyof Errors];
+      return copy;
+    });
+  }, [touched]);
 
-      // Extract file paths from URLs and delete from storage
-      if (draftImageUrls.length > 0) {
-        const filePaths = draftImageUrls.map(url => {
-          const match = url.match(/\/project-images\/(.+)$/);
-          return match ? match[1] : null;
-        }).filter(Boolean) as string[];
+  // ---- media -------------------------------------------------------------
 
-        if (filePaths.length > 0) {
-          await supabase.storage
-            .from('project-images')
-            .remove(filePaths);
+  const patchImage = useCallback((key: string, patch: Partial<FormImage>) => {
+    setImages((prev) => {
+      const target = prev.find((i) => i.key === key);
+      if (!target) return prev;
+      // Moving a paired photo to another stage breaks the pair: unlink both halves.
+      const breaksPair = patch.category && patch.category !== target.category && target.pair_key;
+      const next = prev.map((img) => {
+        if (img.key === key) {
+          const merged = { ...img, ...patch };
+          if (breaksPair) { merged.pair_key = undefined; merged.caption = undefined; }
+          return merged.altTouched ? merged : { ...merged, alt_text: defaultAltText(merged.category, fieldsRef.current.service_types, fieldsRef.current.location) };
+        }
+        if (breaksPair && img.pair_key === target.pair_key) return { ...img, pair_key: undefined, caption: undefined };
+        return img;
+      });
+      // The automatic star belongs on an After photo: follow it when its photo becomes Before/During.
+      if (!starTouched.current && target.is_featured && patch.category && patch.category !== 'after') {
+        const after = next.find((i) => i.category === 'after' && i.media_type === 'image');
+        if (after) return next.map((i) => ({ ...i, is_featured: i.key === after.key }));
+      }
+      return next;
+    });
+  }, []);
+
+  const addFiles = useCallback((files: File[]) => {
+    const accepted: Array<{ file: File; item: FormImage }> = [];
+    for (const file of files) {
+      const video = isVideoFile(file);
+      if (!video && !isImageFile(file)) {
+        toast({ title: 'Not a photo or video', description: file.name, variant: 'destructive' });
+        continue;
+      }
+      const heic = /\.(heic|heif)$/i.test(file.name) || /hei[cf]/i.test(file.type);
+      accepted.push({
+        file,
+        item: {
+          key: newKey(),
+          url: '',
+          previewUrl: heic ? '' : URL.createObjectURL(file),
+          media_type: video ? 'video' : 'image',
+          category: 'after',
+          alt_text: defaultAltText('after', fieldsRef.current.service_types, fieldsRef.current.location),
+          altTouched: false,
+          is_featured: false,
+          status: 'uploading',
+          name: file.name,
+        },
+      });
+    }
+    if (accepted.length === 0) return;
+    setImages((prev) => {
+      const next = [...prev, ...accepted.map((a) => a.item)];
+      if (!next.some((i) => i.is_featured)) {
+        const first = next.find((i) => i.media_type === 'image') ?? next[0];
+        return next.map((i) => ({ ...i, is_featured: i.key === first.key }));
+      }
+      return next;
+    });
+    setErrors((e) => ({ ...e, images: undefined }));
+
+    // Three at a time: fast on a good connection, gentle on a phone hotspot.
+    const queue = [...accepted];
+    const worker = async () => {
+      for (let job = queue.shift(); job; job = queue.shift()) {
+        const { file, item } = job;
+        try {
+          const uploaded = await uploadMedia(file);
+          if (item.previewUrl.startsWith('blob:')) URL.revokeObjectURL(item.previewUrl);
+          patchImage(item.key, { url: uploaded.url, previewUrl: uploaded.url, media_type: uploaded.media_type, status: 'ready', error: undefined });
+        } catch (err) {
+          patchImage(item.key, { status: 'error', error: err instanceof Error ? err.message : 'Upload failed' });
         }
       }
+    };
+    void Promise.all([worker(), worker(), worker()]);
+  }, [patchImage]);
 
-      // Reset form
-      setFormData(initialFormData);
-      setCurrentStep(1);
-      
-      toast({
-        title: "Draft Discarded",
-        description: "All temporary images have been deleted",
-      });
+  const setFeatured = useCallback((key: string) => {
+    starTouched.current = true;
+    setImages((prev) => prev.map((i) => ({ ...i, is_featured: i.key === key })));
+  }, []);
 
-      onModeChange('manage');
-    } catch (error) {
-      console.error('Error discarding draft:', error);
-      toast({
-        title: "Error",
-        description: "Failed to discard draft",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Auto-generate project content from images using Gemini API
-  const generateProjectContent = async () => {
-    const beforeImgs = formData.images.filter(img => img.category === 'before');
-    const afterImgs = formData.images.filter(img => img.category === 'after');
-
-    if (beforeImgs.length === 0 && afterImgs.length === 0) {
-      toast({
-        title: "No Images",
-        description: "Please upload some images first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (beforeImgs.length === 0 || afterImgs.length === 0) {
-      toast({
-        title: "Missing Images",
-        description: "Upload at least one before AND one after photo for best AI analysis",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsGenerating(true);
-    try {
-      // Compress images client-side to stay under Vercel's 4.5MB payload limit
-      const compressImage = (file: File, maxDim = 1200, quality = 0.7): Promise<string> => {
-        return new Promise((resolve, reject) => {
-          const img = new window.Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let { width, height } = img;
-            if (width > maxDim || height > maxDim) {
-              if (width > height) { height = Math.round((height * maxDim) / width); width = maxDim; }
-              else { width = Math.round((width * maxDim) / height); height = maxDim; }
-            }
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) { reject(new Error('Canvas failed')); return; }
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', quality));
-          };
-          img.onerror = () => reject(new Error('Image load failed'));
-          img.src = URL.createObjectURL(file);
-        });
-      };
-
-      const beforeBase64 = await Promise.all(
-        beforeImgs.slice(0, 3).map(async (img) => {
-          if (img.file) return compressImage(img.file);
-          return img.url || '';
-        })
-      );
-
-      const afterBase64 = await Promise.all(
-        afterImgs.slice(0, 3).map(async (img) => {
-          if (img.file) return compressImage(img.file);
-          return img.url || '';
-        })
-      );
-
-      const rooms = [...new Set(formData.images.map(img => img.room).filter(Boolean))];
-
-      const response = await fetch('/api/admin/analyze-project', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          beforeImages: beforeBase64.filter(Boolean),
-          afterImages: afterBase64.filter(Boolean),
-          location: formData.location || 'New Jersey',
-          serviceTypes: formData.service_types.length > 0 ? formData.service_types : ['renovation'],
-          rooms,
-          mode: 'compare',
-        }),
-      });
-
-      if (!response.ok) throw new Error('Analysis failed');
-
-      const data = await response.json();
-
-      if (data.content) {
-        updateFormData({
-          title: data.content.title || '',
-          challenge: data.content.challenge || '',
-          solution: data.content.solution || '',
-          special_features: data.content.specialFeatures || [],
-          materials_used: data.content.materialsUsed || [],
-          seo_title: data.content.seoTitle || '',
-          meta_description: data.content.metaDescription || ''
-        });
-        
-        toast({
-          title: "Content Generated!",
-          description: "Review and modify as needed.",
-        });
+  const removeImage = useCallback((key: string) => {
+    setImages((prev) => {
+      const gone = prev.find((i) => i.key === key);
+      let next = prev.filter((i) => i.key !== key);
+      if (gone?.pair_key) next = next.map((i) => (i.pair_key === gone.pair_key ? { ...i, pair_key: undefined, caption: undefined } : i));
+      if (gone?.is_featured && next.length > 0) {
+        const first = next.find((i) => i.category === 'after' && i.media_type === 'image') ?? next[0];
+        next = next.map((i) => ({ ...i, is_featured: i.key === first.key }));
       }
-    } catch (error) {
-      console.error('Error generating content:', error);
-      toast({
-        title: "Error",
-        description: "Failed to generate content. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsGenerating(false);
-    }
+      if (gone?.previewUrl.startsWith('blob:')) URL.revokeObjectURL(gone.previewUrl);
+      return next;
+    });
+  }, []);
+
+  const linkPair = useCallback((beforeKey: string, afterKey: string, label?: string) => {
+    const pair = newPairKey();
+    setImages((prev) => prev.map((i) => (i.key === beforeKey || i.key === afterKey ? { ...i, pair_key: pair, caption: label } : i)));
+  }, []);
+
+  const unlinkPair = useCallback((pairKey: string) => {
+    setImages((prev) => prev.map((i) => (i.pair_key === pairKey ? { ...i, pair_key: undefined, caption: undefined } : i)));
+  }, []);
+
+  // ---- save ----------------------------------------------------------------
+
+  const uploading = images.filter((i) => i.status === 'uploading').length;
+  const failed = images.filter((i) => i.status === 'error').length;
+  const ready = useMemo(() => images.filter((i) => i.status === 'ready'), [images]);
+  const isLive = status === 'published';
+
+  const validate = (): Errors => {
+    const e: Errors = {};
+    if (!fields.title.trim()) e.title = 'Add a title.';
+    if (!fields.location.trim()) e.location = 'Add a location.';
+    if (fields.service_types.length === 0) e.service_types = 'Pick at least one service.';
+    if (ready.length === 0) e.images = 'Add at least one photo or video.';
+    return e;
   };
 
-  const handleNext = async () => {
-    // Only auto-generate content for NEW projects without existing content
-    // Skip if: 1) editing existing project, 2) content already exists
-    const hasExistingContent = formData.challenge || formData.solution || formData.title;
-    const shouldGenerate = mode === 'upload' && 
-                          currentStep === 1 && 
-                          formData.images.length > 0 && 
-                          !hasExistingContent;
-    
-    if (shouldGenerate) {
-      await generateProjectContent();
-    }
-    
-    if (currentStep < steps.length) {
-      setCurrentStep(currentStep + 1);
-    }
-  };
-
-  const handlePrevious = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
-    }
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _generateSlug = async (title: string, location: string) => {
-    try {
-      const { data, error } = await supabase.rpc('generate_project_slug', {
-        project_title: title,
-        project_location: location
-      });
-      if (error) throw error;
-      return data;
-    } catch (error) {
-      console.error('Error generating slug:', error);
-      // Fallback slug generation
-      return `${title}-${location}`.toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-+|-+$/g, '');
-    }
-  };
-
-  const handleSave = async () => {
-    if (!formData.title || !formData.location || formData.service_types.length === 0) {
-      toast({
-        title: "Validation Error",
-        description: "Title, location, and at least one service type are required",
-        variant: "destructive"
+  const save = async () => {
+    const e = validate();
+    setErrors(e);
+    if (Object.keys(e).length > 0) {
+      requestAnimationFrame(() => {
+        document.querySelector('[data-invalid="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
       return;
     }
-
-    setIsSaving(true);
+    const body = {
+      ...fields,
+      title: fields.title.trim(),
+      location: fields.location.trim(),
+      date_completed: fields.date_completed || null,
+      // The public page shows stars whenever a rating is set; without a
+      // testimonial there is nothing to rate, so no stars.
+      testimonial_rating: fields.testimonial_text.trim() ? fields.testimonial_rating : null,
+      url_slug: fields.url_slug.replace(/^-+|-+$/g, ''),
+      images: ready.map((img, i) => ({
+        url: img.url,
+        media_type: img.media_type,
+        category: img.category,
+        alt_text: img.alt_text,
+        is_featured: img.is_featured,
+        sort_order: i,
+        pair_key: img.pair_key ?? null,
+        caption: img.caption ?? null,
+      })),
+    };
+    setSaving(true);
+    setSaveError(null);
     try {
-      // Generate URL slug if not provided (only for new projects)
-      let slug = formData.url_slug;
-      if (!slug && mode !== 'edit') {
-        slug = formData.title.toLowerCase()
-          .replace(/[^a-z0-9\s-]/g, '')
-          .replace(/\s+/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-+|-+$/g, '') + '-' + formData.location.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-');
-        updateFormData({ url_slug: slug });
-      } else if (mode === 'edit' && editProject) {
-        // For editing, keep the existing slug and don't update it
-        slug = editProject.url_slug;
-      }
-
-      const baseProjectData = {
-        title: formData.title,
-        client_first_name: formData.client_first_name,
-        location: formData.location,
-        service_types: formData.service_types,
-        date_completed: formData.date_completed ? new Date(formData.date_completed).toISOString().split('T')[0] : null,
-        budget_range: formData.budget_range,
-        challenge: formData.challenge,
-        solution: formData.solution,
-        materials_used: formData.materials_used,
-        special_features: formData.special_features,
-        duration: formData.duration,
-        testimonial_text: formData.testimonial_text,
-        testimonial_rating: formData.testimonial_rating,
-        seo_title: formData.seo_title,
-        meta_description: formData.meta_description,
-        focus_keyword: formData.focus_keyword
-      };
-
-      // Only include url_slug for new projects, not edits to avoid constraint violations
-      const projectData = mode === 'edit' ? baseProjectData : { ...baseProjectData, url_slug: slug };
-
-      let project;
-      
-      if (mode === 'edit' && editProject) {
-        // FIRST: Clear featured_image_id to avoid foreign key constraint violation
-        await supabase
-          .from('projects')
-          .update({ featured_image_id: null })
-          .eq('id', editProject.id);
-
-        // SECOND: Delete existing images now that foreign key is cleared
-        await supabase
-          .from('project_images')
-          .delete()
-          .eq('project_id', editProject.id);
-
-        // THIRD: Update project data
-        const { data, error: projectError } = await supabase
-          .from('projects')
-          .update(projectData)
-          .eq('id', editProject.id)
-          .select()
-          .single();
-
-        if (projectError) throw projectError;
-        project = data;
+      if (target.kind === 'edit') {
+        await projectsApi.update(target.id, body);
+        toast({ title: isLive ? 'Changes saved' : 'Draft saved', description: isLive ? 'The live page updates within a minute.' : 'Publish it from the Drafts list.' });
       } else {
-        // Insert new project
-        const { data, error: projectError } = await supabase
-          .from('projects')
-          .insert({
-            ...projectData,
-            featured: false,
-            active: true,
-            sort_order: 999
-          })
-          .select()
-          .single();
-
-        if (projectError) throw projectError;
-        project = data;
+        await projectsApi.create(body);
+        toast({ title: 'Draft saved', description: 'It is not on the site yet. Publish it from the Drafts list.' });
       }
-
-      // Handle image uploads and move from draft to permanent storage
-      if (formData.images.length > 0) {
-        const uploadPromises = formData.images.map(async (image, index) => {
-          // Skip existing images that don't have a file (already uploaded permanently)
-          if (image.url && !image.file && !image.url.includes('/drafts/')) {
-            // Re-insert existing image record for edit mode
-            return supabase
-              .from('project_images')
-              .insert({
-                project_id: project.id,
-                image_url: image.url,
-                media_type: image.media_type || 'image',
-                image_category: image.category,
-                alt_text: image.alt_text,
-                is_featured: image.is_featured,
-                sort_order: image.sort_order || index,
-                pair_key: image.pair_key ?? null,
-                caption: image.caption ?? null
-              });
-          }
-          
-          if (image.file) {
-            const fileExt = image.file.name.split('.').pop();
-            const fileName = `${project.id}_${index}.${fileExt}`;
-            const filePath = `projects/${fileName}`;
-
-            // Upload to permanent location
-            const { error: uploadError } = await supabase.storage
-              .from('project-images')
-              .upload(filePath, image.file, { upsert: true });
-
-            if (uploadError) throw uploadError;
-
-            const { data: { publicUrl } } = supabase.storage
-              .from('project-images')
-              .getPublicUrl(filePath);
-
-            // Delete draft version if it exists
-            if (image.url.includes('/drafts/')) {
-              const draftPath = image.url.match(/\/project-images\/(.+)$/)?.[1];
-              if (draftPath) {
-                await supabase.storage
-                  .from('project-images')
-                  .remove([draftPath]);
-              }
-            }
-
-            // Insert image record
-            return supabase
-              .from('project_images')
-              .insert({
-                project_id: project.id,
-                image_url: publicUrl,
-                media_type: image.media_type || 'image',
-                image_category: image.category,
-                alt_text: image.alt_text,
-                is_featured: image.is_featured,
-                sort_order: image.sort_order || index,
-                pair_key: image.pair_key ?? null,
-                caption: image.caption ?? null
-              });
-          }
-          return null;
-        });
-
-        await Promise.all(uploadPromises.filter(Boolean));
-      }
-
-      // Update featured_image_id if there's a featured image
-      const featuredImage = formData.images.find(img => img.is_featured);
-      if (featuredImage) {
-        // Find the featured image record we just inserted
-        const { data: imageRecord } = await supabase
-          .from('project_images')
-          .select('id')
-          .eq('project_id', project.id)
-          .eq('is_featured', true)
-          .single();
-
-        if (imageRecord) {
-          await supabase
-            .from('projects')
-            .update({ featured_image_id: imageRecord.id })
-            .eq('id', project.id);
-        }
-      }
-
-      toast({
-        title: "Success",
-        description: mode === 'edit' ? "Project updated successfully!" : "Project saved successfully!"
-      });
-
-      // Reset form and go to manage mode
-      setFormData(initialFormData);
-      setCurrentStep(1);
-      onModeChange('manage', undefined);
-    } catch (error) {
-      console.error('Error saving project:', error);
-      toast({
-        title: "Error",
-        description: "Failed to save project. Please try again.",
-        variant: "destructive"
-      });
+      onClose();
+    } catch (err) {
+      // Inline, next to the button, not a toast: the toast viewport sits bottom
+      // right on desktop, exactly over this sticky bar's Save button, so a
+      // failure toast would cover the retry for its five seconds.
+      setSaveError(err instanceof ApiError ? err.message : 'Could not save. Try again.');
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
   };
 
-  const progress = (currentStep / steps.length) * 100;
-
-  if (mode === 'manage') {
+  if (loading) {
     return (
-      <PortfolioManager 
-        onNewProject={() => onModeChange('upload')}
-        onEditProject={(project) => {
-          onModeChange('edit', project as Project);
-        }}
-      />
+      <div className="flex items-center justify-center p-12" role="status">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden />
+        <span className="sr-only">Loading project</span>
+      </div>
     );
   }
 
+  const saveLabel = isEdit && status && status !== 'draft' ? 'Save changes' : 'Save draft';
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6" data-testid="project-form">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">
-            {mode === 'edit' ? 'Edit Project' : 'Add New Project'}
+          <h2 className="flex items-center gap-2 text-2xl font-bold">
+            {isEdit ? 'Edit Project' : 'Add New Project'}
+            {status && <StatusBadge status={status} />}
           </h2>
-          <p className="text-muted-foreground">
-            {mode === 'edit' 
-              ? 'Update your portfolio project details'
-              : 'Follow the steps to add a new portfolio project'
-            }
+          <p className="text-sm text-muted-foreground">
+            {isLive ? 'This project is live. Saving keeps it published.' : 'Saving creates a draft. Nothing goes on the site until you publish it.'}
           </p>
         </div>
-        <Button 
-          variant="outline" 
-          onClick={() => onModeChange('manage')}
-        >
-          <Grid className="w-4 h-4 mr-2" />
-          Manage Portfolio
+        <Button type="button" variant="outline" onClick={onClose}>
+          <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
+          Back to Portfolio
         </Button>
       </div>
 
-      {/* Progress */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="space-y-4">
-            <div className="flex justify-between text-sm text-muted-foreground">
-              <span>Step {currentStep} of {steps.length}</span>
-              <span>{Math.round(progress)}% complete</span>
+        <CardContent className="space-y-6 pt-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-1.5" data-invalid={!!errors.title}>
+              <Label htmlFor="pf-title">Title</Label>
+              <Input
+                id="pf-title"
+                value={fields.title}
+                onChange={(e) => update({ title: e.target.value })}
+                placeholder="e.g. Modern Kitchen Remodel"
+                aria-invalid={!!errors.title}
+                aria-describedby={errors.title ? 'pf-title-err' : undefined}
+                className={cn(errors.title && 'border-destructive')}
+              />
+              {errors.title && <p id="pf-title-err" className="text-xs text-destructive">{errors.title}</p>}
             </div>
-            <Progress value={progress} className="h-2" />
-            
-            {/* Step indicators */}
-            <div className="flex justify-between">
-              {steps.map((step) => (
-                <div 
-                  key={step.id}
-                  className={`flex flex-col items-center space-y-2 ${
-                    step.id === currentStep ? 'text-primary' : 
-                    step.id < currentStep ? 'text-green-600' : 'text-muted-foreground'
-                  }`}
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                    step.id === currentStep ? 'bg-primary text-primary-foreground' :
-                    step.id < currentStep ? 'bg-green-600 text-white' : 'bg-muted'
-                  }`}>
-                    {step.id}
-                  </div>
-                  <div className="text-center">
-                    <div className="font-medium text-sm">{step.title}</div>
-                    <div className="text-xs text-muted-foreground">{step.description}</div>
-                  </div>
-                </div>
-              ))}
+            <div className="space-y-1.5" data-invalid={!!errors.location}>
+              <Label htmlFor="pf-location">Location</Label>
+              <Input
+                id="pf-location"
+                list="pf-location-options"
+                value={fields.location}
+                onChange={(e) => update({ location: e.target.value })}
+                placeholder="Town, e.g. Clifton"
+                autoComplete="off"
+                aria-invalid={!!errors.location}
+                aria-describedby={errors.location ? 'pf-location-err' : undefined}
+                className={cn(errors.location && 'border-destructive')}
+              />
+              <datalist id="pf-location-options">
+                {areas.map((a) => <option key={a} value={a} />)}
+              </datalist>
+              {errors.location && <p id="pf-location-err" className="text-xs text-destructive">{errors.location}</p>}
             </div>
           </div>
+
+          <fieldset className="space-y-2" data-invalid={!!errors.service_types} aria-describedby={errors.service_types ? 'pf-services-err' : undefined}>
+            <legend className="text-sm font-medium">Service types</legend>
+            <div className="flex flex-wrap gap-2">
+              {SERVICE_TYPES.map((service) => {
+                const on = fields.service_types.includes(service);
+                return (
+                  <label
+                    key={service}
+                    className={cn(
+                      'flex cursor-pointer select-none items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-medium transition-colors',
+                      'has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring',
+                      on ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background hover:bg-muted',
+                      errors.service_types && !on && 'border-destructive',
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={on}
+                      onChange={() => update({
+                        service_types: on ? fields.service_types.filter((s) => s !== service) : [...fields.service_types, service],
+                      })}
+                    />
+                    {service}
+                  </label>
+                );
+              })}
+            </div>
+            {errors.service_types && <p id="pf-services-err" className="text-xs text-destructive">{errors.service_types}</p>}
+          </fieldset>
+
+          <div className="space-y-2" data-invalid={!!errors.images}>
+            <p className="text-sm font-medium" id="pf-media-label">Photos and videos</p>
+            <PhotoGrid
+              images={images}
+              onAddFiles={addFiles}
+              onChangeImage={patchImage}
+              onSetFeatured={setFeatured}
+              onRemove={removeImage}
+              invalid={!!errors.images}
+            />
+            {errors.images && <p className="text-xs text-destructive">{errors.images}</p>}
+          </div>
+
+          <PairLinker images={images} onLink={linkPair} onUnlink={unlinkPair} />
+
+          <MoreDetailsSection fields={fields} update={update} />
+          <SeoSection fields={fields} update={update} slugLocked={isLive} />
         </CardContent>
       </Card>
 
-      {/* Step Content */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{steps[currentStep - 1].title}</CardTitle>
-        </CardHeader>
-        <CardContent>
-            {currentStep === 1 && (
-              <ProjectPhotosStep
-                formData={formData}
-                updateFormData={updateFormData}
-              />
-            )}
-            {currentStep === 2 && (
-              <ProjectBasicInfoStep
-                formData={formData}
-                updateFormData={updateFormData}
-              />
-            )}
-          {currentStep === 3 && (
-            <ProjectDetailsStep 
-              formData={formData}
-              updateFormData={updateFormData}
-            />
-          )}
-          {currentStep === 4 && (
-            <ProjectSEOStep 
-              formData={formData}
-              updateFormData={updateFormData}
-            />
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Navigation */}
-      <div className="flex justify-between">
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={handlePrevious}
-            disabled={currentStep === 1 || isGenerating || isSaving}
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Previous
-          </Button>
-          
-          {mode === 'upload' && (
-            <Button
-              variant="outline"
-              onClick={discardDraft}
-              disabled={isLoading || formData.images.length === 0}
-              className="text-destructive hover:text-destructive"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Discard Draft
-            </Button>
-          )}
-        </div>
-        
-        <div className="flex gap-2">
-          {currentStep === steps.length ? (
-             <Button 
-               onClick={handleSave}
-               disabled={isSaving || isGenerating}
-               className="bg-green-600 hover:bg-green-700"
-             >
-               {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-               {isSaving 
-                 ? (mode === 'edit' ? 'Updating...' : 'Saving...') 
-                 : (mode === 'edit' ? 'Update Project' : 'Save Project')
-               }
-             </Button>
-          ) : (
-            <Button onClick={handleNext} disabled={isGenerating || isSaving}>
-              {isGenerating && currentStep === 1 && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {isGenerating && currentStep === 1 ? 'Generating Content...' : 'Next'}
-              {!isGenerating && <ArrowRight className="w-4 h-4 ml-2" />}
-            </Button>
-          )}
-        </div>
+      <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center justify-end gap-3 border-t bg-background/95 px-4 py-3 backdrop-blur">
+        {(uploading > 0 || failed > 0) && (
+          <p className="mr-auto text-sm text-muted-foreground" role="status">
+            {uploading > 0 && `Uploading ${uploading} file${uploading > 1 ? 's' : ''}...`}
+            {uploading > 0 && failed > 0 && ' '}
+            {failed > 0 && <span className="text-destructive">{failed} upload{failed > 1 ? 's' : ''} failed; remove {failed > 1 ? 'them' : 'it'} to save.</span>}
+          </p>
+        )}
+        {saveError && (
+          <p className="mr-auto text-sm font-medium text-destructive" role="alert" data-testid="project-save-error">
+            Not saved: {saveError}
+          </p>
+        )}
+        <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
+        <Button type="button" onClick={save} disabled={saving || uploading > 0 || failed > 0} data-testid="project-save">
+          {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />}
+          {saving ? 'Saving...' : saveLabel}
+        </Button>
       </div>
     </div>
   );

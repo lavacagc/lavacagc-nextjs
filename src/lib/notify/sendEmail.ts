@@ -48,6 +48,10 @@ export type EmailCategory =
   | 'proposal_delivery'
   /** Internal: the client answered their proposal (slice 3). Never customer-facing. */
   | 'proposal_submission'
+  /** Home services: a job offer to a sub (bid request). Transactional. */
+  | 'sub_offer'
+  /** Home services: a follow-up to a sub on an offer (taken, counter accepted, reply). */
+  | 'sub_offer_notice'
   | 'other';
 
 interface TrackedEmailBase {

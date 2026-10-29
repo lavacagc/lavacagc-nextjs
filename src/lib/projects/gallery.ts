@@ -22,7 +22,7 @@ const CATEGORY_ORDER: Record<string, number> = { before: 0, during: 1, after: 2 
  * are consumed by the pair and removed from the standalone set. Everything else
  * (unpaired images, `during` shots, half-pairs whose partner is missing) renders
  * as a standalone photo/video, ordered featured-first then before → during →
- * after — matching the page's previous ordering so there's no visual regression
+ * after - matching the page's previous ordering so there's no visual regression
  * when no pairs exist.
  */
 export function buildProjectGallery(images: ProjectGalleryImage[]): {

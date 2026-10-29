@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { isPrivateTokenPage } from '@/lib/privatePages';
 import { X, Phone, ArrowRight, Eye, MessageCircle } from 'lucide-react';
 import { useVisitor } from '@/hooks/useVisitor';
@@ -375,6 +376,7 @@ function dbToBannerRule(db: DBBanner): BannerRule {
 // ---- MAIN SMART BANNER COMPONENT ----
 function SmartBannerInner() {
   const pathname = usePathname();
+  const isMobile = useIsMobile();
   const searchParams = useSearchParams();
   const { visitorId, visitCount, isReturning, firstSeen, pagesVisited } = useVisitor();
   const [activeRule, setActiveRule] = useState<BannerRule | null>(null);
@@ -393,6 +395,28 @@ function SmartBannerInner() {
   // What the effect actually needs to re-run on is crossing into or out of a
   // tokenized page, which is what this changes on.
   const isPrivate = isPrivateTokenPage(pathname);
+
+  // Paths where no banner may show, whatever the rules say. Derived once and
+  // gating the show timer, the impression event and the visibility broadcast
+  // as well as the render: a banner hidden only at render time would still
+  // tell StickyCTA and ReviewToast to step aside for something nobody sees.
+  const suppressed =
+    // Keep the Home Care portal chrome-free (matches StickyCTA / ExitIntentPopup).
+    pathname.startsWith('/home-care') ||
+    // And the home services pages, whose sticky "Request these" bar is the page's
+    // one call to action. A code guard, not a rule: banners come from the
+    // admin-managed smart_banners table, so an exclusion in bannerRules.ts never
+    // reaches this component, and a rule added in admin later must not be able
+    // to cover the request bar either.
+    pathname.startsWith('/home-services') ||
+    // On a phone the slide-in covers half a project card on the portfolio page
+    // (Lavish review Q5, 2026-10-29). Desktop keeps it.
+    (pathname.startsWith('/portfolio') && isMobile) ||
+    // And the private tokenized pages. This one needs a CODE-level guard rather
+    // than a banner rule: `evaluateRule` only filters on `show_on_paths` when the
+    // rule sets one, so every promotion with an empty path list matches every
+    // path - including a page showing one client's private pricing.
+    isPrivate;
 
   // Fetch banner rules from DB
   useEffect(() => {
@@ -438,14 +462,14 @@ function SmartBannerInner() {
   }, [visitorId, isReturning, visitCount, firstSeen, pathname, pagesVisited, rules, rulesLoaded, previewId]);
 
   useEffect(() => {
-    if (!rulesLoaded) return;
+    if (!rulesLoaded || suppressed) return;
 
     // In preview mode, show immediately with no delay
     if (previewId) {
       const rule = findMatchingRule();
       if (rule) {
         // Intentional synchronous setState for immediate preview display
-        // eslint-disable-next-line react-hooks/set-state-in-effect
+         
         setActiveRule(rule);
         setVisible(true);
         setIsPreview(true);
@@ -473,13 +497,14 @@ function SmartBannerInner() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [findMatchingRule, isReturning, visitCount, rulesLoaded, previewId]);
+  }, [findMatchingRule, isReturning, visitCount, rulesLoaded, previewId, suppressed]);
 
   // Broadcast banner visibility to other widgets
+  const shown = visible && !suppressed;
   useEffect(() => {
-    setBannerVisible(visible);
+    setBannerVisible(shown);
     return () => setBannerVisible(false);
-  }, [visible]);
+  }, [shown]);
 
   const handleDismiss = useCallback(() => {
     if (!activeRule) return;
@@ -493,13 +518,7 @@ function SmartBannerInner() {
     trackEvent('smart_banner_dismissed', { banner_id: activeRule.id });
   }, [activeRule]);
 
-  // Keep the Home Care portal chrome-free (matches StickyCTA / ExitIntentPopup).
-  if (pathname.startsWith('/home-care')) return null;
-  // And the private tokenized pages. This one needs a CODE-level guard rather
-  // than a banner rule: `evaluateRule` only filters on `show_on_paths` when the
-  // rule sets one, so every promotion with an empty path list matches every
-  // path - including a page showing one client's private pricing.
-  if (isPrivateTokenPage(pathname)) return null;
+  if (suppressed) return null;
   if (!visible || !activeRule) return null;
 
   const bannerElement = (() => {
