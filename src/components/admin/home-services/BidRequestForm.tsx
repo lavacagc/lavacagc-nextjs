@@ -3,8 +3,11 @@
 /**
  * "Send bid request" (BD1-BD4). One block per trade on the request: sub pay,
  * the customer price computed at 1.43x (editable), the live margin, the 70%
- * rule blocking the send with its reason, scope pre-filled from the answers,
- * town only, photos to share and target dates. It shows who will get each
+ * rule blocking the send with its reason, the homeowner's answers (each sub
+ * reads them in their own language), Alex's own scope text, town only, photos
+ * to share and target dates. The homeowner's free-text notes are shown in a
+ * private box and never sent: they can hold gate codes or an address, and subs
+ * see the town only until one wins. It shows who will get each
  * offer and who will not and why, and after sending, exactly who got what over
  * which channel.
  */
@@ -24,7 +27,8 @@ import { channelLabel, formatWhen, jsonInit, tradeName } from './shared';
 
 export interface BidTrade {
   trade: Trade;
-  scope: string;
+  /** The homeowner's taps for this trade, in English here; subs get their own language. */
+  answers: string[];
   preview: {
     county: string | null;
     eligible: Array<{ id: string; business_name: string; language: string; email: string; phone: string }>;
@@ -67,7 +71,7 @@ export default function BidRequestForm({
       subPay: '',
       customer: '',
       customerEdited: false,
-      scope: t.scope,
+      scope: '',
       town: request.town,
       photoIds: photos.map((p) => p.id),
       start: '',
@@ -157,8 +161,8 @@ export default function BidRequestForm({
                       <tr key={rc.sub_id} className="border-t" data-testid="bid-recipient">
                         <td className="py-1 pr-2">{rc.business_name}</td>
                         <td className="pr-2 uppercase">{rc.language}</td>
-                        <td className={`pr-2 ${rc.email_status === 'failed' ? 'font-bold text-destructive' : ''}`}>{channelLabel(rc.email_status)}</td>
-                        <td className={rc.sms_status === 'failed' ? 'font-bold text-destructive' : ''}>{channelLabel(rc.sms_status)}</td>
+                        <td className={`pr-2 ${rc.email_status === 'failed' ? 'font-bold text-red-700' : ''}`}>{channelLabel(rc.email_status)}</td>
+                        <td className={rc.sms_status === 'failed' ? 'font-bold text-red-700' : ''}>{channelLabel(rc.sms_status)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -166,7 +170,7 @@ export default function BidRequestForm({
               </>
             )}
             {res.status === 'no_eligible_subs' && (
-              <div className="text-destructive">
+              <div className="text-red-700">
                 <p className="font-medium">Not sent: no eligible sub for this trade. Nothing was created.</p>
                 {res.excluded.length > 0 && (
                   <ul className="mt-1 list-disc pl-5 text-xs">{res.excluded.map((x) => <li key={x.business_name}>{x.business_name}: {x.reason}</li>)}</ul>
@@ -192,6 +196,14 @@ export default function BidRequestForm({
         </p>
       </div>
 
+      {request.notes.trim() && (
+        <section className="rounded-lg border border-amber-300 bg-amber-50 p-3" aria-labelledby="bid-private-notes-title" data-testid="bid-private-notes">
+          <h4 id="bid-private-notes-title" className="text-xs font-semibold text-amber-900">Homeowner notes (private)</h4>
+          <p className="mt-1 whitespace-pre-line text-sm text-amber-950">{request.notes}</p>
+          <p className="mt-1 text-xs text-amber-900">Never sent to subs. Paraphrase anything they need into your scope notes, without codes or addresses.</p>
+        </section>
+      )}
+
       {trades.map((t) => {
         const f = forms[t.trade];
         const c = computed[t.trade];
@@ -209,7 +221,7 @@ export default function BidRequestForm({
             </div>
 
             <div className="text-xs">
-              <p className={eligible.length ? 'text-green-800' : 'font-medium text-destructive'} data-testid="bid-eligible">
+              <p className={eligible.length ? 'text-green-800' : 'font-medium text-red-700'} data-testid="bid-eligible">
                 {eligible.length
                   ? `Goes to ${eligible.length}: ${eligible.map((e) => e.business_name).join(', ')}`
                   : `No eligible sub${t.preview?.county ? ` in ${t.preview.county}` : ''}. Nothing will be sent for this trade.`}
@@ -246,11 +258,17 @@ export default function BidRequestForm({
                 <p className="text-xs" data-testid="bid-margin">
                   {c.m ? <>Margin <strong>{formatDollars(c.m.cents)}</strong> ({Math.round(c.m.share * 1000) / 10}%)</> : 'Margin shows once both prices are set.'}
                 </p>
-                {c.violation && <p className="text-xs font-medium text-destructive" role="alert" data-testid="bid-violation">{c.violation}</p>}
+                {c.violation && <p className="text-xs font-medium text-red-700" role="alert" data-testid="bid-violation">{c.violation}</p>}
 
                 <div>
-                  <label htmlFor={`${idp}-scope`} className="mb-1 block text-xs font-medium">Scope summary (subs see this)</label>
-                  <Textarea id={`${idp}-scope`} rows={3} maxLength={2000} value={f.scope} onChange={(e) => update(t.trade, { scope: e.target.value })} />
+                  <p className="mb-1 text-xs font-medium">Homeowner answers (subs see these, in their own language)</p>
+                  {t.answers.length ? (
+                    <ul className="mb-2 list-disc rounded-md bg-muted px-6 py-2 text-xs" data-testid="bid-answers">
+                      {t.answers.map((line) => <li key={line}>{line}</li>)}
+                    </ul>
+                  ) : <p className="mb-2 text-xs text-muted-foreground">No answers for this service.</p>}
+                  <label htmlFor={`${idp}-scope`} className="mb-1 block text-xs font-medium">Your scope notes for subs (optional, sent as written)</label>
+                  <Textarea id={`${idp}-scope`} rows={3} maxLength={2000} value={f.scope} onChange={(e) => update(t.trade, { scope: e.target.value })} placeholder="Measurements, access, anything the answers leave out" />
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div>
@@ -299,7 +317,7 @@ export default function BidRequestForm({
         );
       })}
 
-      {error && <p className="text-sm font-medium text-destructive" role="alert">{error}</p>}
+      {error && <p className="text-sm font-medium text-red-700" role="alert">{error}</p>}
       <Button onClick={send} disabled={blocked || sending} className="w-full sm:w-auto" data-testid="bid-send">
         {sending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" aria-hidden />}
         Send {included.length > 0 ? `${included.length} offer${included.length > 1 ? 's' : ''}` : 'bid request'}

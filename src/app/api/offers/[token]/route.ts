@@ -21,7 +21,7 @@ import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isWellFormedToken, lookupOfferByToken, respondToOffer } from '@/lib/home-services/offers';
 import { DECLINE_REASONS } from '@/lib/home-services/offerRules';
 import { parseDollarsToCents } from '@/lib/home-services/pricing';
-import { MAX_MULTIPART_BYTES, storeAttachments } from '@/lib/home-services/attachments';
+import { ATTACHMENT_ERROR_TEXT, MAX_MULTIPART_BYTES, attachmentErrorStatus, storeAttachments } from '@/lib/home-services/attachments';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -59,8 +59,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { token } = await params;
   const isMultipart = (request.headers.get('content-type') ?? '').startsWith('multipart/form-data');
   const length = Number(request.headers.get('content-length') ?? 0);
-  if (length > (isMultipart ? MAX_MULTIPART_BYTES : JSON_MAX_BYTES)) {
-    return NextResponse.json({ error: 'too_large' }, { status: 413 });
+  if (isMultipart && length > MAX_MULTIPART_BYTES) {
+    // The page shows this in the sub's language from the code; the message is for anything else.
+    return NextResponse.json({ error: 'body_too_big', message: ATTACHMENT_ERROR_TEXT.body_too_big }, { status: 413 });
+  }
+  if (!isMultipart && length > JSON_MAX_BYTES) {
+    return NextResponse.json({ error: 'too_large', message: 'Request body too large.' }, { status: 413 });
   }
 
   const ip = getClientIp(request);
@@ -106,7 +110,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     let result;
     if (body.action === 'details') {
       const stored = await storeAttachments(files, found.offer.id, found.recipient.id, 'sub');
-      if (stored.ok === false) return NextResponse.json({ error: stored.error }, { status: 400 });
+      if (stored.ok === false) {
+        return NextResponse.json({ error: stored.error, message: ATTACHMENT_ERROR_TEXT[stored.error] }, { status: attachmentErrorStatus(stored.error) });
+      }
       result = await respondToOffer(found, { action: 'details', text: body.text, attachments: stored.attachments });
     } else if (body.action === 'counter') {
       result = await respondToOffer(found, { action: 'counter', price_cents: body.price, note: body.note });

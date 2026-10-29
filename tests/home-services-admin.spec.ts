@@ -173,10 +173,14 @@ async function openTab(page: Page, label: 'Service Requests' | 'Subs' | 'Pricing
   const phone = (page.viewportSize()?.width ?? 1366) < 768;
   if (phone) await page.getByRole('button', { name: 'Open menu' }).click();
   const leaf = page.getByRole('button', { name: label, exact: true });
-  // The sidebar remembers its open group; open Customers only when it is closed.
-  if (!(await leaf.isVisible())) {
-    await page.getByRole('button', { name: 'Customers', exact: true }).click();
-  }
+  // The sidebar remembers its open group, and restores that after the heading
+  // shows. Acting once on a snapshot can close the group it meant to open, so
+  // converge: toggle Customers until the leaf is on screen.
+  const group = page.getByRole('button', { name: 'Customers', exact: true });
+  await expect(async () => {
+    if (!(await leaf.isVisible())) await group.click();
+    await expect(leaf).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 20_000 });
   await leaf.click();
   // The desktop sidebar expands on hover and would sit over the content.
   if (!phone) await page.mouse.move(1000, 450);
@@ -416,7 +420,12 @@ test.describe('home services admin (live backend)', () => {
     const gutter = form.locator('[data-trade="gutter_cleaning"]');
     await expect(paint.getByTestId('bid-eligible')).toContainText(painter.business_name);
     await expect(paint.getByTestId('bid-excluded')).toContainText(`Not sent to ${RUN} Form Lapsed: Insurance expired`);
-    await expect(paint.getByLabel('Scope summary (subs see this)')).toHaveValue(/Cabinet repainting - Doors and drawers: 26 to 40/);
+    // D2/D6: the answers are shown (subs get them in their own language); Alex's scope
+    // starts empty; the homeowner's notes sit in a private box that is never sent.
+    await expect(paint.getByTestId('bid-answers')).toContainText('Cabinet repainting - Doors and drawers: 26 to 40');
+    await expect(paint.getByLabel('Your scope notes for subs (optional, sent as written)')).toHaveValue('');
+    await expect(form.getByTestId('bid-private-notes')).toContainText('Homeowner notes (private)');
+    await expect(form.getByTestId('bid-private-notes')).toContainText('Dog in the yard, use the side gate.');
     await expect(paint.getByLabel('Town (no street address)')).toHaveValue('Montclair');
 
     await paint.getByTestId('bid-sub-pay').fill('1400');
@@ -452,6 +461,57 @@ test.describe('home services admin (live backend)', () => {
     expect(offers[1]).toMatchObject({ trade: 'gutter_cleaning', sub_pay_cents: 15000, customer_price_cents: 21500 });
     const [after] = await rest<Req[]>('GET', `home_service_requests?select=status&id=eq.${req.id}`);
     expect(after.status).toBe('bid_sent');
+
+    // D2: the note is on no sub's page; the answers are.
+    const [paintOffer] = await rest<Array<{ id: string; scope_summary: string }>>('GET', `job_offers?select=id,scope_summary&request_id=eq.${req.id}&trade=eq.cabinet_painting`);
+    expect(paintOffer.scope_summary).toBe('');
+    const [rc] = await rest<Array<{ token: string }>>('GET', `offer_recipients?select=token&offer_id=eq.${paintOffer.id}&sub_id=eq.${painter.id}`);
+    const subPage = await page.context().newPage();
+    await subPage.setExtraHTTPHeaders({ 'x-real-ip': `10.250.${randomBytes(1)[0]}.${randomBytes(1)[0]}` });
+    await subPage.goto(`/offer/${rc.token}`);
+    await expect(subPage.getByTestId('offer-scope')).toContainText('Doors and drawers: 26 to 40');
+    expect(await subPage.content()).not.toContain('side gate');
+
+    // D7 and D1: one trade assigned, the other still out; the push waits as pending with Retry unavailable.
+    const accepted = await api.post(`/api/offers/${rc.token}`, { headers: { 'x-real-ip': `10.250.${randomBytes(1)[0]}.${randomBytes(1)[0]}` }, data: { action: 'accept' } });
+    expect(accepted.status()).toBe(200);
+    await subPage.close();
+    await page.getByRole('button', { name: 'Back to the request' }).click();
+    const state = page.getByTestId('sr-trade-state');
+    await expect(state.locator('[data-trade="cabinet_painting"]')).toHaveAttribute('data-state', 'assigned');
+    await expect(state.locator('[data-trade="gutter_cleaning"]')).toHaveAttribute('data-state', 'open');
+    await expect(page.getByTestId('sr-detail').getByTestId('request-status')).toHaveText('Bid sent');
+    const push = page.getByTestId('sr-push');
+    await expect(push).toHaveAttribute('data-push-status', 'pending');
+    await expect(push).toContainText('SpecNook not connected');
+    await expect(push.getByTestId('sr-push-retry')).toBeDisabled();
+    await page.getByTestId('sr-detail').locator('section', { has: page.getByTestId('sr-offers') }).screenshot({ path: shot('d1-d7-trade-state-and-push.png') });
+  });
+
+  test('D3: responses outlived by their offer leave the inbox and sit in a folded Closed list with no actions', async ({ page }) => {
+    const tag = newTag();
+    const req = await seedRequest(tag, 'Closed', { services: ['cabinet-repainting'] });
+    const sub = await createSub(api, 'Closed Counter');
+    const sent = await api.post('/api/admin/offers', {
+      data: { request_id: req.id, offers: [{ trade: 'cabinet_painting', sub_pay_cents: 140000, customer_price_cents: 220000, scope_summary: '', town: 'Montclair' }] },
+    });
+    const offerId = (await sent.json()).results[0].offer_id;
+    const [rc] = await rest<Array<{ token: string }>>('GET', `offer_recipients?select=token&offer_id=eq.${offerId}&sub_id=eq.${sub.id}`);
+    const ip = { 'x-real-ip': `10.250.${randomBytes(1)[0]}.${randomBytes(1)[0]}` };
+    expect((await api.post(`/api/offers/${rc.token}`, { headers: ip, data: { action: 'counter', price: '1475' } })).status()).toBe(200);
+    expect((await api.post(`/api/admin/offers/${offerId}`, { data: { action: 'cancel' } })).status()).toBe(200);
+
+    await openTab(page, 'Service Requests');
+    await page.getByTestId('sr-view-responses').click();
+    await expect(page.getByTestId('inbox')).toBeVisible();
+    await expect(page.getByTestId('inbox-counter').filter({ hasText: sub.business_name })).toHaveCount(0);
+    const closed = page.getByTestId('inbox-closed');
+    // Folded by default.
+    await expect(closed).not.toHaveAttribute('open', '');
+    await closed.locator('summary').click();
+    const item = closed.getByTestId('inbox-closed-item').filter({ hasText: sub.business_name });
+    await expect(item).toContainText('Counter: $1,475');
+    await expect(item.locator('button, input, textarea, select')).toHaveCount(0);
   });
 
   test('BD5/BD7: the Sub Responses inbox accepts a counter and logs a decline call', async ({ page }) => {
@@ -558,16 +618,27 @@ test.describe('home services admin (live backend)', () => {
     // The close rate is over the whole database, which other builders write to:
     // read the truth right after the card and retry if a write landed between.
     const since = encodeURIComponent(new Date(Date.now() - 30 * 86_400_000).toISOString());
-    let matched = false;
-    for (let attempt = 0; attempt < 3 && !matched; attempt += 1) {
-      if (attempt > 0) await page.getByRole('button', { name: 'Refresh' }).click();
+    // Judge only an attempt where the database did not move while the card loaded:
+    // then the card must match it exactly. A moving database is a retry, never a pass.
+    const truth = async () => ({
+      won: await count(`home_service_requests?select=id&status=eq.won&created_at=gte.${since}`),
+      qualified: await count(`home_service_requests?select=id&status=neq.held&created_at=gte.${since}`),
+    });
+    let verdict: 'match' | 'mismatch' | 'unstable' = 'unstable';
+    let detail = '';
+    for (let attempt = 0; attempt < 8 && verdict === 'unstable'; attempt += 1) {
+      const before = await truth();
+      // A fresh load every time, so the card's data was read inside this window.
+      await openTab(page, 'Service Requests');
       const shown = (await page.getByTestId('sr-close-detail').textContent()) ?? '';
-      const won = await count(`home_service_requests?select=id&status=eq.won&created_at=gte.${since}`);
-      const qualified = await count(`home_service_requests?select=id&status=neq.held&created_at=gte.${since}`);
-      const rate = `${Math.round((won / qualified) * 100)}%`;
-      if (shown.startsWith(`${won} won of ${qualified}`) && (await page.getByTestId('sr-close-rate').textContent()) === rate) matched = true;
+      const shownRate = (await page.getByTestId('sr-close-rate').textContent()) ?? '';
+      const after = await truth();
+      if (before.won !== after.won || before.qualified !== after.qualified) continue;
+      const rate = `${Math.round((after.won / after.qualified) * 100)}%`;
+      detail = `card "${shownRate} / ${shown}", database ${after.won} won of ${after.qualified}`;
+      verdict = shown.startsWith(`${after.won} won of ${after.qualified}`) && shownRate === rate ? 'match' : 'mismatch';
     }
-    expect(matched, 'the card must equal won / (status new or later) over the last 30 days').toBe(true);
+    expect(verdict, `the card must equal won / (status new or later) over the last 30 days: ${detail}`).toBe('match');
     await expect(page.getByTestId('sr-by-service')).toContainText('HVAC cleaning');
     await page.getByTestId('sr-summary').screenshot({ path: shot('ad7-summary-card.png') });
   });

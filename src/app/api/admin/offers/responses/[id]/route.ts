@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { InboxError, RESPONSE_COLUMNS, handleInboxAction, type InboxAction } from '@/lib/home-services/offers';
 import type { OfferResponseRow } from '@/lib/home-services/offerRules';
-import { ATTACHMENT_ERROR_TEXT, MAX_MULTIPART_BYTES, storeAttachments } from '@/lib/home-services/attachments';
+import { ATTACHMENT_ERROR_TEXT, MAX_MULTIPART_BYTES, attachmentErrorStatus, storeAttachments } from '@/lib/home-services/attachments';
 import { UUID_RE, actingAdmin, readJson, serverError } from '@/lib/home-services/adminRoute';
 
 export const dynamic = 'force-dynamic';
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     if ((request.headers.get('content-type') ?? '').startsWith('multipart/form-data')) {
       if (Number(request.headers.get('content-length') ?? 0) > MAX_MULTIPART_BYTES) {
-        return NextResponse.json({ error: 'Body too large' }, { status: 413 });
+        return NextResponse.json({ error: ATTACHMENT_ERROR_TEXT.body_too_big }, { status: 413 });
       }
       const form = await request.formData();
       if (form.get('action') !== 'reply_details') return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (!response) return NextResponse.json({ error: 'Not found' }, { status: 404 });
       const files = form.getAll('files').filter((f): f is File => typeof f !== 'string');
       const stored = await storeAttachments(files, response.offer_id, response.recipient_id, 'admin');
-      if (stored.ok === false) return NextResponse.json({ error: ATTACHMENT_ERROR_TEXT[stored.error] }, { status: 400 });
+      if (stored.ok === false) return NextResponse.json({ error: ATTACHMENT_ERROR_TEXT[stored.error] }, { status: attachmentErrorStatus(stored.error) });
       act = { action: 'reply_details', text, attachments: stored.attachments };
     } else {
       const read = await readJson(request, 8 * 1024);

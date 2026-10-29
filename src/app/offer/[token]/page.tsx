@@ -13,10 +13,12 @@
  * Everything is in the sub's own language (OF6).
  */
 import type { Metadata } from 'next';
+import { cache } from 'react';
 import { TRADE_LABEL, t, toLang, type Lang, type Trade } from '@/lib/home-services/catalog';
+import { answerLinesFor } from '@/lib/home-services/requestsAdmin';
 import { s } from '@/lib/home-services/i18n';
 import { formatDollars } from '@/lib/home-services/pricing';
-import { lookupOfferByToken, sharedPhotoUrls, subCanAccept, getRequest } from '@/lib/home-services/offers';
+import { lookupOfferByToken, requestForOfferPage, sharedPhotoUrls, subCanAccept } from '@/lib/home-services/offers';
 import { confirmablePrice, recipientView, type OfferResponseRow } from '@/lib/home-services/offerRules';
 import { startWindowLabel } from '@/lib/home-services/offerEmail';
 import { signPaths } from '@/lib/home-services/storage';
@@ -25,22 +27,32 @@ import OfferActions, { Countdown } from './OfferActions';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Job offer - La Vaca',
-  robots: { index: false, follow: false },
-  referrer: 'no-referrer',
-};
+/** One database lookup per render, shared by the title and the page. */
+const lookupOnce = cache(lookupOfferByToken);
 
-export default async function OfferPage({
-  params,
-  searchParams,
-}: {
+type PageProps = {
   params: Promise<{ token: string }>;
   searchParams: Promise<{ lang?: string }>;
-}) {
+};
+
+/** The browser title in the sub's own language (D6); a dead link uses ?lang or English. */
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
+  const { token } = await params;
+  const lookup = await lookupOnce(token);
+  const lang: Lang = lookup.status === 'found'
+    ? (lookup.found.sub.language === 'es' ? 'es' : 'en')
+    : toLang((await searchParams).lang);
+  return {
+    title: s('offerTitle', lang),
+    robots: { index: false, follow: false },
+    referrer: 'no-referrer',
+  };
+}
+
+export default async function OfferPage({ params, searchParams }: PageProps) {
   const { token } = await params;
   const fallbackLang = toLang((await searchParams).lang);
-  const lookup = await lookupOfferByToken(token);
+  const lookup = await lookupOnce(token);
 
   if (lookup.status === 'unavailable') {
     return (
@@ -78,11 +90,20 @@ export default async function OfferPage({
     );
   }
 
-  const photos = (await sharedPhotoUrls(offer.photo_ids)).filter((u): u is string => !!u);
+  const [photoUrls, request] = await Promise.all([
+    sharedPhotoUrls(offer.photo_ids),
+    requestForOfferPage(offer.request_id, view.kind === 'won'),
+  ]);
+  const photos = photoUrls.filter((u): u is string => !!u);
   const start = startWindowLabel(offer.target_start, offer.target_end, lang);
+  // The homeowner's taps for this trade in the sub's language, then Alex's own
+  // scope text. Never the homeowner's free-text notes (D2).
+  const answers = request ? answerLinesFor(request, offer.trade, lang) : [];
+  const job = answers.length || offer.scope_summary
+    ? <JobLines answers={answers} scope={offer.scope_summary} />
+    : null;
 
   if (view.kind === 'won') {
-    const request = await getRequest(offer.request_id);
     return (
       <Shell lang={lang}>
         <p className="text-xs font-bold uppercase tracking-wider text-[#B4600F]">{trade} · {offer.town}</p>
@@ -96,7 +117,7 @@ export default async function OfferPage({
           <Row label={s('offerTrade', lang)}>{trade}</Row>
           <Row label={s('offerStart', lang)}>{start}</Row>
           <Row label={s('offerPay', lang)}><strong>{formatDollars(offer.sub_pay_cents)}</strong></Row>
-          {offer.scope_summary && <Row label={s('offerJob', lang)}><span className="whitespace-pre-line">{offer.scope_summary}</span></Row>}
+          {job && <Row label={s('offerJob', lang)}>{job}</Row>}
         </dl>
         <Photos urls={photos} lang={lang} />
         <p className="mt-6 text-xs text-[#666]">{s('offerHelp', lang)}</p>
@@ -131,7 +152,7 @@ export default async function OfferPage({
             ? <span className="font-medium text-[#1A1A1A]">{s('offerPausedNote', lang)}</span>
             : <Countdown expiresAt={recipient.expires_at} lang={lang} />}
         </Row>
-        {offer.scope_summary && <Row label={s('offerJob', lang)}><span className="whitespace-pre-line" data-testid="offer-scope">{offer.scope_summary}</span></Row>}
+        {job && <Row label={s('offerJob', lang)}>{job}</Row>}
       </dl>
 
       <Photos urls={photos} lang={lang} />
@@ -225,12 +246,23 @@ function Photos({ urls, lang }: { urls: string[]; lang: Lang }) {
 
 function Shell({ children, lang }: { children: React.ReactNode; lang: Lang }) {
   return (
-    <main lang={lang} className="min-h-screen bg-[#EFEBE6] px-4 py-8 sm:py-10">
+    <main id="main-content" lang={lang} className="min-h-screen bg-[#EFEBE6] px-4 py-8 sm:py-10">
       <div className="mx-auto w-full max-w-md rounded-xl bg-white p-5 shadow-sm sm:p-8">
         <p className="mb-4 text-sm font-bold text-[#1A1A1A]">La Vaca <span className="font-normal text-[#666]">General Contractors</span></p>
         {children}
       </div>
     </main>
+  );
+}
+
+function JobLines({ answers, scope }: { answers: string[]; scope: string }) {
+  return (
+    <div data-testid="offer-scope">
+      {answers.length > 0 && (
+        <ul className="space-y-0.5">{answers.map((line) => <li key={line}>{line}</li>)}</ul>
+      )}
+      {scope && <p className={`whitespace-pre-line ${answers.length ? 'mt-1.5' : ''}`}>{scope}</p>}
+    </div>
   );
 }
 

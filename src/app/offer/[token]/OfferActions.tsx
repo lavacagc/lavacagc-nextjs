@@ -14,7 +14,10 @@ import { useRouter } from 'next/navigation';
 import type { Lang } from '@/lib/home-services/catalog';
 import { s, type StringKey } from '@/lib/home-services/i18n';
 import { formatDollars } from '@/lib/home-services/pricing';
-import { DECLINE_REASONS, DECLINE_REASON_KEY, MAX_RESPONSE_FILES, MAX_RESPONSE_FILE_BYTES, type DeclineReason } from '@/lib/home-services/offerRules';
+import {
+  DECLINE_REASONS, DECLINE_REASON_KEY, MAX_RESPONSE_BODY_BYTES, MAX_RESPONSE_FILES, MAX_RESPONSE_FILE_BYTES, type DeclineReason,
+} from '@/lib/home-services/offerRules';
+import { compressAll } from '@/lib/home-services/compressImage';
 
 const noopSubscribe = () => () => {};
 
@@ -29,6 +32,7 @@ const ERROR_KEY: Record<string, StringKey> = {
   details_required: 'offerDetailsRequired',
   too_many_files: 'offerFilesTooMany',
   file_too_big: 'offerFileTooBig',
+  body_too_big: 'offerFilesTooLarge',
   invalid_link: 'offerInvalidTitle',
 };
 
@@ -102,15 +106,22 @@ export default function OfferActions({
     void sendJson({ action: 'counter', price: cleaned, note }, s('offerCounterSent', lang, { price: formatDollars(Math.round(Number(cleaned) * 100)) }));
   }
 
-  function submitDetails(e: React.FormEvent) {
+  async function submitDetails(e: React.FormEvent) {
     e.preventDefault();
     if (!text.trim()) { setError(s('offerDetailsRequired', lang)); return; }
     if (files.length > MAX_RESPONSE_FILES) { setError(s('offerFilesTooMany', lang)); return; }
-    if (files.some((f) => f.size > MAX_RESPONSE_FILE_BYTES)) { setError(s('offerFileTooBig', lang)); return; }
+    // Shrink photos first (1600 px, JPEG 0.8): two phone photos straight off the
+    // camera are already past the server's 4 MB body cap.
+    setBusy(true);
+    setError(null);
+    const ready = await compressAll(files);
+    setBusy(false);
+    if (ready.some((f) => f.size > MAX_RESPONSE_FILE_BYTES)) { setError(s('offerFileTooBig', lang)); return; }
+    if (ready.reduce((n, f) => n + f.size, 0) > MAX_RESPONSE_BODY_BYTES) { setError(s('offerFilesTooLarge', lang)); return; }
     const form = new FormData();
     form.set('action', 'details');
     form.set('text', text.trim());
-    for (const f of files) form.append('files', f);
+    for (const f of ready) form.append('files', f);
     void post(form, false, s('offerDetailsSent', lang));
   }
 

@@ -1,6 +1,9 @@
 /**
  * GET /api/cron/offers-expire - every 30 minutes (vercel.json).
  *
+ * Also retries the SpecNook push of assigned offers still pending or failed
+ * (only when SpecNook is configured).
+ *
  * Offers past their 24 hours with nobody accepted become `expired`; their
  * recipients are closed with reason 'expired'; the request gets the admin note
  * "Offer expired with no acceptance - adjust pay and resend" and Alex gets a
@@ -13,7 +16,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'crypto';
-import { expireOffers } from '@/lib/home-services/offers';
+import { expireOffers, retrySpecNookPushes } from '@/lib/home-services/offers';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -31,7 +34,9 @@ export async function GET(request: NextRequest) {
   if (!authorized(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const run = await expireOffers(new Date());
-    return NextResponse.json({ ok: true, ...run });
+    // Assigned jobs whose SpecNook push is pending or failed (no-op while not connected).
+    const pushes = await retrySpecNookPushes();
+    return NextResponse.json({ ok: true, ...run, pushes });
   } catch (err) {
     console.error('offers-expire failed:', err instanceof Error ? err.message : String(err));
     return NextResponse.json({ ok: false, error: 'offers-expire failed' }, { status: 500 });

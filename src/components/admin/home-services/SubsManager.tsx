@@ -125,7 +125,7 @@ export default function SubsManager() {
       </div>
 
       {error ? (
-        <p className="rounded-md border border-destructive/40 p-3 text-sm font-medium text-destructive" role="alert">The roster could not be read, so this is not an empty list: {error}</p>
+        <p className="rounded-md border border-destructive/40 p-3 text-sm font-medium text-red-700" role="alert">The roster could not be read, so this is not an empty list: {error}</p>
       ) : loading ? (
         <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" aria-label="Loading" /></div>
       ) : subs.length === 0 ? (
@@ -227,7 +227,7 @@ export default function SubsManager() {
                 <label htmlFor="sub-notes" className="mb-1 block text-xs font-medium text-muted-foreground">Notes</label>
                 <Textarea id="sub-notes" rows={2} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} maxLength={4000} />
               </div>
-              {formError && <p className="text-sm font-medium text-destructive" role="alert" data-testid="sub-form-error">{formError}</p>}
+              {formError && <p className="text-sm font-medium text-red-700" role="alert" data-testid="sub-form-error">{formError}</p>}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setDraft(null)}>Cancel</Button>
                 <Button type="submit" disabled={saving || !draft.business_name.trim()} data-testid="sub-save">

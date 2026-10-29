@@ -12,9 +12,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { describeAnswers } from '@/lib/home-services/catalog';
-import { STATUS_LABEL, countyForRequest, tradesForServices } from '@/lib/home-services/requestsAdmin';
+import { STATUS_LABEL, answerLinesFor, countyForRequest, tradesForServices } from '@/lib/home-services/requestsAdmin';
 import {
-  OFFER_COLUMNS, RECIPIENT_COLUMNS, RESPONSE_COLUMNS, appendRequestNote, getRequest, previewRecipients, scopeLinesFor,
+  OFFER_COLUMNS, RECIPIENT_COLUMNS, RESPONSE_COLUMNS, appendRequestNote, getRequest, previewRecipients, tradeAssignment,
 } from '@/lib/home-services/offers';
 import type { JobOfferRow, OfferRecipientRow, OfferResponseRow } from '@/lib/home-services/offerRules';
 import { formatDollars } from '@/lib/home-services/pricing';
@@ -35,12 +35,13 @@ export async function GET(_request: NextRequest, { params }: Params) {
     const request = await getRequest(id);
     if (!request) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    const [photoRows, offers, preview] = await Promise.all([
+    const [photoRows, offers, preview, trades] = await Promise.all([
       supabaseRest<Array<{ id: string; storage_path: string; content_type: string; created_at: string }>>(
         'GET', `lead_photos?select=id,storage_path,content_type,created_at&request_id=eq.${id}&order=created_at.asc&limit=50`,
       ),
       supabaseRest<JobOfferRow[]>('GET', `job_offers?select=${OFFER_COLUMNS}&request_id=eq.${id}&order=created_at.desc&limit=50`),
       previewRecipients(request),
+      tradeAssignment(id),
     ]);
     const urls = await signPaths((photoRows ?? []).map((p) => p.storage_path));
     const photos = (photoRows ?? []).map((p, i) => ({ id: p.id, url: urls[i], content_type: p.content_type, created_at: p.created_at }));
@@ -78,10 +79,13 @@ export async function GET(_request: NextRequest, { params }: Params) {
         }),
         responses: (responses ?? []).filter((r) => r.offer_id === o.id).map((r) => ({ ...r, sub_name: subName(r.sub_id) })),
       })),
+      // Latest state per trade that went out: open, assigned, expired or cancelled (withdrawn).
+      trade_state: trades.latest,
       bid: {
         trades: tradesForServices(request.services).map((trade) => ({
           trade,
-          scope: scopeLinesFor(request, trade),
+          // English for Alex; each sub reads these in their own language.
+          answers: answerLinesFor(request, trade, 'en'),
           preview: preview.find((p) => p.trade === trade) ?? null,
         })),
       },

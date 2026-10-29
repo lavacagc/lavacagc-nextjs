@@ -67,7 +67,8 @@ export interface OfferRecipientRow {
 
 export const RESPONSE_TYPES = ['accept', 'counter', 'details', 'decline'] as const;
 export type ResponseType = (typeof RESPONSE_TYPES)[number];
-export type ResponseStatus = 'pending' | 'accepted' | 'confirmed' | 'rejected' | 'replied' | 'recorded';
+/** `closed`: still pending when its offer was assigned, expired or withdrawn; no longer answerable. */
+export type ResponseStatus = 'pending' | 'accepted' | 'confirmed' | 'rejected' | 'replied' | 'recorded' | 'closed';
 
 export interface Attachment {
   storage_path: string;
@@ -126,9 +127,12 @@ export const DECLINE_REASON_LABEL: Record<DeclineReason, string> = {
   other: 'Other',
 };
 
-/** Detail-request attachments: up to 3 files, 6 MB each (OF4). */
+/** Detail-request attachments: up to 3 files (OF4). */
 export const MAX_RESPONSE_FILES = 3;
-export const MAX_RESPONSE_FILE_BYTES = 6 * 1024 * 1024;
+/** Per file after browser compression; photos come out far smaller (compressImage.ts). */
+export const MAX_RESPONSE_FILE_BYTES = 3.5 * 1024 * 1024;
+/** Whole multipart body: under Vercel's ~4.5 MB function body limit, with room for the form fields. */
+export const MAX_RESPONSE_BODY_BYTES = 4 * 1024 * 1024;
 
 /** A date column (YYYY-MM-DD) is expired when it is before today in New Jersey. */
 export function isDateExpired(date: string | null | undefined, today: string): boolean {

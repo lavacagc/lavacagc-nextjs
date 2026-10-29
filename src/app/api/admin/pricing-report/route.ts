@@ -57,10 +57,10 @@ export async function GET(request: NextRequest) {
     const [requests, responses, recipientCounts] = await Promise.all([
       (async () => {
         const reqIds = Array.from(new Set(offers.map((o) => o.request_id)));
-        const out: Array<{ id: string; town: string; address: string }> = [];
+        const out: Array<{ id: string; town: string; address: string; zip: string }> = [];
         for (let i = 0; i < reqIds.length; i += 200) {
-          out.push(...((await supabaseRest<Array<{ id: string; town: string; address: string }>>(
-            'GET', `home_service_requests?select=id,town,address&id=${ids(reqIds.slice(i, i + 200))}`,
+          out.push(...((await supabaseRest<Array<{ id: string; town: string; address: string; zip: string }>>(
+            'GET', `home_service_requests?select=id,town,address,zip&id=${ids(reqIds.slice(i, i + 200))}`,
           )) ?? []));
         }
         return out;

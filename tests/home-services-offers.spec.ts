@@ -9,8 +9,11 @@ import {
 import {
   confirmablePrice, extendedExpiry, offerExclusion, recipientView,
 } from '../src/lib/home-services/offerRules';
-import { countyForTown, summarizeRequests, tradesForServices } from '../src/lib/home-services/requestsAdmin';
+import { answerLinesFor, countyForRequest, countyForTown, summarizeRequests, tradesForServices } from '../src/lib/home-services/requestsAdmin';
 import { buildNotice, buildOfferEmail, buildOfferSms } from '../src/lib/home-services/offerEmail';
+import { retrySpecNookPushes } from '../src/lib/home-services/offers';
+import { createServer, type Server } from 'http';
+import { deflateSync, crc32 } from 'zlib';
 
 /**
  * Slice B - the bid request system and the sub offer page.
@@ -71,6 +74,16 @@ test.describe('pricing and offer rules (pure)', () => {
     expect(countyForTown('Nowhere')).toBeNull();
   });
 
+  test('D9: county comes from the ZIP first, then the town map', () => {
+    // A town outside the map, placed by its ZIP.
+    expect(countyForRequest({ town: 'Upper Montclair', address: '', zip: '07043' })).toBe('Essex');
+    // ZIP wins over a mistyped town.
+    expect(countyForRequest({ town: 'Montclair', address: '', zip: '07960' })).toBe('Morris');
+    // No usable ZIP: the town map still answers.
+    expect(countyForRequest({ town: 'Summit', address: '', zip: '' })).toBe('Union');
+    expect(countyForRequest({ town: 'Nowhere', address: '', zip: '99999' })).toBeNull();
+  });
+
   test('AD7: close rate is won over requests at new or later', () => {
     const s = summarizeRequests([
       { status: 'held', services: ['drywall'], source: 'direct' },
@@ -113,8 +126,13 @@ test.describe('offer email and text (rendered)', () => {
       targetStart: '2026-11-09', targetEnd: '2026-11-13', expiresAt: '2026-10-30T18:00:00Z', token, signupUrl,
     };
     mkdirSync('test-results/home-services-offer-email', { recursive: true });
+    const request = { services: ['cabinet-repainting'], answers: { 'cabinet-repainting': { doors: '26_40' } } };
     for (const lang of ['en', 'es'] as const) {
-      const email = buildOfferEmail({ ...base, lang });
+      const answerLines = answerLinesFor(request, 'cabinet_painting', lang);
+      const email = buildOfferEmail({ ...base, lang, answerLines });
+      // D6: the homeowner's answers in the sub's own language.
+      expect(email.text).toContain(lang === 'en' ? '26 to 40' : '26 a 40');
+      expect(email.text).toContain(answerLines[0]);
       expect(email.subject).toBe(lang === 'en' ? 'Job offer: Cabinet painting in Montclair, pay $1,400' : 'Oferta de trabajo: Pintura de gabinetes en Montclair, pago $1,400');
       await page.setContent(email.html);
       const accept = page.getByRole('link', { name: lang === 'en' ? 'Accept this job' : 'Aceptar este trabajo' });
@@ -135,7 +153,7 @@ test.describe('offer email and text (rendered)', () => {
       await page.setViewportSize({ width: 640, height: 900 });
       await page.screenshot({ path: `test-results/home-services-offer-email/offer-email-${lang}.png`, fullPage: true });
 
-      const sms = buildOfferSms({ ...base, lang });
+      const sms = buildOfferSms({ ...base, lang, answerLines });
       expect(sms).toContain(`/offer/${token}`);
       expect(sms).toContain(lang === 'en' ? 'Cabinet painting in Montclair, pay $1,400' : 'Pintura de gabinetes en Montclair, pago $1,400');
       expect(sms.length).toBeLessThan(320);
@@ -305,6 +323,41 @@ async function openPage(page: Page, token: string, ip: string) {
   await page.goto(`/offer/${token}`, { waitUntil: 'domcontentloaded' });
 }
 
+/** A real gradient PNG of any size (for the browser compression check). */
+function gradientPng(w: number, h: number): Buffer {
+  const raw = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const o = y * (w * 3 + 1) + 1 + x * 3;
+      raw[o] = (x * 7 + y * 3) & 0xff;
+      raw[o + 1] = (x * 13) & 0xff;
+      raw[o + 2] = (y * 11) & 0xff;
+    }
+  }
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type), data]);
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td) >>> 0);
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+
+/** Width and height from a JPEG's start-of-frame marker. */
+function jpegSize(b: Buffer): { width: number; height: number } | null {
+  let i = 2;
+  while (i < b.length) {
+    if (b[i] !== 0xff) return null;
+    const marker = b[i + 1];
+    const len = b.readUInt16BE(i + 2);
+    if (marker >= 0xc0 && marker <= 0xc3) return { height: b.readUInt16BE(i + 5), width: b.readUInt16BE(i + 7) };
+    i += 2 + len;
+  }
+  return null;
+}
+
 /** A small, valid PNG so attachments pass the magic-byte check. */
 function tinyPng(): Buffer {
   return Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
@@ -459,7 +512,8 @@ test.describe('bid requests and the offer page (live backend)', () => {
   });
 
   test('OF1: GET is read-only and noindex, shows town only, pay, start window, countdown and the responses', async ({ page }) => {
-    const { token, request, offerId, sub } = await oneOffer(api, "of1");
+    const note = 'Side gate code 4411, key under the mat';
+    const { token, request, offerId, sub } = await oneOffer(api, "of1", {}, { notes: note });
     await rest('PATCH', `job_offers?id=eq.${offerId}`, { target_start: '2026-11-09', target_end: '2026-11-13' });
     const before = await rest<unknown[]>('GET', `offer_responses?select=id&offer_id=eq.${offerId}`);
     const ip = ipFor('of1');
@@ -473,6 +527,18 @@ test.describe('bid requests and the offer page (live backend)', () => {
     await expect(page.getByText('Nov 9 - Nov 13')).toBeVisible();
     await expect(page.getByTestId('offer-countdown')).toContainText(/\d+h \d+m left/);
     await expect(page.locator('body')).not.toContainText(request.address);
+    // D2: the homeowner's free-text notes never reach a sub; the answers do.
+    // Checked on the raw HTML, which includes the framework's serialized payload,
+    // not just the visible text: nothing server-only may ride along either.
+    const html = await page.content();
+    expect(html).not.toContain('4411');
+    expect(html).not.toContain('customer_price_cents');
+    expect(html).not.toContain('admin_notes');
+    await expect(page.getByTestId('offer-scope')).toContainText('Cabinet repainting - Doors and drawers: 26 to 40');
+    await expect(page.getByTestId('offer-scope')).toContainText('30 doors, same color');
+    // D5: the root layout's skip link has its target.
+    await expect(page.locator('main#main-content')).toHaveCount(1);
+    await expect(page).toHaveTitle(/^Job offer from La Vaca/);
     await expect(page.getByTestId('offer-accept')).toBeVisible();
     await page.getByTestId('offer-respond').click();
     for (const f of ['counter', 'details', 'decline']) await expect(page.getByTestId(`offer-open-${f}`)).toBeVisible();
@@ -543,7 +609,7 @@ test.describe('bid requests and the offer page (live backend)', () => {
     await page.getByTestId('offer-details-submit').click();
     await expect(page.getByTestId('offer-error')).toHaveText('Tell Alex what you need.');
     await page.getByLabel('What do you need to know?').fill('How tall are the upper cabinets?');
-    await page.getByLabel('Files (optional, up to 3, 6 MB each)').setInputFiles([{ name: 'kitchen.png', mimeType: 'image/png', buffer: tinyPng() }]);
+    await page.locator('#offer-details-files').setInputFiles([{ name: 'kitchen.png', mimeType: 'image/png', buffer: tinyPng() }]);
     await page.getByTestId('offer-details-submit').click();
     await expect(page.getByTestId('offer-notices')).toContainText('Your question is with Alex.');
     await expect(page.getByText('Your clock is paused while Alex answers your question.')).toBeVisible();
@@ -560,8 +626,9 @@ test.describe('bid requests and the offer page (live backend)', () => {
     expect(rows[0].counter_cents).toBe(165000);
     expect(rows[0].status).toBe('pending');
     expect(rows[1].attachments).toHaveLength(1);
-    expect(rows[1].attachments[0].content_type).toBe('image/png');
-    expect(rows[1].attachments[0].storage_path).toMatch(new RegExp(`^offers/${offerId}/[0-9a-f-]+/sub-[0-9a-f-]+\\.png$`));
+    // Photos are re-encoded as JPEG in the browser (D4).
+    expect(rows[1].attachments[0].content_type).toBe('image/jpeg');
+    expect(rows[1].attachments[0].storage_path).toMatch(new RegExp(`^offers/${offerId}/[0-9a-f-]+/sub-[0-9a-f-]+\\.jpg$`));
     expect(rows[2].decline_reason).toBe('too_far');
     expect((await recipientOf(offerId, sub.id)).paused_at).not.toBeNull();
 
@@ -610,13 +677,13 @@ test.describe('bid requests and the offer page (live backend)', () => {
     await expect(page.getByTestId('offer-full-address')).toHaveText('12 Hidden Street, Montclair, 07042');
 
     const offer = (await rest<Array<{ status: string; assigned_sub_id: string; sub_pay_cents: number; specnook_push_status: string }>>('GET', `job_offers?select=*&id=eq.${offerId}`))[0];
-    expect(offer).toMatchObject({ status: 'assigned', assigned_sub_id: sub.id, sub_pay_cents: 145000, specnook_push_status: 'skipped' });
+    expect(offer).toMatchObject({ status: 'assigned', assigned_sub_id: sub.id, sub_pay_cents: 145000, specnook_push_status: 'pending' });
     const confirmed = await rest<Array<{ status: string }>>('GET', `offer_responses?select=status&id=eq.${counters[0].id}`);
     expect(confirmed[0].status).toBe('confirmed');
     const req = (await rest<RequestRow[]>('GET', `home_service_requests?select=*&id=eq.${request.id}`))[0];
     expect(req.status).toBe('assigned');
     expect(req.admin_notes).toContain('Assigned Cabinet painting to');
-    expect(req.admin_notes).toContain('at $1,450. SpecNook push: skipped.');
+    expect(req.admin_notes).toContain('at $1,450. SpecNook push: pending.');
   });
 
   test('BD6: answering a detail request restarts the paused clock with the paused time added back', async () => {
@@ -676,11 +743,19 @@ test.describe('bid requests and the offer page (live backend)', () => {
       await rest('PATCH', `offer_recipients?offer_id=eq.${o.offerId}`, { expires_at: past });
     }
     await rest('PATCH', `offer_recipients?offer_id=eq.${paused.offerId}`, { paused_at: past });
+    // A counter still waiting when the offer dies (D3).
+    const [staleRcpt] = await rest<Array<{ id: string }>>('GET', `offer_recipients?select=id&offer_id=eq.${stale.offerId}&sub_id=eq.${stale.sub.id}`);
+    await rest('POST', 'offer_responses', [{ offer_id: stale.offerId, recipient_id: staleRcpt.id, sub_id: stale.sub.id, type: 'counter', counter_cents: 150000, status: 'pending' }]);
 
     expect((await api.get('/api/cron/offers-expire', { headers: { Authorization: 'Bearer wrong' } })).status()).toBe(401);
     const run = await api.get('/api/cron/offers-expire', { headers: { Authorization: `Bearer ${CRON_SECRET}` } });
     expect(run.status(), await run.text()).toBe(200);
-    expect((await run.json()).expiredOffers).toContain(stale.offerId);
+    const body = await run.json();
+    expect(body.expiredOffers).toContain(stale.offerId);
+    // D1: the push retry step runs every time and does nothing while SpecNook is not connected.
+    expect(body.pushes).toEqual({ configured: false, attempted: 0, sent: 0, failed: 0 });
+    const [counter] = await rest<Array<{ status: string }>>('GET', `offer_responses?select=status&offer_id=eq.${stale.offerId}&type=eq.counter`);
+    expect(counter.status).toBe('closed');
 
     const offers = await rest<Array<{ id: string; status: string }>>('GET', `job_offers?select=id,status&id=in.(${stale.offerId},${paused.offerId})`);
     expect(offers.find((o) => o.id === stale.offerId)!.status).toBe('expired');
@@ -711,7 +786,7 @@ test.describe('bid requests and the offer page (live backend)', () => {
     const loser = winner === a ? b : a;
 
     const offer = (await rest<Array<{ status: string; assigned_sub_id: string; assigned_at: string; specnook_push_status: string }>>('GET', `job_offers?select=*&id=eq.${offerId}`))[0];
-    expect(offer).toMatchObject({ status: 'assigned', assigned_sub_id: winner.id, specnook_push_status: 'skipped' });
+    expect(offer).toMatchObject({ status: 'assigned', assigned_sub_id: winner.id, specnook_push_status: 'pending' });
     const rcpts = await recipientsOf(offerId);
     expect(rcpts.find((r) => r.sub_id === loser.id)!.closed_reason).toBe('taken');
     expect(rcpts.find((r) => r.sub_id === winner.id)!.closed_reason).toBeNull();
@@ -728,10 +803,161 @@ test.describe('bid requests and the offer page (live backend)', () => {
     await expect(page.getByTestId('offer-full-address')).toContainText('12 Hidden Street');
   });
 
+  test('D1: an unconnected push stays pending; Retry says so; the retry path sends it once SpecNook answers', async () => {
+    const { token, offerId, request } = await oneOffer(api, 'd1', {}, { notes: 'Gate code 4411' });
+    expect((await act(api, token, { action: 'accept' }, ipFor('d1'))).status()).toBe(200);
+    const pushOf = async () => (await rest<Array<{ specnook_push_status: string }>>('GET', `job_offers?select=specnook_push_status&id=eq.${offerId}`))[0].specnook_push_status;
+    expect(await pushOf()).toBe('pending');
+
+    // The dev server has no SpecNook keys: the admin Retry refuses and says why.
+    const retry = await api.post(`/api/admin/offers/${offerId}`, { data: { action: 'retry_push' } });
+    expect(retry.status()).toBe(409);
+    expect((await retry.json()).error).toContain('SpecNook is not connected');
+
+    // The same retry code, run here against a mock SpecNook.
+    const received: Array<{ path: string; body: Record<string, unknown>; auth: string }> = [];
+    let answer = 503;
+    const server: Server = createServer((req, res) => {
+      let data = '';
+      req.on('data', (c) => { data += c; });
+      req.on('end', () => {
+        received.push({ path: req.url ?? '', body: data ? JSON.parse(data) : {}, auth: req.headers.authorization ?? '' });
+        res.writeHead(answer, { 'Content-Type': 'application/json' }).end('{}');
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+    const saved = { ...process.env };
+    Object.assign(process.env, {
+      NEXT_PUBLIC_SUPABASE_URL: SB_URL, SUPABASE_SECRET_KEY: SB_KEY,
+      SPECNOOK_API_URL: `http://127.0.0.1:${port}`, SPECNOOK_API_KEY: 'mock-key',
+    });
+    try {
+      expect(await retrySpecNookPushes({ offerIds: [offerId] })).toEqual({ configured: true, attempted: 1, sent: 0, failed: 1 });
+      expect(await pushOf()).toBe('failed');
+      answer = 201;
+      expect(await retrySpecNookPushes({ offerIds: [offerId] })).toEqual({ configured: true, attempted: 1, sent: 1, failed: 0 });
+      expect(await pushOf()).toBe('sent');
+      // Sent once: a sent push is not retried.
+      expect(await retrySpecNookPushes({ offerIds: [offerId] })).toMatchObject({ attempted: 0 });
+    } finally {
+      process.env = saved;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+    expect(received).toHaveLength(2);
+    expect(received[1].path).toBe('/jobs');
+    expect(received[1].auth).toBe('Bearer mock-key');
+    expect(received[1].body).toMatchObject({ offerId, address: { street: '12 Hidden Street', town: 'Montclair', zip: '07042' }, subPayCents: 140000 });
+    expect(JSON.stringify(received[1].body)).not.toContain('4411');
+    const [after] = await rest<RequestRow[]>('GET', `home_service_requests?select=admin_notes&id=eq.${request.id}`);
+    expect(after.admin_notes).toContain('SpecNook push sent for Cabinet painting (retry).');
+  });
+
+  test('D3: when an offer is assigned or withdrawn its pending counters and questions close and leave the inbox', async () => {
+    const request = await seedRequest('d3');
+    const counterSub = await createSub(api, { name: 'd3 counter' });
+    const askSub = await createSub(api, { name: 'd3 asker' });
+    const winSub = await createSub(api, { name: 'd3 winner' });
+    const sent = await sendOffers(api, request.id, [{ trade: 'cabinet_painting', sub_pay_cents: 140000 }]);
+    const offerId = (await sent.json()).results[0].offer_id;
+    const ip = ipFor('d3');
+    expect((await act(api, await tokenFor(offerId, counterSub.id), { action: 'counter', price: 1500 }, ip)).status()).toBe(200);
+    expect((await api.post(`/api/offers/${await tokenFor(offerId, askSub.id)}`, { headers: { 'x-real-ip': ip }, multipart: { action: 'details', text: 'Paint brand?' } })).status()).toBe(200);
+    const mine = await rest<Array<{ id: string; status: string }>>('GET', `offer_responses?select=id,status&offer_id=eq.${offerId}`);
+    let inbox = await (await api.get('/api/admin/offers/responses')).json();
+    const ids = (list: Array<{ id: string }>) => list.map((x) => x.id);
+    for (const r of mine) expect([...ids(inbox.counters), ...ids(inbox.details)]).toContain(r.id);
+
+    expect((await act(api, await tokenFor(offerId, winSub.id), { action: 'accept' }, ip)).status()).toBe(200);
+    const after = await rest<Array<{ id: string; type: string; status: string }>>('GET', `offer_responses?select=id,type,status&offer_id=eq.${offerId}&type=in.(counter,details)`);
+    expect(after.map((r) => r.status)).toEqual(['closed', 'closed']);
+    inbox = await (await api.get('/api/admin/offers/responses')).json();
+    for (const r of after) {
+      expect([...ids(inbox.counters), ...ids(inbox.details)]).not.toContain(r.id);
+      expect(ids(inbox.closed)).toContain(r.id);
+    }
+
+    // Withdrawn: the same.
+    const second = await seedRequest('d3 withdraw');
+    const s2 = await createSub(api, { name: 'd3 second' });
+    const sent2 = await sendOffers(api, second.id, [{ trade: 'cabinet_painting', sub_pay_cents: 140000 }]);
+    const offer2 = (await sent2.json()).results[0].offer_id;
+    expect((await act(api, await tokenFor(offer2, s2.id), { action: 'counter', price: 1450 }, ip)).status()).toBe(200);
+    expect((await api.post(`/api/admin/offers/${offer2}`, { data: { action: 'cancel' } })).status()).toBe(200);
+    const [c2] = await rest<Array<{ status: string }>>('GET', `offer_responses?select=status&offer_id=eq.${offer2}&type=eq.counter`);
+    expect(c2.status).toBe('closed');
+  });
+
+  test('D4: attachments are capped at 3.5 MB a file and 4 MB a body with a 413, and photos are shrunk in the browser', async ({ page }) => {
+    const { token, offerId, sub } = await oneOffer(api, 'd4');
+    const ip = ipFor('d4');
+    const pdf = (bytes: number) => Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(bytes - 9, 0x20)]);
+    const oneBig = await api.post(`/api/offers/${token}`, { headers: { 'x-real-ip': ip }, multipart: { action: 'details', text: 'plan', files: { name: 'plan.pdf', mimeType: 'application/pdf', buffer: pdf(3.6 * 1024 * 1024) } } });
+    expect(oneBig.status()).toBe(413);
+    expect(await oneBig.json()).toMatchObject({ error: 'file_too_big', message: expect.stringContaining('3.5 MB') });
+    const tooMuch = await api.post(`/api/offers/${token}`, { headers: { 'x-real-ip': ip }, multipart: { action: 'details', text: 'plans', files: { name: 'plans.pdf', mimeType: 'application/pdf', buffer: pdf(4.2 * 1024 * 1024) } } });
+    expect(tooMuch.status()).toBe(413);
+    expect(await tooMuch.json()).toMatchObject({ error: 'body_too_big', message: expect.stringContaining('4 MB') });
+    // Nothing was stored by either.
+    expect(await rest<unknown[]>('GET', `offer_responses?select=id&offer_id=eq.${offerId}`)).toHaveLength(0);
+
+    // Through the page, a 2400 x 1800 PNG arrives as a JPEG no wider than 1600 px.
+    await openPage(page, token, ip);
+    await page.getByTestId('offer-respond').click();
+    await page.getByTestId('offer-open-details').click();
+    await page.getByLabel('What do you need to know?').fill('Here is the kitchen');
+    const png = gradientPng(2400, 1800);
+    await page.locator('#offer-details-files').setInputFiles([{ name: 'kitchen.png', mimeType: 'image/png', buffer: png }]);
+    await page.getByTestId('offer-details-submit').click();
+    await expect(page.getByTestId('offer-notices')).toContainText('Your question is with Alex.');
+    const [row] = await rest<Array<{ attachments: Array<{ storage_path: string; content_type: string; bytes: number; name: string }> }>>(
+      'GET', `offer_responses?select=attachments&offer_id=eq.${offerId}&sub_id=eq.${sub.id}&type=eq.details`);
+    const att = row.attachments[0];
+    expect(att.content_type).toBe('image/jpeg');
+    expect(att.name).toBe('kitchen.jpg');
+    expect(att.bytes).toBeLessThan(png.length);
+    const stored = Buffer.from(await (await fetch(`${SB_URL}/storage/v1/object/service-request-photos/${att.storage_path}`, {
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    })).arrayBuffer());
+    expect(jpegSize(stored)).toEqual({ width: 1600, height: 1200 });
+  });
+
+  test('D7: a two-trade request stays bid_sent until both trades are assigned', async () => {
+    const request = await seedRequest('d7', { services: ['cabinet-repainting', 'gutter-cleaning'] });
+    const painter = await createSub(api, { name: 'd7 painter' });
+    const gutters = await createSub(api, { name: 'd7 gutters', trades: ['gutter_cleaning'] });
+    const sent = await sendOffers(api, request.id, [
+      { trade: 'cabinet_painting', sub_pay_cents: 140000 },
+      { trade: 'gutter_cleaning', sub_pay_cents: 15000 },
+    ]);
+    const results = (await sent.json()).results as Array<{ trade: string; offer_id: string }>;
+    const paintOffer = results.find((r) => r.trade === 'cabinet_painting')!.offer_id;
+    const gutterOffer = results.find((r) => r.trade === 'gutter_cleaning')!.offer_id;
+    const ip = ipFor('d7');
+
+    expect((await act(api, await tokenFor(paintOffer, painter.id), { action: 'accept' }, ip)).status()).toBe(200);
+    let [row] = await rest<RequestRow[]>('GET', `home_service_requests?select=status,admin_notes&id=eq.${request.id}`);
+    expect(row.status).toBe('bid_sent');
+    expect(row.admin_notes).toContain('Still out: Gutter cleaning.');
+    const detail = await (await api.get(`/api/admin/service-requests/${request.id}`)).json();
+    expect(detail.trade_state).toEqual(expect.arrayContaining([
+      { trade: 'cabinet_painting', status: 'assigned' },
+      { trade: 'gutter_cleaning', status: 'open' },
+    ]));
+
+    expect((await act(api, await tokenFor(gutterOffer, gutters.id), { action: 'accept' }, ip)).status()).toBe(200);
+    [row] = await rest<RequestRow[]>('GET', `home_service_requests?select=status,admin_notes&id=eq.${request.id}`);
+    expect(row.status).toBe('assigned');
+  });
+
   test('OF6: a Spanish-speaking sub gets the whole page in Spanish', async ({ page }) => {
     const { token } = await oneOffer(api, 'of6', { language: 'es' });
     await openPage(page, token, ipFor('of6'));
     await expect(page.locator('h1')).toHaveText('Oferta de trabajo de La Vaca');
+    // D6: the browser title and the job lines in the sub's language too.
+    await expect(page).toHaveTitle(/^Oferta de trabajo de La Vaca/);
+    await expect(page.getByTestId('offer-scope')).toContainText('26 a 40');
+    await expect(page.getByTestId('offer-scope')).not.toContainText('26 to 40');
     await expect(page.getByText('Su pago')).toBeVisible();
     await expect(page.getByText('Pintura de gabinetes').first()).toBeVisible();
     await expect(page.getByTestId('offer-countdown')).toContainText(/Quedan \d+h \d+m/);

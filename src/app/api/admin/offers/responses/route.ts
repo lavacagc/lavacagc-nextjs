@@ -1,7 +1,8 @@
 /**
  * GET /api/admin/offers/responses - the Sub Responses inbox (BD5, BD7):
- * pending counters, pending detail requests, and open decline call tasks, each
- * with the sub, the offer and the request it belongs to.
+ * pending counters and detail requests on OPEN offers, open decline call tasks,
+ * and the most recent responses their offer outlived (`closed`, no actions),
+ * each with the sub, the offer and the request it belongs to.
  */
 import { NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
@@ -16,18 +17,23 @@ export const runtime = 'nodejs';
 interface SubLite { id: string; business_name: string; contact_name: string; phone: string; email: string; language: string }
 interface RequestLite { id: string; first_name: string; last_name: string; town: string }
 
+/** How many outlived responses the folded "Closed" list carries. */
+const CLOSED_LIMIT = 30;
+
 const ids = (list: string[]) => `in.(${Array.from(new Set(list)).join(',')})`;
 
 export async function GET() {
   try {
-    const [pending, calls] = await Promise.all([
-      supabaseRest<OfferResponseRow[]>('GET', `offer_responses?select=${RESPONSE_COLUMNS}&status=eq.pending&order=created_at.asc&limit=200`),
+    const [pending, closedRows, calls] = await Promise.all([
+      supabaseRest<OfferResponseRow[]>('GET', `offer_responses?select=${RESPONSE_COLUMNS}&status=eq.pending&type=in.(counter,details)&order=created_at.asc&limit=200`),
+      // Outlived by their offer (assigned, expired, withdrawn): shown folded away, no actions (D3).
+      supabaseRest<OfferResponseRow[]>('GET', `offer_responses?select=${RESPONSE_COLUMNS}&status=eq.closed&order=created_at.desc&limit=${CLOSED_LIMIT}`),
       supabaseRest<DeclineCallRow[]>('GET', 'decline_calls?select=id,response_id,request_id,sub_id,status,counter_cents,will_take,reason_text,called_at,created_at&status=eq.open&order=created_at.asc&limit=200'),
     ]);
     const callResponses = (calls ?? []).length
       ? (await supabaseRest<OfferResponseRow[]>('GET', `offer_responses?select=${RESPONSE_COLUMNS}&id=${ids((calls ?? []).map((c) => c.response_id))}`)) ?? []
       : [];
-    const all = [...(pending ?? []), ...callResponses];
+    const all = [...(pending ?? []), ...(closedRows ?? []), ...callResponses];
 
     const offerIds = all.map((r) => r.offer_id);
     const subIds = [...all.map((r) => r.sub_id), ...(calls ?? []).map((c) => c.sub_id)];
@@ -66,10 +72,21 @@ export async function GET() {
       };
     };
 
-    const pendingRows = await Promise.all((pending ?? []).map(withFiles));
+    // Only a pending row on an OPEN offer is work. A pending row whose offer has
+    // already closed (written before closing existed) is shown as closed.
+    const isOpen = (r: OfferResponseRow) => offerFor(r.offer_id)?.status === 'open';
+    const actionable = (pending ?? []).filter(isOpen);
+    const outlived = [...(pending ?? []).filter((r) => !isOpen(r)), ...(closedRows ?? [])]
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, CLOSED_LIMIT);
+    const [pendingRows, closed] = await Promise.all([
+      Promise.all(actionable.map(withFiles)),
+      Promise.all(outlived.map(withFiles)),
+    ]);
     return NextResponse.json({
       counters: pendingRows.filter((r) => r.type === 'counter'),
       details: pendingRows.filter((r) => r.type === 'details'),
+      closed,
       declineCalls: (calls ?? []).map((c) => {
         const resp = callResponses.find((r) => r.id === c.response_id);
         return {

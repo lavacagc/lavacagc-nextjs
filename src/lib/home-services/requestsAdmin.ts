@@ -6,7 +6,8 @@
  * it and the admin components render with it, so the list filter, the detail
  * panel and the summary card all agree on what "Essex" or "close rate" means.
  */
-import { getService, type County, type Trade } from './catalog';
+import { describeAnswers, getService, type County, type Lang, type Trade } from './catalog';
+import { countyForZip } from './countyZips';
 
 export const REQUEST_STATUSES = ['held', 'new', 'contacted', 'bid_sent', 'assigned', 'won', 'lost'] as const;
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
@@ -114,8 +115,14 @@ export function countyForTown(town: string | null | undefined): string | null {
   return TOWN_COUNTY[key] ?? null;
 }
 
-/** County of a request: its town first, else the town at the end of its address. */
-export function countyForRequest(req: Pick<HomeServiceRequestRow, 'town' | 'address'>): string | null {
+/**
+ * County of a request: its ZIP first (the county-wide table the request flow
+ * gates on, so "Upper Montclair 07043" is Essex), then its town, then a town
+ * at the end of its address.
+ */
+export function countyForRequest(req: Pick<HomeServiceRequestRow, 'town' | 'address'> & { zip?: string | null }): string | null {
+  const byZip = countyForZip(req.zip);
+  if (byZip) return byZip;
   const direct = countyForTown(req.town);
   if (direct) return direct;
   // "12 Elm St, Montclair, NJ 07042" -> try each comma part.
@@ -143,6 +150,21 @@ export function tradesForServices(services: string[]): Trade[] {
 /** The catalog slug a trade came from on this request (one service = one trade). */
 export function serviceForTrade(services: string[], trade: string): string | undefined {
   return services.find((slug) => getService(slug)?.trade === trade);
+}
+
+/**
+ * What a sub reads about the job for one trade: the homeowner's taps for that
+ * service, in the sub's language. Never the homeowner's free-text notes - they
+ * can hold gate codes, schedules or an address, and subs see the town only
+ * until one wins. Alex reads the notes and paraphrases what matters.
+ */
+export function answerLinesFor(
+  request: Pick<HomeServiceRequestRow, 'services' | 'answers'>,
+  trade: string,
+  lang: Lang,
+): string[] {
+  const slug = serviceForTrade(request.services, trade);
+  return slug ? describeAnswers([slug], request.answers ?? {}, lang) : [];
 }
 
 /**

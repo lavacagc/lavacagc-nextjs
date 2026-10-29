@@ -29,12 +29,26 @@ export interface DetailResponse {
     recipients: Array<Omit<OfferRecipientRow, 'token'> & { sub_name: string }>;
     responses: Array<OfferResponseRow & { sub_name: string }>;
   }>;
+  /** Latest offer state per trade that went out. */
+  trade_state: Array<{ trade: string; status: string }>;
   bid: { trades: BidTrade[] };
   integrations: { specnook: boolean; sms: boolean; email: boolean };
 }
 
 const MANUAL_STATUSES: RequestStatus[] = ['held', 'new', 'contacted', 'bid_sent', 'assigned'];
 const TIMING_LABEL: Record<string, string> = { this_week: 'This week', two_weeks: 'Next two weeks', flexible: 'Flexible' };
+
+/** The column says `cancelled`; Alex's word for it is withdrawn. */
+function offerStateLabel(status: string): string {
+  return status === 'cancelled' ? 'withdrawn' : status;
+}
+
+const TRADE_STATE_STYLE: Record<string, string> = {
+  open: 'border-violet-300 bg-violet-50 text-violet-900',
+  assigned: 'border-teal-300 bg-teal-50 text-teal-900',
+  expired: 'border-red-300 bg-red-50 text-red-800',
+  cancelled: 'border-zinc-300 bg-zinc-100 text-zinc-700',
+};
 
 export default function RequestDetail({ id, onChanged }: { id: string; onChanged: () => void }) {
   const [data, setData] = useState<DetailResponse | null>(null);
@@ -74,6 +88,19 @@ export default function RequestDetail({ id, onChanged }: { id: string; onChanged
     }
   }
 
+  async function retryPush(offerId: string) {
+    setBusy('retry');
+    try {
+      const res = await fetchJson<{ specnook_push_status: string }>(`/api/admin/offers/${offerId}`, jsonInit('POST', { action: 'retry_push' }));
+      toast({ title: `SpecNook push: ${res.specnook_push_status}` });
+      await load();
+    } catch (e) {
+      toast({ title: 'Could not retry the push', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function cancelOffer(offerId: string) {
     setBusy('withdraw');
     try {
@@ -87,7 +114,7 @@ export default function RequestDetail({ id, onChanged }: { id: string; onChanged
     }
   }
 
-  if (error) return <p className="mt-4 text-sm font-medium text-destructive" role="alert">{error}</p>;
+  if (error) return <p className="mt-4 text-sm font-medium text-red-700" role="alert">{error}</p>;
   if (!data) return <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" aria-label="Loading" /></div>;
 
   const r = data.request;
@@ -103,7 +130,8 @@ export default function RequestDetail({ id, onChanged }: { id: string; onChanged
         trades={data.bid.trades}
         photos={data.photos}
         integrations={data.integrations}
-        onBack={() => setBidOpen(false)}
+        // Subs may have answered while the form was open; come back to fresh state.
+        onBack={() => { setBidOpen(false); void load(); }}
         onSent={() => { void load(); onChanged(); }}
       />
     );
@@ -223,7 +251,7 @@ export default function RequestDetail({ id, onChanged }: { id: string; onChanged
               <Input id="sr-won-price" inputMode="decimal" value={wonPrice} onChange={(e) => setWonPrice(e.target.value)} placeholder="2000" />
             </div>
             <Button size="sm" type="submit" disabled={!wonCents || !!busy} data-testid="sr-won-save">Save as won</Button>
-            {wonPrice && !wonCents && <p className="w-full text-xs text-destructive">Enter dollars, for example 2000 or 2,000.50.</p>}
+            {wonPrice && !wonCents && <p className="w-full text-xs text-red-700">Enter dollars, for example 2000 or 2,000.50.</p>}
           </form>
         )}
         {outcome === 'lost' && (
@@ -251,6 +279,17 @@ export default function RequestDetail({ id, onChanged }: { id: string; onChanged
             <Send className="mr-1.5 h-4 w-4" aria-hidden /> Send bid request
           </Button>
         </div>
+        {data.trade_state.length > 0 && (
+          <ul className="flex flex-wrap gap-2" aria-label="State per trade" data-testid="sr-trade-state">
+            {data.trade_state.map((ts) => (
+              <li key={ts.trade} data-trade={ts.trade} data-state={offerStateLabel(ts.status)}>
+                <Badge variant="outline" className={TRADE_STATE_STYLE[ts.status] ?? ''}>
+                  {tradeName(ts.trade)}: {offerStateLabel(ts.status)}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        )}
         {data.offers.length === 0 ? (
           <p className="text-muted-foreground">No offers sent yet.</p>
         ) : (
@@ -259,17 +298,38 @@ export default function RequestDetail({ id, onChanged }: { id: string; onChanged
               <li key={o.id} className="rounded-lg border p-3" data-testid="sr-offer" data-offer-status={o.status}>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold">{tradeName(o.trade)}</span>
-                  <Badge variant="outline">{o.status}</Badge>
+                  <Badge variant="outline">{offerStateLabel(o.status)}</Badge>
                   <span className="text-muted-foreground">pay {formatDollars(o.sub_pay_cents)} · customer {formatDollars(o.customer_price_cents)}</span>
                   {o.status === 'open' && (
-                    <Button size="sm" variant="ghost" className="ml-auto h-7 text-destructive" onClick={() => cancelOffer(o.id)} disabled={!!busy}>
+                    <Button size="sm" variant="ghost" className="ml-auto h-7 text-red-700" onClick={() => cancelOffer(o.id)} disabled={!!busy}>
                       <XCircle className="mr-1 h-3.5 w-3.5" aria-hidden /> Withdraw
                     </Button>
                   )}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Sent {formatWhen(o.created_at)} · {o.status === 'open' ? `expires ${formatWhen(o.expires_at)}` : o.status === 'assigned' ? `assigned to ${o.assigned_sub_name} ${formatWhen(o.assigned_at)} · SpecNook push: ${o.specnook_push_status}${!data.integrations.specnook ? ' (SpecNook not connected)' : ''}` : ''}
+                  Sent {formatWhen(o.created_at)} · {o.status === 'open' ? `expires ${formatWhen(o.expires_at)}` : o.status === 'assigned' ? `assigned to ${o.assigned_sub_name} ${formatWhen(o.assigned_at)}` : ''}
                 </p>
+                {o.status === 'assigned' && (
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" data-testid="sr-push" data-push-status={o.specnook_push_status}>
+                    <span>
+                      SpecNook push: <strong>{o.specnook_push_status}</strong>
+                      {o.specnook_push_status !== 'sent' && !data.integrations.specnook && ' (SpecNook not connected; it goes out once SpecNook is configured)'}
+                    </span>
+                    {o.specnook_push_status !== 'sent' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7"
+                        onClick={() => retryPush(o.id)}
+                        disabled={!!busy || !data.integrations.specnook}
+                        title={data.integrations.specnook ? undefined : 'SpecNook is not connected'}
+                        data-testid="sr-push-retry"
+                      >
+                        Retry
+                      </Button>
+                    )}
+                  </div>
+                )}
                 <ul className="mt-2 space-y-1 text-xs">
                   {o.recipients.map((rc) => (
                     <li key={rc.id} className="flex flex-wrap gap-x-2">

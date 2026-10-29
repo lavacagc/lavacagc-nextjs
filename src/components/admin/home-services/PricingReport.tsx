@@ -63,7 +63,7 @@ export default function PricingReport() {
       </div>
 
       {error ? (
-        <p className="rounded-md border border-destructive/40 p-3 text-sm font-medium text-destructive" role="alert">{error}</p>
+        <p className="rounded-md border border-destructive/40 p-3 text-sm font-medium text-red-700" role="alert">{error}</p>
       ) : !rows ? (
         <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" aria-label="Loading" /></div>
       ) : rows.length === 0 ? (

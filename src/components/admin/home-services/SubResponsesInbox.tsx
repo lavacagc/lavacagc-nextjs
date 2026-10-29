@@ -14,7 +14,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { formatDollars, parseDollarsToCents, subPayViolation } from '@/lib/home-services/pricing';
-import { DECLINE_REASON_LABEL, type DeclineReason } from '@/lib/home-services/offerRules';
+import {
+  DECLINE_REASON_LABEL, MAX_RESPONSE_BODY_BYTES, MAX_RESPONSE_FILES, MAX_RESPONSE_FILE_BYTES, type DeclineReason,
+} from '@/lib/home-services/offerRules';
+import { compressAll } from '@/lib/home-services/compressImage';
 import { dialable } from '@/lib/home-services/requestsAdmin';
 import { fetchJson, formatWhen, jsonInit, tradeName } from './shared';
 
@@ -45,7 +48,7 @@ interface DeclineCall {
   request: RequestLite | null;
 }
 
-interface Inbox { counters: InboxItem[]; details: InboxItem[]; declineCalls: DeclineCall[] }
+interface Inbox { counters: InboxItem[]; details: InboxItem[]; declineCalls: DeclineCall[]; closed: InboxItem[] }
 
 export default function SubResponsesInbox({ onChanged }: { onChanged: () => void }) {
   const [inbox, setInbox] = useState<Inbox | null>(null);
@@ -62,7 +65,7 @@ export default function SubResponsesInbox({ onChanged }: { onChanged: () => void
 
   const changed = () => { setVersion((v) => v + 1); onChanged(); };
 
-  if (error) return <p className="text-sm font-medium text-destructive" role="alert">The inbox could not be read, so this is not an empty inbox: {error}</p>;
+  if (error) return <p className="text-sm font-medium text-red-700" role="alert">The inbox could not be read, so this is not an empty inbox: {error}</p>;
   if (!inbox) return <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" aria-label="Loading" /></div>;
 
   return (
@@ -90,6 +93,24 @@ export default function SubResponsesInbox({ onChanged }: { onChanged: () => void
           {inbox.declineCalls.map((call) => <DeclineCallItem key={call.id} call={call} onDone={changed} />)}
         </CardContent>
       </Card>
+
+      {inbox.closed.length > 0 && (
+        <details className="rounded-lg border bg-card" data-testid="inbox-closed">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
+            Closed ({inbox.closed.length}) - their offer was assigned, expired or withdrawn
+          </summary>
+          <ul className="space-y-2 px-4 pb-4">
+            {inbox.closed.map((item) => (
+              <li key={item.id} className="rounded-md border p-3 opacity-80" data-testid="inbox-closed-item" data-response-id={item.id}>
+                <Context sub={item.sub} offer={item.offer} request={item.request} created={item.created_at} />
+                <p className="mt-1 text-sm">
+                  {item.type === 'counter' ? `Counter: ${formatDollars(item.counter_cents ?? 0)}` : `Asked: ${item.note}`}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }
@@ -138,7 +159,7 @@ function CounterItem({ item, onDone }: { item: InboxItem; onDone: () => void }) 
       <Context sub={item.sub} offer={item.offer} request={item.request} created={item.created_at} />
       <p className="text-lg font-bold">Counter: {formatDollars(counter)}</p>
       {item.note && <p className="text-sm">&ldquo;{item.note}&rdquo;</p>}
-      {acceptBlock && <p className="text-xs font-medium text-destructive" data-testid="inbox-counter-block">Cannot accept: {acceptBlock}</p>}
+      {acceptBlock && <p className="text-xs font-medium text-red-700" data-testid="inbox-counter-block">Cannot accept: {acceptBlock}</p>}
       {offerClosed && <p className="text-xs text-muted-foreground">The offer is {item.offer?.status}; there is nothing to answer.</p>}
       <div className="flex flex-wrap gap-2">
         <Button size="sm" disabled={busy || !!acceptBlock || offerClosed} onClick={() => act({ action: 'accept' }, 'Counter accepted. The sub must confirm.')} data-testid="inbox-accept">
@@ -161,7 +182,7 @@ function CounterItem({ item, onDone }: { item: InboxItem; onDone: () => void }) 
           <Input id={`reply-text-${item.id}`} value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} />
         </div>
         <Button size="sm" type="submit" variant="outline" disabled={busy || !replyCents || !!replyBlock || offerClosed} data-testid="inbox-reply-price">Send price</Button>
-        {replyBlock && <p className="w-full text-xs font-medium text-destructive">{replyBlock}</p>}
+        {replyBlock && <p className="w-full text-xs font-medium text-red-700">{replyBlock}</p>}
       </form>
     </div>
   );
@@ -176,16 +197,21 @@ function DetailsItem({ item, onDone }: { item: InboxItem; onDone: () => void }) 
   async function send(e: React.FormEvent) {
     e.preventDefault();
     if (!text.trim()) return;
-    if (files.length > 3 || files.some((f) => f.size > 6 * 1024 * 1024)) {
-      toast({ title: 'Up to 3 files, 6 MB each', variant: 'destructive' });
+    if (files.length > MAX_RESPONSE_FILES) {
+      toast({ title: 'Up to 3 files', variant: 'destructive' });
       return;
     }
     setBusy(true);
     try {
+      // Photos are shrunk in the browser first (1600 px, JPEG 0.8); the server caps
+      // each file at 3.5 MB and the whole body at 4 MB.
+      const ready = await compressAll(files);
+      if (ready.some((f) => f.size > MAX_RESPONSE_FILE_BYTES)) throw new Error('Each file must be 3.5 MB or less after shrinking. A large PDF is the usual cause.');
+      if (ready.reduce((n, f) => n + f.size, 0) > MAX_RESPONSE_BODY_BYTES) throw new Error('The files are over 4 MB together. Send fewer or smaller files.');
       const form = new FormData();
       form.set('action', 'reply_details');
       form.set('text', text.trim());
-      for (const f of files) form.append('files', f);
+      for (const f of ready) form.append('files', f);
       const res = await fetchJson<{ email_status: string; sms_status: string; expires_at?: string }>(`/api/admin/offers/responses/${item.id}`, { method: 'POST', body: form });
       toast({
         title: 'Answer sent',
@@ -215,7 +241,7 @@ function DetailsItem({ item, onDone }: { item: InboxItem; onDone: () => void }) 
       {item.recipient?.paused_at && <p className="text-xs text-amber-800">Their clock has been paused since {formatWhen(item.recipient.paused_at)}. Answering restarts it with that time added back.</p>}
       <label htmlFor={`details-reply-${item.id}`} className="block text-xs font-medium text-muted-foreground">Your answer</label>
       <Textarea id={`details-reply-${item.id}`} rows={3} value={text} onChange={(e) => setText(e.target.value)} maxLength={4000} />
-      <label htmlFor={`details-files-${item.id}`} className="block text-xs font-medium text-muted-foreground">Files (optional, up to 3, 6 MB each)</label>
+      <label htmlFor={`details-files-${item.id}`} className="block text-xs font-medium text-muted-foreground">Photos or files (optional, up to 3; photos are shrunk for you)</label>
       <input
         id={`details-files-${item.id}`}
         type="file"
@@ -286,7 +312,7 @@ function DeclineCallItem({ call, onDone }: { call: DeclineCall; onDone: () => vo
           <Input id={`call-reason-${call.id}`} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={2000} />
         </div>
       </div>
-      {price && !counterCents && <p className="text-xs text-destructive">Enter dollars, for example 1800.</p>}
+      {price && !counterCents && <p className="text-xs text-red-700">Enter dollars, for example 1800.</p>}
       <Button size="sm" type="submit" disabled={busy || (!counterCents && !willTake && !reason.trim())} data-testid="inbox-call-log">Log call and close task</Button>
     </form>
   );

@@ -56,12 +56,20 @@ export interface OfferMessageContext {
   trade: string;
   town: string;
   payCents: number;
+  /** Alex's own scope text for this offer (free text, may be empty). */
   scope: string;
+  /** The homeowner's taps for this trade, already in the sub's language (answerLinesFor). */
+  answerLines: string[];
   targetStart: string | null;
   targetEnd: string | null;
   expiresAt: string;
   token: string;
   signupUrl: string;
+}
+
+/** The job line: the homeowner's taps in the sub's language, then Alex's own scope text. */
+function jobText(ctx: Pick<OfferMessageContext, 'answerLines' | 'scope'>, fallback: string): string {
+  return [...ctx.answerLines, ctx.scope.trim()].filter(Boolean).join('; ') || fallback;
 }
 
 function tradeName(trade: string, lang: Lang): string {
@@ -123,7 +131,7 @@ export function buildOfferEmail(ctx: OfferMessageContext): { subject: string; ht
       [s('offerTown', lang), ctx.town],
       [s('offerStart', lang), start],
       [s('offerPay', lang), pay],
-      [s('offerJob', lang), ctx.scope || trade],
+      [s('offerJob', lang), jobText(ctx, trade)],
     ]),
     cta(s('offerAccept', lang), link),
     secondaryCta(s('offerRespond', lang), link, esc(s('emailOfferExpires', lang, { when }))),
@@ -140,7 +148,7 @@ export function buildOfferEmail(ctx: OfferMessageContext): { subject: string; ht
     `${s('offerTown', lang)}: ${ctx.town}`,
     `${s('offerStart', lang)}: ${start}`,
     `${s('offerPay', lang)}: ${pay}`,
-    `${s('offerJob', lang)}: ${ctx.scope || trade}`,
+    `${s('offerJob', lang)}: ${jobText(ctx, trade)}`,
     '',
     `${s('offerAccept', lang)} / ${s('offerRespond', lang)}: ${link}`,
     s('emailOfferExpires', lang, { when }),

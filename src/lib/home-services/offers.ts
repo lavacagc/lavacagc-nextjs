@@ -19,10 +19,10 @@ import { sendTelegramMessage, escapeTelegram, escapeTelegramClipped } from '@/li
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { cleanEnv } from '@/lib/envClean';
 import { getSubStatus, isSpecNookConfigured, pushJob, specNookSignupUrl, type SpecNookPushStatus } from '@/lib/specnook/client';
-import { TRADE_LABEL, describeAnswers, getService, type Trade } from './catalog';
+import { TRADE_LABEL, type Trade } from './catalog';
 import { OFFER_TTL_HOURS, formatDollars, subPayViolation } from './pricing';
 import {
-  REQUEST_ADMIN_COLUMNS, appendNote, countyForRequest, noteLine, serviceForTrade, tradesForServices,
+  REQUEST_ADMIN_COLUMNS, answerLinesFor, appendNote, countyForRequest, noteLine, tradesForServices,
   type HomeServiceRequestRow,
 } from './requestsAdmin';
 import {
@@ -104,6 +104,22 @@ export async function appendRequestNote(
     if (updated && updated.length > 0) return updated[0];
   }
   throw new Error('Could not append the note: the request kept changing underneath. Try again.');
+}
+
+/**
+ * Only the request columns a sub's offer page may show: the services and taps
+ * for every sub, plus the address and first name for the one who won. Read
+ * narrowly on purpose, so nothing else (notes, phone, email, admin notes) is
+ * ever in the page's server memory to leak - React's development payload
+ * serializes awaited values, and a wide read put the homeowner's notes in it.
+ */
+export type RequestForSub = Pick<HomeServiceRequestRow, 'services' | 'answers'> &
+  Partial<Pick<HomeServiceRequestRow, 'address' | 'town' | 'zip' | 'first_name'>>;
+
+export async function requestForOfferPage(requestId: string, won: boolean): Promise<RequestForSub | null> {
+  const columns = won ? 'services,answers,address,town,zip,first_name' : 'services,answers';
+  const rows = await supabaseRest<RequestForSub[]>('GET', `home_service_requests?select=${columns}&id=eq.${requestId}`);
+  return rows?.[0] ?? null;
 }
 
 export async function getRequest(requestId: string): Promise<HomeServiceRequestRow | null> {
@@ -265,19 +281,29 @@ async function sendOneOffer(
   // preview must not get the offer.
   const subsById = new Map<string, SubRow>();
   const today = todayInNewJersey(now);
-  const fullSubs = ((await supabaseRest<SubRow[]>(
+  const readEligible = async () => ((await supabaseRest<SubRow[]>(
     'GET', `subs?select=${SUB_COLUMNS}&id=${inList(preview.eligible.map((e) => e.id))}`,
   )) ?? []).filter((sub) => offerExclusion(sub, input.trade, preview.county, today) === null);
-  for (const sub of fullSubs) subsById.set(sub.id, sub);
+  let fullSubs = await readEligible();
 
   // An offer with no recipients is a dead row that blocks a resend of the
   // trade, so it is removed if the recipients cannot be written.
-  let recipients: OfferRecipientRow[];
+  let recipients: OfferRecipientRow[] = [];
   try {
-    if (fullSubs.length === 0) throw new Error('every eligible sub changed before the send');
-    recipients = await supabaseRest<OfferRecipientRow[]>('POST', `offer_recipients?select=${RECIPIENT_COLUMNS}`,
-      fullSubs.map((sub) => ({ offer_id: offer.id, sub_id: sub.id, token: generateOfferToken(), expires_at: expiresAt })),
-    );
+    for (let attempt = 0; ; attempt += 1) {
+      if (fullSubs.length === 0) throw new Error('every eligible sub changed before the send');
+      try {
+        recipients = await supabaseRest<OfferRecipientRow[]>('POST', `offer_recipients?select=${RECIPIENT_COLUMNS}`,
+          fullSubs.map((sub) => ({ offer_id: offer.id, sub_id: sub.id, token: generateOfferToken(), expires_at: expiresAt })),
+        );
+        break;
+      } catch (err) {
+        // 23503: a sub was removed between the read and the insert. Read again, once.
+        if (attempt > 0 || !/23503/.test(err instanceof Error ? err.message : String(err))) throw err;
+        fullSubs = await readEligible();
+      }
+    }
+    for (const sub of fullSubs) subsById.set(sub.id, sub);
   } catch (err) {
     await supabaseRest('DELETE', `job_offers?id=eq.${offer.id}`, undefined, { prefer: 'return=minimal' }).catch(() => undefined);
     if (fullSubs.length === 0) return { trade: input.trade, status: 'no_eligible_subs', excluded: preview.excluded };
@@ -289,7 +315,8 @@ async function sendOneOffer(
     const sub = subsById.get(rcpt.sub_id)!;
     const ctx = {
       lang: sub.language, subName: sub.contact_name || sub.business_name, trade: input.trade, town: input.town,
-      payCents: input.sub_pay_cents, scope: input.scope_summary, targetStart: input.target_start, targetEnd: input.target_end,
+      payCents: input.sub_pay_cents, scope: input.scope_summary, answerLines: answerLinesFor(request, input.trade, sub.language),
+      targetStart: input.target_start, targetEnd: input.target_end,
       expiresAt, token: rcpt.token, signupUrl,
     };
     let outcome: SendOutcome;
@@ -318,6 +345,7 @@ export async function cancelOffer(offerId: string, by: string | null): Promise<b
   const offer = rows?.[0];
   if (!offer) return false;
   await supabaseRest('PATCH', `offer_recipients?offer_id=eq.${offerId}&closed_reason=is.null`, { closed_reason: 'cancelled' }, { prefer: 'return=minimal' });
+  await closePendingResponses(offerId);
   await appendRequestNote(offer.request_id, `Offer withdrawn: ${tradeLabel(offer.trade)} at ${formatDollars(offer.sub_pay_cents)}.`, {}, by);
   return true;
 }
@@ -511,43 +539,21 @@ async function assign(found: FoundOffer, payCents: number, confirmedResponseId: 
     notify('won', sub, recipient.token),
   ]);
 
-  // Hand the job to SpecNook and record what happened.
-  let push: SpecNookPushStatus = 'failed';
-  if (request) {
-    const photos = await sharedPhotoUrls(assigned.photo_ids);
-    const service = serviceForTrade(request.services, offer.trade);
-    const answers = describeAnswers(service ? [service] : request.services, request.answers);
-    const result = await pushJob({
-      offerId: offer.id,
-      requestId: request.id,
-      trade: offer.trade,
-      customer: { firstName: request.first_name, lastName: request.last_name, phone: request.phone, email: request.email },
-      address: { street: request.address, town: request.town, zip: request.zip },
-      scope: offer.scope_summary,
-      answers,
-      photos: photos.filter((p): p is string => !!p),
-      customerPriceCents: offer.customer_price_cents,
-      subPayCents: payCents,
-      sub: { id: sub.id, specnookSubId: sub.specnook_sub_id, businessName: sub.business_name },
-      targetStart: offer.target_start,
-      targetEnd: offer.target_end,
-      jobOrderText: [
-        `${tradeLabel(offer.trade)} for ${request.first_name} ${request.last_name}`.trim(),
-        `${request.address}, ${request.town} ${request.zip}`.trim(),
-        offer.scope_summary,
-        ...answers,
-        `Customer price ${formatDollars(offer.customer_price_cents)}, sub pay ${formatDollars(payCents)}.`,
-      ].filter(Boolean).join('\n'),
-    });
-    push = result.status;
-  }
-  await supabaseRest('PATCH', `job_offers?id=eq.${offer.id}`, { specnook_push_status: push }, { prefer: 'return=minimal' });
+  // Every counter or question still waiting on this offer is moot now (D3).
+  await closePendingResponses(offer.id);
+
+  // Hand the job to SpecNook. Not connected or refused leaves it pending or
+  // failed, and the offers cron retries it once SpecNook answers.
+  const push: StoredPushStatus = request ? await pushAssignedOffer(assigned, request, sub) : 'failed';
 
   if (request) {
-    const status = ['won', 'lost'].includes(request.status) ? {} : { status: 'assigned' };
+    // The request is assigned only when every trade that went out is (D7).
+    const state = await tradeAssignment(request.id);
+    const status = !['won', 'lost'].includes(request.status) && state.missing.length === 0 ? { status: 'assigned' } : {};
     await appendRequestNote(
       request.id,
-      `Assigned ${tradeLabel(offer.trade)} to ${sub.business_name} at ${formatDollars(payCents)}. SpecNook push: ${push}.`,
+      `Assigned ${tradeLabel(offer.trade)} to ${sub.business_name} at ${formatDollars(payCents)}. SpecNook push: ${push}.` +
+        (state.missing.length ? ` Still out: ${state.missing.map(tradeLabel).join(', ')}.` : ''),
       status,
     );
   }
@@ -558,6 +564,125 @@ async function assign(found: FoundOffer, payCents: number, confirmedResponseId: 
   ).catch(() => 'failed');
 
   return { ok: true, outcome: 'assigned' };
+}
+
+/**
+ * When an offer leaves `open` (assigned, expired, withdrawn) any counter or
+ * question still pending on it can no longer be answered; it moves to `closed`
+ * so the inbox stops showing it as work (D3).
+ */
+export async function closePendingResponses(offerId: string): Promise<void> {
+  await supabaseRest('PATCH', `offer_responses?offer_id=eq.${offerId}&status=eq.pending`, { status: 'closed' }, { prefer: 'return=minimal' });
+}
+
+/**
+ * What job_offers.specnook_push_status records. `skipped` stays in the column's
+ * CHECK but is never written: an unconfigured push is `pending`, so it is sent
+ * once SpecNook is connected (Fable ruling D1).
+ */
+export type StoredPushStatus = Exclude<SpecNookPushStatus, 'skipped'> | 'pending';
+
+/** Push an assigned offer to SpecNook and record the outcome on the offer. */
+export async function pushAssignedOffer(offer: JobOfferRow, request: HomeServiceRequestRow, sub: SubRow): Promise<StoredPushStatus> {
+  const photos = await sharedPhotoUrls(offer.photo_ids);
+  // The job order goes to La Vaca's own system, in English, with the full picture.
+  const answers = answerLinesFor(request, offer.trade, 'en');
+  const result = await pushJob({
+    offerId: offer.id,
+    requestId: request.id,
+    trade: offer.trade,
+    customer: { firstName: request.first_name, lastName: request.last_name, phone: request.phone, email: request.email },
+    address: { street: request.address, town: request.town, zip: request.zip },
+    scope: offer.scope_summary,
+    answers,
+    photos: photos.filter((p): p is string => !!p),
+    customerPriceCents: offer.customer_price_cents,
+    subPayCents: offer.sub_pay_cents,
+    sub: { id: sub.id, specnookSubId: sub.specnook_sub_id, businessName: sub.business_name },
+    targetStart: offer.target_start,
+    targetEnd: offer.target_end,
+    jobOrderText: [
+      `${tradeLabel(offer.trade)} for ${request.first_name} ${request.last_name}`.trim(),
+      `${request.address}, ${request.town} ${request.zip}`.trim(),
+      ...answers,
+      offer.scope_summary,
+      `Customer price ${formatDollars(offer.customer_price_cents)}, sub pay ${formatDollars(offer.sub_pay_cents)}.`,
+    ].filter(Boolean).join('\n'),
+  });
+  const stored: StoredPushStatus = result.status === 'skipped' ? 'pending' : result.status;
+  await supabaseRest('PATCH', `job_offers?id=eq.${offer.id}`, { specnook_push_status: stored }, { prefer: 'return=minimal' });
+  return stored;
+}
+
+/**
+ * Per-trade state of a request's offers: the latest offer for each trade that
+ * went out, and which of those trades has no assigned offer yet. An expired
+ * trade that was resent and assigned counts as assigned; a trade Alex never
+ * sent does not hold the request back.
+ */
+export async function tradeAssignment(requestId: string): Promise<{ latest: Array<{ trade: string; status: string }>; missing: string[] }> {
+  const offers = (await supabaseRest<Array<{ trade: string; status: string; created_at: string }>>(
+    'GET', `job_offers?select=trade,status,created_at&request_id=eq.${requestId}&order=created_at.desc`,
+  )) ?? [];
+  const trades = Array.from(new Set(offers.map((o) => o.trade)));
+  const assigned = new Set(offers.filter((o) => o.status === 'assigned').map((o) => o.trade));
+  return {
+    latest: trades.map((trade) => {
+      if (assigned.has(trade)) return { trade, status: 'assigned' };
+      return { trade, status: offers.find((o) => o.trade === trade)!.status };
+    }),
+    missing: trades.filter((t) => !assigned.has(t)),
+  };
+}
+
+/**
+ * Retry SpecNook for assigned offers still `pending` or `failed`. Does nothing
+ * while SpecNook is not connected. The cron calls it with no ids; a caller may
+ * restrict it to given offers.
+ */
+export async function retrySpecNookPushes(opts: { offerIds?: string[]; limit?: number } = {}):
+  Promise<{ configured: boolean; attempted: number; sent: number; failed: number }> {
+  if (!isSpecNookConfigured()) return { configured: false, attempted: 0, sent: 0, failed: 0 };
+  const filter = opts.offerIds?.length ? `&id=${inList(opts.offerIds)}` : '';
+  const offers = (await supabaseRest<JobOfferRow[]>(
+    'GET',
+    `job_offers?select=${OFFER_COLUMNS}&status=eq.assigned&specnook_push_status=in.(pending,failed)${filter}&order=assigned_at.asc&limit=${opts.limit ?? 25}`,
+  )) ?? [];
+  let sent = 0;
+  let failed = 0;
+  for (const offer of offers) {
+    const [request, subs] = await Promise.all([
+      getRequest(offer.request_id),
+      supabaseRest<SubRow[]>('GET', `subs?select=${SUB_COLUMNS}&id=eq.${offer.assigned_sub_id}`),
+    ]);
+    const sub = subs?.[0];
+    if (!request || !sub) { failed += 1; continue; }
+    const result = await pushAssignedOffer(offer, request, sub);
+    if (result === 'sent') {
+      sent += 1;
+      await appendRequestNote(request.id, `SpecNook push sent for ${tradeLabel(offer.trade)} (retry).`);
+    } else failed += 1;
+  }
+  return { configured: true, attempted: offers.length, sent, failed };
+}
+
+/** Alex's Retry button on one assigned offer. */
+export async function retryOnePush(offerId: string, by: string | null): Promise<StoredPushStatus> {
+  if (!isSpecNookConfigured()) {
+    throw new InboxError('SpecNook is not connected, so there is nothing to retry yet. The push stays pending and goes out once SpecNook is configured.', 409);
+  }
+  const rows = await supabaseRest<JobOfferRow[]>('GET', `job_offers?select=${OFFER_COLUMNS}&id=eq.${offerId}`);
+  const offer = rows?.[0];
+  if (!offer || offer.status !== 'assigned') throw new InboxError('Only an assigned offer is pushed to SpecNook.', 409);
+  if (offer.specnook_push_status === 'sent') return 'sent';
+  const [request, subs] = await Promise.all([
+    getRequest(offer.request_id),
+    supabaseRest<SubRow[]>('GET', `subs?select=${SUB_COLUMNS}&id=eq.${offer.assigned_sub_id}`),
+  ]);
+  if (!request || !subs?.[0]) throw new InboxError('The request or the sub behind this offer is gone.', 409);
+  const result = await pushAssignedOffer(offer, request, subs[0]);
+  await appendRequestNote(request.id, `SpecNook push retried for ${tradeLabel(offer.trade)}: ${result}.`, {}, by);
+  return result;
 }
 
 /** Signed links for an offer's shared photos (lead_photos ids), in order. */
@@ -739,6 +864,7 @@ export async function expireOffers(now: Date = new Date(), limit = 200): Promise
     );
     if (!expired || expired.length === 0) continue; // assigned or cancelled in the meantime
     run.expiredOffers.push(offer.id);
+    await closePendingResponses(offer.id);
 
     const request = await appendRequestNote(
       offer.request_id,
@@ -750,14 +876,6 @@ export async function expireOffers(now: Date = new Date(), limit = 200): Promise
     ).catch(() => 'failed');
   }
   return run;
-}
-
-/** Scope lines for one service on a request, as the bid form pre-fills them. */
-export function scopeLinesFor(request: Pick<HomeServiceRequestRow, 'services' | 'answers' | 'notes'>, trade: Trade): string {
-  const slug = serviceForTrade(request.services, trade);
-  const lines = slug ? describeAnswers([slug], request.answers) : [];
-  const name = slug ? getService(slug)?.name.en : tradeLabel(trade);
-  return [lines[0] ?? name, request.notes ? `Homeowner notes: ${request.notes}` : ''].filter(Boolean).join('\n');
 }
 
 export { offerLink };

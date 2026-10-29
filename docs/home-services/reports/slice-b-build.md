@@ -143,3 +143,97 @@ Last run: 29 passed (offers spec 20, admin spec 9); the offers spec also passed 
 Evidence screenshots: `test-results/home-services-admin-evidence/` and `test-results/home-services-offer-email/`.
 If port 9099 is busy, another builder's Playwright run holds the GoTrue stub; wait and rerun.
 Every row the specs create carries a `ZZTEST-B-` tag and is deleted in `afterAll`, with only the rate-limit buckets the run used.
+
+## Fixes after review
+
+Review: `docs/home-services/reports/slice-b-review.md` (verdict ACCEPT WITH FIXES, BD9 failed on the push status).
+Cherry-picked first: `363a6f5` (ts-node scripts on Node 20), `69793da` (county ZIP table), and `3d4f087` (Fable's migration line adding `closed` to `offer_responses.status`, so the branch matches the rig's CHECK).
+The `69793da` pick conflicted in `supabase/migrations/00000000000001_preview_baseline_fixups.sql`; my side had no change there, so the incoming side was taken whole.
+
+### D1 - SpecNook push is `pending` or `failed`, never `skipped`
+
+- `offers.ts` `pushAssignedOffer` maps the client's `skipped` to `pending` and writes `pending`, `sent` or `failed`; `skipped` stays in the CHECK and is never written.
+- The offers cron now also calls `retrySpecNookPushes()`, which retries every assigned offer whose push is `pending` or `failed`, only when `isSpecNookConfigured()`; its result is in the cron answer as `pushes`.
+- The detail panel shows the push state per assigned offer with a Retry button (`POST /api/admin/offers/<id>` with `retry_push`); while SpecNook is not connected the button is disabled, says why, and the route answers 409 with the reason.
+- Evidence: BD5/OF5 and BD9 now assert `pending`; BD8 asserts the cron's `pushes` is `{ configured: false, attempted: 0, ... }`; the new D1 test runs the real retry code against a mock SpecNook: 503 records `failed`, 201 records `sent` with a note, a sent push is not retried, and the payload carries the full address and no homeowner notes; the admin spec checks the disabled Retry and the "SpecNook not connected" text.
+
+### D2 - homeowner notes never reach a sub
+
+- The scope prefill no longer contains anything; the stored `scope_summary` is only Alex's own text.
+- The bid form shows the notes in a read-only "Homeowner notes (private)" box that says they are never sent.
+- The SpecNook job text does not carry the notes either, because the winning sub may read the job there.
+- Found while proving it: the offer page read the whole request row, and in the dev server React's payload carried that row (notes, phone, email, admin notes) to the browser even though nothing rendered it. The page now reads only `services, answers` (plus `address, town, zip, first_name` for the winner), so the data is not in the page at all. The specs assert on the raw HTML, payload included, that the note, `customer_price_cents` and `admin_notes` are absent; this passes on the dev server and on a production build (`next start`).
+- Evidence: OF1 (note "Side gate code 4411" absent from the raw page), BD1 in the admin spec (private box shown, scope empty, the note absent from the sub's page), D1 (absent from the SpecNook payload).
+
+### D3 - pending responses close with their offer
+
+- `closePendingResponses` moves every `pending` response to `closed` when the offer is assigned, expired or withdrawn.
+- The inbox route returns only pending rows on open offers as work, and up to 30 outlived rows (`closed`, or pending on a closed offer from before this fix) as `closed`; the badge counts only the work.
+- The inbox shows them in a folded "Closed" list with no controls.
+- Evidence: D3 offers test (assign and withdraw both close, the inbox moves them to `closed`), BD8 (expiry closes a pending counter), admin D3 test (folded by default, no buttons or inputs inside).
+
+### D4 - uploads fit the function body limit
+
+- `src/lib/home-services/compressImage.ts` shrinks photos in the browser before upload (max 1600 px, JPEG 0.8, HEIC converted first, EXIF orientation honoured), the same rule as slice A's uploader; PDFs pass through.
+- Used by the sub's details form and Alex's details reply.
+- The server caps each file at 3.5 MB and the body at 4 MB (Content-Length first, then the summed file sizes for a chunked body) and answers 413 with a message; the page shows it in the sub's language.
+- Evidence: D4 test - a 3.6 MB PDF gets 413 `file_too_big`, a 4.2 MB body gets 413 `body_too_big`, both with messages and nothing stored; a 2400 x 1800 PNG sent through the page is stored as `kitchen.jpg`, `image/jpeg`, 1600 x 1200 (read from the stored JPEG's frame header). Passed on dev and on the production build.
+- Not verified: a real upload on a Vercel deployment.
+
+### D5 - skip link target
+
+- The offer page `main` has `id="main-content"`; OF1 asserts it.
+
+### D6 - sub's language for the title and the job lines
+
+- `generateMetadata` sets the title from `s('offerTitle', lang)` in the sub's language (one cached lookup per render).
+- The job lines are the homeowner's answers for that trade rendered per recipient with `describeAnswers(..., sub.language)` (via `answerLinesFor`) on the page and in the email, followed by Alex's own scope text.
+- Evidence: OF6 asserts the Spanish title and "26 a 40" (and not "26 to 40"); the email test asserts the answer line in each language.
+
+### D7 - assigned only when every trade is
+
+- After an assignment the request becomes `assigned` only when every trade that went out has an assigned offer; otherwise it stays `bid_sent` and the note says which trades are still out.
+- Interpretation: "every offer" is read per trade, so an expired offer that was resent and then assigned does not hold the request back, and a trade Alex never sent does not either.
+- The detail panel shows the latest state per trade: open, assigned, expired or withdrawn.
+- Going back from the bid form now reloads the panel, so answers that arrived while the form was open show up.
+- Evidence: D7 offers test (bid_sent after the first trade with "Still out: Gutter cleaning.", assigned after the second; `trade_state` from the API), BD1 in the admin spec (chips read assigned and open, status Bid sent).
+
+### D8 - contrast of the violation text
+
+Measured with the WCAG formula (scratch script, colours from `globals.css`):
+
+| Text | Background | Ratio |
+| --- | --- | --- |
+| `text-destructive` hsl(0 84.2% 60.2%) | `bg-card` white | 3.76:1 (fails AA for small text) |
+| `text-destructive` | `bg-background` hsl(0 0% 99%), the sheet | 3.67:1 (fails) |
+| `text-red-700` #b91c1c | `bg-card` | 6.47:1 (passes) |
+| `text-red-700` | `bg-background` | 6.31:1 (passes) |
+
+The suggested `text-destructive` on `bg-card` does not meet AA, so every small error text in my admin screens uses `text-red-700` instead; buttons and borders are unchanged.
+
+### D9 - county from ZIP first
+
+- `countyForRequest` uses `countyForZip(zip)` first and falls back to the town map; nothing new is stored; the pricing report now reads `zip` too.
+- Evidence: pure D9 test ("Upper Montclair" 07043 is Essex; a ZIP outranks a mistyped town; the town map still answers without a ZIP).
+
+### Other changes made while verifying
+
+- A sub deleted between the eligibility read and the recipient insert made the whole send fail with a 500 (seen twice under parallel test cleanup); the send now re-reads the subs and retries the insert once on a foreign-key failure.
+- AD7 compared the card with the database in a way that could pass or fail on a race; it now judges only attempts where the database did not change while the card loaded.
+- The admin test helper could close the sidebar group it meant to open (the remembered state is restored after the heading appears); it now converges.
+
+### Corrections to my original report
+
+- The Dashboard tab error is `column blog_posts.title does not exist` (code 42703) in the local stub, as the reviewer found, not the `leads.created_at` cause I stated; I had inferred mine from a column listing instead of reading the route's own error.
+- `npm run chaos:static` does work as written once `363a6f5` is in; it reports 0 new violations.
+
+### Gates after the fixes
+
+- `npm run typecheck`: pass.
+- `eslint --max-warnings 0` on every changed source and spec file: pass.
+- `npm run chaos:static`: total 0, NEW 0.
+- `npm run build`: pass.
+- Both specs, twice in a row on the dev server: 35 passed, 35 passed (offers spec 25, admin spec 10).
+- OF1, OF6 and D4 also against the production build on port 3117: 6 passed.
+
+Reviewer commands are unchanged except that `npm run chaos:static` now runs as written.

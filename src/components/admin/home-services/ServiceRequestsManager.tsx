@@ -146,7 +146,7 @@ export default function ServiceRequestsManager() {
           </Card>
 
           {error ? (
-            <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm font-medium text-destructive" role="alert">
+            <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm font-medium text-red-700" role="alert">
               The requests could not be read, so this is not an empty list: {error}
             </p>
           ) : loading && !data ? (
