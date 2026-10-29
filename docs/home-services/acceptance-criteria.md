@@ -37,8 +37,13 @@ Sub-facing messages use the sub's `language`.
 - `?src=<tag>` on any `/home-services*` URL is stored in a `lv_src` cookie (30 days) and lands in `home_service_requests.source`. Unknown is `direct`.
 - `?lid=<id>` is the listing id, stored the same way in `lv_lid` and `listing_id`.
 - `utm_*` parameters are collected into `utm` (jsonb).
-- `cta_v` cookie, written by the homepage Hero: `P=<key>;S=<key>` (for example `P=B;S=A`), 180 days, path `/`. The request route reads it into `cta_variant_primary` and `cta_variant_secondary`.
-- `cta_vid` cookie: a random visitor id (uuid) written by the Hero on first view, 180 days. `cta_events.visitor_id` uses it.
+- `cta_v` cookie, written by the homepage's inline pre-paint script: `P=<key>;S=<key>;R=<seed>` (for example `P=B;S=A;R=9f2c...`), stored URI-encoded because a raw `;` would end the cookie, so the raw value reads `P%3DB%3BS%3DA%3BR%3D9f2c...`. 180 days, path `/`, SameSite=Lax, Secure, readable by JavaScript.
+  `P` and `S` are the variant keys the visitor was shown; `R` is a 32-hex assignment seed drawn from `crypto.getRandomValues` on the first visit, and a new visitor's keys are `fmix32(fnv1a(R + ":" + button)) % activeCount` over the active keys in A-G order.
+  A part may be missing (for example no `S` while a button falls back to built-in wording).
+  The request route decodes the value, splits on `;` and `=`, ignores unknown parts such as `R`, and stores `P` and `S` (when they are A-G) in `cta_variant_primary` and `cta_variant_secondary`.
+- `cta_vid` cookie: the CTA counting identity, `<uuid v4>.<HMAC-SHA256 of the uuid with INTERNAL_WEBHOOK_SECRET, base64url>`, minted only by `POST /api/cta/event` on a visitor's first event; httpOnly, SameSite=Lax, Secure on https, 180 days, path `/`.
+  The browser never reads or writes it; `cta_events.visitor_id` is its uuid.
+  A missing cookie mints a fresh id and records the event; a present but badly signed one gets 204 with nothing recorded, plus a fresh signed cookie.
 
 ### Request flow API (slice A owns, slice B reads)
 

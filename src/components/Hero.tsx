@@ -2,18 +2,19 @@
 
 import React from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { Star, Shield, Award, Users, ChevronDown } from "lucide-react";
-import { useRouter, usePathname } from "next/navigation";
 import { supabase } from '@/integrations/supabase/client';
 
 // Hero background video - single optimized video for consistent LCP performance
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const DEFAULT_VIDEO = `${SUPABASE_URL}/storage/v1/object/public/hero-videos/hero-background-1.mp4`;
 
-const Hero = () => {
-  const router = useRouter();
-  const pathname = usePathname();
+interface HeroProps {
+  /** The CTA pair, rendered on the server (src/lib/cta/HeroCta.tsx). */
+  cta: React.ReactNode;
+}
+
+const Hero = ({ cta }: HeroProps) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
 
   // Start with static data, render immediately
@@ -46,29 +47,6 @@ const Hero = () => {
     }
   }, []);
 
-  const scrollToEstimate = () => {
-    // On mobile and tablet (below lg breakpoint = 1024px), go to estimate page
-    if (window.innerWidth < 1024) {
-      router.push('/free-estimate');
-      return;
-    }
-
-    // On desktop, scroll to estimate form
-    if (pathname !== '/') {
-      router.push('/');
-      setTimeout(() => {
-        document.getElementById('estimate')?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start'
-        });
-      }, 100);
-    } else {
-      document.getElementById('estimate')?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start'
-      });
-    }
-  };
   return (
     <section className="relative bg-gradient-to-br from-background via-background to-muted py-10 md:py-20 lg:py-32 overflow-hidden">
       {/* Background Video Layer - Single optimized video for consistent LCP */}
@@ -113,41 +91,10 @@ const Hero = () => {
             <span className="font-semibold text-secondary"> Trusted Renovation Experts</span>
           </p>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <Button
-              onClick={scrollToEstimate}
-              size="lg"
-              className="bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-lg px-8 py-6 font-semibold transition-all duration-300 hover:scale-105 h-16"
-            >
-              <div className="flex flex-col">
-                {/* Mobile/Tablet Text */}
-                <span className="lg:hidden">Estimate Your Project</span>
-                <span className="text-sm font-normal opacity-90 lg:hidden">It only takes 5 minutes</span>
-                {/* Desktop Text */}
-                <span className="hidden lg:inline">Schedule Your Estimate</span>
-                <span className="text-sm font-normal opacity-90 hidden lg:inline">24 Hour Response Guaranteed</span>
-              </div>
-            </Button>
-            <a
-              href="#projects"
-              onClick={(e) => {
-                e.preventDefault();
-                document.getElementById('projects')?.scrollIntoView({
-                  behavior: 'smooth',
-                  block: 'start'
-                });
-              }}
-            >
-              <Button
-                variant="outline"
-                size="lg"
-                className="border-2 border-secondary text-secondary hover:bg-secondary hover:text-secondary-foreground text-lg px-8 py-6 font-semibold transition-all duration-300 h-16"
-              >
-                View Our Work
-              </Button>
-            </a>
-          </div>
+          {/* CTA Buttons: server-rendered by src/lib/cta/HeroCta.tsx and passed
+              in from the page, so the pre-paint variant script comes from a
+              server component. Real links, wording under multivariate test. */}
+          {cta}
 
           {/* Trust Indicators */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 max-w-4xl mx-auto">

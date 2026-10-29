@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/ctaEventStub';
 import { SKIP_WITHOUT_LIVE_BACKEND } from './helpers/liveBackend';
 
 test.describe('User Flow Tests', () => {
