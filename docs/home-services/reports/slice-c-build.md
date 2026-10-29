@@ -229,4 +229,4 @@ The editor moved out of the sideways-scrolling table into a full-width panel bel
 - `flows.spec.ts` "no JavaScript errors on page load" is flaky under parallel load: a hydration mismatch in the Services section (`TrackedSection` around `src/components/Services.tsx`). With `Hero.tsx` and `page.tsx` temporarily reverted to the base commit it failed 5 of 24 runs with the identical diff, so it predates this slice.
 - Under the same load the dev server intermittently fails to server-render `Testimonials` ("No QueryClient set") and once answered `GET /` with 500. I did not determine whether this happens in production.
 - The dev server process was once terminated externally mid-run (exit 144, no error in its log); the rerun was clean.
-- The untracked `tests/zz-rc-hero.spec.ts` in this worktree is the reviewer's and is left alone.
+- The reviewer's untracked `tests/zz-rc-hero.spec.ts` was left alone; it had been removed from the worktree by the time of the last commit.
