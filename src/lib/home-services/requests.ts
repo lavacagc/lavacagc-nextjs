@@ -17,7 +17,7 @@ import {
   TIMING_OPTIONS,
   type Lang,
 } from './catalog';
-import { normalizeZip, ZIP_RE } from './serviceArea';
+import { countyForZip, normalizeZip, ZIP_RE } from './serviceArea';
 import { sendTelegramLead } from '@/lib/notify/telegramLead';
 import { sendNewLeadEmail } from '@/lib/notify/newLeadEmail';
 
@@ -283,6 +283,7 @@ export function alertDetailLines(
 ): string[] {
   const lines = [
     `Address: ${req.address}${req.town ? `, ${req.town}` : ''} ${req.zip}`.trim(),
+    `County: ${countyForZip(req.zip) ?? 'outside Essex, Morris and Bergen (in area by town or scorer ZIP)'}`,
     `Timing: ${timingLabel(req.timing, 'en')}`,
     `Language: ${req.language === 'es' ? 'Spanish' : 'English'}`,
   ];

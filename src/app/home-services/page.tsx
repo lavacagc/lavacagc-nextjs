@@ -251,7 +251,7 @@ export default async function HomeServicesPage({ searchParams }: { searchParams:
         </section>
       </main>
 
-      <ServicesBottomTabs active="home" />
+      <ServicesBottomTabs active="home" quoteHref="#services" />
       <Footer />
     </div>
   );

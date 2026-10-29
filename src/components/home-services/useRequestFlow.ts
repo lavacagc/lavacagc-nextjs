@@ -17,8 +17,12 @@ export function preloadRequestFlow(): void {
  *
  * `mounted` stays true after the first open: the flow keeps its answers if the
  * homeowner closes it to look at another card and reopens it.
+ *
+ * `openOnHash`: also open when a plain `#request` link is followed (the bottom
+ * tab bar's Quote tab on a service page). That entry is then adopted as ours,
+ * so closing pops it exactly like one this hook pushed.
  */
-export function useRequestFlow() {
+export function useRequestFlow({ openOnHash = false }: { openOnHash?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const pushed = useRef(false);
@@ -44,8 +48,9 @@ export function useRequestFlow() {
       window.history.back();
     } else {
       pushed.current = false;
-      // Arrived with #request already in the URL: drop it without leaving the page.
-      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      // Arrived with #request already in the URL: drop it without leaving the
+      // page, keeping the router's own state on the entry.
+      window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
     }
   }, []);
 
@@ -59,6 +64,20 @@ export function useRequestFlow() {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
+
+  useEffect(() => {
+    if (!openOnHash) return;
+    const onHash = () => {
+      if (window.location.hash !== HASH) return;
+      const state = (window.history.state as Record<string, unknown> | null) ?? {};
+      window.history.replaceState({ ...state, hsRequest: true }, '', window.location.href);
+      pushed.current = true;
+      setMounted(true);
+      setOpen(true);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, [openOnHash]);
 
   return { open, mounted, openFlow, closeFlow };
 }

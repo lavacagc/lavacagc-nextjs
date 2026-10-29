@@ -10,7 +10,7 @@ const RequestFlow = dynamic(() => import('./RequestFlow'), { ssr: false });
 
 /** "Request this service" on a per-service page (LP8): opens the same flow with that service preselected. */
 export default function RequestServiceButton({ slug, lang, className }: { slug: string; lang: Lang; className?: string }) {
-  const flow = useRequestFlow();
+  const flow = useRequestFlow({ openOnHash: true });
   return (
     <>
       <button

@@ -4,17 +4,17 @@
  * it again before anything is saved. Both import this function, so the browser
  * can never be warm about a ZIP the server then declines.
  *
- * It reuses the lead scorer's lists (src/lib/leadScoring.ts) rather than a
- * third copy: a request accepted here and then scored as out of area would be
- * a contradiction in the same owner alert.
- *
- * The ZIP list is the gate (acceptance-criteria.md, "Service area"). The town
- * list only rescues a request whose ZIP is missing from the list but whose town
- * the scorer already treats as ours.
+ * In area when ANY of these holds:
+ *   1. the ZIP is in Essex, Morris or Bergen County (countyZips.ts) - the
+ *      counties the page copy promises;
+ *   2. the ZIP is in the remodel scorer's SERVICE_ZIPS (leadScoring.ts), so
+ *      nothing the scorer calls local is ever declined here (Clifton, Rahway);
+ *   3. the town is in the scorer's SERVICE_AREAS, for a ZIP missing from both.
  *
  * Import-light: no server code, safe in client components.
  */
 import { SERVICE_AREAS, SERVICE_ZIPS, cityInServiceArea } from '@/lib/leadScoring';
+import { countyForZip, zipInServiceCounties } from './countyZips';
 
 export const ZIP_RE = /^\d{5}$/;
 
@@ -26,9 +26,9 @@ export function normalizeZip(raw: string | null | undefined): string {
 
 export function isInServiceArea(input: { zip?: string | null; town?: string | null }): boolean {
   const zip = normalizeZip(input.zip);
-  if (zip && SERVICE_ZIPS.includes(zip)) return true;
+  if (zip && (zipInServiceCounties(zip) || SERVICE_ZIPS.includes(zip))) return true;
   const town = String(input.town ?? '').trim().toLowerCase();
   return town.length > 0 && cityInServiceArea(town);
 }
 
-export { SERVICE_AREAS, SERVICE_ZIPS };
+export { SERVICE_AREAS, SERVICE_ZIPS, countyForZip };
