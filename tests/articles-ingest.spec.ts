@@ -246,8 +246,10 @@ test.describe('pure article modules', () => {
     expect(REVALIDATE_PREFIXES).toContain('/blog');
     expect(isRevalidatablePath('/sitemap.xml')).toBe(true);
     expect(isRevalidatablePath('/sitemap.xml/x')).toBe(false);
+    expect(isRevalidatablePath('/api/sitemap')).toBe(true);
+    expect(isRevalidatablePath('/api/sitemap/x')).toBe(false);
     expect(isRevalidatablePath('/blog/a-post')).toBe(true);
-    expect(blogPagePaths('new-slug', 'old-slug', '../evil', null)).toEqual(['/blog', '/blog/new-slug', '/blog/old-slug', '/sitemap.xml']);
+    expect(blogPagePaths('new-slug', 'old-slug', '../evil', null)).toEqual(['/blog', '/blog/new-slug', '/blog/old-slug', '/api/sitemap', '/sitemap.xml']);
     // ART9: every blog writer calls it.
     expect(read('src/components/admin/BlogPostList.tsx')).toContain('requestRevalidate(blogPagePaths(');
     // Publishing from the list or editor goes through the guarded admin route, which revalidates server-side.

@@ -465,6 +465,14 @@ const nextConfig: NextConfig = {
     ]
   },
 
+  // /sitemap.xml is served by the /api/sitemap route handler, not a
+  // src/app/sitemap.ts metadata route: Next.js 16.2+ emits that as a static
+  // file on Vercel that never regenerates (vercel/next.js#99055). See
+  // src/app/api/sitemap/route.ts; drop this once the upstream fix ships.
+  async rewrites() {
+    return [{ source: '/sitemap.xml', destination: '/api/sitemap' }]
+  },
+
   // Output configuration
   output: 'standalone',
 };

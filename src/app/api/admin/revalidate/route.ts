@@ -12,7 +12,7 @@ import { revalidatePath, revalidateTag } from 'next/cache';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { BodyError, readJsonBody, validationResponse } from '@/lib/projects/http';
-import { isRevalidatablePath, SITEMAP_TAG } from '@/lib/revalidate';
+import { isRevalidatablePath, REVALIDATE_EXACT, SITEMAP_ROUTE, SITEMAP_TAG, touchesSitemap } from '@/lib/revalidate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -36,11 +36,17 @@ export async function POST(request: NextRequest) {
 
   const paths = [...new Set(parsed.data.paths)];
   try {
-    // '/' is the homepage alone and '/sitemap.xml' is one file; every other
-    // path drops itself and everything below it.
-    for (const path of paths) revalidatePath(path, path === '/' || path === '/sitemap.xml' ? 'page' : 'layout');
-    // The path alone does not refresh the sitemap on Vercel; its reads carry this tag.
-    if (paths.includes('/sitemap.xml')) revalidateTag(SITEMAP_TAG, { expire: 0 });
+    // '/' is the homepage alone and each sitemap path is one file; every
+    // other path drops itself and everything below it.
+    const single = (path: string) => path === '/' || (REVALIDATE_EXACT as readonly string[]).includes(path);
+    for (const path of paths) revalidatePath(path, single(path) ? 'page' : 'layout');
+    // Either sitemap path drops the route handler's ISR copy (an editor tab
+    // loaded before the move may send only '/sitemap.xml') and expires the
+    // tag on its database reads, so the regeneration reads fresh rows.
+    if (touchesSitemap(paths)) {
+      if (!paths.includes(SITEMAP_ROUTE)) revalidatePath(SITEMAP_ROUTE, 'page');
+      revalidateTag(SITEMAP_TAG, { expire: 0 });
+    }
   } catch (err) {
     console.error('admin revalidate failed:', err instanceof Error ? err.message : err);
     return NextResponse.json({ error: 'Could not revalidate' }, { status: 500 });

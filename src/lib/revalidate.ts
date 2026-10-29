@@ -19,18 +19,38 @@ export const REVALIDATE_PREFIXES = [
 ] as const;
 
 /**
+ * The route handler that renders the sitemap; /sitemap.xml is a rewrite to it
+ * (next.config.ts). This is the path whose ISR copy actually holds the
+ * sitemap, so it is the one a writer must revalidate. See
+ * src/app/api/sitemap/route.ts for why it is not a metadata route.
+ */
+export const SITEMAP_ROUTE = '/api/sitemap';
+
+/**
+ * Both sitemap paths: the route handler that holds the ISR copy, and the
+ * public /sitemap.xml, kept so an editor tab loaded before this change still
+ * passes validation and every request names the sitemap the way crawlers do.
+ */
+export const SITEMAP_PATHS = [SITEMAP_ROUTE, '/sitemap.xml'] as const;
+
+/**
  * Single files outside every prefix that an editor may still revalidate.
  * The sitemap lists every published blog post, so a publish or unpublish
  * has to drop it too.
  */
-export const REVALIDATE_EXACT = ['/sitemap.xml'] as const;
+export const REVALIDATE_EXACT = SITEMAP_PATHS;
 
 /**
- * Data-cache tag on the sitemap's database reads. revalidatePath('/sitemap.xml')
- * alone does not refresh the metadata route on Vercel, so every writer that
- * changes what the sitemap lists expires this tag too.
+ * Data-cache tag on the sitemap's database reads. Every writer that changes
+ * what the sitemap lists expires this tag along with revalidatePath on
+ * SITEMAP_ROUTE, so the next request regenerates from fresh rows.
  */
 export const SITEMAP_TAG = 'sitemap';
+
+/** Whether a path list names the sitemap, so the caller expires SITEMAP_TAG too. */
+export function touchesSitemap(paths: readonly string[]): boolean {
+  return paths.some((path) => (SITEMAP_PATHS as readonly string[]).includes(path));
+}
 
 const SAFE_PATH = /^\/[A-Za-z0-9\-_/]*$/;
 
@@ -54,7 +74,7 @@ export function cmsPagePaths(slug: string): string[] {
 /**
  * Every public path a blog post's visibility or content shows on: the list,
  * the post itself (under each slug it has had, so a renamed post's old URL
- * stops serving the old copy) and the sitemap.
+ * stops serving the old copy) and the sitemap (both of SITEMAP_PATHS).
  *
  * One list for both sides: the browser editors send it to
  * /api/admin/revalidate, and the server writers (article routes, crons) hand
@@ -65,7 +85,7 @@ export function blogPagePaths(...slugs: Array<string | null | undefined>): strin
     .map((s) => (s ?? '').trim().replace(/^\/+|\/+$/g, ''))
     .filter((s) => /^[a-z0-9][a-z0-9-]*$/i.test(s))
     .map((s) => `/blog/${s}`);
-  return [...new Set(['/blog', ...posts, '/sitemap.xml'])];
+  return [...new Set(['/blog', ...posts, ...SITEMAP_PATHS])];
 }
 
 /**
@@ -77,7 +97,7 @@ export function blogPagePaths(...slugs: Array<string | null | undefined>): strin
 export function projectPagePaths(slug?: string | null): string[] {
   const clean = (slug ?? '').trim().replace(/^\/+|\/+$/g, '');
   const page = /^[a-z0-9][a-z0-9-]*$/i.test(clean) ? [`/projects/${clean}`] : [];
-  return [...page, '/portfolio', '/', '/sitemap.xml'];
+  return [...page, '/portfolio', '/', ...SITEMAP_PATHS];
 }
 
 /**

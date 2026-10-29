@@ -1101,7 +1101,7 @@ test('AC-S3-16: the page is noindex, and its metadata names no client', () => {
   expect(page).toContain("title: 'Your proposal'");
   expect(page, 'the title must not name a client').not.toMatch(/title:.*\$\{/);
   // The sitemap has never enumerated a tokenized route, and must not start.
-  expect(read('src/app/sitemap.ts')).not.toContain('proposal');
+  expect(read('src/lib/sitemap.ts')).not.toContain('proposal');
 });
 
 test('AC-S3-3: locked lines reach the page with nothing to flip', () => {
