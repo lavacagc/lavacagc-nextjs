@@ -1,4 +1,23 @@
+/**
+ * GET /api/cron/publish - publish the scheduled blog posts that are due.
+ *
+ * Every post goes through the publish guard first (Phase 2 slice G: the guard
+ * runs on every publish path). A post that passes goes live, its pages are
+ * revalidated, and the owner gets "New article published" with the signed
+ * one-tap unpublish link, because nobody is watching when a schedule fires.
+ * A post that is held stays a draft with `review_hold` set and its schedule
+ * cleared (so the next hourly run does not hold and notify again), and the owner
+ * gets "Article held for review". A post held only because the price catalog
+ * could not be read keeps its schedule, so the next run publishes it once the
+ * table is back; it is reported under `deferred`, without a Telegram message
+ * every hour of an outage.
+ */
 import { NextRequest, NextResponse } from 'next/server';
+import { announceHeld, announcePublished, runPublishGuard } from '@/lib/articles/publishFlow';
+import { CATALOG_UNAVAILABLE_REASON } from '@/lib/articles/publishGuard';
+import { revalidateArticlePages } from '@/lib/articles/revalidate';
+import { getArticle, holdArticle, newPublishNonce } from '@/lib/articles/writer';
+import { siteOrigin } from '@/lib/projects/http';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,31 +68,64 @@ export async function GET(request: NextRequest) {
     // Find posts that are scheduled and past their publish time
     const posts = await supabaseRest(
       'GET',
-      `blog_posts?select=id,title,slug,scheduled_publish_at&published=eq.false&scheduled_publish_at=not.is.null&scheduled_publish_at=lte.${encodeURIComponent(now)}`
+      // Capped: an hourly run publishes what is due; anything past the cap is
+      // still due on the next run, so nothing is lost.
+      `blog_posts?select=id,title,slug,scheduled_publish_at&published=eq.false&scheduled_publish_at=not.is.null&scheduled_publish_at=lte.${encodeURIComponent(now)}&order=scheduled_publish_at.asc&limit=50`
     );
 
     if (!posts || posts.length === 0) {
       return NextResponse.json({ message: 'No posts to publish', published: 0 });
     }
 
-    // Publish each post
+    // Publish each post that passes the guard; hold the rest.
+    const origin = siteOrigin(request);
     const published: string[] = [];
+    const held: Array<{ title: string; reasons: string[] }> = [];
+    const deferred: Array<{ title: string; reasons: string[] }> = [];
+    const slugs: string[] = [];
+    const live: Array<NonNullable<Awaited<ReturnType<typeof getArticle>>>> = [];
     for (const post of posts) {
       try {
+        const full = await getArticle(post.id);
+        if (!full) continue;
+        const verdict = await runPublishGuard(full);
+        if (!verdict.ok && verdict.reasons.every((r) => r === CATALOG_UNAVAILABLE_REASON)) {
+          await holdArticle(full, verdict.reasons);
+          deferred.push({ title: full.title, reasons: verdict.reasons });
+          console.warn(`Publish deferred for "${full.title}": ${CATALOG_UNAVAILABLE_REASON}`);
+          continue;
+        }
+        if (!verdict.ok) {
+          await holdArticle(full, verdict.reasons);
+          await supabaseRest('PATCH', `blog_posts?id=eq.${post.id}`, { scheduled_publish_at: null });
+          held.push({ title: full.title, reasons: verdict.reasons });
+          await announceHeld(origin, full, verdict.reasons);
+          continue;
+        }
+        const nonce = newPublishNonce();
         await supabaseRest(
           'PATCH',
           `blog_posts?id=eq.${post.id}`,
-          { published: true, scheduled_publish_at: null, created_at: now, updated_at: now }
+          { published: true, published_at: now, publish_nonce: nonce, review_hold: null, scheduled_publish_at: null, created_at: now, updated_at: now }
         );
         published.push(post.title);
+        slugs.push(post.slug);
+        live.push({ ...full, published: true, published_at: now, publish_nonce: nonce });
       } catch (err) {
         console.error(`Failed to publish "${post.title}":`, err);
       }
     }
 
+    // Show them on /blog, their pages and the sitemap now, not after the ISR window.
+    if (slugs.length > 0) revalidateArticlePages(...slugs);
+    // Then tell the owner, each with its one-tap undo.
+    for (const post of live) await announcePublished(origin, post);
+
     return NextResponse.json({
       message: `Published ${published.length} posts`,
       published,
+      held,
+      deferred,
       checked_at: now,
     });
   } catch (error) {

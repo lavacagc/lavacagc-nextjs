@@ -5,13 +5,17 @@
  *       links (7 days, private bucket), the offers sent on this request with
  *       who got them and what they said, and who would get a new bid request
  *       for each trade (and who would not, and why - BD3).
- * PATCH status change, note, Won, Lost (AD3, AD4). Every change appends a
+ * PATCH status change, note, Won, Lost (AD3, AD4), Paid. Every change appends a
  *       timestamped line to admin_notes; nothing rewrites an earlier line.
+ *       Won records the experiments funnel step `quote_accepted` and Paid
+ *       records `job_paid` (with the job's price as revenue) for the variants
+ *       the requester was shown (Phase 2 slice H; once per visitor).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { describeAnswers } from '@/lib/home-services/catalog';
+import { getServiceNames } from '@/lib/home-services/catalogData';
 import { STATUS_LABEL, answerLinesFor, countyForRequest, tradesForServices } from '@/lib/home-services/requestsAdmin';
 import {
   OFFER_COLUMNS, RECIPIENT_COLUMNS, RESPONSE_COLUMNS, appendRequestNote, getRequest, previewRecipients, tradeAssignment,
@@ -22,6 +26,7 @@ import { signPaths } from '@/lib/home-services/storage';
 import { isSpecNookConfigured } from '@/lib/specnook/client';
 import { isSmsConfigured } from '@/lib/home-services/sms';
 import { UUID_RE, actingAdmin, readJson, serverError } from '@/lib/home-services/adminRoute';
+import { recordDownstream } from '@/lib/experiments/events.server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -59,13 +64,14 @@ export async function GET(_request: NextRequest, { params }: Params) {
           'GET', `subs?select=id,business_name,language&id=in.(${subIds.join(',')})`,
         )) ?? []
       : [];
+    const names = await getServiceNames();
     const subName = (sid: string | null) => subs.find((s) => s.id === sid)?.business_name ?? 'Unknown sub';
 
     return NextResponse.json({
       request: {
         ...request,
         county: countyForRequest(request),
-        answer_lines: describeAnswers(request.services, request.answers ?? {}),
+        answer_lines: describeAnswers(request.services, request.answers ?? {}, 'en', names),
       },
       photos,
       offers: (offers ?? []).map((o) => ({
@@ -85,7 +91,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
         trades: tradesForServices(request.services).map((trade) => ({
           trade,
           // English for Alex; each sub reads these in their own language.
-          answers: answerLinesFor(request, trade, 'en'),
+          answers: answerLinesFor(request, trade, 'en', names),
           preview: preview.find((p) => p.trade === trade) ?? null,
         })),
       },
@@ -101,6 +107,7 @@ const patchSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('note'), text: z.string().trim().min(1, 'Write a note first').max(2000) }),
   z.object({ action: z.literal('won'), customer_price_cents: z.number().int().positive().max(100_000_000) }),
   z.object({ action: z.literal('lost'), reason: z.string().trim().min(1, 'Say why it was lost').max(500) }),
+  z.object({ action: z.literal('paid') }),
 ]);
 
 export async function PATCH(request: NextRequest, { params }: Params) {
@@ -139,7 +146,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       case 'lost':
         updated = await appendRequestNote(id, `Status: ${from} -> Lost. Reason: ${body.reason}`, { status: 'lost', lost_reason: body.reason }, by);
         break;
+      case 'paid':
+        if (current.status !== 'won' || !current.customer_price_cents) {
+          return NextResponse.json({ error: 'Mark the job Won with its price before marking it paid.' }, { status: 409 });
+        }
+        if (current.paid_at) return NextResponse.json({ request: current, unchanged: true });
+        updated = await appendRequestNote(id, `Paid: ${formatDollars(current.customer_price_cents)}.`, { paid_at: new Date().toISOString() }, by);
+        break;
     }
+    // Experiments funnel (never throws): the customer accepted the quote, or paid.
+    if (body.action === 'won') await recordDownstream(current.visitor_id, 'quote_accepted', body.customer_price_cents);
+    if (body.action === 'paid') await recordDownstream(current.visitor_id, 'job_paid', current.customer_price_cents);
     return NextResponse.json({ request: updated });
   } catch (err) {
     return serverError('Could not update the request', err);

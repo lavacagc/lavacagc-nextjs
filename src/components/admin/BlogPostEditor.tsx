@@ -22,13 +22,14 @@ import {
 } from '@/components/ui/popover';
 import { MarkdownEditor } from './MarkdownEditor';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, Save, Eye, Upload, Sparkles, X, Wand2, Clock, CalendarIcon } from 'lucide-react';
-import { AdminRadioGroup, AdminRadioGroupItem } from './ui/AdminRadioGroup';
+import { Loader2, Save, Eye, Upload, X, Clock, CalendarIcon, AlertTriangle } from 'lucide-react';
 import { convertHeicToJpeg } from '@/utils/heicConverter';
 import { format, parse } from 'date-fns';
 import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
+import { blogPagePaths, requestRevalidate } from '@/lib/revalidate';
+import { adminPublishArticle } from '@/lib/articles/adminPublish';
 
 interface BlogPost {
   id: string;
@@ -44,7 +45,10 @@ interface BlogPost {
   meta_keywords: string;
   published: boolean;
   scheduled_publish_at: string | null;
-  suggested_image_prompt: string | null;
+  published_at?: string | null;
+  source?: string | null;
+  /** Set by the publish guard when it held a publish (Phase 2 slice G). */
+  review_hold?: { reasons?: string[]; checked_at?: string } | null;
 }
 
 const EASTERN_TZ = 'America/New_York';
@@ -110,16 +114,17 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     meta_keywords: '',
     published: false,
     scheduled_publish_at: null,
-    suggested_image_prompt: null,
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [isGeneratingSEO, setIsGeneratingSEO] = useState(false);
-  const [imagePrompt, setImagePrompt] = useState('');
-  const [enhancementLevel, setEnhancementLevel] = useState<'light' | 'moderate' | 'heavy'>('moderate');
-  const [isEnhancing, setIsEnhancing] = useState(false);
+  // What the database held when the post was loaded: a save compares against it
+  // to stamp published_at on a publish and to revalidate the old slug's page.
+  const [loaded, setLoaded] = useState<{ published: boolean; slug: string } | null>(null);
+  // The row this editor writes: the post it opened, or the one its first save created.
+  const [savedId, setSavedId] = useState<string | null>(postId ?? null);
+  // Why the publish guard held this post; shown above the form with "Publish anyway".
+  const [holdReasons, setHoldReasons] = useState<string[]>([]);
 
   // Scheduling state
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
@@ -144,6 +149,11 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
       if (error) throw error;
       setPost(data);
+      setSavedId(data.id);
+      setLoaded({ published: !!data.published, slug: data.slug ?? '' });
+      // `review_hold` (Phase 2 migration) is not in the generated types file yet.
+      const hold = (data as { review_hold?: BlogPost['review_hold'] }).review_hold;
+      setHoldReasons(!data.published && Array.isArray(hold?.reasons) ? hold.reasons : []);
 
       // Load scheduling info if present
       if (data.scheduled_publish_at) {
@@ -155,11 +165,6 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
         setScheduleDate(undefined);
         setScheduleTime('09:00');
         setIsScheduled(false);
-      }
-
-      // Pre-fill image prompt with AI suggestion if available and no image exists yet
-      if (data.suggested_image_prompt && !data.featured_image) {
-        setImagePrompt(data.suggested_image_prompt);
       }
     } catch (error) {
       console.error('Error loading post:', error);
@@ -191,7 +196,14 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     }));
   };
 
-  const handleSave = async () => {
+  /**
+   * Save the post. A draft-to-live change is saved as a draft first and then
+   * published through /api/admin/articles/<id>/publish, so the publish guard
+   * checks exactly what was saved and can hold it (PG4). `override` is
+   * "Publish anyway" (PG3): it saves, then publishes despite the hold, and the
+   * server records the admin's id.
+   */
+  const handleSave = async (opts: { override?: boolean } = {}) => {
     if (!post.title || !post.content || !post.category) {
       toast({
         title: 'Validation Error',
@@ -201,8 +213,8 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
       return;
     }
 
-    // Validate schedule if set
-    if (isScheduled && scheduleDate) {
+    // Validate schedule if set ("Publish anyway" publishes now, schedule or not)
+    if (isScheduled && scheduleDate && !opts.override) {
       const scheduledUtc = easternToUtc(scheduleDate, scheduleTime);
       if (new Date(scheduledUtc) <= new Date()) {
         toast({
@@ -216,6 +228,9 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
     setIsSaving(true);
     try {
+      const willPublish = opts.override ? true : isScheduled ? false : (post.published || false);
+      // Draft to live goes through the guard on the server, after this write.
+      const goingLive = willPublish && !loaded?.published;
       const postData = {
         title: post.title,
         slug: post.slug || generateSlug(post.title),
@@ -227,20 +242,64 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
         meta_title: post.meta_title || post.title,
         meta_description: post.meta_description || post.excerpt || '',
         meta_keywords: post.meta_keywords || '',
-        // If scheduled, don't publish immediately
-        published: isScheduled ? false : (post.published || false),
+        // A draft stays a draft here even when it is about to go live: the
+        // publish route flips it (and stamps published_at) only if the guard
+        // passes. An edit of a live post keeps it live and keeps its date.
+        published: goingLive ? false : willPublish,
+        updated_at: new Date().toISOString(),
         // Set scheduled time if scheduling is enabled
-        scheduled_publish_at: isScheduled && scheduleDate
+        scheduled_publish_at: isScheduled && scheduleDate && !opts.override
           ? easternToUtc(scheduleDate, scheduleTime)
           : null,
       };
 
-      if (postId) {
-        const { error } = await supabase.from('blog_posts').update(postData).eq('id', postId);
+      let id = savedId;
+      if (id) {
+        const { error } = await supabase.from('blog_posts').update(postData).eq('id', id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('blog_posts').insert(postData);
+        const { data, error } = await supabase.from('blog_posts').insert(postData).select('id').single();
         if (error) throw error;
+        id = data.id as string;
+        setSavedId(id);
+      }
+
+      if (goingLive && id) {
+        const result = await adminPublishArticle(id, { override: opts.override });
+        if (result.status === 'held') {
+          // Saved as a draft; the reasons show above the form with "Publish anyway".
+          setHoldReasons(result.reasons);
+          setPost((prev) => ({ ...prev, published: false }));
+          setLoaded({ published: false, slug: postData.slug });
+          toast({
+            title: 'Held for review',
+            description: `Saved as a draft. ${result.reasons.length} thing${result.reasons.length === 1 ? '' : 's'} to check before it can go live.`,
+            variant: 'destructive',
+          });
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return;
+        }
+        if (result.status === 'error') {
+          setLoaded({ published: false, slug: postData.slug });
+          toast({ title: 'Saved as a draft', description: `Could not publish: ${result.message}`, variant: 'destructive' });
+          return;
+        }
+        // Published: the route revalidated /blog, the post and the sitemap.
+        setHoldReasons([]);
+        toast({
+          title: result.overridden ? 'Published anyway' : 'Published',
+          description: result.overridden ? 'Published over the review hold; your override is recorded.' : 'Blog post saved and published.',
+        });
+        onSave();
+        return;
+      }
+
+      // The public blog pages are ISR copies; drop the ones this save touched
+      // (the list, the post under its new and old slug, the sitemap) so the
+      // change shows on the next request instead of after the ISR window.
+      // A draft that stays a draft changes nothing public, so it skips this.
+      if (willPublish || loaded?.published) {
+        void requestRevalidate(blogPagePaths(postData.slug, loaded?.slug));
       }
 
       // Show appropriate success message
@@ -273,7 +332,8 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
   const handlePreview = () => {
     if (post.slug) {
-      window.open(`/blog/${post.slug}`, '_blank');
+      // A draft has no public page yet; the preview route shows it to an admin.
+      window.open(loaded?.published ? `/blog/${post.slug}` : `/blog/preview/${post.slug}`, '_blank');
     }
   };
 
@@ -327,148 +387,8 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     }
   };
 
-  const handleGenerateImage = async () => {
-    if (!imagePrompt.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Please enter an image prompt',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsGeneratingImage(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-blog-image', {
-        body: { prompt: imagePrompt },
-      });
-
-      if (error) throw error;
-      if (!data.imageUrl) throw new Error('No image URL returned');
-
-      // Convert base64 to blob and upload
-      const base64Response = await fetch(data.imageUrl);
-      const blob = await base64Response.blob();
-
-      const fileName = `${Math.random()}.png`;
-      const filePath = fileName; // Remove the blog-images/ prefix
-
-      const { error: uploadError } = await supabase.storage
-        .from('blog-images')
-        .upload(filePath, blob);
-
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from('blog-images').getPublicUrl(filePath);
-
-      setPost((prev) => ({ ...prev, featured_image: publicUrl }));
-      setImagePrompt('');
-      toast({
-        title: 'Success',
-        description: 'Image generated successfully',
-      });
-    } catch (error) {
-      console.error('Error generating image:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to generate image',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsGeneratingImage(false);
-    }
-  };
-
   const handleRemoveImage = () => {
     setPost((prev) => ({ ...prev, featured_image: '' }));
-  };
-
-  const handleGenerateSEO = async () => {
-    if (!post.title || !post.content) {
-      toast({
-        title: 'Missing Content',
-        description: 'Please add a title and content before generating SEO',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsGeneratingSEO(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-blog-seo', {
-        body: {
-          title: post.title,
-          content: post.content,
-          excerpt: post.excerpt,
-        },
-      });
-
-      if (error) throw error;
-
-      setPost((prev) => ({
-        ...prev,
-        meta_title: data.metaTitle,
-        meta_description: data.metaDescription,
-        meta_keywords: data.keywords,
-      }));
-
-      toast({
-        title: 'SEO Generated',
-        description: 'Meta title, description, and keywords have been generated',
-      });
-    } catch (error) {
-      console.error('Error generating SEO:', error);
-      toast({
-        title: 'Generation Failed',
-        description: 'Failed to generate SEO metadata',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsGeneratingSEO(false);
-    }
-  };
-
-  const handleEnhanceContent = async () => {
-    if (!post.content?.trim()) {
-      toast({
-        title: 'No Content',
-        description: 'Please add content before enhancing',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsEnhancing(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('enhance-blog-content', {
-        body: {
-          title: post.title || 'Untitled',
-          content: post.content,
-          category: post.category || 'General Remodeling',
-          enhancementLevel,
-        },
-      });
-
-      if (error) throw error;
-      if (!data?.enhancedContent) throw new Error('No enhanced content returned');
-
-      setPost((prev) => ({ ...prev, content: data.enhancedContent }));
-      toast({
-        title: 'Content Enhanced',
-        description: `Article enhanced with ${enhancementLevel} optimization`,
-      });
-    } catch (error) {
-      console.error('Enhancement error:', error);
-      toast({
-        title: 'Enhancement Failed',
-        description: 'Failed to enhance content',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsEnhancing(false);
-    }
   };
 
   if (isLoading) {
@@ -481,6 +401,35 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
   return (
     <div className="space-y-6">
+      {holdReasons.length > 0 && !post.published && (
+        <div role="alert" data-testid="review-hold" className="rounded-lg border border-amber-300 bg-amber-50 p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-semibold text-amber-900">Held for review</h3>
+              <p className="mt-1 text-sm text-amber-900">
+                The publish guard kept this post off the site. Fix what it names and save again, or publish it as it is.
+              </p>
+              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-amber-950" data-testid="review-hold-reasons">
+                {holdReasons.map((reason) => (
+                  <li key={reason} className="break-words">{reason}</li>
+                ))}
+              </ul>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-4 border-amber-400 bg-white text-amber-900 hover:bg-amber-100"
+                onClick={() => handleSave({ override: true })}
+                disabled={isSaving}
+              >
+                {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Publish anyway
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
@@ -576,38 +525,6 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
                 </div>
               </div>
 
-              <Separator />
-
-              <div>
-                <Label htmlFor="image-prompt">Generate with AI</Label>
-                <div className="space-y-2 mt-2">
-                  <Textarea
-                    id="image-prompt"
-                    value={imagePrompt}
-                    onChange={(e) => setImagePrompt(e.target.value)}
-                    placeholder="Describe the image you want to generate..."
-                    rows={3}
-                  />
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={handleGenerateImage}
-                    disabled={isGeneratingImage}
-                  >
-                    {isGeneratingImage ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Generate Image
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
             </CardContent>
           </Card>
 
@@ -785,27 +702,6 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
               <CardTitle className="text-lg">SEO Settings</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={handleGenerateSEO}
-                disabled={isGeneratingSEO || !post.title || !post.content}
-              >
-                {isGeneratingSEO ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Generate SEO
-                  </>
-                )}
-              </Button>
-
-              <Separator />
-
               <div>
                 <Label htmlFor="meta_title">Meta Title</Label>
                 <Input
@@ -841,68 +737,6 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">AI Enhancement</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Enhancement Level</Label>
-                <AdminRadioGroup
-                  value={enhancementLevel}
-                  onValueChange={(value) =>
-                    setEnhancementLevel(value as 'light' | 'moderate' | 'heavy')
-                  }
-                  disabled={isEnhancing}
-                >
-                  <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
-                    <AdminRadioGroupItem value="light" id="enhance-light" />
-                    <Label htmlFor="enhance-light" className="text-sm font-normal cursor-pointer flex-1">
-                      <span className="font-medium">Light</span>
-                      <span className="text-muted-foreground text-xs block">Quick polish with local context</span>
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
-                    <AdminRadioGroupItem value="moderate" id="enhance-moderate" />
-                    <Label htmlFor="enhance-moderate" className="text-sm font-normal cursor-pointer flex-1">
-                      <span className="font-medium">Moderate</span>
-                      <span className="text-muted-foreground text-xs block">Full local SEO optimization</span>
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
-                    <AdminRadioGroupItem value="heavy" id="enhance-heavy" />
-                    <Label htmlFor="enhance-heavy" className="text-sm font-normal cursor-pointer flex-1">
-                      <span className="font-medium">Heavy</span>
-                      <span className="text-muted-foreground text-xs block">Complete rewrite with max SEO</span>
-                    </Label>
-                  </div>
-                </AdminRadioGroup>
-              </div>
-
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={handleEnhanceContent}
-                disabled={isEnhancing || !post.content}
-              >
-                {isEnhancing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Enhancing...
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className="w-4 h-4 mr-2" />
-                    Enhance Content
-                  </>
-                )}
-              </Button>
-
-              <p className="text-xs text-muted-foreground text-center">
-                AI will add internal links and optimize for local SEO
-              </p>
-            </CardContent>
-          </Card>
         </div>
       </div>
 
@@ -919,7 +753,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
               Preview
             </Button>
           )}
-          <Button onClick={handleSave} disabled={isSaving}>
+          <Button onClick={() => handleSave()} disabled={isSaving}>
             {isSaving ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (

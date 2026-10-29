@@ -40,9 +40,16 @@ Each is recorded with its reasoning in `00-site-audit.md` or `docs/decisions/`.
 - S-08 Recommendation: the admin's signed video upload lets the uploader pick the stored content type; a JPEG-headed HTML file is stored (served as text, harmless today). Validate the type server-side after the upload lands.
 - S-10 Recommendation: focus should return to the opening button when the request sheet closes.
 
+## Done after launch (2026-10-29)
+
+- S-03: public sign-up turned off in the hosted Supabase project through the Management API (`disable_signup: true`), after confirming the only `signUp` caller is the unused helper in `src/hooks/useAuth.tsx`; a sign-up probe now fails.
+- Production migration history repaired and the Home Services migrations applied (see Database below).
+- `PROJECT_INGEST_TOKEN` set in Vercel production and preview; the eight drafts from the orphaned `drafts/` photos were created by CLI and wait unpublished in the admin.
+
 ## Database
 
-- The migration `20261029000000_home_services.sql` and `20261029000001_projects_anon_draft_guard.sql` apply through the normal pipeline (Supabase branching on the PR, production on merge).
+- The migration `20261029000000_home_services.sql` and `20261029000001_projects_anon_draft_guard.sql` were expected to apply through the Supabase GitHub integration on merge. They did not (2026-10-29, merge 4f0e295): the integration's production apply failed at `20260218000000_create_lead_events.sql` with `policy "Allow public inserts" for table "lead_events" already exists`, because every migration from February 2026 on exists in production without being recorded in `supabase_migrations.schema_migrations`. Until the history is repaired, every merge fails the same way and no new table reaches production.
+  Repaired 2026-10-29 after Alex logged in: every unrecorded migration was dry-run against production inside a rolled-back transaction (scratch script `migration-dryrun.py`); the 46 whose objects already existed were marked applied with `supabase migration repair --status applied`, and `supabase db push --linked` then applied `20260923000000`, `20261029000000` and `20261029000001`. REST probes of `home_service_requests`, `cta_variants`, `subs`, `job_offers` and `projects.status` answer 200. From here on, a merge to main applies new migrations through the Supabase GitHub integration as long as the history stays in sync; `supabase migration list --linked` shows any gap.
 - Launch check: confirm in the Supabase dashboard that the `projects` and `project_images` policies for the `anon` role do not expose `active=false` rows.
   The restrictive guard in `20261029000001` narrows anon reads only where row security is already on; if the dashboard shows RLS off for `projects`, turn it on with a permissive `active = true` SELECT policy for anon and an `authenticated` policy for admin writes.
 - Vercel crons added: `purge-draft-photos` (daily 05:00), `offers-expire` (every 30 minutes).
@@ -56,7 +63,7 @@ Each is recorded with its reasoning in `00-site-audit.md` or `docs/decisions/`.
 - Signed video upload to hosted Supabase from the admin project form.
 - Publish from the Portfolio Manager shows the project on `/portfolio` and the homepage within the ISR window.
 - `POST /api/projects/ingest` from Claude Code with the Vercel token (see `docs/projects-ingest.md`).
-- Homepage CTA variants render on the production hostname, events arrive in `cta_events`, and the CTA Tests tab shows them.
+- Homepage CTA variants render on the production hostname, events arrive in `experiment_events` as `hero-primary` / `hero-secondary`, and the Experiments tab shows them (Phase 2 replaced `cta_events` and the CTA Tests tab).
 - Google Places autocomplete, once a key exists.
 - SpecNook status and push, once the API exists.
 - The reCAPTCHA v2 fallback on the new request route with a real low score.
@@ -80,4 +87,4 @@ Each is recorded with its reasoning in `00-site-audit.md` or `docs/decisions/`.
 
 Post per service and county with the matching URL and tags, for example:
 `https://www.lavacagc.com/home-services/gutter-cleaning?src=craigslist&lid=<post id>` and `?lang=es` for Spanish posts.
-Leads by source and service appear on the Service Requests summary card and the CTA Tests tab.
+Leads by source and service appear on the Service Requests summary card.

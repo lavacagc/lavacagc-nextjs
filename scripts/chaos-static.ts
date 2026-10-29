@@ -203,8 +203,13 @@ for (const file of files.filter((f) => f.includes('/components/'))) {
   const publicPrefixes = [...publicBlock.matchAll(/['"](\/api\/[^'"]+)['"]/g)].map((m) => m[1]);
 
   const SPENDS = /sendTrackedEmail|sendTelegram|createLeadFollowUpSequence|resend\.emails|sendNewLeadEmail|sendFormFailureAlert/;
-  /** Anything that authenticates the CALLER. */
-  const AUTH_GATES = /verifyInternalSecret|new Webhook\(|\.verify\(|verifyRecaptcha|assessRecaptcha|requestChallenge/;
+  /**
+   * Anything that authenticates the CALLER. authorizeIngest / authorizeExperiments
+   * are the shared bearer-token gates (constant-time token, 404 when unset, plus
+   * their own per-IP rate limit), src/lib/projects/ingest.ts and
+   * src/lib/experiments/auth.server.ts.
+   */
+  const AUTH_GATES = /verifyInternalSecret|new Webhook\(|\.verify\(|verifyRecaptcha|assessRecaptcha|requestChallenge|authorizeIngest\(|authorizeExperiments\(/;
   /** A per-request capability token in the URL - authentication, but guessable in principle. */
   const TOKEN_GATE = /lookupByToken|\[token\]|params.*token|token=eq\./;
   /** Anything that bounds how OFTEN. */

@@ -4,7 +4,7 @@ import { useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { HEX_COLOR, isValidCtaColor } from '@/lib/cta/color';
+import { HEX_COLOR } from '@/lib/cta/color';
 
 export interface VariantDraft {
   wording: string;
@@ -28,14 +28,14 @@ interface Props {
 
 /**
  * Wording, subtext and colour for one variant. Used both inline (edit) and for
- * adding a new variant. Colour is a hex value (recommended; applied inline) or
- * Tailwind classes, which only render if the class already exists in the site CSS.
+ * adding a new variant. Colour is a hex value, applied inline (since slice H the
+ * variant is an experiment payload, whose colour slot takes hex only).
  */
 export function VariantEditor({ initial, submitLabel, busy, onSubmit, onCancel, wordingLocked }: Props) {
   const id = useId();
   const [draft, setDraft] = useState<VariantDraft>(initial);
   const color = draft.color.trim();
-  const colorInvalid = color !== '' && !isValidCtaColor(color);
+  const colorInvalid = color !== '' && !HEX_COLOR.test(color);
   const wordingMissing = draft.wording.trim() === '';
   const replacing = !!wordingLocked && draft.wording.trim() !== initial.wording.trim();
 

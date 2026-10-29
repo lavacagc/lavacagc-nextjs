@@ -33,7 +33,10 @@ import { geoTierLabel, GEO_TIER_HEADER } from '@/lib/geo/tier';
 import { isSmsConfigured, normalizeUsPhone, sendSms } from '@/lib/home-services/sms';
 import { isInServiceArea } from '@/lib/home-services/serviceArea';
 import { readAttribution } from '@/lib/home-services/attribution';
+import { verifyVisitorCookie, VISITOR_COOKIE } from '@/lib/cta/visitor.server';
+import { recordDownstream } from '@/lib/experiments/events.server';
 import { claimDraftPhotos, signPhotoUrls } from '@/lib/home-services/photos';
+import { getServiceNames } from '@/lib/home-services/catalogData';
 import { generateCode, hashCode, VERIFY_CODE_TTL_MS } from '@/lib/home-services/verify';
 import {
   RequestBodySchema,
@@ -163,6 +166,16 @@ export async function POST(request: NextRequest) {
     }
 
     const attribution = readAttribution((name) => request.cookies.get(name)?.value);
+    // The signed counting id (slice H): the request_submitted funnel step is
+    // recorded for the variants this visitor was shown, and kept on the row so
+    // the admin status changes can record quote_accepted and job_paid.
+    // verifyVisitorCookie throws without INTERNAL_WEBHOOK_SECRET: no secret, no attribution.
+    let visitorId: string | null = null;
+    try {
+      visitorId = verifyVisitorCookie(request.cookies.get(VISITOR_COOKIE.name)?.value);
+    } catch {
+      visitorId = null;
+    }
     const key = dedupeKey(req.address, req.zip, req.services, req.phone);
     const since = new Date(Date.now() - DEDUPE_WINDOW_MS).toISOString();
 
@@ -188,11 +201,12 @@ export async function POST(request: NextRequest) {
       }, { prefer: 'return=minimal' });
       const claimed = await claimDraftPhotos(prior.id, body.draft_token ?? undefined, body.photo_ids);
       console.log(`[home-services/request] merged into ${prior.id} (+${claimed.length} photos)`);
+      await recordDownstream(visitorId, 'request_submitted');
       return NextResponse.json({ ok: true, request_id: randomUUID(), status: 'new', verification: 'skipped', merged: true });
     }
 
     // ---- leads row: the existing pipeline's record --------------------------
-    const { lead: sanitized, adjustments } = sanitizeLeadForInsert(leadFields(req, attribution.source));
+    const { lead: sanitized, adjustments } = sanitizeLeadForInsert(leadFields(req, attribution.source, await getServiceNames()));
     if (adjustments.length) console.warn(`[home-services/request] sanitizer adjusted: ${adjustments.join('; ')}`);
     const scoring = scoreLead(prepareLeadForScoring(sanitized as Record<string, string | null | undefined>));
     const leadRow = { ...sanitized, score: scoring.score, tier: scoring.tier, scoring_reasons: scoring.reasons };
@@ -244,6 +258,7 @@ export async function POST(request: NextRequest) {
       landing_path: landingPath(request),
       cta_variant_primary: attribution.ctaPrimary,
       cta_variant_secondary: attribution.ctaSecondary,
+      visitor_id: visitorId,
       captcha_score: captchaScore,
       dedupe_key: key,
       ...(code
@@ -255,6 +270,8 @@ export async function POST(request: NextRequest) {
     if (!stored?.id) throw new Error('home_service_requests insert returned no row');
 
     const claimed = await claimDraftPhotos(stored.id, body.draft_token ?? undefined, body.photo_ids);
+    // Never throws; a funnel write cannot fail a homeowner's request.
+    await recordDownstream(visitorId, 'request_submitted');
 
     // ---- notifications -------------------------------------------------------
     let verification = 'skipped' as 'sent' | 'skipped';

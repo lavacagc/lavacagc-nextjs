@@ -201,7 +201,7 @@ export function BannerManager() {
   if (editingId) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-2xl font-bold">{isCreating ? 'Create Banner' : 'Edit Banner'}</h2>
           <Button variant="outline" onClick={cancelEdit}><X className="w-4 h-4 mr-2" />Cancel</Button>
         </div>
@@ -381,12 +381,13 @@ export function BannerManager() {
   // Banner list
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Stacks on a phone so the button is never pushed off screen. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold">Smart Banners</h2>
           <p className="text-muted-foreground">Personalized messages based on visitor behavior</p>
         </div>
-        <Button onClick={startCreate}><Plus className="w-4 h-4 mr-2" />New Banner</Button>
+        <Button onClick={startCreate} className="self-start sm:self-auto"><Plus className="w-4 h-4 mr-2" />New Banner</Button>
       </div>
 
       {banners.length === 0 ? (
@@ -401,14 +402,15 @@ export function BannerManager() {
           {banners.map(banner => (
             <Card key={banner.id} className={`transition-all ${!banner.enabled ? 'opacity-60' : ''}`}>
               <CardContent className="p-4">
-                <div className="flex items-center gap-4">
+                {/* On a phone the badges wrap and the actions take their own row, instead of running off the card. */}
+                <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap sm:gap-4">
                   <GripVertical className="w-5 h-5 text-muted-foreground flex-shrink-0" />
 
                   {/* Preview strip */}
                   <div className={`w-2 h-12 rounded-full flex-shrink-0 ${banner.bg_color}`} />
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-semibold">{banner.name}</span>
                       <Badge variant="outline" className="text-xs">{DISPLAY_TYPE_LABELS[banner.display_type]}</Badge>
                       <Badge variant="outline" className="text-xs">{VISITOR_TYPE_LABELS[banner.visitor_type || 'all']}</Badge>
@@ -424,7 +426,7 @@ export function BannerManager() {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex w-full items-center justify-end gap-2 flex-shrink-0 sm:w-auto">
                     <Button variant="ghost" size="icon" className="h-8 w-8 cursor-pointer" onClick={() => window.open(`/?banner_preview=${banner.id}`, '_blank')} title="Preview on site">
                       <ExternalLink className="w-4 h-4 text-blue-600" />
                     </Button>

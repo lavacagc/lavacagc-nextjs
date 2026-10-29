@@ -5,7 +5,7 @@
  * can never be warm about a ZIP the server then declines.
  *
  * When a five-digit ZIP is present it decides by itself (review D11, Fable's
- * ruling): in area when it is in Essex, Morris or Bergen County
+ * ruling): in area when it is in Essex, Morris, Bergen or Union County
  * (countyZips.ts, the counties the page copy promises) or in the remodel
  * scorer's SERVICE_ZIPS (leadScoring.ts, so nothing the scorer calls local is
  * declined here: Clifton, Rahway). A town cannot rescue a ZIP the lists

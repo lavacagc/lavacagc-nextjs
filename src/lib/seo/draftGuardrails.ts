@@ -1,29 +1,27 @@
 /**
- * SEO Autonomy — Phase 2 drafting guardrails.
+ * SEO fact-lock: the structural and factual checks every article draft must
+ * pass. The big risk for a licensed NJ contractor (HIC# 13VH13373800) is a
+ * draft that invents a license number or phone - a consumer-fraud exposure.
+ * content_facts is the lock table; drafts are validated against it.
  *
- * Pure validators + prompt builders for AI-drafted content. The big risk for a
- * licensed NJ contractor (HIC# 13VH13373800) is the model inventing a license
- * number, phone, or pricing — a consumer-fraud exposure. content_facts is the
- * lock table; drafts are validated against it before a human ever sees "drafted".
+ * The OpenAI drafters that used to call this were removed in Phase 2
+ * (decision 004, Q11 and Q13); Claude Code writes articles through
+ * /api/articles/ingest now, and the article routes and the publish guard
+ * (src/lib/articles/publishGuard.ts) run validateDraft.
  *
- * No I/O — unit-testable. The route loads facts + posts, builds the prompt,
- * calls the model, then runs validateDraft() on the output.
+ * No I/O - unit-testable.
  */
 
 export interface Fact {
   key: string;
   value: string;
   description?: string | null;
-}
-
-export interface DraftAction {
-  action_type: 'refresh' | 'consolidate' | 'new';
-  target_query: string | null;
-  rationale: Record<string, unknown> | null;
-  /** Existing post content, for refresh/consolidate. */
-  currentTitle?: string | null;
-  currentMarkdown?: string | null;
-  foldInTitle?: string | null;
+  /**
+   * content_facts.lock. The publish guard honours a `claim_*` sentence only
+   * when it is locked: the seeded placeholders ship unlocked until Alex
+   * approves the wording (src/lib/articles/publishGuard.ts).
+   */
+  lock?: boolean | null;
 }
 
 export interface DraftValidation {
@@ -44,7 +42,7 @@ function digits(s: string): string {
 }
 
 /**
- * Validate an AI draft against the fact-lock + structural guardrails.
+ * Validate a draft against the fact-lock + structural guardrails.
  * Returns ok=false with human-readable issues if anything looks unsafe.
  */
 export function validateDraft(markdown: string, facts: Fact[], minInternalLinks = 3): DraftValidation {
@@ -78,36 +76,4 @@ export function validateDraft(markdown: string, facts: Fact[], minInternalLinks 
   }
 
   return { ok: issues.length === 0, issues, internalLinks };
-}
-
-/** A system-prompt block that hard-codes the locked facts the model must use verbatim. */
-export function buildFactLockText(facts: Fact[]): string {
-  if (!facts.length) return '';
-  const lines = facts.map((f) => `- ${f.key}: ${f.value}${f.description ? ` (${f.description})` : ''}`);
-  return `LOCKED FACTS — use these EXACTLY when relevant; NEVER invent or alter a license number, phone number, email, pricing, or service area:
-${lines.join('\n')}
-
-If you are unsure of a specific number or fact not listed above, write around it generally rather than inventing one.`;
-}
-
-/** Turn a queued action into a concrete drafting instruction for the model. */
-export function buildDraftInstruction(action: DraftAction): string {
-  const q = action.target_query ? `"${action.target_query}"` : 'the target topic';
-  switch (action.action_type) {
-    case 'new':
-      return `Write a brand-new blog post targeting the search query ${q}. This is a query La Vaca currently shows up for but has no dedicated page owning it.`;
-    case 'refresh':
-      return `Rewrite and improve the existing post below to better win the query ${q} — sharper title, stronger intro, clearer structure, more specific detail. Keep what works; fix what underperforms.
-
-EXISTING TITLE: ${action.currentTitle ?? '(unknown)'}
-
-EXISTING CONTENT:
-${action.currentMarkdown ?? '(not provided)'}`;
-    case 'consolidate':
-      return `Produce ONE consolidated, authoritative post for the query ${q} by merging the two competing posts below into a single stronger article (keep the best of each, remove redundancy). The merged post will replace the primary; the secondary ("${action.foldInTitle ?? 'secondary'}") will be redirected into it.
-
-PRIMARY (keep as base):
-TITLE: ${action.currentTitle ?? '(unknown)'}
-${action.currentMarkdown ?? '(not provided)'}`;
-  }
 }

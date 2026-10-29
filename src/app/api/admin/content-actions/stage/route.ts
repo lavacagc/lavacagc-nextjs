@@ -1,11 +1,16 @@
 /**
- * Admin: stage an approved AI draft as a blog DRAFT (Phase 3, "you publish").
+ * Admin: stage a drafted action as a blog DRAFT (Phase 3, "you publish").
  * Admin-gated by middleware.
  *
- *   POST { id } → creates a published=false blog_posts row from the draft,
- *   links published_post_id, sets the action to 'completed', and emails the
- *   owner a preview link. Nothing publishes — the owner publishes from the blog
- *   editor.
+ *   POST { id } → links the action to a published=false blog_posts row,
+ *   sets the action to 'completed', and emails the owner a preview link.
+ *   Nothing publishes - the owner publishes from the blog editor.
+ *
+ * The draft comes from Claude Code through the article routes
+ * (src/lib/articles/actions.ts). A create with `action_id` already made the
+ * post, recorded as draft_meta.post_id, so staging links THAT post rather than
+ * inserting a copy; a draft with no post (one left over from the retired
+ * OpenAI drafter) still becomes a new post from draft_markdown.
  *
  * Guardrails: the draft must have passed validation (fact-lock + internal
  * links), and no more than WEEKLY_CAP autogen drafts may be staged per 7 days.
@@ -27,7 +32,7 @@ interface ActionRow {
   action_type: 'refresh' | 'consolidate' | 'new';
   target_query: string | null;
   draft_markdown: string | null;
-  draft_meta: { validation?: { ok?: boolean; issues?: string[] } } | null;
+  draft_meta: { validation?: { ok?: boolean; issues?: string[] }; post_id?: unknown } | null;
   status: string;
   published_post_id: string | null;
 }
@@ -35,7 +40,7 @@ interface ActionRow {
 async function uniqueSlug(base: string): Promise<string> {
   for (let i = 0; i < 8; i++) {
     const candidate = i === 0 ? base : `${base}-${i + 1}`;
-    const hit = await supabaseRest<{ id: string }[]>('GET', `blog_posts?select=id&slug=eq.${encodeURIComponent(candidate)}`);
+    const hit = await supabaseRest<{ id: string }[]>('GET', `blog_posts?select=id&slug=eq.${encodeURIComponent(candidate)}&limit=1`);
     if (!hit || hit.length === 0) return candidate;
   }
   return `${base}-${Date.now()}`;
@@ -56,7 +61,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Already staged to the blog.' }, { status: 409 });
     }
     if (action.status !== 'drafted' || !action.draft_markdown) {
-      return NextResponse.json({ ok: false, error: 'Draft it with AI before staging.' }, { status: 400 });
+      return NextResponse.json({ ok: false, error: 'Draft it with Claude Code before staging.' }, { status: 400 });
     }
     if (action.action_type !== 'new') {
       return NextResponse.json(
@@ -90,17 +95,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build + insert the blog draft.
-    const draft = buildBlogPostFromDraft(action.draft_markdown, { category: categoryForQuery(action.target_query) });
-    draft.slug = await uniqueSlug(draft.slug);
+    // The post Claude already created for this action, when there is one.
+    const linkedId = typeof action.draft_meta?.post_id === 'string' ? action.draft_meta.post_id : null;
+    const linked = linkedId
+      ? (await supabaseRest<{ id: string; slug: string; title: string }[]>(
+        'GET',
+        `blog_posts?select=id,slug,title&id=eq.${encodeURIComponent(linkedId)}&limit=1`,
+      ))?.[0] ?? null
+      : null;
 
-    const inserted = await supabaseRest<{ id: string; slug: string; title: string }[]>(
-      'POST',
-      'blog_posts',
-      [draft],
-      { prefer: 'return=representation' },
-    );
-    const post = inserted?.[0];
+    let post: { id: string; slug: string; title: string } | null = linked;
+    if (!post) {
+      // Build + insert the blog draft.
+      const draft = buildBlogPostFromDraft(action.draft_markdown, { category: categoryForQuery(action.target_query) });
+      draft.slug = await uniqueSlug(draft.slug);
+      const inserted = await supabaseRest<{ id: string; slug: string; title: string }[]>(
+        'POST',
+        'blog_posts',
+        [draft],
+        { prefer: 'return=representation' },
+      );
+      post = inserted?.[0] ?? null;
+    }
     if (!post?.id) return NextResponse.json({ ok: false, error: 'Failed to create blog draft' }, { status: 502 });
 
     // Link the action + mark done.
@@ -112,13 +128,15 @@ export async function POST(request: NextRequest) {
     );
 
     const emailed = await sendStagedDraftEmail({
-      title: draft.title,
-      slug: draft.slug,
+      title: post.title,
+      slug: post.slug,
       actionType: action.action_type,
       query: action.target_query,
     });
 
-    return NextResponse.json({ ok: true, postId: post.id, slug: draft.slug, title: draft.title, emailed: emailed.status });
+    return NextResponse.json({
+      ok: true, postId: post.id, slug: post.slug, title: post.title, linked: !!linked, emailed: emailed.status,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('content-action stage failed:', message);

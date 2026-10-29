@@ -5,8 +5,10 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { Badge } from '@/components/ui/badge';
 import BlogPostGrid from '@/components/BlogPostGrid';
+import { jsonLdScript } from '@/lib/jsonLd';
 
-// Five minutes: the blog editor writes straight to the database and cannot revalidate on save (docs/cost-review.md).
+// Every blog writer now revalidates /blog on save and publish (see
+// src/lib/articles/revalidate.ts), so this window is only the ceiling.
 export const revalidate = 300;
 
 // Server-side Supabase client (trim to handle any whitespace in env vars)
@@ -60,7 +62,9 @@ async function getBlogPosts(): Promise<BlogPost[]> {
       .from('blog_posts')
       .select('id, title, slug, excerpt, author, category, featured_image, created_at')
       .eq('published', true)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      // Bounded read; the grid is one page and the sitemap lists every post.
+      .limit(200);
 
     if (error) {
       console.error('Error loading blog posts:', error);
@@ -114,7 +118,7 @@ export default async function Blog() {
       {/* JSON-LD Structured Data */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }}
       />
 
       <main className="min-h-screen bg-background">

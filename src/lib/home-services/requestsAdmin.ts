@@ -6,7 +6,7 @@
  * it and the admin components render with it, so the list filter, the detail
  * panel and the summary card all agree on what "Essex" or "close rate" means.
  */
-import { describeAnswers, getService, type County, type Lang, type Trade } from './catalog';
+import { COUNTIES, describeAnswers, serviceTrade, type County, type Lang, type ServiceNames, type Trade } from './catalog';
 import { countyForZip } from './countyZips';
 
 export const REQUEST_STATUSES = ['held', 'new', 'contacted', 'bid_sent', 'assigned', 'won', 'lost'] as const;
@@ -58,6 +58,10 @@ export interface HomeServiceRequestRow {
   customer_price_cents: number | null;
   lost_reason: string | null;
   won_at: string | null;
+  /** When Alex marked the job paid (slice H: the job_paid funnel step). */
+  paid_at: string | null;
+  /** The signed visitor id the request was sent with (slice H: funnel attribution). */
+  visitor_id: string | null;
   admin_notes: string;
   specnook_job_id: string | null;
   created_at: string;
@@ -69,12 +73,13 @@ export const REQUEST_ADMIN_COLUMNS = [
   'id', 'lead_id', 'status', 'services', 'answers', 'language', 'first_name', 'last_name', 'phone', 'email',
   'address', 'town', 'zip', 'in_service_area', 'timing', 'notes', 'consent_sms', 'source', 'listing_id', 'utm',
   'landing_path', 'cta_variant_primary', 'cta_variant_secondary', 'captcha_score', 'phone_verified',
-  'phone_verified_at', 'merged_count', 'customer_price_cents', 'lost_reason', 'won_at', 'admin_notes',
+  'phone_verified_at', 'merged_count', 'customer_price_cents', 'lost_reason', 'won_at', 'paid_at', 'visitor_id', 'admin_notes',
   'specnook_job_id', 'created_at', 'updated_at',
 ].join(',');
 
 /**
- * County for each town in SERVICE_AREAS (src/lib/leadScoring.ts). Bid
+ * County for each town in SERVICE_AREAS (src/lib/leadScoring.ts), plus the
+ * larger Union County towns (decision 006 Q21), for requests with no ZIP. Bid
  * eligibility matches a sub's counties against this, so a town missing here
  * means "no county", and only subs with no county restriction get that offer.
  */
@@ -102,6 +107,14 @@ export const TOWN_COUNTY: Record<string, string> = {
   'ho-ho-kus': 'Bergen',
   summit: 'Union',
   rahway: 'Union',
+  westfield: 'Union',
+  cranford: 'Union',
+  'new providence': 'Union',
+  'berkeley heights': 'Union',
+  'scotch plains': 'Union',
+  springfield: 'Union',
+  union: 'Union',
+  elizabeth: 'Union',
   clifton: 'Passaic',
 };
 
@@ -134,14 +147,14 @@ export function countyForRequest(req: Pick<HomeServiceRequestRow, 'town' | 'addr
 }
 
 export function isServedCounty(county: string | null): county is County {
-  return county === 'Essex' || county === 'Morris' || county === 'Bergen';
+  return (COUNTIES as readonly string[]).includes(county ?? '');
 }
 
 /** Trades on a request, one per service, in service order and de-duplicated. */
 export function tradesForServices(services: string[]): Trade[] {
   const out: Trade[] = [];
   for (const slug of services) {
-    const trade = getService(slug)?.trade;
+    const trade = serviceTrade(slug);
     if (trade && !out.includes(trade)) out.push(trade);
   }
   return out;
@@ -149,7 +162,7 @@ export function tradesForServices(services: string[]): Trade[] {
 
 /** The catalog slug a trade came from on this request (one service = one trade). */
 export function serviceForTrade(services: string[], trade: string): string | undefined {
-  return services.find((slug) => getService(slug)?.trade === trade);
+  return services.find((slug) => serviceTrade(slug) === trade);
 }
 
 /**
@@ -157,14 +170,16 @@ export function serviceForTrade(services: string[], trade: string): string | und
  * service, in the sub's language. Never the homeowner's free-text notes - they
  * can hold gate codes, schedules or an address, and subs see the town only
  * until one wins. Alex reads the notes and paraphrases what matters.
+ * `names` are the service names from the table (`getServiceNames()`).
  */
 export function answerLinesFor(
   request: Pick<HomeServiceRequestRow, 'services' | 'answers'>,
   trade: string,
   lang: Lang,
+  names: ServiceNames,
 ): string[] {
   const slug = serviceForTrade(request.services, trade);
-  return slug ? describeAnswers([slug], request.answers ?? {}, lang) : [];
+  return slug ? describeAnswers([slug], request.answers ?? {}, lang, names) : [];
 }
 
 /**

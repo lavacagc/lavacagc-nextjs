@@ -1,7 +1,7 @@
 /**
  * POST /api/admin/revalidate - { paths: string[] }
  *
- * Drops the ISR copies of pages the CMS and services editors just changed, so
+ * Drops the ISR copies of pages the CMS, services and blog editors just changed, so
  * a save shows now rather than after the hourly window. Each path must sit
  * under an allowlisted prefix (src/lib/revalidate.ts). '/' revalidates the
  * homepage alone; any other path revalidates itself and everything below it.
@@ -36,7 +36,9 @@ export async function POST(request: NextRequest) {
 
   const paths = [...new Set(parsed.data.paths)];
   try {
-    for (const path of paths) revalidatePath(path, path === '/' ? 'page' : 'layout');
+    // '/' is the homepage alone and '/sitemap.xml' is one file; every other
+    // path drops itself and everything below it.
+    for (const path of paths) revalidatePath(path, path === '/' || path === '/sitemap.xml' ? 'page' : 'layout');
   } catch (err) {
     console.error('admin revalidate failed:', err instanceof Error ? err.message : err);
     return NextResponse.json({ error: 'Could not revalidate' }, { status: 500 });

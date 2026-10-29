@@ -211,7 +211,7 @@ These service providers include:
 - **Hosting, Database, and Storage**: **Supabase** (database, file storage, and authentication) and our website hosting provider store the personal information described in this Policy
 - **Email Delivery**: **Resend** sends our transactional and newsletter emails (recipient name and email address, and message content). We and Resend also **track whether the emails we send are delivered, opened, and whether links in them are clicked**, so we can measure engagement and improve our communications
 - **Internal Team Notifications**: **Telegram** is used to alert our staff of new leads (which includes the lead's name, contact details, and inquiry)
-- **AI Providers**: We **no longer send your messages or any other personal information to an AI provider**. We use **OpenAI** only to help us produce our own website content and imagery, which does not involve your personal information. Our former AI chat assistant, which did transmit chat messages to OpenAI, was retired in August 2026 (see Section 3.5)
+- **AI Providers**: We **no longer send your messages or any other personal information to an AI provider**. Our former AI chat assistant, which did transmit chat messages to OpenAI, was retired in August 2026 (see Section 3.5)
 - **Bot Detection**: **Google reCAPTCHA Enterprise** evaluates form submissions to prevent spam and abuse; Google receives your IP address, interaction signals, and a site token (see Google's privacy policy at https://policies.google.com/privacy)
 
 We conduct due diligence on our service providers' privacy and security practices before engaging them and periodically review their compliance.

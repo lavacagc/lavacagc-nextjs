@@ -41,12 +41,20 @@ const SeoSuggestionsDashboard = dynamic(() => import('@/components/admin/SeoSugg
 const ServiceRequestsManager = dynamic(() => import('@/components/admin/home-services/ServiceRequestsManager'), { ssr: false });
 const SubsManager = dynamic(() => import('@/components/admin/home-services/SubsManager'), { ssr: false });
 const PricingReport = dynamic(() => import('@/components/admin/home-services/PricingReport'), { ssr: false });
-const CtaTestsDashboard = dynamic(() => import('@/components/admin/home-services/CtaTestsDashboard'), { ssr: false });
+const ServicesPricesEditor = dynamic(() => import('@/components/admin/home-services/ServicesPricesEditor'), { ssr: false });
+const ExperimentsDashboard = dynamic(() => import('@/components/admin/experiments/ExperimentsDashboard'), { ssr: false });
 const CMSPageEditor = dynamic(() => import('@/components/admin/CMSPageEditor').then(m => ({ default: m.CMSPageEditor })), { ssr: false });
 import { BannerManager } from '@/components/admin/BannerManager';
 import { ComplianceDocumentsManager } from '@/components/admin/ComplianceDocumentsManager';
 import { LogOut, Menu } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+
+/** The blog post id in `?post=<uuid>`, or null. */
+function deepLinkedPost(): string | null {
+  if (typeof window === 'undefined') return null;
+  const id = new URLSearchParams(window.location.search).get('post') ?? '';
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : null;
+}
 
 export default function AdminContent() {
   const router = useRouter();
@@ -54,16 +62,20 @@ export default function AdminContent() {
   const isMobile = useIsMobile();
   // Deep links: `?tab=<id>` opens that tab, and `?project=<id>` (the admin_url
   // the project APIs return, `?tab=projects&project=<id>`) opens Projects, where
-  // ProjectUploadSystem opens that project's edit form.
+  // ProjectUploadSystem opens that project's edit form. `?post=<id>` (the
+  // adminUrl the article APIs return, `?tab=blog&post=<id>`) opens that blog
+  // post in the editor.
   // (Nothing tab-dependent renders before auth resolves, so no hydration gap.)
   const [activeTab, setActiveTabRaw] = useState(() => {
     if (typeof window === 'undefined') return 'dashboard';
     const params = new URLSearchParams(window.location.search);
     if (params.has('project')) return 'projects';
-    const tab = params.get('tab');
+    if (deepLinkedPost()) return 'new-post';
+    // `cta-tests` was the Phase 1 name of the Experiments tab; old links still land there.
+    const tab = params.get('tab') === 'cta-tests' ? 'experiments' : params.get('tab');
     return tab && ADMIN_TAB_IDS.includes(tab) ? tab : 'dashboard';
   });
-  const [editingPost, setEditingPost] = useState<string | null>(null);
+  const [editingPost, setEditingPost] = useState<string | null>(() => deepLinkedPost());
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -107,8 +119,11 @@ export default function AdminContent() {
     return null; // Will redirect to auth page
   }
 
+  // overflow-x-clip, not -hidden: hidden turns these wrappers into scroll
+  // containers, which silently disables every `sticky` inside them (the header
+  // below and the Services & Prices save bar).
   return (
-    <div className="min-h-screen bg-muted/30 flex overflow-x-hidden">
+    <div className="min-h-screen bg-muted/30 flex overflow-x-clip">
       <AdminSidebar
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -116,7 +131,7 @@ export default function AdminContent() {
         onMobileClose={() => setIsMobileSidebarOpen(false)}
       />
 
-      <div className={`flex-1 ${isMobile ? 'ml-0' : 'ml-16'} overflow-x-hidden max-w-full`}>
+      <div className={`flex-1 ${isMobile ? 'ml-0' : 'ml-16'} overflow-x-clip max-w-full`}>
         <div className="border-b bg-background sticky top-[var(--smart-banner-height,0px)] transition-[top] duration-300 z-10 max-w-full">
           <div className="container mx-auto px-4 py-4 max-w-full">
             <div className="flex items-center justify-between">
@@ -161,7 +176,7 @@ export default function AdminContent() {
           </div>
         </div>
 
-        <div className="container mx-auto px-2 md:px-4 py-4 md:py-8 pb-20 max-w-7xl overflow-x-hidden">
+        <div className="container mx-auto px-2 md:px-4 py-4 md:py-8 pb-20 max-w-7xl overflow-x-clip">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
 
           <TabsContent value="dashboard">
@@ -309,8 +324,12 @@ export default function AdminContent() {
             <PricingReport />
           </TabsContent>
 
-          <TabsContent value="cta-tests">
-            <CtaTestsDashboard />
+          <TabsContent value="home-services-catalog">
+            <ServicesPricesEditor />
+          </TabsContent>
+
+          <TabsContent value="experiments">
+            <ExperimentsDashboard />
           </TabsContent>
 
           <TabsContent value="new-post">
@@ -327,12 +346,12 @@ export default function AdminContent() {
                 <BlogPostEditor
                   postId={editingPost}
                   onSave={() => {
+                    // The editor shows its own result toast (saved, scheduled,
+                    // published, or "Published anyway"); with one toast on
+                    // screen at a time (TOAST_LIMIT 1), a second one here would
+                    // replace it before Alex reads it (slice G review, fix 3).
                     setEditingPost(null);
                     setActiveTab('blog');
-                    toast({
-                      title: "Success",
-                      description: "Blog post saved successfully!"
-                    });
                   }}
                   onCancel={() => {
                     setEditingPost(null);

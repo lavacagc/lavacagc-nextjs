@@ -2,7 +2,8 @@ import { test, expect, type Page, type APIRequestContext } from '@playwright/tes
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
-import { HOME_SERVICES_CATALOG, SERVICE_SLUGS, COUNTIES, t, getService } from '../src/lib/home-services/catalog';
+import { SERVICE_QUESTIONS, SERVICE_SLUGS, COUNTIES, t } from '../src/lib/home-services/catalog';
+import { SEED_NAMES, SEED_SERVICES, seedService } from './helpers/homeServicesSeed';
 import { s } from '../src/lib/home-services/i18n';
 import { brandedTitle } from '../src/lib/home-services/seo';
 import { bannerRules } from '../src/lib/bannerRules';
@@ -12,6 +13,12 @@ import { sanitizeLeadForInsert } from '../src/lib/leadSanitize';
 
 /**
  * /home-services and /home-services/<slug> - slice A (acceptance-criteria.md LP1-LP10, SEC6, SEO1, SEO2).
+ *
+ * Expected names, prices and copy come from the migration's seed
+ * (tests/helpers/homeServicesSeed.ts), not from catalog constants: since Phase 2
+ * slice E the pages read the home_services table (CAT1, CAT6). The browser checks
+ * therefore assume a seeded table; the Services & Prices spec restores any row it
+ * edits.
  *
  * The source checks run everywhere (no server needed). The browser checks need a
  * server with the local Supabase stack behind it:
@@ -52,22 +59,24 @@ test.describe('source checks', () => {
   test('LP10: the sitemap lists /home-services and every catalog service page', () => {
     const src = read('src/app/sitemap.ts');
     expect(src).toContain('`${baseUrl}/home-services`');
-    expect(src).toMatch(/SERVICE_SLUGS\.map\(\(slug\) => \(\{\s*url: `\$\{baseUrl\}\/home-services\/\$\{slug\}`/);
+    // Active services only, from the table (CAT4); the fixed slugs stand in when the read fails.
+    expect(src).toContain('await getCatalog()');
+    expect(src).toMatch(/homeServiceSlugs\.map\(\(slug\) => \(\{\s*url: `\$\{baseUrl\}\/home-services\/\$\{slug\}`/);
     expect(src).toContain('url: `${baseUrl}/home-services${suffix}?lang=es`');
   });
 
   test('catalog: seven services, each with exactly three tap groups of two to four options', () => {
     expect(SERVICE_SLUGS).toHaveLength(7);
-    for (const service of HOME_SERVICES_CATALOG) {
-      expect(service.questions, service.slug).toHaveLength(3);
-      for (const q of service.questions) {
-        expect(q.options.length, `${service.slug}.${q.key}`).toBeGreaterThanOrEqual(2);
-        expect(q.options.length, `${service.slug}.${q.key}`).toBeLessThanOrEqual(4);
+    for (const slug of SERVICE_SLUGS) {
+      expect(SERVICE_QUESTIONS[slug], slug).toHaveLength(3);
+      for (const q of SERVICE_QUESTIONS[slug]) {
+        expect(q.options.length, `${slug}.${q.key}`).toBeGreaterThanOrEqual(2);
+        expect(q.options.length, `${slug}.${q.key}`).toBeLessThanOrEqual(4);
       }
     }
   });
 
-  test('SEO1: the landing title is under 60 characters and the description under 160 with the three counties', () => {
+  test('SEO1: the landing title is under 60 characters and the description under 160 with every county', () => {
     for (const lang of ['en', 'es'] as const) {
       expect(brandedTitle(s('metaTitle', lang)).length, lang).toBeLessThan(60);
       const description = s('metaDescription', lang);
@@ -81,7 +90,7 @@ test.describe('source checks', () => {
     // The rendered title is the catalog title plus " | La Vaca" only when that
     // still fits, so checking the rendered string covers both.
     const problems: string[] = [];
-    for (const service of HOME_SERVICES_CATALOG) {
+    for (const service of SEED_SERVICES) {
       for (const lang of ['en', 'es'] as const) {
         const title = brandedTitle(t(service.seo.title, lang));
         const description = t(service.seo.description, lang);
@@ -108,6 +117,18 @@ test.describe('source checks', () => {
     expect(isInServiceArea({ zip: '08540' })).toBe(false);
   });
 
+  test('Q21: Union County is served - its ZIPs map to Union and pass the gate; a Somerset neighbour still does not', () => {
+    for (const zip of ['07090', '07201', '07083', '07901', '07922', '07974', '07016', '07060']) {
+      expect(countyForZip(zip), zip).toBe('Union');
+      expect(isInServiceArea({ zip }), zip).toBe(true);
+    }
+    expect(countyForZip('07065')).toBe('Union'); // Rahway: now by county, not only the scorer list
+    expect(countyForZip('07069')).toBeNull(); // Watchung, Somerset County
+    expect(isInServiceArea({ zip: '07069' })).toBe(false);
+    expect(isInServiceArea({ zip: '07920' })).toBe(false); // Basking Ridge, Somerset
+    expect(COUNTIES).toEqual(['Essex', 'Morris', 'Bergen', 'Union']);
+  });
+
   test('RF7 sanitizer: a well-formed request becomes a leads row with no sanitizer adjustments', () => {
     const parsed = RequestBodySchema.parse({
       services: ['gutter-cleaning', 'drywall-patching'],
@@ -126,7 +147,7 @@ test.describe('source checks', () => {
     const validated = validateRequest(parsed);
     expect('value' in validated).toBe(true);
     if (!('value' in validated)) return;
-    const { lead, adjustments } = sanitizeLeadForInsert(leadFields(validated.value, 'craigslist'));
+    const { lead, adjustments } = sanitizeLeadForInsert(leadFields(validated.value, 'craigslist', SEED_NAMES));
     expect(adjustments).toEqual([]);
     expect(lead).toMatchObject({
       first_name: 'Maria',
@@ -141,7 +162,7 @@ test.describe('source checks', () => {
     // One name word: last_name repeats it (NOT NULL column) without an adjustment.
     const solo = validateRequest({ ...parsed, first_name: 'Cher' });
     if (!('value' in solo)) throw new Error('solo request rejected');
-    expect(sanitizeLeadForInsert(leadFields(solo.value, 'direct')).adjustments).toEqual([]);
+    expect(sanitizeLeadForInsert(leadFields(solo.value, 'direct', SEED_NAMES)).adjustments).toEqual([]);
   });
 });
 
@@ -162,7 +183,7 @@ test.describe('browser', () => {
     await page.goto('/home-services');
     const cards = page.locator('[data-testid=service-cards] > li');
     await expect(cards).toHaveCount(7);
-    for (const [i, service] of HOME_SERVICES_CATALOG.entries()) {
+    for (const [i, service] of SEED_SERVICES.entries()) {
       const card = cards.nth(i);
       await expect(card).toHaveAttribute('data-testid', `card-${service.slug}`);
       await expect(card).toContainText(t(service.name, 'en'));
@@ -251,7 +272,7 @@ test.describe('browser', () => {
   test('LP3: the price opens what is included and what raises it, without toggling the card', async ({ page }) => {
     await quiet(page);
     await page.goto('/home-services');
-    const service = HOME_SERVICES_CATALOG.find((x) => x.slug === 'drywall-patching')!;
+    const service = seedService('drywall-patching');
     await page.getByTestId('price-drywall-patching').click();
     const sheet = page.getByTestId('price-sheet');
     await expect(sheet).toBeVisible();
@@ -338,7 +359,7 @@ test.describe('browser', () => {
     for (const key of ['servicesTitle', 'howItWorks', 'trustTitle', 'faqTitle', 'homeCarePrice', 'closerTitle'] as const) {
       await expect(main).toContainText(s(key, 'es'));
     }
-    for (const service of HOME_SERVICES_CATALOG) await expect(main).toContainText(t(service.name, 'es'));
+    for (const service of SEED_SERVICES) await expect(main).toContainText(t(service.name, 'es'));
     // None of the page's own English copy leaks through.
     const text = await main.innerText();
     for (const english of ['Starting at', 'How it works', 'Free seasonal plan', "What's included", 'Select', 'Call (201)']) {
@@ -362,7 +383,7 @@ test.describe('browser', () => {
 
   test('LP8 SEO1 SEO2: a service page carries its SEO, card, lists, FAQ and Service JSON-LD, and preselects the flow', async ({ page, request }) => {
     await quiet(page);
-    const service = HOME_SERVICES_CATALOG.find((x) => x.slug === 'gutter-cleaning')!;
+    const service = seedService('gutter-cleaning');
     await page.goto(`/home-services/${service.slug}`);
     await expect(page).toHaveTitle(brandedTitle(t(service.seo.title, 'en')));
     await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', t(service.seo.description, 'en'));
@@ -439,7 +460,7 @@ test.describe('browser', () => {
   });
 
   test('D12: exterior painting offers a unit price per square foot with the minimum; flat prices keep price', async ({ request }) => {
-    const exterior = HOME_SERVICES_CATALOG.find((x) => x.slug === 'exterior-painting')!;
+    const exterior = seedService('exterior-painting');
     const svc = (await jsonLdNodes(request, '/home-services/exterior-painting')).find((n) => n['@type'] === 'Service') as { offers: Record<string, unknown> };
     expect(svc.offers.price).toBeUndefined();
     expect(svc.offers).toMatchObject({
@@ -457,12 +478,12 @@ test.describe('browser', () => {
     });
     expect((svc.offers.priceSpecification as Record<string, unknown>).minPrice).toBeUndefined();
     const drywall = (await jsonLdNodes(request, '/home-services/drywall-patching')).find((n) => n['@type'] === 'Service') as { offers: Record<string, unknown> };
-    expect(drywall.offers.price).toBe((getService('drywall-patching')!.startingPriceCents / 100).toFixed(2));
+    expect(drywall.offers.price).toBe((seedService('drywall-patching').startingPriceCents / 100).toFixed(2));
     expect(drywall.offers.priceSpecification).toBeUndefined();
   });
 
   test('SEO review: Spanish service pages link, breadcrumb and mark up FAQs in Spanish; siblings are linked', async ({ request }) => {
-    const service = HOME_SERVICES_CATALOG.find((x) => x.slug === 'gutter-cleaning')!;
+    const service = seedService('gutter-cleaning');
     const html = await (await request.get(`/home-services/${service.slug}?lang=es`)).text();
     for (const other of SERVICE_SLUGS.filter((slug) => slug !== service.slug)) {
       expect(html, other).toContain(`href="/home-services/${other}?lang=es"`);

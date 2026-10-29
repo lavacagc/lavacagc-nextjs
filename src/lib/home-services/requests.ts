@@ -10,13 +10,15 @@
 import { z } from 'zod';
 import {
   describeAnswers,
-  getService,
   isServiceSlug,
   SERVICE_SLUGS,
+  serviceQuestions,
   t,
   TIMING_OPTIONS,
   type Lang,
+  type ServiceNames,
 } from './catalog';
+import { getServiceNames } from './catalogData';
 import { countyForZip, normalizeZip, ZIP_RE } from './serviceArea';
 import { sendTelegramLead } from '@/lib/notify/telegramLead';
 import { sendNewLeadEmail } from '@/lib/notify/newLeadEmail';
@@ -91,11 +93,11 @@ export function canonicalAnswers(
 ): Record<string, Record<string, string>> {
   const out: Record<string, Record<string, string>> = {};
   for (const slug of services) {
-    const service = getService(slug);
+    const questions = serviceQuestions(slug);
     const given = answers?.[slug];
-    if (!service || !given) continue;
+    if (!questions.length || !given) continue;
     const kept: Record<string, string> = {};
-    for (const q of service.questions) {
+    for (const q of questions) {
       const value = given[q.key];
       if (typeof value === 'string' && q.options.some((o) => o.value === value)) kept[q.key] = value;
     }
@@ -205,10 +207,14 @@ export function validateRequest(body: RequestBody): { ok: true; value: Validated
   };
 }
 
-/** The durable, human-readable record of the request on the leads row (always English for Alex). */
-export function leadMessage(req: Pick<ValidatedRequest, 'services' | 'answers' | 'timing' | 'notes' | 'lang'>): string {
+/**
+ * The durable, human-readable record of the request on the leads row (always
+ * English for Alex). `names` are the service names from the table
+ * (`getServiceNames()`).
+ */
+export function leadMessage(req: Pick<ValidatedRequest, 'services' | 'answers' | 'timing' | 'notes' | 'lang'>, names: ServiceNames): string {
   return [
-    ...describeAnswers(req.services, req.answers, 'en'),
+    ...describeAnswers(req.services, req.answers, 'en', names),
     `Timing: ${timingLabel(req.timing, 'en')}`,
     `Language: ${req.lang === 'es' ? 'Spanish' : 'English'}`,
     req.notes ? `Notes: ${req.notes}` : '',
@@ -222,7 +228,7 @@ export function leadMessage(req: Pick<ValidatedRequest, 'services' | 'answers' |
  * column the sanitizer accepts; `preferred_contact_method` is plain text with
  * no CHECK on the production table (leadSanitize.ts header), so 'text' is safe.
  */
-export function leadFields(req: ValidatedRequest, source: string): Record<string, string> {
+export function leadFields(req: ValidatedRequest, source: string, names: ServiceNames): Record<string, string> {
   return {
     first_name: req.firstName,
     // public.leads.last_name is NOT NULL; the Home Care form duplicates first
@@ -239,7 +245,7 @@ export function leadFields(req: ValidatedRequest, source: string): Record<string
     preferred_contact_method: 'text',
     contact_timezone: 'America/New_York',
     source: `home_services:${source}`,
-    message: leadMessage(req),
+    message: leadMessage(req, names),
   };
 }
 
@@ -291,7 +297,7 @@ export function alertDetailLines(
 ): string[] {
   const lines = [
     `Address: ${req.address}${req.town ? `, ${req.town}` : ''} ${req.zip}`.trim(),
-    `County: ${countyForZip(req.zip) ?? 'outside Essex, Morris and Bergen (in the scorer ZIP list)'}`,
+    `County: ${countyForZip(req.zip) ?? 'outside Essex, Morris, Bergen and Union (in the scorer ZIP list)'}`,
     `Timing: ${timingLabel(req.timing, 'en')}`,
     `Language: ${req.language === 'es' ? 'Spanish' : 'English'}`,
   ];
@@ -333,7 +339,7 @@ export async function sendOwnerAlert(
   opts: { smsConfigured: boolean; codeFailed?: boolean; score?: number; tier?: 'hot' | 'warm' | 'cold'; geoTier?: string },
 ): Promise<OwnerAlertResult> {
   const name = `${req.first_name} ${req.last_name}`.trim();
-  const services = describeAnswers(req.services, req.answers, 'en');
+  const services = describeAnswers(req.services, req.answers, 'en', await getServiceNames());
   const location = [req.town, req.zip].filter(Boolean).join(' ');
   const source = `home_services:${req.source}`;
   const [telegram, email] = await Promise.all([

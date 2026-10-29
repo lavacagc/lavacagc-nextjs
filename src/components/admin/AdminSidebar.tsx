@@ -25,6 +25,7 @@ import {
   ClipboardList,
   BarChart3,
   FlaskConical,
+  Tags,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -72,8 +73,9 @@ const NAVIGATION: NavItem[] = [
       { id: 'conversions', icon: TrendingUp, label: 'Conversions' },
       { id: 'gmb', icon: Activity, label: 'Google Reviews' },
       { id: 'preferences', icon: Users, label: 'Subscriptions' },
-      // Home Services build (docs/home-services): hero button multivariate tests.
-      { id: 'cta-tests', icon: FlaskConical, label: 'CTA Tests' },
+      // Phase 2 slice H: every experiment, the homepage hero buttons (the Phase 1
+      // CTA Tests) included, with their Phase 1 history.
+      { id: 'experiments', icon: FlaskConical, label: 'Experiments' },
     ],
   },
   {
@@ -90,6 +92,8 @@ const NAVIGATION: NavItem[] = [
       { id: 'service-requests', icon: ClipboardList, label: 'Service Requests' },
       { id: 'subs', icon: HardHat, label: 'Subs' },
       { id: 'pricing-report', icon: BarChart3, label: 'Pricing Report' },
+      // Phase 2 slice E: the seven services' prices and copy, from the home_services table.
+      { id: 'home-services-catalog', icon: Tags, label: 'Services & Prices' },
     ],
   },
   {
@@ -267,7 +271,8 @@ export default function AdminSidebar({
 
       <div
         className={cn(
-          'bg-background border-r border-border h-screen py-4 flex flex-col transition-all duration-500 ease-out fixed left-0 top-0 z-40',
+          // h-dvh, not h-screen: on a phone 100vh runs under the browser's toolbar, so the bottom of the menu sat out of reach.
+          'bg-background border-r border-border h-screen h-dvh py-4 flex flex-col transition-all duration-500 ease-out fixed left-0 top-0 z-40',
           isMobile
             ? isMobileOpen
               ? 'w-[280px] translate-x-0'
@@ -294,7 +299,7 @@ export default function AdminSidebar({
         )}
 
         {/* Navigation Items */}
-        <div className="flex flex-col gap-1 flex-1 px-2 overflow-y-auto">
+        <div className="flex flex-col gap-1 flex-1 min-h-0 px-2 pb-2 overflow-y-auto">
           {NAVIGATION.map((item) => {
             if (isGroup(item)) {
               const Icon = item.icon;
@@ -395,8 +400,8 @@ export default function AdminSidebar({
           })}
         </div>
 
-        {/* New Post Button */}
-        <div className="px-2 mt-4">
+        {/* New Post Button: its own footer with a divider, so the list ends visibly above it instead of disappearing under it. */}
+        <div className="px-2 pt-3 border-t border-border pb-[env(safe-area-inset-bottom)]">
           <button
             className={cn(
               'flex items-center justify-center gap-2 w-full px-3 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors overflow-hidden',
