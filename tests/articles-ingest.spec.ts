@@ -307,8 +307,15 @@ test.describe('article routes, CLI and feedback (live backend)', () => {
   const token = env.PROJECT_INGEST_TOKEN;
   const cronSecret = env.CRON_SECRET;
   const service = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` };
-  /** One trusted client IP for this run, so the rate-limit bucket is ours alone. */
-  const ip = `198.51.100.${(Date.now() % 200) + 20}`;
+  /**
+   * Client IPs of THIS run (198.18.0.0/15, the benchmarking range), so the
+   * rate-limit buckets `articles:<ip>` are ours alone. Runs from other
+   * worktrees share the database; a cleanup that touched any bucket but these
+   * two once reset another run's ART7 burst mid-test (401 where 429 was due).
+   */
+  const octet = () => Math.floor(Math.random() * 254) + 1;
+  const ip = `198.18.${octet()}.${octet()}`;
+  const burstIp = `198.19.${octet()}.${octet()}`;
   const auth = { Authorization: `Bearer ${token}`, 'cf-connecting-ip': ip };
 
   async function rest<T = unknown>(request: APIRequestContext, method: string, path: string, data?: unknown): Promise<T> {
@@ -323,7 +330,9 @@ test.describe('article routes, CLI and feedback (live backend)', () => {
   }
 
   async function clearRateLimit(request: APIRequestContext) {
-    await request.delete(`${supabaseUrl}/rest/v1/rate_limits?ip_address=like.articles:*`, { headers: service });
+    // Only this run's two buckets; never a wildcard over every `articles:` bucket.
+    const own = [ip, burstIp].map((i) => `"articles:${i}"`).join(',');
+    await request.delete(`${supabaseUrl}/rest/v1/rate_limits?ip_address=in.(${encodeURIComponent(own)})`, { headers: service });
   }
 
   async function signIn(page: Page) {
@@ -362,8 +371,10 @@ test.describe('article routes, CLI and feedback (live backend)', () => {
   });
 
   // The suite makes more than 30 article calls a minute from one IP, which is
-  // exactly what the limiter refuses (ART7). Each test starts with an empty
-  // bucket of our own family; ART7 then proves the limit inside one test.
+  // exactly what the limiter refuses (ART7). Each test starts with this run's
+  // two buckets empty (other runs' buckets are never touched); ART7 then
+  // proves the limit inside one test. The CLI test calls from the server's
+  // own loopback address, a bucket shared with other runs; it makes six calls.
   test.beforeEach(async ({ request }) => {
     if (supabaseUrl && serviceKey) await clearRateLimit(request);
   });
@@ -807,7 +818,8 @@ test.describe('article routes, CLI and feedback (live backend)', () => {
   });
 
   test('ART7: the 31st call in a minute from one IP gets 429', async ({ request }) => {
-    const burst = { 'cf-connecting-ip': `203.0.113.${(Date.now() % 200) + 20}` };
+    // This run's own burst IP; beforeEach emptied its bucket, and nothing else touches it.
+    const burst = { 'cf-connecting-ip': burstIp };
     const statuses: number[] = [];
     for (let i = 0; i < 31; i += 1) {
       statuses.push((await request.get('/api/articles/seo-feedback', { headers: { ...burst, Authorization: 'Bearer wrong-token' } })).status());

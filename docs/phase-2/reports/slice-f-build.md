@@ -184,3 +184,13 @@ The `/blog/[slug]` paragraph under "Things found and fixed" is rewritten to the 
 | `TEST_URL=http://localhost:3133 E2E_LIVE_BACKEND=1 E2E_ISR=1 playwright test tests/articles-ingest.spec.ts tests/seo-suggestions-ui.spec.ts --project=chromium` (production build, port 3133 because 3112 and 3113 were held by other worktrees) | 38 passed, 1 skipped (ART1 HTTP, stub-only) |
 | `npm run test:e2e -- <the same 14 spec files as before> --project=chromium` (`.env.local` moved aside) | exit 0, 178 passed, 27 skipped |
 | iPhone 13 screenshot script (production build, rows prefixed `slice-f-fix-`, removed after) | measurements above; 0 leftover rows |
+
+## Before merge: rate-limit cleanup scoped to this run
+
+The re-review (ACCEPT, `3518199`) saw ART7 get 401 instead of 429 once while two runs shared the database.
+The cause was the spec's cleanup, which deleted every `articles:*` rate-limit bucket, so one run could empty another run's ART7 burst mid-test.
+
+- Each run now picks its own two client IPs in the benchmarking range (`198.18.x.y` for the suite, `198.19.x.y` for the ART7 burst), and `beforeEach`, `beforeAll` and `afterAll` delete exactly those two buckets (`ip_address=in.(...)`), never a wildcard.
+- The CLI test calls from the server's loopback address, a bucket shared with other runs that the spec no longer touches; it makes six calls, well under 30, and the bucket ages out on its own (`articles:::1` was the only `articles:` row left after the runs below).
+- `npm run typecheck`, `npm run lint`, `npm run chaos:static` (total 0): clean.
+- Production build with the rig env, port 3133: `TEST_URL=http://localhost:3133 E2E_LIVE_BACKEND=1 E2E_ISR=1 playwright test tests/articles-ingest.spec.ts --project=chromium --repeat-each=3 --workers=1` gave 93 passed, 3 skipped (the stub-only ART1 HTTP test, once per repeat); ART7 passed in all three repeats; 0 `slice-f-` rows left.
