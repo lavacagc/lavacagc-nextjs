@@ -686,13 +686,13 @@ export async function retryOnePush(offerId: string, by: string | null): Promise<
 }
 
 /** Signed links for an offer's shared photos (lead_photos ids), in order. */
-export async function sharedPhotoUrls(photoIds: string[]): Promise<Array<string | null>> {
+export async function sharedPhotoUrls(photoIds: string[], ttlSeconds?: number): Promise<Array<string | null>> {
   if (!photoIds || photoIds.length === 0) return [];
   const rows = (await supabaseRest<Array<{ id: string; storage_path: string }>>(
     'GET', `lead_photos?select=id,storage_path&id=${inList(photoIds)}`,
   )) ?? [];
   const ordered = photoIds.map((id) => rows.find((r) => r.id === id)?.storage_path).filter((p): p is string => !!p);
-  return signPaths(ordered);
+  return signPaths(ordered, ttlSeconds);
 }
 
 // ---------------------------------------------------------------------------
