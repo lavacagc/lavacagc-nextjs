@@ -114,3 +114,54 @@ The worktree's `.next` is the stub build from `test:e2e`.
 2. Split hashtags into words before `claimReasons` (case changes and letter-digit boundaries: `#FullyInsured` to "Fully Insured", `#Save20` to "Save 20"), and add both to the pure spec as held.
 
 Advisories (not blocking): require the caption's call to be a La Vaca URL or path (`/home-services/`, `/services/`, `/free-estimate`), not any URL; check the `Article:` host against the site origin; mention the file-size limit in `references/social.md`.
+
+## Re-review of `4b1eb4b`
+
+Head reviewed: `4b1eb4b` on `phase2/q22-social` (fix round 1 on top of this review's `f5f746f`).
+Same rig and env, a fresh production build (exit 0) on port 3124; my post was deleted afterwards.
+
+### Verdict: **ACCEPT**
+
+Both fixes hold.
+One remaining gap in hashtags is recorded below as a follow-up, not a blocker, because Alex pastes the social copy himself and sees every hashtag before it goes anywhere.
+
+### Fix 1: room for the social file
+
+The publish route now reads its body with `PUBLISH_BODY_MAX_BYTES = 20 * 1024`; every other article route keeps its own cap.
+The 1,652-byte file that got 413 in the first review, published with the CLI against the production build:
+`Published: ...`, the unpublish link, `Telegram to Alex: not_configured`, `Social copy: checked; the Telegram was not sent (not_configured), so the caption is only in <file>.`, exit 0, row live.
+The new live spec `fix round 1: a file with every post at its limit (2,200 / 1,500 / 280) publishes; the body cap fits the 16 KB field` passed on the build.
+
+### Fix 2: claims inside hashtags, and La Vaca hosts
+
+Pure probe on the clean file with one hashtag swapped:
+
+| Hashtag | Result |
+| --- | --- |
+| `#FullyInsured`, `#Fully_Insured` | held, `Legal claim: "Insured" in the hashtags` |
+| `#Save20`, `#20Off` | held, `Price claim: "#Save20"` / `"#20Off"` |
+| `#HalfOff` | held |
+| `#Guaranteed`, `#WarrantyIncluded` | held |
+| `#NJHomes`, `#GutterCleaning2026`, `#Top10Tips` | pass |
+| `#fullyinsured` (all lower case) | **passes** |
+| `#LICENSEDANDINSURED` (all capitals) | **passes** |
+
+Hosts: a call to `https://example.com/home-services/gutter-cleaning` alone is now refused; a call on `www.lavacagc.com`, on the running site's origin, or as a bare `/home-services/<slug>` path passes.
+An `Article:` line on another host is refused; on `www.lavacagc.com` or the running origin it passes.
+
+Follow-up (not blocking): a single-case compound hashtag cannot be split at a case change, so `#fullyinsured` and `#LICENSEDANDINSURED` still pass, and `#fullyinsured` is a common real hashtag.
+A substring test of each hashtag, lower-cased, against the guard's legal keywords (`insured`, `bonded`, `warrant`, `guarant`, `permit`, `liabil`, `lawsuit`, `legal`, `tocode`, `codecompliant`, `leadsafe`, `asbestos`, `moldremediation`) and the discount words would close it.
+I accept the current state because the copy is not posted automatically: Alex pastes it, and the skill tells Claude to write CamelCase hashtags, which are now checked.
+
+### Gates on `4b1eb4b`
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm run lint` | exit 0 |
+| `npm run chaos:static` | total 0, baselined 0, NEW 0 |
+| `npm run build` (rig env) | exit 0 |
+| `TEST_URL=http://localhost:3124 E2E_LIVE_BACKEND=1 E2E_ISR=1 playwright test tests/articles-social-copy.spec.ts tests/articles-publish-guard.spec.ts tests/articles-ingest.spec.ts --project=chromium` (production build) | 127 passed, 1 skipped (ART1 over HTTP, stub only) |
+| `npm run test:e2e -- <the slice G stub subset> tests/articles-social-copy.spec.ts tests/home-services-catalog.spec.ts --project=chromium` (`.env.local` aside) | exit 0, 270 passed, 51 skipped (live-backend specs) |
+
+The worktree's `.next` is the stub build from `test:e2e`.
