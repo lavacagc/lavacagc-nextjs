@@ -112,6 +112,15 @@ test.describe('CAT5 validation (unit)', () => {
     expect(bad({ updated_by: '00000000-0000-0000-0000-000000000001' })._form).toBeTruthy();
     expect(bad({})._form).toBe('Nothing to save');
   });
+
+  test('CAT5: a FAQ question is saved as one line (review N1); answers keep their line breaks', () => {
+    const item = { q: { en: 'How long\ndoes it take?', es: '¿Cuánto\r\n tarda?' }, a: { en: 'Two days.\nSometimes three.', es: 'Dos días.' } };
+    const parsed = ServicePatchSchema.safeParse({ faq: [item] });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.faq?.[0].q).toEqual({ en: 'How long does it take?', es: '¿Cuánto tarda?' });
+    expect(parsed.data.faq?.[0].a.en).toBe('Two days.\nSometimes three.');
+  });
 });
 
 test.describe('CAT7 and CAT8 (source)', () => {

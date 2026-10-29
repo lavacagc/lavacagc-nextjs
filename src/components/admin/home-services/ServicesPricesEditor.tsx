@@ -77,6 +77,9 @@ function centsOf(input: string): number {
   return Math.round(Number(clean) * 100);
 }
 
+/** Line breaks (typed or pasted) become one space. */
+const oneLine = (text: string) => text.replace(/[ \t]*[\r\n]+[ \t]*/g, ' ');
+
 const toLines = (text: string) => text.split('\n').map((l) => l.trim()).filter(Boolean);
 
 function draftOf(row: HomeServiceRow): Draft {
@@ -204,7 +207,8 @@ export default function ServicesPricesEditor() {
                   <p className="font-medium">{r.name_en}</p>
                   <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{r.name_es} · /home-services/{r.slug}</p>
                 </div>
-                <div className="flex items-center gap-3">
+                {/* Full width on a phone, so the price's mr-auto pushes the controls to the right edge and every row lines up (review N2). */}
+                <div className="flex w-full items-center gap-2 sm:w-auto sm:gap-3">
                 <span className="mr-auto whitespace-nowrap font-semibold tabular-nums sm:mr-0 sm:w-28 sm:text-right" data-testid="catalog-price">{r.price_display_en}</span>
                 <label className="flex items-center gap-2 text-sm">
                   <Switch
@@ -454,7 +458,17 @@ function ServiceForm({ row, onBack, onSaved }: { row: HomeServiceRow; onBack: ()
                       <label htmlFor={`faq-${i}-q-${lang}`} className="text-xs font-medium">Question ({lang === 'en' ? 'English' : 'Spanish'})</label>
                       <Counter value={item.q[lang]} max={300} />
                     </div>
-                    <AutoTextarea id={`faq-${i}-q-${lang}`} rows={1} className="min-h-10" value={item.q[lang]} onChange={(e) => setFaq(i, 'q', lang, e.target.value)} />
+                    {/* A question is one line on the page and in the FAQPage JSON-LD: Enter does nothing, and a pasted line break becomes a space (review N1). */}
+                    <AutoTextarea
+                      id={`faq-${i}-q-${lang}`}
+                      rows={1}
+                      className="min-h-10"
+                      value={item.q[lang]}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.preventDefault();
+                      }}
+                      onChange={(e) => setFaq(i, 'q', lang, oneLine(e.target.value))}
+                    />
                     <div className="flex items-center justify-between">
                       <label htmlFor={`faq-${i}-a-${lang}`} className="text-xs font-medium">Answer ({lang === 'en' ? 'English' : 'Spanish'})</label>
                       <Counter value={item.a[lang]} max={1200} />

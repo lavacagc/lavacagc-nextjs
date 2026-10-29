@@ -152,3 +152,31 @@ In the phone screenshots the round "N" badge at the bottom left is the Next.js d
 | `npm run typecheck`, `npm run lint`, `npm run chaos:static` | clean, clean, no new violations |
 
 Both env files in the worktree are now copies of the coordinator's `env.rig`; the repo's production `.env.local` is not used.
+
+## Polish round (re-review ACCEPT at `d426a7f`, notes N1 and N2, plus two older admin phone defects)
+
+Taken in with `git merge --ff-only d426a7f`.
+Screenshots are in `docs/phase-2/reports/shots/` with the prefix `slice-e-polish-`, at iPhone 13 (390 x 844) unless the name says desktop (1366 x 900).
+The measurements come from the script that took the screenshots, against the dev server on the rig.
+
+| Item | Fix | Evidence |
+| --- | --- | --- |
+| N1 Enter in a FAQ question | The question box ignores Enter, and a pasted line break becomes a space; answers stay multi-line. The PATCH schema also turns line breaks in a question into spaces, so a question saved any other way is one line too. | Typing Enter then " Really" gave "Is this a repair visit? Really" (no line break); a pasted "Line one\nline two" became "Line one line two"; Enter in the answer still adds a line break. Unit test "CAT5: a FAQ question is saved as one line (review N1); answers keep their line breaks". `slice-e-polish-phone-faq-question.png`. |
+| N2 Exterior painting row 4 to 5 px off | On a phone the controls row is full width, so the price's `mr-auto` pushes the switch and Edit to the right edge, and the gap is 8 px below `sm`, so the widest price ("$2.95 / sq ft") no longer pushes them past the edge. | Edit button at x = 263 on all seven rows; one switch position (x = 154) for all seven. `slice-e-polish-phone-list.png`, `slice-e-polish-desktop-list.png`. |
+| Smart Banners on a phone (older defect) | `BannerManager.tsx`: the header stacks on a phone, so "New Banner" sits under the title; badges wrap; the four actions take their own right-aligned row. Desktop is unchanged (one row per banner). | No element past the right edge of the 390 px viewport (the reviewer measured 4 at right = 455 to 463); "New Banner" spans x = 10 to 156. `slice-e-polish-phone-banners.png`, `slice-e-polish-phone-banners-full.png`, `slice-e-polish-desktop-banners.png`. |
+| "New Post" covering the menu list (older defect) | `AdminSidebar.tsx`: the menu is `h-dvh` (falling back to `h-screen`), so it no longer runs under a phone browser's toolbar; the item list is the only scroller (`min-h-0`) with bottom padding; "New Post" is a footer with a divider and the safe-area inset. | With the list scrolled to the end, the last item ends at y = 573 and the footer starts at y = 583, inside a 664 px viewport; New Post ends at 646. `slice-e-polish-phone-menu.png`, `slice-e-polish-phone-menu-scrolled.png`; desktop sidebar `slice-e-polish-desktop-sidebar-expanded.png` (the second orange item there is the mouse hover). |
+
+`slice-e-polish-phone-blog.png` is the Blog tab with the menu closed, for reference.
+
+### Commands run in this round and their results
+
+| Command | Result |
+| --- | --- |
+| `git merge --ff-only d426a7f` | fast-forwarded |
+| Live, alone: `TEST_URL=http://localhost:3111 E2E_LIVE_BACKEND=1 playwright test tests/home-services-catalog.spec.ts --project=chromium --workers=1` | 20 passed |
+| Rig table against the seed afterwards | 7 rows, none differing |
+| Live: `admin-nav-simplified`, `smart-banner-push-content`, `admin-dashboard` (chromium and mobile) | admin-nav and smart-banner green; `admin-dashboard` fails 10 live because it signs in with the GoTrue stub cookie by design (its header says it runs against the stub backend), so it was run stub-backed below |
+| Stub: `npm run test:build` (`.env.local` moved aside and restored), `next start` on 3112, `playwright test` on `admin-nav-simplified`, `smart-banner-push-content`, `admin-dashboard`, `home-services-catalog` | 54 passed, 16 skipped (live-only), 0 failed |
+| `npm run typecheck`, `npm run lint`, `npm run chaos:static` | clean, clean, total 0 and no new violations |
+
+There is no admin spec for the Smart Banners manager or the blog list; `smart-banner-push-content` covers the public banner, and `admin-dashboard` and `admin-nav-simplified` render the admin shell and sidebar this round touched.

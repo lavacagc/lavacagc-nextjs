@@ -32,8 +32,11 @@ const note = (label: string) =>
     .union([z.string().trim().max(160, `${label} is at most 160 characters`), z.null()])
     .transform((v) => (v ? v : null));
 
+/** A FAQ question is one line on the page and in the FAQPage JSON-LD, so line breaks become spaces. */
+const question = (label: string) => text(label, 300).transform((v) => v.replace(/\s*[\r\n]+\s*/g, ' '));
+
 const faqItem = z.object({
-  q: z.object({ en: text('English question', 300), es: text('Spanish question', 300) }).strict(),
+  q: z.object({ en: question('English question'), es: question('Spanish question') }).strict(),
   a: z.object({ en: text('English answer', 1200), es: text('Spanish answer', 1200) }).strict(),
 }).strict();
 
