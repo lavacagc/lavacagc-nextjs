@@ -61,9 +61,15 @@ export interface CatalogPrice {
 /** What the caller loads for the guard (src/lib/articles/publishFlow.ts). */
 export interface PublishFacts {
   contentFacts: Fact[];
-  /** Published catalog prices; an empty list means no amount is ever allowed. */
-  catalogPrices?: CatalogPrice[];
+  /**
+   * Published catalog prices; an empty list means no amount is ever allowed,
+   * and null means the catalog could not be read, which holds every post
+   * (`CATALOG_UNAVAILABLE_REASON`).
+   */
+  catalogPrices?: CatalogPrice[] | null;
 }
+
+export const CATALOG_UNAVAILABLE_REASON = 'Price catalog unavailable; publish again in a minute';
 
 export interface PublishVerdict {
   ok: boolean;
@@ -403,12 +409,16 @@ export function claimReasons(places: Array<{ where: string; text: string }>, fac
     if (!reasons.includes(reason)) reasons.push(reason);
   };
   const locked = lockedClaimSentences(facts.contentFacts);
-  const prices = facts.catalogPrices ?? [];
   const prepared = places.map((p) => ({ ...p, text: maskLockedSentences(readableText(p.text), locked) }));
 
-  for (const place of prepared) {
-    for (const { claim, allowed } of priceClaims(place.text, prices)) {
-      if (!allowed) add(`Price claim: "${claim}" in ${place.where}`);
+  if (facts.catalogPrices === null) {
+    add(CATALOG_UNAVAILABLE_REASON);
+  } else {
+    const prices = facts.catalogPrices ?? [];
+    for (const place of prepared) {
+      for (const { claim, allowed } of priceClaims(place.text, prices)) {
+        if (!allowed) add(`Price claim: "${claim}" in ${place.where}`);
+      }
     }
   }
   for (const place of prepared) {

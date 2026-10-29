@@ -7,10 +7,14 @@
  * one-tap unpublish link, because nobody is watching when a schedule fires.
  * A post that is held stays a draft with `review_hold` set and its schedule
  * cleared (so tomorrow's run does not hold and notify again), and the owner
- * gets "Article held for review".
+ * gets "Article held for review". A post held only because the price catalog
+ * could not be read keeps its schedule, so the next run publishes it once the
+ * table is back; it is reported under `deferred`, without a Telegram message
+ * every hour of an outage.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { announceHeld, announcePublished, runPublishGuard } from '@/lib/articles/publishFlow';
+import { CATALOG_UNAVAILABLE_REASON } from '@/lib/articles/publishGuard';
 import { revalidateArticlePages } from '@/lib/articles/revalidate';
 import { getArticle, holdArticle, newPublishNonce } from '@/lib/articles/writer';
 import { siteOrigin } from '@/lib/projects/http';
@@ -77,6 +81,7 @@ export async function GET(request: NextRequest) {
     const origin = siteOrigin(request);
     const published: string[] = [];
     const held: Array<{ title: string; reasons: string[] }> = [];
+    const deferred: Array<{ title: string; reasons: string[] }> = [];
     const slugs: string[] = [];
     const live: Array<NonNullable<Awaited<ReturnType<typeof getArticle>>>> = [];
     for (const post of posts) {
@@ -84,6 +89,12 @@ export async function GET(request: NextRequest) {
         const full = await getArticle(post.id);
         if (!full) continue;
         const verdict = await runPublishGuard(full);
+        if (!verdict.ok && verdict.reasons.every((r) => r === CATALOG_UNAVAILABLE_REASON)) {
+          await holdArticle(full, verdict.reasons);
+          deferred.push({ title: full.title, reasons: verdict.reasons });
+          console.warn(`Publish deferred for "${full.title}": ${CATALOG_UNAVAILABLE_REASON}`);
+          continue;
+        }
         if (!verdict.ok) {
           await holdArticle(full, verdict.reasons);
           await supabaseRest('PATCH', `blog_posts?id=eq.${post.id}`, { scheduled_publish_at: null });
@@ -114,6 +125,7 @@ export async function GET(request: NextRequest) {
       message: `Published ${published.length} posts`,
       published,
       held,
+      deferred,
       checked_at: now,
     });
   } catch (error) {

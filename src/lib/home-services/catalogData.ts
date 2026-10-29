@@ -36,9 +36,33 @@ const readRows = unstable_cache(
 let warnedSeed = false;
 
 /**
- * Every row, active or not, in `sort` order. Only rows whose slug is one of the
- * seven in code are returned: a slug without questions or a route is not a
- * service.
+ * Every row, active or not, in `sort` order, straight from the table: throws
+ * when the table cannot be read, and never stands the seed in. Only rows whose
+ * slug is one of the seven in code are returned: a slug without questions or
+ * a route is not a service.
+ *
+ * The publish guard reads prices through this (src/lib/articles/catalogPrices.ts):
+ * checking an article against the day-one seed would pass a price the admin
+ * has since changed, or the price of a service since switched off.
+ */
+export async function getAllServicesStrict(): Promise<HomeService[]> {
+  if (!process.env.SUPABASE_SECRET_KEY) throw new Error('SUPABASE_SECRET_KEY not configured');
+  const rows = await readRows();
+  return rows.filter((row) => isServiceSlug(row.slug)).map(rowToService);
+}
+
+/** The active services from the table; throws like `getAllServicesStrict`. */
+export async function getCatalogStrict(): Promise<HomeService[]> {
+  return (await getAllServicesStrict()).filter((service) => service.active);
+}
+
+function seedServices(): HomeService[] {
+  return HOME_SERVICES_SEED.map((content, i) => rowToService(contentToRow(content, i + 1)));
+}
+
+/**
+ * `getAllServicesStrict` for rendering: the landing page, the service pages,
+ * the sitemap and names in alerts.
  *
  * Without SUPABASE_SECRET_KEY (the stub-backed test build and CI, which have no
  * database) the day-one seed stands in so the pages still render. Production
@@ -55,14 +79,13 @@ export async function getAllServices(): Promise<HomeService[]> {
       warnedSeed = true;
       console.warn('home services: SUPABASE_SECRET_KEY not set, rendering the day-one seed instead of the table');
     }
-    return HOME_SERVICES_SEED.map((content, i) => rowToService(contentToRow(content, i + 1)));
+    return seedServices();
   }
   try {
-    const rows = await readRows();
-    return rows.filter((row) => isServiceSlug(row.slug)).map(rowToService);
+    return await getAllServicesStrict();
   } catch (err) {
     console.error('home services: table read failed, rendering the day-one seed:', err instanceof Error ? err.message : String(err));
-    return HOME_SERVICES_SEED.map((content, i) => rowToService(contentToRow(content, i + 1)));
+    return seedServices();
   }
 }
 

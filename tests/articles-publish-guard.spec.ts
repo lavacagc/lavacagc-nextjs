@@ -2,13 +2,14 @@ import { test, expect, type APIRequestContext, type Page } from '@playwright/tes
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
-import { checkPublishable, type PublishCandidate, type PublishFacts } from '../src/lib/articles/publishGuard';
-import { catalogPricesFrom } from '../src/lib/articles/catalogPrices';
+import { CATALOG_UNAVAILABLE_REASON, checkPublishable, type PublishCandidate, type PublishFacts } from '../src/lib/articles/publishGuard';
+import { catalogPricesFrom, loadCatalogPrices } from '../src/lib/articles/catalogPrices';
 import {
   isTokenCurrent, readUnpublishToken, signUnpublishToken, unpublishLink, UNPUBLISH_LINK_TTL_SECONDS,
 } from '../src/lib/articles/unpublishToken';
 import { heldMessage, publishedMessage, unpublishedMessage } from '../src/lib/articles/notify';
-import { announceHeld, announcePublished } from '../src/lib/articles/publishFlow';
+import { announceHeld, announcePublished, runPublishGuard } from '../src/lib/articles/publishFlow';
+import { getAllServices } from '../src/lib/home-services/catalogData';
 import { renderUnpublishPage } from '../src/lib/articles/unpublishPage';
 import { isAnalyticsExcluded } from '../src/lib/analytics/excluded';
 import { isPrivateTokenPage } from '../src/lib/privatePages';
@@ -277,6 +278,61 @@ test.describe('PG1: checkPublishable', () => {
       'Answer-first: the opening paragraph has 2 words; it needs 25 to 70.',
       'No H2 section heading ("## ..."); add at least one.',
     ]);
+  });
+});
+
+test.describe('PG: the catalog read fails closed', () => {
+  const ENV_KEYS = ['SUPABASE_SECRET_KEY', 'NEXT_PUBLIC_SUPABASE_URL'] as const;
+  let saved: Record<string, string | undefined> = {};
+  test.beforeEach(() => {
+    saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+  });
+  test.afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+  /** A configured read that cannot reach any database. */
+  const breakTheRead = () => {
+    process.env.SUPABASE_SECRET_KEY = 'sb_secret_unreachable';
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:9';
+  };
+
+  test('an unreadable catalog holds the post with one reason, and no amount is checked against the seed', () => {
+    const verdict = checkPublishable(article('Cabinet repainting starts at $2,095 for a standard kitchen.'), { contentFacts: FACTS, catalogPrices: null });
+    expect(verdict).toEqual({ ok: false, reasons: [CATALOG_UNAVAILABLE_REASON] });
+    expect(CATALOG_UNAVAILABLE_REASON).toBe('Price catalog unavailable; publish again in a minute');
+  });
+
+  test('a failed table read in the guard path holds the post, without and with the secret key', async () => {
+    const post = article('Cabinet repainting starts at $2,095 for a standard kitchen.');
+    delete process.env.SUPABASE_SECRET_KEY;
+    expect(await loadCatalogPrices()).toBeNull();
+    expect(await runPublishGuard(post, FACTS)).toEqual({ ok: false, reasons: [CATALOG_UNAVAILABLE_REASON] });
+    breakTheRead();
+    expect(await loadCatalogPrices()).toBeNull();
+    expect(await runPublishGuard(post, FACTS)).toEqual({ ok: false, reasons: [CATALOG_UNAVAILABLE_REASON] });
+  });
+
+  test('the pages still render the seed when the same read fails', async () => {
+    const seedSlugs = HOME_SERVICES_SEED.map((s) => s.slug);
+    delete process.env.SUPABASE_SECRET_KEY;
+    expect((await getAllServices()).map((s) => s.slug)).toEqual(seedSlugs);
+    breakTheRead();
+    const services = await getAllServices();
+    expect(services.map((s) => s.slug)).toEqual(seedSlugs);
+    expect(services.map((s) => s.priceDisplay)).toEqual(HOME_SERVICES_SEED.map((s) => s.priceDisplay));
+  });
+
+  test('the cron keeps a post held only for the catalog scheduled, and reports it as deferred', () => {
+    const src = read('src/app/api/cron/publish/route.ts');
+    const start = src.indexOf('verdict.reasons.every((r) => r === CATALOG_UNAVAILABLE_REASON)');
+    expect(start).toBeGreaterThan(0);
+    const deferredBranch = src.slice(start, src.indexOf('continue;', start));
+    expect(deferredBranch).toContain('deferred.push');
+    expect(deferredBranch).not.toContain('scheduled_publish_at');
+    expect(src).toMatch(/held,\s*deferred,/);
   });
 });
 
