@@ -16,6 +16,17 @@
 # missing install fails loudly as exit 127. See .no-mistakes.yaml for the
 # npm-run/never-npx rule this follows.
 
+# Docs-only pushes (docs/, Markdown, review pages, agent config) change nothing the
+# four checks below can see, so they are skipped. The same rule the Vercel ignore
+# step uses (scripts/vercel-ignore-build.sh). Added 2026-10-29 after the weekly
+# article routine's social-copy push ran the full smoke in a cloud sandbox with no
+# browser installed and had to be redone.
+base=$(git merge-base origin/main HEAD 2>/dev/null || git rev-parse HEAD~1 2>/dev/null)
+if [ -n "$base" ] && git diff --quiet "$base" HEAD -- . ':(exclude)docs' ':(exclude,glob)*.md' ':(exclude).lavish' ':(exclude).claude'; then
+  echo "pre-push: docs-only push, skipping the checks."
+  exit 0
+fi
+
 set -u
 
 fail() {
