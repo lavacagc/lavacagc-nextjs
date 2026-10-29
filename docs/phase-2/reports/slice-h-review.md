@@ -367,3 +367,47 @@ If the lag also shows on Vercel, a visitor can see a just-retired variant for on
 - R1 (required): make EX2 cleanup and CT5 tolerant of the few-second cache lag, and make CT's `afterAll` restore through the admin route or revalidate `/`.
 - R2 (recommended): the skill's "copy unchanged" step for the hero, as above.
 - Recommended polish: label time zones on the admin card; re-sign the veto link at delivery; collapse switched-off variants on the phone.
+
+## Final check of 94ac332 (fix round 2)
+
+Head checked: `phase2/slice-h` at `94ac332`, on top of my `baab7c9`.
+Rig: env exactly `env.rig` in both files, a fresh `npm run build`, served with the documented `EXPERIMENTS_FAKE_CLOCK=1 RECAPTCHA_E2E_BYPASS_TOKEN=<token> next start -p 3128`.
+
+### Verdict: ACCEPT
+
+R1 and R2 are fixed, the live gate is green three times in a row on one production build, and the rig is left as found.
+
+### Evidence
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck`, `npm run lint` | exit 0, exit 0 |
+| `npm run chaos:static` | total 0, baselined 0, NEW 0 |
+| `npm run build` (rig env, fresh) | passes |
+| `experiments.spec.ts` + `cta-tests.spec.ts`, documented command, run 1 | 45 passed |
+| Same, run 2 | 45 passed |
+| Same, run 3 | 45 passed |
+| `home-services-landing.spec.ts`, once | 24 passed |
+| `hero-primary` and `hero-secondary` rows after the runs | 3 view rows each (6 in all); `variants` and `decision` hashes unchanged; `landing-hero` unchanged (draft) |
+| Leftovers | no `slice-h-*` or `review-h*` experiment, no `slice-h*` request, no `slice-h-spec` backlog row |
+| Homepage after the runs | serves secondary A, the restored state (not poisoned) |
+
+R1 (read): EX2 cleanup now polls for up to 10 seconds for the default copy.
+CT5 restores the buttons in a `finally` through `/api/admin/cta/variants` and then revalidates `/`, and `afterAll` restores again the same way.
+So a failed run can no longer leave the homepage cache on a test variant, which was the knock-on failure I saw last round.
+`docs/local-rig.md` and `docs/experiments.md` note the few-second lag under `next start`.
+
+R2 (read): the new unit test "R2: the hero copy has a locked slot" checks the following:
+- `currentCopy` marks the hero `body` as locked for the license.
+- A title-only variant built from the `copy` output passes the create schema.
+- The whole `copy` payload is refused for the license.
+- The skill says "ONLY the slots the test changes", and its template variants carry only `title`.
+
+The `copy` command prints a "locked" line per locked slot and the only-changed-slots reminder.
+The test passed in all three runs.
+
+### Remaining recommended polish (not blocking)
+
+- Label the time zone on the admin card's times.
+- Re-sign the veto link when it is first delivered.
+- Collapse switched-off variants to one line on the phone layout.
