@@ -6,7 +6,7 @@ item below is a task for the blog editor. Nothing is deleted, no slug changes, a
 redirects without your approval.
 
 This also stays clear of the site's own SEO pipeline (`seo-ingest` / `seo-suggest` /
-`seo-report` / `seo-maintain` crons feeding the `content_actions` queue). Refresh and
+`seo-report` crons feeding the `content_actions` queue). Refresh and
 consolidation logic already exists there; this plan does not duplicate it.
 
 Every row was read from the live table on 14 Aug 2026, not from a summary.

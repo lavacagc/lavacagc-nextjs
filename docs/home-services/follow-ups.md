@@ -63,7 +63,7 @@ Each is recorded with its reasoning in `00-site-audit.md` or `docs/decisions/`.
 - Signed video upload to hosted Supabase from the admin project form.
 - Publish from the Portfolio Manager shows the project on `/portfolio` and the homepage within the ISR window.
 - `POST /api/projects/ingest` from Claude Code with the Vercel token (see `docs/projects-ingest.md`).
-- Homepage CTA variants render on the production hostname, events arrive in `cta_events`, and the CTA Tests tab shows them.
+- Homepage CTA variants render on the production hostname, events arrive in `experiment_events` as `hero-primary` / `hero-secondary`, and the Experiments tab shows them (Phase 2 replaced `cta_events` and the CTA Tests tab).
 - Google Places autocomplete, once a key exists.
 - SpecNook status and push, once the API exists.
 - The reCAPTCHA v2 fallback on the new request route with a real low score.
@@ -87,4 +87,4 @@ Each is recorded with its reasoning in `00-site-audit.md` or `docs/decisions/`.
 
 Post per service and county with the matching URL and tags, for example:
 `https://www.lavacagc.com/home-services/gutter-cleaning?src=craigslist&lid=<post id>` and `?lang=es` for Spanish posts.
-Leads by source and service appear on the Service Requests summary card and the CTA Tests tab.
+Leads by source and service appear on the Service Requests summary card.

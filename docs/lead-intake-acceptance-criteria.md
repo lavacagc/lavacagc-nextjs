@@ -29,7 +29,7 @@ Recorded as a decision, not a miss.
 
 - `src/components/ChatWidget.tsx` and `src/app/api/chat/route.ts` no longer exist.
 - No intake or lead code imports the `openai` package.
-  The dependency and `OPENAI_API_KEY` **stay**: `content-actions/draft`, `cron/generate-renderings` and `cron/seo-maintain` still use them to generate our own content, and none of the three touches a visitor's words.
+  Phase 2 later removed the `openai` dependency and every remaining OpenAI writer (`docs/decisions/004-grill-round-1-phase-2.md`, Q11 and Q13).
 - `/api/chat` is removed from middleware `PUBLIC_ROUTES`.
 - The `chat_conversations` table and its rows are **left untouched**. Deleting the writer must not delete the history.
 
