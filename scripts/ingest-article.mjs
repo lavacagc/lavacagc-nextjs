@@ -24,7 +24,8 @@
  * specnook-articles lists SpecNook's blog (slug, title, URL, first paragraph)
  * from its sitemap, for the at most two SpecNook links an article may carry
  * (.claude/skills/articles/references/specnook-links.md). It needs no token,
- * is cached in $TMPDIR for 6 hours (--refresh skips the cache), and reads
+ * is cached in $TMPDIR for 6 hours unless a page failed to load (--refresh
+ * skips the cache), and reads
  * --specnook (default https://www.specnook.app).
  *
  * Common: --site (default ARTICLE_INGEST_SITE, PROJECT_INGEST_SITE, then
@@ -291,7 +292,10 @@ async function specnookArticles(origin, refresh) {
     articles.push(...batch);
   }
   const result = { fetchedAt: Date.now(), origin, articles };
-  try { writeFileSync(cache, JSON.stringify(result)); } catch { /* the cache is a convenience */ }
+  // A page that failed to load is not cached, so the next call in the run tries it again.
+  if (articles.every((a) => a.title)) {
+    try { writeFileSync(cache, JSON.stringify(result)); } catch { /* the cache is a convenience */ }
+  }
   return { ...result, fromCache: false };
 }
 

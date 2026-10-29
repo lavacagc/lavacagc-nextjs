@@ -85,8 +85,7 @@ Done when the CLI printed the post id and the preview link.
 ## 6. Social copy
 
 Write the article's social copy to `docs/social/<slug>.md` in the repo (the slug the CLI printed), following [references/social.md](references/social.md): an Instagram and Facebook caption, a plain Google Business post (no hashtags), an X post, a Threads post of its own, 3 to 5 hashtags, the article URL and today's date.
-It obeys the article's price and legal rules word for word.
-Done when every item in the social.md checklist passes.
+It obeys the article's price and legal rules word for word; done when every item in the social.md checklist passes.
 It goes out with the publish below, which checks it like the article and puts the caption in Alex's Telegram.
 
 ## 7. Publish
@@ -99,15 +98,16 @@ node scripts/ingest-article.mjs publish <post id> --social docs/social/<slug>.md
 - Exit 2: the guard held it, or the social copy failed (nothing published), and it printed the reasons. "paragraph N" counts every blank-line block, headings and lists included.
   Fix each reason in `article.md` (then `patch`) or in the social file, and `publish` again.
   "Price catalog unavailable" is not about the text: change nothing and `publish` again in a minute.
-  If a reason is a claim the article cannot do without, stop and leave it held for Alex; report the reasons and the admin link.
-  Only Alex can publish over a hold ("Publish anyway" in the admin); never work around the guard.
+  If a reason is a claim the article cannot do without, stop and leave it held for Alex (only he can "Publish anyway"; never work around the guard), and report the reasons and the admin link.
 - Exit 1: an error; report it.
 
-## 8. Postiz drafts
+## 8. Social PR, then Postiz drafts
 
-Only after exit 0 and the social file's PR is open: queue the posts as Postiz drafts for Alex to approve (never posted from here).
+Only after exit 0: commit the social file alone on a branch from main and open its PR (no Co-Authored-By line), then queue the posts as Postiz drafts for Alex to approve (never posted from here).
 
 ```bash
+git fetch origin && git switch -c social/<slug>-<YYYY-MM-DD> origin/main && git add docs/social/<slug>.md
+git commit -m "docs(social): <article title>" && git push -u origin HEAD && gh pr create --fill
 node scripts/postiz-drafts.mjs --file docs/social/<slug>.md --postiz "$POSTIZ_URL"
 ```
 

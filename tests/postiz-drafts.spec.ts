@@ -83,7 +83,13 @@ test.describe('postiz-drafts: parsing and the per-channel mapping', () => {
     const missing = parseSocialFile(FILE.replace(/## Threads[\s\S]*?## Hashtags/, '## Hashtags'));
     expect(fileProblems(missing)).toEqual(['the "Threads" section is missing']);
     expect(fileProblems(parseSocialFile(FILE.replace(`Article: ${ARTICLE}`, 'Article: https://www.lavacagc.com/about'))))
-      .toEqual(['the "Article:" line must be the article URL (.../blog/<slug>)']);
+      .toEqual([
+        'the "Article:" line must be the article URL (.../blog/<slug>)',
+        'the "Threads" post must contain the article URL', 'the "X" post must contain the article URL', 'the "Google Business" post must contain the article URL',
+      ]);
+    // X, Threads and Google Business must carry the article URL (the caption links to the service page).
+    expect(fileProblems(parseSocialFile(FILE.replace(`Clean gutters in late fall, after the leaves drop. ${ARTICLE}`, 'Clean gutters in late fall.'))))
+      .toEqual(['the "X" post must contain the article URL']);
   });
 
   test('one draft request: facebook, threads, x and gmb with their settings; media channels skipped', async () => {
@@ -141,7 +147,7 @@ test.describe('postiz-drafts: parsing and the per-channel mapping', () => {
     expect(explainStatus(401, 'GET /integrations')).toContain('Postiz refused the API key');
     expect(explainStatus(403, 'GET /integrations')).toContain('Cloudflare Access');
     expect(explainStatus(302, 'GET /integrations')).toContain('Cloudflare Access');
-    expect(explainStatus(429, 'POST /posts')).toContain('90 post creations an hour');
+    expect(explainStatus(429, 'POST /posts')).toContain('its API_LIMIT setting');
     expect(headersFor({ POSTIZ_API_KEY: 'k' })).toEqual({ Authorization: 'k', 'Content-Type': 'application/json' });
     expect(headersFor({ POSTIZ_API_KEY: 'k', CF_ACCESS_CLIENT_ID: 'id' })).toEqual({ Authorization: 'k', 'Content-Type': 'application/json' });
     expect(headersFor({ POSTIZ_API_KEY: 'k', CF_ACCESS_CLIENT_ID: 'id', CF_ACCESS_CLIENT_SECRET: 's' })).toMatchObject({
@@ -156,7 +162,7 @@ test.describe('postiz-drafts: parsing and the per-channel mapping', () => {
 
 interface Seen { method: string; url: string; headers: IncomingMessage['headers']; body: unknown }
 
-async function stubPostiz(opts: { posts?: unknown[]; createStatus?: number } = {}) {
+async function stubPostiz(opts: { posts?: Array<{ publishDate?: string; [key: string]: unknown }>; createStatus?: number; redirect?: string } = {}) {
   const seen: Seen[] = [];
   const server: Server = createServer((req, res) => {
     let raw = '';
@@ -164,9 +170,17 @@ async function stubPostiz(opts: { posts?: unknown[]; createStatus?: number } = {
     req.on('end', () => {
       seen.push({ method: req.method!, url: req.url!, headers: req.headers, body: raw ? JSON.parse(raw) : null });
       const send = (status: number, data: unknown) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
+      if (opts.redirect) { res.writeHead(302, { Location: opts.redirect }); return res.end(); }
       if (req.headers.authorization !== 'test-key') return send(401, { msg: 'Unauthorized' });
       if (req.method === 'GET' && req.url === '/api/public/v1/integrations') return send(200, INTEGRATIONS);
-      if (req.method === 'GET' && req.url!.startsWith('/api/public/v1/posts?')) return send(200, { posts: opts.posts ?? [] });
+      if (req.method === 'GET' && req.url!.startsWith('/api/public/v1/posts?')) {
+        // Like Postiz: only posts dated inside [startDate, endDate].
+        const q = new URL(req.url!, 'http://stub').searchParams;
+        const from = Date.parse(q.get('startDate')!);
+        const to = Date.parse(q.get('endDate')!);
+        const inWindow = (opts.posts ?? []).filter((p) => !p.publishDate || (Date.parse(p.publishDate) >= from && Date.parse(p.publishDate) <= to));
+        return send(200, { posts: inWindow });
+      }
       if (req.method === 'POST' && req.url === '/api/public/v1/posts') {
         if (opts.createStatus) return send(opts.createStatus, { msg: 'ThrottlerException: Too Many Requests' });
         const body = JSON.parse(raw) as { posts: Array<{ integration: { id: string } }> };
@@ -249,6 +263,47 @@ test.describe('postiz-drafts: the CLI against a stub Postiz', () => {
     }
   });
 
+  test('a far --date still finds its own drafts: the look-up covers today and that date', async () => {
+    const { parseSocialFile, channelTexts, toPostizHtml, dedupWindow } = await load();
+    const far = '2027-03-01T14:00:00Z';
+    const now = Date.parse('2026-10-29T12:00:00Z');
+    const w = dedupWindow(now, Date.parse(far));
+    expect(Date.parse(w.startDate)).toBeLessThan(now);
+    expect(Date.parse(w.endDate)).toBeGreaterThan(Date.parse(far));
+    const back = dedupWindow(Date.parse(far), now); // a --date in the past works the same way
+    expect(back).toEqual(w);
+
+    const texts = channelTexts(parseSocialFile(FILE));
+    const ids = { facebook: 'int-fb', threads: 'int-threads', x: 'int-x', gmb: 'int-gmb' } as const;
+    const existing = (Object.keys(ids) as Array<keyof typeof ids>).map((c, i) => ({
+      id: `far-${i}`, state: 'DRAFT', publishDate: '2027-03-01T14:00:00.000Z', content: toPostizHtml(texts[c]), integration: { id: ids[c] },
+    }));
+    const stub = await stubPostiz({ posts: existing });
+    try {
+      const r = await cli(['--file', file, '--postiz', stub.url, '--date', far], { POSTIZ_API_KEY: 'test-key' });
+      expect(r.code, r.err).toBe(0);
+      expect(stub.seen.some((s) => s.method === 'POST')).toBe(false);
+      expect(r.out).toContain('Nothing to create.');
+      const q = new URL(stub.seen.find((s) => s.url.startsWith('/api/public/v1/posts?'))!.url, 'http://stub').searchParams;
+      expect(Date.parse(q.get('startDate')!)).toBeLessThan(Date.now());
+      expect(Date.parse(q.get('endDate')!)).toBeGreaterThan(Date.parse(far));
+    } finally {
+      await stub.close();
+    }
+  });
+
+  test('a Cloudflare Access redirect to its login page exits 1 naming the service token', async () => {
+    const stub = await stubPostiz({ redirect: 'https://old-field-2a50.cloudflareaccess.com/cdn-cgi/access/login/postiz.lavacagc.com' });
+    try {
+      const r = await cli(['--file', file, '--postiz', stub.url], { POSTIZ_API_KEY: 'test-key' });
+      expect(r.code).toBe(1);
+      expect(r.err).toContain('GET /integrations: 302, stopped by Cloudflare Access in front of Postiz. Set CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET');
+      expect(stub.seen).toHaveLength(1); // the redirect is not followed
+    } finally {
+      await stub.close();
+    }
+  });
+
   test('dry run sends no POST; 401 and 429 exit 1 with a plain message', async () => {
     const stub = await stubPostiz({ createStatus: 429 });
     try {
@@ -264,7 +319,7 @@ test.describe('postiz-drafts: the CLI against a stub Postiz', () => {
 
       const limited = await cli(['--file', file, '--postiz', stub.url], { POSTIZ_API_KEY: 'test-key' });
       expect(limited.code).toBe(1);
-      expect(limited.err).toContain('429, Postiz allows 90 post creations an hour');
+      expect(limited.err).toContain("429, over Postiz's hourly limit on post creations for the organization (its API_LIMIT setting");
     } finally {
       await stub.close();
     }

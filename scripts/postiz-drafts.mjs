@@ -19,7 +19,8 @@
  * One POST /api/public/v1/posts with type "draft" carries one entry per text
  * channel: facebook (the caption and hashtags), threads, x and gmb. Pinterest,
  * Instagram and TikTok are skipped because they need media. Before creating,
- * GET /posts lists the last 60 and next 60 days; a channel that already has a
+ * GET /posts lists from 60 days before the earlier of today and --date to 60
+ * days after the later of them; a channel that already has a
  * live (not errored) post with this article URL or a near-identical text is
  * skipped. Exits 0 when done (including "all skipped"), 1 on any failure.
  * Node 18+ (global fetch). No dependencies. Docs: docs/articles-ingest.md.
@@ -104,10 +105,12 @@ export function fileProblems(copy) {
   if (!url || !/^\/blog\/[a-z0-9-]+\/?$/.test(url.pathname)) problems.push('the "Article:" line must be the article URL (.../blog/<slug>)');
   const texts = channelTexts(copy);
   const names = { facebook: 'Instagram and Facebook', threads: 'Threads', x: 'X', gmb: 'Google Business' };
+  const key = url ? urlKey(url.href) : null;
   for (const channel of CHANNELS) {
     const t = channel === 'facebook' ? copy.instagram : texts[channel];
     if (!t) problems.push(`the "${names[channel]}" section is missing`);
     else if (texts[channel].length > LIMITS[channel]) problems.push(`the ${channel} text has ${texts[channel].length} characters; the limit is ${LIMITS[channel]}`);
+    else if (channel !== 'facebook' && key && !urlKeysIn(texts[channel]).includes(key)) problems.push(`the "${names[channel]}" post must contain the article URL`);
   }
   return problems;
 }
@@ -183,6 +186,11 @@ function urlKey(url) {
   return String(url).toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
 }
 
+/** The URL keys of every link written in a text. */
+function urlKeysIn(text) {
+  return [...String(text).matchAll(/https?:\/\/[^\s<>"')]+/gi)].map((m) => urlKey(m[0].replace(/[.,;:!?]+$/, '')));
+}
+
 /**
  * For each channel we would post to, the existing post that makes it a
  * duplicate: same integration, not deleted (Postiz leaves those out), not
@@ -220,6 +228,18 @@ export function buildRequest({ copy, picked, skip = {}, date }) {
   return body;
 }
 
+/**
+ * The GET /posts window: 60 days either side of both today and the drafts'
+ * date, so a re-run with a far --date still finds its own drafts.
+ */
+export function dedupWindow(now, date) {
+  const day = 24 * 60 * 60 * 1000;
+  return {
+    startDate: new Date(Math.min(now, date) - DEDUP_WINDOW_DAYS * day).toISOString(),
+    endDate: new Date(Math.max(now, date) + DEDUP_WINDOW_DAYS * day).toISOString(),
+  };
+}
+
 /** Tomorrow at 14:00 UTC (10 in the morning in New Jersey for most of the year). */
 export function defaultDate(now = new Date()) {
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 14, 0, 0));
@@ -245,7 +265,7 @@ export function explainStatus(status, what, body = '') {
   if (status === 403 || (status >= 300 && status < 400)) {
     return `${what}: ${status}, stopped by Cloudflare Access in front of Postiz. Set CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET to a service token the Access policy allows.`;
   }
-  if (status === 429) return `${what}: 429, Postiz allows 90 post creations an hour per organization. Wait for the hour to roll over and run this again; the dedup check keeps it from doubling anything.`;
+  if (status === 429) return `${what}: 429, over Postiz's hourly limit on post creations for the organization (its API_LIMIT setting, 90 unless the instance sets it). Wait for the hour to roll over and run this again; the dedup check keeps it from doubling anything.`;
   const detail = String(body).replace(/\s+/g, ' ').slice(0, 300);
   return `${what}: ${status}${detail ? ` ${detail}` : ''}`;
 }
@@ -322,10 +342,8 @@ export async function run(argv, env = process.env, log = console.log) {
   if (hasKey) {
     const integrations = await call(ctx, 'GET', '/integrations');
     ({ picked, notes } = pickIntegrations(Array.isArray(integrations) ? integrations : []));
-    const now = Date.now();
-    const day = 24 * 60 * 60 * 1000;
-    const query = `startDate=${encodeURIComponent(new Date(now - DEDUP_WINDOW_DAYS * day).toISOString())}`
-      + `&endDate=${encodeURIComponent(new Date(now + DEDUP_WINDOW_DAYS * day).toISOString())}`;
+    const { startDate, endDate } = dedupWindow(Date.now(), Date.parse(date));
+    const query = `startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
     posts = (await call(ctx, 'GET', `/posts?${query}`))?.posts ?? [];
   } else {
     picked = Object.fromEntries(CHANNELS.map((c) => [c, { id: `<${c} integration id>`, identifier: c }]));

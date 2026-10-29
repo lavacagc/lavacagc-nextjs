@@ -88,9 +88,11 @@ Alex says: "Write something for people searching how long a kitchen remodel take
 
    On success it prints the live URL; the article is on `/blog`, its own page and `sitemap.xml` on the next request.
    On exit code 2 it was refused or held: fix what the reasons name (patch the article) and publish again, or leave it for Alex and say so.
-7. Once the social file's PR is open, queue the posts as Postiz drafts (see "Postiz drafts" below).
+7. Commit the social file alone on a branch from main and open its PR (no Co-Authored-By line), then queue the posts as Postiz drafts (see "Postiz drafts" below).
 
    ```bash
+   git fetch origin && git switch -c social/<slug>-<YYYY-MM-DD> origin/main && git add docs/social/<slug>.md
+   git commit -m "docs(social): <article title>" && git push -u origin HEAD && gh pr create --fill
    node scripts/postiz-drafts.mjs --file docs/social/<slug>.md --postiz "$POSTIZ_URL"
    ```
 
@@ -182,7 +184,7 @@ Decision 006 (Q22): the retired Supabase function used to email Alex a "post pub
 
 1. After `create` (the slug is known, so is the URL), the skill writes `docs/social/<slug>.md` in the repo: the article URL and date, an Instagram and Facebook caption (up to 2,200 characters: a hook, three plain sentences, a call to the service page), a Google Business post (up to 1,500, no hashtags, no emoji), an X post (up to 280), a Threads post of its own (up to 500, at most one hashtag, never "link in bio") and 3 to 5 hashtags. The format and checklist are in `.claude/skills/articles/references/social.md`.
 2. `publish <id> --social docs/social/<slug>.md` sends the file with the publish.
-3. The route checks it after the publish guard passes and before anything is written (`src/lib/articles/socialCopy.ts`): the article's own price and legal rules on every post and the hashtags (`claimReasons`, shared with the guard; a compound hashtag is split into words first, a number next to save, off or discount in a hashtag is a price claim, and a hashtag in one case, which cannot be split, is held if it contains a claim word or a number other than a year), the length limits, 3 to 5 hashtags, at most one hashtag and no "link in bio" in the Threads post, no hashtags or emoji in the Google Business post, the `Article:` line pointing at this post on the La Vaca site, and a call to a La Vaca service page in the caption. The file may be up to 16 KB. A failure is 422 with the reasons; the CLI exits 2 and nothing is published.
+3. The route checks it after the publish guard passes and before anything is written (`src/lib/articles/socialCopy.ts`): the article's own price and legal rules on every post and the hashtags (`claimReasons`, shared with the guard; a compound hashtag is split into words first, a number next to save, off or discount in a hashtag is a price claim, and a hashtag in one case, which cannot be split, is held if it contains a claim word or a number other than a year), the length limits, 3 to 5 hashtags, at most one hashtag and no "link in bio" in the Threads post, no hashtags or emoji in the Google Business post, the article URL in the X, Threads and Google Business posts, the `Article:` line pointing at this post on the La Vaca site, and a call to a La Vaca service page in the caption. The file may be up to 16 KB. A failure is 422 with the reasons; the CLI exits 2 and nothing is published.
 4. On a pass the publish Telegram carries the caption after the unpublish link:
 
    ```
@@ -220,8 +222,9 @@ The channel ids come from `GET /integrations` on every run; the first enabled ch
 Postiz's `CreatePostDto` accepts `type: "draft"`, and a draft starts no publishing workflow; this was verified on the local Postiz (v1.47.0): the rows were `state = DRAFT` and Temporal had no `post_<id>` workflow for them.
 The script never sends `"now"` or `"schedule"`.
 The drafts are dated tomorrow at 14:00 UTC unless `--date` says otherwise; the date is only where they sit in the calendar.
+They land as four separate calendar entries, one per channel, not one grouped post: Postiz's public API gives every entry its own group.
 
-Dedup: before creating, it lists Postiz's posts from 60 days back to 60 days ahead (`GET /posts`), and skips a channel that already has a post (not deleted, not errored) with the article URL in its text or a text at least 90% similar.
+Dedup: before creating, it lists Postiz's posts (`GET /posts`) from 60 days before the earlier of today and `--date` to 60 days after the later of them, so a re-run with a far `--date` still finds its own drafts, and skips a channel that already has a post (not deleted, not errored) with the article URL in its text or a text at least 90% similar.
 A channel whose only post errored is tried again.
 If every channel already has the post, it creates nothing.
 
@@ -238,7 +241,7 @@ Exit 0 means done (drafts created, or everything already there); exit 1 prints o
 
 - 401: the API key is wrong.
 - 403 or a redirect: Cloudflare Access stopped the request, so the service token is missing or not allowed (without it, Access answers with a redirect to its login page).
-- 429: Postiz allows 90 post creations an hour per organization; run it again after the hour, and the dedup keeps it from doubling anything.
+- 429: over Postiz's hourly limit on post creations for the organization, set by the instance's `API_LIMIT` (90 unless set; the local instance runs 30); run it again after the hour, and the dedup keeps it from doubling anything.
 
 `--dry-run` prints the request and sends nothing; with a key it still reads the channels and recent posts, without one it uses placeholder channel ids.
 The tests are stub-backed: `tests/postiz-drafts.spec.ts`.
@@ -254,6 +257,7 @@ node scripts/ingest-article.mjs specnook-articles
 
 It reads `https://www.specnook.app/sitemap.xml`, fetches each `/blog/<slug>` page and prints its slug, title, URL and first paragraph.
 It needs no token, and caches the list in `$TMPDIR` for 6 hours so a run fetches it once (`--refresh` fetches again).
+A list with a page that failed to load is not cached, so the next call tries again.
 SpecNook links are full URLs, so the fact-lock's internal-link count (relative `/...` links only) never counts them: an article still needs its three La Vaca links.
 The routine's network policy must allow `www.specnook.app`.
 

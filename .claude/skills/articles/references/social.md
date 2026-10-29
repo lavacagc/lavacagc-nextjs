@@ -56,6 +56,7 @@ The `Article:` URL must be this post on the La Vaca site (`https://www.lavacagc.
 - [ ] Each post within its limit; 3 to 5 hashtags.
 - [ ] The Threads post: at most one hashtag, no "link in bio".
 - [ ] The Google Business post: no hashtags and no emoji.
+- [ ] The X, Threads and Google Business posts each contain the article URL (`https://www.lavacagc.com/blog/<slug>`).
 
 If the publish exits 2 with "The social copy did not pass", nothing was published: fix the file and publish again.
 A caption too long for one Telegram (4,096 characters with the rest of the message) is cut there with a note; the file keeps the whole copy.

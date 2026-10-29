@@ -127,6 +127,19 @@ function hasServiceCall(text: string, hosts: string[]): boolean {
   return /(?:^|\s)\/(?:home-services\/[a-z0-9-]+|services\/[a-z0-9-]+|free-estimate)\b/i.test(text);
 }
 
+/** The article's own URL on a La Vaca host, somewhere in the text. */
+function hasArticleUrl(text: string, slug: string, hosts: string[]): boolean {
+  for (const m of text.matchAll(/https?:\/\/[^\s<>"')]+/gi)) {
+    try {
+      const url = new URL(m[0].replace(/[.,;:!?]+$/, ''));
+      if (hosts.includes(url.host.toLowerCase()) && url.pathname.replace(/\/$/, '') === `/blog/${slug}`) return true;
+    } catch {
+      // Not a URL; keep looking.
+    }
+  }
+  return false;
+}
+
 /**
  * A hashtag as words: "#FullyInsured" -> "Fully Insured", "#Save20" -> "Save 20",
  * "#NJHomes" -> "NJ Homes". A hashtag is one token to the eye but says the
@@ -215,6 +228,11 @@ export function checkSocialCopy(copy: SocialCopy, slug: string, facts: PublishFa
     }
     const limit = SOCIAL_LIMITS[key as keyof typeof SOCIAL_LIMITS];
     if (text.length > limit) reasons.push(`Social copy: ${where} has ${text.length} characters; the limit is ${limit}.`);
+  }
+  for (const [key, where, text] of named) {
+    if (key !== 'instagram' && text && !hasArticleUrl(text, slug, hosts)) {
+      reasons.push(`Social copy: ${where} must contain the article URL (https://www.lavacagc.com/blog/${slug}).`);
+    }
   }
   if (copy.instagram && !hasServiceCall(copy.instagram, hosts)) {
     reasons.push('Social copy: the Instagram caption needs a call to a La Vaca service page (https://www.lavacagc.com/home-services/<slug>, /services/<slug> or /free-estimate).');

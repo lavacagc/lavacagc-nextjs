@@ -40,10 +40,13 @@ const PAGES: Record<string, string> = {
 
 async function stubSpecNook() {
   let origin = '';
+  const state = { sitemapHits: 0, withMissing: true };
   const server: Server = createServer((req, res) => {
     if (req.url === '/sitemap.xml') {
+      state.sitemapHits += 1;
       res.writeHead(200, { 'Content-Type': 'application/xml' });
-      return res.end(SITEMAP.replaceAll('ORIGIN', origin));
+      const xml = state.withMissing ? SITEMAP : SITEMAP.replace(/<url><loc>ORIGIN\/blog\/missing-page<\/loc><\/url>\n/, '');
+      return res.end(xml.replaceAll('ORIGIN', origin));
     }
     const page = PAGES[req.url ?? ''];
     res.writeHead(page ? 200 : 404, { 'Content-Type': 'text/html' });
@@ -51,7 +54,7 @@ async function stubSpecNook() {
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  return { origin, close: () => new Promise<void>((r) => server.close(() => r())) };
+  return { origin, state, close: () => new Promise<void>((r) => server.close(() => r())) };
 }
 
 function cli(args: string[], env: Record<string, string>) {
@@ -66,7 +69,7 @@ function cli(args: string[], env: Record<string, string>) {
 }
 
 test.describe('specnook-articles: the SpecNook blog from its sitemap', () => {
-  test('lists each /blog/<slug> once with its title and first paragraph, without a token, and caches the run', async () => {
+  test('lists each /blog/<slug> once with its title and first paragraph, without a token, and caches only a full read', async () => {
     const stub = await stubSpecNook();
     const tmp = mkdtempSync(join(tmpdir(), 'specnook-'));
     try {
@@ -91,11 +94,19 @@ test.describe('specnook-articles: the SpecNook blog from its sitemap', () => {
         '',
       ].join('\n'));
 
-      // The second call in the run reads the cache, even with SpecNook gone.
+      // A page failed to load, so nothing was cached: the next call fetches again.
+      expect(stub.state.sitemapHits).toBe(1);
+      stub.state.withMissing = false;
+      const again = await cli(['specnook-articles', '--specnook', stub.origin], { TMPDIR: tmp });
+      expect(again.code, again.err).toBe(0);
+      expect(stub.state.sitemapHits).toBe(2);
+      expect(again.out.split('\n')[0]).toBe('SpecNook blog: 2 articles');
+
+      // Every page loaded, so the next call in the run reads the cache, even with SpecNook gone.
       await stub.close();
       const cached = await cli(['specnook-articles', '--specnook', stub.origin], { TMPDIR: tmp });
       expect(cached.code, cached.err).toBe(0);
-      expect(cached.out.split('\n')[0]).toBe('SpecNook blog: 3 articles (cached; --refresh to fetch again)');
+      expect(cached.out.split('\n')[0]).toBe('SpecNook blog: 2 articles (cached; --refresh to fetch again)');
       const refreshed = await cli(['specnook-articles', '--specnook', stub.origin, '--refresh'], { TMPDIR: tmp });
       expect(refreshed.code).toBe(1);
       expect(refreshed.err).toContain('Cannot read the SpecNook sitemap');

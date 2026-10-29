@@ -29,8 +29,11 @@ const FACTS: PublishFacts = {
   catalogPrices: catalogPricesFrom(HOME_SERVICES_SEED),
 };
 const SLUG = 'when-to-clean-gutters-in-essex-county';
+const A = `https://www.lavacagc.com/blog/${SLUG}`;
+const needsUrl = (where: string) => `Social copy: the ${where} must contain the article URL (https://www.lavacagc.com/blog/${SLUG}).`;
 
 function socialFile(parts: { instagram?: string; google?: string; x?: string; threads?: string; hashtags?: string; url?: string } = {}): string {
+  const article = parts.url ?? `https://www.lavacagc.com/blog/${SLUG}`;
   return [
     '# Social copy: When should you clean gutters in Essex County?',
     '',
@@ -47,13 +50,13 @@ function socialFile(parts: { instagram?: string; google?: string; x?: string; th
     ].join('\n'),
     '',
     '## Google Business',
-    parts.google ?? `Clean your gutters in late fall, after the oaks and maples drop their leaves. We serve Essex County. Read more: https://www.lavacagc.com/blog/${SLUG}`,
+    parts.google ?? `Clean your gutters in late fall, after the oaks and maples drop their leaves. We serve Essex County. Read more: ${article}`,
     '',
     '## X',
-    parts.x ?? `Clean gutters in late fall, after the leaves drop. https://www.lavacagc.com/blog/${SLUG}`,
+    parts.x ?? `Clean gutters in late fall, after the leaves drop. ${article}`,
     '',
     '## Threads',
-    parts.threads ?? `Most people clean gutters too early. Wait until the oaks and maples are bare, then do it once, properly. When do you usually clean yours? #EssexCounty https://www.lavacagc.com/blog/${SLUG}`,
+    parts.threads ?? `Most people clean gutters too early. Wait until the oaks and maples are bare, then do it once, properly. When do you usually clean yours? #EssexCounty ${article}`,
     '',
     '## Hashtags',
     parts.hashtags ?? '#GutterCleaning #EssexCounty #NJHomes',
@@ -72,13 +75,13 @@ test.describe('Q22: the social-copy guard', () => {
     expect(copy.hashtags).toEqual(['#GutterCleaning', '#EssexCounty', '#NJHomes']);
     expect(check(socialFile())).toEqual([]);
     // A locked claim sentence, word for word, is allowed on social too.
-    expect(check(socialFile({ google: 'La Vaca carries general liability insurance and a one-year workmanship warranty on its own work. We serve Essex County.' }))).toEqual([]);
+    expect(check(socialFile({ google: 'La Vaca carries general liability insurance and a one-year workmanship warranty on its own work. We serve Essex County. ' + A }))).toEqual([]);
   });
 
   test('sample 2: price and legal claims are held exactly as in an article', () => {
     const reasons = check(socialFile({
       instagram: 'Save 20% this fall! Gutter cleaning from $199, fully insured. https://www.lavacagc.com/home-services/gutter-cleaning',
-      x: 'Our gutter work is guaranteed. https://www.lavacagc.com/blog/x',
+      x: `Our gutter work is guaranteed. ${A}`,
     }));
     expect(reasons).toEqual([
       'Social copy: Price claim: "from $199" in the Instagram caption',
@@ -87,7 +90,7 @@ test.describe('Q22: the social-copy guard', () => {
       'Social copy: Legal claim: "guaranteed" in the X post ("Our gutter work is guaranteed.")',
     ]);
     // The catalog price of another service is not this one's.
-    expect(check(socialFile({ google: 'Gutter cleaning starts at $2,095 in Essex County.' })))
+    expect(check(socialFile({ google: `Gutter cleaning starts at $2,095 in Essex County. ${A}` })))
       .toEqual(['Social copy: Price claim: "starts at $2,095" in the Google Business post']);
   });
 
@@ -102,6 +105,9 @@ test.describe('Q22: the social-copy guard', () => {
       `Social copy: the "Article:" line must be this article's URL on the La Vaca site (/blog/${SLUG}).`,
       'Social copy: the Instagram caption has 2613 characters; the limit is 2200.',
       'Social copy: the X post has 281 characters; the limit is 280.',
+      needsUrl('Google Business post'),
+      needsUrl('X post'),
+      needsUrl('Threads post'),
       'Social copy: the Instagram caption needs a call to a La Vaca service page (https://www.lavacagc.com/home-services/<slug>, /services/<slug> or /free-estimate).',
       'Social copy: 3 to 5 hashtags are needed; there are 2.',
     ]);
@@ -123,28 +129,34 @@ test.describe('Postiz drafts: the Threads post and a plain Google Business post'
     expect(copy.threads.startsWith('Most people clean gutters too early.')).toBe(true);
     expect(copy.x).not.toContain('Most people'); // the X section ends at the Threads heading
     expect(hashtagsIn(copy.threads)).toEqual(['#EssexCounty']);
-    expect(check(socialFile({ threads: `${'Plain words. '.repeat(40)}` })))
-      .toEqual(['Social copy: the Threads post has 519 characters; the limit is 500.']);
-    expect(check(socialFile({ threads: 'Clean gutters late in fall. #GutterCleaning #EssexCounty' })))
+    const long = `${A} ${'Plain words. '.repeat(40)}`.trim();
+    expect(check(socialFile({ threads: long })))
+      .toEqual([`Social copy: the Threads post has ${long.length} characters; the limit is 500.`]);
+    expect(check(socialFile({ threads: `Clean gutters late in fall. #GutterCleaning #EssexCounty ${A}` })))
       .toEqual(['Social copy: the Threads post has 2 hashtags; at most 1.']);
-    expect(check(socialFile({ threads: 'Clean gutters late in fall. Link in bio.' })))
+    expect(check(socialFile({ threads: `Clean gutters late in fall. Link in bio. ${A}` })))
       .toEqual(['Social copy: the Threads post says "link in bio"; Threads posts carry their own link, so put the URL in the post.']);
   });
 
   test('the Threads post obeys the price and legal rules, its hashtag included', () => {
-    expect(check(socialFile({ threads: 'Our gutter work is guaranteed. #EssexCounty' })))
+    expect(check(socialFile({ threads: `Our gutter work is guaranteed. #EssexCounty ${A}` })))
       .toEqual(['Social copy: Legal claim: "guaranteed" in the Threads post ("Our gutter work is guaranteed. #EssexCounty")']);
-    expect(check(socialFile({ threads: 'Clean gutters late in fall. #fullyinsured' })))
+    expect(check(socialFile({ threads: `Clean gutters late in fall. #fullyinsured ${A}` })))
       .toEqual(['Social copy: Claim inside the one-case hashtag "#fullyinsured" ("insured"); use plain topic hashtags such as #GutterCleaning.']);
   });
 
   test('the Google Business post has no hashtags and no emoji', () => {
-    expect(check(socialFile({ google: 'Clean gutters in late fall in Essex County. #GutterCleaning' })))
+    expect(check(socialFile({ google: `Clean gutters in late fall in Essex County. #GutterCleaning ${A}` })))
       .toEqual(['Social copy: the Google Business post has hashtags (#GutterCleaning); keep it plain, with none.']);
-    expect(check(socialFile({ google: 'Clean gutters in late fall in Essex County 🍂' })))
+    expect(check(socialFile({ google: `Clean gutters in late fall in Essex County 🍂 ${A}` })))
       .toEqual(['Social copy: the Google Business post has emoji; keep it plain sentences.']);
     // A "#" that is not a hashtag (a unit number) is fine.
-    expect(check(socialFile({ google: 'Clean gutters in late fall in Essex County. Call us about unit #2.' }))).toEqual([]);
+    expect(check(socialFile({ google: `Clean gutters in late fall in Essex County. Call us about unit #2. ${A}` }))).toEqual([]);
+    // X, Threads and Google Business each carry the article URL, on a La Vaca host.
+    expect(check(socialFile({ x: 'Clean gutters in late fall.', threads: `Clean gutters late. ${A}/` })))
+      .toEqual([needsUrl('X post')]);
+    expect(check(socialFile({ google: `Clean gutters in late fall. https://evil.example/blog/${SLUG}` })))
+      .toEqual([needsUrl('Google Business post')]);
   });
 });
 
@@ -187,7 +199,10 @@ test.describe('Q22 fix round 1: compound hashtags and La Vaca hosts', () => {
     const other = check(socialFile({ instagram: 'Leaves again? Clean them in fall. Book: https://example.com/anything' }));
     expect(other).toContain('Social copy: the Instagram caption needs a call to a La Vaca service page (https://www.lavacagc.com/home-services/<slug>, /services/<slug> or /free-estimate).');
     expect(check(socialFile({ url: `https://evil.example/blog/${SLUG}` })))
-      .toEqual([`Social copy: the "Article:" line must be this article's URL on the La Vaca site (/blog/${SLUG}).`]);
+      .toEqual([
+        `Social copy: the "Article:" line must be this article's URL on the La Vaca site (/blog/${SLUG}).`,
+        needsUrl('Google Business post'), needsUrl('X post'), needsUrl('Threads post'),
+      ]);
     // A La Vaca URL to a page that is not a service is not a call to a service page.
     expect(check(socialFile({ instagram: 'Leaves again? https://www.lavacagc.com/about' })).some((r) => r.includes('call to a La Vaca service page'))).toBe(true);
     // A bare service path is fine, and the site the route runs on counts as La Vaca's (the rig).
