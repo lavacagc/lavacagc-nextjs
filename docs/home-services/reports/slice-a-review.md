@@ -185,3 +185,82 @@ The production CSP walk (no `bypassCSP`) uploaded, submitted and merged with no 
 8. The Vercel cron at 05:00 UTC calls the purge with `CRON_SECRET` and returns 200.
 9. HEIC photos from an iPhone convert and upload.
 10. Camera-first on a real iPhone and Android phone opens the camera.
+
+## Re-verification at 103c9bd
+
+**Verdict: ACCEPT.**
+
+Every defect I raised is fixed, except D7 and D9, which Fable accepted by ruling and I did not re-check.
+The builder's `#request` regression fix works as described.
+
+### How I re-verified
+
+I synced my scratchpad copy to `103c9bd` (the worktree was clean) and ran everything from it on port 3116, exactly as in the first pass.
+Fixes reviewed: `0587bdc` (D1 D2 D5), `27f9f23` (D3 D8 D10 D11), `02532af` (D6 D12) and `25600fa` (specs, scoped rate-limit cleanup).
+All my rows used `ZZTEST-RA`.
+Afterwards the shared DB holds zero `ZZTEST-RA` requests or leads, zero `lead_photos`, zero objects in `service-request-photos` and zero `hs-*` buckets.
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `eslint --max-warnings 0` on all 38 changed `.ts`/`.tsx` files since `fc6fe33` | exit 0 |
+| `npm run chaos:static` | exit 0, no new violations |
+| `npm run build` | exit 0; `/home-services` and `/home-services/[slug]` still dynamic (D7, accepted) |
+
+### Spec runs (dev server on 3116, both specs)
+
+| Run | Result |
+| --- | --- |
+| 1 | 31 passed, 8 failed |
+| 2 | 39 passed |
+
+All eight failures in run 1 were `page.goto: Test timeout of 30000ms exceeded` on the first landing-page loads of a freshly started dev server.
+The server log shows why: the first eight parallel `GET /home-services` each took about 35 s of server render, the next ones about 6 s, and later ones about 1.5 s.
+No assertion failed.
+The same cold dev render hit `/commercial-services` (31 s) in my first pass, so this is the dev server warming up under eight workers, not slice A behaviour.
+The production build and Lighthouse showed nothing comparable.
+It is still a flake by the house standard; warming the two pages in a `beforeAll`, or running these specs against `next start`, would remove it.
+I record it as an observation, not a blocker.
+
+### Items
+
+| # | Result | Evidence |
+| --- | --- | --- |
+| D1 | FIXED | 390x844 touch, en and es: two photos uploaded, closed with X, reopened: 2 thumbnails done, answer and address kept; closed with Back: URL drops `#request`, reopened: 2 thumbnails. Submitted: the request body named 2 `photo_ids`, and the DB has 2 `lead_photos` per request, under `requests/<id>/` with `draft_token` null. A new request after Done starts with 0 thumbnails. The queue now lives in `usePhotoUploads` in `RequestFlow`, outside the unmounting dialog content. |
+| D2 | FIXED | Phone viewport, en and es: tapping a price pushes `#price`; Back closes the sheet and stays on `/home-services`; X closes it and leaves no `#price` in the URL. |
+| D3 | FIXED | Same address and service from two phones: two requests, two `leads` rows, the second household's answers untouched (`stories 3+`), both `merged:false`. The first phone again, with different case and phone formatting: `merged:true`, same `request_id`, `merged_count 1`, answers unioned. The phone digits are now part of `dedupe_key`. |
+| D4 | FIXED | The LP8 organization count now reads the server HTML through `request.get`; it passed in both runs. |
+| D5 | FIXED | 390x844, en and es: after the ZIP blur the decline sits at y 683 to 743 (es) and 703 to 743 (en), above the footer at 763. A refused Continue keeps it in view and focuses `#hs-zip`. An empty address focuses `#hs-address` with its error in view. Screenshot checked. |
+| D6 | FIXED | Source of `/home-services?lang=es` and `/home-services/gutter-cleaning?lang=es`: canonical is the `?lang=es` URL, with three alternates (`en`, `es`, `x-default`). The English pages keep the English canonical with the same three alternates. `/sitemap.xml` lists the landing page and the seven service pages in English and with `?lang=es` (16 URLs). |
+| D7 | Accepted by ruling | Not re-checked. |
+| D8 | FIXED | One IP: 30 uploads 200 and the 31st 429 (burst). After I cleared only that IP's burst bucket, 30 more uploads 200, and the daily bucket read 60. With the burst bucket cleared again, upload 61 got 429 with `Retry-After: 86392`, so the daily cap refused it, not the burst limit. Another IP still got 200. |
+| D9 | Accepted by ruling | Not re-checked. |
+| D10 | FIXED | Honeypot and 1-second submits answer `{"ok":true,"request_id":"<uuid>","status":"new","verification":"skipped","merged":false}` with 200, the same keys and types as a real success; no row was saved for either. |
+| D11 | FIXED | API: ZIP 07920 with `town: "Montclair"` gives 403 `{"error":"out_of_area"}`; a five-digit ZIP now decides alone. An empty ZIP with a town is 400 `invalid_request` (the ZIP is required), so the town fallback cannot be reached through the API. No rows. |
+| D12 | FIXED | Exterior painting: `offers.priceSpecification` is a `UnitPriceSpecification` with `price 2.95`, `unitText "per square foot"`; flat-priced services keep `offers.price` (gutter cleaning `179.00`). |
+
+### Builder's regression fix
+
+| Check | Result |
+| --- | --- |
+| Service page loaded with `#request` (first page in the tab) | The sheet opens with that service preselected. |
+| X on that sheet | The URL becomes `/home-services/gutter-cleaning` (hash stripped) and the page stays; no navigation off the site. |
+| Reopen, then Back | Back closes the sheet and stays on the page. |
+| Landing page loaded with `#request` | Nothing opens (no service is selected), the page renders normally, no console error. |
+
+Back on a page that was loaded with `#request` as its first entry leaves the page, because nothing precedes it in the history; closing it with X does not, which is what the fix promised.
+
+### Notes (not blocking)
+
+- D12: `minPrice: "3500.00"` sits inside the per-square-foot `UnitPriceSpecification`, where schema.org reads it as the lowest unit price. The $3,500 job minimum is already in the offer description, so dropping `minPrice` would be cleaner.
+- SEO2 says "`offers.price` from the catalog"; exterior painting now carries its price in `offers.priceSpecification.price` instead, which is the correct shape for a unit price.
+- Run 1's cold-start timeouts (above).
+- No console errors in any re-walk, other than my own aborted reCAPTCHA script.
+
+### Updated AC count
+
+The defects did not change an AC verdict, so the count stands at 27 of 30 confirmed.
+RF3 and RF8 are confirmed on the locally runnable path.
+RF12 is not confirmed until the post-deploy checks above.
