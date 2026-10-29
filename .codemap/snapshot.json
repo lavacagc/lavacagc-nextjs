@@ -1,14 +1,14 @@
 {
   "schema": "codemap/1",
-  "generatedAt": "2026-10-29T13:57:17.138Z",
+  "generatedAt": "2026-10-29T18:36:42.865Z",
   "repo": "luxury-nj-remodel-boost-nextjs",
   "git": {
-    "sha": "1fe8521edbbb86aa82d3069f418eec82bb03c40b",
-    "shortSha": "1fe8521",
-    "branch": "feat/home-services-request-flow",
-    "subject": "fix(portfolio): one slim scrolling filter row on phones so the chips stop covering the photos",
+    "sha": "ea86edaf39dc7b9a9583307d9f394659003d55c1",
+    "shortSha": "ea86eda",
+    "branch": "feat/phase-2-admin-catalog-articles-experiments",
+    "subject": "no-mistakes(document): Docs: drop stale OpenAI, seo-maintain and CTA Tests references",
     "author": "BuildSync Labs",
-    "committedAt": "2026-10-29T09:57:16-04:00"
+    "committedAt": "2026-10-29T14:32:01-04:00"
   },
   "config": {
     "roots": [
@@ -19,13 +19,13 @@
     "tsconfig": "tsconfig.json"
   },
   "totals": {
-    "files": 626,
+    "files": 685,
     "testFiles": 0,
-    "loc": 92241,
-    "edges": 1797,
-    "modules": 17,
-    "entries": 211,
-    "externalPackages": 54
+    "loc": 96018,
+    "edges": 2040,
+    "modules": 13,
+    "entries": 228,
+    "externalPackages": 53
   },
   "files": {
     "src/app/about/page.tsx": {
@@ -80,6 +80,24 @@
       "fanIn": 0,
       "module": "app"
     },
+    "src/app/api/admin/articles/[id]/publish/route.ts": {
+      "path": "src/app/api/admin/articles/[id]/publish/route.ts",
+      "loc": 47,
+      "rawLoc": 78,
+      "bytes": 3434,
+      "exports": [
+        "POST",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0d3398eb612d5107",
+      "fanOut": 6,
+      "fanIn": 0,
+      "module": "app"
+    },
     "src/app/api/admin/broadcasts/sync-suppression/route.ts": {
       "path": "src/app/api/admin/broadcasts/sync-suppression/route.ts",
       "loc": 19,
@@ -100,37 +118,18 @@
     },
     "src/app/api/admin/content-actions/apply/route.ts": {
       "path": "src/app/api/admin/content-actions/apply/route.ts",
-      "loc": 133,
-      "rawLoc": 178,
-      "bytes": 6879,
+      "loc": 50,
+      "rawLoc": 75,
+      "bytes": 3268,
       "exports": [
         "POST",
         "dynamic",
-        "runtime"
-      ],
-      "isTest": false,
-      "todos": 0,
-      "commentedOutCode": 3,
-      "hash": "0a1265bee166eec1",
-      "fanOut": 3,
-      "fanIn": 0,
-      "module": "app"
-    },
-    "src/app/api/admin/content-actions/draft/route.ts": {
-      "path": "src/app/api/admin/content-actions/draft/route.ts",
-      "loc": 135,
-      "rawLoc": 172,
-      "bytes": 6523,
-      "exports": [
-        "POST",
-        "dynamic",
-        "maxDuration",
         "runtime"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0726bd5de176ea73",
+      "hash": "0b98542b612d8a37",
       "fanOut": 3,
       "fanIn": 0,
       "module": "app"
@@ -155,9 +154,9 @@
     },
     "src/app/api/admin/content-actions/stage/route.ts": {
       "path": "src/app/api/admin/content-actions/stage/route.ts",
-      "loc": 92,
-      "rawLoc": 128,
-      "bytes": 5463,
+      "loc": 104,
+      "rawLoc": 146,
+      "bytes": 6390,
       "exports": [
         "POST",
         "dynamic",
@@ -166,7 +165,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0823c1570157d1f6",
+      "hash": "07e680c46163c65f",
       "fanOut": 3,
       "fanIn": 0,
       "module": "app"
@@ -230,9 +229,9 @@
     },
     "src/app/api/admin/cta/variants/route.ts": {
       "path": "src/app/api/admin/cta/variants/route.ts",
-      "loc": 116,
-      "rawLoc": 155,
-      "bytes": 6585,
+      "loc": 144,
+      "rawLoc": 194,
+      "bytes": 8667,
       "exports": [
         "GET",
         "PATCH",
@@ -243,8 +242,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0eaf85dc8171b15d",
-      "fanOut": 6,
+      "hash": "014b52c8819336cc",
+      "fanOut": 7,
       "fanIn": 0,
       "module": "app"
     },
@@ -399,6 +398,42 @@
       "fanIn": 0,
       "module": "app"
     },
+    "src/app/api/admin/experiments/[key]/route.ts": {
+      "path": "src/app/api/admin/experiments/[key]/route.ts",
+      "loc": 46,
+      "rawLoc": 65,
+      "bytes": 3568,
+      "exports": [
+        "POST",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0805a06de13ad969",
+      "fanOut": 5,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/admin/experiments/route.ts": {
+      "path": "src/app/api/admin/experiments/route.ts",
+      "loc": 18,
+      "rawLoc": 26,
+      "bytes": 1175,
+      "exports": [
+        "GET",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0ed66dc981141d3c",
+      "fanOut": 2,
+      "fanIn": 0,
+      "module": "app"
+    },
     "src/app/api/admin/follow-ups/route.ts": {
       "path": "src/app/api/admin/follow-ups/route.ts",
       "loc": 95,
@@ -525,6 +560,42 @@
       "todos": 0,
       "commentedOutCode": 0,
       "hash": "0534ce4001883d9c",
+      "fanOut": 3,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/admin/home-services/[slug]/route.ts": {
+      "path": "src/app/api/admin/home-services/[slug]/route.ts",
+      "loc": 34,
+      "rawLoc": 52,
+      "bytes": 2303,
+      "exports": [
+        "PATCH",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "09537903012485ca",
+      "fanOut": 6,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/admin/home-services/route.ts": {
+      "path": "src/app/api/admin/home-services/route.ts",
+      "loc": 15,
+      "rawLoc": 27,
+      "bytes": 1075,
+      "exports": [
+        "GET",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "000bcf66610e09d5",
       "fanOut": 3,
       "fanIn": 0,
       "module": "app"
@@ -901,6 +972,24 @@
       "fanIn": 0,
       "module": "app"
     },
+    "src/app/api/admin/revalidate/route.ts": {
+      "path": "src/app/api/admin/revalidate/route.ts",
+      "loc": 31,
+      "rawLoc": 48,
+      "bytes": 1872,
+      "exports": [
+        "POST",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0bab9a6c011b5e8a",
+      "fanOut": 2,
+      "fanIn": 0,
+      "module": "app"
+    },
     "src/app/api/admin/service-quote/_schema.ts": {
       "path": "src/app/api/admin/service-quote/_schema.ts",
       "loc": 66,
@@ -1020,9 +1109,9 @@
     },
     "src/app/api/admin/service-requests/[id]/route.ts": {
       "path": "src/app/api/admin/service-requests/[id]/route.ts",
-      "loc": 125,
-      "rawLoc": 148,
-      "bytes": 7376,
+      "loc": 138,
+      "rawLoc": 165,
+      "bytes": 8650,
       "exports": [
         "GET",
         "PATCH",
@@ -1032,8 +1121,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0a2009bf8185df88",
-      "fanOut": 10,
+      "hash": "0e1712e8219ab866",
+      "fanOut": 12,
       "fanIn": 0,
       "module": "app"
     },
@@ -1072,6 +1161,114 @@
       "commentedOutCode": 0,
       "hash": "0340f4a08163ea27",
       "fanOut": 6,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/articles/ingest/[id]/publish/route.ts": {
+      "path": "src/app/api/articles/ingest/[id]/publish/route.ts",
+      "loc": 94,
+      "rawLoc": 150,
+      "bytes": 7199,
+      "exports": [
+        "POST",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "03fda8afe15f06bb",
+      "fanOut": 9,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/articles/ingest/[id]/route.ts": {
+      "path": "src/app/api/articles/ingest/[id]/route.ts",
+      "loc": 84,
+      "rawLoc": 118,
+      "bytes": 5535,
+      "exports": [
+        "PATCH",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0d3308705156a866",
+      "fanOut": 8,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/articles/ingest/[id]/unpublish/route.ts": {
+      "path": "src/app/api/articles/ingest/[id]/unpublish/route.ts",
+      "loc": 20,
+      "rawLoc": 32,
+      "bytes": 1348,
+      "exports": [
+        "POST",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "058614bf4115f9cf",
+      "fanOut": 3,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/articles/ingest/route.ts": {
+      "path": "src/app/api/articles/ingest/route.ts",
+      "loc": 43,
+      "rawLoc": 66,
+      "bytes": 3014,
+      "exports": [
+        "POST",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "09db43810130f022",
+      "fanOut": 6,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/articles/seo-feedback/route.ts": {
+      "path": "src/app/api/articles/seo-feedback/route.ts",
+      "loc": 59,
+      "rawLoc": 90,
+      "bytes": 3995,
+      "exports": [
+        "GET",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "08ca41fd8137ed56",
+      "fanOut": 7,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/articles/unpublish/[token]/route.ts": {
+      "path": "src/app/api/articles/unpublish/[token]/route.ts",
+      "loc": 49,
+      "rawLoc": 78,
+      "bytes": 3816,
+      "exports": [
+        "POST",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "06afd2da81394278",
+      "fanOut": 7,
       "fanIn": 0,
       "module": "app"
     },
@@ -1162,6 +1359,25 @@
       "commentedOutCode": 0,
       "hash": "07f5bfe981752fff",
       "fanOut": 7,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/cron/experiments-evaluate/route.ts": {
+      "path": "src/app/api/cron/experiments-evaluate/route.ts",
+      "loc": 22,
+      "rawLoc": 44,
+      "bytes": 2295,
+      "exports": [
+        "GET",
+        "dynamic",
+        "maxDuration",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "032c8513211a4db5",
+      "fanOut": 2,
       "fanIn": 0,
       "module": "app"
     },
@@ -1260,9 +1476,9 @@
     },
     "src/app/api/cron/publish/route.ts": {
       "path": "src/app/api/cron/publish/route.ts",
-      "loc": 65,
-      "rawLoc": 84,
-      "bytes": 2805,
+      "loc": 89,
+      "rawLoc": 124,
+      "bytes": 5081,
       "exports": [
         "GET",
         "dynamic"
@@ -1270,8 +1486,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 1,
-      "hash": "066cf6214131ed7d",
-      "fanOut": 0,
+      "hash": "05cb2af2814f938b",
+      "fanOut": 4,
       "fanIn": 0,
       "module": "app"
     },
@@ -1346,25 +1562,6 @@
       "fanIn": 0,
       "module": "app"
     },
-    "src/app/api/cron/seo-maintain/route.ts": {
-      "path": "src/app/api/cron/seo-maintain/route.ts",
-      "loc": 219,
-      "rawLoc": 290,
-      "bytes": 11270,
-      "exports": [
-        "GET",
-        "dynamic",
-        "maxDuration",
-        "runtime"
-      ],
-      "isTest": false,
-      "todos": 0,
-      "commentedOutCode": 1,
-      "hash": "0c94fadb81b1c141",
-      "fanOut": 5,
-      "fanIn": 0,
-      "module": "app"
-    },
     "src/app/api/cron/seo-report/route.ts": {
       "path": "src/app/api/cron/seo-report/route.ts",
       "loc": 35,
@@ -1385,9 +1582,9 @@
     },
     "src/app/api/cron/seo-rollback/route.ts": {
       "path": "src/app/api/cron/seo-rollback/route.ts",
-      "loc": 131,
-      "rawLoc": 176,
-      "bytes": 7198,
+      "loc": 133,
+      "rawLoc": 179,
+      "bytes": 7383,
       "exports": [
         "GET",
         "dynamic",
@@ -1396,8 +1593,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "09369117f16c2c98",
-      "fanOut": 3,
+      "hash": "0ae967c6816ef9ca",
+      "fanOut": 4,
       "fanIn": 0,
       "module": "app"
     },
@@ -1477,9 +1674,9 @@
     },
     "src/app/api/cta/event/route.ts": {
       "path": "src/app/api/cta/event/route.ts",
-      "loc": 75,
-      "rawLoc": 113,
-      "bytes": 4933,
+      "loc": 65,
+      "rawLoc": 107,
+      "bytes": 4851,
       "exports": [
         "POST",
         "dynamic",
@@ -1488,8 +1685,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0ee0d80d814805c9",
-      "fanOut": 6,
+      "hash": "088e0c96e13de35e",
+      "fanOut": 7,
       "fanIn": 0,
       "module": "app"
     },
@@ -1506,6 +1703,151 @@
       "commentedOutCode": 0,
       "hash": "0ddacd2261224ba4",
       "fanOut": 1,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/experiments/[key]/conclude/route.ts": {
+      "path": "src/app/api/experiments/[key]/conclude/route.ts",
+      "loc": 40,
+      "rawLoc": 57,
+      "bytes": 2785,
+      "exports": [
+        "POST",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0d3f0388012dd0ca",
+      "fanOut": 6,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/experiments/[key]/start/route.ts": {
+      "path": "src/app/api/experiments/[key]/start/route.ts",
+      "loc": 27,
+      "rawLoc": 40,
+      "bytes": 1955,
+      "exports": [
+        "POST",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0f6eae53212244f2",
+      "fanOut": 5,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/experiments/backlog/route.ts": {
+      "path": "src/app/api/experiments/backlog/route.ts",
+      "loc": 43,
+      "rawLoc": 58,
+      "bytes": 2927,
+      "exports": [
+        "GET",
+        "POST",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0fdf46bb81323705",
+      "fanOut": 5,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/experiments/event/route.ts": {
+      "path": "src/app/api/experiments/event/route.ts",
+      "loc": 72,
+      "rawLoc": 112,
+      "bytes": 5502,
+      "exports": [
+        "POST",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0802e4806152c6ef",
+      "fanOut": 9,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/experiments/notify/route.ts": {
+      "path": "src/app/api/experiments/notify/route.ts",
+      "loc": 18,
+      "rawLoc": 28,
+      "bytes": 1381,
+      "exports": [
+        "POST",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0871353fa116afbe",
+      "fanOut": 4,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/experiments/report/route.ts": {
+      "path": "src/app/api/experiments/report/route.ts",
+      "loc": 34,
+      "rawLoc": 48,
+      "bytes": 2210,
+      "exports": [
+        "GET",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0675820c61214381",
+      "fanOut": 5,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/experiments/route.ts": {
+      "path": "src/app/api/experiments/route.ts",
+      "loc": 66,
+      "rawLoc": 89,
+      "bytes": 4026,
+      "exports": [
+        "POST",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0ffffdfa81446264",
+      "fanOut": 6,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/experiments/veto/route.ts": {
+      "path": "src/app/api/experiments/veto/route.ts",
+      "loc": 31,
+      "rawLoc": 47,
+      "bytes": 2461,
+      "exports": [
+        "POST",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "067d94096128c0a2",
+      "fanOut": 4,
       "fanIn": 0,
       "module": "app"
     },
@@ -1744,9 +2086,9 @@
     },
     "src/app/api/home-services/request/route.ts": {
       "path": "src/app/api/home-services/request/route.ts",
-      "loc": 268,
-      "rawLoc": 328,
-      "bytes": 15072,
+      "loc": 280,
+      "rawLoc": 345,
+      "bytes": 16041,
       "exports": [
         "POST",
         "dynamic",
@@ -1755,8 +2097,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "06c3abd402040321",
-      "fanOut": 15,
+      "hash": "0dac57ab820fb0b9",
+      "fanOut": 18,
       "fanIn": 0,
       "module": "app"
     },
@@ -2169,6 +2511,24 @@
       "fanIn": 0,
       "module": "app"
     },
+    "src/app/articles/unpublish/[token]/route.ts": {
+      "path": "src/app/articles/unpublish/[token]/route.ts",
+      "loc": 28,
+      "rawLoc": 50,
+      "bytes": 2169,
+      "exports": [
+        "GET",
+        "dynamic",
+        "runtime"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0ac25cda011b6c26",
+      "fanOut": 3,
+      "fanIn": 0,
+      "module": "app"
+    },
     "src/app/auth/layout.tsx": {
       "path": "src/app/auth/layout.tsx",
       "loc": 13,
@@ -2224,9 +2584,9 @@
     },
     "src/app/blog/[slug]/page.tsx": {
       "path": "src/app/blog/[slug]/page.tsx",
-      "loc": 300,
-      "rawLoc": 344,
-      "bytes": 11267,
+      "loc": 303,
+      "rawLoc": 354,
+      "bytes": 11743,
       "exports": [
         "BlogPostPage",
         "default",
@@ -2236,9 +2596,9 @@
       ],
       "isTest": false,
       "todos": 0,
-      "commentedOutCode": 2,
-      "hash": "080b06bd61bf7ad6",
-      "fanOut": 4,
+      "commentedOutCode": 1,
+      "hash": "0a9a822181c0fe2d",
+      "fanOut": 7,
       "fanIn": 0,
       "module": "app"
     },
@@ -2262,9 +2622,9 @@
     },
     "src/app/blog/page.tsx": {
       "path": "src/app/blog/page.tsx",
-      "loc": 176,
-      "rawLoc": 195,
-      "bytes": 7178,
+      "loc": 178,
+      "rawLoc": 199,
+      "bytes": 7387,
       "exports": [
         "Blog",
         "default",
@@ -2273,17 +2633,17 @@
       ],
       "isTest": false,
       "todos": 0,
-      "commentedOutCode": 2,
-      "hash": "0a35e12a21820cb3",
-      "fanOut": 4,
+      "commentedOutCode": 1,
+      "hash": "05e31d22a1841b86",
+      "fanOut": 5,
       "fanIn": 0,
       "module": "app"
     },
     "src/app/blog/preview/[slug]/page.tsx": {
       "path": "src/app/blog/preview/[slug]/page.tsx",
-      "loc": 204,
-      "rawLoc": 232,
-      "bytes": 6900,
+      "loc": 208,
+      "rawLoc": 237,
+      "bytes": 7071,
       "exports": [
         "BlogPostPreviewPage",
         "default"
@@ -2291,8 +2651,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0396af617175fcc2",
-      "fanOut": 4,
+      "hash": "0456321b81799c9b",
+      "fanOut": 6,
       "fanIn": 0,
       "module": "app"
     },
@@ -2351,8 +2711,8 @@
     "src/app/cms/[...slug]/page.tsx": {
       "path": "src/app/cms/[...slug]/page.tsx",
       "loc": 36,
-      "rawLoc": 46,
-      "bytes": 1406,
+      "rawLoc": 47,
+      "bytes": 1544,
       "exports": [
         "CMSPageRoute",
         "default",
@@ -2363,7 +2723,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "07e8408a011e4906",
+      "hash": "0ee3fdf0811e0172",
       "fanOut": 2,
       "fanIn": 0,
       "module": "app"
@@ -2371,8 +2731,8 @@
     "src/app/commercial-services/page.tsx": {
       "path": "src/app/commercial-services/page.tsx",
       "loc": 393,
-      "rawLoc": 414,
-      "bytes": 20562,
+      "rawLoc": 415,
+      "bytes": 20653,
       "exports": [
         "CommercialServicesPage",
         "default",
@@ -2382,7 +2742,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0b837a35827533e8",
+      "hash": "09fc5b8382769079",
       "fanOut": 7,
       "fanIn": 0,
       "module": "app"
@@ -2391,7 +2751,7 @@
       "path": "src/app/contact/page.tsx",
       "loc": 120,
       "rawLoc": 131,
-      "bytes": 5598,
+      "bytes": 5599,
       "exports": [
         "ContactPage",
         "default",
@@ -2400,7 +2760,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0a6b5acbe163f427",
+      "hash": "01d947be01642306",
       "fanOut": 6,
       "fanIn": 0,
       "module": "app"
@@ -2513,6 +2873,42 @@
       "fanIn": 0,
       "module": "app"
     },
+    "src/app/experiments/veto/[token]/VetoButton.tsx": {
+      "path": "src/app/experiments/veto/[token]/VetoButton.tsx",
+      "loc": 43,
+      "rawLoc": 48,
+      "bytes": 1622,
+      "exports": [
+        "VetoButton",
+        "default"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "04f55aa6811e6332",
+      "fanOut": 0,
+      "fanIn": 1,
+      "module": "app"
+    },
+    "src/app/experiments/veto/[token]/page.tsx": {
+      "path": "src/app/experiments/veto/[token]/page.tsx",
+      "loc": 57,
+      "rawLoc": 74,
+      "bytes": 3529,
+      "exports": [
+        "VetoPage",
+        "default",
+        "dynamic",
+        "metadata"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "07ce33b7813e238b",
+      "fanOut": 3,
+      "fanIn": 0,
+      "module": "app"
+    },
     "src/app/faq/page.tsx": {
       "path": "src/app/faq/page.tsx",
       "loc": 233,
@@ -2534,8 +2930,8 @@
     "src/app/free-estimate/page.tsx": {
       "path": "src/app/free-estimate/page.tsx",
       "loc": 321,
-      "rawLoc": 365,
-      "bytes": 14630,
+      "rawLoc": 366,
+      "bytes": 14801,
       "exports": [
         "FreeEstimatePage",
         "default",
@@ -2545,7 +2941,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 1,
-      "hash": "0c3365c04265e24f",
+      "hash": "006b47cf026e21e9",
       "fanOut": 1,
       "fanIn": 0,
       "module": "app"
@@ -2665,9 +3061,9 @@
     },
     "src/app/home-services/[slug]/page.tsx": {
       "path": "src/app/home-services/[slug]/page.tsx",
-      "loc": 201,
-      "rawLoc": 225,
-      "bytes": 11691,
+      "loc": 203,
+      "rawLoc": 231,
+      "bytes": 12066,
       "exports": [
         "HomeServicePage",
         "default",
@@ -2678,16 +3074,16 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "00956acd01d78cfc",
-      "fanOut": 12,
+      "hash": "087b973281dc49b1",
+      "fanOut": 14,
       "fanIn": 0,
       "module": "app"
     },
     "src/app/home-services/page.tsx": {
       "path": "src/app/home-services/page.tsx",
-      "loc": 261,
-      "rawLoc": 289,
-      "bytes": 14869,
+      "loc": 308,
+      "rawLoc": 344,
+      "bytes": 17470,
       "exports": [
         "HomeServicesPage",
         "default",
@@ -2696,8 +3092,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0fdf537e8206c297",
-      "fanOut": 12,
+      "hash": "04baba988234dc27",
+      "fanOut": 17,
       "fanIn": 0,
       "module": "app"
     },
@@ -2757,9 +3153,9 @@
     },
     "src/app/layout.tsx": {
       "path": "src/app/layout.tsx",
-      "loc": 142,
-      "rawLoc": 174,
-      "bytes": 7567,
+      "loc": 137,
+      "rawLoc": 169,
+      "bytes": 7476,
       "exports": [
         "RootLayout",
         "default",
@@ -2768,7 +3164,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0bb22fb701668ab5",
+      "hash": "00a600510162cda6",
       "fanOut": 15,
       "fanIn": 0,
       "module": "app"
@@ -2923,8 +3319,8 @@
     "src/app/lp/basement-finishing/page.tsx": {
       "path": "src/app/lp/basement-finishing/page.tsx",
       "loc": 28,
-      "rawLoc": 35,
-      "bytes": 1104,
+      "rawLoc": 36,
+      "bytes": 1242,
       "exports": [
         "BasementFinishingPage",
         "default",
@@ -2934,7 +3330,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0c7e6b51e1172bbe",
+      "hash": "0a096449611711ae",
       "fanOut": 2,
       "fanIn": 0,
       "module": "app"
@@ -2942,8 +3338,8 @@
     "src/app/lp/bathroom-renovation/page.tsx": {
       "path": "src/app/lp/bathroom-renovation/page.tsx",
       "loc": 28,
-      "rawLoc": 35,
-      "bytes": 1098,
+      "rawLoc": 36,
+      "bytes": 1236,
       "exports": [
         "BathroomRenovationPage",
         "default",
@@ -2953,7 +3349,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0e5153af61171376",
+      "hash": "075201d0011725a4",
       "fanOut": 2,
       "fanIn": 0,
       "module": "app"
@@ -2961,8 +3357,8 @@
     "src/app/lp/kitchen-remodel/page.tsx": {
       "path": "src/app/lp/kitchen-remodel/page.tsx",
       "loc": 28,
-      "rawLoc": 35,
-      "bytes": 1090,
+      "rawLoc": 36,
+      "bytes": 1228,
       "exports": [
         "KitchenRemodelPage",
         "default",
@@ -2972,7 +3368,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "08eca2168116b184",
+      "hash": "0e0b974c8116dfb7",
       "fanOut": 2,
       "fanIn": 0,
       "module": "app"
@@ -3050,9 +3446,9 @@
     },
     "src/app/offer/[token]/page.tsx": {
       "path": "src/app/offer/[token]/page.tsx",
-      "loc": 235,
-      "rawLoc": 285,
-      "bytes": 12569,
+      "loc": 237,
+      "rawLoc": 287,
+      "bytes": 12673,
       "exports": [
         "OfferPage",
         "default",
@@ -3062,8 +3458,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "026661ca01dfdb85",
-      "fanOut": 10,
+      "hash": "047bc6c681e0944d",
+      "fanOut": 11,
       "fanIn": 0,
       "module": "app"
     },
@@ -3108,7 +3504,7 @@
       "path": "src/app/portfolio/page.tsx",
       "loc": 208,
       "rawLoc": 231,
-      "bytes": 7558,
+      "bytes": 7658,
       "exports": [
         "Portfolio",
         "default",
@@ -3118,7 +3514,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "021b48dc81872e1f",
+      "hash": "09712d8e81878241",
       "fanOut": 3,
       "fanIn": 0,
       "module": "app"
@@ -3232,9 +3628,9 @@
     },
     "src/app/projects/[slug]/page.tsx": {
       "path": "src/app/projects/[slug]/page.tsx",
-      "loc": 242,
-      "rawLoc": 301,
-      "bytes": 9606,
+      "loc": 243,
+      "rawLoc": 302,
+      "bytes": 9707,
       "exports": [
         "ProjectDetailPage",
         "default",
@@ -3244,9 +3640,9 @@
       ],
       "isTest": false,
       "todos": 0,
-      "commentedOutCode": 2,
-      "hash": "09616d10019586cf",
-      "fanOut": 3,
+      "commentedOutCode": 1,
+      "hash": "0d186600e195fd61",
+      "fanOut": 4,
       "fanIn": 0,
       "module": "app"
     },
@@ -3382,7 +3778,7 @@
       "path": "src/app/robots.ts",
       "loc": 45,
       "rawLoc": 50,
-      "bytes": 1695,
+      "bytes": 1737,
       "exports": [
         "default",
         "robots"
@@ -3390,7 +3786,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0ef7721f011b8cd1",
+      "hash": "0d388d1fe11c8ab0",
       "fanOut": 0,
       "fanIn": 0,
       "module": "app"
@@ -3399,7 +3795,7 @@
       "path": "src/app/services/[slug]/page.tsx",
       "loc": 267,
       "rawLoc": 308,
-      "bytes": 10139,
+      "bytes": 10201,
       "exports": [
         "ServiceDetailPage",
         "default",
@@ -3409,8 +3805,8 @@
       ],
       "isTest": false,
       "todos": 0,
-      "commentedOutCode": 3,
-      "hash": "039c84fee1adc71c",
+      "commentedOutCode": 2,
+      "hash": "0e282a8ee1ae3dee",
       "fanOut": 5,
       "fanIn": 0,
       "module": "app"
@@ -3436,8 +3832,8 @@
     "src/app/services/page.tsx": {
       "path": "src/app/services/page.tsx",
       "loc": 300,
-      "rawLoc": 313,
-      "bytes": 14241,
+      "rawLoc": 314,
+      "bytes": 14332,
       "exports": [
         "ServicesHubPage",
         "default",
@@ -3447,7 +3843,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0c802896820088c7",
+      "hash": "008b0f2782032623",
       "fanOut": 4,
       "fanIn": 0,
       "module": "app"
@@ -3472,9 +3868,9 @@
     },
     "src/app/sitemap.ts": {
       "path": "src/app/sitemap.ts",
-      "loc": 265,
-      "rawLoc": 300,
-      "bytes": 8951,
+      "loc": 272,
+      "rawLoc": 310,
+      "bytes": 9566,
       "exports": [
         "default",
         "sitemap"
@@ -3482,16 +3878,16 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 4,
-      "hash": "01c374594194bdd3",
-      "fanOut": 3,
+      "hash": "085891dd719b6196",
+      "fanOut": 4,
       "fanIn": 0,
       "module": "app"
     },
     "src/app/spring-renovation/page.tsx": {
       "path": "src/app/spring-renovation/page.tsx",
       "loc": 27,
-      "rawLoc": 34,
-      "bytes": 1040,
+      "rawLoc": 35,
+      "bytes": 1178,
       "exports": [
         "SpringRenovationPage",
         "default",
@@ -3501,7 +3897,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "020e56398115bcb8",
+      "hash": "02d0eca50115c541",
       "fanOut": 2,
       "fanIn": 0,
       "module": "app"
@@ -3855,9 +4251,9 @@
     },
     "src/components/AdminContent.tsx": {
       "path": "src/components/AdminContent.tsx",
-      "loc": 298,
-      "rawLoc": 351,
-      "bytes": 13102,
+      "loc": 304,
+      "rawLoc": 370,
+      "bytes": 14357,
       "exports": [
         "AdminContent",
         "default"
@@ -3865,8 +4261,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 1,
-      "hash": "00a1fdbc01dba7fa",
-      "fanOut": 35,
+      "hash": "0680192e81e8d300",
+      "fanOut": 36,
       "fanIn": 1,
       "module": "components"
     },
@@ -4035,7 +4431,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0e624d8d81393df3",
+      "hash": "0ae5678881393cab",
       "fanOut": 3,
       "fanIn": 1,
       "module": "components"
@@ -4100,7 +4496,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "04f4117a810f8b9c",
+      "hash": "0903743c010f8bd2",
       "fanOut": 1,
       "fanIn": 1,
       "module": "components"
@@ -4109,7 +4505,7 @@
       "path": "src/components/ContactTrustBadges.tsx",
       "loc": 61,
       "rawLoc": 68,
-      "bytes": 2454,
+      "bytes": 2457,
       "exports": [
         "ContactTrustBadges",
         "default"
@@ -4117,7 +4513,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0cc1030da12c9568",
+      "hash": "0f0be721012cf276",
       "fanOut": 1,
       "fanIn": 1,
       "module": "components"
@@ -4208,7 +4604,7 @@
       "path": "src/components/FreeEstimateLanding.tsx",
       "loc": 407,
       "rawLoc": 450,
-      "bytes": 19118,
+      "bytes": 19121,
       "exports": [
         "FreeEstimateLanding",
         "default"
@@ -4216,7 +4612,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0a2de31d0251c700",
+      "hash": "0b00c497a2533c5e",
       "fanOut": 4,
       "fanIn": 1,
       "module": "components"
@@ -4294,14 +4690,14 @@
       "path": "src/components/Hero.tsx",
       "loc": 161,
       "rawLoc": 189,
-      "bytes": 8323,
+      "bytes": 8320,
       "exports": [
         "default"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 1,
-      "hash": "0196c04c0186c8d9",
+      "hash": "027bd028818670d2",
       "fanOut": 1,
       "fanIn": 1,
       "module": "components"
@@ -4434,7 +4830,7 @@
       "commentedOutCode": 0,
       "hash": "00bc5786211dd9ca",
       "fanOut": 0,
-      "fanIn": 1,
+      "fanIn": 2,
       "module": "components"
     },
     "src/components/LazySection.tsx": {
@@ -4514,7 +4910,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "00ab12530113267f",
+      "hash": "0c56438c41132584",
       "fanOut": 2,
       "fanIn": 1,
       "module": "components"
@@ -4618,9 +5014,9 @@
     },
     "src/components/PortfolioContent.tsx": {
       "path": "src/components/PortfolioContent.tsx",
-      "loc": 250,
-      "rawLoc": 289,
-      "bytes": 12362,
+      "loc": 251,
+      "rawLoc": 298,
+      "bytes": 12768,
       "exports": [
         "PortfolioContent",
         "default"
@@ -4628,8 +5024,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "07ab134e61caa7f3",
-      "fanOut": 7,
+      "hash": "0c2443cc71cdf7dd",
+      "fanOut": 8,
       "fanIn": 2,
       "module": "components"
     },
@@ -4761,7 +5157,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "082bf890c134e4af",
+      "hash": "0d348fb50134e488",
       "fanOut": 1,
       "fanIn": 1,
       "module": "components"
@@ -4778,7 +5174,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "04fd80367215ded8",
+      "hash": "037141d92215de35",
       "fanOut": 4,
       "fanIn": 1,
       "module": "components"
@@ -4876,7 +5272,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0bdd2d68e277ef88",
+      "hash": "0216083a8277ef22",
       "fanOut": 4,
       "fanIn": 1,
       "module": "components"
@@ -4899,9 +5295,9 @@
     },
     "src/components/SmartBanner.tsx": {
       "path": "src/components/SmartBanner.tsx",
-      "loc": 448,
-      "rawLoc": 546,
-      "bytes": 21332,
+      "loc": 454,
+      "rawLoc": 559,
+      "bytes": 21992,
       "exports": [
         "SmartBanner",
         "default"
@@ -4909,8 +5305,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "09fc8741025e29a0",
-      "fanOut": 5,
+      "hash": "0e717aec82639c88",
+      "fanOut": 6,
       "fanIn": 1,
       "module": "components"
     },
@@ -4942,7 +5338,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "08ad79eca135d8ce",
+      "hash": "0f3da7b98135d8e6",
       "fanOut": 3,
       "fanIn": 1,
       "module": "components"
@@ -5152,9 +5548,9 @@
     },
     "src/components/admin/AdminSidebar.tsx": {
       "path": "src/components/admin/AdminSidebar.tsx",
-      "loc": 355,
-      "rawLoc": 425,
-      "bytes": 15833,
+      "loc": 357,
+      "rawLoc": 430,
+      "bytes": 16379,
       "exports": [
         "ADMIN_TAB_IDS",
         "AdminSidebar",
@@ -5163,7 +5559,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 1,
-      "hash": "0ae6eb3be1e047d7",
+      "hash": "0608e25c01e53ada",
       "fanOut": 2,
       "fanIn": 1,
       "module": "components"
@@ -5186,81 +5582,65 @@
     },
     "src/components/admin/BannerManager.tsx": {
       "path": "src/components/admin/BannerManager.tsx",
-      "loc": 419,
-      "rawLoc": 450,
-      "bytes": 19673,
+      "loc": 421,
+      "rawLoc": 452,
+      "bytes": 20025,
       "exports": [
         "BannerManager"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0639016f83a2e6c4",
+      "hash": "0488e1260394d231",
       "fanOut": 9,
       "fanIn": 1,
       "module": "components"
     },
     "src/components/admin/BlogPostEditor.tsx": {
       "path": "src/components/admin/BlogPostEditor.tsx",
-      "loc": 844,
-      "rawLoc": 935,
-      "bytes": 31698,
+      "loc": 678,
+      "rawLoc": 769,
+      "bytes": 28027,
       "exports": [
         "BlogPostEditor"
       ],
       "isTest": false,
       "todos": 0,
-      "commentedOutCode": 1,
-      "hash": "0b2b5ccb830f4827",
-      "fanOut": 16,
-      "fanIn": 1,
-      "module": "components"
-    },
-    "src/components/admin/BlogPostGenerator.tsx": {
-      "path": "src/components/admin/BlogPostGenerator.tsx",
-      "loc": 180,
-      "rawLoc": 206,
-      "bytes": 7282,
-      "exports": [
-        "BlogPostGenerator"
-      ],
-      "isTest": false,
-      "todos": 0,
       "commentedOutCode": 2,
-      "hash": "07f0daca417ff50d",
-      "fanOut": 8,
+      "hash": "092d050902bb1e9a",
+      "fanOut": 17,
       "fanIn": 1,
       "module": "components"
     },
     "src/components/admin/BlogPostList.tsx": {
       "path": "src/components/admin/BlogPostList.tsx",
-      "loc": 314,
-      "rawLoc": 345,
-      "bytes": 10850,
+      "loc": 366,
+      "rawLoc": 418,
+      "bytes": 14067,
       "exports": [
         "BlogPostList"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "01e4871661c367fd",
-      "fanOut": 8,
+      "hash": "0b2b70ae61f791bd",
+      "fanOut": 9,
       "fanIn": 1,
       "module": "components"
     },
     "src/components/admin/CMSPageEditor.tsx": {
       "path": "src/components/admin/CMSPageEditor.tsx",
-      "loc": 997,
-      "rawLoc": 1080,
-      "bytes": 48887,
+      "loc": 1007,
+      "rawLoc": 1091,
+      "bytes": 49412,
       "exports": [
         "CMSPageEditor"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "03c88658847a020c",
-      "fanOut": 9,
+      "hash": "0df8d498847efa5d",
+      "fanOut": 10,
       "fanIn": 1,
       "module": "components"
     },
@@ -5464,9 +5844,9 @@
     },
     "src/components/admin/SeoSuggestionsDashboard.tsx": {
       "path": "src/components/admin/SeoSuggestionsDashboard.tsx",
-      "loc": 289,
-      "rawLoc": 319,
-      "bytes": 11419,
+      "loc": 346,
+      "rawLoc": 381,
+      "bytes": 14635,
       "exports": [
         "SeoSuggestionsDashboard",
         "default"
@@ -5474,8 +5854,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0ac6fbab81d90e10",
-      "fanOut": 3,
+      "hash": "035190a9a20b84c6",
+      "fanOut": 4,
       "fanIn": 1,
       "module": "components"
     },
@@ -5497,25 +5877,42 @@
     },
     "src/components/admin/ServicesEditor.tsx": {
       "path": "src/components/admin/ServicesEditor.tsx",
-      "loc": 284,
-      "rawLoc": 308,
-      "bytes": 9908,
+      "loc": 289,
+      "rawLoc": 313,
+      "bytes": 10173,
       "exports": [
         "ServicesEditor"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "091ece5011af4748",
-      "fanOut": 9,
+      "hash": "0345e7f601b3ceb0",
+      "fanOut": 10,
+      "fanIn": 1,
+      "module": "components"
+    },
+    "src/components/admin/experiments/ExperimentsDashboard.tsx": {
+      "path": "src/components/admin/experiments/ExperimentsDashboard.tsx",
+      "loc": 362,
+      "rawLoc": 407,
+      "bytes": 21865,
+      "exports": [
+        "ExperimentsDashboard",
+        "default"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0f1863b0e29b2471",
+      "fanOut": 7,
       "fanIn": 1,
       "module": "components"
     },
     "src/components/admin/home-services/BidRequestForm.tsx": {
       "path": "src/components/admin/home-services/BidRequestForm.tsx",
-      "loc": 297,
-      "rawLoc": 329,
-      "bytes": 17520,
+      "loc": 298,
+      "rawLoc": 330,
+      "bytes": 17547,
       "exports": [
         "BidRequestForm",
         "BidTrade",
@@ -5524,16 +5921,16 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0dd2f82b82398d82",
+      "hash": "0fa940ff823a40a1",
       "fanOut": 9,
       "fanIn": 1,
       "module": "components"
     },
     "src/components/admin/home-services/CtaTestsDashboard.tsx": {
       "path": "src/components/admin/home-services/CtaTestsDashboard.tsx",
-      "loc": 184,
-      "rawLoc": 214,
-      "bytes": 7616,
+      "loc": 208,
+      "rawLoc": 241,
+      "bytes": 9035,
       "exports": [
         "CtaTestsDashboard",
         "default"
@@ -5541,7 +5938,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "06418a2d81831abe",
+      "hash": "03caf2a1819a4d23",
       "fanOut": 9,
       "fanIn": 1,
       "module": "components"
@@ -5565,9 +5962,9 @@
     },
     "src/components/admin/home-services/RequestDetail.tsx": {
       "path": "src/components/admin/home-services/RequestDetail.tsx",
-      "loc": 362,
-      "rawLoc": 395,
-      "bytes": 20661,
+      "loc": 369,
+      "rawLoc": 402,
+      "bytes": 21189,
       "exports": [
         "DetailResponse",
         "RequestDetail",
@@ -5576,16 +5973,16 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "00c1340fa27aec86",
+      "hash": "0aa6f85b628474fa",
       "fanOut": 10,
       "fanIn": 1,
       "module": "components"
     },
     "src/components/admin/home-services/ServiceRequestsManager.tsx": {
       "path": "src/components/admin/home-services/ServiceRequestsManager.tsx",
-      "loc": 219,
-      "rawLoc": 253,
-      "bytes": 13124,
+      "loc": 222,
+      "rawLoc": 256,
+      "bytes": 13254,
       "exports": [
         "ServiceRequestsManager",
         "default"
@@ -5593,8 +5990,26 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0c588075a1ef2c24",
+      "hash": "0a6c970d81f22d07",
       "fanOut": 8,
+      "fanIn": 1,
+      "module": "components"
+    },
+    "src/components/admin/home-services/ServicesPricesEditor.tsx": {
+      "path": "src/components/admin/home-services/ServicesPricesEditor.tsx",
+      "loc": 439,
+      "rawLoc": 509,
+      "bytes": 25525,
+      "exports": [
+        "ServicesPricesEditor",
+        "default",
+        "formatPrice"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "06ef177f02c43de3",
+      "fanOut": 10,
       "fanIn": 1,
       "module": "components"
     },
@@ -5652,7 +6067,7 @@
       "path": "src/components/admin/home-services/cta/VariantEditor.tsx",
       "loc": 96,
       "rawLoc": 112,
-      "bytes": 4197,
+      "bytes": 4169,
       "exports": [
         "VariantDraft",
         "VariantEditor"
@@ -5660,17 +6075,18 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0ad8319101472283",
+      "hash": "026b432e0146c6a4",
       "fanOut": 4,
       "fanIn": 2,
       "module": "components"
     },
     "src/components/admin/home-services/cta/ctaApi.ts": {
       "path": "src/components/admin/home-services/cta/ctaApi.ts",
-      "loc": 35,
-      "rawLoc": 45,
-      "bytes": 1780,
+      "loc": 42,
+      "rawLoc": 53,
+      "bytes": 1972,
       "exports": [
+        "CtaHistoryRow",
         "CtaReportResponse",
         "VariantPatch",
         "ctaApi"
@@ -5678,7 +6094,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "065d6f22011fea5b",
+      "hash": "07c73c5481234112",
       "fanOut": 2,
       "fanIn": 2,
       "module": "components"
@@ -5702,28 +6118,31 @@
     },
     "src/components/admin/home-services/shared.tsx": {
       "path": "src/components/admin/home-services/shared.tsx",
-      "loc": 66,
-      "rawLoc": 85,
-      "bytes": 3430,
+      "loc": 101,
+      "rawLoc": 134,
+      "bytes": 5199,
       "exports": [
         "LabeledSelect",
-        "SERVICE_OPTIONS",
         "StatusBadge",
         "TRADE_OPTIONS",
         "channelLabel",
         "fetchJson",
         "formatWhen",
         "jsonInit",
+        "loadServiceRows",
+        "refreshServiceRows",
         "selectCls",
-        "serviceName",
-        "tradeName"
+        "tradeName",
+        "useServiceName",
+        "useServiceOptions",
+        "useServiceRows"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0dc783748141458f",
-      "fanOut": 3,
-      "fanIn": 6,
+      "hash": "09c33fb2815ae3a6",
+      "fanOut": 4,
+      "fanIn": 7,
       "module": "components"
     },
     "src/components/admin/projects/DraftPhotosPanel.tsx": {
@@ -5932,21 +6351,20 @@
       "fanIn": 1,
       "module": "components"
     },
-    "src/components/admin/ui/AdminRadioGroup.tsx": {
-      "path": "src/components/admin/ui/AdminRadioGroup.tsx",
-      "loc": 43,
-      "rawLoc": 47,
-      "bytes": 1686,
+    "src/components/blog/BlogFaq.tsx": {
+      "path": "src/components/blog/BlogFaq.tsx",
+      "loc": 22,
+      "rawLoc": 29,
+      "bytes": 1266,
       "exports": [
-        "AdminRadioGroup",
-        "AdminRadioGroupItem"
+        "BlogFaq"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "014e81a6812314f9",
+      "hash": "09c1cf2d81145eb9",
       "fanOut": 1,
-      "fanIn": 1,
+      "fanIn": 2,
       "module": "components"
     },
     "src/components/forms/ContactTimePicker.tsx": {
@@ -6059,9 +6477,9 @@
     },
     "src/components/home-services/PhotoUploader.tsx": {
       "path": "src/components/home-services/PhotoUploader.tsx",
-      "loc": 294,
-      "rawLoc": 339,
-      "bytes": 12926,
+      "loc": 299,
+      "rawLoc": 344,
+      "bytes": 13247,
       "exports": [
         "MAX_PHOTOS",
         "PhotoState",
@@ -6073,7 +6491,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "072a3f7701d8f3c2",
+      "hash": "01acb22fe1df57ce",
       "fanOut": 3,
       "fanIn": 1,
       "module": "components"
@@ -6097,9 +6515,9 @@
     },
     "src/components/home-services/RequestFlow.tsx": {
       "path": "src/components/home-services/RequestFlow.tsx",
-      "loc": 443,
-      "rawLoc": 489,
-      "bytes": 22338,
+      "loc": 449,
+      "rawLoc": 500,
+      "bytes": 22981,
       "exports": [
         "RequestFlow",
         "default"
@@ -6107,7 +6525,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "06f0c203027b7692",
+      "hash": "019d350c42812d5c",
       "fanOut": 9,
       "fanIn": 3,
       "module": "components"
@@ -6116,7 +6534,7 @@
       "path": "src/components/home-services/RequestServiceButton.tsx",
       "loc": 26,
       "rawLoc": 31,
-      "bytes": 1373,
+      "bytes": 1425,
       "exports": [
         "RequestServiceButton",
         "default"
@@ -6124,16 +6542,16 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "09a17dd0811aa2d1",
+      "hash": "0b600d28811c10f5",
       "fanOut": 4,
       "fanIn": 1,
       "module": "components"
     },
     "src/components/home-services/ServiceCatalog.tsx": {
       "path": "src/components/home-services/ServiceCatalog.tsx",
-      "loc": 128,
-      "rawLoc": 148,
-      "bytes": 7167,
+      "loc": 129,
+      "rawLoc": 152,
+      "bytes": 7331,
       "exports": [
         "ServiceCatalog",
         "default"
@@ -6141,7 +6559,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0acbe0398173d2d7",
+      "hash": "085966b001721daa",
       "fanOut": 7,
       "fanIn": 1,
       "module": "components"
@@ -6165,9 +6583,9 @@
     },
     "src/components/home-services/useRequestFlow.ts": {
       "path": "src/components/home-services/useRequestFlow.ts",
-      "loc": 68,
-      "rawLoc": 108,
-      "bytes": 4288,
+      "loc": 72,
+      "rawLoc": 114,
+      "bytes": 4584,
       "exports": [
         "preloadRequestFlow",
         "useHashSheet",
@@ -6176,8 +6594,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "01ad17686133f5ab",
-      "fanOut": 1,
+      "hash": "023b369d0136ebff",
+      "fanOut": 2,
       "fanIn": 2,
       "module": "components"
     },
@@ -6344,7 +6762,7 @@
       "path": "src/components/mobile/AMPBlogPost.tsx",
       "loc": 199,
       "rawLoc": 221,
-      "bytes": 6775,
+      "bytes": 6773,
       "exports": [
         "default",
         "generateBlogPostMetadata"
@@ -6352,7 +6770,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 1,
-      "hash": "0f135eb321779dd7",
+      "hash": "0bd058ec0177cf8d",
       "fanOut": 0,
       "fanIn": 1,
       "module": "components"
@@ -6384,7 +6802,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0f302e16a1379c24",
+      "hash": "02ede04601379c9a",
       "fanOut": 2,
       "fanIn": 1,
       "module": "components"
@@ -6400,7 +6818,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "054678df814bde16",
+      "hash": "05ab26c8e14bded6",
       "fanOut": 3,
       "fanIn": 1,
       "module": "components"
@@ -6433,7 +6851,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 1,
-      "hash": "0546b25c813a99c7",
+      "hash": "0ac09b00613a9a24",
       "fanOut": 0,
       "fanIn": 1,
       "module": "components"
@@ -6451,7 +6869,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0936d03fe13adbb8",
+      "hash": "03901a96e13adc8d",
       "fanOut": 0,
       "fanIn": 1,
       "module": "components"
@@ -6817,7 +7235,7 @@
       "commentedOutCode": 0,
       "hash": "0103834a6120a458",
       "fanOut": 1,
-      "fanIn": 3,
+      "fanIn": 2,
       "module": "components"
     },
     "src/components/ui/avatar.tsx": {
@@ -6853,7 +7271,7 @@
       "commentedOutCode": 0,
       "hash": "0befdc179117773a",
       "fanOut": 1,
-      "fanIn": 37,
+      "fanIn": 39,
       "module": "components"
     },
     "src/components/ui/breadcrumb.tsx": {
@@ -6893,7 +7311,7 @@
       "commentedOutCode": 0,
       "hash": "0511605fe125416b",
       "fanOut": 1,
-      "fanIn": 93,
+      "fanIn": 94,
       "module": "components"
     },
     "src/components/ui/calendar.tsx": {
@@ -6931,7 +7349,7 @@
       "commentedOutCode": 0,
       "hash": "0818635081248f58",
       "fanOut": 1,
-      "fanIn": 78,
+      "fanIn": 79,
       "module": "components"
     },
     "src/components/ui/carousel.tsx": {
@@ -7183,7 +7601,7 @@
       "commentedOutCode": 0,
       "hash": "044307c1810f271d",
       "fanOut": 1,
-      "fanIn": 31,
+      "fanIn": 30,
       "module": "components"
     },
     "src/components/ui/popover.tsx": {
@@ -7276,7 +7694,7 @@
       "commentedOutCode": 0,
       "hash": "0eedbd000175db19",
       "fanOut": 1,
-      "fanIn": 14,
+      "fanIn": 13,
       "module": "components"
     },
     "src/components/ui/separator.tsx": {
@@ -7421,7 +7839,7 @@
       "commentedOutCode": 0,
       "hash": "0ff57141e10e1456",
       "fanOut": 1,
-      "fanIn": 8,
+      "fanIn": 9,
       "module": "components"
     },
     "src/components/ui/table.tsx": {
@@ -7444,7 +7862,7 @@
       "commentedOutCode": 0,
       "hash": "0a6ad8586137d7cf",
       "fanOut": 1,
-      "fanIn": 3,
+      "fanIn": 4,
       "module": "components"
     },
     "src/components/ui/tabs.tsx": {
@@ -7614,7 +8032,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0a9d680d85823729",
+      "hash": "0fbb3784458236cf",
       "fanOut": 0,
       "fanIn": 9,
       "module": "data"
@@ -7666,7 +8084,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0f2658f0693b3853",
+      "hash": "072c2b71893b3a19",
       "fanOut": 0,
       "fanIn": 0,
       "module": "data"
@@ -7683,7 +8101,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0cc1e849e691f470",
+      "hash": "01f5171be691f6e1",
       "fanOut": 0,
       "fanIn": 0,
       "module": "data"
@@ -7700,7 +8118,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0de498cb87947faf",
+      "hash": "046cac2e07948185",
       "fanOut": 0,
       "fanIn": 0,
       "module": "data"
@@ -7742,7 +8160,7 @@
       "commentedOutCode": 0,
       "hash": "0cd6a287810b4276",
       "fanOut": 0,
-      "fanIn": 3,
+      "fanIn": 4,
       "module": "hooks"
     },
     "src/hooks/use-toast.ts": {
@@ -7760,7 +8178,7 @@
       "commentedOutCode": 0,
       "hash": "01642e84e146c0e5",
       "fanOut": 1,
-      "fanIn": 48,
+      "fanIn": 50,
       "module": "hooks"
     },
     "src/hooks/useAnalyticsConfig.tsx": {
@@ -7922,7 +8340,7 @@
       "commentedOutCode": 1,
       "hash": "073c1fe92107a1d9",
       "fanOut": 1,
-      "fanIn": 31,
+      "fanIn": 30,
       "module": "integrations"
     },
     "src/integrations/supabase/server.ts": {
@@ -7966,9 +8384,9 @@
     },
     "src/lib/analytics/excluded.ts": {
       "path": "src/lib/analytics/excluded.ts",
-      "loc": 14,
-      "rawLoc": 38,
-      "bytes": 1863,
+      "loc": 16,
+      "rawLoc": 40,
+      "bytes": 2038,
       "exports": [
         "ANALYTICS_EXCLUDED_PATTERNS",
         "isAnalyticsExcluded"
@@ -7976,9 +8394,361 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0632bedf8106d7bc",
+      "hash": "0f4931340107d178",
       "fanOut": 0,
       "fanIn": 2,
+      "module": "lib"
+    },
+    "src/lib/articles/actions.ts": {
+      "path": "src/lib/articles/actions.ts",
+      "loc": 122,
+      "rawLoc": 185,
+      "bytes": 8643,
+      "exports": [
+        "ActionType",
+        "ContentActionRow",
+        "OPEN_ACTION_STATUSES",
+        "applyActionDraft",
+        "completeAction",
+        "draftMarkdownFor",
+        "getAction",
+        "livePostIdOf",
+        "rebuiltFromDraft",
+        "recordActionDraft",
+        "requireOpenAction"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0870e8fb6181dba2",
+      "fanOut": 5,
+      "fanIn": 5,
+      "module": "lib"
+    },
+    "src/lib/articles/adminPublish.ts": {
+      "path": "src/lib/articles/adminPublish.ts",
+      "loc": 20,
+      "rawLoc": 30,
+      "bytes": 1391,
+      "exports": [
+        "AdminPublishResult",
+        "adminPublishArticle"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "03548d8b81176db3",
+      "fanOut": 0,
+      "fanIn": 2,
+      "module": "lib"
+    },
+    "src/lib/articles/auth.ts": {
+      "path": "src/lib/articles/auth.ts",
+      "loc": 35,
+      "rawLoc": 57,
+      "bytes": 2309,
+      "exports": [
+        "ARTICLES_RATE_BUCKET",
+        "ARTICLES_RATE_LIMIT",
+        "ARTICLES_RATE_WINDOW_MS",
+        "ArticlesCaller",
+        "authorizeArticles"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "05566eb08121ae1b",
+      "fanOut": 3,
+      "fanIn": 5,
+      "module": "lib"
+    },
+    "src/lib/articles/catalogPrices.ts": {
+      "path": "src/lib/articles/catalogPrices.ts",
+      "loc": 21,
+      "rawLoc": 40,
+      "bytes": 1668,
+      "exports": [
+        "catalogPricesFrom",
+        "loadCatalogPrices"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "019a05aee112fde1",
+      "fanOut": 3,
+      "fanIn": 1,
+      "module": "lib"
+    },
+    "src/lib/articles/cliCommand.ts": {
+      "path": "src/lib/articles/cliCommand.ts",
+      "loc": 49,
+      "rawLoc": 64,
+      "bytes": 2558,
+      "exports": [
+        "CliAction",
+        "claudeCodeCommands",
+        "claudeCodePrompt",
+        "shellQuote"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "09051e0ca12cf904",
+      "fanOut": 1,
+      "fanIn": 1,
+      "module": "lib"
+    },
+    "src/lib/articles/faqJsonLd.ts": {
+      "path": "src/lib/articles/faqJsonLd.ts",
+      "loc": 16,
+      "rawLoc": 25,
+      "bytes": 704,
+      "exports": [
+        "faqPageJsonLd",
+        "jsonLdScript"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0d08c3bb010a1972",
+      "fanOut": 2,
+      "fanIn": 1,
+      "module": "lib"
+    },
+    "src/lib/articles/feedback.ts": {
+      "path": "src/lib/articles/feedback.ts",
+      "loc": 146,
+      "rawLoc": 183,
+      "bytes": 6911,
+      "exports": [
+        "FEEDBACK_MAX_PAGES",
+        "FeedbackAction",
+        "FeedbackPage",
+        "FeedbackPost",
+        "SeoFeedback",
+        "TREND_HALF_DAYS",
+        "blogSlugOf",
+        "buildSeoFeedback",
+        "feedbackReadStart"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0d695ddbe175027b",
+      "fanOut": 3,
+      "fanIn": 1,
+      "module": "lib"
+    },
+    "src/lib/articles/http.ts": {
+      "path": "src/lib/articles/http.ts",
+      "loc": 22,
+      "rawLoc": 33,
+      "bytes": 1238,
+      "exports": [
+        "articleAdminUrl",
+        "articlePreviewUrl",
+        "articlePublicUrl",
+        "readArticleBody"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "06ee24a901150303",
+      "fanOut": 1,
+      "fanIn": 4,
+      "module": "lib"
+    },
+    "src/lib/articles/notify.ts": {
+      "path": "src/lib/articles/notify.ts",
+      "loc": 32,
+      "rawLoc": 63,
+      "bytes": 2821,
+      "exports": [
+        "HELD_REASONS_SHOWN",
+        "heldMessage",
+        "notifyArticleHeld",
+        "notifyArticlePublished",
+        "notifyArticleUnpublished",
+        "publishedMessage",
+        "unpublishedMessage"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "03d342fd81293a73",
+      "fanOut": 1,
+      "fanIn": 2,
+      "module": "lib"
+    },
+    "src/lib/articles/publishFlow.ts": {
+      "path": "src/lib/articles/publishFlow.ts",
+      "loc": 46,
+      "rawLoc": 71,
+      "bytes": 3253,
+      "exports": [
+        "announceHeld",
+        "announcePublished",
+        "postForUnpublishToken",
+        "runPublishGuard",
+        "unpublishUrlFor"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "04e96baf81317782",
+      "fanOut": 7,
+      "fanIn": 6,
+      "module": "lib"
+    },
+    "src/lib/articles/publishGuard.ts": {
+      "path": "src/lib/articles/publishGuard.ts",
+      "loc": 312,
+      "rawLoc": 426,
+      "bytes": 21247,
+      "exports": [
+        "CatalogPrice",
+        "FAQ_MAX_FOR_QUESTION",
+        "FAQ_MIN_FOR_QUESTION",
+        "OPENING_MAX_WORDS",
+        "OPENING_MIN_WORDS",
+        "PublishCandidate",
+        "PublishFacts",
+        "PublishVerdict",
+        "amountValue",
+        "checkPublishable",
+        "isQuestionTitle",
+        "legalClaimsIn",
+        "lockedClaimSentences",
+        "markdownBlocks",
+        "priceClaimsIn",
+        "readableText"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0a70f10dc2791c2c",
+      "fanOut": 2,
+      "fanIn": 3,
+      "module": "lib"
+    },
+    "src/lib/articles/revalidate.ts": {
+      "path": "src/lib/articles/revalidate.ts",
+      "loc": 13,
+      "rawLoc": 26,
+      "bytes": 936,
+      "exports": [
+        "revalidateArticlePages"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0d6eb5ed8109be54",
+      "fanOut": 1,
+      "fanIn": 8,
+      "module": "lib"
+    },
+    "src/lib/articles/schemas.ts": {
+      "path": "src/lib/articles/schemas.ts",
+      "loc": 52,
+      "rawLoc": 77,
+      "bytes": 3438,
+      "exports": [
+        "ARTICLE_SLUG_MAX",
+        "ARTICLE_SLUG_PATTERN",
+        "ArticleCreate",
+        "ArticleUpdate",
+        "FAQ_MAX_ITEMS",
+        "FEEDBACK_DEFAULT_DAYS",
+        "FEEDBACK_MAX_DAYS",
+        "FEEDBACK_MIN_DAYS",
+        "FaqItem",
+        "articleCreateSchema",
+        "articlePublishSchema",
+        "articleUpdateSchema",
+        "faqItemSchema",
+        "parseFeedbackDays",
+        "readFaq"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0e14e28d013375a3",
+      "fanOut": 0,
+      "fanIn": 10,
+      "module": "lib"
+    },
+    "src/lib/articles/unpublishPage.ts": {
+      "path": "src/lib/articles/unpublishPage.ts",
+      "loc": 90,
+      "rawLoc": 114,
+      "bytes": 5109,
+      "exports": [
+        "UNPUBLISH_PAGE_HEADERS",
+        "UnpublishView",
+        "renderUnpublishPage"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "015ef003615c5d20",
+      "fanOut": 0,
+      "fanIn": 2,
+      "module": "lib"
+    },
+    "src/lib/articles/unpublishToken.ts": {
+      "path": "src/lib/articles/unpublishToken.ts",
+      "loc": 57,
+      "rawLoc": 105,
+      "bytes": 4935,
+      "exports": [
+        "MIN_UNPUBLISH_SECRET_LENGTH",
+        "Publication",
+        "TokenReading",
+        "UNPUBLISH_LINK_TTL_SECONDS",
+        "isTokenCurrent",
+        "publishedAtUnix",
+        "readUnpublishToken",
+        "signUnpublishToken",
+        "unpublishLink",
+        "unpublishSecret"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "03edde708141a9eb",
+      "fanOut": 1,
+      "fanIn": 1,
+      "module": "lib"
+    },
+    "src/lib/articles/writer.ts": {
+      "path": "src/lib/articles/writer.ts",
+      "loc": 217,
+      "rawLoc": 261,
+      "bytes": 11425,
+      "exports": [
+        "ArticleError",
+        "ArticleRow",
+        "createArticle",
+        "defaultExcerpt",
+        "defaultMetaDescription",
+        "errorResponseBody",
+        "getArticle",
+        "holdArticle",
+        "loadContentFacts",
+        "mergeArticle",
+        "newPublishNonce",
+        "publishArticle",
+        "requireArticle",
+        "uniqueArticleSlug",
+        "unpublishArticle",
+        "updateArticle"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "049613fc81dc1980",
+      "fanOut": 5,
+      "fanIn": 10,
       "module": "lib"
     },
     "src/lib/bannerRules.ts": {
@@ -7996,6 +8766,24 @@
       "hash": "0b8858a401914400",
       "fanOut": 0,
       "fanIn": 1,
+      "module": "lib"
+    },
+    "src/lib/botFilter.ts": {
+      "path": "src/lib/botFilter.ts",
+      "loc": 27,
+      "rawLoc": 44,
+      "bytes": 1438,
+      "exports": [
+        "GOOD_BOT_PATTERNS",
+        "isCrawlerUserAgent",
+        "isGoodBot"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 1,
+      "hash": "0e73d2e4010e3e10",
+      "fanOut": 0,
+      "fanIn": 3,
       "module": "lib"
     },
     "src/lib/click-fraud-detector.ts": {
@@ -8083,9 +8871,9 @@
     },
     "src/lib/cta/activePairs.server.ts": {
       "path": "src/lib/cta/activePairs.server.ts",
-      "loc": 19,
-      "rawLoc": 38,
-      "bytes": 1622,
+      "loc": 21,
+      "rawLoc": 43,
+      "bytes": 1754,
       "exports": [
         "forgetActivePairs",
         "isActivePair"
@@ -8093,19 +8881,21 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "01043e32011417ec",
+      "hash": "0ba08f54811323bf",
       "fanOut": 2,
       "fanIn": 2,
       "module": "lib"
     },
     "src/lib/cta/admin.server.ts": {
       "path": "src/lib/cta/admin.server.ts",
-      "loc": 82,
-      "rawLoc": 106,
-      "bytes": 3954,
+      "loc": 103,
+      "rawLoc": 140,
+      "bytes": 5631,
       "exports": [
+        "CtaHistory",
         "getMinVisitors",
         "listVariants",
+        "loadCtaHistory",
         "loadCtaReport",
         "nextFreeKey",
         "setMinVisitors",
@@ -8114,8 +8904,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0f98844961450c33",
-      "fanOut": 3,
+      "hash": "0c88b1cbe159cfe1",
+      "fanOut": 4,
       "fanIn": 3,
       "module": "lib"
     },
@@ -8132,14 +8922,14 @@
       "commentedOutCode": 0,
       "hash": "088ec25b8105b836",
       "fanOut": 0,
-      "fanIn": 2,
+      "fanIn": 3,
       "module": "lib"
     },
     "src/lib/cta/bootstrap.ts": {
       "path": "src/lib/cta/bootstrap.ts",
-      "loc": 50,
-      "rawLoc": 110,
-      "bytes": 5488,
+      "loc": 51,
+      "rawLoc": 121,
+      "bytes": 6223,
       "exports": [
         "CtaBootstrapConfig",
         "HERO_CTA_CSS",
@@ -8151,7 +8941,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0f68d906a133cbaa",
+      "hash": "033a8031e135e154",
       "fanOut": 2,
       "fanIn": 2,
       "module": "lib"
@@ -8173,6 +8963,29 @@
       "commentedOutCode": 0,
       "hash": "02c9f0c5810ed87e",
       "fanOut": 0,
+      "fanIn": 4,
+      "module": "lib"
+    },
+    "src/lib/cta/heroStore.server.ts": {
+      "path": "src/lib/cta/heroStore.server.ts",
+      "loc": 65,
+      "rawLoc": 91,
+      "bytes": 3543,
+      "exports": [
+        "HeroRow",
+        "ctaRowsFor",
+        "heroKey",
+        "heroPayload",
+        "isLive",
+        "readHeroRow",
+        "readHeroRows",
+        "toCtaRow"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "053dfdec0139833c",
+      "fanOut": 4,
       "fanIn": 5,
       "module": "lib"
     },
@@ -8190,7 +9003,7 @@
       "commentedOutCode": 0,
       "hash": "08ded59b81186e0e",
       "fanOut": 0,
-      "fanIn": 6,
+      "fanIn": 8,
       "module": "lib"
     },
     "src/lib/cta/report.ts": {
@@ -8220,7 +9033,7 @@
       "commentedOutCode": 0,
       "hash": "0c8dcfdb816f995b",
       "fanOut": 1,
-      "fanIn": 3,
+      "fanIn": 4,
       "module": "lib"
     },
     "src/lib/cta/types.ts": {
@@ -8249,22 +9062,22 @@
       "commentedOutCode": 0,
       "hash": "08126e3b611f765b",
       "fanOut": 0,
-      "fanIn": 14,
+      "fanIn": 18,
       "module": "lib"
     },
     "src/lib/cta/variants.server.ts": {
       "path": "src/lib/cta/variants.server.ts",
-      "loc": 53,
-      "rawLoc": 78,
-      "bytes": 3257,
+      "loc": 39,
+      "rawLoc": 58,
+      "bytes": 2595,
       "exports": [
         "fetchHeroCtaVariants"
       ],
       "isTest": false,
       "todos": 0,
-      "commentedOutCode": 1,
-      "hash": "034b6fb1612b4959",
-      "fanOut": 2,
+      "commentedOutCode": 0,
+      "hash": "040af5d60122fc91",
+      "fanOut": 3,
       "fanIn": 1,
       "module": "lib"
     },
@@ -8300,7 +9113,7 @@
       "commentedOutCode": 0,
       "hash": "0a8b0719011b6e88",
       "fanOut": 1,
-      "fanIn": 1,
+      "fanIn": 3,
       "module": "lib"
     },
     "src/lib/emailTemplates.ts": {
@@ -8344,7 +9157,433 @@
       "commentedOutCode": 0,
       "hash": "05808f77610512f3",
       "fanOut": 0,
-      "fanIn": 36,
+      "fanIn": 34,
+      "module": "lib"
+    },
+    "src/lib/experiments/ExperimentZone.tsx": {
+      "path": "src/lib/experiments/ExperimentZone.tsx",
+      "loc": 38,
+      "rawLoc": 55,
+      "bytes": 1898,
+      "exports": [
+        "ExperimentZone"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "028246f5811a8a89",
+      "fanOut": 1,
+      "fanIn": 1,
+      "module": "lib"
+    },
+    "src/lib/experiments/assign.ts": {
+      "path": "src/lib/experiments/assign.ts",
+      "loc": 40,
+      "rawLoc": 73,
+      "bytes": 3392,
+      "exports": [
+        "Assignment",
+        "AssignmentReason",
+        "PREVIEW_HEADER",
+        "PREVIEW_PARAM",
+        "PREVIEW_RE",
+        "SEED_RE",
+        "assignVariant",
+        "hashName",
+        "parsePreview",
+        "resolveAssignment",
+        "seedFromCookie"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0c171fdd012a6d0a",
+      "fanOut": 4,
+      "fanIn": 2,
+      "module": "lib"
+    },
+    "src/lib/experiments/auth.server.ts": {
+      "path": "src/lib/experiments/auth.server.ts",
+      "loc": 61,
+      "rawLoc": 98,
+      "bytes": 4405,
+      "exports": [
+        "EXPERIMENTS_RATE_LIMIT",
+        "EXPERIMENTS_RATE_WINDOW_MS",
+        "ExperimentsCaller",
+        "authorizeExperiments",
+        "clock",
+        "onlyKeys",
+        "readOptionalJson",
+        "siteOrigin"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "09b0b53d013fb885",
+      "fanOut": 3,
+      "fanIn": 7,
+      "module": "lib"
+    },
+    "src/lib/experiments/client.ts": {
+      "path": "src/lib/experiments/client.ts",
+      "loc": 22,
+      "rawLoc": 35,
+      "bytes": 1072,
+      "exports": [
+        "ClientEvent",
+        "EXPERIMENT_EVENT_PATH",
+        "sendExperimentEvent",
+        "sendRequestStarted"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "04d70c6de10ece73",
+      "fanOut": 0,
+      "fanIn": 2,
+      "module": "lib"
+    },
+    "src/lib/experiments/currentCopy.ts": {
+      "path": "src/lib/experiments/currentCopy.ts",
+      "loc": 53,
+      "rawLoc": 74,
+      "bytes": 3514,
+      "exports": [
+        "SurfaceCopy",
+        "currentCopy"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0bf09f37a139ec0a",
+      "fanOut": 3,
+      "fanIn": 1,
+      "module": "lib"
+    },
+    "src/lib/experiments/decide.server.ts": {
+      "path": "src/lib/experiments/decide.server.ts",
+      "loc": 306,
+      "rawLoc": 372,
+      "bytes": 18001,
+      "exports": [
+        "ActionResult",
+        "EvaluationOutcome",
+        "concludeKeepControl",
+        "promote",
+        "proposeWinner",
+        "retireExperiment",
+        "runEvaluation",
+        "startExperiment",
+        "vetoExperiment",
+        "vetoUrl"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "01713c3b624581c4",
+      "fanOut": 8,
+      "fanIn": 5,
+      "module": "lib"
+    },
+    "src/lib/experiments/evaluate.ts": {
+      "path": "src/lib/experiments/evaluate.ts",
+      "loc": 197,
+      "rawLoc": 258,
+      "bytes": 10582,
+      "exports": [
+        "ArmCounts",
+        "ArmResult",
+        "EvaluateInput",
+        "Evaluation",
+        "Verdict",
+        "betaSample",
+        "evaluate",
+        "mulberry32",
+        "projectReadyOn",
+        "seedFor"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "05cbb6b0e1a680fa",
+      "fanOut": 1,
+      "fanIn": 3,
+      "module": "lib"
+    },
+    "src/lib/experiments/events.server.ts": {
+      "path": "src/lib/experiments/events.server.ts",
+      "loc": 31,
+      "rawLoc": 50,
+      "bytes": 1998,
+      "exports": [
+        "recordDownstream"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "04f51e7dc11851d6",
+      "fanOut": 2,
+      "fanIn": 3,
+      "module": "lib"
+    },
+    "src/lib/experiments/messages.ts": {
+      "path": "src/lib/experiments/messages.ts",
+      "loc": 64,
+      "rawLoc": 82,
+      "bytes": 5402,
+      "exports": [
+        "chance",
+        "concludedMessage",
+        "losersRetiredMessage",
+        "promotedMessage",
+        "retiredMessage",
+        "startedMessage",
+        "vetoedMessage",
+        "winnerProposedMessage"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0e28174b016d667b",
+      "fanOut": 4,
+      "fanIn": 1,
+      "module": "lib"
+    },
+    "src/lib/experiments/schedule.ts": {
+      "path": "src/lib/experiments/schedule.ts",
+      "loc": 25,
+      "rawLoc": 48,
+      "bytes": 2254,
+      "exports": [
+        "RUN_HOUR_UTC",
+        "RUN_MINUTE_UTC",
+        "RUN_SLACK_MS",
+        "VETO_WINDOW_MS",
+        "isEvaluationDay",
+        "isPromotionDue",
+        "promotionRunAfter",
+        "runLabel"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0727ad650117ad19",
+      "fanOut": 0,
+      "fanIn": 3,
+      "module": "lib"
+    },
+    "src/lib/experiments/schemas.ts": {
+      "path": "src/lib/experiments/schemas.ts",
+      "loc": 108,
+      "rawLoc": 123,
+      "bytes": 6067,
+      "exports": [
+        "CreateExperimentBody",
+        "PRICE_REFUSAL",
+        "adminActionSchema",
+        "backlogCreateSchema",
+        "concludeSchema",
+        "createExperimentSchema",
+        "notifySchema",
+        "priceFieldsIn",
+        "startSchema"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "036e215301766679",
+      "fanOut": 2,
+      "fanIn": 6,
+      "module": "lib"
+    },
+    "src/lib/experiments/seed.ts": {
+      "path": "src/lib/experiments/seed.ts",
+      "loc": 28,
+      "rawLoc": 48,
+      "bytes": 1880,
+      "exports": [
+        "PREVIEW_HEADER",
+        "PREVIEW_PARAM",
+        "PREVIEW_RE",
+        "SEED_RE",
+        "drawSeed",
+        "isServerExperimentPage",
+        "parsePreview",
+        "seedFromCookie"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0285fee301164374",
+      "fanOut": 0,
+      "fanIn": 2,
+      "module": "lib"
+    },
+    "src/lib/experiments/store.server.ts": {
+      "path": "src/lib/experiments/store.server.ts",
+      "loc": 184,
+      "rawLoc": 246,
+      "bytes": 10175,
+      "exports": [
+        "EXPERIMENTS_LIMIT",
+        "EXPERIMENTS_TAG",
+        "EventRow",
+        "ExperimentReport",
+        "Funnel",
+        "RenderableExperiment",
+        "VariantFunnel",
+        "VariantReport",
+        "getExperiment",
+        "invalidateExperiments",
+        "listExperiments",
+        "liveExperimentOnPage",
+        "liveKeys",
+        "loadFunnel",
+        "loadReport",
+        "pickExperiment",
+        "recordEvents",
+        "renderableExperiments",
+        "reportFor",
+        "updateExperiment",
+        "visitorPairs"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "044f284581a9b0a8",
+      "fanOut": 4,
+      "fanIn": 13,
+      "module": "lib"
+    },
+    "src/lib/experiments/surfaces.ts": {
+      "path": "src/lib/experiments/surfaces.ts",
+      "loc": 56,
+      "rawLoc": 75,
+      "bytes": 2638,
+      "exports": [
+        "HOME_SERVICES_SECTIONS",
+        "HomeServicesSection",
+        "SURFACES",
+        "Surface",
+        "findSurface"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "06c26e7c8125003b",
+      "fanOut": 1,
+      "fanIn": 4,
+      "module": "lib"
+    },
+    "src/lib/experiments/types.ts": {
+      "path": "src/lib/experiments/types.ts",
+      "loc": 137,
+      "rawLoc": 235,
+      "bytes": 11624,
+      "exports": [
+        "COPY_SLOTS",
+        "Copy",
+        "CopySlot",
+        "EXPERIMENT_COLUMNS",
+        "EXPERIMENT_KEY_RE",
+        "EXPERIMENT_STATUSES",
+        "ExperimentDecision",
+        "ExperimentPayload",
+        "ExperimentRow",
+        "ExperimentStatus",
+        "ExperimentVariant",
+        "FUNNEL_EVENTS",
+        "FunnelEvent",
+        "HERO_EXPERIMENT",
+        "HEX_COLOR_RE",
+        "LIVE_STATUSES",
+        "LOSE_PROBABILITY",
+        "MAX_EXPECTED_LOSS",
+        "MONTE_CARLO_DRAWS",
+        "NO_PRICE_SLOTS",
+        "NoPriceSlots",
+        "PAYLOAD_SLOTS",
+        "PRICE_FIELDS",
+        "PRIMARY_METRICS",
+        "PUBLIC_IMAGE_RE",
+        "PayloadSlot",
+        "PendingPromotion",
+        "PrimaryMetric",
+        "RESERVED_KEYS",
+        "SECTION_ID_RE",
+        "VARIANT_KEYS",
+        "VariantKey",
+        "WIN_PROBABILITY",
+        "activeVariants",
+        "copyFor",
+        "copySchema",
+        "forbiddenClaim",
+        "parseVariants",
+        "payloadSchema",
+        "variantSchema"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0fc1487031960c74",
+      "fanOut": 1,
+      "fanIn": 19,
+      "module": "lib"
+    },
+    "src/lib/experiments/vetoLookup.server.ts": {
+      "path": "src/lib/experiments/vetoLookup.server.ts",
+      "loc": 17,
+      "rawLoc": 25,
+      "bytes": 1233,
+      "exports": [
+        "VetoLookup",
+        "lookupVeto"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0c49b016a11573d5",
+      "fanOut": 3,
+      "fanIn": 2,
+      "module": "lib"
+    },
+    "src/lib/experiments/vetoToken.ts": {
+      "path": "src/lib/experiments/vetoToken.ts",
+      "loc": 50,
+      "rawLoc": 77,
+      "bytes": 3642,
+      "exports": [
+        "VETO_TOKEN_TTL_MS",
+        "VetoTokenCheck",
+        "createVetoToken",
+        "verifyVetoToken"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "060117246136189d",
+      "fanOut": 1,
+      "fanIn": 2,
+      "module": "lib"
+    },
+    "src/lib/experiments/withExperiment.server.ts": {
+      "path": "src/lib/experiments/withExperiment.server.ts",
+      "loc": 56,
+      "rawLoc": 86,
+      "bytes": 3675,
+      "exports": [
+        "AppliedExperiment",
+        "ResolvedPayload",
+        "resolvePayload",
+        "withExperiment"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "088f80f781368d8f",
+      "fanOut": 4,
+      "fanIn": 1,
       "module": "lib"
     },
     "src/lib/followups/activeDrips.ts": {
@@ -8418,21 +9657,22 @@
     },
     "src/lib/home-services/adminRoute.ts": {
       "path": "src/lib/home-services/adminRoute.ts",
-      "loc": 27,
-      "rawLoc": 39,
-      "bytes": 1753,
+      "loc": 36,
+      "rawLoc": 50,
+      "bytes": 2089,
       "exports": [
         "UUID_RE",
         "actingAdmin",
+        "actingAdminId",
         "readJson",
         "serverError"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0e25173f811ccadf",
+      "hash": "0c75ada04121cc8f",
       "fanOut": 1,
-      "fanIn": 9,
+      "fanIn": 12,
       "module": "lib"
     },
     "src/lib/home-services/attachments.ts": {
@@ -8484,34 +9724,116 @@
     },
     "src/lib/home-services/catalog.ts": {
       "path": "src/lib/home-services/catalog.ts",
-      "loc": 499,
-      "rawLoc": 554,
-      "bytes": 27772,
+      "loc": 289,
+      "rawLoc": 363,
+      "bytes": 13189,
       "exports": [
         "COUNTIES",
         "County",
-        "HOME_SERVICES_CATALOG",
         "HomeService",
+        "HomeServiceContent",
         "L",
         "Lang",
+        "SERVICE_ICONS",
+        "SERVICE_QUESTIONS",
         "SERVICE_SLUGS",
+        "SERVICE_TRADE",
+        "ServiceFaqItem",
+        "ServiceIconName",
+        "ServiceNames",
         "ServiceQuestion",
         "ServiceQuestionOption",
+        "ServiceSlug",
         "TIMING_OPTIONS",
         "TRADE_LABEL",
         "Trade",
         "describeAnswers",
-        "getService",
         "isServiceSlug",
+        "serviceQuestions",
+        "serviceTrade",
         "t",
         "toLang"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "01efbf2982f0ef02",
+      "hash": "0eafaecc01bbf4fc",
       "fanOut": 0,
-      "fanIn": 30,
+      "fanIn": 37,
+      "module": "lib"
+    },
+    "src/lib/home-services/catalogData.ts": {
+      "path": "src/lib/home-services/catalogData.ts",
+      "loc": 49,
+      "rawLoc": 92,
+      "bytes": 3996,
+      "exports": [
+        "CATALOG_TAG",
+        "getAllServices",
+        "getCatalog",
+        "getServiceData",
+        "getServiceNames",
+        "invalidateCatalog"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0d5e6eb5012e24c4",
+      "fanOut": 4,
+      "fanIn": 10,
+      "module": "lib"
+    },
+    "src/lib/home-services/catalogRow.ts": {
+      "path": "src/lib/home-services/catalogRow.ts",
+      "loc": 116,
+      "rawLoc": 134,
+      "bytes": 5337,
+      "exports": [
+        "HOME_SERVICE_COLUMNS",
+        "HomeServiceRow",
+        "contentToRow",
+        "rowToService"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0ba268ea51655d4e",
+      "fanOut": 1,
+      "fanIn": 5,
+      "module": "lib"
+    },
+    "src/lib/home-services/catalogSchema.ts": {
+      "path": "src/lib/home-services/catalogSchema.ts",
+      "loc": 73,
+      "rawLoc": 99,
+      "bytes": 4434,
+      "exports": [
+        "ServicePatch",
+        "ServicePatchSchema",
+        "fieldErrors"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0ff2cc01014828a0",
+      "fanOut": 0,
+      "fanIn": 1,
+      "module": "lib"
+    },
+    "src/lib/home-services/catalogSeed.ts": {
+      "path": "src/lib/home-services/catalogSeed.ts",
+      "loc": 299,
+      "rawLoc": 332,
+      "bytes": 26119,
+      "exports": [
+        "HOME_SERVICES_SEED"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0b1f270382fa969b",
+      "fanOut": 1,
+      "fanIn": 1,
       "module": "lib"
     },
     "src/lib/home-services/compressImage.ts": {
@@ -8553,9 +9875,9 @@
     },
     "src/lib/home-services/i18n.ts": {
       "path": "src/lib/home-services/i18n.ts",
-      "loc": 211,
-      "rawLoc": 233,
-      "bytes": 23467,
+      "loc": 218,
+      "rawLoc": 240,
+      "bytes": 25046,
       "exports": [
         "STRINGS",
         "StringKey",
@@ -8564,9 +9886,9 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 2,
-      "hash": "0195fe0ae2e37dcd",
+      "hash": "0891a2566303d636",
       "fanOut": 1,
-      "fanIn": 15,
+      "fanIn": 16,
       "module": "lib"
     },
     "src/lib/home-services/lang.ts": {
@@ -8675,9 +9997,9 @@
     },
     "src/lib/home-services/offers.ts": {
       "path": "src/lib/home-services/offers.ts",
-      "loc": 698,
-      "rawLoc": 882,
-      "bytes": 44429,
+      "loc": 700,
+      "rawLoc": 884,
+      "bytes": 44551,
       "exports": [
         "ExpiryRun",
         "FoundOffer",
@@ -8721,8 +10043,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 5,
-      "hash": "0711ddd7847762bf",
-      "fanOut": 12,
+      "hash": "080092ada495014a",
+      "fanOut": 13,
       "fanIn": 10,
       "module": "lib"
     },
@@ -8782,9 +10104,9 @@
     },
     "src/lib/home-services/requests.ts": {
       "path": "src/lib/home-services/requests.ts",
-      "loc": 298,
-      "rawLoc": 383,
-      "bytes": 14784,
+      "loc": 300,
+      "rawLoc": 389,
+      "bytes": 15028,
       "exports": [
         "AlertableRequest",
         "DEDUPE_WINDOW_MS",
@@ -8819,16 +10141,16 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0a4c2d8f21eceb53",
-      "fanOut": 4,
+      "hash": "08ee05fe61f0373b",
+      "fanOut": 5,
       "fanIn": 2,
       "module": "lib"
     },
     "src/lib/home-services/requestsAdmin.ts": {
       "path": "src/lib/home-services/requestsAdmin.ts",
-      "loc": 189,
-      "rawLoc": 255,
-      "bytes": 9312,
+      "loc": 192,
+      "rawLoc": 261,
+      "bytes": 9668,
       "exports": [
         "ALL_REQUEST_COUNTIES",
         "HomeServiceRequestRow",
@@ -8855,7 +10177,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0dc63228018fc3da",
+      "hash": "0ac6af7a0192cf61",
       "fanOut": 2,
       "fanIn": 10,
       "module": "lib"
@@ -8864,7 +10186,7 @@
       "path": "src/lib/home-services/seo.ts",
       "loc": 94,
       "rawLoc": 142,
-      "bytes": 5626,
+      "bytes": 5649,
       "exports": [
         "ORG_ID",
         "SITE",
@@ -10079,6 +11401,22 @@
       "fanIn": 6,
       "module": "lib"
     },
+    "src/lib/jsonLd.ts": {
+      "path": "src/lib/jsonLd.ts",
+      "loc": 3,
+      "rawLoc": 10,
+      "bytes": 406,
+      "exports": [
+        "jsonLdScript"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0dc6638c8102577c",
+      "fanOut": 0,
+      "fanIn": 5,
+      "module": "lib"
+    },
     "src/lib/leadSanitize.ts": {
       "path": "src/lib/leadSanitize.ts",
       "loc": 133,
@@ -10480,7 +11818,7 @@
       "commentedOutCode": 0,
       "hash": "0208a956813f649c",
       "fanOut": 0,
-      "fanIn": 72,
+      "fanIn": 82,
       "module": "lib"
     },
     "src/lib/notify/telegramLead.ts": {
@@ -10518,7 +11856,24 @@
       "commentedOutCode": 1,
       "hash": "0488a83ae137d439",
       "fanOut": 1,
-      "fanIn": 10,
+      "fanIn": 15,
+      "module": "lib"
+    },
+    "src/lib/oneTapLinkSecret.ts": {
+      "path": "src/lib/oneTapLinkSecret.ts",
+      "loc": 5,
+      "rawLoc": 15,
+      "bytes": 665,
+      "exports": [
+        "MIN_ONE_TAP_LINK_SECRET_LENGTH",
+        "oneTapLinkSecret"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "03b9141c8106605e",
+      "fanOut": 0,
+      "fanIn": 2,
       "module": "lib"
     },
     "src/lib/preferences/preferences.ts": {
@@ -10580,7 +11935,7 @@
       "path": "src/lib/privatePages.ts",
       "loc": 5,
       "rawLoc": 41,
-      "bytes": 1983,
+      "bytes": 2027,
       "exports": [
         "PRIVATE_TOKEN_PATHS",
         "isPrivateTokenPage"
@@ -10588,7 +11943,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0f2eabdac105f1ed",
+      "hash": "005063c701075c8c",
       "fanOut": 0,
       "fanIn": 4,
       "module": "lib"
@@ -10698,7 +12053,7 @@
       "path": "src/lib/projects/http.ts",
       "loc": 42,
       "rawLoc": 63,
-      "bytes": 2367,
+      "bytes": 2365,
       "exports": [
         "BodyError",
         "MAX_JSON_BYTES",
@@ -10713,7 +12068,7 @@
       "commentedOutCode": 0,
       "hash": "02595793e1243737",
       "fanOut": 0,
-      "fanIn": 10,
+      "fanIn": 24,
       "module": "lib"
     },
     "src/lib/projects/ingest.ts": {
@@ -10762,7 +12117,7 @@
       "commentedOutCode": 0,
       "hash": "00be7bc3811b5fa7",
       "fanOut": 0,
-      "fanIn": 1,
+      "fanIn": 3,
       "module": "lib"
     },
     "src/lib/projects/media.ts": {
@@ -10804,7 +12159,7 @@
       "commentedOutCode": 0,
       "hash": "0bcab0eee10ebafb",
       "fanOut": 0,
-      "fanIn": 3,
+      "fanIn": 6,
       "module": "lib"
     },
     "src/lib/projects/slug.ts": {
@@ -10831,7 +12186,7 @@
       "commentedOutCode": 0,
       "hash": "07bf71481138ba3c",
       "fanOut": 1,
-      "fanIn": 3,
+      "fanIn": 4,
       "module": "lib"
     },
     "src/lib/projects/storage.ts": {
@@ -11185,7 +12540,7 @@
       "commentedOutCode": 0,
       "hash": "096d533a6147d04e",
       "fanOut": 0,
-      "fanIn": 25,
+      "fanIn": 30,
       "module": "lib"
     },
     "src/lib/recaptcha-config.ts": {
@@ -11224,6 +12579,27 @@
       "fanIn": 3,
       "module": "lib"
     },
+    "src/lib/revalidate.ts": {
+      "path": "src/lib/revalidate.ts",
+      "loc": 45,
+      "rawLoc": 84,
+      "bytes": 3074,
+      "exports": [
+        "REVALIDATE_EXACT",
+        "REVALIDATE_PREFIXES",
+        "blogPagePaths",
+        "cmsPagePaths",
+        "isRevalidatablePath",
+        "requestRevalidate"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0fe9acbee1213b71",
+      "fanOut": 0,
+      "fanIn": 6,
+      "module": "lib"
+    },
     "src/lib/reviews/syncGoogleReviews.ts": {
       "path": "src/lib/reviews/syncGoogleReviews.ts",
       "loc": 93,
@@ -11243,23 +12619,20 @@
     },
     "src/lib/seo/draftGuardrails.ts": {
       "path": "src/lib/seo/draftGuardrails.ts",
-      "loc": 73,
-      "rawLoc": 114,
-      "bytes": 4728,
+      "loc": 42,
+      "rawLoc": 80,
+      "bytes": 2908,
       "exports": [
-        "DraftAction",
         "DraftValidation",
         "Fact",
-        "buildDraftInstruction",
-        "buildFactLockText",
         "validateDraft"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0d251d03e14ac3f8",
+      "hash": "06734234011eb6fd",
       "fanOut": 0,
-      "fanIn": 2,
+      "fanIn": 5,
       "module": "lib"
     },
     "src/lib/seo/ga4-client.ts": {
@@ -11317,28 +12690,6 @@
       "fanIn": 1,
       "module": "lib"
     },
-    "src/lib/seo/maintainedArticles.ts": {
-      "path": "src/lib/seo/maintainedArticles.ts",
-      "loc": 52,
-      "rawLoc": 75,
-      "bytes": 2754,
-      "exports": [
-        "MaintainedArticle",
-        "MaintainedBlogPost",
-        "RefreshCadence",
-        "getBlogPostBySlug",
-        "getMaintainedRoster",
-        "isRefreshDue",
-        "markMaintained"
-      ],
-      "isTest": false,
-      "todos": 0,
-      "commentedOutCode": 0,
-      "hash": "083a77e9012a111b",
-      "fanOut": 1,
-      "fanIn": 1,
-      "module": "lib"
-    },
     "src/lib/seo/report.ts": {
       "path": "src/lib/seo/report.ts",
       "loc": 157,
@@ -11359,7 +12710,7 @@
       "commentedOutCode": 0,
       "hash": "073c77788170884b",
       "fanOut": 0,
-      "fanIn": 5,
+      "fanIn": 7,
       "module": "lib"
     },
     "src/lib/seo/reportEmail.ts": {
@@ -11416,43 +12767,45 @@
       "commentedOutCode": 0,
       "hash": "04e6b0e8e1720101",
       "fanOut": 1,
-      "fanIn": 1,
+      "fanIn": 2,
       "module": "lib"
     },
     "src/lib/seo/stageToBlog.ts": {
       "path": "src/lib/seo/stageToBlog.ts",
       "loc": 63,
-      "rawLoc": 83,
-      "bytes": 2828,
+      "rawLoc": 84,
+      "bytes": 2892,
       "exports": [
         "BlogPostDraft",
         "buildBlogPostFromDraft",
         "categoryForQuery",
-        "slugify"
+        "slugify",
+        "toPlain"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "08aefb86812fdbb3",
+      "hash": "05a23f9e0132803f",
       "fanOut": 0,
-      "fanIn": 3,
+      "fanIn": 4,
       "module": "lib"
     },
     "src/lib/seo/supabase-rest.ts": {
       "path": "src/lib/seo/supabase-rest.ts",
-      "loc": 60,
-      "rawLoc": 85,
-      "bytes": 2991,
+      "loc": 67,
+      "rawLoc": 98,
+      "bytes": 3585,
       "exports": [
         "supabaseRest",
-        "supabaseRestPaged"
+        "supabaseRestPaged",
+        "supabaseRestPagedCapped"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0ab1f345812de8f6",
+      "hash": "0ad9648001350937",
       "fanOut": 0,
-      "fanIn": 11,
+      "fanIn": 8,
       "module": "lib"
     },
     "src/lib/seo/url.ts": {
@@ -11468,7 +12821,7 @@
       "commentedOutCode": 0,
       "hash": "010a8839e105c15b",
       "fanOut": 0,
-      "fanIn": 1,
+      "fanIn": 2,
       "module": "lib"
     },
     "src/lib/specnook/client.ts": {
@@ -11572,14 +12925,14 @@
       "commentedOutCode": 0,
       "hash": "01afa2b481038a2b",
       "fanOut": 0,
-      "fanIn": 58,
+      "fanIn": 57,
       "module": "lib"
     },
     "src/middleware.ts": {
       "path": "src/middleware.ts",
-      "loc": 234,
-      "rawLoc": 347,
-      "bytes": 13482,
+      "loc": 239,
+      "rawLoc": 386,
+      "bytes": 16833,
       "exports": [
         "config",
         "middleware"
@@ -11587,8 +12940,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 7,
-      "hash": "01a783d68198ca4d",
-      "fanOut": 2,
+      "hash": "007f68dcc1b73a11",
+      "fanOut": 5,
       "fanIn": 0,
       "module": "(root)"
     },
@@ -11821,102 +13174,6 @@
       "fanIn": 0,
       "module": "_shared"
     },
-    "supabase/functions/_shared/internalLinks.ts": {
-      "path": "supabase/functions/_shared/internalLinks.ts",
-      "loc": 149,
-      "rawLoc": 176,
-      "bytes": 6542,
-      "exports": [
-        "ALLOWED_ORIGINS",
-        "INTERNAL_LINKS",
-        "SPECIAL_FORMATTING",
-        "buildLinksContext",
-        "fetchRecentPosts",
-        "fetchRecentProjects",
-        "getCorsHeaders"
-      ],
-      "isTest": false,
-      "todos": 0,
-      "commentedOutCode": 0,
-      "hash": "0dce578a0182111e",
-      "fanOut": 0,
-      "fanIn": 2,
-      "module": "_shared"
-    },
-    "supabase/functions/_shared/openai.ts": {
-      "path": "supabase/functions/_shared/openai.ts",
-      "loc": 78,
-      "rawLoc": 107,
-      "bytes": 3630,
-      "exports": [
-        "getOpenAIKey",
-        "openaiChat",
-        "openaiImage"
-      ],
-      "isTest": false,
-      "todos": 0,
-      "commentedOutCode": 0,
-      "hash": "08800a1b4137bc72",
-      "fanOut": 0,
-      "fanIn": 3,
-      "module": "_shared"
-    },
-    "supabase/functions/enhance-blog-content/index.ts": {
-      "path": "supabase/functions/enhance-blog-content/index.ts",
-      "loc": 159,
-      "rawLoc": 217,
-      "bytes": 7773,
-      "exports": [],
-      "isTest": false,
-      "todos": 0,
-      "commentedOutCode": 1,
-      "hash": "0e7dd607a1976c0b",
-      "fanOut": 2,
-      "fanIn": 0,
-      "module": "enhance-blog-content"
-    },
-    "supabase/functions/generate-blog-image/index.ts": {
-      "path": "supabase/functions/generate-blog-image/index.ts",
-      "loc": 72,
-      "rawLoc": 96,
-      "bytes": 3280,
-      "exports": [],
-      "isTest": false,
-      "todos": 0,
-      "commentedOutCode": 0,
-      "hash": "0a31fee781386469",
-      "fanOut": 1,
-      "fanIn": 0,
-      "module": "generate-blog-image"
-    },
-    "supabase/functions/generate-blog-post/index.ts": {
-      "path": "supabase/functions/generate-blog-post/index.ts",
-      "loc": 124,
-      "rawLoc": 172,
-      "bytes": 8445,
-      "exports": [],
-      "isTest": false,
-      "todos": 0,
-      "commentedOutCode": 1,
-      "hash": "0afd3fcc61a69a3e",
-      "fanOut": 2,
-      "fanIn": 0,
-      "module": "generate-blog-post"
-    },
-    "supabase/functions/publish-scheduled-articles/index.ts": {
-      "path": "supabase/functions/publish-scheduled-articles/index.ts",
-      "loc": 196,
-      "rawLoc": 243,
-      "bytes": 9905,
-      "exports": [],
-      "isTest": false,
-      "todos": 0,
-      "commentedOutCode": 0,
-      "hash": "0e5cde8201b2e713",
-      "fanOut": 0,
-      "fanIn": 0,
-      "module": "publish-scheduled-articles"
-    },
     "supabase/functions/send-lead-notification/index.ts": {
       "path": "supabase/functions/send-lead-notification/index.ts",
       "loc": 326,
@@ -11972,32 +13229,44 @@
       "to": "src/components/ui/card.tsx"
     },
     {
+      "from": "src/app/api/admin/articles/[id]/publish/route.ts",
+      "to": "src/lib/projects/http.ts"
+    },
+    {
+      "from": "src/app/api/admin/articles/[id]/publish/route.ts",
+      "to": "src/lib/projects/session.ts"
+    },
+    {
+      "from": "src/app/api/admin/articles/[id]/publish/route.ts",
+      "to": "src/lib/articles/http.ts"
+    },
+    {
+      "from": "src/app/api/admin/articles/[id]/publish/route.ts",
+      "to": "src/lib/articles/publishFlow.ts"
+    },
+    {
+      "from": "src/app/api/admin/articles/[id]/publish/route.ts",
+      "to": "src/lib/articles/revalidate.ts"
+    },
+    {
+      "from": "src/app/api/admin/articles/[id]/publish/route.ts",
+      "to": "src/lib/articles/writer.ts"
+    },
+    {
       "from": "src/app/api/admin/broadcasts/sync-suppression/route.ts",
       "to": "src/lib/notify/resendAudience.ts"
     },
     {
       "from": "src/app/api/admin/content-actions/apply/route.ts",
-      "to": "src/lib/seo/supabase-rest.ts"
+      "to": "src/lib/articles/actions.ts"
     },
     {
       "from": "src/app/api/admin/content-actions/apply/route.ts",
-      "to": "src/lib/seo/stageToBlog.ts"
+      "to": "src/lib/articles/revalidate.ts"
     },
     {
       "from": "src/app/api/admin/content-actions/apply/route.ts",
-      "to": "src/lib/seo/rollback.ts"
-    },
-    {
-      "from": "src/app/api/admin/content-actions/draft/route.ts",
-      "to": "src/lib/envClean.ts"
-    },
-    {
-      "from": "src/app/api/admin/content-actions/draft/route.ts",
-      "to": "src/lib/seo/supabase-rest.ts"
-    },
-    {
-      "from": "src/app/api/admin/content-actions/draft/route.ts",
-      "to": "src/lib/seo/draftGuardrails.ts"
+      "to": "src/lib/articles/writer.ts"
     },
     {
       "from": "src/app/api/admin/content-actions/route.ts",
@@ -12041,19 +13310,23 @@
     },
     {
       "from": "src/app/api/admin/cta/variants/route.ts",
+      "to": "src/lib/cta/heroStore.server.ts"
+    },
+    {
+      "from": "src/app/api/admin/cta/variants/route.ts",
       "to": "src/lib/cta/http.ts"
     },
     {
       "from": "src/app/api/admin/cta/variants/route.ts",
-      "to": "src/lib/cta/activePairs.server.ts"
-    },
-    {
-      "from": "src/app/api/admin/cta/variants/route.ts",
-      "to": "src/lib/cta/color.ts"
-    },
-    {
-      "from": "src/app/api/admin/cta/variants/route.ts",
       "to": "src/lib/cta/types.ts"
+    },
+    {
+      "from": "src/app/api/admin/cta/variants/route.ts",
+      "to": "src/lib/experiments/store.server.ts"
+    },
+    {
+      "from": "src/app/api/admin/cta/variants/route.ts",
+      "to": "src/lib/experiments/types.ts"
     },
     {
       "from": "src/app/api/admin/customers/route.ts",
@@ -12102,6 +13375,34 @@
     {
       "from": "src/app/api/admin/estimate-email/send/route.ts",
       "to": "src/app/api/admin/estimate-email/_schema.ts"
+    },
+    {
+      "from": "src/app/api/admin/experiments/[key]/route.ts",
+      "to": "src/lib/home-services/adminRoute.ts"
+    },
+    {
+      "from": "src/app/api/admin/experiments/[key]/route.ts",
+      "to": "src/lib/experiments/decide.server.ts"
+    },
+    {
+      "from": "src/app/api/admin/experiments/[key]/route.ts",
+      "to": "src/lib/experiments/schemas.ts"
+    },
+    {
+      "from": "src/app/api/admin/experiments/[key]/route.ts",
+      "to": "src/lib/experiments/store.server.ts"
+    },
+    {
+      "from": "src/app/api/admin/experiments/[key]/route.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/app/api/admin/experiments/route.ts",
+      "to": "src/lib/notify/supabase-rest.ts"
+    },
+    {
+      "from": "src/app/api/admin/experiments/route.ts",
+      "to": "src/lib/experiments/store.server.ts"
     },
     {
       "from": "src/app/api/admin/follow-ups/route.ts",
@@ -12190,6 +13491,42 @@
     {
       "from": "src/app/api/admin/home-care/products/route.ts",
       "to": "src/lib/homecare/products.ts"
+    },
+    {
+      "from": "src/app/api/admin/home-services/[slug]/route.ts",
+      "to": "src/lib/notify/supabase-rest.ts"
+    },
+    {
+      "from": "src/app/api/admin/home-services/[slug]/route.ts",
+      "to": "src/lib/home-services/catalog.ts"
+    },
+    {
+      "from": "src/app/api/admin/home-services/[slug]/route.ts",
+      "to": "src/lib/home-services/catalogRow.ts"
+    },
+    {
+      "from": "src/app/api/admin/home-services/[slug]/route.ts",
+      "to": "src/lib/home-services/catalogData.ts"
+    },
+    {
+      "from": "src/app/api/admin/home-services/[slug]/route.ts",
+      "to": "src/lib/home-services/catalogSchema.ts"
+    },
+    {
+      "from": "src/app/api/admin/home-services/[slug]/route.ts",
+      "to": "src/lib/home-services/adminRoute.ts"
+    },
+    {
+      "from": "src/app/api/admin/home-services/route.ts",
+      "to": "src/lib/notify/supabase-rest.ts"
+    },
+    {
+      "from": "src/app/api/admin/home-services/route.ts",
+      "to": "src/lib/home-services/catalogRow.ts"
+    },
+    {
+      "from": "src/app/api/admin/home-services/route.ts",
+      "to": "src/lib/home-services/adminRoute.ts"
     },
     {
       "from": "src/app/api/admin/leads/[id]/intake/route.ts",
@@ -12448,6 +13785,14 @@
       "to": "src/lib/preferences/preferences.ts"
     },
     {
+      "from": "src/app/api/admin/revalidate/route.ts",
+      "to": "src/lib/projects/http.ts"
+    },
+    {
+      "from": "src/app/api/admin/revalidate/route.ts",
+      "to": "src/lib/revalidate.ts"
+    },
+    {
       "from": "src/app/api/admin/service-quote/complete/route.ts",
       "to": "src/lib/notify/supabase-rest.ts"
     },
@@ -12605,6 +13950,10 @@
     },
     {
       "from": "src/app/api/admin/service-requests/[id]/route.ts",
+      "to": "src/lib/home-services/catalogData.ts"
+    },
+    {
+      "from": "src/app/api/admin/service-requests/[id]/route.ts",
       "to": "src/lib/home-services/requestsAdmin.ts"
     },
     {
@@ -12636,6 +13985,10 @@
       "to": "src/lib/home-services/adminRoute.ts"
     },
     {
+      "from": "src/app/api/admin/service-requests/[id]/route.ts",
+      "to": "src/lib/experiments/events.server.ts"
+    },
+    {
       "from": "src/app/api/admin/service-requests/route.ts",
       "to": "src/lib/notify/supabase-rest.ts"
     },
@@ -12674,6 +14027,166 @@
     {
       "from": "src/app/api/admin/subs/route.ts",
       "to": "src/lib/home-services/adminRoute.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/publish/route.ts",
+      "to": "src/lib/projects/http.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/publish/route.ts",
+      "to": "src/lib/articles/actions.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/publish/route.ts",
+      "to": "src/lib/articles/auth.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/publish/route.ts",
+      "to": "src/lib/articles/http.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/publish/route.ts",
+      "to": "src/lib/articles/publishFlow.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/publish/route.ts",
+      "to": "src/lib/seo/draftGuardrails.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/publish/route.ts",
+      "to": "src/lib/articles/revalidate.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/publish/route.ts",
+      "to": "src/lib/articles/schemas.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/publish/route.ts",
+      "to": "src/lib/articles/writer.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/route.ts",
+      "to": "src/lib/projects/http.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/route.ts",
+      "to": "src/lib/articles/actions.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/route.ts",
+      "to": "src/lib/articles/auth.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/route.ts",
+      "to": "src/lib/articles/http.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/route.ts",
+      "to": "src/lib/articles/publishFlow.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/route.ts",
+      "to": "src/lib/articles/revalidate.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/route.ts",
+      "to": "src/lib/articles/schemas.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/route.ts",
+      "to": "src/lib/articles/writer.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/unpublish/route.ts",
+      "to": "src/lib/articles/auth.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/unpublish/route.ts",
+      "to": "src/lib/articles/revalidate.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/unpublish/route.ts",
+      "to": "src/lib/articles/writer.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/route.ts",
+      "to": "src/lib/projects/http.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/route.ts",
+      "to": "src/lib/articles/actions.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/route.ts",
+      "to": "src/lib/articles/auth.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/route.ts",
+      "to": "src/lib/articles/http.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/route.ts",
+      "to": "src/lib/articles/schemas.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/route.ts",
+      "to": "src/lib/articles/writer.ts"
+    },
+    {
+      "from": "src/app/api/articles/seo-feedback/route.ts",
+      "to": "src/lib/articles/actions.ts"
+    },
+    {
+      "from": "src/app/api/articles/seo-feedback/route.ts",
+      "to": "src/lib/articles/auth.ts"
+    },
+    {
+      "from": "src/app/api/articles/seo-feedback/route.ts",
+      "to": "src/lib/articles/feedback.ts"
+    },
+    {
+      "from": "src/app/api/articles/seo-feedback/route.ts",
+      "to": "src/lib/articles/schemas.ts"
+    },
+    {
+      "from": "src/app/api/articles/seo-feedback/route.ts",
+      "to": "src/lib/seo/report.ts"
+    },
+    {
+      "from": "src/app/api/articles/seo-feedback/route.ts",
+      "to": "src/lib/home-services/catalog.ts"
+    },
+    {
+      "from": "src/app/api/articles/seo-feedback/route.ts",
+      "to": "src/lib/seo/supabase-rest.ts"
+    },
+    {
+      "from": "src/app/api/articles/unpublish/[token]/route.ts",
+      "to": "src/lib/rateLimit.ts"
+    },
+    {
+      "from": "src/app/api/articles/unpublish/[token]/route.ts",
+      "to": "src/lib/projects/http.ts"
+    },
+    {
+      "from": "src/app/api/articles/unpublish/[token]/route.ts",
+      "to": "src/lib/articles/notify.ts"
+    },
+    {
+      "from": "src/app/api/articles/unpublish/[token]/route.ts",
+      "to": "src/lib/articles/publishFlow.ts"
+    },
+    {
+      "from": "src/app/api/articles/unpublish/[token]/route.ts",
+      "to": "src/lib/articles/revalidate.ts"
+    },
+    {
+      "from": "src/app/api/articles/unpublish/[token]/route.ts",
+      "to": "src/lib/articles/unpublishPage.ts"
+    },
+    {
+      "from": "src/app/api/articles/unpublish/[token]/route.ts",
+      "to": "src/lib/articles/writer.ts"
     },
     {
       "from": "src/app/api/buy-and-remodel/unsubscribe/route.ts",
@@ -12726,6 +14239,14 @@
     {
       "from": "src/app/api/crew/confirm/route.ts",
       "to": "src/lib/rateLimit.ts"
+    },
+    {
+      "from": "src/app/api/cron/experiments-evaluate/route.ts",
+      "to": "src/lib/experiments/auth.server.ts"
+    },
+    {
+      "from": "src/app/api/cron/experiments-evaluate/route.ts",
+      "to": "src/lib/experiments/decide.server.ts"
     },
     {
       "from": "src/app/api/cron/home-care-newsletter/route.ts",
@@ -12808,6 +14329,22 @@
       "to": "src/lib/home-services/offers.ts"
     },
     {
+      "from": "src/app/api/cron/publish/route.ts",
+      "to": "src/lib/articles/publishFlow.ts"
+    },
+    {
+      "from": "src/app/api/cron/publish/route.ts",
+      "to": "src/lib/articles/revalidate.ts"
+    },
+    {
+      "from": "src/app/api/cron/publish/route.ts",
+      "to": "src/lib/articles/writer.ts"
+    },
+    {
+      "from": "src/app/api/cron/publish/route.ts",
+      "to": "src/lib/projects/http.ts"
+    },
+    {
       "from": "src/app/api/cron/purge-draft-photos/route.ts",
       "to": "src/lib/notify/supabase-rest.ts"
     },
@@ -12860,26 +14397,6 @@
       "to": "src/lib/seo/google-auth.ts"
     },
     {
-      "from": "src/app/api/cron/seo-maintain/route.ts",
-      "to": "src/lib/envClean.ts"
-    },
-    {
-      "from": "src/app/api/cron/seo-maintain/route.ts",
-      "to": "src/lib/seo/supabase-rest.ts"
-    },
-    {
-      "from": "src/app/api/cron/seo-maintain/route.ts",
-      "to": "src/lib/seo/stageToBlog.ts"
-    },
-    {
-      "from": "src/app/api/cron/seo-maintain/route.ts",
-      "to": "src/lib/seo/draftGuardrails.ts"
-    },
-    {
-      "from": "src/app/api/cron/seo-maintain/route.ts",
-      "to": "src/lib/seo/maintainedArticles.ts"
-    },
-    {
       "from": "src/app/api/cron/seo-report/route.ts",
       "to": "src/lib/seo/supabase-rest.ts"
     },
@@ -12902,6 +14419,10 @@
     {
       "from": "src/app/api/cron/seo-rollback/route.ts",
       "to": "src/lib/notify/sendRollbackDigestEmail.ts"
+    },
+    {
+      "from": "src/app/api/cron/seo-rollback/route.ts",
+      "to": "src/lib/articles/revalidate.ts"
     },
     {
       "from": "src/app/api/cron/seo-suggest/route.ts",
@@ -12985,7 +14506,11 @@
     },
     {
       "from": "src/app/api/cta/event/route.ts",
-      "to": "src/lib/notify/supabase-rest.ts"
+      "to": "src/lib/experiments/store.server.ts"
+    },
+    {
+      "from": "src/app/api/cta/event/route.ts",
+      "to": "src/lib/cta/heroStore.server.ts"
     },
     {
       "from": "src/app/api/cta/event/route.ts",
@@ -13010,6 +14535,182 @@
     {
       "from": "src/app/api/documents/[type]/route.ts",
       "to": "src/lib/supabase-server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/[key]/conclude/route.ts",
+      "to": "src/lib/projects/http.ts"
+    },
+    {
+      "from": "src/app/api/experiments/[key]/conclude/route.ts",
+      "to": "src/lib/experiments/auth.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/[key]/conclude/route.ts",
+      "to": "src/lib/experiments/decide.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/[key]/conclude/route.ts",
+      "to": "src/lib/experiments/schemas.ts"
+    },
+    {
+      "from": "src/app/api/experiments/[key]/conclude/route.ts",
+      "to": "src/lib/experiments/store.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/[key]/conclude/route.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/app/api/experiments/[key]/start/route.ts",
+      "to": "src/lib/projects/http.ts"
+    },
+    {
+      "from": "src/app/api/experiments/[key]/start/route.ts",
+      "to": "src/lib/experiments/auth.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/[key]/start/route.ts",
+      "to": "src/lib/experiments/decide.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/[key]/start/route.ts",
+      "to": "src/lib/experiments/schemas.ts"
+    },
+    {
+      "from": "src/app/api/experiments/[key]/start/route.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/app/api/experiments/backlog/route.ts",
+      "to": "src/lib/projects/http.ts"
+    },
+    {
+      "from": "src/app/api/experiments/backlog/route.ts",
+      "to": "src/lib/notify/supabase-rest.ts"
+    },
+    {
+      "from": "src/app/api/experiments/backlog/route.ts",
+      "to": "src/lib/experiments/auth.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/backlog/route.ts",
+      "to": "src/lib/experiments/schemas.ts"
+    },
+    {
+      "from": "src/app/api/experiments/backlog/route.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/app/api/experiments/event/route.ts",
+      "to": "src/lib/rateLimit.ts"
+    },
+    {
+      "from": "src/app/api/experiments/event/route.ts",
+      "to": "src/lib/cta/http.ts"
+    },
+    {
+      "from": "src/app/api/experiments/event/route.ts",
+      "to": "src/lib/cta/visitor.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/event/route.ts",
+      "to": "src/lib/cta/types.ts"
+    },
+    {
+      "from": "src/app/api/experiments/event/route.ts",
+      "to": "src/lib/botFilter.ts"
+    },
+    {
+      "from": "src/app/api/experiments/event/route.ts",
+      "to": "src/lib/experiments/assign.ts"
+    },
+    {
+      "from": "src/app/api/experiments/event/route.ts",
+      "to": "src/lib/experiments/events.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/event/route.ts",
+      "to": "src/lib/experiments/store.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/event/route.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/app/api/experiments/notify/route.ts",
+      "to": "src/lib/projects/http.ts"
+    },
+    {
+      "from": "src/app/api/experiments/notify/route.ts",
+      "to": "src/lib/notify/telegramMessage.ts"
+    },
+    {
+      "from": "src/app/api/experiments/notify/route.ts",
+      "to": "src/lib/experiments/auth.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/notify/route.ts",
+      "to": "src/lib/experiments/schemas.ts"
+    },
+    {
+      "from": "src/app/api/experiments/report/route.ts",
+      "to": "src/lib/notify/supabase-rest.ts"
+    },
+    {
+      "from": "src/app/api/experiments/report/route.ts",
+      "to": "src/lib/experiments/auth.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/report/route.ts",
+      "to": "src/lib/experiments/store.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/report/route.ts",
+      "to": "src/lib/experiments/surfaces.ts"
+    },
+    {
+      "from": "src/app/api/experiments/report/route.ts",
+      "to": "src/lib/experiments/currentCopy.ts"
+    },
+    {
+      "from": "src/app/api/experiments/route.ts",
+      "to": "src/lib/projects/http.ts"
+    },
+    {
+      "from": "src/app/api/experiments/route.ts",
+      "to": "src/lib/notify/supabase-rest.ts"
+    },
+    {
+      "from": "src/app/api/experiments/route.ts",
+      "to": "src/lib/experiments/auth.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/route.ts",
+      "to": "src/lib/experiments/schemas.ts"
+    },
+    {
+      "from": "src/app/api/experiments/route.ts",
+      "to": "src/lib/experiments/store.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/route.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/app/api/experiments/veto/route.ts",
+      "to": "src/lib/rateLimit.ts"
+    },
+    {
+      "from": "src/app/api/experiments/veto/route.ts",
+      "to": "src/lib/cta/http.ts"
+    },
+    {
+      "from": "src/app/api/experiments/veto/route.ts",
+      "to": "src/lib/experiments/decide.server.ts"
+    },
+    {
+      "from": "src/app/api/experiments/veto/route.ts",
+      "to": "src/lib/experiments/vetoLookup.server.ts"
     },
     {
       "from": "src/app/api/feedback/create/route.ts",
@@ -13241,7 +14942,19 @@
     },
     {
       "from": "src/app/api/home-services/request/route.ts",
+      "to": "src/lib/cta/visitor.server.ts"
+    },
+    {
+      "from": "src/app/api/home-services/request/route.ts",
+      "to": "src/lib/experiments/events.server.ts"
+    },
+    {
+      "from": "src/app/api/home-services/request/route.ts",
       "to": "src/lib/home-services/photos.ts"
+    },
+    {
+      "from": "src/app/api/home-services/request/route.ts",
+      "to": "src/lib/home-services/catalogData.ts"
     },
     {
       "from": "src/app/api/home-services/request/route.ts",
@@ -13572,6 +15285,18 @@
       "to": "src/lib/preferences/preferences.ts"
     },
     {
+      "from": "src/app/articles/unpublish/[token]/route.ts",
+      "to": "src/lib/articles/publishFlow.ts"
+    },
+    {
+      "from": "src/app/articles/unpublish/[token]/route.ts",
+      "to": "src/lib/articles/unpublishPage.ts"
+    },
+    {
+      "from": "src/app/articles/unpublish/[token]/route.ts",
+      "to": "src/lib/projects/http.ts"
+    },
+    {
       "from": "src/app/auth/page.tsx",
       "to": "src/hooks/useAuth.tsx"
     },
@@ -13616,6 +15341,18 @@
       "to": "src/components/PageViewTracker.tsx"
     },
     {
+      "from": "src/app/blog/[slug]/page.tsx",
+      "to": "src/lib/articles/faqJsonLd.ts"
+    },
+    {
+      "from": "src/app/blog/[slug]/page.tsx",
+      "to": "src/lib/articles/schemas.ts"
+    },
+    {
+      "from": "src/app/blog/[slug]/page.tsx",
+      "to": "src/components/blog/BlogFaq.tsx"
+    },
+    {
       "from": "src/app/blog/page.tsx",
       "to": "src/components/Header.tsx"
     },
@@ -13632,6 +15369,10 @@
       "to": "src/components/BlogPostGrid.tsx"
     },
     {
+      "from": "src/app/blog/page.tsx",
+      "to": "src/lib/jsonLd.ts"
+    },
+    {
       "from": "src/app/blog/preview/[slug]/page.tsx",
       "to": "src/integrations/supabase/client.ts"
     },
@@ -13646,6 +15387,14 @@
     {
       "from": "src/app/blog/preview/[slug]/page.tsx",
       "to": "src/components/MarkdownContent.tsx"
+    },
+    {
+      "from": "src/app/blog/preview/[slug]/page.tsx",
+      "to": "src/components/blog/BlogFaq.tsx"
+    },
+    {
+      "from": "src/app/blog/preview/[slug]/page.tsx",
+      "to": "src/lib/articles/schemas.ts"
     },
     {
       "from": "src/app/bond/page.tsx",
@@ -13838,6 +15587,18 @@
     {
       "from": "src/app/do-not-sell/page.tsx",
       "to": "src/components/CallTrackingWrapper.tsx"
+    },
+    {
+      "from": "src/app/experiments/veto/[token]/page.tsx",
+      "to": "src/lib/experiments/vetoLookup.server.ts"
+    },
+    {
+      "from": "src/app/experiments/veto/[token]/page.tsx",
+      "to": "src/lib/experiments/schedule.ts"
+    },
+    {
+      "from": "src/app/experiments/veto/[token]/page.tsx",
+      "to": "src/app/experiments/veto/[token]/VetoButton.tsx"
     },
     {
       "from": "src/app/faq/page.tsx",
@@ -14057,6 +15818,10 @@
     },
     {
       "from": "src/app/home-services/[slug]/page.tsx",
+      "to": "src/lib/home-services/catalogData.ts"
+    },
+    {
+      "from": "src/app/home-services/[slug]/page.tsx",
       "to": "src/lib/home-services/i18n.ts"
     },
     {
@@ -14066,6 +15831,10 @@
     {
       "from": "src/app/home-services/[slug]/page.tsx",
       "to": "src/lib/home-services/seo.ts"
+    },
+    {
+      "from": "src/app/home-services/[slug]/page.tsx",
+      "to": "src/lib/jsonLd.ts"
     },
     {
       "from": "src/app/home-services/page.tsx",
@@ -14113,7 +15882,27 @@
     },
     {
       "from": "src/app/home-services/page.tsx",
+      "to": "src/lib/home-services/catalogData.ts"
+    },
+    {
+      "from": "src/app/home-services/page.tsx",
+      "to": "src/lib/experiments/withExperiment.server.ts"
+    },
+    {
+      "from": "src/app/home-services/page.tsx",
+      "to": "src/lib/experiments/ExperimentZone.tsx"
+    },
+    {
+      "from": "src/app/home-services/page.tsx",
+      "to": "src/lib/experiments/surfaces.ts"
+    },
+    {
+      "from": "src/app/home-services/page.tsx",
       "to": "src/lib/home-services/seo.ts"
+    },
+    {
+      "from": "src/app/home-services/page.tsx",
+      "to": "src/lib/jsonLd.ts"
     },
     {
       "from": "src/app/insurance/page.tsx",
@@ -14509,6 +16298,10 @@
     },
     {
       "from": "src/app/offer/[token]/page.tsx",
+      "to": "src/lib/home-services/catalogData.ts"
+    },
+    {
+      "from": "src/app/offer/[token]/page.tsx",
       "to": "src/lib/home-services/i18n.ts"
     },
     {
@@ -14662,6 +16455,10 @@
     {
       "from": "src/app/projects/[slug]/page.tsx",
       "to": "src/components/ProjectDetailClient.tsx"
+    },
+    {
+      "from": "src/app/projects/[slug]/page.tsx",
+      "to": "src/lib/jsonLd.ts"
     },
     {
       "from": "src/app/proposal/[token]/ProposalView.tsx",
@@ -14898,6 +16695,10 @@
     {
       "from": "src/app/sitemap.ts",
       "to": "src/lib/home-services/catalog.ts"
+    },
+    {
+      "from": "src/app/sitemap.ts",
+      "to": "src/lib/home-services/catalogData.ts"
     },
     {
       "from": "src/app/spring-renovation/page.tsx",
@@ -15405,7 +17206,11 @@
     },
     {
       "from": "src/components/AdminContent.tsx",
-      "to": "src/components/admin/home-services/CtaTestsDashboard.tsx"
+      "to": "src/components/admin/home-services/ServicesPricesEditor.tsx"
+    },
+    {
+      "from": "src/components/AdminContent.tsx",
+      "to": "src/components/admin/experiments/ExperimentsDashboard.tsx"
     },
     {
       "from": "src/components/AdminContent.tsx",
@@ -15940,6 +17745,10 @@
       "to": "src/components/ScrollHint.tsx"
     },
     {
+      "from": "src/components/PortfolioContent.tsx",
+      "to": "src/components/LazyProjectVideo.tsx"
+    },
+    {
       "from": "src/components/ProcessPageClient.tsx",
       "to": "src/components/ui/card.tsx"
     },
@@ -16170,6 +17979,10 @@
     {
       "from": "src/components/Services.tsx",
       "to": "src/components/ScrollToEstimateButton.tsx"
+    },
+    {
+      "from": "src/components/SmartBanner.tsx",
+      "to": "src/hooks/use-mobile.tsx"
     },
     {
       "from": "src/components/SmartBanner.tsx",
@@ -16461,10 +18274,6 @@
     },
     {
       "from": "src/components/admin/BlogPostEditor.tsx",
-      "to": "src/components/admin/ui/AdminRadioGroup.tsx"
-    },
-    {
-      "from": "src/components/admin/BlogPostEditor.tsx",
       "to": "src/utils/heicConverter.ts"
     },
     {
@@ -16472,36 +18281,12 @@
       "to": "src/lib/utils.ts"
     },
     {
-      "from": "src/components/admin/BlogPostGenerator.tsx",
-      "to": "src/components/ui/button.tsx"
+      "from": "src/components/admin/BlogPostEditor.tsx",
+      "to": "src/lib/revalidate.ts"
     },
     {
-      "from": "src/components/admin/BlogPostGenerator.tsx",
-      "to": "src/components/ui/card.tsx"
-    },
-    {
-      "from": "src/components/admin/BlogPostGenerator.tsx",
-      "to": "src/components/ui/input.tsx"
-    },
-    {
-      "from": "src/components/admin/BlogPostGenerator.tsx",
-      "to": "src/components/ui/label.tsx"
-    },
-    {
-      "from": "src/components/admin/BlogPostGenerator.tsx",
-      "to": "src/components/ui/textarea.tsx"
-    },
-    {
-      "from": "src/components/admin/BlogPostGenerator.tsx",
-      "to": "src/components/ui/select.tsx"
-    },
-    {
-      "from": "src/components/admin/BlogPostGenerator.tsx",
-      "to": "src/components/ui/alert.tsx"
-    },
-    {
-      "from": "src/components/admin/BlogPostGenerator.tsx",
-      "to": "src/integrations/supabase/client.ts"
+      "from": "src/components/admin/BlogPostEditor.tsx",
+      "to": "src/lib/articles/adminPublish.ts"
     },
     {
       "from": "src/components/admin/BlogPostList.tsx",
@@ -16533,7 +18318,11 @@
     },
     {
       "from": "src/components/admin/BlogPostList.tsx",
-      "to": "src/components/admin/BlogPostGenerator.tsx"
+      "to": "src/lib/revalidate.ts"
+    },
+    {
+      "from": "src/components/admin/BlogPostList.tsx",
+      "to": "src/lib/articles/adminPublish.ts"
     },
     {
       "from": "src/components/admin/CMSPageEditor.tsx",
@@ -16566,6 +18355,10 @@
     {
       "from": "src/components/admin/CMSPageEditor.tsx",
       "to": "src/hooks/use-toast.ts"
+    },
+    {
+      "from": "src/components/admin/CMSPageEditor.tsx",
+      "to": "src/lib/revalidate.ts"
     },
     {
       "from": "src/components/admin/CMSPageEditor.tsx",
@@ -16940,6 +18733,10 @@
       "to": "src/components/ui/card.tsx"
     },
     {
+      "from": "src/components/admin/SeoSuggestionsDashboard.tsx",
+      "to": "src/lib/articles/cliCommand.ts"
+    },
+    {
       "from": "src/components/admin/ServiceAreasEditor.tsx",
       "to": "src/integrations/supabase/client.ts"
     },
@@ -17010,6 +18807,38 @@
     {
       "from": "src/components/admin/ServicesEditor.tsx",
       "to": "src/hooks/use-toast.ts"
+    },
+    {
+      "from": "src/components/admin/ServicesEditor.tsx",
+      "to": "src/lib/revalidate.ts"
+    },
+    {
+      "from": "src/components/admin/experiments/ExperimentsDashboard.tsx",
+      "to": "src/components/ui/badge.tsx"
+    },
+    {
+      "from": "src/components/admin/experiments/ExperimentsDashboard.tsx",
+      "to": "src/components/ui/button.tsx"
+    },
+    {
+      "from": "src/components/admin/experiments/ExperimentsDashboard.tsx",
+      "to": "src/components/ui/card.tsx"
+    },
+    {
+      "from": "src/components/admin/experiments/ExperimentsDashboard.tsx",
+      "to": "src/components/ui/table.tsx"
+    },
+    {
+      "from": "src/components/admin/experiments/ExperimentsDashboard.tsx",
+      "to": "src/hooks/use-toast.ts"
+    },
+    {
+      "from": "src/components/admin/experiments/ExperimentsDashboard.tsx",
+      "to": "src/components/admin/home-services/CtaTestsDashboard.tsx"
+    },
+    {
+      "from": "src/components/admin/experiments/ExperimentsDashboard.tsx",
+      "to": "src/lib/experiments/store.server.ts"
     },
     {
       "from": "src/components/admin/home-services/BidRequestForm.tsx",
@@ -17170,6 +18999,46 @@
     {
       "from": "src/components/admin/home-services/ServiceRequestsManager.tsx",
       "to": "src/components/admin/home-services/SubResponsesInbox.tsx"
+    },
+    {
+      "from": "src/components/admin/home-services/ServicesPricesEditor.tsx",
+      "to": "src/components/ui/card.tsx"
+    },
+    {
+      "from": "src/components/admin/home-services/ServicesPricesEditor.tsx",
+      "to": "src/components/ui/button.tsx"
+    },
+    {
+      "from": "src/components/admin/home-services/ServicesPricesEditor.tsx",
+      "to": "src/components/ui/input.tsx"
+    },
+    {
+      "from": "src/components/admin/home-services/ServicesPricesEditor.tsx",
+      "to": "src/components/ui/textarea.tsx"
+    },
+    {
+      "from": "src/components/admin/home-services/ServicesPricesEditor.tsx",
+      "to": "src/components/ui/switch.tsx"
+    },
+    {
+      "from": "src/components/admin/home-services/ServicesPricesEditor.tsx",
+      "to": "src/components/ui/badge.tsx"
+    },
+    {
+      "from": "src/components/admin/home-services/ServicesPricesEditor.tsx",
+      "to": "src/hooks/use-toast.ts"
+    },
+    {
+      "from": "src/components/admin/home-services/ServicesPricesEditor.tsx",
+      "to": "src/lib/home-services/catalogRow.ts"
+    },
+    {
+      "from": "src/components/admin/home-services/ServicesPricesEditor.tsx",
+      "to": "src/lib/home-services/catalog.ts"
+    },
+    {
+      "from": "src/components/admin/home-services/ServicesPricesEditor.tsx",
+      "to": "src/components/admin/home-services/shared.tsx"
     },
     {
       "from": "src/components/admin/home-services/SubResponsesInbox.tsx",
@@ -17334,6 +19203,10 @@
     {
       "from": "src/components/admin/home-services/shared.tsx",
       "to": "src/lib/home-services/catalog.ts"
+    },
+    {
+      "from": "src/components/admin/home-services/shared.tsx",
+      "to": "src/lib/home-services/catalogRow.ts"
     },
     {
       "from": "src/components/admin/home-services/shared.tsx",
@@ -17528,8 +19401,8 @@
       "to": "src/lib/utils.ts"
     },
     {
-      "from": "src/components/admin/ui/AdminRadioGroup.tsx",
-      "to": "src/lib/utils.ts"
+      "from": "src/components/blog/BlogFaq.tsx",
+      "to": "src/lib/articles/schemas.ts"
     },
     {
       "from": "src/components/forms/ContactTimePicker.tsx",
@@ -17690,6 +19563,10 @@
     {
       "from": "src/components/home-services/ServiceIcon.tsx",
       "to": "src/lib/home-services/catalog.ts"
+    },
+    {
+      "from": "src/components/home-services/useRequestFlow.ts",
+      "to": "src/lib/experiments/client.ts"
     },
     {
       "from": "src/components/home-services/useRequestFlow.ts",
@@ -18208,6 +20085,146 @@
       "to": "src/integrations/supabase/types.ts"
     },
     {
+      "from": "src/lib/articles/actions.ts",
+      "to": "src/lib/notify/supabase-rest.ts"
+    },
+    {
+      "from": "src/lib/articles/actions.ts",
+      "to": "src/lib/seo/draftGuardrails.ts"
+    },
+    {
+      "from": "src/lib/articles/actions.ts",
+      "to": "src/lib/seo/rollback.ts"
+    },
+    {
+      "from": "src/lib/articles/actions.ts",
+      "to": "src/lib/seo/stageToBlog.ts"
+    },
+    {
+      "from": "src/lib/articles/actions.ts",
+      "to": "src/lib/articles/writer.ts"
+    },
+    {
+      "from": "src/lib/articles/auth.ts",
+      "to": "src/lib/rateLimit.ts"
+    },
+    {
+      "from": "src/lib/articles/auth.ts",
+      "to": "src/lib/projects/ingestAuth.ts"
+    },
+    {
+      "from": "src/lib/articles/auth.ts",
+      "to": "src/lib/projects/session.ts"
+    },
+    {
+      "from": "src/lib/articles/catalogPrices.ts",
+      "to": "src/lib/home-services/catalog.ts"
+    },
+    {
+      "from": "src/lib/articles/catalogPrices.ts",
+      "to": "src/lib/articles/publishGuard.ts"
+    },
+    {
+      "from": "src/lib/articles/catalogPrices.ts",
+      "to": "src/lib/home-services/catalogData.ts"
+    },
+    {
+      "from": "src/lib/articles/cliCommand.ts",
+      "to": "src/lib/seo/stageToBlog.ts"
+    },
+    {
+      "from": "src/lib/articles/faqJsonLd.ts",
+      "to": "src/lib/articles/schemas.ts"
+    },
+    {
+      "from": "src/lib/articles/faqJsonLd.ts",
+      "to": "src/lib/jsonLd.ts"
+    },
+    {
+      "from": "src/lib/articles/feedback.ts",
+      "to": "src/lib/seo/report.ts"
+    },
+    {
+      "from": "src/lib/articles/feedback.ts",
+      "to": "src/lib/seo/scoring.ts"
+    },
+    {
+      "from": "src/lib/articles/feedback.ts",
+      "to": "src/lib/seo/url.ts"
+    },
+    {
+      "from": "src/lib/articles/http.ts",
+      "to": "src/lib/projects/http.ts"
+    },
+    {
+      "from": "src/lib/articles/notify.ts",
+      "to": "src/lib/notify/telegramMessage.ts"
+    },
+    {
+      "from": "src/lib/articles/publishFlow.ts",
+      "to": "src/lib/articles/publishGuard.ts"
+    },
+    {
+      "from": "src/lib/articles/publishFlow.ts",
+      "to": "src/lib/articles/catalogPrices.ts"
+    },
+    {
+      "from": "src/lib/articles/publishFlow.ts",
+      "to": "src/lib/articles/notify.ts"
+    },
+    {
+      "from": "src/lib/articles/publishFlow.ts",
+      "to": "src/lib/articles/unpublishToken.ts"
+    },
+    {
+      "from": "src/lib/articles/publishFlow.ts",
+      "to": "src/lib/articles/writer.ts"
+    },
+    {
+      "from": "src/lib/articles/publishFlow.ts",
+      "to": "src/lib/notify/telegramMessage.ts"
+    },
+    {
+      "from": "src/lib/articles/publishFlow.ts",
+      "to": "src/lib/seo/draftGuardrails.ts"
+    },
+    {
+      "from": "src/lib/articles/publishGuard.ts",
+      "to": "src/lib/seo/draftGuardrails.ts"
+    },
+    {
+      "from": "src/lib/articles/publishGuard.ts",
+      "to": "src/lib/articles/schemas.ts"
+    },
+    {
+      "from": "src/lib/articles/revalidate.ts",
+      "to": "src/lib/revalidate.ts"
+    },
+    {
+      "from": "src/lib/articles/unpublishToken.ts",
+      "to": "src/lib/oneTapLinkSecret.ts"
+    },
+    {
+      "from": "src/lib/articles/writer.ts",
+      "to": "src/lib/notify/supabase-rest.ts"
+    },
+    {
+      "from": "src/lib/articles/writer.ts",
+      "to": "src/lib/projects/slug.ts"
+    },
+    {
+      "from": "src/lib/articles/writer.ts",
+      "to": "src/lib/seo/draftGuardrails.ts"
+    },
+    {
+      "from": "src/lib/articles/writer.ts",
+      "to": "src/lib/seo/stageToBlog.ts"
+    },
+    {
+      "from": "src/lib/articles/writer.ts",
+      "to": "src/lib/articles/schemas.ts"
+    },
+    {
       "from": "src/lib/cms.ts",
       "to": "src/types/cms.ts"
     },
@@ -18249,7 +20266,7 @@
     },
     {
       "from": "src/lib/cta/activePairs.server.ts",
-      "to": "src/lib/notify/supabase-rest.ts"
+      "to": "src/lib/cta/heroStore.server.ts"
     },
     {
       "from": "src/lib/cta/activePairs.server.ts",
@@ -18258,6 +20275,10 @@
     {
       "from": "src/lib/cta/admin.server.ts",
       "to": "src/lib/notify/supabase-rest.ts"
+    },
+    {
+      "from": "src/lib/cta/admin.server.ts",
+      "to": "src/lib/cta/heroStore.server.ts"
     },
     {
       "from": "src/lib/cta/admin.server.ts",
@@ -18276,16 +20297,36 @@
       "to": "src/lib/cta/types.ts"
     },
     {
+      "from": "src/lib/cta/heroStore.server.ts",
+      "to": "src/lib/notify/supabase-rest.ts"
+    },
+    {
+      "from": "src/lib/cta/heroStore.server.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/lib/cta/heroStore.server.ts",
+      "to": "src/lib/cta/types.ts"
+    },
+    {
+      "from": "src/lib/cta/heroStore.server.ts",
+      "to": "src/lib/cta/report.ts"
+    },
+    {
       "from": "src/lib/cta/report.ts",
       "to": "src/lib/cta/types.ts"
     },
     {
       "from": "src/lib/cta/variants.server.ts",
-      "to": "src/lib/cta/types.ts"
+      "to": "src/lib/cta/color.ts"
     },
     {
       "from": "src/lib/cta/variants.server.ts",
-      "to": "src/lib/cta/color.ts"
+      "to": "src/lib/cta/heroStore.server.ts"
+    },
+    {
+      "from": "src/lib/cta/variants.server.ts",
+      "to": "src/lib/cta/types.ts"
     },
     {
       "from": "src/lib/cta/visitor.edge.ts",
@@ -18298,6 +20339,174 @@
     {
       "from": "src/lib/emailTemplates.ts",
       "to": "src/lib/notify/formatContactTime.ts"
+    },
+    {
+      "from": "src/lib/experiments/ExperimentZone.tsx",
+      "to": "src/lib/experiments/client.ts"
+    },
+    {
+      "from": "src/lib/experiments/assign.ts",
+      "to": "src/lib/cta/assign.ts"
+    },
+    {
+      "from": "src/lib/experiments/assign.ts",
+      "to": "src/lib/botFilter.ts"
+    },
+    {
+      "from": "src/lib/experiments/assign.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/lib/experiments/assign.ts",
+      "to": "src/lib/experiments/seed.ts"
+    },
+    {
+      "from": "src/lib/experiments/auth.server.ts",
+      "to": "src/lib/projects/ingestAuth.ts"
+    },
+    {
+      "from": "src/lib/experiments/auth.server.ts",
+      "to": "src/lib/projects/session.ts"
+    },
+    {
+      "from": "src/lib/experiments/auth.server.ts",
+      "to": "src/lib/rateLimit.ts"
+    },
+    {
+      "from": "src/lib/experiments/currentCopy.ts",
+      "to": "src/lib/home-services/i18n.ts"
+    },
+    {
+      "from": "src/lib/experiments/currentCopy.ts",
+      "to": "src/lib/experiments/surfaces.ts"
+    },
+    {
+      "from": "src/lib/experiments/currentCopy.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/lib/experiments/decide.server.ts",
+      "to": "src/lib/notify/telegramMessage.ts"
+    },
+    {
+      "from": "src/lib/experiments/decide.server.ts",
+      "to": "src/lib/notify/supabase-rest.ts"
+    },
+    {
+      "from": "src/lib/experiments/decide.server.ts",
+      "to": "src/lib/experiments/messages.ts"
+    },
+    {
+      "from": "src/lib/experiments/decide.server.ts",
+      "to": "src/lib/experiments/vetoToken.ts"
+    },
+    {
+      "from": "src/lib/experiments/decide.server.ts",
+      "to": "src/lib/experiments/store.server.ts"
+    },
+    {
+      "from": "src/lib/experiments/decide.server.ts",
+      "to": "src/lib/experiments/evaluate.ts"
+    },
+    {
+      "from": "src/lib/experiments/decide.server.ts",
+      "to": "src/lib/experiments/schedule.ts"
+    },
+    {
+      "from": "src/lib/experiments/decide.server.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/lib/experiments/evaluate.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/lib/experiments/events.server.ts",
+      "to": "src/lib/experiments/store.server.ts"
+    },
+    {
+      "from": "src/lib/experiments/events.server.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/lib/experiments/messages.ts",
+      "to": "src/lib/notify/telegramMessage.ts"
+    },
+    {
+      "from": "src/lib/experiments/messages.ts",
+      "to": "src/lib/experiments/evaluate.ts"
+    },
+    {
+      "from": "src/lib/experiments/messages.ts",
+      "to": "src/lib/experiments/schedule.ts"
+    },
+    {
+      "from": "src/lib/experiments/messages.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/lib/experiments/schemas.ts",
+      "to": "src/lib/experiments/surfaces.ts"
+    },
+    {
+      "from": "src/lib/experiments/schemas.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/lib/experiments/store.server.ts",
+      "to": "src/lib/notify/supabase-rest.ts"
+    },
+    {
+      "from": "src/lib/experiments/store.server.ts",
+      "to": "src/lib/cta/activePairs.server.ts"
+    },
+    {
+      "from": "src/lib/experiments/store.server.ts",
+      "to": "src/lib/experiments/evaluate.ts"
+    },
+    {
+      "from": "src/lib/experiments/store.server.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/lib/experiments/surfaces.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/lib/experiments/types.ts",
+      "to": "src/lib/articles/publishGuard.ts"
+    },
+    {
+      "from": "src/lib/experiments/vetoLookup.server.ts",
+      "to": "src/lib/experiments/store.server.ts"
+    },
+    {
+      "from": "src/lib/experiments/vetoLookup.server.ts",
+      "to": "src/lib/experiments/types.ts"
+    },
+    {
+      "from": "src/lib/experiments/vetoLookup.server.ts",
+      "to": "src/lib/experiments/vetoToken.ts"
+    },
+    {
+      "from": "src/lib/experiments/vetoToken.ts",
+      "to": "src/lib/oneTapLinkSecret.ts"
+    },
+    {
+      "from": "src/lib/experiments/withExperiment.server.ts",
+      "to": "src/lib/cta/types.ts"
+    },
+    {
+      "from": "src/lib/experiments/withExperiment.server.ts",
+      "to": "src/lib/experiments/assign.ts"
+    },
+    {
+      "from": "src/lib/experiments/withExperiment.server.ts",
+      "to": "src/lib/experiments/store.server.ts"
+    },
+    {
+      "from": "src/lib/experiments/withExperiment.server.ts",
+      "to": "src/lib/experiments/types.ts"
     },
     {
       "from": "src/lib/followups/activeDrips.ts",
@@ -18318,6 +20527,30 @@
     {
       "from": "src/lib/home-services/attachments.ts",
       "to": "src/lib/home-services/storage.ts"
+    },
+    {
+      "from": "src/lib/home-services/catalogData.ts",
+      "to": "src/lib/notify/supabase-rest.ts"
+    },
+    {
+      "from": "src/lib/home-services/catalogData.ts",
+      "to": "src/lib/home-services/catalog.ts"
+    },
+    {
+      "from": "src/lib/home-services/catalogData.ts",
+      "to": "src/lib/home-services/catalogRow.ts"
+    },
+    {
+      "from": "src/lib/home-services/catalogData.ts",
+      "to": "src/lib/home-services/catalogSeed.ts"
+    },
+    {
+      "from": "src/lib/home-services/catalogRow.ts",
+      "to": "src/lib/home-services/catalog.ts"
+    },
+    {
+      "from": "src/lib/home-services/catalogSeed.ts",
+      "to": "src/lib/home-services/catalog.ts"
     },
     {
       "from": "src/lib/home-services/compressImage.ts",
@@ -18405,6 +20638,10 @@
     },
     {
       "from": "src/lib/home-services/offers.ts",
+      "to": "src/lib/home-services/catalogData.ts"
+    },
+    {
+      "from": "src/lib/home-services/offers.ts",
       "to": "src/lib/home-services/pricing.ts"
     },
     {
@@ -18438,6 +20675,10 @@
     {
       "from": "src/lib/home-services/requests.ts",
       "to": "src/lib/home-services/catalog.ts"
+    },
+    {
+      "from": "src/lib/home-services/requests.ts",
+      "to": "src/lib/home-services/catalogData.ts"
     },
     {
       "from": "src/lib/home-services/requests.ts",
@@ -19080,10 +21321,6 @@
       "to": "src/lib/seo/google-auth.ts"
     },
     {
-      "from": "src/lib/seo/maintainedArticles.ts",
-      "to": "src/lib/seo/supabase-rest.ts"
-    },
-    {
       "from": "src/lib/seo/reportEmail.ts",
       "to": "src/lib/seo/report.ts"
     },
@@ -19108,32 +21345,24 @@
       "to": "src/lib/cta/visitor.edge.ts"
     },
     {
+      "from": "src/middleware.ts",
+      "to": "src/lib/cta/types.ts"
+    },
+    {
+      "from": "src/middleware.ts",
+      "to": "src/lib/botFilter.ts"
+    },
+    {
+      "from": "src/middleware.ts",
+      "to": "src/lib/experiments/seed.ts"
+    },
+    {
       "from": "src/services/analyticsManager.ts",
       "to": "src/integrations/supabase/client.ts"
     },
     {
       "from": "src/services/analyticsManager.ts",
       "to": "src/hooks/useVisitor.ts"
-    },
-    {
-      "from": "supabase/functions/enhance-blog-content/index.ts",
-      "to": "supabase/functions/_shared/internalLinks.ts"
-    },
-    {
-      "from": "supabase/functions/enhance-blog-content/index.ts",
-      "to": "supabase/functions/_shared/openai.ts"
-    },
-    {
-      "from": "supabase/functions/generate-blog-image/index.ts",
-      "to": "supabase/functions/_shared/openai.ts"
-    },
-    {
-      "from": "supabase/functions/generate-blog-post/index.ts",
-      "to": "supabase/functions/_shared/internalLinks.ts"
-    },
-    {
-      "from": "supabase/functions/generate-blog-post/index.ts",
-      "to": "supabase/functions/_shared/openai.ts"
     }
   ],
   "modules": {
@@ -19143,9 +21372,9 @@
         "src/app/about/page.tsx",
         "src/app/admin/[...catchAll]/page.tsx",
         "src/app/admin/page.tsx",
+        "src/app/api/admin/articles/[id]/publish/route.ts",
         "src/app/api/admin/broadcasts/sync-suppression/route.ts",
         "src/app/api/admin/content-actions/apply/route.ts",
-        "src/app/api/admin/content-actions/draft/route.ts",
         "src/app/api/admin/content-actions/route.ts",
         "src/app/api/admin/content-actions/stage/route.ts",
         "src/app/api/admin/crew/route.ts",
@@ -19161,6 +21390,8 @@
         "src/app/api/admin/estimate-email/log/route.ts",
         "src/app/api/admin/estimate-email/preview/route.ts",
         "src/app/api/admin/estimate-email/send/route.ts",
+        "src/app/api/admin/experiments/[key]/route.ts",
+        "src/app/api/admin/experiments/route.ts",
         "src/app/api/admin/follow-ups/route.ts",
         "src/app/api/admin/home-care/home-records/route.ts",
         "src/app/api/admin/home-care/member/route.ts",
@@ -19168,6 +21399,8 @@
         "src/app/api/admin/home-care/product-image/route.ts",
         "src/app/api/admin/home-care/products/[id]/route.ts",
         "src/app/api/admin/home-care/products/route.ts",
+        "src/app/api/admin/home-services/[slug]/route.ts",
+        "src/app/api/admin/home-services/route.ts",
         "src/app/api/admin/leads/[id]/intake/route.ts",
         "src/app/api/admin/offers/[id]/route.ts",
         "src/app/api/admin/offers/decline-calls/[id]/route.ts",
@@ -19188,6 +21421,7 @@
         "src/app/api/admin/proposals/route.ts",
         "src/app/api/admin/releases/route.ts",
         "src/app/api/admin/releases/send/route.ts",
+        "src/app/api/admin/revalidate/route.ts",
         "src/app/api/admin/service-quote/_schema.ts",
         "src/app/api/admin/service-quote/complete/route.ts",
         "src/app/api/admin/service-quote/dispatch/route.ts",
@@ -19197,11 +21431,18 @@
         "src/app/api/admin/service-requests/[id]/route.ts",
         "src/app/api/admin/service-requests/route.ts",
         "src/app/api/admin/subs/route.ts",
+        "src/app/api/articles/ingest/[id]/publish/route.ts",
+        "src/app/api/articles/ingest/[id]/route.ts",
+        "src/app/api/articles/ingest/[id]/unpublish/route.ts",
+        "src/app/api/articles/ingest/route.ts",
+        "src/app/api/articles/seo-feedback/route.ts",
+        "src/app/api/articles/unpublish/[token]/route.ts",
         "src/app/api/banners/admin/route.ts",
         "src/app/api/banners/route.ts",
         "src/app/api/buy-and-remodel/unsubscribe/route.ts",
         "src/app/api/consent/log/route.ts",
         "src/app/api/crew/confirm/route.ts",
+        "src/app/api/cron/experiments-evaluate/route.ts",
         "src/app/api/cron/health/route.ts",
         "src/app/api/cron/home-care-newsletter/route.ts",
         "src/app/api/cron/intake-chase/route.ts",
@@ -19212,7 +21453,6 @@
         "src/app/api/cron/resend-sync/route.ts",
         "src/app/api/cron/send-follow-ups/route.ts",
         "src/app/api/cron/seo-ingest/route.ts",
-        "src/app/api/cron/seo-maintain/route.ts",
         "src/app/api/cron/seo-report/route.ts",
         "src/app/api/cron/seo-rollback/route.ts",
         "src/app/api/cron/seo-suggest/route.ts",
@@ -19221,6 +21461,14 @@
         "src/app/api/cron/visit-reminders/route.ts",
         "src/app/api/cta/event/route.ts",
         "src/app/api/documents/[type]/route.ts",
+        "src/app/api/experiments/[key]/conclude/route.ts",
+        "src/app/api/experiments/[key]/start/route.ts",
+        "src/app/api/experiments/backlog/route.ts",
+        "src/app/api/experiments/event/route.ts",
+        "src/app/api/experiments/notify/route.ts",
+        "src/app/api/experiments/report/route.ts",
+        "src/app/api/experiments/route.ts",
+        "src/app/api/experiments/veto/route.ts",
         "src/app/api/feedback/create/route.ts",
         "src/app/api/follow-up/route.ts",
         "src/app/api/health/forms/route.ts",
@@ -19258,6 +21506,7 @@
         "src/app/api/proposal/[token]/submit/route.ts",
         "src/app/api/referrals/route.ts",
         "src/app/api/webhooks/resend/route.ts",
+        "src/app/articles/unpublish/[token]/route.ts",
         "src/app/auth/layout.tsx",
         "src/app/auth/page.tsx",
         "src/app/blog/[slug]/layout.tsx",
@@ -19277,6 +21526,8 @@
         "src/app/data-rights/page.tsx",
         "src/app/do-not-sell/layout.tsx",
         "src/app/do-not-sell/page.tsx",
+        "src/app/experiments/veto/[token]/VetoButton.tsx",
+        "src/app/experiments/veto/[token]/page.tsx",
         "src/app/faq/page.tsx",
         "src/app/free-estimate/page.tsx",
         "src/app/home-care/book/page.tsx",
@@ -19352,13 +21603,13 @@
         "src/app/warranty/layout.tsx",
         "src/app/warranty/page.tsx"
       ],
-      "loc": 28490,
-      "exports": 660,
-      "internalEdges": 14,
-      "outgoingEdges": 817,
+      "loc": 29218,
+      "exports": 726,
+      "internalEdges": 15,
+      "outgoingEdges": 952,
       "incomingEdges": 10,
-      "cohesion": 0.017,
-      "fileCount": 211
+      "cohesion": 0.016,
+      "fileCount": 233
     },
     "components": {
       "name": "components",
@@ -19445,7 +21696,6 @@
         "src/components/admin/AnalyticsSettings.tsx",
         "src/components/admin/BannerManager.tsx",
         "src/components/admin/BlogPostEditor.tsx",
-        "src/components/admin/BlogPostGenerator.tsx",
         "src/components/admin/BlogPostList.tsx",
         "src/components/admin/CMSPageEditor.tsx",
         "src/components/admin/ComplianceDocumentsManager.tsx",
@@ -19463,11 +21713,13 @@
         "src/components/admin/SeoSuggestionsDashboard.tsx",
         "src/components/admin/ServiceAreasEditor.tsx",
         "src/components/admin/ServicesEditor.tsx",
+        "src/components/admin/experiments/ExperimentsDashboard.tsx",
         "src/components/admin/home-services/BidRequestForm.tsx",
         "src/components/admin/home-services/CtaTestsDashboard.tsx",
         "src/components/admin/home-services/PricingReport.tsx",
         "src/components/admin/home-services/RequestDetail.tsx",
         "src/components/admin/home-services/ServiceRequestsManager.tsx",
+        "src/components/admin/home-services/ServicesPricesEditor.tsx",
         "src/components/admin/home-services/SubResponsesInbox.tsx",
         "src/components/admin/home-services/SubsManager.tsx",
         "src/components/admin/home-services/cta/ButtonReportCard.tsx",
@@ -19487,7 +21739,7 @@
         "src/components/admin/projects/types.ts",
         "src/components/admin/projects/upload.ts",
         "src/components/admin/ui/AdminCheckbox.tsx",
-        "src/components/admin/ui/AdminRadioGroup.tsx",
+        "src/components/blog/BlogFaq.tsx",
         "src/components/forms/ContactTimePicker.tsx",
         "src/components/gallery/PhotoGallery.tsx",
         "src/components/home-services/AddressField.tsx",
@@ -19576,13 +21828,13 @@
         "src/components/ui/tooltip.tsx",
         "src/components/ui/use-toast.ts"
       ],
-      "loc": 36073,
-      "exports": 543,
-      "internalEdges": 447,
-      "outgoingEdges": 275,
-      "incomingEdges": 316,
-      "cohesion": 0.619,
-      "fileCount": 212
+      "loc": 36741,
+      "exports": 550,
+      "internalEdges": 452,
+      "outgoingEdges": 289,
+      "incomingEdges": 318,
+      "cohesion": 0.61,
+      "fileCount": 213
     },
     "data": {
       "name": "data",
@@ -19622,7 +21874,7 @@
       "exports": 30,
       "internalEdges": 1,
       "outgoingEdges": 9,
-      "incomingEdges": 71,
+      "incomingEdges": 74,
       "cohesion": 0.1,
       "fileCount": 10
     },
@@ -19637,7 +21889,7 @@
       "exports": 10,
       "internalEdges": 2,
       "outgoingEdges": 0,
-      "incomingEdges": 34,
+      "incomingEdges": 33,
       "cohesion": 1,
       "fileCount": 3
     },
@@ -19645,7 +21897,24 @@
       "name": "lib",
       "files": [
         "src/lib/analytics/excluded.ts",
+        "src/lib/articles/actions.ts",
+        "src/lib/articles/adminPublish.ts",
+        "src/lib/articles/auth.ts",
+        "src/lib/articles/catalogPrices.ts",
+        "src/lib/articles/cliCommand.ts",
+        "src/lib/articles/faqJsonLd.ts",
+        "src/lib/articles/feedback.ts",
+        "src/lib/articles/http.ts",
+        "src/lib/articles/notify.ts",
+        "src/lib/articles/publishFlow.ts",
+        "src/lib/articles/publishGuard.ts",
+        "src/lib/articles/revalidate.ts",
+        "src/lib/articles/schemas.ts",
+        "src/lib/articles/unpublishPage.ts",
+        "src/lib/articles/unpublishToken.ts",
+        "src/lib/articles/writer.ts",
         "src/lib/bannerRules.ts",
+        "src/lib/botFilter.ts",
         "src/lib/click-fraud-detector.ts",
         "src/lib/cms.ts",
         "src/lib/csv.ts",
@@ -19656,6 +21925,7 @@
         "src/lib/cta/assign.ts",
         "src/lib/cta/bootstrap.ts",
         "src/lib/cta/color.ts",
+        "src/lib/cta/heroStore.server.ts",
         "src/lib/cta/http.ts",
         "src/lib/cta/report.ts",
         "src/lib/cta/types.ts",
@@ -19664,6 +21934,24 @@
         "src/lib/cta/visitor.server.ts",
         "src/lib/emailTemplates.ts",
         "src/lib/envClean.ts",
+        "src/lib/experiments/ExperimentZone.tsx",
+        "src/lib/experiments/assign.ts",
+        "src/lib/experiments/auth.server.ts",
+        "src/lib/experiments/client.ts",
+        "src/lib/experiments/currentCopy.ts",
+        "src/lib/experiments/decide.server.ts",
+        "src/lib/experiments/evaluate.ts",
+        "src/lib/experiments/events.server.ts",
+        "src/lib/experiments/messages.ts",
+        "src/lib/experiments/schedule.ts",
+        "src/lib/experiments/schemas.ts",
+        "src/lib/experiments/seed.ts",
+        "src/lib/experiments/store.server.ts",
+        "src/lib/experiments/surfaces.ts",
+        "src/lib/experiments/types.ts",
+        "src/lib/experiments/vetoLookup.server.ts",
+        "src/lib/experiments/vetoToken.ts",
+        "src/lib/experiments/withExperiment.server.ts",
         "src/lib/followups/activeDrips.ts",
         "src/lib/followups/followUpsApi.ts",
         "src/lib/geo/tier.ts",
@@ -19671,6 +21959,10 @@
         "src/lib/home-services/attachments.ts",
         "src/lib/home-services/attribution.ts",
         "src/lib/home-services/catalog.ts",
+        "src/lib/home-services/catalogData.ts",
+        "src/lib/home-services/catalogRow.ts",
+        "src/lib/home-services/catalogSchema.ts",
+        "src/lib/home-services/catalogSeed.ts",
         "src/lib/home-services/compressImage.ts",
         "src/lib/home-services/countyZips.ts",
         "src/lib/home-services/i18n.ts",
@@ -19734,6 +22026,7 @@
         "src/lib/intake/scoring.ts",
         "src/lib/intake/serviceArea.ts",
         "src/lib/intake/session.ts",
+        "src/lib/jsonLd.ts",
         "src/lib/leadSanitize.ts",
         "src/lib/leadScoring.ts",
         "src/lib/listings/accessCookie.ts",
@@ -19757,6 +22050,7 @@
         "src/lib/notify/supabase-rest.ts",
         "src/lib/notify/telegramLead.ts",
         "src/lib/notify/telegramMessage.ts",
+        "src/lib/oneTapLinkSecret.ts",
         "src/lib/preferences/preferences.ts",
         "src/lib/preferences/streams.ts",
         "src/lib/privatePages.ts",
@@ -19788,12 +22082,12 @@
         "src/lib/rateLimit.ts",
         "src/lib/recaptcha-config.ts",
         "src/lib/recaptchaVerify.ts",
+        "src/lib/revalidate.ts",
         "src/lib/reviews/syncGoogleReviews.ts",
         "src/lib/seo/draftGuardrails.ts",
         "src/lib/seo/ga4-client.ts",
         "src/lib/seo/google-auth.ts",
         "src/lib/seo/gsc-client.ts",
-        "src/lib/seo/maintainedArticles.ts",
         "src/lib/seo/report.ts",
         "src/lib/seo/reportEmail.ts",
         "src/lib/seo/rollback.ts",
@@ -19808,23 +22102,23 @@
         "src/lib/supabase/server.ts",
         "src/lib/utils.ts"
       ],
-      "loc": 16662,
-      "exports": 1166,
-      "internalEdges": 218,
+      "loc": 19816,
+      "exports": 1471,
+      "internalEdges": 308,
       "outgoingEdges": 5,
-      "incomingEdges": 633,
-      "cohesion": 0.978,
-      "fileCount": 163
+      "incomingEdges": 781,
+      "cohesion": 0.984,
+      "fileCount": 205
     },
     "(root)": {
       "name": "(root)",
       "files": [
         "src/middleware.ts"
       ],
-      "loc": 234,
+      "loc": 239,
       "exports": 2,
       "internalEdges": 0,
-      "outgoingEdges": 2,
+      "outgoingEdges": 5,
       "incomingEdges": 0,
       "cohesion": 0,
       "fileCount": 1
@@ -19877,64 +22171,10 @@
     "_shared": {
       "name": "_shared",
       "files": [
-        "supabase/functions/_shared/formulaEvaluator.ts",
-        "supabase/functions/_shared/internalLinks.ts",
-        "supabase/functions/_shared/openai.ts"
+        "supabase/functions/_shared/formulaEvaluator.ts"
       ],
-      "loc": 246,
-      "exports": 11,
-      "internalEdges": 0,
-      "outgoingEdges": 0,
-      "incomingEdges": 5,
-      "cohesion": 1,
-      "fileCount": 3
-    },
-    "enhance-blog-content": {
-      "name": "enhance-blog-content",
-      "files": [
-        "supabase/functions/enhance-blog-content/index.ts"
-      ],
-      "loc": 159,
-      "exports": 0,
-      "internalEdges": 0,
-      "outgoingEdges": 2,
-      "incomingEdges": 0,
-      "cohesion": 0,
-      "fileCount": 1
-    },
-    "generate-blog-image": {
-      "name": "generate-blog-image",
-      "files": [
-        "supabase/functions/generate-blog-image/index.ts"
-      ],
-      "loc": 72,
-      "exports": 0,
-      "internalEdges": 0,
-      "outgoingEdges": 1,
-      "incomingEdges": 0,
-      "cohesion": 0,
-      "fileCount": 1
-    },
-    "generate-blog-post": {
-      "name": "generate-blog-post",
-      "files": [
-        "supabase/functions/generate-blog-post/index.ts"
-      ],
-      "loc": 124,
-      "exports": 0,
-      "internalEdges": 0,
-      "outgoingEdges": 2,
-      "incomingEdges": 0,
-      "cohesion": 0,
-      "fileCount": 1
-    },
-    "publish-scheduled-articles": {
-      "name": "publish-scheduled-articles",
-      "files": [
-        "supabase/functions/publish-scheduled-articles/index.ts"
-      ],
-      "loc": 196,
-      "exports": 0,
+      "loc": 19,
+      "exports": 1,
       "internalEdges": 0,
       "outgoingEdges": 0,
       "incomingEdges": 0,
@@ -19972,19 +22212,19 @@
     {
       "from": "app",
       "to": "lib",
-      "count": 474,
+      "count": 607,
       "examples": [
-        "src/app/api/admin/broadcasts/sync-suppression/route.ts -> src/lib/notify/resendAudience.ts",
-        "src/app/api/admin/content-actions/apply/route.ts -> src/lib/seo/supabase-rest.ts",
-        "src/app/api/admin/content-actions/apply/route.ts -> src/lib/seo/stageToBlog.ts",
-        "src/app/api/admin/content-actions/apply/route.ts -> src/lib/seo/rollback.ts",
-        "src/app/api/admin/content-actions/draft/route.ts -> src/lib/envClean.ts"
+        "src/app/api/admin/articles/[id]/publish/route.ts -> src/lib/projects/http.ts",
+        "src/app/api/admin/articles/[id]/publish/route.ts -> src/lib/projects/session.ts",
+        "src/app/api/admin/articles/[id]/publish/route.ts -> src/lib/articles/http.ts",
+        "src/app/api/admin/articles/[id]/publish/route.ts -> src/lib/articles/publishFlow.ts",
+        "src/app/api/admin/articles/[id]/publish/route.ts -> src/lib/articles/revalidate.ts"
       ]
     },
     {
       "from": "app",
       "to": "components",
-      "count": 313,
+      "count": 315,
       "examples": [
         "src/app/about/page.tsx -> src/components/Header.tsx",
         "src/app/about/page.tsx -> src/components/Footer.tsx",
@@ -19996,7 +22236,7 @@
     {
       "from": "components",
       "to": "lib",
-      "count": 156,
+      "count": 168,
       "examples": [
         "src/components/Analytics.tsx -> src/lib/analytics/excluded.ts",
         "src/components/ContactForm.tsx -> src/lib/recaptcha-config.ts",
@@ -20008,7 +22248,7 @@
     {
       "from": "components",
       "to": "hooks",
-      "count": 55,
+      "count": 58,
       "examples": [
         "src/components/AdminContent.tsx -> src/hooks/useAuth.tsx",
         "src/components/AdminContent.tsx -> src/hooks/use-mobile.tsx",
@@ -20020,7 +22260,7 @@
     {
       "from": "components",
       "to": "integrations",
-      "count": 24,
+      "count": 23,
       "examples": [
         "src/components/CallTrackingWrapper.tsx -> src/integrations/supabase/client.ts",
         "src/components/ComplianceDocuments.tsx -> src/integrations/supabase/client.ts",
@@ -20102,6 +22342,18 @@
       ]
     },
     {
+      "from": "(root)",
+      "to": "lib",
+      "count": 5,
+      "examples": [
+        "src/middleware.ts -> src/lib/geo/tier.ts",
+        "src/middleware.ts -> src/lib/cta/visitor.edge.ts",
+        "src/middleware.ts -> src/lib/cta/types.ts",
+        "src/middleware.ts -> src/lib/botFilter.ts",
+        "src/middleware.ts -> src/lib/experiments/seed.ts"
+      ]
+    },
+    {
       "from": "components",
       "to": "data",
       "count": 4,
@@ -20160,33 +22412,6 @@
       ]
     },
     {
-      "from": "(root)",
-      "to": "lib",
-      "count": 2,
-      "examples": [
-        "src/middleware.ts -> src/lib/geo/tier.ts",
-        "src/middleware.ts -> src/lib/cta/visitor.edge.ts"
-      ]
-    },
-    {
-      "from": "enhance-blog-content",
-      "to": "_shared",
-      "count": 2,
-      "examples": [
-        "supabase/functions/enhance-blog-content/index.ts -> supabase/functions/_shared/internalLinks.ts",
-        "supabase/functions/enhance-blog-content/index.ts -> supabase/functions/_shared/openai.ts"
-      ]
-    },
-    {
-      "from": "generate-blog-post",
-      "to": "_shared",
-      "count": 2,
-      "examples": [
-        "supabase/functions/generate-blog-post/index.ts -> supabase/functions/_shared/internalLinks.ts",
-        "supabase/functions/generate-blog-post/index.ts -> supabase/functions/_shared/openai.ts"
-      ]
-    },
-    {
       "from": "hooks",
       "to": "components",
       "count": 1,
@@ -20241,23 +22466,15 @@
       "examples": [
         "src/services/analyticsManager.ts -> src/hooks/useVisitor.ts"
       ]
-    },
-    {
-      "from": "generate-blog-image",
-      "to": "_shared",
-      "count": 1,
-      "examples": [
-        "supabase/functions/generate-blog-image/index.ts -> supabase/functions/_shared/openai.ts"
-      ]
     }
   ],
   "entries": [
     "src/app/about/page.tsx",
     "src/app/admin/[...catchAll]/page.tsx",
     "src/app/admin/page.tsx",
+    "src/app/api/admin/articles/[id]/publish/route.ts",
     "src/app/api/admin/broadcasts/sync-suppression/route.ts",
     "src/app/api/admin/content-actions/apply/route.ts",
-    "src/app/api/admin/content-actions/draft/route.ts",
     "src/app/api/admin/content-actions/route.ts",
     "src/app/api/admin/content-actions/stage/route.ts",
     "src/app/api/admin/crew/route.ts",
@@ -20273,6 +22490,8 @@
     "src/app/api/admin/estimate-email/log/route.ts",
     "src/app/api/admin/estimate-email/preview/route.ts",
     "src/app/api/admin/estimate-email/send/route.ts",
+    "src/app/api/admin/experiments/[key]/route.ts",
+    "src/app/api/admin/experiments/route.ts",
     "src/app/api/admin/follow-ups/route.ts",
     "src/app/api/admin/home-care/home-records/route.ts",
     "src/app/api/admin/home-care/member/route.ts",
@@ -20280,6 +22499,8 @@
     "src/app/api/admin/home-care/product-image/route.ts",
     "src/app/api/admin/home-care/products/[id]/route.ts",
     "src/app/api/admin/home-care/products/route.ts",
+    "src/app/api/admin/home-services/[slug]/route.ts",
+    "src/app/api/admin/home-services/route.ts",
     "src/app/api/admin/leads/[id]/intake/route.ts",
     "src/app/api/admin/offers/[id]/route.ts",
     "src/app/api/admin/offers/decline-calls/[id]/route.ts",
@@ -20300,6 +22521,7 @@
     "src/app/api/admin/proposals/route.ts",
     "src/app/api/admin/releases/route.ts",
     "src/app/api/admin/releases/send/route.ts",
+    "src/app/api/admin/revalidate/route.ts",
     "src/app/api/admin/service-quote/_schema.ts",
     "src/app/api/admin/service-quote/complete/route.ts",
     "src/app/api/admin/service-quote/dispatch/route.ts",
@@ -20309,11 +22531,18 @@
     "src/app/api/admin/service-requests/[id]/route.ts",
     "src/app/api/admin/service-requests/route.ts",
     "src/app/api/admin/subs/route.ts",
+    "src/app/api/articles/ingest/[id]/publish/route.ts",
+    "src/app/api/articles/ingest/[id]/route.ts",
+    "src/app/api/articles/ingest/[id]/unpublish/route.ts",
+    "src/app/api/articles/ingest/route.ts",
+    "src/app/api/articles/seo-feedback/route.ts",
+    "src/app/api/articles/unpublish/[token]/route.ts",
     "src/app/api/banners/admin/route.ts",
     "src/app/api/banners/route.ts",
     "src/app/api/buy-and-remodel/unsubscribe/route.ts",
     "src/app/api/consent/log/route.ts",
     "src/app/api/crew/confirm/route.ts",
+    "src/app/api/cron/experiments-evaluate/route.ts",
     "src/app/api/cron/health/route.ts",
     "src/app/api/cron/home-care-newsletter/route.ts",
     "src/app/api/cron/intake-chase/route.ts",
@@ -20324,7 +22553,6 @@
     "src/app/api/cron/resend-sync/route.ts",
     "src/app/api/cron/send-follow-ups/route.ts",
     "src/app/api/cron/seo-ingest/route.ts",
-    "src/app/api/cron/seo-maintain/route.ts",
     "src/app/api/cron/seo-report/route.ts",
     "src/app/api/cron/seo-rollback/route.ts",
     "src/app/api/cron/seo-suggest/route.ts",
@@ -20333,6 +22561,14 @@
     "src/app/api/cron/visit-reminders/route.ts",
     "src/app/api/cta/event/route.ts",
     "src/app/api/documents/[type]/route.ts",
+    "src/app/api/experiments/[key]/conclude/route.ts",
+    "src/app/api/experiments/[key]/start/route.ts",
+    "src/app/api/experiments/backlog/route.ts",
+    "src/app/api/experiments/event/route.ts",
+    "src/app/api/experiments/notify/route.ts",
+    "src/app/api/experiments/report/route.ts",
+    "src/app/api/experiments/route.ts",
+    "src/app/api/experiments/veto/route.ts",
     "src/app/api/feedback/create/route.ts",
     "src/app/api/follow-up/route.ts",
     "src/app/api/health/forms/route.ts",
@@ -20370,6 +22606,7 @@
     "src/app/api/proposal/[token]/submit/route.ts",
     "src/app/api/referrals/route.ts",
     "src/app/api/webhooks/resend/route.ts",
+    "src/app/articles/unpublish/[token]/route.ts",
     "src/app/auth/layout.tsx",
     "src/app/auth/page.tsx",
     "src/app/blog/[slug]/layout.tsx",
@@ -20387,6 +22624,7 @@
     "src/app/data-rights/page.tsx",
     "src/app/do-not-sell/layout.tsx",
     "src/app/do-not-sell/page.tsx",
+    "src/app/experiments/veto/[token]/page.tsx",
     "src/app/faq/page.tsx",
     "src/app/free-estimate/page.tsx",
     "src/app/home-care/book/page.tsx",
@@ -20457,10 +22695,6 @@
     "src/integrations/supabase/server.ts",
     "src/lib/supabase/server.ts",
     "src/middleware.ts",
-    "supabase/functions/enhance-blog-content/index.ts",
-    "supabase/functions/generate-blog-image/index.ts",
-    "supabase/functions/generate-blog-post/index.ts",
-    "supabase/functions/publish-scheduled-articles/index.ts",
     "supabase/functions/send-lead-notification/index.ts",
     "supabase/functions/send-warranty-notification/index.ts"
   ],
@@ -20653,6 +22887,14 @@
         "bytes": 5262910
       },
       {
+        "path": "docs/phase-2/reports/shots/slice-h-rereview-iphone13-undelivered-full.png",
+        "bytes": 2951055
+      },
+      {
+        "path": "docs/phase-2/reports/shots/slice-h-review-experiments-iphone13-full.png",
+        "bytes": 2910711
+      },
+      {
         "path": "public/images/home-card-property-care.png",
         "bytes": 2350149
       },
@@ -20699,6 +22941,10 @@
       {
         "path": "public/images/commercial-card-make-ready.png",
         "bytes": 1553481
+      },
+      {
+        "path": "docs/phase-2/reports/shots/slice-e-review-phone-form-full.png",
+        "bytes": 1484740
       }
     ],
     "identicalFiles": []
@@ -20708,9 +22954,9 @@
       "src/app/about/page.tsx",
       "src/app/admin/[...catchAll]/page.tsx",
       "src/app/admin/page.tsx",
+      "src/app/api/admin/articles/[id]/publish/route.ts",
       "src/app/api/admin/broadcasts/sync-suppression/route.ts",
       "src/app/api/admin/content-actions/apply/route.ts",
-      "src/app/api/admin/content-actions/draft/route.ts",
       "src/app/api/admin/content-actions/route.ts",
       "src/app/api/admin/content-actions/stage/route.ts",
       "src/app/api/admin/crew/route.ts",
@@ -20725,6 +22971,8 @@
       "src/app/api/admin/estimate-email/log/route.ts",
       "src/app/api/admin/estimate-email/preview/route.ts",
       "src/app/api/admin/estimate-email/send/route.ts",
+      "src/app/api/admin/experiments/[key]/route.ts",
+      "src/app/api/admin/experiments/route.ts",
       "src/app/api/admin/follow-ups/route.ts",
       "src/app/api/admin/home-care/home-records/route.ts",
       "src/app/api/admin/home-care/member/route.ts",
@@ -20732,6 +22980,8 @@
       "src/app/api/admin/home-care/product-image/route.ts",
       "src/app/api/admin/home-care/products/[id]/route.ts",
       "src/app/api/admin/home-care/products/route.ts",
+      "src/app/api/admin/home-services/[slug]/route.ts",
+      "src/app/api/admin/home-services/route.ts",
       "src/app/api/admin/leads/[id]/intake/route.ts",
       "src/app/api/admin/offers/[id]/route.ts",
       "src/app/api/admin/offers/decline-calls/[id]/route.ts",
@@ -20752,6 +23002,7 @@
       "src/app/api/admin/proposals/route.ts",
       "src/app/api/admin/releases/route.ts",
       "src/app/api/admin/releases/send/route.ts",
+      "src/app/api/admin/revalidate/route.ts",
       "src/app/api/admin/service-quote/complete/route.ts",
       "src/app/api/admin/service-quote/dispatch/route.ts",
       "src/app/api/admin/service-quote/intake/route.ts",
@@ -20760,11 +23011,18 @@
       "src/app/api/admin/service-requests/[id]/route.ts",
       "src/app/api/admin/service-requests/route.ts",
       "src/app/api/admin/subs/route.ts",
+      "src/app/api/articles/ingest/[id]/publish/route.ts",
+      "src/app/api/articles/ingest/[id]/route.ts",
+      "src/app/api/articles/ingest/[id]/unpublish/route.ts",
+      "src/app/api/articles/ingest/route.ts",
+      "src/app/api/articles/seo-feedback/route.ts",
+      "src/app/api/articles/unpublish/[token]/route.ts",
       "src/app/api/banners/admin/route.ts",
       "src/app/api/banners/route.ts",
       "src/app/api/buy-and-remodel/unsubscribe/route.ts",
       "src/app/api/consent/log/route.ts",
       "src/app/api/crew/confirm/route.ts",
+      "src/app/api/cron/experiments-evaluate/route.ts",
       "src/app/api/cron/health/route.ts",
       "src/app/api/cron/home-care-newsletter/route.ts",
       "src/app/api/cron/intake-chase/route.ts",
@@ -20775,7 +23033,6 @@
       "src/app/api/cron/resend-sync/route.ts",
       "src/app/api/cron/send-follow-ups/route.ts",
       "src/app/api/cron/seo-ingest/route.ts",
-      "src/app/api/cron/seo-maintain/route.ts",
       "src/app/api/cron/seo-report/route.ts",
       "src/app/api/cron/seo-rollback/route.ts",
       "src/app/api/cron/seo-suggest/route.ts",
@@ -20784,6 +23041,14 @@
       "src/app/api/cron/visit-reminders/route.ts",
       "src/app/api/cta/event/route.ts",
       "src/app/api/documents/[type]/route.ts",
+      "src/app/api/experiments/[key]/conclude/route.ts",
+      "src/app/api/experiments/[key]/start/route.ts",
+      "src/app/api/experiments/backlog/route.ts",
+      "src/app/api/experiments/event/route.ts",
+      "src/app/api/experiments/notify/route.ts",
+      "src/app/api/experiments/report/route.ts",
+      "src/app/api/experiments/route.ts",
+      "src/app/api/experiments/veto/route.ts",
       "src/app/api/feedback/create/route.ts",
       "src/app/api/follow-up/route.ts",
       "src/app/api/health/forms/route.ts",
@@ -20821,6 +23086,7 @@
       "src/app/api/proposal/[token]/submit/route.ts",
       "src/app/api/referrals/route.ts",
       "src/app/api/webhooks/resend/route.ts",
+      "src/app/articles/unpublish/[token]/route.ts",
       "src/app/auth/layout.tsx",
       "src/app/auth/page.tsx",
       "src/app/blog/[slug]/layout.tsx",
@@ -20837,6 +23103,7 @@
       "src/app/data-rights/layout.tsx",
       "src/app/do-not-sell/layout.tsx",
       "src/app/do-not-sell/page.tsx",
+      "src/app/experiments/veto/[token]/page.tsx",
       "src/app/faq/page.tsx",
       "src/app/free-estimate/page.tsx",
       "src/app/home-care/book/page.tsx",
@@ -20947,7 +23214,6 @@
       "src/components/WarrantyFormWrapper.tsx",
       "src/components/WhyChoose.tsx",
       "src/components/admin/BlogPostEditor.tsx",
-      "src/components/admin/BlogPostGenerator.tsx",
       "src/components/admin/BlogPostList.tsx",
       "src/components/admin/HomeCareShopManager.tsx",
       "src/components/admin/projects/MediaThumb.tsx",
@@ -20970,8 +23236,15 @@
       "src/components/services/ServiceTile.tsx",
       "src/components/services/ServicesBottomTabs.tsx",
       "src/data/resourceContent.tsx",
+      "src/lib/articles/auth.ts",
+      "src/lib/articles/http.ts",
+      "src/lib/articles/revalidate.ts",
       "src/lib/cta/HeroCta.tsx",
+      "src/lib/experiments/auth.server.ts",
+      "src/lib/experiments/store.server.ts",
+      "src/lib/experiments/withExperiment.server.ts",
       "src/lib/home-services/adminRoute.ts",
+      "src/lib/home-services/catalogData.ts",
       "src/lib/projects/http.ts",
       "src/lib/projects/ingest.ts",
       "src/lib/projects/session.ts",
@@ -21080,7 +23353,6 @@
       "src/components/admin/AnalyticsSettings.tsx",
       "src/components/admin/BannerManager.tsx",
       "src/components/admin/BlogPostEditor.tsx",
-      "src/components/admin/BlogPostGenerator.tsx",
       "src/components/admin/BlogPostList.tsx",
       "src/components/admin/CMSPageEditor.tsx",
       "src/components/admin/ComplianceDocumentsManager.tsx",
@@ -21098,11 +23370,13 @@
       "src/components/admin/SeoSuggestionsDashboard.tsx",
       "src/components/admin/ServiceAreasEditor.tsx",
       "src/components/admin/ServicesEditor.tsx",
+      "src/components/admin/experiments/ExperimentsDashboard.tsx",
       "src/components/admin/home-services/BidRequestForm.tsx",
       "src/components/admin/home-services/CtaTestsDashboard.tsx",
       "src/components/admin/home-services/PricingReport.tsx",
       "src/components/admin/home-services/RequestDetail.tsx",
       "src/components/admin/home-services/ServiceRequestsManager.tsx",
+      "src/components/admin/home-services/ServicesPricesEditor.tsx",
       "src/components/admin/home-services/SubResponsesInbox.tsx",
       "src/components/admin/home-services/SubsManager.tsx",
       "src/components/admin/home-services/cta/ButtonReportCard.tsx",
@@ -21112,7 +23386,6 @@
       "src/components/admin/projects/PairLinker.tsx",
       "src/components/admin/projects/PhotoGrid.tsx",
       "src/components/admin/ui/AdminCheckbox.tsx",
-      "src/components/admin/ui/AdminRadioGroup.tsx",
       "src/components/gallery/PhotoGallery.tsx",
       "src/components/home-services/FlowDone.tsx",
       "src/components/home-services/LangToggle.tsx",
@@ -21158,11 +23431,8 @@
       "src/components/ui/sidebar.tsx",
       "src/components/ui/toast.tsx"
     ],
-    "openai": [
-      "src/app/api/admin/content-actions/draft/route.ts",
-      "src/app/api/cron/seo-maintain/route.ts"
-    ],
     "zod": [
+      "src/app/api/admin/articles/[id]/publish/route.ts",
       "src/app/api/admin/crew/route.ts",
       "src/app/api/admin/cta/settings/route.ts",
       "src/app/api/admin/cta/variants/route.ts",
@@ -21174,12 +23444,15 @@
       "src/app/api/admin/projects/[id]/publish/route.ts",
       "src/app/api/admin/projects/upload/route.ts",
       "src/app/api/admin/proposals/[id]/route.ts",
+      "src/app/api/admin/revalidate/route.ts",
       "src/app/api/admin/service-quote/_schema.ts",
       "src/app/api/admin/service-requests/[id]/route.ts",
       "src/app/api/admin/subs/route.ts",
       "src/app/api/consent/log/route.ts",
       "src/app/api/crew/confirm/route.ts",
       "src/app/api/cta/event/route.ts",
+      "src/app/api/experiments/event/route.ts",
+      "src/app/api/experiments/veto/route.ts",
       "src/app/api/home-care/login/route.ts",
       "src/app/api/home-care/subscribe/route.ts",
       "src/app/api/home-services/verify/resend/route.ts",
@@ -21192,6 +23465,10 @@
       "src/components/ContactForm.tsx",
       "src/components/EstimateForm.tsx",
       "src/components/HomeEstimateForm.tsx",
+      "src/lib/articles/schemas.ts",
+      "src/lib/experiments/schemas.ts",
+      "src/lib/experiments/types.ts",
+      "src/lib/home-services/catalogSchema.ts",
       "src/lib/home-services/requests.ts",
       "src/lib/projects/draft.ts",
       "src/lib/projects/http.ts",
@@ -21244,6 +23521,9 @@
     ],
     "node:crypto": [
       "src/app/api/projects/ingest/route.ts",
+      "src/lib/articles/unpublishToken.ts",
+      "src/lib/articles/writer.ts",
+      "src/lib/experiments/vetoToken.ts",
       "src/lib/homecare/homeowners.ts",
       "src/lib/listings/subscribers.ts",
       "src/lib/preferences/preferences.ts",
@@ -21262,6 +23542,8 @@
       "src/app/crew/confirm/[token]/CrewConfirmActions.tsx",
       "src/app/data-rights/page.tsx",
       "src/app/do-not-sell/page.tsx",
+      "src/app/experiments/veto/[token]/VetoButton.tsx",
+      "src/app/home-services/page.tsx",
       "src/app/intake/[token]/IntakeThread.tsx",
       "src/app/nextdoor/callback/CopyCodeButton.tsx",
       "src/app/offer/[token]/OfferActions.tsx",
@@ -21342,7 +23624,6 @@
       "src/components/admin/AnalyticsSettings.tsx",
       "src/components/admin/BannerManager.tsx",
       "src/components/admin/BlogPostEditor.tsx",
-      "src/components/admin/BlogPostGenerator.tsx",
       "src/components/admin/BlogPostList.tsx",
       "src/components/admin/CMSPageEditor.tsx",
       "src/components/admin/ComplianceDocumentsManager.tsx",
@@ -21360,11 +23641,13 @@
       "src/components/admin/SeoSuggestionsDashboard.tsx",
       "src/components/admin/ServiceAreasEditor.tsx",
       "src/components/admin/ServicesEditor.tsx",
+      "src/components/admin/experiments/ExperimentsDashboard.tsx",
       "src/components/admin/home-services/BidRequestForm.tsx",
       "src/components/admin/home-services/CtaTestsDashboard.tsx",
       "src/components/admin/home-services/PricingReport.tsx",
       "src/components/admin/home-services/RequestDetail.tsx",
       "src/components/admin/home-services/ServiceRequestsManager.tsx",
+      "src/components/admin/home-services/ServicesPricesEditor.tsx",
       "src/components/admin/home-services/SubResponsesInbox.tsx",
       "src/components/admin/home-services/SubsManager.tsx",
       "src/components/admin/home-services/cta/ButtonReportCard.tsx",
@@ -21376,7 +23659,6 @@
       "src/components/admin/projects/PairLinker.tsx",
       "src/components/admin/projects/PhotoGrid.tsx",
       "src/components/admin/ui/AdminCheckbox.tsx",
-      "src/components/admin/ui/AdminRadioGroup.tsx",
       "src/components/forms/ContactTimePicker.tsx",
       "src/components/gallery/PhotoGallery.tsx",
       "src/components/home-services/AddressField.tsx",
@@ -21456,7 +23738,8 @@
       "src/hooks/useScrollTracking.tsx",
       "src/hooks/useVisitor.ts",
       "src/lib/cta/HeroCtaEvents.tsx",
-      "src/lib/cta/color.ts"
+      "src/lib/cta/color.ts",
+      "src/lib/experiments/ExperimentZone.tsx"
     ],
     "date-fns": [
       "src/app/blog/[slug]/page.tsx",
@@ -21506,11 +23789,6 @@
       "src/components/admin/BlogPostEditor.tsx",
       "src/components/admin/BlogPostList.tsx"
     ],
-    "sonner": [
-      "src/components/admin/BlogPostGenerator.tsx",
-      "src/components/admin/GMBSettings.tsx",
-      "src/components/ui/sonner.tsx"
-    ],
     "@supabase/ssr": [
       "src/components/admin/CMSPageEditor.tsx",
       "src/integrations/supabase/client.ts",
@@ -21520,13 +23798,13 @@
       "src/lib/supabase/server.ts",
       "src/middleware.ts"
     ],
+    "sonner": [
+      "src/components/admin/GMBSettings.tsx",
+      "src/components/ui/sonner.tsx"
+    ],
     "@radix-ui/react-checkbox": [
       "src/components/admin/ui/AdminCheckbox.tsx",
       "src/components/ui/checkbox.tsx"
-    ],
-    "@radix-ui/react-radio-group": [
-      "src/components/admin/ui/AdminRadioGroup.tsx",
-      "src/components/ui/radio-group.tsx"
     ],
     "@radix-ui/react-dialog": [
       "src/components/home-services/PriceSheet.tsx",
@@ -21601,6 +23879,9 @@
     "@radix-ui/react-progress": [
       "src/components/ui/progress.tsx"
     ],
+    "@radix-ui/react-radio-group": [
+      "src/components/ui/radio-group.tsx"
+    ],
     "@radix-ui/react-scroll-area": [
       "src/components/ui/scroll-area.tsx"
     ],
@@ -21642,11 +23923,6 @@
       "src/utils/heicConverter.ts"
     ],
     "https:": [
-      "supabase/functions/_shared/internalLinks.ts",
-      "supabase/functions/enhance-blog-content/index.ts",
-      "supabase/functions/generate-blog-image/index.ts",
-      "supabase/functions/generate-blog-post/index.ts",
-      "supabase/functions/publish-scheduled-articles/index.ts",
       "supabase/functions/send-lead-notification/index.ts",
       "supabase/functions/send-warranty-notification/index.ts"
     ]
