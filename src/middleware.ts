@@ -342,5 +342,9 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: '/:path*',
+  // Pages and API routes only. Static assets, the image optimizer, fonts and
+  // favicons never needed the bot filter, the geo cookie or the admin check,
+  // and they were most of half a million invocations a month
+  // (docs/cost-review.md).
+  matcher: ['/((?!_next/static|_next/image|favicon\\.ico|images/|fonts/|logo\\.|robots\\.txt|sitemap\\.xml).*)'],
 };

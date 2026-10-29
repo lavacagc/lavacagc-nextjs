@@ -249,6 +249,11 @@ export default function PhotoUploader({ lang, uploads }: { lang: Lang; uploads: 
     <div>
       <p className="text-[15px] font-bold text-text-primary">{s('photosLabel', lang)}</p>
       <p className="mt-1 text-sm text-text-secondary">{s('photosHint', lang)}</p>
+      <ul className="mt-2 space-y-1 text-sm text-text-secondary" data-testid="photo-tips">
+        {(['photoTip1', 'photoTip2', 'photoTip3'] as const).map((k) => (
+          <li key={k} className="flex gap-2"><span aria-hidden className="text-primary">&#8226;</span><span>{s(k, lang)}</span></li>
+        ))}
+      </ul>
       <div className="mt-3 flex flex-wrap gap-2.5">
         <label
           className={`inline-flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl bg-secondary px-4 py-2.5 text-sm font-bold text-white focus-within:ring-4 focus-within:ring-secondary/40 [@media(pointer:fine)]:hidden ${full ? 'pointer-events-none opacity-50' : ''}`}

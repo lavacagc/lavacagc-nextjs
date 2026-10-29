@@ -16,7 +16,8 @@ import Footer from "@/components/Footer";
 import ServicesTrustBar from "@/components/services/ServicesTrustBar";
 import ServicesBottomTabs from "@/components/services/ServicesBottomTabs";
 
-export const revalidate = 60;
+// Hourly: content here changes a few times a month and publishing revalidates on demand (docs/cost-review.md).
+export const revalidate = 3600;
 
 export const metadata: Metadata = {
   title: 'Home & Commercial Services in NJ',

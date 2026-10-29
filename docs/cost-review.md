@@ -86,3 +86,19 @@ Items 4 and 5 are where any surprising Supabase number will be.
 - The Supabase invoice itself. Running `supabase login` once on this machine would let the next review read usage directly.
 - Per-route function CPU: Pro retains runtime logs for one day and this review ran after the day's traffic; the code review stands in for it.
 - Why only eleven deployments are listed since September while October booked 14,226 CPU-minutes: the deployments API hides deleted previews, and the gate deletes nothing, so either previews were cleaned up by retention or the per-build CPU-minute figure on turbo is higher than the estimate above. Vercel > Usage > Build shows the per-deployment minutes and settles it.
+
+## Applied on 2026-10-29 (Alex: "apply all of them")
+
+| # | Status | Detail |
+| --- | --- | --- |
+| 1 | Applied | Project `resourceConfig.buildMachineType` set to `standard`, elastic concurrency off, through the Vercel API; read back and confirmed. |
+| 2 | Needs the dashboard | No API exists for the Speed Insights Plus add-on. Vercel > Team settings > Billing > Add-ons > Speed Insights Plus > Cancel (or Project > Speed Insights > Disable). |
+| 3 | Applied | `scripts/vercel-ignore-build.sh` registered as the project's Ignored Build Step: preview pushes with no pull request behind them are skipped, and so are commits that touch only docs, tests, review pages or agent config. |
+| 4 | Needs Alex | PR #103 (phone fix) should be merged after #104; PR #86's portfolio half is already in #104, its header and menu half is not, so it is a cherry-pick or a close. Supabase branching cleanup needs the dashboard or `supabase login`. |
+| 5 | Needs the dashboard | Supabase > Project > Settings > Compute; the site needs Micro. |
+| 6 | Applied | Middleware matcher excludes `_next/static`, `_next/image`, favicon, images, fonts, robots and sitemap. |
+| 7 | Applied | `revalidate = 3600` on services, locations, portfolio, project, landing and CMS pages; `300` on the two blog pages because the blog editor writes straight to the database and cannot revalidate on save. |
+| 8 | Applied | The root-layout `<link rel="preload" as="video">` is gone; the homepage `<video>` fetches it itself. |
+| 9 | Deliberately not applied | Deleting the four unused hero videos and re-encoding 33 blog PNGs are irreversible production changes with no measurable saving: storage is inside the Pro allowance and `next/image` already serves WebP and AVIF to visitors. Listed in follow-ups for a content-cleanup day. |
+
+Expected Vercel bill after 1, 3, 6, 7 and 8: the Pro plan plus about $1 of usage, plus Speed Insights Plus until item 2 is done in the dashboard.

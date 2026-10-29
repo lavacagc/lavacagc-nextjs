@@ -10,8 +10,8 @@ import type { L, Lang } from './catalog';
 export const STRINGS = {
   // Landing page
   heroEyebrow: { en: 'Home services, priced up front', es: 'Servicios para el hogar con precios claros' },
-  heroTitle: { en: 'Pick what you need. See the starting price. Get a firm quote from your photos.', es: 'Elija lo que necesita. Vea el precio inicial. Reciba una cotización firme con sus fotos.' },
-  heroBody: { en: 'Licensed NJ contractor, vetted crews, one point of contact. Serving Essex, Morris and Bergen Counties.', es: 'Contratista con licencia en NJ, equipos verificados, un solo contacto. Servimos los condados de Essex, Morris y Bergen.' },
+  heroTitle: { en: 'Pick a service. See the price. Send photos.', es: 'Elija un servicio. Vea el precio. Envíe fotos.' },
+  heroBody: { en: 'A firm quote from your photos, usually the same day. Licensed NJ contractor serving Essex, Morris and Bergen Counties.', es: 'Cotización firme con sus fotos, normalmente el mismo día. Contratista con licencia en NJ en los condados de Essex, Morris y Bergen.' },
   servicesTitle: { en: 'Seven services, starting prices shown', es: 'Siete servicios con precio inicial' },
   servicesIntro: { en: 'Tap the services you want, then request them together. Tap a price to see what it includes.', es: 'Toque los servicios que quiere y solicítelos juntos. Toque un precio para ver qué incluye.' },
   startingAt: { en: 'Starting at', es: 'Desde' },
@@ -56,7 +56,10 @@ export const STRINGS = {
   stepOf: { en: 'Step {n} of 2', es: 'Paso {n} de 2' },
   detailsTitle: { en: 'A few taps about the job', es: 'Unos toques sobre el trabajo' },
   photosLabel: { en: 'Photos (optional, up to 10)', es: 'Fotos (opcional, hasta 10)' },
-  photosHint: { en: 'A couple of photos lets us quote without a visit.', es: 'Un par de fotos nos permite cotizar sin visita.' },
+  photosHint: { en: 'Two or three photos let us quote without a visit.', es: 'Dos o tres fotos nos permiten cotizar sin visita.' },
+  photoTip1: { en: 'Stand back so the whole area is in the frame', es: 'Aléjese para que toda el área quede en la foto' },
+  photoTip2: { en: 'Add one close-up of any damage or problem spot', es: 'Agregue un acercamiento de cualquier daño o problema' },
+  photoTip3: { en: 'Daylight if you can, no flash, hold the phone sideways', es: 'Con luz de día si puede, sin flash, con el teléfono horizontal' },
   takePhoto: { en: 'Take a photo', es: 'Tomar foto' },
   choosePhotos: { en: 'Choose photos', es: 'Elegir fotos' },
   uploading: { en: 'Uploading', es: 'Subiendo' },

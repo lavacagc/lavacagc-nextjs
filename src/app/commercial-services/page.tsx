@@ -49,7 +49,8 @@ const COMMERCIAL_IMAGE_CARDS = [
   },
 ];
 
-export const revalidate = 60;
+// Hourly: content here changes a few times a month and publishing revalidates on demand (docs/cost-review.md).
+export const revalidate = 3600;
 
 export const metadata: Metadata = {
   title: 'Commercial Property Services in NJ',

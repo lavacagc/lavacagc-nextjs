@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { isPrivateTokenPage } from '@/lib/privatePages';
 import { X, Phone, ArrowRight, Eye, MessageCircle } from 'lucide-react';
 import { useVisitor } from '@/hooks/useVisitor';
@@ -375,6 +376,7 @@ function dbToBannerRule(db: DBBanner): BannerRule {
 // ---- MAIN SMART BANNER COMPONENT ----
 function SmartBannerInner() {
   const pathname = usePathname();
+  const isMobile = useIsMobile();
   const searchParams = useSearchParams();
   const { visitorId, visitCount, isReturning, firstSeen, pagesVisited } = useVisitor();
   const [activeRule, setActiveRule] = useState<BannerRule | null>(null);
@@ -501,6 +503,9 @@ function SmartBannerInner() {
   // reaches this component, and a rule added in admin later must not be able
   // to cover the request bar either.
   if (pathname.startsWith('/home-services')) return null;
+  // On a phone the slide-in covers half a project card on the portfolio page
+  // (Lavish review Q5, 2026-10-29). Desktop keeps it.
+  if (pathname.startsWith('/portfolio') && isMobile) return null;
   // And the private tokenized pages. This one needs a CODE-level guard rather
   // than a banner rule: `evaluateRule` only filters on `show_on_paths` when the
   // rule sets one, so every promotion with an empty path list matches every

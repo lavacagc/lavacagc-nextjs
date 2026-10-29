@@ -79,16 +79,16 @@ const Hero = ({ cta }: HeroProps) => {
         <div className="max-w-4xl mx-auto text-center" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' }}>
           {/* Main Heading */}
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-text-primary mb-6 leading-tight">
-            Premium Home Remodeling
+            Home remodeling and repairs,
             <span className="block text-transparent bg-gradient-to-r from-primary to-accent-sunset bg-clip-text">
-              Northern New Jersey
+              done right.
             </span>
           </h1>
 
           {/* Subheading */}
           <p className="text-xl md:text-2xl text-text-secondary mb-8 max-w-3xl mx-auto leading-relaxed">
-            Transform Your Kitchen, Bathroom, Basement, or Entire Home with Northern NJ&apos;s
-            <span className="font-semibold text-secondary"> Trusted Renovation Experts</span>
+            Kitchens, baths, basements and the small jobs in between.
+            <span className="font-semibold text-secondary"> Firm prices. Licensed crews. Northern NJ.</span>
           </p>
 
           {/* CTA Buttons: server-rendered by src/lib/cta/HeroCta.tsx and passed

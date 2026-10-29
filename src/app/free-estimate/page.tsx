@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import FreeEstimateLanding from '@/components/FreeEstimateLanding';
 
-export const revalidate = 60;
+// Hourly: content here changes a few times a month and publishing revalidates on demand (docs/cost-review.md).
+export const revalidate = 3600;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),

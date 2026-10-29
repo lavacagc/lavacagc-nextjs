@@ -6,7 +6,8 @@ import Footer from '@/components/Footer';
 import PortfolioContent from '@/components/PortfolioContent';
 
 // Revalidate every 60 seconds
-export const revalidate = 60;
+// Hourly: content here changes a few times a month and publishing revalidates on demand (docs/cost-review.md).
+export const revalidate = 3600;
 
 // Server-side Supabase client
 const supabase = createClient(
