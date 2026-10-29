@@ -23,8 +23,6 @@ import {
 import { ctaColorStyle } from './color';
 
 const FETCH_TIMEOUT_MS = 3000;
-/** Matches the homepage's `revalidate`; the admin API also revalidates '/' on edits. */
-const REVALIDATE_SECONDS = 300;
 
 function toVariant(row: unknown): CtaVariant | null {
   if (!row || typeof row !== 'object') return null;
@@ -52,7 +50,12 @@ export async function fetchHeroCtaVariants(): Promise<HeroCtaVariants> {
       {
         headers: { apikey: key, Authorization: `Bearer ${key}` },
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        next: { revalidate: REVALIDATE_SECONDS },
+        // No fetch-level data cache on purpose. The homepage's own ISR
+        // (`revalidate = 300` plus revalidatePath('/') on every admin edit)
+        // is the single cache layer. A second, fetch-level layer was observed
+        // serving a variant that had already been deleted: `next dev` keeps
+        // revalidatePath state in memory but the fetch cache on disk, so a
+        // restart resurrected the pre-edit entry.
       },
     );
     if (!res.ok) {

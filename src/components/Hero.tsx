@@ -115,9 +115,19 @@ const Hero = ({ ctaVariants = FALLBACK_VARIANTS }: HeroProps) => {
           </p>
 
           {/* CTA Buttons - real links (crawlable), wording under multivariate test.
-              See src/lib/cta and docs/home-services/reports/slice-c-build.md. */}
+              See src/lib/cta and docs/home-services/reports/slice-c-build.md.
+              Until hydration applies the visitor's own variant the pair is
+              transparent (layout kept, links still in the HTML), so a visitor
+              assigned B never sees A's wording flash first. If JS never runs,
+              the CSS animation reveals the server-rendered variant after 1.5s. */}
+          <style href="hero-cta-reveal" precedence="default">
+            {'.hero-cta-pending{opacity:0;animation:hero-cta-reveal 0s linear 1.5s forwards}@keyframes hero-cta-reveal{to{opacity:1}}'}
+          </style>
           <div
-            className="flex flex-col sm:flex-row gap-4 justify-center items-stretch mb-12"
+            className={cn(
+              "flex flex-col sm:flex-row gap-4 justify-center items-stretch mb-12",
+              cta.ready ? "opacity-100 transition-opacity duration-150" : "hero-cta-pending",
+            )}
             data-cta-ready={cta.ready ? 'true' : 'false'}
           >
             <Button
