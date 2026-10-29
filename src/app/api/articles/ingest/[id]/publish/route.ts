@@ -15,16 +15,28 @@
  * draft is applied the same way the admin's Apply does it (snapshot, baseline
  * CTR, then the rewrite) before the publish.
  *
+ * Before the guard, in this order (fix round 1 of the slice F review):
+ *   - Fact-lock: validateDraft runs on the content that would go live, action
+ *     draft included, and a failure is 422 `{ published: false, error, issues }`,
+ *     the same refusal Stage and Apply give. Nothing is written.
+ *   - Review hold (SEC4): a post with `review_hold` set is cleared only by a
+ *     publish whose guard actively re-checked the current content and passed,
+ *     or by the admin's "Publish anyway". The slice F guard is a stub that
+ *     checks nothing, so while it is the stub a held post answers 409 with its
+ *     stored reasons and stays as it is. No route takes review_hold as input.
+ *
  * Same auth as POST /api/articles/ingest.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { validationResponse } from '@/lib/projects/http';
 import {
-  applyActionDraft, completeAction, livePostIdOf, rebuiltFromDraft, requireOpenAction, type ContentActionRow,
+  applyActionDraft, completeAction, draftMarkdownFor, getAction, livePostIdOf, rebuiltFromDraft, requireOpenAction,
+  type ContentActionRow,
 } from '@/lib/articles/actions';
 import { authorizeArticles } from '@/lib/articles/auth';
 import { articleAdminUrl, articlePublicUrl, readArticleBody } from '@/lib/articles/http';
-import { checkPublishable } from '@/lib/articles/publishGuard';
+import { checkPublishable, PUBLISH_GUARD_IS_STUB } from '@/lib/articles/publishGuard';
+import { validateDraft } from '@/lib/seo/draftGuardrails';
 import { revalidateArticlePages } from '@/lib/articles/revalidate';
 import { articlePublishSchema } from '@/lib/articles/schemas';
 import {
@@ -69,10 +81,35 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     const post = await requireArticle(id);
-    const action = parsed.data.action_id ? await requireOpenAction(parsed.data.action_id) : null;
+    let action: ContentActionRow | null = null;
+    if (parsed.data.action_id) {
+      // An action already completed by THIS post (the admin staged Claude's
+      // draft, then Claude ran the publish line) is nothing left to do.
+      const existing = await getAction(parsed.data.action_id);
+      const alreadyDone = existing?.status === 'completed' && existing.published_post_id === post.id;
+      action = alreadyDone ? null : await requireOpenAction(parsed.data.action_id);
+    }
     const { candidate, applyDraft } = planFor(action, post);
+    const contentFacts = await loadContentFacts();
 
-    const verdict = checkPublishable(candidate, { contentFacts: await loadContentFacts() });
+    const factLock = validateDraft(draftMarkdownFor(candidate), contentFacts);
+    if (!factLock.ok) {
+      return NextResponse.json({
+        published: false,
+        error: 'Draft failed validation - fix before publishing.',
+        issues: factLock.issues,
+      }, { status: 422 });
+    }
+
+    if (post.review_hold && PUBLISH_GUARD_IS_STUB) {
+      return NextResponse.json({
+        published: false,
+        hold: post.review_hold.reasons ?? [],
+        adminUrl: articleAdminUrl(request, post.id),
+      }, { status: 409 });
+    }
+
+    const verdict = checkPublishable(candidate, { contentFacts });
     if (!verdict.ok) {
       await holdArticle(post, verdict.reasons);
       // Slice G (TG): the "Article held for review" Telegram goes here.

@@ -14,7 +14,7 @@
  *
  * --file is markdown; when it starts with "# Title" and --title is not given,
  * that line is the title and is left out of the body. --faq is a JSON file
- * holding [{ "q": "...", "a": "..." }]. A publish the guard holds exits 2 and
+ * holding [{ "q": "...", "a": "..." }]. A publish the fact-lock refuses or the guard holds exits 2 and
  * prints the reasons; any other failure exits 1.
  *
  * Common: --site (default ARTICLE_INGEST_SITE, PROJECT_INGEST_SITE, then
@@ -133,13 +133,21 @@ function explain(status, data, what) {
   if (status === 404 && data.error === 'Not found') {
     return `${what}: 404. Either the id is wrong or PROJECT_INGEST_TOKEN is not set on the site (the routes stay dark without it).`;
   }
-  const issues = Array.isArray(data.issues) ? `\n${data.issues.map((i) => `  - ${i.path || '(body)'}: ${i.message}`).join('\n')}` : '';
+  const issues = Array.isArray(data.issues)
+    ? `\n${data.issues.map((i) => (typeof i === 'string' ? `  - ${i}` : `  - ${i.path || '(body)'}: ${i.message}`)).join('\n')}`
+    : '';
   return `${what} failed (${status}): ${data.error ?? 'unknown error'}${issues}`;
 }
 
 async function publish(ctx, id, actionId) {
   const { status, data } = await api(ctx, 'POST', `/api/articles/ingest/${id}/publish`, actionId ? { action_id: actionId } : undefined);
   if (ctx.dryRun) return;
+  if (status === 422 && data.published === false) {
+    console.error('Refused by the fact-lock, not published:');
+    for (const issue of data.issues ?? []) console.error(`  - ${issue}`);
+    console.error('Fix the article (patch it) and publish again.');
+    process.exit(2);
+  }
   if (status === 409 && data.published === false) {
     console.error('Held for review, not published:');
     for (const reason of data.hold ?? []) console.error(`  - ${reason}`);

@@ -54,6 +54,7 @@ curl -s -X POST http://127.0.0.1:55421/auth/v1/admin/users \
 
 The CSP in `next.config.ts` allows `http://127.0.0.1:*` for connect, img and media only when `NODE_ENV=development`.
 A production build (`npm run build && npm run start`) therefore cannot sign in to the admin or read `google_reviews` from the browser against the local rig; use it for CSP, headers and Lighthouse, and use `next dev` for admin and live-backend specs.
+Anything about caching (ISR, `revalidatePath`, "shows on the next request") needs the production build, because `next dev` never caches; a Playwright spec can still drive the admin there with `test.use({ bypassCSP: true })` (see `tests/articles-ingest.spec.ts`).
 
 ## Running the live-backend specs
 
@@ -67,5 +68,10 @@ Warm the pages with a few curls first; a cold dev server renders the first paral
 
 Several tables were created in the Supabase dashboard and never had a migration: `projects`, `project_images`, `rate_limits`, `google_reviews`, the full `leads` column set, and the `app_role` type with `has_role()`.
 `supabase/migrations/00000000000001_preview_baseline_fixups.sql` recreates each one guarded, so a replay matches production closely enough to test against.
-When a new dashboard-created object turns up, add it there the same way, never to a dated migration.
-The dashboard tab still fails locally on a missing `blog_posts.title`; that is the next one to add.
+When a new dashboard-created object turns up, add it guarded the same way.
+Put it in a NEW dated migration, not in the fixups file: the fixups version is already applied on the shared rig and on preview branches, so an edit to it never reaches them, while a new version does (the reason `1ae7720` and `20261030000001_blog_posts_local_columns.sql` are separate files).
+Each statement must be a no-op on production: `IF NOT EXISTS`, inside a check that the table exists, with no constraint that production rows might break.
+The `blog_posts` dashboard columns (title, slug, content, category, author, excerpt, featured_image, meta fields, created_at, updated_at) arrive that way in `20261030000001_blog_posts_local_columns.sql`.
+
+To apply a new migration to the shared rig without a reset (other builders share it), run `psql postgresql://postgres:postgres@127.0.0.1:55422/postgres -v ON_ERROR_STOP=1 -f supabase/migrations/<file>.sql` and then `psql ... -c "NOTIFY pgrst, 'reload schema'"`.
+Never `supabase db reset` while other agents use the database.

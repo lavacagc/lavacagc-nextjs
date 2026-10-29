@@ -140,6 +140,12 @@ interface LivePostRow {
 export async function applyActionDraft(action: ContentActionRow, appliedBy: 'apply' | 'claude'): Promise<{ postId: string; slug: string; baselineCtr: number | null }> {
   const livePostId = livePostIdOf(action);
   if (!livePostId) throw new ArticleError(400, 'Action has no target post to apply to.');
+  // The fact-lock verdict recorded with the draft binds every caller, Apply and
+  // a Claude publish alike (the publish also re-runs it on the merged content).
+  const validation = (action.draft_meta as { validation?: { ok?: boolean; issues?: string[] } } | null)?.validation;
+  if (validation && validation.ok === false) {
+    throw new ArticleError(422, `Draft failed validation - fix before applying: ${(validation.issues ?? []).join(' ')}`);
+  }
   const rebuilt = rebuiltFromDraft(action);
 
   const posts = await supabaseRest<LivePostRow[]>(

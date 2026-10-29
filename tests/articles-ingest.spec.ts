@@ -96,6 +96,10 @@ test.describe('RM: no OpenAI writer is left', () => {
       expect(existsSync(join(root, 'supabase/functions', dir)), dir).toBe(false);
     }
     expect(existsSync(join(root, 'supabase/functions/_shared/openai.ts'))).toBe(false);
+    // Fix round 1: the scheduled-publish edge function duplicated /api/cron/publish
+    // without published_at or revalidation, so it went too.
+    expect(existsSync(join(root, 'supabase/functions/publish-scheduled-articles'))).toBe(false);
+    expect(read('docs/phase-2/follow-ups.md')).toContain('supabase functions delete publish-scheduled-articles');
     expect(existsSync(join(root, 'src/components/admin/BlogPostGenerator.tsx'))).toBe(false);
     const editor = read('src/components/admin/BlogPostEditor.tsx');
     expect(editor).not.toContain('functions.invoke');
@@ -571,6 +575,21 @@ test.describe('article routes, CLI and feedback (live backend)', () => {
     await request.post(`/api/articles/ingest/${live.id}/unpublish`, { headers: auth });
   });
 
+  // Runs before the other Stage calls: Stage refuses past 3 completed actions a
+  // week, and this file completes several.
+  test('Fix round 1: a publish naming an action this post already completed (staged by the admin) is a no-op on the action', async ({ page, request }) => {
+    const [action] = await rest<Array<{ id: string }>>(request, 'POST', 'content_actions', [{
+      action_type: 'new', target_query: `${PREFIX} staged then published`, status: 'approved',
+    }]);
+    const post = await create(request, { title: `${PREFIX} Staged Then Published`, content: articleMarkdown('Staged.'), category: 'Kitchen Remodeling', action_id: action.id });
+    await signIn(page);
+    const staged = await page.request.post('/api/admin/content-actions/stage', { data: { id: action.id } });
+    expect(staged.status(), await staged.text()).toBe(200);
+    const pub = await request.post(`/api/articles/ingest/${post.id}/publish`, { headers: auth, data: { action_id: action.id } });
+    expect(pub.status(), await pub.text()).toBe(200);
+    await request.post(`/api/articles/ingest/${post.id}/unpublish`, { headers: auth });
+  });
+
   test('RM6 + FB3: Claude drafts a new action, the admin stages it, and publish marks it applied', async ({ page, request }) => {
     const [action] = await rest<Array<{ id: string }>>(request, 'POST', 'content_actions', [{
       action_type: 'new', target_query: `${PREFIX} basement cost`, status: 'approved', rationale: { reason: 'slice F spec' },
@@ -661,6 +680,60 @@ test.describe('article routes, CLI and feedback (live backend)', () => {
     });
     expect(wrong.status()).toBe(409);
     await request.post(`/api/articles/ingest/${live.id}/unpublish`, { headers: auth });
+  });
+
+  test('Fix round 1: a refresh draft the fact-lock rejected is refused on publish (422), the live post untouched', async ({ request }) => {
+    // The reviewer's case: a refresh draft with a wrong phone and no internal links.
+    const live = await create(request, { title: `${PREFIX} Factlock Target`, content: articleMarkdown('Factlock original.'), category: 'Kitchen Remodeling' });
+    expect((await request.post(`/api/articles/ingest/${live.id}/publish`, { headers: auth })).status()).toBe(200);
+    const [refresh] = await rest<Array<{ id: string }>>(request, 'POST', 'content_actions', [{
+      action_type: 'refresh', target_post_id: live.id, target_query: `${PREFIX} factlock`, status: 'approved',
+    }]);
+    const patch = await request.patch(`/api/articles/ingest/${live.id}`, {
+      headers: auth, data: { content: 'Call us at (973) 555-0199 for a quote. No links here at all.', action_id: refresh.id },
+    });
+    expect(patch.status(), await patch.text()).toBe(200);
+    expect((await patch.json()).action.validation.ok).toBe(false);
+
+    const pub = await request.post(`/api/articles/ingest/${live.id}/publish`, { headers: auth, data: { action_id: refresh.id } });
+    expect(pub.status()).toBe(422);
+    const body = await pub.json();
+    expect(body.published).toBe(false);
+    expect(body.issues.join(' ')).toMatch(/internal link/);
+    expect(body.issues.join(' ')).toMatch(/\(973\) 555-0199/);
+
+    expect(await text(request, `/blog/${live.slug}`)).toContain('Factlock original.');
+    expect(await text(request, `/blog/${live.slug}`)).not.toContain('555-0199');
+    const [action] = await rest<Array<{ status: string; published_post_id: string | null }>>(request, 'GET', `content_actions?select=status,published_post_id&id=eq.${refresh.id}`);
+    expect(action).toEqual({ status: 'drafted', published_post_id: null });
+    expect(await rest<unknown[]>(request, 'GET', `blog_post_revisions?select=id&post_id=eq.${live.id}`)).toHaveLength(0);
+
+    // A plain publish runs the same check on the post itself.
+    const bare = await create(request, { title: `${PREFIX} No Links`, content: 'Call (973) 555-0199 today.', category: 'Kitchen Remodeling' });
+    const barePub = await request.post(`/api/articles/ingest/${bare.id}/publish`, { headers: auth });
+    expect(barePub.status()).toBe(422);
+    const [bareRow] = await rest<Array<{ published: boolean }>>(request, 'GET', `blog_posts?select=published&id=eq.${bare.id}`);
+    expect(bareRow.published).toBe(false);
+    await request.post(`/api/articles/ingest/${live.id}/unpublish`, { headers: auth });
+  });
+
+  test('Fix round 1 (SEC4): a held post is not published or cleared while the guard is the stub; no route takes review_hold', async ({ request }) => {
+    const held = await create(request, { title: `${PREFIX} Held Post`, content: articleMarkdown('Held.'), category: 'Kitchen Remodeling' });
+    const reasons = ['Price claim: "from $9,000" in paragraph 2'];
+    await rest(request, 'PATCH', `blog_posts?id=eq.${held.id}`, { review_hold: { reasons, checked_at: new Date().toISOString() } });
+
+    const pub = await request.post(`/api/articles/ingest/${held.id}/publish`, { headers: auth });
+    expect(pub.status()).toBe(409);
+    expect(await pub.json()).toMatchObject({ published: false, hold: reasons });
+    const [row] = await rest<Array<{ published: boolean; review_hold: { reasons: string[] } | null }>>(request, 'GET', `blog_posts?select=published,review_hold&id=eq.${held.id}`);
+    expect(row.published).toBe(false);
+    expect(row.review_hold?.reasons).toEqual(reasons);
+    expect(await status(request, `/blog/${held.slug}`)).toBe(404);
+
+    // review_hold is not an input anywhere.
+    expect((await request.patch(`/api/articles/ingest/${held.id}`, { headers: auth, data: { review_hold: null } })).status()).toBe(400);
+    expect((await request.post(`/api/articles/ingest/${held.id}/publish`, { headers: auth, data: { review_hold: null } })).status()).toBe(400);
+    expect((await request.post('/api/articles/ingest', { headers: auth, data: { title: 't', content: 'c', category: 'k', review_hold: null } })).status()).toBe(400);
   });
 
   test('FB1/FB2: the feedback route returns the shape from seo_metrics, decaying pages joined to their posts', async ({ request }) => {
