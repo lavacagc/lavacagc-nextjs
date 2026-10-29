@@ -32,6 +32,14 @@ Each is recorded with its reasoning in `00-site-audit.md` or `docs/decisions/`.
 
 `INTERNAL_WEBHOOK_SECRET`, `CRON_SECRET`, `SUPABASE_SECRET_KEY`, `RESEND_API_KEY`, `TELEGRAM_*` and the reCAPTCHA keys are already in production and are reused.
 
+## Security review conditions (docs/home-services/reports/security-review.md)
+
+- S-01 Next.js was upgraded from 16.1.6 to 16.4.3 on this branch (38 advisories on the old version, including middleware bypasses); the gates and the full suite were re-run after the upgrade.
+- S-02 Direct `*.vercel.app` production traffic now 301s to `www.lavacagc.com`, so per-IP rate limits only ever see Cloudflare-set client IPs; preview deployments are unaffected. The `rateLimit.ts` header order is unchanged.
+- S-03 Launch check: confirm in the Supabase dashboard that public sign-up is disabled (Authentication > Providers > Email > "Allow new users to sign up" off). The admin gate admits any signed-in user, so an open sign-up would expose every request and photo.
+- S-08 Recommendation: the admin's signed video upload lets the uploader pick the stored content type; a JPEG-headed HTML file is stored (served as text, harmless today). Validate the type server-side after the upload lands.
+- S-10 Recommendation: focus should return to the opening button when the request sheet closes.
+
 ## Database
 
 - The migration `20261029000000_home_services.sql` and `20261029000001_projects_anon_draft_guard.sql` apply through the normal pipeline (Supabase branching on the PR, production on merge).
@@ -66,7 +74,7 @@ Each is recorded with its reasoning in `00-site-audit.md` or `docs/decisions/`.
 - The homepage pushes three history entries after load on the base commit as well, so one Back press stays on `/` (slice C re-verification); separate ticket.
 - Dev server intermittently fails to SSR `Testimonials` with "No QueryClient set": not reproduced in about 550 renders by the reviewer; keep an eye on Vercel logs.
 - Playwright: the home-services and offers specs can time out on a cold dev server under load; warm the pages in `beforeAll` (slice A and B re-verifications).
-- Playwright: RF10 (merge) failed once in four full-file runs on the merged branch while another agent was probing the same route; the response had the silent-drop shape (`ok: true, merged: false`, random id), which the route returns for a submit timed under five seconds or a filled honeypot. It passed in isolation and in three full-file runs. If it recurs, log the drop reason server-side under a debug flag and check whether the sheet's `started_at` can reset between screens.
+- Playwright: the live-backend specs cannot run from two checkouts against one database at once; each file's cleanup deletes every row with its prefix, so a concurrent run loses its own rows mid-test (that is what the one RF10 failure on the merged branch was). Run them from one place, or give each run its own prefix.
 
 ## Craigslist and listings
 

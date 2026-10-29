@@ -230,6 +230,19 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(destination, { status: 301 });
   }
 
+  // The production deployment is also reachable at its *.vercel.app alias,
+  // which bypasses Cloudflare. Off Cloudflare, cf-connecting-ip is whatever the
+  // caller sends, so every per-IP rate limit on the site could be rotated past
+  // one request at a time (security review S-02, 2026-10-29). Sending that
+  // host to the canonical one closes the path without touching the header
+  // trust order that real customers depend on. Preview deployments keep their
+  // vercel.app hosts (VERCEL_ENV is 'preview' there) and sit behind Vercel's
+  // own deployment protection.
+  if (process.env.VERCEL_ENV === 'production' && host.endsWith('.vercel.app')) {
+    const destination = `https://www.lavacagc.com${request.nextUrl.pathname}${request.nextUrl.search}`;
+    return NextResponse.redirect(destination, { status: 301 });
+  }
+
   // Block known bad bots (unless they're spoofing a good bot UA)
   if (ua && isBadBot(ua) && !isGoodBot(ua)) {
     return new NextResponse('Forbidden', { status: 403 });

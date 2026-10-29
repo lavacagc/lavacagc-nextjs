@@ -60,7 +60,7 @@ export default function HomeCareBanner() {
   // portal. SSR renders the visitor version; the cookie read swaps after mount.
   const [memberName, setMemberName] = useState<string | null>(null);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of a client-only cookie after mount
+     
     setMemberName(readHcKnown());
   }, []);
 
