@@ -144,9 +144,8 @@ BEGIN
     ALTER TABLE public.leads ADD CONSTRAINT leads_inquiry_type_check
       CHECK (inquiry_type IN ('estimate', 'contact', 'exit_intent'));
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'leads_contact_time_preference_check') THEN
-    ALTER TABLE public.leads ADD CONSTRAINT leads_contact_time_preference_check
-      CHECK (contact_time_preference IS NULL OR contact_time_preference IN ('anytime', 'morning', 'afternoon', 'evening', 'weekends', 'specific'));
-  END IF;
 END $$;
+-- contact_time_preference and its CHECK arrive with the column in
+-- 20260723000000_add_contact_availability; adding the constraint here would
+-- reference a column that does not exist yet on a from-scratch replay.
 CREATE INDEX IF NOT EXISTS leads_created_at_idx ON public.leads (created_at DESC);
