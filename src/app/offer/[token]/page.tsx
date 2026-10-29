@@ -27,6 +27,14 @@ import OfferActions, { Countdown } from './OfferActions';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Signed links on this page live one day, not the 7 days the admin views use
+ * (security review F2). The page is rendered per request, so a sub who comes
+ * back gets fresh links; a forwarded or copied link stops working with the
+ * offer instead of a week after it.
+ */
+const PAGE_LINK_TTL_SECONDS = 24 * 60 * 60;
+
 /** One database lookup per render, shared by the title and the page. */
 const lookupOnce = cache(lookupOfferByToken);
 
@@ -91,7 +99,7 @@ export default async function OfferPage({ params, searchParams }: PageProps) {
   }
 
   const [photoUrls, request] = await Promise.all([
-    sharedPhotoUrls(offer.photo_ids),
+    sharedPhotoUrls(offer.photo_ids, PAGE_LINK_TTL_SECONDS),
     requestForOfferPage(offer.request_id, view.kind === 'won'),
   ]);
   const photos = photoUrls.filter((u): u is string => !!u);
@@ -131,7 +139,7 @@ export default async function OfferPage({ params, searchParams }: PageProps) {
   const latestCounter = [...responses].reverse().find((r) => r.type === 'counter');
   const details = responses.filter((r) => r.type === 'details');
   const declined = responses.some((r) => r.type === 'decline');
-  const replyFiles = await Promise.all(details.map((d) => signPaths((d.admin_reply_attachments ?? []).map((a) => a.storage_path))));
+  const replyFiles = await Promise.all(details.map((d) => signPaths((d.admin_reply_attachments ?? []).map((a) => a.storage_path), PAGE_LINK_TTL_SECONDS)));
 
   return (
     <Shell lang={lang}>

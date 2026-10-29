@@ -11,6 +11,7 @@
  * learns nothing about which request ids exist.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { readCappedJson } from '@/lib/cta/http';
 import { z } from 'zod';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
@@ -36,14 +37,13 @@ const invalid = () => NextResponse.json({ ok: false, error: 'invalid_code' }, { 
 
 export async function POST(request: NextRequest) {
   try {
-    const raw = await request.text();
-    if (Buffer.byteLength(raw, 'utf8') > MAX_BODY_BYTES) return NextResponse.json({ error: 'payload_too_large' }, { status: 413 });
-    let json: unknown;
-    try {
-      json = JSON.parse(raw);
-    } catch {
-      return NextResponse.json({ error: 'invalid_request' }, { status: 400 });
+    // Capped while streaming (security review F4): a missing or false
+    // Content-Length can no longer make the route buffer the whole body first.
+    const read = await readCappedJson(request, MAX_BODY_BYTES);
+    if ('error' in read) {
+      return NextResponse.json({ error: read.status === 413 ? 'payload_too_large' : 'invalid_request' }, { status: read.status });
     }
+    const json: unknown = read.value;
     const parsed = Body.safeParse(json);
     if (!parsed.success) return NextResponse.json({ error: 'invalid_request' }, { status: 400 });
     const { request_id: requestId, code } = parsed.data;
