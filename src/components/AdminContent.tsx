@@ -108,8 +108,11 @@ export default function AdminContent() {
     return null; // Will redirect to auth page
   }
 
+  // overflow-x-clip, not -hidden: hidden turns these wrappers into scroll
+  // containers, which silently disables every `sticky` inside them (the header
+  // below and the Services & Prices save bar).
   return (
-    <div className="min-h-screen bg-muted/30 flex overflow-x-hidden">
+    <div className="min-h-screen bg-muted/30 flex overflow-x-clip">
       <AdminSidebar
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -117,7 +120,7 @@ export default function AdminContent() {
         onMobileClose={() => setIsMobileSidebarOpen(false)}
       />
 
-      <div className={`flex-1 ${isMobile ? 'ml-0' : 'ml-16'} overflow-x-hidden max-w-full`}>
+      <div className={`flex-1 ${isMobile ? 'ml-0' : 'ml-16'} overflow-x-clip max-w-full`}>
         <div className="border-b bg-background sticky top-[var(--smart-banner-height,0px)] transition-[top] duration-300 z-10 max-w-full">
           <div className="container mx-auto px-4 py-4 max-w-full">
             <div className="flex items-center justify-between">
@@ -162,7 +165,7 @@ export default function AdminContent() {
           </div>
         </div>
 
-        <div className="container mx-auto px-2 md:px-4 py-4 md:py-8 pb-20 max-w-7xl overflow-x-hidden">
+        <div className="container mx-auto px-2 md:px-4 py-4 md:py-8 pb-20 max-w-7xl overflow-x-clip">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
 
           <TabsContent value="dashboard">
