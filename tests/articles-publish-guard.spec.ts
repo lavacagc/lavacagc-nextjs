@@ -396,7 +396,11 @@ test.describe('TG / SEC2: the unpublish page and its routes (source and render)'
   });
 
   test('the guard runs on every publish path: Claude, the admin editor and list, the cron', () => {
-    expect(read('src/app/api/articles/ingest/[id]/publish/route.ts')).toContain('runPublishGuard(candidate)');
+    const route = read('src/app/api/articles/ingest/[id]/publish/route.ts');
+    // Slice F's fact-lock refusal (422) runs first, then the guard on every call.
+    expect(route.indexOf('validateDraft(draftMarkdownFor(candidate), contentFacts)')).toBeGreaterThan(0);
+    expect(route.indexOf('validateDraft(draftMarkdownFor(candidate), contentFacts)')).toBeLessThan(route.indexOf('runPublishGuard(candidate, contentFacts)'));
+    expect(route).not.toContain('PUBLISH_GUARD_IS_STUB');
     expect(read('src/app/api/admin/articles/[id]/publish/route.ts')).toContain('runPublishGuard(post)');
     expect(read('src/app/api/cron/publish/route.ts')).toContain('runPublishGuard(full)');
     expect(read('src/components/admin/BlogPostEditor.tsx')).toContain('adminPublishArticle(id');
@@ -602,31 +606,43 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
     await request.post(`/api/articles/ingest/${post.id}/unpublish`, { headers: auth });
   });
 
-  test('a refresh draft (action_id) is checked with the draft applied, fact-lock included; a failing one leaves the live post as it was', async ({ request }) => {
+  test('a refresh draft (action_id) is fact-locked with the draft applied (422) before the guard; a claim in it is held (409); the live post stays as it was', async ({ request }) => {
     const live = await create(request, 'Refresh Target', body());
     expect((await request.post(`/api/articles/ingest/${live.id}/publish`, { headers: auth })).status()).toBe(200);
-    const [action] = await rest<Array<{ id: string }>>(request, 'POST', 'content_actions', [{
-      action_type: 'refresh', target_post_id: live.id, target_query: `${PREFIX} refresh target`, status: 'approved',
-    }]);
+    const actionIds: string[] = [];
     try {
-      // One internal link only, and a wrong phone: validateDraft fails on the draft.
+      const [action] = await rest<Array<{ id: string }>>(request, 'POST', 'content_actions', [{
+        action_type: 'refresh', target_post_id: live.id, target_query: `${PREFIX} refresh target`, status: 'approved',
+      }]);
+      actionIds.push(action.id);
+      // One internal link only, and a wrong phone: the fact-lock refuses the draft.
       const thin = `${OPENING}\n\n## What changed\n\nCall 555-123-4567 or see [the process](/process).`;
-      const patch = await request.patch(`/api/articles/ingest/${live.id}`, { headers: auth, data: { content: thin, action_id: action.id } });
-      expect(patch.status(), await patch.text()).toBe(200);
+      expect((await request.patch(`/api/articles/ingest/${live.id}`, { headers: auth, data: { content: thin, action_id: action.id } })).status()).toBe(200);
       const pub = await request.post(`/api/articles/ingest/${live.id}/publish`, { headers: auth, data: { action_id: action.id } });
-      expect(pub.status()).toBe(409);
-      const out = await pub.json();
-      expect(out.hold).toEqual(expect.arrayContaining([
+      expect(pub.status()).toBe(422);
+      expect((await pub.json()).issues).toEqual(expect.arrayContaining([
         'Only 1 internal link(s); needs at least 3.',
         'Unrecognized phone number "555-123-4567" (locked: (201) 212-4917).',
       ]));
-      const r = await row(request, live.id);
+      let r = await row(request, live.id);
+      expect(r).toMatchObject({ published: true, content: body(), review_hold: null });
+
+      // A second refresh that passes the fact-lock but makes a claim: the guard holds it.
+      const [claim] = await rest<Array<{ id: string }>>(request, 'POST', 'content_actions', [{
+        action_type: 'refresh', target_post_id: live.id, target_query: `${PREFIX} refresh claim`, status: 'approved',
+      }]);
+      actionIds.push(claim.id);
+      expect((await request.patch(`/api/articles/ingest/${live.id}`, { headers: auth, data: { content: body('Every job comes with a warranty on labor.'), action_id: claim.id } })).status()).toBe(200);
+      const held = await request.post(`/api/articles/ingest/${live.id}/publish`, { headers: auth, data: { action_id: claim.id } });
+      expect(held.status()).toBe(409);
+      expect((await held.json()).hold[0]).toContain('Legal claim: "warranty" in paragraph 3');
+      r = await row(request, live.id);
       expect(r.published).toBe(true);
       expect(r.content).toBe(body());
-      const [a] = await rest<Array<{ status: string }>>(request, 'GET', `content_actions?select=status&id=eq.${action.id}`);
-      expect(a.status).not.toBe('completed');
+      const [a] = await rest<Array<{ status: string }>>(request, 'GET', `content_actions?select=status&id=eq.${claim.id}`);
+      expect(a.status).toBe('drafted');
     } finally {
-      await rest(request, 'DELETE', `content_actions?id=eq.${action.id}`);
+      for (const id of actionIds) await rest(request, 'DELETE', `content_actions?id=eq.${id}`);
       await request.post(`/api/articles/ingest/${live.id}/unpublish`, { headers: auth });
     }
   });

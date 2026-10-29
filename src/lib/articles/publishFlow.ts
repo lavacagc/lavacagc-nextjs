@@ -15,10 +15,12 @@ import { notifyArticleHeld, notifyArticlePublished } from './notify';
 import { isTokenCurrent, readUnpublishToken, signUnpublishToken, unpublishLink } from './unpublishToken';
 import { getArticle, loadContentFacts, type ArticleRow } from './writer';
 import type { TelegramOutcome } from '@/lib/notify/telegramMessage';
+import type { Fact } from '@/lib/seo/draftGuardrails';
 
-export async function runPublishGuard(candidate: PublishCandidate): Promise<PublishVerdict> {
-  const [contentFacts, catalogPrices] = await Promise.all([loadContentFacts(), loadCatalogPrices()]);
-  return checkPublishable(candidate, { contentFacts, catalogPrices });
+/** The guard with its inputs loaded; pass `contentFacts` when the caller already read them. */
+export async function runPublishGuard(candidate: PublishCandidate, contentFacts?: Fact[]): Promise<PublishVerdict> {
+  const [facts, catalogPrices] = await Promise.all([contentFacts ?? loadContentFacts(), loadCatalogPrices()]);
+  return checkPublishable(candidate, { contentFacts: facts, catalogPrices });
 }
 
 /** The signed one-tap link for this publication, or null without INTERNAL_WEBHOOK_SECRET. */

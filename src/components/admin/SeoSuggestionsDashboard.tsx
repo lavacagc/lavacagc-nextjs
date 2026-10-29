@@ -162,8 +162,8 @@ export default function SeoSuggestionsDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 basis-60">
           <h2 className="text-2xl font-bold text-slate-900">SEO Suggestions</h2>
           <p className="text-sm text-slate-500">
             Opportunities scored from Search Console and GA4. Approve one, then draft it with Claude Code.
@@ -279,14 +279,16 @@ function ActionRow({
   const canApply = a.status === 'drafted' && a.action_type !== 'new' && !!a.draft_markdown;
   return (
     <Card className="p-4">
-      <div className="flex items-start gap-3">
-        <Badge className={TYPE_STYLE[a.action_type]}>{TYPE_LABEL[a.action_type]}</Badge>
+      {/* Phones: badge, text and buttons stack, so a long button label never
+          sits on top of the status pill or squeezes the title to an ellipsis. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        <Badge className={`${TYPE_STYLE[a.action_type]} self-start shrink-0`}>{TYPE_LABEL[a.action_type]}</Badge>
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-slate-900 truncate">{targetLabel(a)}</div>
+          <div className="font-medium text-slate-900 break-words sm:truncate">{targetLabel(a)}</div>
           {reason && <div className="text-sm text-slate-500 mt-0.5">{reason}</div>}
-          <div className="flex flex-wrap gap-3 text-xs text-slate-400 mt-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400 mt-1">
             {a.expected_lift_clicks != null && <span>~{a.expected_lift_clicks} clicks/mo upside</span>}
-            <Badge className={`${STATUS_STYLE[a.status] ?? ''} text-[10px]`}>{a.status}</Badge>
+            <Badge className={`${STATUS_STYLE[a.status] ?? ''} text-[10px] whitespace-nowrap`}>{a.status}</Badge>
             {a.draft_markdown && (
               <button className="underline" onClick={onToggle}>
                 {expanded ? 'Hide draft' : 'View draft'}
@@ -294,12 +296,12 @@ function ActionRow({
             )}
             {a.status === 'completed' && a.published_post && (
               <a className="underline text-violet-700" href={`/blog/preview/${a.published_post.slug}`} target="_blank" rel="noreferrer">
-                Staged as draft → preview
+                Linked post: preview
               </a>
             )}
           </div>
         </div>
-        <div className="flex flex-col gap-2 shrink-0">
+        <div className="flex flex-row flex-wrap gap-2 sm:flex-col sm:shrink-0">
           {a.status === 'pending' && (
             <>
               <Button size="sm" onClick={onApprove} disabled={busy}>
@@ -362,11 +364,11 @@ function ClaudeCodePanel({ a }: { a: ActionItem }) {
         Ask Claude Code: <span className="font-medium text-slate-800">{prompt}</span>
       </p>
       <p className="mt-2 text-slate-600">Or run these after writing the article to <code>article.md</code>:</p>
-      <div className="mt-2 flex items-start gap-2">
-        <pre className="flex-1 min-w-0 overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100 whitespace-pre">
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-start">
+        <pre className="w-full sm:flex-1 min-w-0 overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100 whitespace-pre">
           {commands.join('\n')}
         </pre>
-        <Button size="sm" variant="outline" onClick={() => void copy()} aria-label="Copy commands">
+        <Button size="sm" variant="outline" className="self-start" onClick={() => void copy()} aria-label="Copy commands">
           <Copy className="h-4 w-4 mr-1" /> {copied ? 'Copied' : 'Copy'}
         </Button>
       </div>

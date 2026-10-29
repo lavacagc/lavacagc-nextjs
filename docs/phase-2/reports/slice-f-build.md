@@ -62,11 +62,11 @@ Only the production build caches pages, so only that run proves "on the next req
 
 ## Things found and fixed on the way
 
-- **`/blog/[slug]` answered 500 in a production build for every slug not prebuilt at build time** ("Page changed from static to dynamic at runtime", from `await searchParams` in `generateMetadata`).
-  That is every post published after a deploy, which is exactly what this slice makes routine.
-  Found by the production-build run; `next dev` hid it.
-  Fixed by removing the `?preview=true` read (drafts are previewed at `/blog/preview/[slug]`); the dead "Preview Mode" banner went with it.
-  Production itself answers 404 for an unknown slug, so whether it shows the 500 for a newly published post was NOT verified; the cause is gone either way.
+- **`/blog/[slug]` read `searchParams` in `generateMetadata`** (the `?preview=true` mode). Corrected in fix round 1 after the review reproduced it on `1982e0a`:
+  the 500 ("Page changed from static to dynamic at runtime") happens only when the BUILD sees zero published posts, as on the local rig, because only then is the route compiled as static (`●`).
+  A build that has published posts, like every production build, compiles `/blog/[slug]` as dynamic (`ƒ`), and a post published after the deploy answered 200, rendered per request with `Cache-Control: private, no-cache, no-store`.
+  So production never answered 500; the original claim that every post published after a deploy 500s was wrong.
+  The fix (dropping the `searchParams` read, the preview mode and its dead banner; drafts keep `/blog/preview/[slug]`) stays: it makes the page the ISR page its `revalidate = 300` always intended, which ART4 and ART5 rely on, and the production effect is that post pages change from uncached per-request rendering to cached copies dropped by revalidation.
 - The list's eye button and the editor's Preview opened `/blog/<slug>` for drafts, a 404; they now open the preview route for drafts.
 - Publishing from the list, the editor and the cron now stamps `published_at` (the editor only on a draft-to-live save).
 - The blog list read (`/blog`) and the admin list read had no row limit; now 200 and 500.
@@ -94,7 +94,7 @@ The reviewer or planner may prefer to move these lines into the fixups file at m
 | `npm run chaos:static` | total 0, baselined 0, NEW 0, "no new violations" |
 | `npm run build` (rig env) | exit 0; `/blog` ISR 5m, `/blog/[slug]` SSG, `/sitemap.xml` static, five `/api/articles/*` dynamic |
 | `TEST_URL=http://localhost:3112 E2E_LIVE_BACKEND=1 playwright test tests/articles-ingest.spec.ts tests/seo-suggestions-ui.spec.ts --project=chromium` (`next dev`) | 34 passed, 2 skipped (ART1 HTTP is stub-only; ISR control is production-only) |
-| `TEST_URL=http://localhost:3113 E2E_LIVE_BACKEND=1 E2E_ISR=1 playwright test tests/articles-ingest.spec.ts --project=chromium` (production build) | 28 passed, 1 skipped (ART1 HTTP); first attempt failed on the `/blog/[slug]` 500 above, green after the fix and a rebuild |
+| `TEST_URL=http://localhost:3113 E2E_LIVE_BACKEND=1 E2E_ISR=1 playwright test tests/articles-ingest.spec.ts --project=chromium` (production build) | 28 passed, 1 skipped (ART1 HTTP); first attempt failed on the rig-only `/blog/[slug]` 500 above (a build with zero published posts), green after the fix and a rebuild |
 | Same live run on `next dev` port 3122 after the final UI fixes | 34 passed, 2 skipped |
 | `npm run test:e2e -- tests/articles-ingest.spec.ts tests/seo-suggestions-ui.spec.ts tests/seo-draft-guardrails.spec.ts tests/seo-stage.spec.ts tests/seo-report.spec.ts tests/seo-scoring.spec.ts tests/seo-rollback.spec.ts tests/seo-cron.spec.ts tests/privacy-policy.spec.ts tests/lead-intake.spec.ts tests/admin-dashboard.spec.ts tests/admin-nav-simplified.spec.ts tests/project-drafts.spec.ts tests/flows.spec.ts --project=chromium` (`.env.local` moved aside) | exit 0, 178 passed, 24 skipped (live-backend specs) |
 | Row check after every live run: `select count(*)` of `slice-f-%` rows in `blog_posts`, `content_actions`, `seo_metrics`, plus `blog_post_revisions` and `articles:%` rate-limit rows | 0 each |
@@ -123,3 +123,64 @@ All of these are in `docs/phase-2/follow-ups.md`.
 - The `/blog` list still orders by `created_at`; the publish cron keeps rewriting `created_at` as before so the list order did not change.
 - The panel's suggested prompt says "Use the articles skill"; that skill ships in slice G (SK1).
 - `docs/codemap/*` still names the removed files; it is generated, so it was not edited by hand.
+
+## Fix round 1
+
+Review: `docs/phase-2/reports/slice-f-review.md` (REJECT), merged fast-forward at `6578f6e` before the fixes.
+Env: the coordinator's `env.rig` copied to both `.env.local` and `.env.development.local` (local Supabase only).
+
+### 1. Fact-lock bypass (must fix)
+
+- `POST /api/articles/ingest/<id>/publish` now runs `validateDraft` on the content that would go live, built with the same `draftMarkdownFor` the action drafts use, and for a refresh or consolidate that is the post WITH the action draft applied.
+  A failure answers 422 `{ published: false, error: 'Draft failed validation - fix before publishing.', issues }`, the same status and wording Stage and Apply use, and writes nothing: no revision, no rewrite, the action stays `drafted`.
+- `applyActionDraft` (shared by Apply and the publish) also refuses an action whose recorded `draft_meta.validation.ok` is false with a 422, so neither caller can skip it.
+- The CLI prints the issues and exits 2 on a 422, like a hold; `docs/articles-ingest.md` documents it.
+- Spec `Fix round 1: a refresh draft the fact-lock rejected is refused on publish (422), the live post untouched` reproduces the reviewer's case (a refresh draft with `(973) 555-0199` and no internal links, then publish with `action_id`): 422, both issues named, the live page still shows the original and not the number, action still `drafted` with no `published_post_id`, zero revisions; a plain publish of a post with no links is 422 too and stays unpublished.
+
+### 2. `review_hold` (SEC4, as clarified by the planner)
+
+- While `PUBLISH_GUARD_IS_STUB` is true, a publish of a post whose `review_hold` is set answers 409 `{ published: false, hold: <stored reasons>, adminUrl }` and changes nothing, because the stub cannot have re-checked the content.
+  When slice G makes the guard real, a guard pass on the current content clears the hold through the existing `publishArticle` path; the admin's "Publish anyway" is slice G's other way out.
+- No route takes `review_hold` as input (strict schemas).
+- Spec `Fix round 1 (SEC4): a held post is not published or cleared while the guard is the stub; no route takes review_hold`: 409 with the stored reasons, row still unpublished with the same hold, public page 404, and `review_hold` in a create, patch or publish body is 400.
+- The review's merge condition (slice F must not reach production alone) is the planner's to carry; with this change a held post cannot go live through slice F, but an un-held post still publishes with only the fact-lock checked until slice G lands.
+
+### Advisory taken from the review
+
+- A publish naming an action that this same post already completed (the admin staged Claude's draft, then Claude ran the dashboard's own publish line) is now a no-op on the action instead of a 409; spec `Fix round 1: a publish naming an action this post already completed (staged by the admin) is a no-op on the action`.
+  It runs before the other Stage calls in the file because Stage allows three completed actions a week.
+- The dashboard link on a completed action now reads "Linked post: preview" (it said "Staged as draft" even for a post Claude published).
+- Not taken: the `decaying` anchoring and noise floor (advisory, changes FB1's literal rule; left for slice G, which reads the flag), and the `/blog` list date mismatch (slice G, as the review says).
+
+### 3. Phone UI at iPhone 13 (390 by 844)
+
+- SEO tab: on phones the type badge, the text and the buttons stack; the title wraps instead of truncating; the status pill and link sit on one centred line; the header wraps so "Refresh" is not cut off; the command block takes the full width with Copy under it.
+- Blog list: below the `md` breakpoint each post is a card (title, status, "From Claude Code", category, author and date, then View, Edit, Publish or Unpublish, Delete); the table stays for `md` and up. The badge has `whitespace-nowrap`.
+- Measured on the production build with the admin signed in (chromium, iPhone 13 descriptor, CSP bypassed for the rig): button and pill do not overlap, the title is not clipped, the "From Claude Code" badge is 26 px tall (one line), Publish and Edit are inside 0 to 390 px, and `scrollWidth` is 390 on both pages.
+- Screenshots: `docs/phase-2/reports/shots/slice-f-fix-seo-tab-iphone13.png`, `slice-f-fix-seo-panel-iphone13.png`, `slice-f-fix-blog-list-iphone13.png`.
+  A first full-page capture of the list showed the admin's mobile drawer half open; the viewport capture after the page settled shows it closed, so that was a capture artifact, not a defect.
+
+### 4. Build report correction
+
+The `/blog/[slug]` paragraph under "Things found and fixed" is rewritten to the review's conditional finding: a 500 only when the build sees zero published posts (the rig), never in production; the fix is kept and its production effect stated.
+
+### 5. `publish-scheduled-articles`
+
+- The Vercel cron `/api/cron/publish` (daily 11:00 UTC) does the same job: it publishes due scheduled posts, and also stamps `published_at`, clears the schedule and revalidates. Nothing in the repo called the function; a pg_cron or dashboard schedule may.
+- So the function is deleted from the repo, and `docs/phase-2/follow-ups.md` now says `supabase functions delete publish-scheduled-articles` plus removing any schedule that calls it.
+  It also sent a "Blog Post Published" email with social copy; that goes with it (slice G's Telegram publish message is the notification), and the follow-up notes that posts scheduled for other times wait for the 11:00 UTC run unless the cron runs more often.
+- `RM5` spec now pins the folder gone and the follow-up line present.
+- `docs/local-rig.md`: dashboard-created objects go in a NEW dated, guarded, no-op-on-production migration (not the already-applied fixups file), with the `psql -f` and `NOTIFY pgrst` steps for the shared rig; the stale "`blog_posts.title` is missing" line is replaced; and caching checks need the production build.
+
+### Commands and results (fix round 1)
+
+| Command | Result |
+| --- | --- |
+| `git merge --ff-only 6578f6e` | fast-forward |
+| `npm run typecheck` | exit 0 |
+| `npm run lint` | exit 0, no problems |
+| `npm run chaos:static` | total 0, baselined 0, NEW 0, "no new violations" |
+| `npm run build` (rig env) | exit 0; `/blog` ISR 5m, `/blog/[slug]` SSG, `/sitemap.xml` static |
+| `TEST_URL=http://localhost:3133 E2E_LIVE_BACKEND=1 E2E_ISR=1 playwright test tests/articles-ingest.spec.ts tests/seo-suggestions-ui.spec.ts --project=chromium` (production build, port 3133 because 3112 and 3113 were held by other worktrees) | 38 passed, 1 skipped (ART1 HTTP, stub-only) |
+| `npm run test:e2e -- <the same 14 spec files as before> --project=chromium` (`.env.local` moved aside) | exit 0, 178 passed, 27 skipped |
+| iPhone 13 screenshot script (production build, rows prefixed `slice-f-fix-`, removed after) | measurements above; 0 leftover rows |

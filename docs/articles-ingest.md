@@ -50,7 +50,7 @@ node scripts/ingest-article.mjs feedback --summary
 | `--summary` | For `feedback`: a short readable summary instead of the full JSON. |
 | `--dry-run` | Show what would be sent, send nothing. |
 
-The CLI exits 0 on success, 2 when the publish guard held the article or refused a change to a live one (it prints the reasons), and 1 on any other failure.
+The CLI exits 0 on success, 2 when the fact-lock refused, the publish guard held the article, or the guard refused a change to a live one (it prints the reasons), and 1 on any other failure.
 
 ## Worked example for Claude Code
 
@@ -82,7 +82,7 @@ Alex says: "Write something for people searching how long a kitchen remodel take
    ```
 
    On success it prints the live URL; the article is on `/blog`, its own page and `sitemap.xml` on the next request.
-   On exit code 2 it was held: fix what the reasons name and publish again, or leave it for Alex and say so.
+   On exit code 2 it was refused or held: fix what the reasons name (patch the article) and publish again, or leave it for Alex and say so.
 6. To take it down: `node scripts/ingest-article.mjs unpublish <post id>`.
 
 ### Refreshing an existing article from the SEO queue
@@ -110,7 +110,7 @@ The site's bot filter refuses a few client user agents (curl, wget, python-reque
 | --- | --- |
 | `POST /api/articles/ingest` | Create an unpublished draft (`source = 'claude'`). JSON: `{ title, slug?, content, category, excerpt?, meta_title?, meta_description?, meta_keywords?, featured_image?, faq?: [{ q, a }], action_id? }`. Answers 201 `{ id, slug, adminUrl, previewUrl }`. `action_id` must name an open `new` action. |
 | `PATCH /api/articles/ingest/<id>` | Change any subset of the same fields. `published` is kept as it was. With the `action_id` of a refresh or consolidate whose live post is `<id>`, the post is not changed and the result becomes the action's draft. |
-| `POST /api/articles/ingest/<id>/publish` | `{ action_id? }`. Runs the publish guard. Pass: `{ published: true, id, slug, url, published_at, unpublish_url, telegram }`, the action (if any) is marked completed. Hold: 409 `{ published: false, hold: [reasons], adminUrl, telegram }` and the post stays a draft with `review_hold` set. |
+| `POST /api/articles/ingest/<id>/publish` | `{ action_id? }`. First the fact-lock (`validateDraft`: three internal links, only the locked phone and license) on the content that would go live, action draft included: a failure is 422 `{ published: false, error, issues }` and nothing changes. Then the publish guard, on every call, held post or not. Pass: `{ published: true, id, slug, url, published_at, unpublish_url, telegram }`, any review hold cleared, the action (if any) marked completed. Hold: 409 `{ published: false, hold: [reasons], adminUrl, telegram }` and the post stays a draft with `review_hold` set. |
 | `POST /api/articles/ingest/<id>/unpublish` | Take it down. `{ published: false, id, slug }`. |
 | `GET /api/articles/seo-feedback?days=28` | `{ window, pages: [{ path, impressions, clicks, ctr, position, trend_delta, decaying, post? }], pages_total, refresh_candidates, new_article_candidates, suggested_actions, open_actions: [{ id, kind, status, target, rationale }], truncated, facts: [{ key, value }], counties }`. At most 200 pages; `decaying` means fewer clicks in the last 14 days than the 14 before; `post` is the blog post when the path is `/blog/<slug>`. |
 
