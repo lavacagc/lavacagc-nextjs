@@ -30,6 +30,9 @@ import { loadServiceRows, refreshServiceRows } from './shared';
 
 type FieldErrors = Record<string, string>;
 
+/** A field the server refused gets a red border, not only the message under it. */
+const INVALID = 'aria-[invalid=true]:border-red-600 aria-[invalid=true]:ring-1 aria-[invalid=true]:ring-red-600';
+
 /** The form's working copy: lists as one line per item, money as dollars. */
 interface Draft {
   active: boolean;
@@ -292,6 +295,13 @@ function ServiceForm({ row, onBack, onSaved }: { row: HomeServiceRow; onBack: ()
     if (result.ok === false) {
       setErrors(result.fieldErrors);
       setFormError(result.error);
+      // The message sits by the Save button; take the admin to the first field it is about.
+      requestAnimationFrame(() => {
+        const first = document.querySelector<HTMLElement>('[data-testid=catalog-form] [aria-invalid=true]');
+        // Focus first: a focus() during the site's smooth scroll cancels the scroll.
+        first?.focus({ preventScroll: true });
+        first?.scrollIntoView({ block: 'center' });
+      });
       return;
     }
     setErrors({});
@@ -323,9 +333,9 @@ function ServiceForm({ row, onBack, onSaved }: { row: HomeServiceRow; onBack: ()
                 {opts.max && <Counter value={value} max={opts.max} />}
               </div>
               {opts.area ? (
-                <Textarea id={id} rows={opts.rows ?? 3} value={value} onChange={(e) => set(key, e.target.value as never)} {...aria(id)} />
+                <Textarea id={id} rows={opts.rows ?? 3} className={INVALID} value={value} onChange={(e) => set(key, e.target.value as never)} {...aria(id)} />
               ) : (
-                <Input id={id} value={value} onChange={(e) => set(key, e.target.value as never)} {...aria(id)} />
+                <Input id={id} className={INVALID} value={value} onChange={(e) => set(key, e.target.value as never)} {...aria(id)} />
               )}
               <FieldError id={id} message={err(id)} />
             </div>
@@ -351,19 +361,19 @@ function ServiceForm({ row, onBack, onSaved }: { row: HomeServiceRow; onBack: ()
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="flex flex-wrap items-end gap-6">
+        <div className="flex flex-wrap items-start gap-6">
           <div>
             <label htmlFor="starting_price" className="mb-1 block text-sm font-semibold">Starting price (USD)</label>
-            <Input id="starting_price" inputMode="decimal" className="w-40" value={draft.price} onChange={(e) => setPrice(e.target.value)} {...aria('starting_price_cents')} aria-describedby={err('starting_price_cents') ? 'starting_price_cents-error' : 'starting_price-hint'} />
+            <Input id="starting_price" inputMode="decimal" className={`w-40 ${INVALID}`} value={draft.price} onChange={(e) => setPrice(e.target.value)} {...aria('starting_price_cents')} aria-describedby={err('starting_price_cents') ? 'starting_price_cents-error' : 'starting_price-hint'} />
             <p id="starting_price-hint" className="mt-1 text-xs text-muted-foreground">For a per-unit price, the unit price.</p>
             <FieldError id="starting_price_cents" message={err('starting_price_cents')} />
           </div>
           <div>
             <label htmlFor="minimum_price" className="mb-1 block text-sm font-semibold">Job minimum (USD, optional)</label>
-            <Input id="minimum_price" inputMode="decimal" className="w-40" value={draft.minimum} onChange={(e) => set('minimum', e.target.value)} {...aria('minimum_cents')} />
+            <Input id="minimum_price" inputMode="decimal" className={`w-40 ${INVALID}`} value={draft.minimum} onChange={(e) => set('minimum', e.target.value)} {...aria('minimum_cents')} />
             <FieldError id="minimum_cents" message={err('minimum_cents')} />
           </div>
-          <label className="flex items-center gap-2 pb-2 text-sm font-semibold">
+          <label className="flex min-h-10 items-center gap-2 pt-7 text-sm font-semibold">
             <Switch checked={draft.active} onCheckedChange={(v) => set('active', v)} aria-label="Active" />
             {draft.active ? 'On: shown on the site' : 'Off: hidden, its page returns 404'}
           </label>
@@ -391,7 +401,7 @@ function ServiceForm({ row, onBack, onSaved }: { row: HomeServiceRow; onBack: ()
         <div>
           <label htmlFor="seo_keywords" className="mb-1 block text-sm font-semibold">Keywords</label>
           <p className="mb-1 text-xs text-muted-foreground">One per line, up to 10.</p>
-          <Textarea id="seo_keywords" rows={5} value={draft.seo_keywords} onChange={(e) => set('seo_keywords', e.target.value)} {...aria('seo_keywords')} />
+          <Textarea id="seo_keywords" rows={5} className={INVALID} value={draft.seo_keywords} onChange={(e) => set('seo_keywords', e.target.value)} {...aria('seo_keywords')} />
           <FieldError id="seo_keywords" message={err('seo_keywords')} />
         </div>
 
