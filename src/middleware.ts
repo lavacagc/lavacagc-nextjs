@@ -5,6 +5,9 @@ import {
   classifyGeo, isGeoTier, GEO_TIER_COOKIE, GEO_TIER_HEADER, GEO_OVERRIDE_COOKIE, type GeoTier,
 } from '@/lib/geo/tier';
 import { mintVisitorCookieEdge, VISITOR_COOKIE_EDGE } from '@/lib/cta/visitor.edge';
+import { CTA_ASSIGN_COOKIE as CTA_ASSIGN_COOKIE_NAME, CTA_COOKIE_MAX_AGE as CTA_COOKIE_MAX_AGE_S } from '@/lib/cta/types';
+import { isCrawlerUserAgent, isGoodBot } from '@/lib/botFilter';
+import { drawSeed, isServerExperimentPage, PREVIEW_HEADER, PREVIEW_PARAM, PREVIEW_RE, seedFromCookie } from '@/lib/experiments/seed';
 
 // Known bad bot user-agent patterns (scrapers, vulnerability scanners, spam crawlers)
 const BAD_BOT_PATTERNS = [
@@ -44,28 +47,6 @@ const BAD_BOT_PATTERNS = [
   /headlesschrome/i,
 ];
 
-// Good bots we explicitly allow (search engines, social previews, ad verification)
-const GOOD_BOT_PATTERNS = [
-  /googlebot/i,
-  /bingbot/i,
-  /slurp/i,               // Yahoo
-  /duckduckbot/i,
-  /facebookexternalhit/i, // Facebook link preview / ad verification
-  /facebookcatalog/i,     // Facebook product catalog
-  /instagram/i,           // Instagram preview
-  /linkedinbot/i,
-  /twitterbot/i,
-  /whatsapp/i,
-  /telegrambot/i,
-  /pinterest/i,
-  /applebot/i,
-  /google-inspectiontool/i,
-  /google-extended/i,
-  /mediapartners-google/i, // AdSense
-  /adsbot-google/i,        // Google Ads verification
-  /apis-google/i,
-];
-
 /**
  * Pages reached by a signed one-tap link that the owner may open from any
  * client (Telegram's in-app browser, a desktop app, a script). The token is
@@ -75,13 +56,11 @@ const GOOD_BOT_PATTERNS = [
  * filter). Exact prefixes; nothing else on the site is exempt.
  */
 const BOT_FILTER_EXEMPT_PREFIXES = ['/articles/unpublish/', '/api/articles/unpublish/'];
+/** Slice H: the experiment veto link and its one button, for the same reason. */
+const EXPERIMENT_VETO_PREFIXES = ['/experiments/veto/', '/api/experiments/veto'];
 
 function isBotFilterExempt(pathname: string): boolean {
-  return BOT_FILTER_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p));
-}
-
-function isGoodBot(ua: string): boolean {
-  return GOOD_BOT_PATTERNS.some(p => p.test(ua));
+  return [...BOT_FILTER_EXEMPT_PREFIXES, ...EXPERIMENT_VETO_PREFIXES].some((p) => pathname.startsWith(p));
 }
 
 function isBadBot(ua: string): boolean {
@@ -146,6 +125,11 @@ const PUBLIC_ROUTES = [
   // guarded like the project ingest: the same constant-time bearer token (404
   // for everyone when it is unset) and a 30-a-minute per-IP rate limit.
   '/api/articles/',
+  // Phase 2 slice H (experiments). Self-guarded: the agent routes by the
+  // ingest token (404 without it) with their own rate limit, the event sink
+  // by a per-IP rate limit and the signed visitor cookie, the veto by its
+  // signed token and a rate limit. src/lib/experiments/auth.server.ts.
+  '/api/experiments/',
 ];
 
 function isPublicRoute(pathname: string): boolean {
@@ -323,6 +307,30 @@ export async function middleware(request: NextRequest) {
   requestHeaders.delete(GEO_TIER_HEADER);
   requestHeaders.set(GEO_TIER_HEADER, tier);
 
+  // --- Experiments (Phase 2 slice H) ---
+  // The preview header is only ever ours: stripped, then set for a signed-in
+  // admin who asked with ?exp=<key>:<variant> (withExperiment shows that
+  // variant and records nothing).
+  requestHeaders.delete(PREVIEW_HEADER);
+  const isBot = isCrawlerUserAgent(ua);
+  const preview = request.nextUrl.searchParams.get(PREVIEW_PARAM);
+  if (preview && PREVIEW_RE.test(preview) && !pathname.startsWith('/api/') && (await verifySupabaseSession(request))) {
+    requestHeaders.set(PREVIEW_HEADER, preview);
+  }
+  // Pages that apply experiments on the server need the visitor's assignment
+  // seed (`R` in cta_v) before they render. On a human's first visit it is
+  // drawn here, set on the response, and added to this request's own cookie
+  // header so the render already uses it. The homepage keeps drawing its seed
+  // in the pre-paint script, which reads an `R` set here as its own.
+  let mintedSeed: string | null = null;
+  if (isServerExperimentPage(pathname) && !isBot && !seedFromCookie(request.cookies.get(CTA_ASSIGN_COOKIE_NAME)?.value)) {
+    mintedSeed = drawSeed();
+    const others = (request.headers.get('cookie') ?? '')
+      .split(/;\s*/)
+      .filter((c) => c && !c.startsWith(`${CTA_ASSIGN_COOKIE_NAME}=`));
+    requestHeaders.set('cookie', [...others, `${CTA_ASSIGN_COOKIE_NAME}=R%3D${mintedSeed}`].join('; '));
+  }
+
   // For good bots and suspected bots: set a header so client-side code can skip analytics
   const response = NextResponse.next({ request: { headers: requestHeaders } });
 
@@ -338,17 +346,20 @@ export async function middleware(request: NextRequest) {
     response.cookies.set(GEO_OVERRIDE_COOKIE, overrideCookie, { path: '/', sameSite: 'lax' });
   }
 
-  // The CTA counting id is issued with the first homepage response, so the
-  // view and click beacons never depend on each other's Set-Cookie (see
-  // src/lib/cta/visitor.edge.ts). Only the homepage renders the hero, only
-  // humans are counted, and a visitor who already has one keeps it.
-  const isBot = !ua || isGoodBot(ua) || /bot|crawl|spider|slurp|fetch|preview/i.test(ua);
-  if (pathname === '/' && !isBot && !request.cookies.get(VISITOR_COOKIE_EDGE.name)) {
+  // The counting id (cta_vid) is issued with the first response of a page
+  // that renders an experiment - the homepage hero and the server-rendered
+  // experiment pages - so the view and click beacons never depend on each
+  // other's Set-Cookie (see src/lib/cta/visitor.edge.ts). Only humans are
+  // counted, and a visitor who already has one keeps it.
+  const secure = request.nextUrl.protocol === 'https:' || request.headers.get('x-forwarded-proto') === 'https';
+  if ((pathname === '/' || isServerExperimentPage(pathname)) && !isBot && !request.cookies.get(VISITOR_COOKIE_EDGE.name)) {
     const minted = await mintVisitorCookieEdge();
-    if (minted) {
-      const secure = request.nextUrl.protocol === 'https:' || request.headers.get('x-forwarded-proto') === 'https';
-      response.cookies.set(VISITOR_COOKIE_EDGE.name, minted, VISITOR_COOKIE_EDGE.options(secure));
-    }
+    if (minted) response.cookies.set(VISITOR_COOKIE_EDGE.name, minted, VISITOR_COOKIE_EDGE.options(secure));
+  }
+  if (mintedSeed) {
+    // Same name, format and lifetime the pre-paint script writes (URI-encoded
+    // by the cookie serializer into R%3D<seed>); readable by that script.
+    response.cookies.set(CTA_ASSIGN_COOKIE_NAME, `R=${mintedSeed}`, { path: '/', sameSite: 'lax', secure, maxAge: CTA_COOKIE_MAX_AGE_S });
   }
 
   // Detect if this looks like a bot (no UA, or matches known bot patterns)

@@ -1,11 +1,19 @@
 /**
- * Browser calls to the CTA Tests admin API. Every non-2xx is turned into an
+ * Browser calls to the homepage buttons admin API (Experiments tab). Every non-2xx is turned into an
  * Error carrying the server's human message, so callers can toast it.
  */
 import type { CtaReport } from '@/lib/cta/report';
 import type { CtaButton, CtaVariantKey } from '@/lib/cta/types';
 
-export type CtaReportResponse = CtaReport & { requests_truncated: boolean; generated_at: string };
+export interface CtaHistoryRow {
+  button: CtaButton;
+  variant_key: string;
+  wording: string | null;
+  views: number;
+  clicks: number;
+}
+
+export type CtaReportResponse = CtaReport & { requests_truncated: boolean; generated_at: string; history: CtaHistoryRow[] };
 
 export interface VariantPatch {
   wording?: string;

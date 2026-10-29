@@ -169,8 +169,21 @@ function allMatches(re: RegExp, text: string): Span[] {
 // ---------------------------------------------------------------------------
 
 const UNIT = String.raw`(?:\s*(?:\/|per|a)\s*(?:sq\.?\s*ft\.?|square\s+f(?:oo|ee)t|linear\s+f(?:oo|ee)t|lin\.?\s*ft\.?|pie²|pie\s+cuadrado))?`;
-/** $9,000 / $9k / $2.95 / sq ft / USD 9000 / 9,000 dollars. */
-const CURRENCY_SOURCE = String.raw`(?:\$\s?\d(?:[\d,]*\d)?(?:\.\d+)?(?:\s?(?:k|thousand|million)\b)?|\bUSD\s?\d(?:[\d,]*\d)?(?:\.\d+)?|\b\d(?:[\d,]*\d)?(?:\.\d+)?\s?(?:k\s)?(?:USD|dollars?)\b)${UNIT}`;
+/**
+ * A currency sign: the dollar, its full-width form (U+FF04, which looks the
+ * same on a phone), the euro and the pound.
+ */
+const SIGN = String.raw`[$\uFF04\u20AC\u00A3]`;
+const NUMBER = String.raw`\d(?:[\d,]*\d)?(?:\.\d+)?`;
+/** Number words in English and Spanish, as an amount is spelled out ("two hundred", "doscientos"). */
+const NUMBER_WORD = String.raw`(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|doscientos|trescientos|cuatrocientos|quinientos|seiscientos|setecientos|ochocientos|novecientos|mil)`;
+/** Money words after an amount: dollars, dólares, bucks, USD. */
+const MONEY_WORD = String.raw`(?:USD|dollars?|d[oó]lares|bucks?)`;
+/**
+ * $9,000 / $9k / $2.95 / sq ft / USD 9000 / 9,000 dollars / 2,095$ / ＄99 /
+ * 99 bucks / 2095 dólares / two hundred dollars / doscientos dólares.
+ */
+const CURRENCY_SOURCE = String.raw`(?:${SIGN}\s?${NUMBER}(?:\s?(?:k|thousand|million)\b)?|\bUSD\s?${NUMBER}|\b${NUMBER}\s?(?:k\s)?${MONEY_WORD}(?![a-z])|\b${NUMBER}\s?${SIGN}|\b(?:${NUMBER_WORD}(?:[\s-]+(?:and\s+|y\s+)?${NUMBER_WORD})*)\s+${MONEY_WORD}(?![a-z]))${UNIT}`;
 const CURRENCY_RE = new RegExp(CURRENCY_SOURCE, 'gi');
 /** A per-unit price phrase standing on its own ("priced per square foot"). */
 const UNIT_ONLY_RE = /\bper\s+(?:sq\.?\s*ft\.?|square\s+f(?:oo|ee)t|linear\s+f(?:oo|ee)t)/gi;
@@ -191,6 +204,20 @@ const PERCENT_RE = /\b(?:save|saving|savings|discount(?:ed)?|off|cheaper)\b[^.!?
  */
 const DISCOUNT_BEFORE_RE = /\b(?:save|saving|savings|discount(?:ed|s)?|rebate|off|cheaper|deal|sale)\b[^.!?\n$]{0,15}$/i;
 const DISCOUNT_AFTER_RE = /^[^.!?\n]{0,6}\b(?:off|discount|savings?|cheaper|rebate)\b/i;
+/**
+ * A price promise with no number at all: "half price", "half off", "a mitad
+ * de precio". Held for every source.
+ */
+const PROMO_RE = /\bhalf[\s-](?:price|off)\b|\bmitad\s+de\s+precio\b|\b(?:two|2)[\s-]for[\s-](?:one|1)\b|\bbogo\b/gi;
+/**
+ * The strict extra for short marketing copy (experiment variants, not
+ * articles): words that only promise a deal, and any bare number of three or
+ * more digits. Copy on a button or a hero has no honest use for either, while
+ * an article does ("feel free", "save time", "in 2026", the free estimate
+ * page), so these are not article reasons.
+ */
+const STRICT_PROMO_RE = /(?<![-\w])(?:free|gratis|discount(?:ed|s)?|descuentos?|deals?|ofertas?|sale|rebajas?|save|savings?|ahorr(?:e|a|o|as|ar)|off|promo(?:tion)?s?|cheap(?:er|est)?|barat[oa]s?)(?![-\w])/gi;
+const STRICT_NUMBER_RE = /(?<![\w.,])\d{1,3}(?:,\d{3})+(?![\w,])|(?<![\w.,])\d{3,}(?![\w,])/g;
 /** The unit a price is quoted in, so "$2.95 per linear foot" is not the catalog's "$2.95 / sq ft". */
 function unitKind(text: string): 'sqft' | 'linear' | null {
   if (/sq\.?\s*ft|square\s+f(?:oo|ee)t|pie²|pie\s+cuadrado/i.test(text)) return 'sqft';
@@ -225,7 +252,7 @@ function allowedAmounts(paragraph: string, prices: CatalogPrice[]): Array<{ valu
 }
 
 function priceClaims(text: string, prices: CatalogPrice[]): Array<{ claim: string; allowed: boolean }> {
-  const percent = allMatches(PERCENT_RE, text);
+  const percent = [...allMatches(PERCENT_RE, text), ...allMatches(PROMO_RE, text)];
   const money = mergeSpans([
     ...allMatches(CURRENCY_RE, text),
     ...allMatches(UNIT_ONLY_RE, text),
@@ -340,6 +367,28 @@ function placesOf(post: PublishCandidate): Array<{ where: string; text: string }
   if (post.meta_title) places.push({ where: 'the meta title', text: post.meta_title });
   if (post.meta_description && own(post.meta_description)) places.push({ where: 'the meta description', text: post.meta_description });
   return places;
+}
+
+/**
+ * The same detectors for any other text a visitor reads: the price claims and
+ * the legal claims in one string, with NO published price allowed (an A/B
+ * variant may never state a price, not even the catalog's). `strict` adds the
+ * short-copy rules above (deal words, bare numbers of three or more digits);
+ * experiments use it for every string of a variant (src/lib/experiments/types.ts).
+ */
+export function priceClaimsIn(text: string, options: { strict?: boolean } = {}): string[] {
+  const plain = readableText(text);
+  const claims = priceClaims(plain, []).map((c) => c.claim);
+  if (options.strict) {
+    for (const re of [STRICT_PROMO_RE, STRICT_NUMBER_RE]) {
+      for (const span of allMatches(re, plain)) claims.push(plain.slice(span.start, span.end));
+    }
+  }
+  return [...new Set(claims)];
+}
+
+export function legalClaimsIn(text: string): string[] {
+  return [...new Set(legalClaims(readableText(text)).map((c) => c.keyword))];
 }
 
 export function checkPublishable(post: PublishCandidate, facts: PublishFacts): PublishVerdict {

@@ -64,6 +64,10 @@ TEST_URL=http://localhost:3101 E2E_LIVE_BACKEND=1 node_modules/.bin/playwright t
 
 Warm the pages with a few curls first; a cold dev server renders the first parallel loads in about 35 s and the specs time out.
 
+On a production build served with `next start` (which prints "does not work with output: standalone" and runs anyway), a write that revalidates a page shows within a few seconds, not always on the very next request: the first requests after it can still get the old render.
+A spec that checks a page right after an admin or agent write polls for up to 10 seconds instead of asserting the first response (`tests/cta-tests.spec.ts` CT5, `tests/experiments.spec.ts` "EX2 cleanup check").
+Restore shared state through the admin route (or `POST /api/admin/revalidate`), never only with a direct REST write, or the cached homepage keeps the test's version for the next run.
+
 ## Production-only objects
 
 Several tables were created in the Supabase dashboard and never had a migration: `projects`, `project_images`, `rate_limits`, `google_reviews`, the full `leads` column set, and the `app_role` type with `has_role()`.

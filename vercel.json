@@ -38,6 +38,10 @@
       "schedule": "30 7 * * 1"
     },
     {
+      "path": "/api/cron/experiments-evaluate",
+      "schedule": "30 7 * * *"
+    },
+    {
       "path": "/api/cron/home-care-newsletter",
       "schedule": "0 14 1 * *"
     },

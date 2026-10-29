@@ -20,7 +20,9 @@ const EXPECTED_LEAF_IDS = [
   // Content (Compliance Docs moved here when Settings dissolved, 2026-08-08)
   'blog', 'pages', 'services', 'service-areas', 'projects', 'banners', 'compliance',
   // Marketing
-  'seo', 'analytics', 'conversions', 'gmb', 'preferences', 'cta-tests',
+  'seo', 'analytics', 'conversions', 'gmb', 'preferences',
+  // Phase 2 slice H: Experiments replaced the Phase 1 CTA Tests tab
+  'experiments',
   // Customers
   'leads', 'follow-ups', 'send-estimate', 'proposals', 'emails',
   // Home Services build (2026-10-29)
@@ -36,6 +38,8 @@ const REMOVED_IDS = [
   'reports', 'performance', 'uptime', 'non-negotiables', 'seo-suggestions',
   // Retired with the calculator product (2026-08-08)
   'estimates', 'pricing',
+  // Folded into Experiments (Phase 2 slice H, 2026-10-30)
+  'cta-tests',
 ];
 
 test.describe('sidebar + content registration (source checks)', () => {

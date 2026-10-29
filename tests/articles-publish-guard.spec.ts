@@ -104,6 +104,29 @@ test.describe('PG1: checkPublishable', () => {
     });
   }
 
+  // Slice H fix round 1: the forms the experiments review found, added to the
+  // shared detector so articles are held for them too.
+  const MORE_PRICE_CASES: Array<[string, string]> = [
+    ['Cabinets come in around 2,095$ for most kitchens.', '2,095$'],
+    ['Gutters for ＄99 this fall.', '＄99'],
+    ['A gutter clean is about 99 bucks on a ranch.', '99 bucks'],
+    ['Most homes spend under two hundred dollars on it.', 'two hundred dollars'],
+    ['La mayoría gasta menos de doscientos dólares.', 'doscientos dólares'],
+    ['El repintado cuesta 2095 dólares en promedio.', '2095 dólares'],
+    ['This month every second room is half price.', 'half price'],
+    ['Gutters are half off for neighbors.', 'half off'],
+    ['Este mes la segunda habitación va a mitad de precio.', 'mitad de precio'],
+  ];
+  for (const [sentence, matched] of MORE_PRICE_CASES) {
+    test(`price pattern (slice H): "${matched}" is a reason`, () => {
+      expect(reasonsOf(article(sentence)).join(' | ')).toContain(`"${matched}`);
+    });
+  }
+
+  test('slice H: the strict short-copy rules stay out of articles (free estimate, feel free, save time, a year)', () => {
+    expect(reasonsOf(article('Feel free to ask; most owners save time by sending photos, and since 2019 we answer the same day.'))).toEqual([]);
+  });
+
   test('a catalog price for the service the paragraph names is allowed; the same amount for another service is not', () => {
     expect(reasonsOf(article('Cabinet repainting starts at $2,095 for a standard kitchen.'))).toEqual([]);
     expect(reasonsOf(article('Exterior painting is $2.95 / sq ft with a job minimum set by the crew.'))).toEqual([]);
