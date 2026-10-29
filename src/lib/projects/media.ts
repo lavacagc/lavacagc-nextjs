@@ -27,7 +27,7 @@ function ascii(bytes: Uint8Array, start: number, end: number): string {
  * (Real JPEG/PNG/WebP headers are binary; these strings do not occur there.)
  */
 const MARKUP = /<html|<script|<\?php/i;
-function carriesMarkup(bytes: Uint8Array): boolean {
+export function carriesMarkup(bytes: Uint8Array): boolean {
   return MARKUP.test(new TextDecoder('latin1').decode(bytes.subarray(0, SNIFF_BYTES)));
 }
 

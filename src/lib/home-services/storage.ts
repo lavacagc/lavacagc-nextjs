@@ -7,6 +7,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { cleanEnv } from '@/lib/envClean';
+import { carriesMarkup } from '@/lib/projects/media';
 
 export const PHOTO_BUCKET = 'service-request-photos';
 export const SIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -47,11 +48,15 @@ const EXT: Record<AttachmentType, string> = {
 /** Content type from magic bytes; null when it is none of the allowed kinds. */
 export function sniffContentType(bytes: Uint8Array): AttachmentType | null {
   const b = bytes;
+  // Security review F1: an image signature followed by markup in the first
+  // kilobyte is a polyglot, not a photo. PDFs are text-bearing by design and
+  // are left to the PDF signature alone.
+  const image = (type: AttachmentType): AttachmentType | null => (carriesMarkup(b) ? null : type);
   const ascii = (start: number, end: number) => String.fromCharCode(...b.slice(start, end));
-  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
-  if (b.length >= 8 && b[0] === 0x89 && ascii(1, 4) === 'PNG' && b[4] === 0x0d && b[5] === 0x0a) return 'image/png';
-  if (b.length >= 12 && ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'image/webp';
-  if (b.length >= 12 && ascii(4, 8) === 'ftyp' && /^(heic|heix|hevc|hevx|mif1|msf1)$/.test(ascii(8, 12))) return 'image/heic';
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return image('image/jpeg');
+  if (b.length >= 8 && b[0] === 0x89 && ascii(1, 4) === 'PNG' && b[4] === 0x0d && b[5] === 0x0a) return image('image/png');
+  if (b.length >= 12 && ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return image('image/webp');
+  if (b.length >= 12 && ascii(4, 8) === 'ftyp' && /^(heic|heix|hevc|hevx|mif1|msf1)$/.test(ascii(8, 12))) return image('image/heic');
   if (b.length >= 5 && ascii(0, 5) === '%PDF-') return 'application/pdf';
   return null;
 }

@@ -19,6 +19,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { randomBytes } from 'crypto';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { carriesMarkup } from '@/lib/projects/media';
 
 export const PHOTO_BUCKET = 'service-request-photos';
 export const MAX_PHOTOS_PER_TOKEN = 10;
@@ -43,6 +44,9 @@ export type SniffedImage = { contentType: 'image/jpeg' | 'image/png' | 'image/we
  * before upload, so it is not accepted here.
  */
 export function sniffImage(bytes: Uint8Array): SniffedImage | null {
+  // Security review F1: an image signature followed by markup in the first
+  // kilobyte is a polyglot, not a photo (same guard as the project uploads).
+  if (carriesMarkup(bytes)) return null;
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
     return { contentType: 'image/jpeg', ext: 'jpg' };
   }
