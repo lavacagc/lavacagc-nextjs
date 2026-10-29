@@ -9,7 +9,7 @@
  *
  * Server-only.
  */
-import { checkPublishable, type PublishCandidate, type PublishVerdict } from './publishGuard';
+import { checkPublishable, type PublishCandidate, type PublishFacts, type PublishVerdict } from './publishGuard';
 import { loadCatalogPrices } from './catalogPrices';
 import { notifyArticleHeld, notifyArticlePublished } from './notify';
 import { isTokenCurrent, readUnpublishToken, signUnpublishToken, unpublishLink } from './unpublishToken';
@@ -17,10 +17,15 @@ import { getArticle, loadContentFacts, type ArticleRow } from './writer';
 import type { TelegramOutcome } from '@/lib/notify/telegramMessage';
 import type { Fact } from '@/lib/seo/draftGuardrails';
 
+/** What the guard reads: the locked facts and the catalog's published prices. */
+export async function loadPublishFacts(contentFacts?: Fact[]): Promise<PublishFacts> {
+  const [facts, catalogPrices] = await Promise.all([contentFacts ?? loadContentFacts(), loadCatalogPrices()]);
+  return { contentFacts: facts, catalogPrices };
+}
+
 /** The guard with its inputs loaded; pass `contentFacts` when the caller already read them. */
 export async function runPublishGuard(candidate: PublishCandidate, contentFacts?: Fact[]): Promise<PublishVerdict> {
-  const [facts, catalogPrices] = await Promise.all([contentFacts ?? loadContentFacts(), loadCatalogPrices()]);
-  return checkPublishable(candidate, { contentFacts: facts, catalogPrices });
+  return checkPublishable(candidate, await loadPublishFacts(contentFacts));
 }
 
 /** The signed one-tap link for this publication, or null without INTERNAL_WEBHOOK_SECRET. */
@@ -33,12 +38,14 @@ export function unpublishUrlFor(origin: string, live: Pick<ArticleRow, 'id' | 'p
 export async function announcePublished(
   origin: string,
   live: Pick<ArticleRow, 'id' | 'title' | 'slug' | 'published_at' | 'publish_nonce'>,
+  social: { caption: string; file: string } | null = null,
 ): Promise<{ telegram: TelegramOutcome; unpublishUrl: string | null }> {
   const unpublishUrl = unpublishUrlFor(origin, live);
   const telegram = await notifyArticlePublished({
     title: live.title,
     url: `${origin.replace(/\/+$/, '')}/blog/${live.slug}`,
     unpublishUrl,
+    social,
   });
   return { telegram, unpublishUrl };
 }

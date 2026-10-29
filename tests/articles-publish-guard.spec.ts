@@ -461,7 +461,7 @@ test.describe('TG / SEC2: the unpublish page and its routes (source and render)'
     const route = read('src/app/api/articles/ingest/[id]/publish/route.ts');
     // Slice F's fact-lock refusal (422) runs first, then the guard on every call.
     expect(route.indexOf('validateDraft(draftMarkdownFor(candidate), contentFacts)')).toBeGreaterThan(0);
-    expect(route.indexOf('validateDraft(draftMarkdownFor(candidate), contentFacts)')).toBeLessThan(route.indexOf('runPublishGuard(candidate, contentFacts)'));
+    expect(route.indexOf('validateDraft(draftMarkdownFor(candidate), contentFacts)')).toBeLessThan(route.indexOf('checkPublishable(candidate, facts)'));
     expect(route).not.toContain('PUBLISH_GUARD_IS_STUB');
     expect(read('src/app/api/admin/articles/[id]/publish/route.ts')).toContain('runPublishGuard(post)');
     expect(read('src/app/api/cron/publish/route.ts')).toContain('runPublishGuard(full)');
@@ -898,8 +898,10 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
     const keys = (fb.facts as Array<{ key: string }>).map((f) => f.key);
     expect(keys).toEqual(expect.arrayContaining(['hic_number', 'phone_main', 'service_area', 'current_year']));
     expect(keys).not.toContain('email_leads');
-    // The placeholders are unlocked, so they are not offered as quotable.
-    expect(keys).not.toContain('claim_license');
+    // A claim sentence is offered as quotable exactly when it is locked in the
+    // table (Q20 locked both on 2026-10-29, migration 20261030000004).
+    const claims = await rest<Array<{ key: string; lock: boolean }>>(request, 'GET', 'content_facts?select=key,lock&key=like.claim_*');
+    for (const c of claims) expect(keys.includes(c.key), c.key).toBe(c.lock);
     expect(fb.counties).toEqual(['Essex', 'Morris', 'Bergen']);
   });
 

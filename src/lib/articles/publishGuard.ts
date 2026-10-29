@@ -391,6 +391,34 @@ export function legalClaimsIn(text: string): string[] {
   return [...new Set(legalClaims(readableText(text)).map((c) => c.keyword))];
 }
 
+/**
+ * Steps 2 and 3 of the guard (price and legal claims) over any set of named
+ * texts. Shared with the social copy written at publish time
+ * (src/lib/articles/socialCopy.ts, decision 006 Q22), so a caption is held to
+ * exactly the rules the article is.
+ */
+export function claimReasons(places: Array<{ where: string; text: string }>, facts: PublishFacts): string[] {
+  const reasons: string[] = [];
+  const add = (reason: string) => {
+    if (!reasons.includes(reason)) reasons.push(reason);
+  };
+  const locked = lockedClaimSentences(facts.contentFacts);
+  const prices = facts.catalogPrices ?? [];
+  const prepared = places.map((p) => ({ ...p, text: maskLockedSentences(readableText(p.text), locked) }));
+
+  for (const place of prepared) {
+    for (const { claim, allowed } of priceClaims(place.text, prices)) {
+      if (!allowed) add(`Price claim: "${claim}" in ${place.where}`);
+    }
+  }
+  for (const place of prepared) {
+    for (const { keyword, context } of legalClaims(place.text)) {
+      add(`Legal claim: "${keyword}" in ${place.where} ("${context}")`);
+    }
+  }
+  return reasons;
+}
+
 export function checkPublishable(post: PublishCandidate, facts: PublishFacts): PublishVerdict {
   const reasons: string[] = [];
   const add = (reason: string) => {
@@ -400,23 +428,8 @@ export function checkPublishable(post: PublishCandidate, facts: PublishFacts): P
   // 1. The existing fact-lock.
   for (const issue of validateDraft(post.content, facts.contentFacts).issues) add(issue);
 
-  const locked = lockedClaimSentences(facts.contentFacts);
-  const prices = facts.catalogPrices ?? [];
-  const places = placesOf(post).map((p) => ({ ...p, text: maskLockedSentences(readableText(p.text), locked) }));
-
-  // 2. Price claims.
-  for (const place of places) {
-    for (const { claim, allowed } of priceClaims(place.text, prices)) {
-      if (!allowed) add(`Price claim: "${claim}" in ${place.where}`);
-    }
-  }
-
-  // 3. Legal claims.
-  for (const place of places) {
-    for (const { keyword, context } of legalClaims(place.text)) {
-      add(`Legal claim: "${keyword}" in ${place.where} ("${context}")`);
-    }
-  }
+  // 2 and 3. Price claims, then legal claims.
+  for (const reason of claimReasons(placesOf(post), facts)) add(reason);
 
   // 4. Shape.
   for (const reason of shapeReasons(post)) add(reason);

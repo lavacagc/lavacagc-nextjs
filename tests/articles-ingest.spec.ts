@@ -261,7 +261,7 @@ test.describe('pure article modules', () => {
     const verdict = checkPublishable({ title: 't', slug: 's', content: 'from $9,000', category: 'c' }, { contentFacts: [] });
     expect(verdict.ok).toBe(false);
     expect(verdict.reasons).toContain('Price claim: "from $9,000" in paragraph 1');
-    expect(read('src/app/api/articles/ingest/[id]/publish/route.ts')).toContain('runPublishGuard(candidate, contentFacts)');
+    expect(read('src/app/api/articles/ingest/[id]/publish/route.ts')).toContain('checkPublishable(candidate, facts)');
   });
 });
 

@@ -8,7 +8,7 @@
  *     [--title "..."] [--slug ...] [--excerpt "..."] [--meta-title "..."] [--meta-description "..."] \
  *     [--keywords "a, b"] [--image https://...] [--faq faq.json] [--action <id>] [--publish] [--dry-run]
  *   node scripts/ingest-article.mjs patch <post id> [--file article.md] [any create option] [--action <id>]
- *   node scripts/ingest-article.mjs publish <post id> [--action <id>]
+ *   node scripts/ingest-article.mjs publish <post id> [--action <id>] [--social docs/social/<slug>.md]
  *   node scripts/ingest-article.mjs unpublish <post id>
  *   node scripts/ingest-article.mjs feedback [--days 28] [--summary]
  *
@@ -16,7 +16,9 @@
  * that line is the title and is left out of the body. --faq is a JSON file
  * holding [{ "q": "...", "a": "..." }]. A publish the fact-lock refuses or the
  * guard holds, or a patch the guard refuses on a live post, exits 2 and prints
- * the reasons; any other failure exits 1.
+ * the reasons; any other failure exits 1. --social sends the social copy file
+ * with the publish: it is checked like the article (exit 2 with the reasons if
+ * it fails, nothing published) and its Instagram caption goes in the Telegram.
  *
  * Common: --site (default ARTICLE_INGEST_SITE, PROJECT_INGEST_SITE, then
  * https://www.lavacagc.com), --token (default PROJECT_INGEST_TOKEN).
@@ -28,11 +30,11 @@ const COMMANDS = new Set(['create', 'patch', 'publish', 'unpublish', 'feedback']
 const FLAGS = new Set(['publish', 'dry-run', 'summary', 'help']);
 const VALUE_OPTIONS = new Set([
   'site', 'token', 'file', 'title', 'slug', 'category', 'excerpt', 'meta-title', 'meta-description',
-  'keywords', 'image', 'faq', 'action', 'days', 'content',
+  'keywords', 'image', 'faq', 'action', 'days', 'content', 'social',
 ]);
 
 function usage(code = 0) {
-  const text = readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(2, 22).map((l) => l.replace(/^ \* ?/, '')).join('\n');
+  const text = readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(2, 25).map((l) => l.replace(/^ \* ?/, '')).join('\n');
   (code ? console.error : console.log)(text);
   process.exit(code);
 }
@@ -140,9 +142,24 @@ function explain(status, data, what) {
   return `${what} failed (${status}): ${data.error ?? 'unknown error'}${issues}`;
 }
 
-async function publish(ctx, id, actionId) {
-  const { status, data } = await api(ctx, 'POST', `/api/articles/ingest/${id}/publish`, actionId ? { action_id: actionId } : undefined);
+async function publish(ctx, id, actionId, socialFile) {
+  const body = {};
+  if (actionId) body.action_id = actionId;
+  if (socialFile) {
+    try {
+      body.social = readFileSync(socialFile, 'utf8');
+    } catch (err) {
+      fail(`Cannot read --social ${socialFile}: ${err.message}`);
+    }
+  }
+  const { status, data } = await api(ctx, 'POST', `/api/articles/ingest/${id}/publish`, Object.keys(body).length ? body : undefined);
   if (ctx.dryRun) return;
+  if (status === 422 && data.published === false && Array.isArray(data.social)) {
+    console.error('The social copy did not pass, nothing was published:');
+    for (const reason of data.social) console.error(`  - ${reason}`);
+    console.error(`Fix ${socialFile} and publish again.`);
+    process.exit(2);
+  }
   if (status === 422 && data.published === false) {
     console.error('Refused by the fact-lock, not published:');
     for (const issue of data.issues ?? []) console.error(`  - ${issue}`);
@@ -160,6 +177,11 @@ async function publish(ctx, id, actionId) {
   console.log(`Published: ${data.url}`);
   if (data.unpublish_url) console.log(`Unpublish link (7 days): ${data.unpublish_url}`);
   if (data.telegram) console.log(`Telegram to Alex: ${data.telegram}`);
+  if (data.social === 'included') {
+    console.log(data.telegram === 'sent'
+      ? 'Social copy: checked; the Instagram caption is in the Telegram.'
+      : `Social copy: checked; the Telegram was not sent (${data.telegram}), so the caption is only in ${socialFile}.`);
+  }
 }
 
 function summarize(feedback) {
@@ -213,7 +235,7 @@ async function main() {
     console.log(`Preview:       ${data.previewUrl}`);
     console.log(`Admin:         ${data.adminUrl}`);
     if (data.action) console.log(`Action:        ${data.action.id} is ${data.action.status}${data.action.validation?.ok === false ? ` (fact-lock: ${data.action.validation.issues.join('; ')})` : ''}`);
-    if (opts.publish) await publish(ctx, data.id, opts.action);
+    if (opts.publish) await publish(ctx, data.id, opts.action, opts.social);
     return;
   }
 
@@ -235,7 +257,7 @@ async function main() {
   }
 
   if (command === 'publish') {
-    await publish(ctx, needId(), opts.action);
+    await publish(ctx, needId(), opts.action, opts.social);
     return;
   }
 

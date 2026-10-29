@@ -32,6 +32,11 @@
  *     route, every time), or by the admin's "Publish anyway". No route takes
  *     review_hold as input.
  *
+ * `social` (decision 006, Q22) is the markdown of docs/social/<slug>.md. It is
+ * checked after the guard passes and before anything is written (422
+ * `{ published: false, error, social: reasons }` on a failure), and its
+ * Instagram caption rides in the "New article published" Telegram.
+ *
  * Same auth as POST /api/articles/ingest.
  */
 import { NextRequest, NextResponse } from 'next/server';
@@ -43,7 +48,9 @@ import {
 import { authorizeArticles } from '@/lib/articles/auth';
 import { articleAdminUrl, articlePublicUrl, readArticleBody } from '@/lib/articles/http';
 import { siteOrigin } from '@/lib/projects/http';
-import { announceHeld, announcePublished, runPublishGuard } from '@/lib/articles/publishFlow';
+import { announceHeld, announcePublished, loadPublishFacts } from '@/lib/articles/publishFlow';
+import { checkPublishable } from '@/lib/articles/publishGuard';
+import { checkSocialCopy, parseSocialMarkdown } from '@/lib/articles/socialCopy';
 import { validateDraft } from '@/lib/seo/draftGuardrails';
 import { revalidateArticlePages } from '@/lib/articles/revalidate';
 import { articlePublishSchema } from '@/lib/articles/schemas';
@@ -53,6 +60,8 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+const PUBLISH_BODY_MAX_BYTES = 20 * 1024;
 
 /** How this publish relates to the action it names, decided before anything is written. */
 function planFor(action: ContentActionRow | null, post: ArticleRow): { candidate: ArticleRow; applyDraft: boolean } {
@@ -80,7 +89,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   let raw: unknown = {};
   if (Number(request.headers.get('content-length') ?? '0') > 0) {
-    const read = await readArticleBody(request, 1024);
+    // The social copy file (up to 16 KB) rides in this body, so the cap is
+    // 20 KB: the file plus its JSON escaping and the other fields. Every
+    // other article route keeps its own cap (Q22 review, fix 1).
+    const read = await readArticleBody(request, PUBLISH_BODY_MAX_BYTES);
     if ('response' in read) return read.response;
     raw = read.body ?? {};
   }
@@ -112,7 +124,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // The real guard (slice G) re-checks the current content every time: a
     // held post is cleared only by passing it here, or by the admin's
     // "Publish anyway" (/api/admin/articles/<id>/publish).
-    const verdict = await runPublishGuard(candidate, contentFacts);
+    const facts = await loadPublishFacts(contentFacts);
+    const verdict = checkPublishable(candidate, facts);
     if (!verdict.ok) {
       await holdArticle(post, verdict.reasons);
       const telegram = await announceHeld(siteOrigin(request), candidate, verdict.reasons);
@@ -120,6 +133,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { published: false, hold: verdict.reasons, adminUrl: articleAdminUrl(request, post.id), telegram },
         { status: 409 },
       );
+    }
+
+    // Social copy (decision 006, Q22): checked with the article's own price
+    // and legal rules before anything is written; a failure is 422 and the
+    // article stays as it was, so Claude fixes the file and publishes again.
+    const social = parsed.data.social ? parseSocialMarkdown(parsed.data.social) : null;
+    if (social) {
+      const socialReasons = checkSocialCopy(social, candidate.slug, facts, siteOrigin(request));
+      if (socialReasons.length > 0) {
+        return NextResponse.json({
+          published: false,
+          error: 'The social copy did not pass - fix it and publish again.',
+          social: socialReasons,
+        }, { status: 422 });
+      }
     }
 
     if (action && applyDraft) await applyActionDraft(action, 'claude');
@@ -130,7 +158,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // re-publish of a live post (a refresh) keeps its published_at, so the
     // link it would carry is the one he already has; it is sent again anyway,
     // because the content just changed under him.
-    const { telegram, unpublishUrl } = await announcePublished(siteOrigin(request), live);
+    const { telegram, unpublishUrl } = await announcePublished(
+      siteOrigin(request),
+      live,
+      social ? { caption: social.instagram, file: `docs/social/${live.slug}.md` } : null,
+    );
 
     return NextResponse.json({
       published: true,
@@ -140,6 +172,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       published_at: live.published_at,
       unpublish_url: unpublishUrl,
       telegram,
+      social: social ? 'included' : 'none',
       ...(action ? { action: { id: action.id, status: 'completed' } } : {}),
     });
   } catch (err) {
