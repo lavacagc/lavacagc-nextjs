@@ -492,38 +492,40 @@ test('purge cron deletes unclaimed photos older than 48 h and keeps fresh ones',
   const token = randomBytes(32).toString('base64url');
   const oldPath = `drafts/${token}/old-${run}.jpg`;
   const newPath = `drafts/${token}/new-${run}.jpg`;
-  for (const path of [oldPath, newPath]) {
-    const up = await fetch(`${SUPA}/storage/v1/object/service-request-photos/${path}`, {
+  try {
+    for (const path of [oldPath, newPath]) {
+      const up = await fetch(`${SUPA}/storage/v1/object/service-request-photos/${path}`, {
+        method: 'POST',
+        headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'image/jpeg' },
+        body: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0]),
+      });
+      expect(up.ok).toBe(true);
+    }
+    const [oldRow, newRow] = await rest<Array<{ id: string }>>('lead_photos', {
       method: 'POST',
-      headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'image/jpeg' },
-      body: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0]),
+      body: JSON.stringify([
+        { draft_token: token, storage_path: oldPath, content_type: 'image/jpeg', bytes: 6, created_at: new Date(Date.now() - 49 * 3600_000).toISOString() },
+        { draft_token: token, storage_path: newPath, content_type: 'image/jpeg', bytes: 6, created_at: new Date().toISOString() },
+      ]),
     });
-    expect(up.ok).toBe(true);
+
+    const unauth = await request.get('/api/cron/purge-draft-photos');
+    expect(unauth.status()).toBe(401);
+    const res = await request.get('/api/cron/purge-draft-photos', { headers: { Authorization: `Bearer ${CRON}` } });
+    expect(res.status()).toBe(200);
+    expect((await res.json()).ok).toBe(true);
+
+    expect(await rest(`lead_photos?select=id&id=eq.${oldRow.id}`)).toHaveLength(0);
+    expect(await rest(`lead_photos?select=id&id=eq.${newRow.id}`)).toHaveLength(1);
+    const oldObject = await fetch(`${SUPA}/storage/v1/object/service-request-photos/${oldPath}`, { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } });
+    expect(oldObject.status).not.toBe(200);
+  } finally {
+    // Untagged draft rows and objects: the suite cleanup cannot find these, so remove them here whatever happened.
+    await rest(`lead_photos?draft_token=eq.${token}`, { method: 'DELETE' });
+    await fetch(`${SUPA}/storage/v1/object/service-request-photos`, {
+      method: 'DELETE',
+      headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prefixes: [oldPath, newPath] }),
+    });
   }
-  const [oldRow, newRow] = await rest<Array<{ id: string }>>('lead_photos', {
-    method: 'POST',
-    body: JSON.stringify([
-      { draft_token: token, storage_path: oldPath, content_type: 'image/jpeg', bytes: 6, created_at: new Date(Date.now() - 49 * 3600_000).toISOString() },
-      { draft_token: token, storage_path: newPath, content_type: 'image/jpeg', bytes: 6, created_at: new Date().toISOString() },
-    ]),
-  });
-
-  const unauth = await request.get('/api/cron/purge-draft-photos');
-  expect(unauth.status()).toBe(401);
-  const res = await request.get('/api/cron/purge-draft-photos', { headers: { Authorization: `Bearer ${CRON}` } });
-  expect(res.status()).toBe(200);
-  expect((await res.json()).ok).toBe(true);
-
-  expect(await rest(`lead_photos?select=id&id=eq.${oldRow.id}`)).toHaveLength(0);
-  expect(await rest(`lead_photos?select=id&id=eq.${newRow.id}`)).toHaveLength(1);
-  const oldObject = await fetch(`${SUPA}/storage/v1/object/service-request-photos/${oldPath}`, { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } });
-  expect(oldObject.status).not.toBe(200);
-
-  // Tidy the fresh one (it is not tagged to a request, so the suite cleanup would not see it).
-  await rest(`lead_photos?id=eq.${newRow.id}`, { method: 'DELETE' });
-  await fetch(`${SUPA}/storage/v1/object/service-request-photos`, {
-    method: 'DELETE',
-    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prefixes: [newPath] }),
-  });
 });
