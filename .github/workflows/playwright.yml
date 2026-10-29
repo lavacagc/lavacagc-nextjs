@@ -5,7 +5,8 @@ name: Playwright E2E
 # every PR - it was the single biggest consumer of the Actions minutes budget,
 # and it duplicated work that now runs on the Mac before a push can happen:
 # .husky/pre-push runs the production build plus the critical-path smoke specs
-# on every push, and the full suite stays a local command (`npm run test:e2e`).
+# on every push that changes code, and the full suite stays a local command
+# (`npm run test:e2e`).
 #
 # Nothing triggers this automatically anymore. To run it in the cloud (e.g.
 # once minutes exist again, before a launch): GitHub > Actions > Playwright
