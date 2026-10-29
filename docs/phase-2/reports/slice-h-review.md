@@ -215,3 +215,155 @@ Recommended:
 - F8: add drafts, current-copy lookup, the `sections` mapping and a safe `--site` default (or a confirmation for production) to the skill.
 - The specs leave `view` rows on `hero-primary` and `hero-secondary` after each run on the shared rig (I removed 34 rows from my runs); clean them in `afterAll` by visitor id.
 - Print "more than 99.9%" instead of "100.0%"; reword "Every challenger (A) beats control B with probability 5% or less".
+
+## Re-review of c104672 (fix round 1, slice G merged)
+
+Head reviewed: `phase2/slice-h` at `c104672`, on top of my `fc1efcd`.
+Rig: env exactly `env.rig` in both files, production build served with `EXPERIMENTS_FAKE_CLOCK=1 RECAPTCHA_E2E_BYPASS_TOKEN=<reviewer token> next start -p 3128`, stub build on 3129.
+
+### Verdict: REJECT, on one narrow item (R1, flaky live specs)
+
+Every fix F1 to F8 is in and verified, including Alex's hard rule.
+What stops an ACCEPT is the live gate: the experiments and CT specs failed in 7 of my 9 live runs on the production build.
+The cause is a short cache lag after a write (below).
+The fix is in the specs and small.
+
+### Per fix
+
+| Fix | Verdict | Evidence |
+| --- | --- | --- |
+| F1 prices in copy | ACCEPT | 26 forbidden variants refused by the live create route, 0 accepted (table below); the same forms held by the article publish route |
+| F2 labels | ACCEPT | `heroStore.server.ts` renders only payload `wording` (`?? ''`, then filtered out); the button surfaces require `wording`; labels go through the copy rules (`$99 special` and `Cabinets 2,095$` labels refused live) |
+| F3 delivered veto | ACCEPT | live on the production build, below |
+| F6 daily cron, exact run | ACCEPT | `vercel.json` `30 7 * * *`; Sunday run did nothing; Monday run evaluated; message, veto page and admin card name the run |
+| F4, F5 specs | ACCEPT | header gives the full run line; `&lang=en` on the preview URLs; EX3 runs with the token on the command line and skips with a reason without it |
+| F7 phone layout, leader | ACCEPT | screenshots below; Promote preselects the leader |
+| F8 skill and CLI | ACCEPT with one note (R2) | dry run below |
+| Merge with G | ACCEPT | one good-bot list in `src/lib/botFilter.ts` (middleware imports it); `/experiments/veto` on `PRIVATE_TOKEN_PATHS`; veto page and route exempt from the bot filter (curl UA: veto page 200, `/articles/unpublish/abc.def` 410, `/home-services` 403); `proposal-pod-slice3` AC-R12 green live and in both stub projects |
+
+### F1 by hand
+
+Experiment create route, live (`POST /api/experiments`, valid body on `/home-services hero`, one phrasing per call, both languages):
+
+- Refused (400, plain-English reason): `priceDisplay`, `startingPriceCents`, nested `minimumCents`, `$2,095`, `$ 99` with a no-break space, `US$99`, `2095 dollars` / `dólares`, `2,095$`, `from 2095`, `99 bucks`, `two hundred dollars` / `doscientos dólares`, `＄99`, `20% off`, `20 percent` / `por ciento`, `half price` / `mitad de precio`, `First visit free` / `gratis`, `great deal` / `oferta`, `Discount` / `Descuento`, `Take 99 off`, `(201) 212-4917`, `2012124917`, `HIC #13VH13373800`, `Licensed and insured`, `imageAlt` with `$99`, and the labels `$99 special` and `Cabinets 2,095$`.
+- Accepted: "One call, every service, sit back" and "Seven services, one stop".
+- Refused in experiment copy by design: "Feel free to ask us anything", "Save time: one visit does it all" and "Booking now for spring 2026".
+  The strict short-copy mode refuses `free`, `save` and any bare number of three or more digits.
+  That is the documented trade-off, and it errs on Alex's side.
+
+Article publish route, live (`POST /api/articles/ingest`, then `/publish`, on an article that otherwise passes the fact-lock):
+
+- Held (409, reason names the phrase): `2,095$`, `＄99`, `99 bucks`, `two hundred dollars`, `doscientos dólares`, `half price`, `from $9,000`, `save 20%`.
+- Published (200): "Feel free to ask about the finish", "Most owners save time by sending photos", "In 2026 we added a second spray crew".
+
+All 11 test posts were then removed from `blog_posts`.
+
+### F3 and F6 on the production build (fake clock)
+
+Fixtures: `review-h2-win` (A 15 of 300, B 45 of 300), `review-h2-lose` (B behind), `review-h2-lead` (B ahead, below 95%), all started 20 days back.
+
+- Sunday `2026-11-01 07:30Z`: `results: []`, so nothing is evaluated off Monday.
+- Monday `2026-11-02 07:30Z`: the winner is `proposed`, `pending_promotion`, `telegram: not_configured`.
+  `pending` holds `attempts 1`, `veto_sent_at null` and `promote_at null`.
+  The message names "the daily run on Tue, Nov 3, 2026, 07:30 UTC".
+  The other two are `recorded`, `keep_running`.
+- Tuesday 07:30Z: `veto_message_not_delivered` (attempt 2), not promoted.
+  Next Monday 07:30Z: attempt 3, not promoted, and the pending winner is not re-evaluated.
+- Admin card at iPhone 13 and desktop: red box "Veto message not delivered (Telegram: not configured, 3 attempts, last ...). Variant B will not be promoted until the message is delivered; the daily 07:30 UTC run tries again. You can promote or veto here."
+  Screenshots: `shots/slice-h-rereview-iphone13-undelivered-win.png`, `shots/slice-h-rereview-desktop-undelivered-win.png`.
+- I wrote the delivered state by hand (`veto_sent_at 2026-11-10T07:30:05Z`, `promote_at 2026-11-11T07:30Z`, which is what `promotionRunAfter` gives).
+  The veto page then says "Promotes: the daily run on Wed, Nov 11, 2026, 07:30 UTC" and is `noindex, nofollow` and `no-store`.
+  The admin card says "Veto message sent ... becomes the page default at the daily run on ..." (`shots/slice-h-rereview-iphone13-delivered-win.png`, `shots/slice-h-rereview-desktop-delivered-win.png`).
+- Runs at `11-10 20:00Z` and `11-11 07:19Z`: `waiting_for_veto_window`.
+  Run at `11-11 07:30Z`: `promoted`, control B, `promoted.by = "cron (24 hours after the veto message)"`.
+
+Notes, not blockers:
+
+- The admin card prints times in the viewer's zone ("2:30 AM") right next to "the daily 07:30 UTC run".
+  Label the zone, or use UTC throughout.
+- The veto token is still bound to `proposed_at` with a 7-day life, so a message first delivered on day 7 or later carries a dead link.
+  Alex can still veto from the admin, but the link should be re-signed at delivery.
+
+### F7 at iPhone 13
+
+At 390 px there is no page-level sideways scroll and no console errors.
+Each variant is a stacked block with Beats control, Rate and Exp. loss first.
+
+Promote preselection:
+
+- `review-h2-win`: B, primary style, "Promote B (>99.9% chance it beats A)".
+- `review-h2-lose`: A, outline, "Promote A (keep the control)".
+- `review-h2-lead`: B, outline, "Promote B (83.9% chance it beats A)".
+- `hero-primary`: A, outline, "keep the control".
+
+Screenshots: `shots/slice-h-rereview-iphone13-undelivered-lose.png`, `-hero-primary.png`, `-full.png`.
+Polish note: on the phone, switched-off variants still get a full block of dashes, which makes the `hero-primary` card long.
+Collapsing them to one line would read better.
+
+### F8 skill dry run (brief)
+
+- `report` without `--site` exits 1 with the refusal.
+- `report --site` lists "Drafts (start these before anything new): landing-hero".
+- `copy --page /home-services --element services-heading` and `--element hero` print today's copy in both languages.
+- I created and started `review-h2-services-heading` from the copy output; `start` printed the full "Experiment started" message.
+  `notify` answered `not_configured`.
+  Rows deleted afterwards.
+- I did not start `landing-hero`, which the skill now rightly puts first, because my brief says to leave it as found.
+- R2 (recommended): step 5 says to use the `copy` output "unchanged as variant A".
+  For the hero, that output's `body` contains "Licensed NJ contractor", so the create route refuses both variants ("Copy may not mention the license").
+  The skill should say to include only the slots the test changes, or `copy` should flag slots holding a locked fact.
+  The guard fails safe, so nothing wrong can ship; it is a wasted agent turn.
+
+### R1, the reason for the REJECT: the live specs are flaky against a cache lag
+
+Results across my live runs on this head:
+
+| Run | Server | Result |
+| --- | --- | --- |
+| 1, trio + slice 3 | first server | CT5 and EX2 cleanup failed |
+| 2 and 3, CT + experiments | first server | CT1 and EX2 cleanup failed |
+| 4, trio | first server | CT5 and EX2 cleanup failed |
+| 5 and 6, experiments alone | first server | EX2 cleanup failed |
+| 7 and 8, experiments alone | fresh server | 24 of 24 passed, twice |
+| 9, trio | fresh server | CT1 failed |
+
+The landing spec and every other experiments test passed in every run.
+
+What happens:
+
+- After an agent or admin write, the next request can still render the old variant, for a few seconds at most.
+  I reproduced it by hand: right after `conclude --retire`, six parallel `/home-services` requests still showed the retired challenger; 3 seconds later all six showed the default.
+  EX2 cleanup asserts the default on the very next request, and CT5 asserts the new homepage button on the very next page load, so both fail whenever the lag shows.
+- When CT5 fails part-way, its `afterAll` restores `hero-secondary` through REST, with no `revalidatePath('/')`.
+  The homepage ISR copy (on disk, `revalidate = 300`) then keeps the test's variant B.
+  It survived a server restart, and on this rig it was not regenerated for over 15 minutes.
+  The next run's CT1 then fails.
+- The server prints "next start does not work with output: standalone".
+  The lag may be worse on this rig than on Vercel; I could not test Vercel's cache.
+  But the spec header prescribes `next start`, and a gate that goes red on the documented command is not green.
+
+Fix, all in the specs:
+
+- In EX2 cleanup and CT5, poll the page for up to about 5 seconds (`expect.poll`) instead of asserting the first response.
+- Make CT's `afterAll` restore through `/api/admin/cta/variants`, or revalidate `/`, so a failed run cannot poison the homepage.
+- Either document `node .next/standalone/server.js` or note the lag in `docs/local-rig.md`.
+
+If the lag also shows on Vercel, a visitor can see a just-retired variant for one request; that is acceptable product behaviour, but the docs should say "within seconds", not "on the next request".
+
+### Gates on c104672
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck`, `npm run lint` | exit 0, exit 0 |
+| `npm run chaos:static` | total 0, baselined 0, NEW 0 |
+| `npm run build` (rig env) | passes |
+| Live trio on the production build (documented command) | red: see R1 (best trio run 66 passed, 2 failed; experiments alone 24 of 24 twice on a fresh server) |
+| `proposal-pod-slice3` with the trio, live | all passed, including AC-R12 |
+| Full stub suite: `test:build` with `.env.local` moved aside, `next start -p 3129`, `E2E_STUB_BACKEND=1 TEST_URL=http://localhost:3129 playwright test` | 2765 passed, 476 skipped, 0 failed; AC-R12 green in both projects; `.env.local` restored and identical to `env.rig` |
+| Rig after my runs | `hero-primary` and `hero-secondary` hold 3 view rows each (6, as before); their `variants` and `decision` hashes and `landing-hero` are unchanged; no `slice-h-*` or `review-h*` experiment, request or blog post remains |
+
+### Fix list for ACCEPT
+
+- R1 (required): make EX2 cleanup and CT5 tolerant of the few-second cache lag, and make CT's `afterAll` restore through the admin route or revalidate `/`.
+- R2 (recommended): the skill's "copy unchanged" step for the hero, as above.
+- Recommended polish: label time zones on the admin card; re-sign the veto link at delivery; collapse switched-off variants on the phone.
