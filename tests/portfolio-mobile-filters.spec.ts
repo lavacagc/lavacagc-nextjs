@@ -25,8 +25,8 @@ test.describe('portfolio filter bar (live backend)', () => {
   // iPhone 13 size and touch, on the project's own browser: the device's
   // defaultBrowserType would force a new worker, which a describe-level use()
   // cannot do, and Playwright then refuses to load the whole file.
-  const { defaultBrowserType: _browser, ...iPhone13 } = devices['iPhone 13'];
-  test.use(iPhone13);
+  const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices['iPhone 13'];
+  test.use({ viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
 
   test('the sticky bar stays under 80 px on a phone and the chips scroll sideways', async ({ page }) => {
     await page.goto('/portfolio', { waitUntil: 'networkidle' });
