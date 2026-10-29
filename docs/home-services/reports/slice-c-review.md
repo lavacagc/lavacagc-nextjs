@@ -197,3 +197,135 @@ I did not delete them.
 I deleted only my own 136 spoofing rows (visitor ids `ecec0000-0000-4000-8000-*`) and my 4 hero-spec rows.
 `cta_variants` matches the seed, and `cta_min_visitors` is 100.
 The GoTrue user `review-c@local.test` was created for this review.
+
+## Re-verification at 3807839
+
+Scope: the six defects above, the two additions (the self-heal for client-rendered pages and the editor panel moved below the table), and two pre-existing claims.
+Code reviewed: `git diff a0e9df2..3807839`, which covers commits `99148e6`, `81410e2`, `f6eae42`, `3807839` and the cherry-picked `b65be51`.
+Rig: my own dev server and production build on port 3113, plus a scratch worktree at `fc6fe33` for the base runs.
+That worktree's `node_modules` was an APFS clone of the slice's, so both sides ran under Turbopack.
+
+**Final verdict: ACCEPT.**
+
+Five of the six defects are fixed outright.
+Defect 3 is fixed for everything the slice can control.
+Its residual inflation risk comes from the rate-limit IP handling in `src/lib/rateLimit.ts`, which this slice does not touch.
+I list it below as a follow-up, not a blocker.
+I found one new LOW defect with a one-line fix, and one cosmetic nit.
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `eslint --max-warnings 0` on the 28 .ts and .tsx files changed since `fc6fe33` | exit 0 |
+| `npm run chaos:static` on default Node v20.20.0 | exit 0, "no new violations." The Node 20 crash is fixed by `b65be51`. |
+| `npm run build` | exit 0, `┌ ○ /    5m    1y`, so `/` is still static with revalidate 300 |
+
+### Items
+
+| Item | Result | Evidence |
+| --- | --- | --- |
+| 1 HIGH, independent assignment | FIXED | I ran the real `ctaIndex` over 100,000 random 32-hex seeds for each pair of variant counts. Every combination was served for P2 S2, P2 S4, P4 S4, P4 S2, P6 S2, P3 S3, P2 S3 and P7 S7. P2 S2 cells ranged from 24.78% to 25.27%, and P4 S4 from 6.13% to 6.36%. Two chi-squared values looked borderline, so I reran those pairs with 1,000,000 seeds: P3 S3 gave 7.2 on 8 degrees of freedom and P7 S7 gave 38.1 on 48. Per-button splits were even for 2, 3, 5 and 7 variants, for example 49.91% and 50.09% for 2. |
+| 2 MEDIUM, hidden period and wrong-variant flash | FIXED | Production build at iPhone 13 size with event calls stubbed. Unthrottled, 6 fresh visitors: the assigned primary showed from the first frame, at 23 to 45 ms. With CPU 6x and slow 4G, 6 fresh visitors: it showed at 878 to 904 ms, before first contentful paint at 1160 to 1196 ms. Every run had exactly one primary state, never two links at once, and the visible key always matched `html[data-cta-p]` (A 4 times, B 2 times in each profile). LCP was the hero paragraph in every run. The 893-byte inline script comes before the first `<a data-cta-button>` in the static HTML. Without JavaScript, `primary:A,secondary:A` show at once and both links navigate. The only console errors were CSP refusals of the local Supabase host, which the production CSP blocks by design. There were no hydration errors. |
+| 3 MEDIUM, forged events | FIXED in the slice, with a residual follow-up | Results below. |
+| 4 LOW, spec gaps | FIXED | Results below. |
+| 5 LOW, specs writing events | FIXED | `cta_events` was 0 before the run. After cta-tests, hero-trust-badges and flows (44 tests), it was still 0, and the run wrote 0 rows. I repeated the run 3 more times, once cold with 8 workers, and every time it left 0 rows. The variant seed and `cta_min_visitors = 100` were intact after each run. |
+| 6 LOW (advisory), wording freeze | FIXED | Results below. |
+| Addition: self-heal | VERIFIED | Results below. |
+| Addition: editor panel below the table | VERIFIED | Results below. |
+
+For item 3, I posted to the event sink on my dev server:
+
+| Attempt | Response | Recorded |
+| --- | --- | --- |
+| `visitor_id` in the body | 400 `{"error":"Invalid event"}` | nothing |
+| `cta_vid` with a bad signature | 204, plus a fresh signed cookie | nothing |
+| `cta_vid` as a bare uuid | 204, plus a fresh signed cookie | nothing |
+| Click with no cookie | 204 | nothing |
+| Signed cookie, click on a variant it never viewed | 204 | nothing |
+| Signed cookie, click after its view | 200 | 1 click |
+| Signed cookie, view of inactive primary C | 204 | nothing |
+| Signed cookie, view of nonexistent secondary G | 204 | nothing |
+
+The residual risk, reproduced:
+- A request with no cookie still mints a fresh counted visitor, and a client can keep that cookie for a click.
+- 70 cookieless view-and-click pairs with a rotating `cf-connecting-ip` returned 70 times 200 and wrote 70 views and 70 clicks, with no 429.
+- From one fixed IP, the 61st call returned 429 (60 accepted, 5 refused).
+
+The first point is inherent, because every real first-time visitor arrives without a cookie.
+The header spoof only works on an origin not fronted by Cloudflare, and production sits behind Cloudflare.
+`src/lib/rateLimit.ts:63` is unchanged and outside this slice.
+Follow-up: trust `cf-connecting-ip` only when the request came through Cloudflare, or block direct origin access to the deployment.
+
+For item 4, each sabotage was applied alone against the new spec on my dev server, then reverted.
+I chose them myself, not from the developer's list.
+
+| Sabotage | Spec result | Rows left |
+| --- | --- | --- |
+| `ctaIndex` returns `crypto.getRandomValues(...)[0] % n`, a random pick that avoids the `Math.random` text check | 2 failed (pinned vectors, and the known seed getting the hash-computed keys) | 0 |
+| The pre-paint script ignores the stored `cta_v` key | 1 failed (stored key beats the hash) | 0 |
+| Rate limit disabled in the event route | 1 failed (SEC1) | 0 |
+| Badly signed cookie trusted under its uuid | 1 failed (fix 3, forged ids) | 0 |
+| Self-heal removed from `HeroCtaEvents.tsx` | the self-heal test failed on its own; restored it passed in 3.5 s | 0 |
+
+The unchanged control run was 19 of 19 passed.
+
+For item 6, I used the admin session `review-c@local.test` on my dev server.
+First I seeded one view on primary B as `zztest-rc-ui-1`.
+- `PATCH` wording on B returned 409 with "Variant B already has 1 recorded views and clicks under its current wording...".
+- The same wording and subtext on B returned 200.
+- An unchanged wording on A, which has no events, returned 200.
+
+In the tab at 1280 px, typing a new wording on B turned Save into "Deactivate B and add new variant", with an explanation underneath.
+Clicking it showed the toast "Added a new variant and switched B off", with no page errors.
+The DB then held primary F with the new wording, active, and with B's subtext copied, and B inactive.
+I restored the seed afterwards: B active again, F deleted, my event row deleted.
+
+For the self-heal, removing it made its own test fail, as shown in the sabotage table.
+With the self-heal removed, the CT2 fresh-visitor test also failed 1 of 2 times in dev.
+That matches the developer's report that dev sometimes renders the page on the client, where the inline script never runs.
+To size that, I loaded the homepage 40 times, 8 at once, on the dev server with the self-heal in place.
+In all 40 loads `data-cta-p` was already set at DOMContentLoaded, so the pre-paint path is the normal one.
+
+For the editor panel, at 1280 px it starts at y=1052, below the table's bottom edge at y=1036, and is 1134 px wide.
+At 390 px (iPhone 13) it sits at x=33 and is 324 px wide, with no horizontal page overflow and no page errors.
+
+### New defects
+
+- **LOW: a tampered `cta_v` can hide the primary button.** File: `src/lib/cta/bootstrap.ts:57`.
+  The stored-key check `k.indexOf(o[l]) + 1` accepts any substring of the active keys.
+  A `cta_v` of `P%3DAB%3BS%3DA` sets `data-cta-p="AB"`, so no CSS rule matches and the primary button disappears.
+  The value is also written back for 180 days.
+  Reproduced with Playwright on the dev server: the only visible link was `secondary:A`.
+  An empty, junk or missing `P` falls back correctly to the hash.
+  Only a tampered cookie triggers this, for example one injected from a sibling subdomain, so the severity is low.
+  One-line fix: also require a single letter, for example `o[l] && o[l].length == 1 && k.indexOf(o[l]) + 1`.
+  Re-check the under-1-KB budget after the change.
+- **Cosmetic nit: the colour field contradicts itself.** File: `VariantEditor.tsx`.
+  When no colour is set, the swatch shows the default orange while the text placeholder reads `#1f7a4d`, which is green.
+  A neutral placeholder, or a swatch that matches it, would read correctly.
+
+### The two pre-existing claims
+
+**The flows "no JavaScript errors on page load" flake: the attribution holds.**
+- On the slice, it failed 1 of 3 full parallel runs. The error was a hydration mismatch in `TrackedSection` around Services: `className=""` against `className="py-10 md:py-20 bg-muted/30 scroll-mt-20"`, `id={undefined}` against `id="services"`, and `data-section="services-section"` against `data-section={null}`.
+- On the base `fc6fe33`, it failed in 3 of 3 rounds of flows plus hero-trust-badges with `--repeat-each=2`, with the identical diff.
+- In a cold 8-worker run with `--repeat-each=4` on the base, it failed again. That base run also failed the "Family-Owned" test twice and the "Trusted by" test once, all from dev-server load.
+- One slice run also had 4 navigation and goto timeouts in flows, on `/locations` and the logo click. These are the same load symptoms, and they pass on rerun.
+
+**The Testimonials "No QueryClient set" SSR failure: NOT CONFIRMED.**
+I could not reproduce it on either side.
+- On the base: three cold starts with bursts of 16 concurrent `GET /` plus 5 other pages (144 homepage renders, all 200). Also 3 Playwright rounds (92 renders) and one cold 8-worker run (60 renders).
+- On the slice: about 200 renders across my runs, plus one cold 8-worker run of all three specs (58 renders).
+- No dev log on either side contains "No QueryClient".
+
+`Testimonials.tsx`, `src/components/providers.tsx` and `src/app/layout.tsx` are unchanged by the slice.
+The developer's description fits a dev-server race, but I cannot prove it predates the slice, because I could not trigger it at all.
+Either way, the self-heal covers the CTA side of that case.
+
+### Other observations, not slice C
+
+- **The homepage pushes extra history entries.** It calls `history.pushState` 3 times after load, so `history.length` reaches 5 and one Back press stays on `/`. The base `fc6fe33` does exactly the same (traced through Next's patched `pushState`), so it predates this slice. It is worth its own ticket.
+- **Rows from another server.** Two `cta_events` rows appeared at 08:08:43 UTC (visitor `1a2a465d-...`) while I was running the base. The base has no event sender, my server logs show no event calls at that time, and another dev server was listening on port 3115. I left them in place.
+- **My own rows.** I deleted all of my test rows: 202 from the forgery checks, by the server-minted ids I captured, and 1 `zztest-rc-ui-1` row. The scratch base worktree is removed.
