@@ -71,14 +71,14 @@ export default async function HomeServicePage({ params, searchParams }: { params
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div id="top" className="flex min-h-screen flex-col">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumb) }} />
       <AttributionCapture />
       <HeaderComponent />
       <ServicesTrustBar />
 
-      <main id="top" lang={lang} className="flex-grow pb-28 lg:pb-12">
+      <main id="main-content" lang={lang} className="flex-grow pb-28 lg:pb-12">
         <section className="relative overflow-hidden bg-gradient-to-b from-background-soft to-background pb-12 pt-6 md:pb-16 md:pt-10">
           <div className="container relative mx-auto px-4">
             <div className="flex items-center justify-between gap-3">

@@ -70,12 +70,12 @@ export default async function HomeServicesPage({ searchParams }: { searchParams:
   const lang = await pageLang(searchParams);
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div id="top" className="flex min-h-screen flex-col">
       <AttributionCapture />
       <HeaderComponent />
       <ServicesTrustBar />
 
-      <main id="top" lang={lang} className="flex-grow pb-40 lg:pb-24">
+      <main id="main-content" lang={lang} className="flex-grow pb-40 lg:pb-24">
         {/* HERO */}
         <section className="relative overflow-hidden bg-gradient-to-b from-background-soft to-background pb-12 pt-8 md:pb-16 md:pt-12">
           <div aria-hidden className="pointer-events-none absolute -right-24 -top-40 h-[440px] w-[440px] rounded-full bg-primary opacity-[0.10] blur-[90px]" />
@@ -220,7 +220,7 @@ export default async function HomeServicesPage({ searchParams }: { searchParams:
               </h2>
               <p className="mt-3 max-w-2xl text-[17px] leading-relaxed text-text-secondary">{s('homeCareBody', lang)}</p>
               <div className="mt-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-                <span className="rounded-full bg-accent-teal/10 px-4 py-2 text-sm font-extrabold text-accent-teal">{s('homeCarePrice', lang)}</span>
+                <span className="rounded-full bg-accent-teal px-4 py-2 text-sm font-extrabold text-white">{s('homeCarePrice', lang)}</span>
                 <Link
                   href="/home-care"
                   className="inline-flex min-h-[52px] items-center gap-2 rounded-xl bg-secondary px-6 py-3 text-[17px] font-bold text-white transition-transform hover:-translate-y-[1px]"

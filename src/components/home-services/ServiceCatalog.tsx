@@ -87,14 +87,19 @@ export default function ServiceCatalog({ lang }: { lang: Lang }) {
               <button
                 type="button"
                 onClick={() => setPriceFor(service)}
-                aria-label={`${t(service.name, lang)}: ${s('startingAt', lang)} ${t(service.priceDisplay, lang)}. ${s('priceDetails', lang)}`}
                 data-testid={`price-${service.slug}`}
                 className="mx-4 mb-4 flex min-h-[52px] items-center justify-between gap-3 rounded-xl bg-background-soft px-4 py-2.5 text-left transition-colors hover:bg-primary/10 focus:outline-none focus-visible:ring-4 focus-visible:ring-secondary/40"
               >
+                {/* The accessible name is the visible text plus screen-reader-only context, so it
+                    starts with what a voice-control user sees ("Starting at $179 ..."). */}
                 <span className="flex min-w-0 flex-col">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">{s('startingAt', lang)}</span>
                   <span className="text-xl font-extrabold leading-tight text-text-primary">{t(service.priceDisplay, lang)}</span>
                   <span className="text-xs font-semibold leading-snug text-text-secondary">{t(service.priceUnit, lang)}</span>
+                  <span className="sr-only">
+                    {', '}
+                    {t(service.name, lang)}. {s('priceDetails', lang)}
+                  </span>
                 </span>
                 <Info aria-hidden className="h-5 w-5 shrink-0 text-secondary" />
               </button>
