@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import PhotoGallery from '@/components/gallery/PhotoGallery';
 import { buildProjectGallery } from '@/lib/projects/gallery';
+import { formatMonthYear } from '@/lib/projects/dates';
 import { MarkdownContent } from '@/components/MarkdownContent';
 
 interface ProjectData {
@@ -140,11 +141,8 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                 {project.date_completed && (
                   <div className="flex items-center gap-1 md:gap-2">
                     <Calendar className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                    <time dateTime={project.date_completed}>
-                      {new Date(project.date_completed).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                      })}
+                    <time dateTime={project.date_completed.slice(0, 7)}>
+                      {formatMonthYear(project.date_completed)}
                     </time>
                   </div>
                 )}
@@ -215,12 +213,8 @@ export default function ProjectDetailClient({ project }: ProjectDetailClientProp
                     <div>
                       <span className="text-sm font-medium">Completed:</span>
                       <p className="text-muted-foreground">
-                        <time dateTime={project.date_completed}>
-                          {new Date(project.date_completed).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                          })}
+                        <time dateTime={project.date_completed.slice(0, 7)}>
+                          {formatMonthYear(project.date_completed)}
                         </time>
                       </p>
                     </div>

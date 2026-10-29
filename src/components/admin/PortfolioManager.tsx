@@ -24,6 +24,7 @@ import { AdminCheckbox } from '@/components/admin/ui/AdminCheckbox';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { formatMonthYear } from '@/lib/projects/dates';
 import { projectsApi } from './projects/api';
 import { DraftPhotosPanel } from './projects/DraftPhotosPanel';
 import { MediaThumb } from './projects/MediaThumb';
@@ -535,9 +536,7 @@ export function PortfolioManager({ onNewProject, onEditProject }: PortfolioManag
                         <div className="flex items-center justify-between text-sm text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Calendar className="h-4 w-4" aria-hidden />
-                            {p.date_completed
-                              ? new Date(`${p.date_completed.slice(0, 10)}T12:00:00`).toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
-                              : 'No date'}
+                            {formatMonthYear(p.date_completed, 'short') || 'No date'}
                           </span>
                           {p.budget_range && <span className="flex items-center gap-1"><DollarSign className="h-4 w-4" aria-hidden />{p.budget_range}</span>}
                         </div>

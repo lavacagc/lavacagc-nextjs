@@ -8,6 +8,7 @@ import {
 } from '../src/lib/projects/ingestAuth';
 import { sniffMedia, isHeic } from '../src/lib/projects/media';
 import { defaultAltText, defaultMetaDescription, defaultSeoTitle, deriveSlug, slugify } from '../src/lib/projects/slug';
+import { formatMonthYear, parseDateOnly } from '../src/lib/projects/dates';
 
 /**
  * Slice D: portfolio projects as drafts, no AI, and an ingest API for Claude Code.
@@ -147,6 +148,21 @@ test.describe('media sniffing and deterministic defaults', () => {
     expect(sniffMedia(new Uint8Array(Buffer.from('<html>hi</html>')))).toBeNull();
   });
 
+  test('date_completed shows its own month in a US timezone (was one month early)', () => {
+    const before = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      // The defect: a bare date parses as UTC midnight, the evening before in New York.
+      expect(new Date('2026-10-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })).toBe('September 2026');
+      expect(parseDateOnly('2026-10-01').getMonth()).toBe(9);
+      expect(formatMonthYear('2026-10-01')).toBe('October 2026');
+      expect(formatMonthYear('2026-01-01', 'short')).toBe('Jan 2026');
+      expect(formatMonthYear('')).toBe('');
+    } finally {
+      if (before === undefined) delete process.env.TZ; else process.env.TZ = before;
+    }
+  });
+
   test('slug, SEO title, meta description and alt text defaults', () => {
     expect(slugify('Modern Kitchen & Bath!')).toBe('modern-kitchen-and-bath');
     expect(deriveSlug('Modern Kitchen', 'Clifton')).toBe('modern-kitchen-clifton');
@@ -190,6 +206,8 @@ const TINY_JPEG = Buffer.from(
 test.describe('drafts, publish and ingest (live backend)', () => {
   test.describe.configure({ mode: 'serial' });
   test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
+  // A US timezone, where a UTC-parsed date shows the month before.
+  test.use({ timezoneId: 'America/New_York' });
 
   const env = localEnv();
   const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
@@ -485,5 +503,12 @@ test.describe('drafts, publish and ingest (live backend)', () => {
     await expect(card).toHaveCount(0);
     await expect(page.getByTestId('project-card').filter({ hasText: `${PREFIX} Browser Draft` }).getByTestId('project-status')).toHaveText('Published');
     expect(await publicStatus(page.request, slug)).toBe(200);
+
+    // The form defaulted the month to this one; the public page must say so.
+    const now = new Date();
+    const thisMonth = formatMonthYear(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`);
+    await page.goto(`/projects/${slug}`);
+    await expect(page.locator('time').first()).toHaveText(thisMonth);
+    await expect(page.getByText('(5/5 stars)')).toHaveCount(0);
   });
 });

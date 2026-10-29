@@ -152,6 +152,8 @@ function ProjectForm({ target, onClose }: { target: FormTarget; onClose: () => v
   const [areas, setAreas] = useState<string[]>([]);
   const fieldsRef = useRef(fields);
   fieldsRef.current = fields;
+  /** Once the owner places the star, it stays where they put it. */
+  const starTouched = useRef(isEdit);
 
   // Location suggestions: service_areas is an existing, publicly readable table.
   useEffect(() => {
@@ -254,6 +256,11 @@ function ProjectForm({ target, onClose }: { target: FormTarget; onClose: () => v
         if (breaksPair && img.pair_key === target.pair_key) return { ...img, pair_key: undefined, caption: undefined };
         return img;
       });
+      // The automatic star belongs on an After photo: follow it when its photo becomes Before/During.
+      if (!starTouched.current && target.is_featured && patch.category && patch.category !== 'after') {
+        const after = next.find((i) => i.category === 'after' && i.media_type === 'image');
+        if (after) return next.map((i) => ({ ...i, is_featured: i.key === after.key }));
+      }
       return next;
     });
   }, []);
@@ -312,6 +319,7 @@ function ProjectForm({ target, onClose }: { target: FormTarget; onClose: () => v
   }, [patchImage]);
 
   const setFeatured = useCallback((key: string) => {
+    starTouched.current = true;
     setImages((prev) => prev.map((i) => ({ ...i, is_featured: i.key === key })));
   }, []);
 
@@ -368,6 +376,9 @@ function ProjectForm({ target, onClose }: { target: FormTarget; onClose: () => v
       title: fields.title.trim(),
       location: fields.location.trim(),
       date_completed: fields.date_completed || null,
+      // The public page shows stars whenever a rating is set; without a
+      // testimonial there is nothing to rate, so no stars.
+      testimonial_rating: fields.testimonial_text.trim() ? fields.testimonial_rating : null,
       url_slug: fields.url_slug.replace(/^-+|-+$/g, ''),
       images: ready.map((img, i) => ({
         url: img.url,
