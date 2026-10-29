@@ -65,6 +65,13 @@ test.describe('no AI in the project upload path (source checks)', () => {
     }
   });
 
+  test('no Gemini call anywhere in src/ (PF1), and the dead keyword-research route is gone', () => {
+    expect(existsSync(join(root, 'src/app/api/admin/keyword-research'))).toBe(false);
+    for (const f of walk(join(root, 'src')).filter((p) => /\.(ts|tsx|js|mjs)$/.test(p))) {
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(/gemini|generativelanguage\.googleapis/i);
+    }
+  });
+
   test('the form is one page: no step indicator, no progress bar, Save draft is the action', () => {
     const src = read('src/components/admin/ProjectUploadSystem.tsx');
     expect(src).not.toMatch(/Step \{|currentStep|<Progress/);
