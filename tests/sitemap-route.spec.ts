@@ -4,7 +4,7 @@ import type { MetadataRoute } from 'next';
 // writes the same bytes the old src/app/sitemap.ts produced.
 import { resolveSitemap } from 'next/dist/build/webpack/loaders/metadata/resolve-route-data';
 import { buildSitemapEntries, sitemapSourcesFrom, type SitemapDb } from '../src/lib/sitemap';
-import { renderSitemapXml } from '../src/lib/sitemapXml';
+import { renderSitemapXml, sitemapResponse } from '../src/lib/sitemapXml';
 
 /**
  * The sitemap is served by the /api/sitemap route handler and reached at
@@ -39,6 +39,9 @@ function fakeDb(tables: Record<string, Row[]>): SitemapDb {
 
 const urls = (entries: MetadataRoute.Sitemap) => entries.map((entry) => entry.url);
 
+/** A database whose every read fails, the way supabase-js reports an outage. */
+const failingDb = { from: () => ({ select() { return this; }, eq() { return this; }, order() { return this; }, then: (r: (v: unknown) => unknown) => r({ data: null, error: { message: 'boom' } }) }) } as unknown as SitemapDb;
+
 test.describe('buildSitemapEntries (unit)', () => {
   const db = fakeDb({
     blog_posts: [
@@ -67,8 +70,7 @@ test.describe('buildSitemapEntries (unit)', () => {
   });
 
   test('a failed database read throws instead of listing nothing', async () => {
-    const failing = { from: () => ({ select() { return this; }, eq() { return this; }, order() { return this; }, then: (r: (v: unknown) => unknown) => r({ data: null, error: { message: 'boom' } }) }) } as unknown as SitemapDb;
-    await expect(buildSitemapEntries(sitemapSourcesFrom(failing))).rejects.toThrow(/sitemap: (blog posts|projects) read failed: boom/);
+    await expect(buildSitemapEntries(sitemapSourcesFrom(failingDb))).rejects.toThrow(/sitemap: (blog posts|projects) read failed: boom/);
   });
 });
 
@@ -84,6 +86,28 @@ test.describe('renderSitemapXml (unit)', () => {
   test('escapes XML special characters, which Next does not', () => {
     const xml = renderSitemapXml([{ url: 'https://www.lavacagc.com/a?b=1&c=2' }]);
     expect(xml).toContain('<loc>https://www.lavacagc.com/a?b=1&amp;c=2</loc>');
+  });
+});
+
+test.describe('sitemapResponse (unit)', () => {
+  test('serves the rendered XML when the entries build', async () => {
+    const entries = await buildSitemapEntries(sitemapSourcesFrom(fakeDb({ blog_posts: [], projects: [] })));
+    const res = await sitemapResponse(async () => entries);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/xml');
+    expect(await res.text()).toBe(renderSitemapXml(entries));
+  });
+
+  // The uncached sources stand for an expired cache: nothing is left to fall
+  // back on, so the build itself fails. A crawler must get a temporary error,
+  // not an empty or partial sitemap it would read as pages being removed.
+  test('database failing and the cache expired: 503 with Retry-After and no-store', async () => {
+    const res = await sitemapResponse(() => buildSitemapEntries(sitemapSourcesFrom(failingDb)));
+    expect(res.status).toBe(503);
+    expect(res.headers.get('retry-after')).toBe('300');
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(res.headers.get('content-type')).toContain('text/plain');
+    expect(await res.text()).not.toContain('<urlset');
   });
 });
 

@@ -42,3 +42,35 @@ export function renderSitemapXml(entries: MetadataRoute.Sitemap): string {
   xml += '</urlset>\n'
   return xml
 }
+
+/**
+ * How long a crawler should wait before asking again after a 503. Search
+ * engines treat 503 as temporary and keep the sitemap they already have; an
+ * empty or partial sitemap would instead tell them pages were removed.
+ */
+export const SITEMAP_RETRY_AFTER_SECONDS = 300
+
+/**
+ * The /api/sitemap response for entries built by `build`. A failed build
+ * (a database read threw, see buildSitemapEntries) is answered 503 with
+ * Retry-After and no-store, never with a partial sitemap.
+ */
+export async function sitemapResponse(build: () => Promise<MetadataRoute.Sitemap>): Promise<Response> {
+  let entries: MetadataRoute.Sitemap
+  try {
+    entries = await build()
+  } catch (err) {
+    console.error('sitemap: answering 503, no sitemap could be built:', err instanceof Error ? err.message : String(err))
+    return new Response('Sitemap temporarily unavailable\n', {
+      status: 503,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Retry-After': String(SITEMAP_RETRY_AFTER_SECONDS),
+        'Cache-Control': 'no-store',
+      },
+    })
+  }
+  return new Response(renderSitemapXml(entries), {
+    headers: { 'Content-Type': 'application/xml' },
+  })
+}
