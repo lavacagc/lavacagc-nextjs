@@ -224,7 +224,8 @@ The script never sends `"now"` or `"schedule"`.
 The drafts are dated tomorrow at 14:00 UTC unless `--date` says otherwise; the date is only where they sit in the calendar.
 They land as four separate calendar entries, one per channel, not one grouped post: Postiz's public API gives every entry its own group.
 
-Dedup: before creating, it lists Postiz's posts (`GET /posts`) from 60 days before the earlier of today and `--date` to 60 days after the later of them, so a re-run with a far `--date` still finds its own drafts, and skips a channel that already has a post (not deleted, not errored) with the article URL in its text or a text at least 90% similar.
+Dedup: before creating, it lists Postiz's posts (`GET /posts`) from 60 days before the earlier of today and `--date` to 60 days after the later of them, so a re-run with a far `--date` still finds its own drafts, and skips a channel that already has a post (not deleted, not errored) with a link to the article URL in its text or a text at least 90% similar.
+The link must be the article URL itself, in any scheme, `www`, trailing-slash, query or fragment form; a longer URL that merely starts with it (another article's slug) does not count.
 A channel whose only post errored is tried again.
 If every channel already has the post, it creates nothing.
 
