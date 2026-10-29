@@ -69,7 +69,7 @@ export const SERVICE_AREAS = [
 ];
 
 // Service area ZIP codes
-const SERVICE_ZIPS = [
+export const SERVICE_ZIPS = [
   '07042', '07043', '07052', '07078', '07040', // Montclair, Maplewood, West Orange
   '07039', '07041', '07092', // Livingston, Millburn, Short Hills
   '07901', '07902', '07928', // Summit, Chatham

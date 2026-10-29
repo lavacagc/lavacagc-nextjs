@@ -1,496 +1,257 @@
-import type { Metadata } from "next";
-import Image from "next/image";
-import Link from "next/link";
-import {
-  Home,
-  ArrowRight,
-  Phone,
-  Mail,
-  CheckCircle2,
-  ShieldCheck,
-  FileCheck2,
-  Users,
-  GitMerge,
-  FileText,
-  ClipboardList,
-  Building2,
-} from "lucide-react";
-import HeaderComponent from "@/components/Header";
-import Footer from "@/components/Footer";
-import ServicesTrustBar from "@/components/services/ServicesTrustBar";
-import ServicesBottomTabs from "@/components/services/ServicesBottomTabs";
-import ServiceTile from "@/components/services/ServiceTile";
-import ServiceImageGrid from "@/components/services/ServiceImageGrid";
-import { HOME_SERVICES } from "@/components/services/serviceData";
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { cookies } from 'next/headers';
+import { ArrowDown, ArrowRight, BadgeCheck, MapPin, Phone, ShieldCheck } from 'lucide-react';
+import HeaderComponent from '@/components/Header';
+import Footer from '@/components/Footer';
+import ServicesTrustBar from '@/components/services/ServicesTrustBar';
+import ServicesBottomTabs from '@/components/services/ServicesBottomTabs';
+import ServiceCatalog from '@/components/home-services/ServiceCatalog';
+import AttributionCapture from '@/components/home-services/AttributionCapture';
+import LangToggle from '@/components/home-services/LangToggle';
+import { s, type StringKey } from '@/lib/home-services/i18n';
+import { LANG_COOKIE, resolveLang } from '@/lib/home-services/lang';
+import ServiceIcon from '@/components/home-services/ServiceIcon';
+import { HOME_SERVICES_CATALOG, t, type Lang } from '@/lib/home-services/catalog';
+import { brandedTitle, languageAlternates } from '@/lib/home-services/seo';
 
-const HOME_IMAGE_CARDS = [
-  {
-    src: "/images/home-card-punch-list.png",
-    alt: "Contractor reviewing a punch list on a clipboard at a homeowner's dining table.",
-    label: "Punch-list days",
-    description: "Bundled small repairs handled in one organized visit.",
-  },
-  {
-    src: "/images/home-card-pre-listing.png",
-    alt: "Living room of a Northern NJ home being prepped for sale, fresh paint and tidy floors.",
-    label: "Pre-listing prep",
-    description: "Get your home photo-ready and inspection-ready in days.",
-  },
-  {
-    src: "/images/home-card-seasonal.png",
-    alt: "Contractor clearing leaves from a residential gutter in autumn.",
-    label: "Seasonal maintenance",
-    description: "Storm prep, gutter clears, and seasonal property care.",
-  },
-  {
-    src: "/images/home-card-property-care.png",
-    alt: "Homeowner sweeping a colonial front porch on a spring morning.",
-    label: "Property care",
-    description: "Recurring detail work that keeps the property moving.",
-  },
+/**
+ * /home-services - the seven priced services and the in-page request flow
+ * (docs/home-services/acceptance-criteria.md LP1-LP11; audit C1 replaced the
+ * nine-tile catalog that used to live here).
+ *
+ * Rendered per request because the language comes from `?lang=` or the
+ * `lv_lang` cookie (LP7). Every string comes from i18n.ts or catalog.ts.
+ */
+
+const PHONE_HREF = 'tel:+12012124917';
+
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+async function pageLang(searchParams: SearchParams): Promise<Lang> {
+  const [params, jar] = await Promise.all([searchParams, cookies()]);
+  return resolveLang(params.lang, jar.get(LANG_COOKIE)?.value);
+}
+
+export async function generateMetadata({ searchParams }: { searchParams: SearchParams }): Promise<Metadata> {
+  const lang = await pageLang(searchParams);
+  const title = brandedTitle(s('metaTitle', lang));
+  const description = s('metaDescription', lang);
+  const alternates = languageAlternates('/home-services', (await searchParams).lang);
+  return {
+    title: { absolute: title },
+    description,
+    alternates,
+    openGraph: {
+      title,
+      description,
+      type: 'website',
+      url: alternates.canonical,
+      locale: lang === 'es' ? 'es_US' : 'en_US',
+      images: [{ url: 'https://www.lavacagc.com/logo.png', width: 800, height: 800, alt: 'La Vaca General Contractors' }],
+    },
+  };
+}
+
+const STEPS: Array<[StringKey, StringKey]> = [
+  ['step1', 'step1Body'],
+  ['step2', 'step2Body'],
+  ['step3', 'step3Body'],
+  ['step4', 'step4Body'],
 ];
 
-export const revalidate = 60;
-
-export const metadata: Metadata = {
-  title: 'Home Repair & Property Care in NJ',
-  description:
-    'Safety audits, sump tests, storm prep, drywall repair and punch-list days across Northern NJ from a licensed general contractor.',
-  openGraph: {
-    title: "Home Services | La Vaca General Contractors",
-    description:
-      "Home repairs handled with general-contractor discipline. Licensed, bonded, insured. Northern NJ.",
-    type: "website",
-    url: "https://www.lavacagc.com/home-services",
-    images: [
-      {
-        url: "https://www.lavacagc.com/logo.png",
-        width: 800,
-        height: 800,
-        alt: "La Vaca General Contractors — Home Services",
-      },
-    ],
-  },
-  alternates: { canonical: "https://www.lavacagc.com/home-services" },
-};
-
-const REMODELING_LINKS = [
-  {
-    href: "/services/kitchen-remodeling",
-    title: "Kitchen Remodeling",
-    body: "Cabinets, countertops, layouts — built right by licensed contractors.",
-  },
-  {
-    href: "/services/bathroom-renovation",
-    title: "Bathroom Renovations",
-    body: "Tile, fixtures, vanities, walk-in showers — full remodels.",
-  },
-  {
-    href: "/services/basement-finishing",
-    title: "Basement Finishing",
-    body: "Legal basements, home theaters, wet bars, and more.",
-  },
-  {
-    href: "/services/home-additions",
-    title: "Home Additions",
-    body: "Architectural planning, permits handled, itemized costs.",
-  },
-  {
-    href: "/services/interior-finishing",
-    title: "Interior Finishing",
-    body: "Trim, millwork, built-ins, and high-end interior detail work.",
-  },
-  {
-    href: "/services/whole-home-remodeling",
-    title: "Whole-Home Remodeling",
-    body: "Coordinated room-by-room renovations under one GC team.",
-  },
+const FAQ: Array<[StringKey, StringKey]> = [
+  ['faqPriceQ', 'faqPriceA'],
+  ['faqSpeedQ', 'faqSpeedA'],
+  ['faqPayQ', 'faqPayA'],
 ];
 
-export default function HomeServicesPage() {
+export default async function HomeServicesPage({ searchParams }: { searchParams: SearchParams }) {
+  const lang = await pageLang(searchParams);
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div id="top" className="flex min-h-screen flex-col">
+      <AttributionCapture />
       <HeaderComponent />
       <ServicesTrustBar />
 
-      <main id="top" className="flex-grow pb-24 lg:pb-0">
+      <main id="main-content" lang={lang} className="flex-grow pb-40 lg:pb-24">
         {/* HERO */}
-        <section className="relative overflow-hidden bg-gradient-to-b from-background-soft to-background py-16 md:py-20">
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -top-40 -right-20 h-[540px] w-[540px] rounded-full bg-primary opacity-[0.10] blur-[90px]"
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -bottom-32 -left-24 h-[360px] w-[360px] rounded-full bg-accent-sunset opacity-[0.07] blur-[90px]"
-          />
+        <section className="relative overflow-hidden bg-gradient-to-b from-background-soft to-background pb-12 pt-8 md:pb-16 md:pt-12">
+          <div aria-hidden className="pointer-events-none absolute -right-24 -top-40 h-[440px] w-[440px] rounded-full bg-primary opacity-[0.10] blur-[90px]" />
           <div className="container relative mx-auto px-4">
-            <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
-              <div>
-                <span className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-primary">
-                  <Home className="h-3.5 w-3.5" /> Home Services
-                </span>
-                <h1 className="mt-5 text-4xl font-extrabold leading-[1.05] tracking-tight text-text-primary sm:text-5xl md:text-6xl">
-                  Home repairs handled with{" "}
-                  <span className="bg-gradient-to-r from-primary to-accent-sunset bg-clip-text text-transparent">
-                    general-contractor discipline.
-                  </span>
-                </h1>
-                <p className="mt-5 max-w-xl text-lg leading-relaxed text-text-secondary">
-                  One trusted team for repairs, prep work, punch lists, and
-                  property-care details. We take on a limited number of service
-                  visits each week so every job gets proper attention.
-                </p>
-
-                <div className="mt-7 flex max-w-md flex-col gap-3.5">
-                  <Link
-                    href="/request-estimate"
-                    className="group flex items-center justify-between gap-4 rounded-xl bg-gradient-to-r from-primary via-accent-sunset to-accent-tangerine bg-[length:400%_100%] animate-gradient px-6 py-4 font-bold text-white shadow-button transition-transform hover:-translate-y-[2px]"
-                  >
-                    <span className="flex flex-col items-start text-left">
-                      <span className="text-[17px] leading-tight">Check Availability</span>
-                      <span className="text-sm font-semibold opacity-90">Limited weekly service openings</span>
-                    </span>
-                    <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" />
-                  </Link>
-                  <a
-                    href="tel:+12012124917"
-                    className="group flex items-center justify-between gap-4 rounded-xl border-2 border-secondary bg-card px-6 py-4 font-bold text-secondary transition-all hover:-translate-y-[2px] hover:bg-secondary hover:text-white"
-                  >
-                    <span className="flex flex-col items-start text-left">
-                      <span className="text-[17px] leading-tight">Call (201) 212-4917</span>
-                      <span className="text-sm font-semibold opacity-85">Talk through your punch list</span>
-                    </span>
-                    <Phone className="h-5 w-5" />
-                  </a>
-                </div>
-
-                <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold text-text-muted">
-                  <span className="inline-flex items-center gap-1.5">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-accent-teal" /> NJ HIC# 13VH13373800
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-accent-teal" /> Licensed, bonded &amp; insured
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-accent-teal" /> Northern NJ
-                  </span>
-                </div>
-              </div>
-
-              <div className="relative aspect-[4/3] overflow-hidden rounded-3xl border border-border bg-background-soft shadow-elegant">
-                <Image
-                  src="/images/home-services-hero.png"
-                  alt="Homeowner and a La Vaca contractor reviewing a punch list inside a Northern NJ home."
-                  fill
-                  priority
-                  sizes="(max-width: 1024px) 100vw, 50vw"
-                  className="object-cover"
-                />
+            <div className="flex justify-end">
+              <LangToggle lang={lang} />
+            </div>
+            <div className="mt-4 grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+            <div className="max-w-3xl">
+              <p className="inline-flex items-center gap-2 rounded-full border border-secondary/20 bg-secondary/5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-secondary">
+                {s('heroEyebrow', lang)}
+              </p>
+              <h1 className="mt-5 text-balance text-4xl font-extrabold leading-[1.08] tracking-tight text-text-primary sm:text-5xl">
+                {s('heroTitle', lang)}
+              </h1>
+              <p className="mt-5 max-w-2xl text-lg leading-relaxed text-text-secondary">{s('heroBody', lang)}</p>
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                <a
+                  href="#services"
+                  className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl bg-secondary px-6 py-3 text-[17px] font-bold text-white shadow-button transition-transform hover:-translate-y-[1px]"
+                >
+                  {s('heroCta', lang)}
+                  <ArrowDown aria-hidden className="h-5 w-5" />
+                </a>
+                <a
+                  href={PHONE_HREF}
+                  className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl border-2 border-secondary bg-card px-6 py-3 text-[17px] font-bold text-secondary transition-colors hover:bg-secondary hover:text-white"
+                >
+                  <Phone aria-hidden className="h-5 w-5" />
+                  {s('callUs', lang)}
+                </a>
               </div>
             </div>
-          </div>
-        </section>
-
-        {/* MINI-TABS */}
-        <section className="border-y border-border bg-background py-3.5">
-          <div className="container mx-auto px-4">
-            <div className="flex flex-wrap gap-2.5">
-              {[
-                { href: "/home-services", label: "Residential", Icon: Home, active: true },
-                { href: "/commercial-services", label: "Commercial", Icon: Building2, active: false },
-                { href: "#process", label: "Process", Icon: GitMerge, active: false, anchor: true },
-                { href: "#scope", label: "Scope notes", Icon: FileText, active: false, anchor: true },
-                { href: "/request-estimate", label: "Request quote", Icon: ClipboardList, active: false },
-              ].map(({ href, label, Icon, active, anchor }) => {
-                const Tag = anchor ? "a" : Link;
-                return (
-                  <Tag
-                    key={label}
-                    href={href}
-                    className={
-                      active
-                        ? "inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-primary to-accent-tangerine px-4 py-2 text-sm font-bold text-white shadow-button"
-                        : "inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-bold text-text-secondary transition-all hover:border-primary hover:text-primary"
-                    }
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {label}
-                  </Tag>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
-        {/* PHILOSOPHY */}
-        <section className="bg-background py-16 md:py-24">
-          <div className="container mx-auto px-4">
-            <div className="grid items-stretch gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
-              <div className="relative overflow-hidden rounded-3xl bg-secondary p-8 text-white shadow-[0_20px_40px_-12px_rgba(0,40,85,0.18)] md:p-10">
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute -bottom-20 -right-20 h-60 w-60 rounded-full"
-                  style={{
-                    background:
-                      "radial-gradient(circle, rgba(238,150,57,0.18), transparent 65%)",
-                  }}
-                />
-                <h2 className="relative text-2xl font-extrabold leading-[1.1] tracking-tight text-balance md:text-3xl lg:text-4xl">
-                  Homeownership should feel manageable, not like a second job.
-                </h2>
-                <p className="relative mt-4 text-base leading-relaxed text-white/80">
-                  La Vaca Home Services is built for the recurring, practical
-                  work that keeps properties safe, presentable, and moving:
-                  repairs, prep visits, punch-list days, turnovers, checks,
-                  documentation, and seasonal maintenance.
-                </p>
-              </div>
-
-              <div className="grid gap-5">
-                {[
-                  {
-                    Icon: ShieldCheck,
-                    title: "Home care, not bargain handyman work.",
-                    body: "Dependable property support from a licensed GC team, not a race to the cheapest service call.",
-                  },
-                  {
-                    Icon: FileCheck2,
-                    title: "Every service has coverage notes.",
-                    body: "Each card explains what usually fits and what needs a separate quote, trade, or permit.",
-                  },
-                  {
-                    Icon: Users,
-                    title: "Specialty trades are coordinated, not hidden.",
-                    body: "HVAC, plumbing, new electrical circuits, remediation, and structural work are handled by the right trade when required.",
-                  },
-                ].map(({ Icon, title, body }, i, arr) => (
-                  <div
-                    key={title}
-                    className={`grid grid-cols-[28px_1fr] items-start gap-4 ${
-                      i < arr.length - 1 ? "border-b border-border pb-5" : ""
-                    }`}
-                  >
-                    <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-primary">
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <div>
-                      <p className="text-[17px] font-extrabold tracking-tight text-text-primary">{title}</p>
-                      <p className="mt-1.5 text-[15px] leading-relaxed text-text-secondary">{body}</p>
-                    </div>
-                  </div>
+            {/* Desktop only: the price list at a glance, each linking to its own page. Phones go straight to the cards. */}
+            <nav aria-label={s('servicesNav', lang)} className="hidden rounded-3xl border border-border bg-card p-6 shadow-elegant lg:block">
+              <p className="text-xs font-bold uppercase tracking-wider text-text-muted">{s('startingAt', lang)}</p>
+              <ul className="mt-3 divide-y divide-border">
+                {HOME_SERVICES_CATALOG.map((service) => (
+                  <li key={service.slug}>
+                    <Link
+                      href={`/home-services/${service.slug}${lang === 'es' ? '?lang=es' : ''}`}
+                      className="flex min-h-[44px] items-center justify-between gap-4 py-2.5 text-[15px] font-semibold text-text-primary hover:text-secondary"
+                    >
+                      <span className="flex items-center gap-3">
+                        <ServiceIcon icon={service.icon} className="h-4 w-4 text-secondary" />
+                        {t(service.name, lang)}
+                      </span>
+                      <span className="font-extrabold">{t(service.priceDisplay, lang)}</span>
+                    </Link>
+                  </li>
                 ))}
+              </ul>
+            </nav>
+            </div>
+          </div>
+        </section>
+
+        {/* SERVICES */}
+        <section id="services" aria-labelledby="services-title" className="scroll-mt-20 bg-background-soft py-14 md:py-20">
+          <div className="container mx-auto px-4">
+            <div className="mb-8 max-w-2xl">
+              <h2 id="services-title" className="text-3xl font-extrabold leading-[1.1] tracking-tight text-text-primary md:text-4xl">
+                {s('servicesTitle', lang)}
+              </h2>
+              <p className="mt-3 text-lg leading-relaxed text-text-secondary">{s('servicesIntro', lang)}</p>
+            </div>
+            <ServiceCatalog lang={lang} />
+          </div>
+        </section>
+
+        {/* HOW IT WORKS */}
+        <section aria-labelledby="how-title" className="bg-secondary py-14 text-white md:py-20">
+          <div className="container mx-auto px-4">
+            <h2 id="how-title" className="text-3xl font-extrabold tracking-tight md:text-4xl">
+              {s('howItWorks', lang)}
+            </h2>
+            <ol className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {STEPS.map(([title, body], i) => (
+                <li key={title} className="rounded-2xl border border-white/15 bg-white/5 p-6">
+                  <span aria-hidden className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-base font-extrabold text-secondary">
+                    {i + 1}
+                  </span>
+                  <h3 className="mt-4 text-lg font-extrabold tracking-tight">{s(title, lang)}</h3>
+                  <p className="mt-2 text-[15px] leading-relaxed text-white/85">{s(body, lang)}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
+        {/* TRUST */}
+        <section aria-labelledby="trust-title" className="bg-background py-14 md:py-16">
+          <div className="container mx-auto px-4">
+            <h2 id="trust-title" className="text-2xl font-extrabold tracking-tight text-text-primary md:text-3xl">
+              {s('trustTitle', lang)}
+            </h2>
+            <ul className="mt-6 grid gap-4 md:grid-cols-3">
+              {[
+                { Icon: BadgeCheck, key: 'trustHic' as const },
+                { Icon: ShieldCheck, key: 'trustInsured' as const },
+                { Icon: MapPin, key: 'trustArea' as const },
+              ].map(({ Icon, key }) => (
+                <li key={key} className="flex items-center gap-3 rounded-2xl border border-border bg-card p-5 shadow-card">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-teal/10 text-accent-teal">
+                    <Icon aria-hidden className="h-5 w-5" />
+                  </span>
+                  <span className="text-[15px] font-bold text-text-primary">{s(key, lang)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        {/* FAQ */}
+        <section aria-labelledby="faq-title" className="bg-background-soft py-14 md:py-16">
+          <div className="container mx-auto max-w-3xl px-4">
+            <h2 id="faq-title" className="text-2xl font-extrabold tracking-tight text-text-primary md:text-3xl">
+              {s('faqTitle', lang)}
+            </h2>
+            <div className="mt-6 divide-y divide-border rounded-2xl border border-border bg-card">
+              {FAQ.map(([q, a]) => (
+                <details key={q} className="group p-5">
+                  <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-4 text-[17px] font-bold text-text-primary">
+                    <h3>{s(q, lang)}</h3>
+                    <ArrowDown aria-hidden className="h-5 w-5 shrink-0 text-secondary transition-transform group-open:rotate-180" />
+                  </summary>
+                  <p className="mt-2 text-[15px] leading-relaxed text-text-secondary">{s(a, lang)}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* HOME CARE */}
+        <section aria-labelledby="homecare-title" className="bg-background py-14 md:py-20">
+          <div className="container mx-auto px-4">
+            <div className="relative overflow-hidden rounded-3xl border border-border bg-card p-8 shadow-elegant md:p-12">
+              <div aria-hidden className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-primary via-accent-sunset to-accent-tangerine" />
+              <p className="text-xs font-bold uppercase tracking-wider text-secondary">{s('homeCareEyebrow', lang)}</p>
+              <h2 id="homecare-title" className="mt-3 max-w-2xl text-2xl font-extrabold tracking-tight text-text-primary md:text-3xl">
+                {s('homeCareTitle', lang)}
+              </h2>
+              <p className="mt-3 max-w-2xl text-[17px] leading-relaxed text-text-secondary">{s('homeCareBody', lang)}</p>
+              <div className="mt-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+                <span className="rounded-full bg-accent-teal px-4 py-2 text-sm font-extrabold text-white">{s('homeCarePrice', lang)}</span>
+                <Link
+                  href="/home-care"
+                  className="inline-flex min-h-[52px] items-center gap-2 rounded-xl bg-secondary px-6 py-3 text-[17px] font-bold text-white transition-transform hover:-translate-y-[1px]"
+                >
+                  {s('homeCareCta', lang)}
+                  <ArrowRight aria-hidden className="h-5 w-5" />
+                </Link>
               </div>
             </div>
-          </div>
-        </section>
-
-        {/* IMAGE CARD GRID — visual entry into the service catalog */}
-        <ServiceImageGrid
-          eyebrow="Common requests"
-          title="The work most homeowners ask us about."
-          intro="Four representative visits that fit a typical week — see the full catalog below for everything in scope."
-          items={HOME_IMAGE_CARDS}
-        />
-
-        {/* SERVICE GRID */}
-        <section className="bg-background-soft py-16 md:py-24" id="services">
-          <div className="container mx-auto px-4">
-            <div className="mb-12 grid gap-6 lg:grid-cols-2 lg:items-end lg:gap-14">
-              <h2 className="text-3xl font-extrabold leading-[1.1] tracking-tight text-text-primary md:text-4xl lg:text-5xl">
-                For homeowners who need{" "}
-                <span className="bg-gradient-to-r from-primary to-accent-sunset bg-clip-text text-transparent">
-                  one reliable contractor.
-                </span>
-              </h2>
-              <p className="text-lg leading-relaxed text-text-secondary">
-                Choose the type of help you need. We confirm the right scope
-                after reviewing photos, access, timing, and any trade or permit
-                requirements.
-              </p>
-            </div>
-
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {HOME_SERVICES.map((service) => (
-                <ServiceTile key={service.slug} service={service} />
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* PROCESS — navy band */}
-        <section className="bg-secondary py-16 md:py-20 text-white" id="process">
-          <div className="container mx-auto px-4">
-            <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/15 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-primary-light">
-              Our Process
-            </span>
-            <h2 className="mt-4 text-3xl font-extrabold leading-[1.05] tracking-tight md:text-4xl lg:text-5xl">
-              A better way to handle the small stuff.
-            </h2>
-            <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/75">
-              Send photos, describe the issue, and we&apos;ll help sort whether
-              it&apos;s a quick service visit, a bundled punch-list day, or a
-              larger quoted project.
-            </p>
-
-            <div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                { num: 1, title: "Send photos", body: "Show us the issue, access, and property condition." },
-                { num: 2, title: "Confirm scope", body: "We flag what fits, what doesn't, and what needs a trade." },
-                { num: 3, title: "Schedule visit", body: "Limited openings keep the schedule reliable." },
-                { num: 4, title: "Document work", body: "You get clear notes on what was handled." },
-              ].map(({ num, title, body }) => (
-                <div
-                  key={num}
-                  className="rounded-2xl border border-white/12 bg-white/5 p-6 transition-all hover:-translate-y-[2px] hover:border-primary/45"
-                >
-                  <p className="text-[11px] font-extrabold uppercase tracking-widest text-primary-light">
-                    Step {num}
-                  </p>
-                  <h3 className="mt-3 text-[17px] font-extrabold tracking-tight">{title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-white/70">{body}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* LARGER REMODELING PROJECTS — links to existing /services/[slug] SEO pages */}
-        <section className="bg-background py-16 md:py-20">
-          <div className="container mx-auto px-4">
-            <div className="mb-10 max-w-3xl">
-              <span className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-primary">
-                Planning a remodel?
-              </span>
-              <h2 className="mt-4 text-3xl font-extrabold leading-[1.1] tracking-tight text-text-primary md:text-4xl">
-                Larger remodeling projects, handled by the{" "}
-                <span className="bg-gradient-to-r from-primary to-accent-sunset bg-clip-text text-transparent">
-                  same GC team.
-                </span>
-              </h2>
-              <p className="mt-4 text-base leading-relaxed text-text-secondary">
-                If you&apos;re past service-visit scope and into a full
-                remodel — kitchen, bath, basement, addition, or whole-home —
-                use the dedicated project pages to scope the work and get a
-                detailed estimate.
-              </p>
-            </div>
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {REMODELING_LINKS.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="group rounded-2xl border border-border bg-card p-6 shadow-card transition-all hover:-translate-y-[3px] hover:border-primary/30 hover:shadow-elegant"
-                >
-                  <p className="text-[17px] font-extrabold leading-tight tracking-tight text-text-primary">
-                    {link.title}
-                  </p>
-                  <p className="mt-2 text-sm leading-relaxed text-text-muted">{link.body}</p>
-                  <span className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-extrabold uppercase tracking-wider text-primary group-hover:text-primary-dark">
-                    Explore service <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* SCOPE NOTES */}
-        <section className="bg-background-soft py-16" id="scope">
-          <div className="container mx-auto px-4">
-            <h2 className="text-2xl font-extrabold leading-[1.1] tracking-tight text-text-primary md:text-3xl lg:text-4xl">
-              Scope notes that belong on the page.
-            </h2>
-            <p className="mt-4 max-w-4xl text-base leading-relaxed text-text-secondary">
-              Home service and commercial requests vary based on property
-              condition, access, ceiling heights, material selections, parking,
-              permits, hidden damage, and whether licensed specialty trades are
-              required. We confirm the scope before work starts, document what
-              is included, and flag anything that should be quoted separately.
-            </p>
           </div>
         </section>
 
         {/* CLOSER */}
-        <section className="bg-background-subtle py-16 md:py-20 text-center">
+        <section aria-labelledby="closer-title" className="bg-background-subtle py-14 text-center md:py-16">
           <div className="container mx-auto px-4">
-            <span className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-primary">
-              Ready When You Are
-            </span>
-            <h2 className="mx-auto mt-4 max-w-3xl text-3xl font-extrabold leading-[1.05] tracking-tight text-text-primary text-balance md:text-4xl lg:text-5xl">
-              Send photos. Get a practical plan. Reserve a service opening.
+            <h2 id="closer-title" className="text-2xl font-extrabold tracking-tight text-text-primary md:text-3xl">
+              {s('closerTitle', lang)}
             </h2>
-            <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-text-secondary md:text-lg">
-              Tell us what you need, attach a few photos, and we&apos;ll confirm
-              whether it fits a service visit, a bundled punch-list day, or a
-              custom quoted project.
-            </p>
-            <div className="mt-8 flex flex-wrap justify-center gap-3.5">
-              <a
-                href="tel:+12012124917"
-                className="group inline-flex items-center gap-3 rounded-xl bg-gradient-to-r from-primary via-accent-sunset to-accent-tangerine bg-[length:400%_100%] animate-gradient px-6 py-4 font-bold text-white shadow-button transition-transform hover:-translate-y-[2px]"
-              >
-                <span className="flex flex-col items-start text-left">
-                  <span className="text-base leading-tight">Call (201) 212-4917</span>
-                  <span className="text-xs font-semibold opacity-90">Fastest for urgent items</span>
-                </span>
-                <Phone className="h-5 w-5" />
-              </a>
-              <a
-                href="mailto:info@lavacagc.com"
-                className="inline-flex items-center gap-3 rounded-xl border-2 border-secondary bg-card px-6 py-4 font-bold text-secondary transition-all hover:bg-secondary hover:text-white"
-              >
-                <span className="flex flex-col items-start text-left">
-                  <span className="text-base leading-tight">Email Photos</span>
-                  <span className="text-xs font-semibold opacity-80">info@lavacagc.com</span>
-                </span>
-                <Mail className="h-5 w-5" />
-              </a>
-            </div>
-          </div>
-        </section>
-
-        {/* GUARANTEE — navy band */}
-        <section className="relative overflow-hidden bg-secondary py-16 text-center text-white">
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 18% 30%, rgba(238,150,57,0.16), transparent 40%), radial-gradient(circle at 82% 70%, rgba(255,111,49,0.10), transparent 40%)",
-            }}
-          />
-          <div className="container relative mx-auto px-4">
-            <h2 className="text-3xl font-extrabold leading-tight tracking-tight md:text-4xl">
-              Free 30-Minute Walk-Through.{" "}
-              <span className="bg-gradient-to-r from-primary to-accent-sunset bg-clip-text text-transparent">
-                No commitment.
-              </span>
-            </h2>
-            <p className="mx-auto mt-3 max-w-xl text-base leading-relaxed text-white/80">
-              We meet your house or property, you meet your tech, and you decide.
-            </p>
-            <div className="mt-7 flex flex-wrap justify-center gap-3.5">
-              <Link
-                href="/request-estimate"
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary via-accent-sunset to-accent-tangerine bg-[length:400%_100%] animate-gradient px-6 py-3.5 text-base font-bold text-white shadow-button"
-              >
-                Schedule Your Walk-Through
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <a
-                href="tel:+12012124917"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/45 px-6 py-3.5 text-base font-bold text-white transition-all hover:border-white hover:bg-white hover:text-secondary"
-              >
-                <Phone className="h-4 w-4" />
-                (201) 212-4917
-              </a>
-            </div>
+            <p className="mx-auto mt-3 max-w-xl text-[17px] leading-relaxed text-text-secondary">{s('closerBody', lang)}</p>
+            <a
+              href={PHONE_HREF}
+              className="mt-6 inline-flex min-h-[52px] items-center gap-2 rounded-xl border-2 border-secondary bg-card px-6 py-3 text-[17px] font-bold text-secondary transition-colors hover:bg-secondary hover:text-white"
+            >
+              <Phone aria-hidden className="h-5 w-5" />
+              {s('callUs', lang)}
+            </a>
           </div>
         </section>
       </main>
 
-      <ServicesBottomTabs active="home" />
+      <ServicesBottomTabs active="home" quoteHref="#services" />
       <Footer />
     </div>
   );

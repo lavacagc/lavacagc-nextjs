@@ -2,6 +2,7 @@ import { MetadataRoute } from 'next'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { Database } from '@/integrations/supabase/types'
 import { getAllResourceSlugs } from '@/data/resourceData'
+import { SERVICE_SLUGS } from '@/lib/home-services/catalog'
 
 // Create a static client for build-time data fetching (no cookies/SSR)
 function getStaticSupabaseClient() {
@@ -40,6 +41,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'monthly',
       priority: 0.9,
     },
+    // One page per priced home service (LP10), from the catalog so a new
+    // service cannot ship without its sitemap entry.
+    ...SERVICE_SLUGS.map((slug) => ({
+      url: `${baseUrl}/home-services/${slug}`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly' as const,
+      priority: 0.8,
+    })),
+    // The Spanish versions are their own canonical URLs (?lang=es), the ones
+    // Spanish listing links use, so they are listed too.
+    ...['', ...SERVICE_SLUGS.map((slug) => `/${slug}`)].map((suffix) => ({
+      url: `${baseUrl}/home-services${suffix}?lang=es`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly' as const,
+      priority: 0.7,
+    })),
     {
       url: `${baseUrl}/commercial-services`,
       lastModified: currentDate,
