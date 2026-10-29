@@ -1,6 +1,6 @@
 # Decision 006 - questions raised by the Phase 2 build
 
-Raised by the builders and reviewers on 2026-10-29. Recommended answers are marked; nothing is decided until Alex answers.
+Raised by the builders and reviewers on 2026-10-29. Answered by Alex the same day on the Phase 2 review page: Q19 delete the sentence (not reword); Q20 lock both sentences as proposed; Q21 serve Union County (add it to the counties, ZIP map and SEO copy, against the recommendation to drop it); Q22 the article skill writes social copy at publish time; Q23 hourly publish cron.
 
 ---
 
