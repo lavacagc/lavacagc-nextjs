@@ -53,6 +53,12 @@ const ExitIntentPopup = () => {
       pathname.startsWith('/privacy-policy') ||
       pathname.startsWith('/terms-and-conditions') ||
       pathname.startsWith('/home-care') ||
+      // The request flow sheet owns Back on these pages (#request; acceptance
+      // criteria LP4). This component's extra history entry made the first
+      // Back press land on a second #request entry, so the sheet did not close
+      // for a first-time visitor - and a newsletter pitch mid-request is the
+      // wrong thing to say anyway.
+      pathname.startsWith('/home-services') ||
       // Private tokenized pages. Somebody reading their own priced proposal is
       // already a customer, and this fires exactly when they move to leave -
       // which on /proposal is the moment they are closing a page we asked them
