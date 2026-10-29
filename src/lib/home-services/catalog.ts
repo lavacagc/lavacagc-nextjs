@@ -434,8 +434,8 @@ export const HOME_SERVICES_CATALOG: HomeService[] = [
     },
     faq: [
       costFaq({ en: 'exterior painting', es: 'la pintura exterior' }, {
-        en: '$2.95 per square foot of painted wall, with a $3,600 job minimum: power wash, scrape and prime bare spots, two coats. A typical two-story colonial runs $6,000 to $9,000; trim, doors and three-story work add to it, and the price is firm before a brush touches the house.',
-        es: '$2.95 por pie cuadrado de pared pintada, con un mínimo de $3,600 por trabajo: lavado a presión, raspado e imprimación de zonas desnudas y dos capas. Una casa colonial de dos pisos típica sale entre $6,000 y $9,000; molduras, puertas y tres pisos suben el precio, y el precio es firme antes de empezar.',
+        en: '$2.95 per square foot of painted wall, with a $3,600 job minimum: power wash, scrape and prime bare spots, two coats. Trim, doors and three-story work add to it, and the price is firm before a brush touches the house.',
+        es: '$2.95 por pie cuadrado de pared pintada, con un mínimo de $3,600 por trabajo: lavado a presión, raspado e imprimación de zonas desnudas y dos capas. Molduras, puertas y tres pisos suben el precio, y el precio es firme antes de empezar.',
       }),
       { q: { en: 'How is square footage measured?', es: '¿Cómo se mide el área?' }, a: { en: 'Painted wall surface, not floor area. We confirm it from your photos and a quick site visit for larger homes.', es: 'Superficie de pared pintada, no área de piso. La confirmamos con sus fotos y una visita rápida en casas grandes.' } },
       { q: { en: 'When is painting season?', es: '¿Cuándo es la temporada de pintura?' }, a: { en: 'April to October in North Jersey, when nights stay above 50°F. Book early; crews fill up by May.', es: 'De abril a octubre en el norte de Nueva Jersey, cuando las noches se mantienen arriba de 50°F. Reserve temprano; los equipos se llenan en mayo.' } },

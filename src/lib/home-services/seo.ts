@@ -67,11 +67,11 @@ export function serviceJsonLd(service: HomeService, lang: Lang): Record<string, 
 
 /**
  * A flat starting price is `price`. A per-unit price with a job minimum (today
- * only exterior painting: $2.95 per square foot, $3,500 minimum) is a
- * UnitPriceSpecification instead, so it never reads as a $2.95 job (review D12).
+ * only exterior painting, priced per square foot with a job minimum) is a
+ * UnitPriceSpecification instead, so the unit price never reads as the job price (review D12).
  * The unit is the UN/CEFACT code FTK (square foot) per one unit, and the job
  * minimum is `eligibleTransactionVolume`, schema.org's "minimal purchasing
- * volume"; `minPrice` would instead claim the unit price itself starts at $3,500.
+ * volume"; `minPrice` would instead claim the unit price itself starts at the minimum.
  */
 function offerFor(service: HomeService, lang: Lang, url: string): Record<string, unknown> {
   const base = {
