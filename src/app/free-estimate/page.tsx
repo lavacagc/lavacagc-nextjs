@@ -244,6 +244,8 @@ async function getProjects(): Promise<Project[]> {
       .select(`
         id, title, location, service_types, challenge, solution, url_slug
       `)
+      // Drafts and archived projects are active=false and must never render publicly.
+      .eq('active', true)
       .order('created_at', { ascending: false });
 
     if (error || !data) return [];
