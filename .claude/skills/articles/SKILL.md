@@ -104,7 +104,6 @@ node scripts/ingest-article.mjs publish <post id> --social docs/social/<slug>.md
 ## 8. Social PR, then Postiz drafts
 
 Only after exit 0: commit the social file alone on a branch from main and open its PR (no Co-Authored-By line), then queue the posts as Postiz drafts for Alex to approve (never posted from here).
-
 A docs-only social PR is the one change that may skip the no-mistakes gate (CLAUDE.md, "Shipping changes"); the time suffix keeps a second run on the same day from colliding with the first branch.
 
 ```bash
@@ -112,7 +111,6 @@ git fetch origin && git switch -c social/<slug>-<YYYY-MM-DD>-<HHMM> origin/main 
 git commit -m "docs(social): <article title>" && git push -u origin HEAD && gh pr create --fill
 node scripts/postiz-drafts.mjs --file docs/social/<slug>.md --postiz "$POSTIZ_URL"
 ```
-
 Needs `POSTIZ_API_KEY`, plus `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` for the hosted instance; it skips channels that already have the post, and on a failure (401, 403, 429) you report its message, the article staying published.
 
 ## 9. Report
