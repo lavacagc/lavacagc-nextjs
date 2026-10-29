@@ -47,6 +47,24 @@ const BAD_BOT_PATTERNS = [
   /headlesschrome/i,
 ];
 
+/**
+ * Pages reached by a signed one-tap link that the owner may open from any
+ * client (Telegram's in-app browser, a desktop app, a script). The token is
+ * the whole credential and is checked before anything is read, so the
+ * user-agent filter adds nothing there and could only stand between the owner
+ * and an undo (Phase 2 SEC2: the unpublish link is excluded from the bot
+ * filter). Exact prefixes; nothing else on the site is exempt.
+ */
+const BOT_FILTER_EXEMPT_PREFIXES = [
+  '/articles/unpublish/', '/api/articles/unpublish/',
+  // Slice H: the experiment veto link and its one button, same reasoning.
+  '/experiments/veto/', '/api/experiments/veto',
+];
+
+function isBotFilterExempt(pathname: string): boolean {
+  return BOT_FILTER_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
 function isBadBot(ua: string): boolean {
   return BAD_BOT_PATTERNS.some(p => p.test(ua));
 }
@@ -231,7 +249,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Block known bad bots (unless they're spoofing a good bot UA)
-  if (ua && isBadBot(ua) && !isGoodBot(ua)) {
+  if (ua && isBadBot(ua) && !isGoodBot(ua) && !isBotFilterExempt(pathname)) {
     return new NextResponse('Forbidden', { status: 403 });
   }
 

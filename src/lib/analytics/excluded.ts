@@ -30,6 +30,7 @@ export const ANALYTICS_EXCLUDED_PATTERNS: RegExp[] = [
   /^\/experiments\//,  // experiment veto link - the signed token is in the URL
   /^\/preferences/,    // email preference centre - token in the query string
   /^\/unsub/,          // unsubscribe - carries an address or a token
+  /^\/articles\/unpublish\//, // one-tap article unpublish - the signed link is the credential
 ];
 
 /** True when third-party analytics must not load or report on this path. */

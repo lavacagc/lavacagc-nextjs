@@ -162,8 +162,8 @@ verification stays a **manual pre-gate step**.
 - Testing off production: `docs/local-rig.md` (local Supabase, admin sign-in, dev versus production build on the rig).
 - Home Services build (priced services, request flow, bids, CTA tests, portfolio drafts): `docs/home-services/` (audit, acceptance criteria, follow-ups, reports) and `docs/decisions/`.
 - Claude Code project ingest: `docs/projects-ingest.md`.
-- Claude Code article routes and CLI (write, publish, SEO feedback): `docs/articles-ingest.md`.
-- A/B experiments (assignment, funnel, weekly evaluator and veto, agent routes and CLI): `docs/experiments.md`; the weekly routine is the `experiments` skill.
+- Claude Code article routes and CLI (write, publish, SEO feedback, publish guard, unpublish link): `docs/articles-ingest.md`; the skill that drives them: `.claude/skills/articles/SKILL.md`.
+- A/B experiments (assignment, funnel, evaluator and veto, agent routes and CLI): `docs/experiments.md`; the routine that drives them: `.claude/skills/experiments/SKILL.md`.
 
 ## Path Aliases
 

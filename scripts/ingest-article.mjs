@@ -14,8 +14,9 @@
  *
  * --file is markdown; when it starts with "# Title" and --title is not given,
  * that line is the title and is left out of the body. --faq is a JSON file
- * holding [{ "q": "...", "a": "..." }]. A publish the fact-lock refuses or the guard holds exits 2 and
- * prints the reasons; any other failure exits 1.
+ * holding [{ "q": "...", "a": "..." }]. A publish the fact-lock refuses or the
+ * guard holds, or a patch the guard refuses on a live post, exits 2 and prints
+ * the reasons; any other failure exits 1.
  *
  * Common: --site (default ARTICLE_INGEST_SITE, PROJECT_INGEST_SITE, then
  * https://www.lavacagc.com), --token (default PROJECT_INGEST_TOKEN).
@@ -152,10 +153,13 @@ async function publish(ctx, id, actionId) {
     console.error('Held for review, not published:');
     for (const reason of data.hold ?? []) console.error(`  - ${reason}`);
     console.error(`Fix the article and publish again, or leave it for Alex: ${data.adminUrl}`);
+    if (data.telegram) console.error(`Telegram to Alex: ${data.telegram}`);
     process.exit(2);
   }
   if (status !== 200) fail(explain(status, data, 'publish'));
   console.log(`Published: ${data.url}`);
+  if (data.unpublish_url) console.log(`Unpublish link (7 days): ${data.unpublish_url}`);
+  if (data.telegram) console.log(`Telegram to Alex: ${data.telegram}`);
 }
 
 function summarize(feedback) {
@@ -171,6 +175,11 @@ function summarize(feedback) {
   }
   lines.push(`New article candidates: ${feedback.new_article_candidates.length}`);
   for (const c of feedback.new_article_candidates.slice(0, 5)) lines.push(`  "${c.query}"  ${c.impressions} impressions`);
+  if (Array.isArray(feedback.facts)) {
+    lines.push('Locked facts (quote verbatim):');
+    for (const f of feedback.facts) lines.push(`  ${f.key}: ${f.value}`);
+  }
+  if (Array.isArray(feedback.counties)) lines.push(`Counties: ${feedback.counties.join(', ')}`);
   return lines.join('\n');
 }
 
@@ -214,6 +223,11 @@ async function main() {
     if (Object.keys(body).filter((k) => k !== 'action_id').length === 0) fail('patch needs at least one field to change');
     const { status, data } = await api(ctx, 'PATCH', `/api/articles/ingest/${id}`, body);
     if (ctx.dryRun) return;
+    if (status === 409 && Array.isArray(data.hold)) {
+      console.error('Refused: this post is live and the change would not pass the publish guard. Nothing was changed.');
+      for (const reason of data.hold) console.error(`  - ${reason}`);
+      process.exit(2);
+    }
     if (status !== 200) fail(explain(status, data, 'patch'));
     console.log(`Updated: ${data.id} (${data.published ? 'published' : 'draft'})  ${data.slug}`);
     if (data.action) console.log(`Action:  ${data.action.id} is ${data.action.status}. ${data.action.note ?? ''}`.trim());
