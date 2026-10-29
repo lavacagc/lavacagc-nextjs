@@ -125,9 +125,17 @@ export function normalizeAddress(address: string): string {
     .trim();
 }
 
-/** `<addr>|<zip>|<slugs sorted, joined by +>` (contract). */
-export function dedupeKey(address: string, zip: string, services: string[]): string {
-  return `${normalizeAddress(address)}|${normalizeZip(zip)}|${[...services].sort().join('+')}`;
+/**
+ * `<addr>|<zip>|<slugs sorted, joined by +>|<phone digits>`.
+ *
+ * The phone is part of the key (review D3, Fable's ruling): only the same
+ * person repeating a request merges. Without it, anyone who knew an address
+ * could learn that someone there had asked, overwrite that household's
+ * answers and attach photos to their request, and a second household member
+ * or tenant got no lead row and no alert of their own.
+ */
+export function dedupeKey(address: string, zip: string, services: string[], phone: string): string {
+  return `${normalizeAddress(address)}|${normalizeZip(zip)}|${[...services].sort().join('+')}|${phone.replace(/\D/g, '').slice(-10)}`;
 }
 
 /** leads.project_timeline values the other forms already use. */
@@ -283,7 +291,7 @@ export function alertDetailLines(
 ): string[] {
   const lines = [
     `Address: ${req.address}${req.town ? `, ${req.town}` : ''} ${req.zip}`.trim(),
-    `County: ${countyForZip(req.zip) ?? 'outside Essex, Morris and Bergen (in area by town or scorer ZIP)'}`,
+    `County: ${countyForZip(req.zip) ?? 'outside Essex, Morris and Bergen (in the scorer ZIP list)'}`,
     `Timing: ${timingLabel(req.timing, 'en')}`,
     `Language: ${req.language === 'es' ? 'Spanish' : 'English'}`,
   ];

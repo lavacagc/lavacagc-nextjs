@@ -4,12 +4,14 @@
  * it again before anything is saved. Both import this function, so the browser
  * can never be warm about a ZIP the server then declines.
  *
- * In area when ANY of these holds:
- *   1. the ZIP is in Essex, Morris or Bergen County (countyZips.ts) - the
- *      counties the page copy promises;
- *   2. the ZIP is in the remodel scorer's SERVICE_ZIPS (leadScoring.ts), so
- *      nothing the scorer calls local is ever declined here (Clifton, Rahway);
- *   3. the town is in the scorer's SERVICE_AREAS, for a ZIP missing from both.
+ * When a five-digit ZIP is present it decides by itself (review D11, Fable's
+ * ruling): in area when it is in Essex, Morris or Bergen County
+ * (countyZips.ts, the counties the page copy promises) or in the remodel
+ * scorer's SERVICE_ZIPS (leadScoring.ts, so nothing the scorer calls local is
+ * declined here: Clifton, Rahway). A town cannot rescue a ZIP the lists
+ * decline, so a crafted request cannot claim "Montclair" for a Basking Ridge
+ * ZIP. Only when the ZIP is missing or malformed does the town decide, against
+ * the scorer's SERVICE_AREAS.
  *
  * Import-light: no server code, safe in client components.
  */
@@ -26,7 +28,7 @@ export function normalizeZip(raw: string | null | undefined): string {
 
 export function isInServiceArea(input: { zip?: string | null; town?: string | null }): boolean {
   const zip = normalizeZip(input.zip);
-  if (zip && (zipInServiceCounties(zip) || SERVICE_ZIPS.includes(zip))) return true;
+  if (ZIP_RE.test(zip)) return zipInServiceCounties(zip) || SERVICE_ZIPS.includes(zip);
   const town = String(input.town ?? '').trim().toLowerCase();
   return town.length > 0 && cityInServiceArea(town);
 }

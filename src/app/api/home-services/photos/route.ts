@@ -30,6 +30,14 @@ export const runtime = 'nodejs';
 
 const RATE_LIMIT_MAX = 30;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+/**
+ * A daily ceiling per IP as well (review D8). The 10-per-token cap can be
+ * sidestepped by never sending a token (each call then mints a fresh one), so
+ * without this only the burst limit bounded storage: 30 every 10 minutes is
+ * over 4,000 a day. A real homeowner uploads at most 10 per request.
+ */
+const DAILY_MAX = 60;
+const DAILY_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** Multipart framing and the token field on top of the file itself. */
 const MAX_REQUEST_BYTES = MAX_PHOTO_BYTES + 64 * 1024;
 
@@ -45,9 +53,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'too_large' }, { status: 413 });
     }
 
-    const rl = await checkRateLimit(`hs-photo:${getClientIp(request)}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
+    const ip = getClientIp(request);
+    const rl = await checkRateLimit(`hs-photo:${ip}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
     if (!rl.allowed) {
       return NextResponse.json({ error: 'rate_limited' }, { status: 429, headers: { 'Retry-After': String(rl.retryAfter ?? 600) } });
+    }
+    const daily = await checkRateLimit(`hs-photo-day:${ip}`, DAILY_MAX, DAILY_WINDOW_MS);
+    if (!daily.allowed) {
+      return NextResponse.json({ error: 'rate_limited' }, { status: 429, headers: { 'Retry-After': String(daily.retryAfter ?? 86400) } });
     }
 
     let form: FormData;

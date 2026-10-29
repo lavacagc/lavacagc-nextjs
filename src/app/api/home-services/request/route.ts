@@ -20,6 +20,7 @@
  * lives by, applied one table further.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
 import { sanitizeLeadForInsert } from '@/lib/leadSanitize';
 import { createLeadFollowUpSequence } from '@/lib/notify/leadFollowUp';
@@ -65,9 +66,13 @@ function isE2eRecaptchaBypass(token: string | null | undefined): boolean {
   return Boolean(expected && expected.length >= 32 && process.env.VERCEL_ENV !== 'production' && token === expected);
 }
 
-/** What a bot that tripped the honeypot or the timer is told: the same shape as success, nothing saved. */
+/**
+ * What a bot that tripped the honeypot or the timer is told: exactly the shape
+ * of a success, with a random request id (review D10), so the answer does not
+ * reveal that nothing was saved.
+ */
 function silentOk() {
-  return NextResponse.json({ ok: true, request_id: null, status: 'new', verification: 'skipped', merged: false });
+  return NextResponse.json({ ok: true, request_id: randomUUID(), status: 'new', verification: 'skipped', merged: false });
 }
 
 /** Same-origin path the visitor submitted from, e.g. /home-services/gutter-cleaning. Query dropped. */
@@ -160,10 +165,10 @@ export async function POST(request: NextRequest) {
     }
 
     const attribution = readAttribution((name) => request.cookies.get(name)?.value);
-    const key = dedupeKey(req.address, req.zip, req.services);
+    const key = dedupeKey(req.address, req.zip, req.services, req.phone);
     const since = new Date(Date.now() - DEDUPE_WINDOW_MS).toISOString();
 
-    // ---- Dedupe: same address + same services within 24 h merges -----------
+    // ---- Dedupe: same address + services + phone within 24 h merges ---------
     const existing = await supabaseRest<ExistingRequest[]>(
       'GET',
       `home_service_requests?select=id,status,answers,merged_count,notes,first_name,phone` +
@@ -172,7 +177,8 @@ export async function POST(request: NextRequest) {
     if (existing?.[0]) {
       const prior = existing[0];
       const noteParts: string[] = [];
-      const differentContact = prior.phone !== req.phone || prior.first_name !== req.firstName;
+      // Same phone by construction of the key; a different name is still worth keeping.
+      const differentContact = prior.first_name !== req.firstName;
       if (differentContact || req.notes) {
         const who = differentContact ? ` from ${req.firstName} ${req.lastName}, ${req.phone}${req.email ? `, ${req.email}` : ''}` : '';
         noteParts.push(`[merged ${new Date().toISOString()}${who}]${req.notes ? ` ${req.notes}` : ''}`);
