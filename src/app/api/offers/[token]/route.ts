@@ -53,6 +53,9 @@ const schema = z.discriminatedUnion('action', [
   }),
 ]);
 
+/** The custom messages the schema above raises; the page maps each to a sentence. */
+const SCHEMA_CODES = new Set(['price_required', 'details_required']);
+
 const tokenBucket = (token: string) => createHash('sha256').update(token).digest('hex').slice(0, 32);
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
@@ -93,7 +96,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
   const parsed = schema.safeParse(raw);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'invalid_body' }, { status: 400 });
+    // Only this route's own codes go back to the caller (security review F3):
+    // a library message names the schema's internals, e.g. every decline reason.
+    const code = parsed.error.issues[0]?.message;
+    return NextResponse.json({ error: code && SCHEMA_CODES.has(code) ? code : 'invalid_body' }, { status: 400 });
   }
   if (files.length > 0 && parsed.data.action !== 'details') {
     return NextResponse.json({ error: 'invalid_body' }, { status: 400 });
