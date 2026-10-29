@@ -1,7 +1,8 @@
 /**
- * Sticky, even, reproducible variant assignment. Pure functions, client-safe.
+ * Even, reproducible variant assignment. Pure, client-safe.
  *
- * The `cta_v` cookie holds `P=<key>;S=<key>;R=<seed>`. `R` is a random
+ * The `cta_v` cookie holds `P=<key>;S=<key>;R=<seed>` (written and read only
+ * by the pre-paint script, bootstrap.ts). `R` is a random
  * per-visitor assignment seed (32 hex chars) drawn by the pre-paint script on
  * the first visit; P and S are the keys that visitor was served. A raw `;` or
  * `=` is not legal in a cookie value, so the value is stored URI-encoded.
@@ -10,8 +11,6 @@
  * httpOnly (it is the COUNTING identity, see /api/cta/event) and does not exist
  * yet when a first-time visitor's buttons have to be chosen before first paint.
  */
-import type { CtaButton, CtaVariant, CtaVariantKey } from './types';
-import { isCtaVariantKey } from './types';
 
 /**
  * Index of the variant for (seed, button) among `count` active variants.
@@ -37,59 +36,4 @@ export function ctaIndex(s: string, b: string, n: number): number {
   h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
   h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
   return ((h ^ (h >>> 16)) >>> 0) % n;
-}
-
-export function pickVariant<T extends Pick<CtaVariant, 'variant_key'>>(
-  active: readonly T[],
-  seed: string,
-  button: CtaButton,
-): T | undefined {
-  if (active.length === 0) return undefined;
-  return active[ctaIndex(seed, button, active.length)];
-}
-
-export interface CtaAssignment {
-  primary?: CtaVariantKey;
-  secondary?: CtaVariantKey;
-  seed?: string;
-}
-
-export const SEED_PATTERN = /^[0-9a-f]{32}$/;
-
-export function parseAssignmentCookie(raw: string | undefined | null): CtaAssignment {
-  const out: CtaAssignment = {};
-  if (!raw) return out;
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(raw);
-  } catch {
-    return out;
-  }
-  for (const part of decoded.split(';')) {
-    const [letter, value] = part.split('=').map((s) => s.trim());
-    if (letter === 'R' && SEED_PATTERN.test(value ?? '')) out.seed = value;
-    else if (!isCtaVariantKey(value)) continue;
-    else if (letter === 'P') out.primary = value;
-    else if (letter === 'S') out.secondary = value;
-  }
-  return out;
-}
-
-export function serializeAssignmentCookie(assignment: CtaAssignment): string {
-  const parts: string[] = [];
-  if (assignment.primary) parts.push(`P=${assignment.primary}`);
-  if (assignment.secondary) parts.push(`S=${assignment.secondary}`);
-  if (assignment.seed) parts.push(`R=${assignment.seed}`);
-  return encodeURIComponent(parts.join(';'));
-}
-
-/** Keep the stored key while it is still active; otherwise assign by hash of the seed. */
-export function resolveVariant<T extends Pick<CtaVariant, 'variant_key'>>(
-  active: readonly T[],
-  stored: CtaVariantKey | undefined,
-  seed: string,
-  button: CtaButton,
-): T | undefined {
-  const kept = stored ? active.find((v) => v.variant_key === stored) : undefined;
-  return kept ?? pickVariant(active, seed, button);
 }

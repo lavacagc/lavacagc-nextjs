@@ -79,10 +79,15 @@ export function compactJs(source: string): string {
   return source.replace(/\s+/g, ' ').replace(/ ?([^\w$ ]) ?/g, '$1').trim();
 }
 
+/** The bootstrap config for these variants (fallback buttons contribute no keys). */
+export function heroCtaBootstrapConfig(variants: HeroCtaVariants): CtaBootstrapConfig {
+  const keys = (list: HeroCtaVariants['primary']) => list.filter((v) => !v.fallback).map((v) => v.variant_key).join('');
+  return { p: keys(variants.primary), s: keys(variants.secondary), a: CTA_COOKIE_MAX_AGE };
+}
+
 /** The inline script for these variants. */
 export function heroCtaBootstrapScript(variants: HeroCtaVariants): string {
-  const keys = (list: HeroCtaVariants['primary']) => list.filter((v) => !v.fallback).map((v) => v.variant_key).join('');
-  const cfg: CtaBootstrapConfig = { p: keys(variants.primary), s: keys(variants.secondary), a: CTA_COOKIE_MAX_AGE };
+  const cfg = heroCtaBootstrapConfig(variants);
   // Function names are dropped (not needed for an expression) to save bytes.
   const fn = (f: (...args: never[]) => unknown) => f.toString().replace(/^function \w+/, 'function');
   // Keys are A-G, so the JSON holds nothing that could close the <script>.

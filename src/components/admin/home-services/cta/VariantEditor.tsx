@@ -41,7 +41,7 @@ export function VariantEditor({ initial, submitLabel, busy, onSubmit, onCancel, 
 
   return (
     <form
-      className="grid gap-3 md:grid-cols-[2fr_2fr_1.4fr_auto] md:items-end"
+      className="grid grid-cols-1 gap-3 md:grid-cols-3 md:items-end [&>*]:min-w-0"
       onSubmit={(e) => {
         e.preventDefault();
         if (wordingMissing || colorInvalid) return;
@@ -89,7 +89,7 @@ export function VariantEditor({ initial, submitLabel, busy, onSubmit, onCancel, 
         </div>
         {colorInvalid && <p className="text-xs text-destructive">Use a hex colour like #1f7a4d.</p>}
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2 md:col-span-3">
         <Button type="submit" disabled={busy || wordingMissing || colorInvalid}>
           {replacing ? `Deactivate ${wordingLocked!.variantKey} and add new variant` : submitLabel}
         </Button>
@@ -100,7 +100,7 @@ export function VariantEditor({ initial, submitLabel, busy, onSubmit, onCancel, 
         )}
       </div>
       {replacing && (
-        <p className="text-sm text-amber-800 md:col-span-4" role="status">
+        <p className="text-sm text-amber-800 md:col-span-3" role="status">
           Variant {wordingLocked!.variantKey} already has views or clicks under its current wording, so its wording
           cannot change. Saving will add a new variant with this wording, switch it on, and switch{' '}
           {wordingLocked!.variantKey} off. Subtext and colour can be edited in place.

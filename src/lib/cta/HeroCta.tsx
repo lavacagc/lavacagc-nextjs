@@ -15,7 +15,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ctaColorStyle } from './color';
-import { HERO_CTA_CSS, heroCtaBootstrapScript } from './bootstrap';
+import { HERO_CTA_CSS, heroCtaBootstrapConfig, heroCtaBootstrapScript } from './bootstrap';
 import { HeroCtaEvents } from './HeroCtaEvents';
 import { CTA_HREF, type CtaButton, type CtaVariant, type HeroCtaVariants } from './types';
 
@@ -69,7 +69,10 @@ export function HeroCta({ variants }: { variants: HeroCtaVariants }) {
     <>
       <style href="hero-cta" precedence="default">{HERO_CTA_CSS}</style>
       <script dangerouslySetInnerHTML={{ __html: heroCtaBootstrapScript(variants) }} />
-      <HeroCtaEvents className="hero-cta flex flex-col sm:flex-row gap-4 justify-center items-stretch mb-12">
+      <HeroCtaEvents
+        config={heroCtaBootstrapConfig(variants)}
+        className="hero-cta flex flex-col sm:flex-row gap-4 justify-center items-stretch mb-12"
+      >
         {variants.primary.map((v, i) => (
           <CtaLink key={`p-${v.variant_key}`} button="primary" variant={v} first={i === 0} />
         ))}

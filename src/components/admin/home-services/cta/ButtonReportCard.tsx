@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import { Pencil, Plus, Trophy } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ctaColorStyle } from '@/lib/cta/color';
+import { cn } from '@/lib/utils';
 import type { CtaButtonReport, CtaVariantStats } from '@/lib/cta/report';
 import { CTA_HREF, MAX_VARIANTS_PER_BUTTON, type CtaVariantKey } from '@/lib/cta/types';
 import type { VariantPatch } from './ctaApi';
@@ -86,82 +87,56 @@ export function ButtonReportCard({ report, minVisitors, busy, onUpdate, onCreate
   const [editing, setEditing] = useState<CtaVariantKey | null>(null);
   const [adding, setAdding] = useState(false);
   const full = report.variants.length >= MAX_VARIANTS_PER_BUTTON;
+  const editingVariant = report.variants.find((v) => v.variant_key === editing) ?? null;
   const onlyActive = report.active_count === 1;
 
   const row = (v: CtaVariantStats) => (
-    <Fragment key={v.variant_key}>
-      <TableRow className={v.active ? undefined : 'text-muted-foreground'} data-testid={`cta-row-${report.button}-${v.variant_key}`}>
-        <TableCell className="font-semibold">
-          {v.variant_key}
-        </TableCell>
-        <TableCell>
-          <div className="font-medium text-foreground">
-            {v.wording}
-            {report.leader?.variant_key === v.variant_key && (
-              <Badge className="ml-2 bg-emerald-600 hover:bg-emerald-600">Leader</Badge>
-            )}
-          </div>
-          {v.subtext && <div className="text-xs text-muted-foreground">{v.subtext}</div>}
-          <Swatch color={v.color} />
-        </TableCell>
-        <TableCell className="text-right tabular-nums">{formatCount(v.views)}</TableCell>
-        <TableCell className="text-right tabular-nums">{formatCount(v.clicks)}</TableCell>
-        <TableCell className="text-right tabular-nums">{formatRate(v.click_rate)}</TableCell>
-        <TableCell className="text-right tabular-nums">{formatCount(v.requests)}</TableCell>
-        <TableCell className="text-right tabular-nums font-semibold">{formatRate(v.request_rate)}</TableCell>
-        <TableCell className="text-right tabular-nums">{formatCount(v.valid_leads)}</TableCell>
-        <TableCell className="text-right tabular-nums">{formatCount(v.won)}</TableCell>
-        <TableCell className="pl-6">
-          <Switch
-            checked={v.active}
-            disabled={busy || (v.active && onlyActive)}
-            title={v.active && onlyActive ? 'The homepage needs one active variant' : undefined}
-            aria-label={`${v.active ? 'Deactivate' : 'Activate'} ${report.button} variant ${v.variant_key}`}
-            onCheckedChange={(checked) => void onUpdate(v.variant_key, { active: checked })}
-          />
-        </TableCell>
-        <TableCell>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={`Edit ${report.button} variant ${v.variant_key}`}
-            onClick={() => setEditing(editing === v.variant_key ? null : v.variant_key)}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-        </TableCell>
-      </TableRow>
-      {editing === v.variant_key && (
-        <TableRow className="bg-muted/30 hover:bg-muted/30">
-          <TableCell colSpan={11}>
-            <VariantEditor
-              initial={{ wording: v.wording, subtext: v.subtext ?? '', color: v.color ?? '' }}
-              submitLabel="Save"
-              busy={busy}
-              onCancel={() => setEditing(null)}
-              wordingLocked={
-                v.views + v.clicks > 0
-                  ? {
-                      variantKey: v.variant_key,
-                      onReplace: async (draft) => {
-                        if (await onReplace(v.variant_key, draft)) setEditing(null);
-                      },
-                    }
-                  : undefined
-              }
-              onSubmit={async (draft) => {
-                const ok = await onUpdate(v.variant_key, {
-                  wording: draft.wording,
-                  subtext: draft.subtext,
-                  color: draft.color,
-                });
-                if (ok) setEditing(null);
-              }}
-            />
-          </TableCell>
-        </TableRow>
-      )}
-    </Fragment>
+    <TableRow
+      key={v.variant_key}
+      className={cn(!v.active && 'text-muted-foreground', editing === v.variant_key && 'bg-muted/50')}
+      data-testid={`cta-row-${report.button}-${v.variant_key}`}
+    >
+      <TableCell className="font-semibold">
+        {v.variant_key}
+      </TableCell>
+      <TableCell>
+        <div className="font-medium text-foreground">
+          {v.wording}
+          {report.leader?.variant_key === v.variant_key && (
+            <Badge className="ml-2 bg-emerald-600 hover:bg-emerald-600">Leader</Badge>
+          )}
+        </div>
+        {v.subtext && <div className="text-xs text-muted-foreground">{v.subtext}</div>}
+        <Swatch color={v.color} />
+      </TableCell>
+      <TableCell className="text-right tabular-nums">{formatCount(v.views)}</TableCell>
+      <TableCell className="text-right tabular-nums">{formatCount(v.clicks)}</TableCell>
+      <TableCell className="text-right tabular-nums">{formatRate(v.click_rate)}</TableCell>
+      <TableCell className="text-right tabular-nums">{formatCount(v.requests)}</TableCell>
+      <TableCell className="text-right tabular-nums font-semibold">{formatRate(v.request_rate)}</TableCell>
+      <TableCell className="text-right tabular-nums">{formatCount(v.valid_leads)}</TableCell>
+      <TableCell className="text-right tabular-nums">{formatCount(v.won)}</TableCell>
+      <TableCell className="pl-6">
+        <Switch
+          checked={v.active}
+          disabled={busy || (v.active && onlyActive)}
+          title={v.active && onlyActive ? 'The homepage needs one active variant' : undefined}
+          aria-label={`${v.active ? 'Deactivate' : 'Activate'} ${report.button} variant ${v.variant_key}`}
+          onCheckedChange={(checked) => void onUpdate(v.variant_key, { active: checked })}
+        />
+      </TableCell>
+      <TableCell>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={`Edit ${report.button} variant ${v.variant_key}`}
+          aria-pressed={editing === v.variant_key}
+          onClick={() => setEditing(editing === v.variant_key ? null : v.variant_key)}
+        >
+          <Pencil className="h-4 w-4" />
+        </Button>
+      </TableCell>
+    </TableRow>
   );
 
   return (
@@ -194,6 +169,40 @@ export function ButtonReportCard({ report, minVisitors, busy, onUpdate, onCreate
           </TableHeader>
           <TableBody>{report.variants.map(row)}</TableBody>
         </Table>
+        {editingVariant && (
+          // Outside the table on purpose: the table scrolls sideways on a phone,
+          // and an editor inside it would sit off-screen.
+          <div className="rounded-lg border bg-muted/30 p-4" data-testid={`cta-editor-${report.button}`}>
+            <p className="mb-3 text-sm font-medium">
+              Editing {report.button} variant {editingVariant.variant_key}
+            </p>
+            <VariantEditor
+              key={editingVariant.variant_key}
+              initial={{ wording: editingVariant.wording, subtext: editingVariant.subtext ?? '', color: editingVariant.color ?? '' }}
+              submitLabel="Save"
+              busy={busy}
+              onCancel={() => setEditing(null)}
+              wordingLocked={
+                editingVariant.views + editingVariant.clicks > 0
+                  ? {
+                      variantKey: editingVariant.variant_key,
+                      onReplace: async (draft) => {
+                        if (await onReplace(editingVariant.variant_key, draft)) setEditing(null);
+                      },
+                    }
+                  : undefined
+              }
+              onSubmit={async (draft) => {
+                const ok = await onUpdate(editingVariant.variant_key, {
+                  wording: draft.wording,
+                  subtext: draft.subtext,
+                  color: draft.color,
+                });
+                if (ok) setEditing(null);
+              }}
+            />
+          </div>
+        )}
         {adding ? (
           <div className="rounded-lg border p-4">
             <p className="mb-3 text-sm font-medium">New {report.button} variant (added inactive)</p>

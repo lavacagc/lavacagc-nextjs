@@ -10,8 +10,17 @@
  * after another: if a first-time visitor's two views went out in parallel,
  * each would mint its own id and the click that follows would not find its
  * view under the id that stuck.
+ *
+ * Self-healing: if the server render of the page failed and React rendered it
+ * on the client, the inline script was inserted by React and never executed,
+ * so <html> carries no assignment. The same bootstrap then runs here on mount
+ * (seen in dev under load, when Testimonials intermittently fails to render on
+ * the server). Without this, such a visitor would see the first variant and
+ * send nothing.
  */
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { ctaIndex } from './assign';
+import { ctaBootstrap, type CtaBootstrapConfig } from './bootstrap';
 import type { CtaButton } from './types';
 
 type EventType = 'view' | 'click';
@@ -24,7 +33,7 @@ function canStore(): boolean {
   return document.documentElement.getAttribute('data-cta-ok') === '1';
 }
 
-export function HeroCtaEvents({ className, children }: { className?: string; children: ReactNode }) {
+export function HeroCtaEvents({ className, config, children }: { className?: string; config: CtaBootstrapConfig; children: ReactNode }) {
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   // Refs survive React's dev-only double effect run: one load, one view each.
   const viewsSent = useRef(false);
@@ -45,6 +54,11 @@ export function HeroCtaEvents({ className, children }: { className?: string; chi
       )
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!root.hasAttribute('data-cta-p') && !root.hasAttribute('data-cta-s')) ctaBootstrap(config, ctaIndex);
+  }, [config]);
 
   useEffect(() => {
     if (viewsSent.current) return;

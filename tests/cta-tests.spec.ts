@@ -209,6 +209,8 @@ async function visitorIdOf(ctx: BrowserContext): Promise<string> {
 }
 
 let ipCounter = 0;
+/** Every browser context the spec opens, so afterAll can close any a failed test left open. */
+const browserContexts: BrowserContext[] = [];
 /** A fresh visitor. A unique client IP per context keeps the 60/min event limit out of the way. */
 async function freshContext(browser: Browser, extra: Parameters<Browser['newContext']>[0] = {}): Promise<BrowserContext> {
   ipCounter += 1;
@@ -217,6 +219,14 @@ async function freshContext(browser: Browser, extra: Parameters<Browser['newCont
     baseURL: BASE,
     extraHTTPHeaders: { 'cf-connecting-ip': `10.203.${Math.floor(ipCounter / 250)}.${(ipCounter % 250) + 1}` },
     ...extra,
+  });
+  browserContexts.push(ctx);
+  // Record every visitor id the sink mints for this context as it happens, so
+  // afterAll deletes its rows even when a test fails before asking for it.
+  ctx.on('response', async (res) => {
+    if (!res.url().endsWith('/api/cta/event')) return;
+    const id = uuidOfCookie((await res.headerValue('set-cookie').catch(() => null))?.match(/cta_vid=([^;]+)/)?.[1]);
+    if (id) createdVisitors.add(id);
   });
   // Isolate this spec from the project gallery further down the homepage: on
   // the shared local database it renders whatever other slices seeded. The
@@ -233,6 +243,13 @@ async function openHome(page: Page) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => document.documentElement.hasAttribute('data-cta-p'), null, { timeout: 30_000 });
 }
+
+/**
+ * The inline pre-paint <script> in served HTML. Parameter names are matched
+ * loosely because the production build minifies them; the body is matched up
+ * to the first </script>, which the script itself never contains.
+ */
+const BOOTSTRAP_TAG = /<script>(\(function\(\w+,\w+\)\{try\{(?:(?!<\/script>)[\s\S])*?cta_v=(?:(?!<\/script>)[\s\S])*?)<\/script>/;
 
 /** The one link of a button that CSS shows. */
 const shown = (page: Page, button: 'primary' | 'secondary') => page.locator(`a[data-cta-button="${button}"]:visible`);
@@ -269,8 +286,11 @@ async function adminContext(browser: Browser): Promise<{ ctx: BrowserContext; pa
 }
 
 /** An API client with its own cookie jar and client IP, for the event sink tests. */
+const apiClients: APIRequestContext[] = [];
 async function apiClient(ip: string, headers: Record<string, string> = {}): Promise<APIRequestContext> {
-  return pwRequest.newContext({ baseURL: BASE, extraHTTPHeaders: { 'cf-connecting-ip': ip, ...headers } });
+  const api = await pwRequest.newContext({ baseURL: BASE, extraHTTPHeaders: { 'cf-connecting-ip': ip, ...headers } });
+  apiClients.push(api);
+  return api;
 }
 
 async function jarVisitor(api: APIRequestContext): Promise<string | undefined> {
@@ -306,6 +326,15 @@ test.describe('CTA test - live backend', () => {
   });
 
   test.afterAll(async () => {
+    // Contexts a failed test left open: close them, then give in-flight event
+    // posts time to land (and their minted ids to be recorded) before deleting.
+    for (const c of browserContexts) await c.close().catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 2000));
+    // API clients a failed test never disposed: collect their minted ids first.
+    for (const api of apiClients) {
+      await jarVisitor(api).catch(() => undefined);
+      await api.dispose().catch(() => undefined);
+    }
     await rest('DELETE', `cta_events?visitor_id=like.${TAG}-*`, undefined, 'return=minimal');
     const ids = [...createdVisitors];
     for (let i = 0; i < ids.length; i += 50) {
@@ -330,7 +359,7 @@ test.describe('CTA test - live backend', () => {
     }
     expect(html).toMatch(/<a[^>]*data-cta-button="secondary"[^>]*data-cta-variant="A"[^>]*href="\/portfolio"/);
     // The pre-paint script is inline (no src) and under 1 KB as served.
-    const script = /<script>(\(function\(c,x\)[\s\S]*?)<\/script>/.exec(html)?.[1];
+    const script = BOOTSTRAP_TAG.exec(html)?.[1];
     expect(script, 'inline bootstrap script').toBeTruthy();
     expect(Buffer.byteLength(script!)).toBeLessThan(1024);
 
@@ -420,6 +449,7 @@ test.describe('CTA test - live backend', () => {
   });
 
   test('fix 2: the variant is chosen before first paint, even on a throttled phone', async ({ browser }) => {
+    test.setTimeout(120_000);
     for (const seed of [SEED_A, SEED_B]) {
       const phone = devices['iPhone 13'];
       const ctx = await freshContext(browser, {
@@ -438,14 +468,22 @@ test.describe('CTA test - live backend', () => {
             .find((el) => getComputedStyle(el).display !== 'none') as HTMLElement | undefined;
           const s = a ? `${a.dataset.ctaVariant}@${getComputedStyle(a).opacity}` : '-';
           if (w.__ctaFrames[w.__ctaFrames.length - 1] !== s) w.__ctaFrames.push(s);
-          if (performance.now() < 6000) requestAnimationFrame(tick);
+          if (performance.now() < 30000) requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
       });
       const page = await ctx.newPage();
       const cdp = await ctx.newCDPSession(page);
+      // The reviewer's slow-phone profile: CPU 6x and slow 4G.
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
-      await page.goto('/', { waitUntil: 'load' });
+      await cdp.send('Network.enable');
+      await cdp.send('Network.emulateNetworkConditions', {
+        offline: false,
+        latency: 150,
+        downloadThroughput: (1.6 * 1024 * 1024) / 8,
+        uploadThroughput: (750 * 1024) / 8,
+      });
+      await page.goto('/', { waitUntil: 'load', timeout: 90_000 });
       await page.waitForTimeout(1500);
       const frames = await page.evaluate(() => (window as unknown as { __ctaFrames: string[] }).__ctaFrames);
       const expected = ['A', 'B'][ctaIndex(seed, 'primary', 2)];
@@ -454,6 +492,25 @@ test.describe('CTA test - live backend', () => {
       await visitorIdOf(ctx);
       await ctx.close();
     }
+  });
+
+  test('fix 2: if the inline script never ran (client-rendered page), the same assignment is applied after hydration', async ({ browser }) => {
+    const ctx = await freshContext(browser);
+    await withAssignment(ctx, `R=${SEED_B}`);
+    // Serve the homepage without the pre-paint script, as when React renders the page on the client.
+    await ctx.route(/\/$/, async (route) => {
+      if (route.request().resourceType() !== 'document') return route.continue();
+      const res = await route.fetch();
+      const body = (await res.text()).replace(BOOTSTRAP_TAG, '');
+      await route.fulfill({ response: res, body });
+    });
+    const page = await ctx.newPage();
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => document.documentElement.hasAttribute('data-cta-p'));
+    expect(await shownKey(page, 'primary')).toBe(['A', 'B'][ctaIndex(SEED_B, 'primary', 2)]);
+    const vid = await visitorIdOf(ctx);
+    await expectEventCount(vid, (r) => r.event_type === 'view', 2);
+    await ctx.close();
   });
 
   test('fix 2: without JavaScript the first variant of each button shows at once, and links work', async ({ browser }) => {
