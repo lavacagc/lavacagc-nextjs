@@ -20,6 +20,7 @@
  * lives by, applied one table further.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { readCappedJson } from '@/lib/cta/http';
 import { randomUUID } from 'crypto';
 import { scoreLead, prepareLeadForScoring } from '@/lib/leadScoring';
 import { sanitizeLeadForInsert } from '@/lib/leadSanitize';
@@ -100,16 +101,13 @@ interface ExistingRequest {
 
 export async function POST(request: NextRequest) {
   try {
-    const raw = await request.text();
-    if (Buffer.byteLength(raw, 'utf8') > MAX_REQUEST_BODY_BYTES) {
-      return NextResponse.json({ error: 'payload_too_large' }, { status: 413 });
+    // Capped while streaming (security review F4): a missing or false
+    // Content-Length can no longer make the route buffer the whole body first.
+    const read = await readCappedJson(request, MAX_REQUEST_BODY_BYTES);
+    if ('error' in read) {
+      return NextResponse.json({ error: read.status === 413 ? 'payload_too_large' : 'invalid_request' }, { status: read.status });
     }
-    let json: unknown;
-    try {
-      json = JSON.parse(raw);
-    } catch {
-      return NextResponse.json({ error: 'invalid_request' }, { status: 400 });
-    }
+    const json: unknown = read.value;
     const parsed = RequestBodySchema.safeParse(json);
     if (!parsed.success) {
       console.warn('[home-services/request] schema rejected:', parsed.error.issues.slice(0, 3).map((i) => i.path.join('.')));
