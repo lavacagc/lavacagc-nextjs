@@ -7,8 +7,10 @@
  * one from the last deploy, and nothing read it back to notice. This route is
  * the reader. It fetches https://www.lavacagc.com/sitemap.xml the way a
  * crawler does (through the CDN, never in-process, because the served copy is
- * the thing under test), rebuilds the expected entries straight from the
- * database with no cache in between, and reports the difference
+ * the thing under test), rebuilds the expected entries from the database
+ * (posts and projects read uncached; the active home-service slugs through
+ * the catalog's tagged cache, the same one the sitemap uses, which
+ * invalidateCatalog expires on every save), and reports the difference
  * (src/lib/sitemapWatch.ts). A post published two hours ago that is still not
  * listed, a row updated but served with the old lastmod, or an unpublished
  * post still listed is drift; a change younger than the grace window is
@@ -17,8 +19,10 @@
  * It also asks GitHub whether the upstream fix (vercel/next.js#99056) has
  * merged, so the day it does the owner hears that the route-handler
  * workaround can be retired (docs/sitemap.md). That message is sent only
- * while the merge is less than UPSTREAM_ALERT_WINDOW_MS old, so a daily run
- * says it once, not every morning after.
+ * while the merge is less than UPSTREAM_ALERT_WINDOW_MS old (one daily run
+ * plus cron jitter), so it is sent once, in the run after the merge; the JSON
+ * answer carries upstream.merged on every run. GITHUB_TOKEN, when set, is sent
+ * so the call is not held to the unauthenticated rate limit.
  *
  * Telegram goes out on drift, on an unreadable sitemap (503, a Cloudflare
  * challenge, a network error) and on an unreadable database. A healthy day
@@ -37,8 +41,8 @@ export const dynamic = 'force-dynamic';
 export const SITEMAP_URL = `${SITE_URL}/sitemap.xml`;
 const UPSTREAM_PR_API = 'https://api.github.com/repos/vercel/next.js/pulls/99056';
 const UPSTREAM_PR_URL = 'https://github.com/vercel/next.js/pull/99056';
-/** How long after the upstream merge the daily run keeps announcing it. */
-export const UPSTREAM_ALERT_WINDOW_MS = 36 * 60 * 60 * 1000;
+/** How long after the upstream merge the daily run announces it: one run plus cron jitter. */
+export const UPSTREAM_ALERT_WINDOW_MS = 26 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 15_000;
 const USER_AGENT = 'LaVacaGC-SitemapWatch/1.0';
 
@@ -78,9 +82,14 @@ async function fetchServedCopy(): Promise<ServedCopy> {
 type Upstream = { checked: true; merged: boolean; mergedAt: string | null; state: string } | { checked: false; detail: string };
 
 async function checkUpstreamFix(): Promise<Upstream> {
+  const token = process.env.GITHUB_TOKEN;
   try {
     const res = await fetch(UPSTREAM_PR_API, {
-      headers: { 'User-Agent': USER_AGENT, Accept: 'application/vnd.github+json' },
+      headers: {
+        'User-Agent': USER_AGENT,
+        Accept: 'application/vnd.github+json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       cache: 'no-store',
       signal: AbortSignal.timeout(8000),
     });

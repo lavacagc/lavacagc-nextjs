@@ -12,6 +12,14 @@
  * Only blog and project entries carry a date from a database row, so only
  * they are compared by lastmod; every other entry is dated by the clock at
  * generation time and is compared by presence alone.
+ *
+ * The grace window below covers only those row-dated entries. Presence-only
+ * entries (home services) and unexpected entries (an unpublished post, a
+ * deactivated project, a switched-off service) get none on purpose: every
+ * writer that changes what the sitemap lists (a catalog save, an unpublish, a
+ * project deactivation) expires SITEMAP_TAG and revalidates SITEMAP_PATHS on
+ * the spot, so the served copy is refreshed on demand and a difference the
+ * daily run still sees is real.
  */
 import type { MetadataRoute } from 'next'
 import { SITE_URL } from '@/lib/sitemap'

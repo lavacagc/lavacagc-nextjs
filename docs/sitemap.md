@@ -4,7 +4,7 @@
 
 `/sitemap.xml` is a rewrite (next.config.ts) to the route handler `src/app/api/sitemap/route.ts`.
 The entries come from `buildSitemapEntries` in `src/lib/sitemap.ts`; the XML comes from `renderSitemapXml` in `src/lib/sitemapXml.ts`, byte for byte what a `src/app/sitemap.ts` metadata route would render.
-The blog and project lists are cached under `SITEMAP_TAG`, which every blog and project writer expires along with `revalidatePath('/api/sitemap')` (`src/lib/revalidate.ts`), and the route regenerates at least hourly.
+The blog and project lists are cached under `SITEMAP_TAG`, which every blog, project and home-service catalog writer expires along with `revalidatePath('/api/sitemap')` (`src/lib/revalidate.ts`), and the route regenerates at least hourly.
 When the database cannot be read and no cached rows are left, the route answers 503 with Retry-After, never a sitemap with pages missing.
 
 ## Why it is not `src/app/sitemap.ts`
@@ -17,10 +17,15 @@ A route handler whose path does not end in `sitemap.xml` is an ordinary ISR func
 
 `/api/cron/sitemap-watch` runs daily at 06:45 UTC (vercel.json) and reads the sitemap back the way a crawler does.
 
-- It fetches `https://www.lavacagc.com/sitemap.xml` through the CDN, rebuilds the expected entries straight from the database with no cache, and compares them (`src/lib/sitemapWatch.ts`).
+- It fetches `https://www.lavacagc.com/sitemap.xml` through the CDN, rebuilds the expected entries from the database, and compares them (`src/lib/sitemapWatch.ts`).
+  Posts and projects are read uncached.
+  The active home-service slugs come through the catalog's tagged cache, the same one the sitemap uses, which `invalidateCatalog` expires on every save.
 - Blog and project entries are compared by lastmod; every other entry is dated by the clock at generation and compared by presence only.
-- A change younger than the grace window (two ISR windows, two hours) is reported as pending and not alarmed; older than that, a post not listed, a lastmod behind its row, or an unpublished post still listed is drift.
-- It also asks GitHub whether PR #99056 has merged and says so once, in the 36 hours after the merge.
+- A row-dated change younger than the grace window (two ISR windows, two hours) is reported as pending and not alarmed; older than that, a post not listed or a lastmod behind its row is drift.
+- Presence-only and unexpected entries (an unpublished post, a deactivated project, a switched-off service) get no grace window: every writer that changes what the sitemap lists, including a catalog save, expires `SITEMAP_TAG` and revalidates both sitemap paths on the spot, so a difference the daily run sees is real.
+- It also asks GitHub whether PR #99056 has merged.
+  The announcement is sent once, in the run after the merge (a 26-hour window: one daily run plus cron jitter); the JSON answer carries `upstream.merged` on every run.
+  `GITHUB_TOKEN` is optional: when set, the request sends it as a bearer token so it is not held to the unauthenticated rate limit (60 requests an hour per IP, shared on Vercel).
 - Telegram to the owner on drift, on a 503, on a sitemap it cannot read (a Cloudflare challenge page, a network error) and on a database it cannot read. A healthy day is silent; the JSON answer carries the detail either way, and the status is 503 whenever the check did not pass so the Vercel cron log shows it.
 
 Run it by hand against production with the production `CRON_SECRET`:
