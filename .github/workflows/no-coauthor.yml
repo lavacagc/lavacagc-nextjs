@@ -1,0 +1,56 @@
+name: No Co-Authored-By
+
+# Alex's standing rule: no agent or model is ever a co-author of a commit.
+# .husky/commit-msg rejects the trailer in local and agent checkouts, but some
+# commits never pass through it: the no-mistakes gate's worktree points
+# core.hooksPath elsewhere, `git commit --no-verify` skips it, and commits made
+# on GitHub run no hooks at all. Every one of those still arrives here, so this
+# is the check that covers every path. No paths filter, deliberately: a commit
+# touching only docs can carry the trailer as easily as any other.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reject commits carrying a Co-Authored-By trailer
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          set -eu
+          if [ -n "$PR_BASE" ]; then
+            range="$PR_BASE..$PR_HEAD"
+          elif [ -z "$PUSH_BEFORE" ] || ! git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+            range="-1 $PUSH_AFTER"
+          else
+            range="$PUSH_BEFORE..$PUSH_AFTER"
+          fi
+          echo "Checking commits in $range"
+          offending=""
+          for sha in $(git rev-list $range); do
+            if git log -1 --format=%B "$sha" | grep -qi '^Co-Authored-By:'; then
+              offending="$offending $sha"
+            fi
+          done
+          if [ -n "$offending" ]; then
+            echo "::error::Co-Authored-By trailers are not allowed in this repository. Offending commits:"
+            for sha in $offending; do
+              echo "  $sha $(git log -1 --format=%s "$sha")"
+            done
+            exit 1
+          fi
+          echo "No Co-Authored-By trailers found."

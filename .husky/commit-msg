@@ -1,7 +1,9 @@
 #!/usr/bin/env sh
 # Alex's standing rule: no agent or model is ever a co-author of a commit.
-# Rejects any commit whose message carries a Co-Authored-By trailer, whichever
-# tool wrote it (Claude Code, the no-mistakes gate, a builder agent).
+# Rejects any commit whose message carries a Co-Authored-By trailer in local and
+# agent checkouts (Claude Code, a builder agent). It does not run in the
+# no-mistakes gate's worktree, which points core.hooksPath elsewhere, nor under
+# --no-verify or on GitHub; .github/workflows/no-coauthor.yml covers those.
 if grep -qi '^Co-Authored-By:' "$1"; then
   echo "commit-msg: Co-Authored-By trailers are not allowed in this repository; remove the line and commit again." >&2
   exit 1
