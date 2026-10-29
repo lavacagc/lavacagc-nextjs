@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,6 @@ import { useScrollTracking } from '@/hooks/useScrollTracking';
 import { useHorizontalScrollTracking } from '@/hooks/useHorizontalScrollTracking';
 import { trackEvent } from '@/services/analyticsManager';
 import { ScrollHint } from '@/components/ScrollHint';
-import { LazyProjectVideo } from '@/components/LazyProjectVideo';
 
 interface Project {
   id: string;
@@ -45,6 +44,25 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const router = useRouter();
 
+  // On mobile the filter chips are a single scrollable row, so a deep-linked
+  // filter (?filter=Basement Finishing) could start selected but off-screen.
+  // Center the active chip on mount by adjusting ONLY the chip row's scrollLeft
+  // (never scrollIntoView, which would scroll every ancestor including the
+  // window - PortfolioContent is lazy-loaded far below the hero/lead form on
+  // FreeEstimateLanding, so touching window scroll would yank the visitor down
+  // the page). No-op in the desktop wrap layout where the row never overflows.
+  const selectedChipRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const chip = selectedChipRef.current;
+    const row = chip?.parentElement;
+    if (!chip || !row) return;
+    if (row.scrollWidth <= row.clientWidth + 1) return;
+    const rowRect = row.getBoundingClientRect();
+    const chipRect = chip.getBoundingClientRect();
+    row.scrollLeft += chipRect.left - rowRect.left - (row.clientWidth - chipRect.width) / 2;
+    // Mount only: after that the user is driving the scroll themselves.
+  }, []);
+
   // Scroll tracking for portfolio section
   const portfolioSectionRef = useScrollTracking({
     sectionId: 'portfolio-grid',
@@ -67,16 +85,6 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
     const featured = project.project_images?.find(img => img.is_featured);
     return featured?.image_url || project.project_images?.[0]?.image_url || '/placeholder.svg';
   };
-
-  /**
-   * A still for a project whose card is a video.
-   *
-   * Uses a photograph the project already has, so the card shows real work
-   * immediately instead of a grey box - and so the video underneath can be
-   * `preload="none"`. Undefined when a project is video-only.
-   */
-  const getPosterImage = (project: Project) =>
-    project.project_images?.find(img => img.media_type !== 'video')?.image_url;
 
   const getProjectDescription = (project: Project) => {
     return project.challenge || project.solution || 'Quality construction and renovation services.';
@@ -123,19 +131,29 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
 
   return (
     <>
-      {/* Filter Section */}
-      <section className="py-8 bg-white sticky top-[calc(88px+var(--smart-banner-height,0px))] transition-[top] duration-300 z-40 border-b">
+      {/* Filter Section — on mobile the chips are ONE horizontally-scrollable row
+          (this bar is sticky, so a wrapping chip grid would permanently cover
+          half the viewport above the project scrollers); sm+ keeps the wrap. */}
+      <section
+        data-testid="portfolio-filter-bar"
+        className="py-2 sm:py-8 bg-white sticky top-[calc(88px+var(--smart-banner-height,0px))] transition-[top] duration-300 z-40 border-b"
+      >
         <div className="container mx-auto px-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Filter className="h-5 w-5 text-text-secondary" />
-              <span className="font-medium text-text-primary">Filter by Type:</span>
+          {/* One row on phones: the icon, then the chips scrolling under it. The
+              label only returns at sm, where the bar is no longer competing with
+              the photos for a 664 px viewport (the wrapped grid was 267 px tall
+              and sat on top of every project card; Alex, 2026-10-29). */}
+          <div className="flex items-center justify-between gap-2 sm:gap-4">
+            <div className="flex items-center gap-2 shrink-0" aria-label="Filter by type">
+              <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-text-secondary" />
+              <span className="hidden sm:inline font-medium text-sm sm:text-base text-text-primary">Filter by Type:</span>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="min-w-0 flex-1 sm:flex-none flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {categories.map((category) => (
                 <Button
                   key={category}
+                  ref={selectedFilter === category ? selectedChipRef : undefined}
                   onClick={() => {
                     setSelectedFilter(category);
                     // Track filter interaction
@@ -146,7 +164,7 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
                   }}
                   variant={selectedFilter === category ? 'default' : 'outline'}
                   size="sm"
-                  className={selectedFilter === category ? 'bg-primary' : ''}
+                  className={`shrink-0 h-8 sm:h-9 ${selectedFilter === category ? 'bg-primary' : ''}`}
                 >
                   {category}
                 </Button>
@@ -182,11 +200,13 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
                     }}
                   >
                     {(project.project_images?.find(img => img.is_featured) || project.project_images?.[0])?.media_type === 'video' ? (
-                      <LazyProjectVideo
+                      <video
                         src={getProjectImage(project)}
-                        title={project.title}
-                        poster={getPosterImage(project)}
-                        className="h-full w-full"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        autoPlay
+                        muted
+                        loop
+                        playsInline
                       />
                     ) : (
                       <Image
