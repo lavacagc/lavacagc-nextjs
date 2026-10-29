@@ -208,11 +208,13 @@ test.describe('browser', () => {
     await expect(page.getByTestId('request-bar')).toContainText('(1)');
   });
 
-  test('LP4 on a first visit: Back closes the sheet even with every site-wide widget active', async ({ page }) => {
+  test('LP2 LP4 on a first visit: no promo banner over the bar, and Back closes the sheet with every site-wide widget active', async ({ page }) => {
     // No pre-dismissed banners here: this is what a Craigslist visitor gets.
     await page.goto('/home-services');
-    const dismiss = page.locator('button[aria-label="Dismiss banner"]:visible');
-    await dismiss.click({ timeout: 8_000 }).catch(() => undefined);
+    // No promo banner over the request bar: the site banner shows after 1.5 s
+    // when it shows at all, so wait past that before asserting it never came.
+    await page.waitForTimeout(3_000);
+    await expect(page.locator('button[aria-label="Dismiss banner"]:visible')).toHaveCount(0);
     await page.locator('[data-testid=card-home-cleaning] button[aria-pressed]').click();
     await page.getByTestId('request-bar').getByRole('button').click();
     await expect(page.getByTestId('request-flow')).toBeVisible();
