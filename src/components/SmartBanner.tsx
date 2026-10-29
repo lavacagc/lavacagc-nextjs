@@ -495,6 +495,12 @@ function SmartBannerInner() {
 
   // Keep the Home Care portal chrome-free (matches StickyCTA / ExitIntentPopup).
   if (pathname.startsWith('/home-care')) return null;
+  // And the home services pages, whose sticky "Request these" bar is the page's
+  // one call to action. A code guard, not a rule: banners come from the
+  // admin-managed smart_banners table, so an exclusion in bannerRules.ts never
+  // reaches this component, and a rule added in admin later must not be able
+  // to cover the request bar either.
+  if (pathname.startsWith('/home-services')) return null;
   // And the private tokenized pages. This one needs a CODE-level guard rather
   // than a banner rule: `evaluateRule` only filters on `show_on_paths` when the
   // rule sets one, so every promotion with an empty path list matches every
