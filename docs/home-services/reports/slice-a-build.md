@@ -186,3 +186,50 @@ npm run chaos:static
 
 Last results (round 2, at `70c8009`): 31 passed with no expected failures, typecheck clean, lint clean, `npm run chaos:static` exit 0 with no new violations.
 The suites delete their own rows; after the last run the shared DB held zero `ZZTEST-A` requests, zero `lead_photos`, zero objects in `service-request-photos`, zero `hs-*` rate-limit buckets, zero `ZZTEST-A` leads and zero `zztest-a` follow-ups.
+
+## Fixes after review
+
+Review: `docs/home-services/reports/slice-a-review.md` (`cd545b8`), verdict ACCEPT WITH FIXES.
+Fix commits: `0587bdc` (D1, D2, D5), `27f9f23` (D3, D8, D10, D11), `02532af` (D6, D12), `25600fa` (specs).
+
+| # | Fix | Spec that proves it |
+| --- | --- | --- |
+| D1 | The upload queue (items, draft token, in-flight uploads) moved into `usePhotoUploads`, owned by `RequestFlow`, which stays mounted while the sheet's content unmounts. It is reset only after a submitted request. | Flow "D1": two photos uploaded, sheet closed with the X and reopened, closed with Back and reopened, both thumbnails still done, submit claims both under `requests/<id>/`. |
+| D2 | `useRequestFlow` became `useHashSheet(hash)`; the price sheet uses `#price`, so Back closes it and the X pops its entry. | Landing "D2": Back closes the sheet and stays on the page (URL back to the page, h1 visible); the X leaves no `#price`; selection unchanged. |
+| D3 | Ruling applied: the dedupe key ends with the phone digits. A merge now only happens for the same phone, so another person's request id and status are never returned to a different caller. | Flow "D3": same address and services from two phones gives two requests, `merged_count` 0 each, two distinct leads. Flow "RF10" (en, es) still merges when the phone repeats. |
+| D4 | The organization-count and offer checks read the JSON-LD from the server HTML (`request.get`), not the hydrated DOM. | Landing "LP8 SEO1 SEO2" asserts exactly one organization node in the server HTML. |
+| D5 | A decline or a refused Continue scrolls the message into view, centred above the sticky footer; a refused Continue (and a server `out_of_area`) also focuses the field. The message was already the element directly under the ZIP field. | Landing "D5" at 390x844 in Spanish: message within 24 px under the ZIP, fully above the footer, after the blur and after a refused Continue from the top of the sheet, with focus on `hs-zip`. Checked by hand in English and Spanish too (16 px under the ZIP, 20 px above the footer). |
+| D6 | `?lang=es` pages are self-canonical; both versions carry `hreflang` `en`, `es` and `x-default` (English). A page that is Spanish only because of the cookie keeps the English canonical, since a crawler has no cookie. The sitemap lists the eight Spanish URLs. | Landing "D6" on the server HTML of the landing and a service page in both languages; Landing "LP10 D6" for the sitemap; source check for the sitemap entry. |
+| D8 | `hs-photo-day:<ip>`, 60 per 24 h, checked after the 30 per 10 minutes limit. | Flow "D8": a bucket seeded at 60 answers 429; an IP under the cap uploads. |
+| D10 | The silent 200 is `{ ok: true, request_id: <random uuid v4>, status: 'new', verification: 'skipped', merged: false }`. | Flow "RF6": exact shape for honeypot and fast submit, two different ids, no row with either id. |
+| D11 | Ruling applied: a five-digit ZIP decides alone (county table or scorer ZIP list); the town counts only when the ZIP is missing or malformed. The alert's county line no longer mentions a town rescue. | Landing "RF4 service area" (Montclair with 07920 and with 99999 declined; Montclair with no ZIP accepted) and Flow "D11" (API 403 `out_of_area`, no row). |
+| D12 | A per-unit price with a minimum is a `UnitPriceSpecification` (`unitText: 'per square foot'`, `minPrice` from the minimum); flat prices keep `price`. Exterior painting is the only per-unit service, so the per-unit branch keys off `minimumCents`. | Landing "D12": exterior painting has `priceSpecification` with `2.95`, `per square foot`, `3500.00` and no `price`; drywall keeps `price: '249.00'`. |
+
+Also fixed from the review notes: the flow spec's cleanup deleted every `hs-*` rate-limit bucket in the shared table; it now records every IP, phone and request id it sends and deletes exactly those buckets.
+
+One regression found and fixed while doing this: under a full parallel run the service page's Quote tab once left `#request` in the URL with no sheet (5 of 5 passes alone).
+The cause is a tap before the page hydrates: the plain `#request` link changes the hash while no `hashchange` listener exists yet.
+`useHashSheet` now adopts a hash already present at mount; when the page was loaded with the hash (a direct link or a reload) it opens the sheet without adopting the entry, so closing strips the hash instead of leaving the site.
+The landing spec covers the loaded-with-`#request` case. I could not reproduce the before-hydration tap exactly: holding the JS chunks also stalls the dev server's HTML stream, so the link never renders. That branch is covered by reasoning and by the two clean full runs below, not by a dedicated test.
+
+D2 note: the instruction said both "must not push a history entry" and "Back with it open closes the sheet". Back can only close a sheet that added an entry when it opened, so I used the request sheet's pattern (push `#price`, pop it on close), which is the option the instruction names second.
+
+Not changed, as the review allowed: an already-verified request id still answers `{ ok: true }` to any code (the other half of review D10). The code hash is cleared on success, so there is nothing left to compare against.
+
+### Rulings recorded (no code change)
+
+- D7: dynamic rendering of `/home-services` and `/home-services/<slug>`, because the language comes from the cookie and `searchParams`, is accepted for this launch. A static Spanish route is a follow-up ticket.
+- D9: the read-then-write verify attempt counter is accepted; it is bounded by the per-id limit of 15 an hour.
+- The site-wide, dev-only hydration mismatch on the footer's Facebook icon is logged by the coordinator as a separate ticket.
+
+### Results after the fixes
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| eslint `--max-warnings 0` on every changed file | exit 0 |
+| `npm run chaos:static` | exit 0, no new violations |
+| Both specs, run 1 | 39 passed (51.1 s) |
+| Both specs, run 2 | 39 passed (50.4 s) |
+
+After the runs the shared DB held zero `ZZTEST-A` requests and leads, zero `lead_photos`, zero objects in `service-request-photos`, zero `hs-*` buckets and zero `zztest-a` follow-ups.
