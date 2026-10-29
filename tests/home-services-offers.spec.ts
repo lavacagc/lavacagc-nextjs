@@ -14,6 +14,7 @@ import {
   confirmablePrice, extendedExpiry, offerExclusion, recipientView,
 } from '../src/lib/home-services/offerRules';
 import { describeAnswers } from '../src/lib/home-services/catalog';
+import { SEED_NAMES } from './helpers/homeServicesSeed';
 import { answerLinesFor, countyForRequest, countyForTown, summarizeRequests, tradesForServices } from '../src/lib/home-services/requestsAdmin';
 import { buildNotice, buildOfferEmail, buildOfferSms } from '../src/lib/home-services/offerEmail';
 import { retrySpecNookPushes } from '../src/lib/home-services/offers';
@@ -58,8 +59,8 @@ test.describe('pricing and offer rules (pure)', () => {
 
   test('answer lines read as statements in both languages, without question marks', () => {
     const answers = { 'gutter-cleaning': { stories: '2' } };
-    expect(describeAnswers(['gutter-cleaning'], answers, 'en')).toEqual(['Gutter cleaning - How many stories: 2']);
-    const [es] = describeAnswers(['gutter-cleaning'], answers, 'es');
+    expect(describeAnswers(['gutter-cleaning'], answers, 'en', SEED_NAMES)).toEqual(['Gutter cleaning - How many stories: 2']);
+    const [es] = describeAnswers(['gutter-cleaning'], answers, 'es', SEED_NAMES);
     expect(es).toContain('Cuántos pisos: 2');
     expect(es).not.toMatch(/[?¿]/);
   });
@@ -141,7 +142,7 @@ test.describe('offer email and text (rendered)', () => {
     mkdirSync('test-results/home-services-offer-email', { recursive: true });
     const request = { services: ['cabinet-repainting'], answers: { 'cabinet-repainting': { doors: '26_40' } } };
     for (const lang of ['en', 'es'] as const) {
-      const answerLines = answerLinesFor(request, 'cabinet_painting', lang);
+      const answerLines = answerLinesFor(request, 'cabinet_painting', lang, SEED_NAMES);
       const email = buildOfferEmail({ ...base, lang, answerLines });
       // D6: the homeowner's answers in the sub's own language.
       expect(email.text).toContain(lang === 'en' ? '26 to 40' : '26 a 40');

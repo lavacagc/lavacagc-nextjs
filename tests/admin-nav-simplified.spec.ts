@@ -25,6 +25,8 @@ const EXPECTED_LEAF_IDS = [
   'leads', 'follow-ups', 'send-estimate', 'proposals', 'emails',
   // Home Services build (2026-10-29)
   'service-requests', 'subs', 'pricing-report',
+  // Phase 2 slice E: Services & Prices (the home_services table editor)
+  'home-services-catalog',
   // Home Care
   'home-records', 'home-care-shop', 'send-service-quote', 'crew', 'releases',
 ];

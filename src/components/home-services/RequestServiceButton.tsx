@@ -2,14 +2,14 @@
 
 import dynamic from 'next/dynamic';
 import { ArrowRight } from 'lucide-react';
-import type { Lang } from '@/lib/home-services/catalog';
+import type { HomeService, Lang } from '@/lib/home-services/catalog';
 import { s } from '@/lib/home-services/i18n';
 import { preloadRequestFlow, useRequestFlow } from './useRequestFlow';
 
 const RequestFlow = dynamic(() => import('./RequestFlow'), { ssr: false });
 
 /** "Request this service" on a per-service page (LP8): opens the same flow with that service preselected. */
-export default function RequestServiceButton({ slug, lang, className }: { slug: string; lang: Lang; className?: string }) {
+export default function RequestServiceButton({ service, lang, className }: { service: HomeService; lang: Lang; className?: string }) {
   const flow = useRequestFlow({ openOnHash: true });
   return (
     <>
@@ -24,7 +24,7 @@ export default function RequestServiceButton({ slug, lang, className }: { slug: 
         {s('requestThis', lang)}
         <ArrowRight aria-hidden className="h-5 w-5" />
       </button>
-      {flow.mounted && <RequestFlow open={flow.open} lang={lang} services={[slug]} onClose={flow.closeFlow} />}
+      {flow.mounted && <RequestFlow open={flow.open} lang={lang} services={[service.slug]} catalog={[service]} onClose={flow.closeFlow} />}
     </>
   );
 }
