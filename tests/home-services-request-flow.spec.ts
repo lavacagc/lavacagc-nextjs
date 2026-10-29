@@ -80,15 +80,11 @@ interface RequestRow {
   phone_verified: boolean;
   merged_count: number;
   first_name: string;
+  zip: string;
 }
 const requestsFor = (firstName: string) =>
   rest<RequestRow[]>(`home_service_requests?select=*&first_name=eq.${encodeURIComponent(firstName)}&limit=5`);
 
-/** Does the local leads table have the production columns? (The preview baseline's does not.) */
-async function leadsTableIsComplete(): Promise<boolean> {
-  const res = await fetch(`${SUPA}/rest/v1/leads?select=first_name&limit=0`, { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } });
-  return res.ok;
-}
 
 function apiBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -165,7 +161,7 @@ async function cleanup() {
     }
     await rest(`home_service_requests?id=in.(${ids.join(',')})`, { method: 'DELETE' });
   }
-  if (await leadsTableIsComplete()) await rest(`leads?first_name=like.ZZTEST-A*`, { method: 'DELETE' });
+  await rest(`leads?first_name=like.ZZTEST-A*`, { method: 'DELETE' });
   await rest(`follow_up_queue?lead_email=like.zztest-a*`, { method: 'DELETE' });
   for (const prefix of ['hs-request', 'hs-photo', 'hs-verify', 'hs-resend']) {
     await rest(`rate_limits?ip_address=like.${prefix}*`, { method: 'DELETE' });
@@ -263,7 +259,8 @@ for (const lang of ['en', 'es'] as const) {
     await fillDetails(page, `${run} ${lang} Full St`);
     await flow.getByRole('button', { name: L('Continue', 'Continuar') }).click();
     await flow.locator('#hs-name').fill(name);
-    await flow.locator('#hs-phone').fill(freshPhone());
+    const phone = freshPhone();
+    await flow.locator('#hs-phone').fill(phone);
     await flow.locator('[data-testid=q-timing] button').first().click();
     await flow.locator('#hs-consent').check();
     // The server drops anything under five seconds from open (RF6); a person is slower than that.
@@ -301,21 +298,30 @@ for (const lang of ['en', 'es'] as const) {
     expect(photos[0].draft_token).toBeNull();
     expect(photos[0].storage_path.startsWith(`requests/${row.id}/`)).toBe(true);
 
-    // The leads row. The preview-baseline leads table has no contact columns,
-    // so locally the insert is refused and the request is kept with lead_id null
-    // (the route's "never lose the request" path). Against a complete table the
-    // lead must exist and carry the source.
-    if (await leadsTableIsComplete()) {
-      expect(row.lead_id).toBeTruthy();
-      const [lead] = await rest<Array<{ source: string; inquiry_type: string; project_type: string; tier: string }>>(
-        `leads?select=source,inquiry_type,project_type,tier&id=eq.${row.lead_id}`,
-      );
-      expect(lead).toMatchObject({ source: 'home_services:craigslist', inquiry_type: 'estimate', project_type: 'home_services' });
-      expect(['hot', 'warm', 'cold']).toContain(lead.tier);
-    } else {
-      test.info().annotations.push({ type: 'schema-gap', description: 'local leads table lacks contact columns; asserted the lead_id-null fallback instead' });
-      expect(row.lead_id).toBeNull();
-    }
+    // The leads row: one row, through the sanitizer and the scorer, linked by lead_id.
+    expect(row.lead_id, 'leads insert failed - is the leads table complete?').toBeTruthy();
+    const leads = await rest<Array<Record<string, unknown>>>(
+      `leads?select=first_name,last_name,phone,email,address,zip_code,inquiry_type,project_type,project_timeline,preferred_contact_method,source,message,score,tier&id=eq.${row.lead_id}`,
+    );
+    expect(leads).toHaveLength(1);
+    expect(leads[0]).toMatchObject({
+      first_name: name,
+      last_name: name,
+      phone: `(${phone.slice(0, 3)}) ${phone.slice(3, 6)}-${phone.slice(6)}`,
+      email: '',
+      address: `${run} ${lang} Full St`,
+      zip_code: '07042',
+      inquiry_type: 'estimate',
+      project_type: 'home_services',
+      project_timeline: 'asap',
+      preferred_contact_method: 'text',
+      source: 'home_services:craigslist',
+    });
+    expect(leads[0].message).toContain('Gutter cleaning - How many stories?: 2');
+    expect(leads[0].message).toContain('Timing: This week');
+    expect(['hot', 'warm', 'cold']).toContain(leads[0].tier);
+    expect(typeof leads[0].score).toBe('number');
+    expect(await rest(`leads?select=id&first_name=eq.${encodeURIComponent(name)}`)).toHaveLength(1);
 
     // Closing returns to the page with the selection cleared.
     await flow.getByRole('button', { name: L('Back to the page', 'Volver a la página') }).click();
@@ -374,6 +380,20 @@ test('RF6: honeypot and a sub-five-second submit both answer 200 and save nothin
   expect((await fast.json()).ok).toBe(true);
   expect(await requestsFor(honeyName)).toHaveLength(0);
   expect(await requestsFor(fastName)).toHaveLength(0);
+});
+
+test('RF4 county gate at the API: 07601 Hackensack is accepted, 07920 Basking Ridge is out of area', async ({ request }) => {
+  const declined = await postRequest(request, apiBody({ zip: '07920', first_name: tag('Basking') }), freshIp());
+  expect(declined.status()).toBe(403);
+  expect(await declined.json()).toEqual({ error: 'out_of_area' });
+  expect(await requestsFor(tag('Basking'))).toHaveLength(0);
+
+  const name = tag('Hackensack');
+  const accepted = await postRequest(request, apiBody({ zip: '07601', address: `${run} Main St`, first_name: name }), freshIp());
+  expect(accepted.status()).toBe(200);
+  const rows = await requestsFor(name);
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ zip: '07601', status: 'new' });
 });
 
 test('RF11: the sixth submit from one IP in a minute and the fourth for one phone in an hour get 429', async ({ request }) => {

@@ -6,6 +6,9 @@ import { HOME_SERVICES_CATALOG, SERVICE_SLUGS, COUNTIES, t } from '../src/lib/ho
 import { s } from '../src/lib/home-services/i18n';
 import { brandedTitle } from '../src/lib/home-services/seo';
 import { bannerRules } from '../src/lib/bannerRules';
+import { countyForZip, isInServiceArea } from '../src/lib/home-services/serviceArea';
+import { RequestBodySchema, leadFields, validateRequest } from '../src/lib/home-services/requests';
+import { sanitizeLeadForInsert } from '../src/lib/leadSanitize';
 
 /**
  * /home-services and /home-services/<slug> - slice A (acceptance-criteria.md LP1-LP10, SEC6, SEO1, SEO2).
@@ -55,23 +58,68 @@ test.describe('source checks', () => {
     }
   });
 
-  test('SEO1: catalog service titles under 60 and descriptions under 160 naming the counties', () => {
-    // The service SEO copy lives in catalog.ts (slice 0); slice A renders it
-    // verbatim and may not edit it. These entries do not meet SEO1 today, so the
-    // test is marked as an expected failure: it starts failing (and must be
-    // un-marked) the moment the catalog copy is fixed. See the slice A report.
-    test.fail(true, 'catalog.ts SEO copy exceeds SEO1 limits; owned by slice 0');
+  test('SEO1: catalog service titles at most 60 and descriptions at most 160, naming the counties', () => {
+    // Limits as the planner set them for the catalog copy ("to 60", "to 160").
+    // The rendered title is the catalog title plus " | La Vaca" only when that
+    // still fits, so checking the rendered string covers both.
     const problems: string[] = [];
     for (const service of HOME_SERVICES_CATALOG) {
       for (const lang of ['en', 'es'] as const) {
         const title = brandedTitle(t(service.seo.title, lang));
         const description = t(service.seo.description, lang);
-        if (title.length >= 60) problems.push(`${service.slug} ${lang} title ${title.length}`);
-        if (description.length >= 160) problems.push(`${service.slug} ${lang} description ${description.length}`);
+        if (title.length > 60) problems.push(`${service.slug} ${lang} title ${title.length}`);
+        if (description.length > 160) problems.push(`${service.slug} ${lang} description ${description.length}`);
         if (!COUNTIES.every((c) => description.includes(c))) problems.push(`${service.slug} ${lang} description lacks a county name`);
       }
     }
     expect(problems).toEqual([]);
+  });
+
+  test('RF4 service area: county ZIPs are in (07601 Hackensack), others out (07920 Basking Ridge), scorer ZIPs and towns still count', () => {
+    expect(isInServiceArea({ zip: '07601' })).toBe(true);
+    expect(countyForZip('07601')).toBe('Bergen');
+    expect(isInServiceArea({ zip: '07920' })).toBe(false);
+    expect(countyForZip('07920')).toBeNull();
+    expect(isInServiceArea({ zip: '07042-1234' })).toBe(true); // ZIP+4 typed
+    expect(isInServiceArea({ zip: '07065' })).toBe(true); // Rahway: scorer list, Union County
+    expect(isInServiceArea({ zip: '99999', town: 'Montclair' })).toBe(true); // town rescue
+    expect(isInServiceArea({ zip: '08540' })).toBe(false);
+  });
+
+  test('RF7 sanitizer: a well-formed request becomes a leads row with no sanitizer adjustments', () => {
+    const parsed = RequestBodySchema.parse({
+      services: ['gutter-cleaning', 'drywall-patching'],
+      answers: { 'gutter-cleaning': { stories: '2' } },
+      address: '12 Valley Rd',
+      zip: '07042',
+      first_name: 'Maria del Carmen',
+      phone: '(973) 555-0100',
+      email: 'maria@example.com',
+      timing: 'this_week',
+      notes: 'Side door is easiest',
+      consent_sms: true,
+      lang: 'es',
+      started_at: Date.now() - 60_000,
+    });
+    const validated = validateRequest(parsed);
+    expect('value' in validated).toBe(true);
+    if (!('value' in validated)) return;
+    const { lead, adjustments } = sanitizeLeadForInsert(leadFields(validated.value, 'craigslist'));
+    expect(adjustments).toEqual([]);
+    expect(lead).toMatchObject({
+      first_name: 'Maria',
+      last_name: 'del Carmen',
+      inquiry_type: 'estimate',
+      project_type: 'home_services',
+      project_timeline: 'asap',
+      preferred_contact_method: 'text',
+      source: 'home_services:craigslist',
+      zip_code: '07042',
+    });
+    // One name word: last_name repeats it (NOT NULL column) without an adjustment.
+    const solo = validateRequest({ ...parsed, first_name: 'Cher' });
+    if (!('value' in solo)) throw new Error('solo request rejected');
+    expect(sanitizeLeadForInsert(leadFields(solo.value, 'direct')).adjustments).toEqual([]);
   });
 });
 
@@ -172,6 +220,32 @@ test.describe('browser', () => {
     await expect(page.getByTestId('request-flow')).toHaveCount(0);
     await expect(page).not.toHaveURL(/#request/);
     await expect(page.locator('[role=dialog]')).toHaveCount(0);
+  });
+
+  test('LP6: the bottom Quote tab stays on the page (landing scrolls to the cards, a service page opens the flow)', async ({ page }) => {
+    await quiet(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const quote = () => page.getByRole('navigation', { name: 'Services navigation' }).getByRole('link', { name: 'Quote' });
+
+    await page.goto('/home-services');
+    await expect(quote()).toHaveAttribute('href', '#services');
+    await quote().click();
+    await expect(page).toHaveURL(/\/home-services#services$/);
+    await expect(page.locator('#services')).toBeInViewport();
+
+    await page.goto('/home-services/drywall-patching');
+    await expect(quote()).toHaveAttribute('href', '#request');
+    await quote().click();
+    await expect(page.getByTestId('request-flow')).toBeVisible();
+    await expect(page.locator('[data-testid^=details-]')).toHaveCount(1);
+    await expect(page.getByTestId('details-drywall-patching')).toBeVisible();
+    await page.goBack();
+    await expect(page.getByTestId('request-flow')).toHaveCount(0);
+    await expect(page).toHaveURL(/\/home-services\/drywall-patching$/);
+
+    // The commercial page keeps the older form.
+    await page.goto('/commercial-services');
+    await expect(quote()).toHaveAttribute('href', '/request-estimate');
   });
 
   test('LP7: ?lang=es renders the page in Spanish, the toggle switches back, and the choice persists', async ({ page }) => {
