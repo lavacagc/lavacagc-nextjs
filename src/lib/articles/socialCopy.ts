@@ -21,7 +21,7 @@
  *   Date: 2026-10-30
  *
  *   ## Instagram and Facebook
- *   <caption, up to 2,200 characters>
+ *   <caption, up to 2,200 characters with the hashtags below it>
  *
  *   ## Google Business
  *   <post, up to 1,500 characters>
@@ -197,6 +197,11 @@ const EMOJI = /\p{Extended_Pictographic}/u;
 /** A discount number in a hashtag ("#Save20", "#20Off"), which prose rules would read as a bare number. */
 const HASHTAG_DISCOUNT = /\b(?:save|saving|savings|off|discount|deal|sale|cheaper)\s+\d|\d+\s+(?:off|percent|discount)\b/i;
 
+/** What Instagram and Facebook receive: the caption, a blank line, then the hashtags. */
+export function captionWithHashtags(copy: Pick<SocialCopy, 'instagram' | 'hashtags'>): string {
+  return [copy.instagram, copy.hashtags.join(' ')].filter(Boolean).join('\n\n');
+}
+
 /**
  * Every reason this copy may not go out, as plain sentences; empty means it
  * passes. `slug` is the article the copy belongs to.
@@ -227,7 +232,10 @@ export function checkSocialCopy(copy: SocialCopy, slug: string, facts: PublishFa
       continue;
     }
     const limit = SOCIAL_LIMITS[key as keyof typeof SOCIAL_LIMITS];
-    if (text.length > limit) reasons.push(`Social copy: ${where} has ${text.length} characters; the limit is ${limit}.`);
+    if (key === 'instagram') {
+      const posted = captionWithHashtags(copy);
+      if (posted.length > limit) reasons.push(`Social copy: the Instagram caption with its hashtags has ${posted.length} characters; the limit is ${limit}.`);
+    } else if (text.length > limit) reasons.push(`Social copy: ${where} has ${text.length} characters; the limit is ${limit}.`);
   }
   for (const [key, where, text] of named) {
     if (key !== 'instagram' && text && !hasArticleUrl(text, slug, hosts)) {

@@ -142,6 +142,43 @@ test.describe('postiz-drafts: parsing and the per-channel mapping', () => {
     expect(similarity('Clean gutters in fall', 'Paint the deck in spring')).toBeLessThan(0.9);
   });
 
+  test('dedup by URL matches the whole URL: a longer slug that starts with this one is another article', async () => {
+    const { parseSocialFile, pickIntegrations, channelTexts, findDuplicates } = await load();
+    const copy = parseSocialFile(FILE);
+    const { picked } = pickIntegrations(INTEGRATIONS);
+    const texts = channelTexts(copy);
+    const posts = [
+      { id: 'q1', state: 'PUBLISHED', content: `<p>Plan it first. https://www.lavacagc.com/blog/${SLUG}-how-to-plan-it</p>`, integration: { id: 'int-x' } },
+      { id: 'q2', state: 'DRAFT', content: `<p>Read it: <a href="x">www.lavacagc.com</a> https://www.lavacagc.com/blog/${SLUG}?utm_source=threads.</p>`, integration: { id: 'int-threads' } },
+    ];
+    expect(findDuplicates(posts, picked, texts, copy.articleUrl)).toEqual({
+      threads: { id: 'q2', state: 'DRAFT', reason: 'same article URL' },
+    });
+  });
+
+  test('the caption limit counts the hashtags, the same in the script and the publish route', async () => {
+    const { parseSocialFile, fileProblems, channelTexts } = await load();
+    const tags = '#GutterCleaning #EssexCounty #NJHomes';
+    const caption = (total: number) => {
+      const tail = ' Book it here: https://www.lavacagc.com/home-services/gutter-cleaning';
+      const head = 'Leaves in your gutters again? ';
+      return `${head}${'a'.repeat(total - 2 - tags.length - head.length - tail.length)}${tail}`;
+    };
+    const withCaption = (text: string) => FILE.replace(/## Instagram and Facebook\n[\s\S]*?\n## Google Business/, `## Instagram and Facebook\n${text}\n\n## Google Business`);
+    const facts = { contentFacts: [], catalogPrices: catalogPricesFrom(HOME_SERVICES_SEED) };
+
+    const atLimit = withCaption(caption(2200));
+    expect(channelTexts(parseSocialFile(atLimit)).facebook.length).toBe(2200);
+    expect(fileProblems(parseSocialFile(atLimit))).toEqual([]);
+    expect(checkSocialCopy(parseSocialMarkdown(atLimit), SLUG, facts)).toEqual([]);
+
+    const over = withCaption(caption(2201));
+    expect(parseSocialFile(over).instagram.length).toBeLessThan(2200);
+    expect(fileProblems(parseSocialFile(over))).toEqual(['the facebook text has 2201 characters; the limit is 2200']);
+    expect(checkSocialCopy(parseSocialMarkdown(over), SLUG, facts))
+      .toEqual(['Social copy: the Instagram caption with its hashtags has 2201 characters; the limit is 2200.']);
+  });
+
   test('plain messages for 401, Cloudflare and the 90-an-hour limit; CF headers only as a pair', async () => {
     const { explainStatus, headersFor } = await load();
     expect(explainStatus(401, 'GET /integrations')).toContain('Postiz refused the API key');

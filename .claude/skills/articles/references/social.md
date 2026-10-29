@@ -41,7 +41,7 @@ The `Article:` URL must be this post on the La Vaca site (`https://www.lavacagc.
 
 | Post | Limit | What it holds |
 | --- | --- | --- |
-| Instagram and Facebook caption | 2,200 characters | A hook line that names the reader's problem; three plain sentences with the article's answer; a call to the matching La Vaca service page (`https://www.lavacagc.com/home-services/<slug>` or `/services/<slug>`), or `/free-estimate` when no service fits. A link to any other site or page does not count. |
+| Instagram and Facebook caption | 2,200 characters, the hashtags included | A hook line that names the reader's problem; three plain sentences with the article's answer; a call to the matching La Vaca service page (`https://www.lavacagc.com/home-services/<slug>` or `/services/<slug>`), or `/free-estimate` when no service fits. A link to any other site or page does not count. |
 | Google Business post | 1,500 characters | A search surface, not a feed: plain sentences a homeowner searching for the service finds useful, the answer in two or three of them, the town or county from the article, and one closing call with the article URL. No hashtags, no emoji. |
 | X post | 280 characters, URL included | One sentence of the answer and the article URL. |
 | Threads post | 500 characters, URL included | Its own text, not the caption: conversational, a hook first, one concrete thing the reader learns (a step, a timing, a mistake to avoid), a question back to the reader if it fits, and the article URL. At most one hashtag; never "link in bio" or an Instagram-only call such as "comment PLAN". |

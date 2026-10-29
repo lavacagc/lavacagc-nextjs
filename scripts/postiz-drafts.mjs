@@ -183,7 +183,7 @@ export function similarity(a, b) {
 
 /** "https://www.lavacagc.com/blog/x/" -> "lavacagc.com/blog/x", so any scheme or www form matches. */
 function urlKey(url) {
-  return String(url).toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
+  return String(url).toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[?#].*$/, '').replace(/\/+$/, '');
 }
 
 /** The URL keys of every link written in a text. */
@@ -203,8 +203,7 @@ export function findDuplicates(posts, picked, texts, articleUrl) {
   for (const [channel, integration] of Object.entries(picked)) {
     for (const post of posts) {
       if (post.integration?.id !== integration.id || post.state === 'ERROR' || post.deletedAt) continue;
-      const plain = normalizeText(post.content).replace(/https?:\/\/(?:www\.)?/g, '');
-      const sameUrl = key && plain.includes(key);
+      const sameUrl = key && urlKeysIn(normalizeText(post.content)).includes(key);
       const score = similarity(post.content, texts[channel]);
       if (sameUrl || score >= SIMILAR) {
         dupes[channel] = { id: post.id, state: post.state, reason: sameUrl ? 'same article URL' : `text ${Math.round(score * 100)}% similar` };

@@ -103,7 +103,7 @@ test.describe('Q22: the social-copy guard', () => {
     }));
     expect(reasons).toEqual([
       `Social copy: the "Article:" line must be this article's URL on the La Vaca site (/blog/${SLUG}).`,
-      'Social copy: the Instagram caption has 2613 characters; the limit is 2200.',
+      'Social copy: the Instagram caption with its hashtags has 2627 characters; the limit is 2200.',
       'Social copy: the X post has 281 characters; the limit is 280.',
       needsUrl('Google Business post'),
       needsUrl('X post'),
@@ -310,7 +310,7 @@ test.describe('Q22: publish with social copy (live backend)', () => {
     await request.post(`/api/articles/ingest/${created.id}/unpublish`, { headers: auth });
   });
 
-  test('fix round 1: a file with every post at its limit (2,200 / 1,500 / 280 / 500) publishes; the body cap fits the 16 KB field', async ({ request, baseURL }) => {
+  test('fix round 1: a file with every post at its limit (2,200 with the hashtags / 1,500 / 280 / 500) publishes; the body cap fits the 16 KB field', async ({ request, baseURL }) => {
     const created = await (await request.post('/api/articles/ingest', {
       headers: auth, data: { title: `${PREFIX} Limits`, content: body, category: 'Gutter Cleaning' },
     })).json() as { id: string; slug: string };
@@ -321,12 +321,13 @@ test.describe('Q22: publish with social copy (live backend)', () => {
       while (head.length + mid.length + filler.length + tail.length <= total) mid += filler;
       return `${head}${mid}${'.'.repeat(total - head.length - mid.length - tail.length)}${tail}`;
     };
-    const instagram = fill('Leaves in your gutters again? ', ' https://www.lavacagc.com/home-services/gutter-cleaning', 2200);
+    const hashtags = '#GutterCleaning #EssexCounty #NJHomes #FallChecklist #HomeCare';
+    const instagram = fill('Leaves in your gutters again? ', ' https://www.lavacagc.com/home-services/gutter-cleaning', 2200 - 2 - hashtags.length);
     const google = fill('Clean your gutters in late fall. ', ` ${url}`, 1500);
     const x = fill('Clean gutters in late fall. ', ` ${url}`, 280);
     const threads = fill('Most people clean gutters too early. ', ` ${url}`, 500);
-    expect([instagram.length, google.length, x.length, threads.length]).toEqual([2200, 1500, 280, 500]);
-    const md = socialFile({ url, instagram, google, x, threads, hashtags: '#GutterCleaning #EssexCounty #NJHomes #FallChecklist #HomeCare' })
+    expect([`${instagram}\n\n${hashtags}`.length, google.length, x.length, threads.length]).toEqual([2200, 1500, 280, 500]);
+    const md = socialFile({ url, instagram, google, x, threads, hashtags })
       .replace('# Social copy: When should you clean gutters in Essex County?', `# Social copy: ${PREFIX} Limits`);
     expect(Buffer.byteLength(md)).toBeGreaterThan(4000);
 
