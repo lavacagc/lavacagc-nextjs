@@ -246,6 +246,11 @@ So **do not** treat these as separate manual steps - the gate owns them:
 - `git push origin` and hand-writing a PR body
 - babysitting CI and fixing red checks one by one
 
+The gate's pre-push smoke run needs port 3000, so never start `npm run test:e2e`
+(which also takes port 3000) in parallel with `no-mistakes axi run`: the push is
+refused with "something is already listening on port 3000" and the run has to be
+started again once the suite finishes (2026-10-29).
+
 What stays a **manual pre-gate step**: browser-level Playwright / visual
 acceptance checks against a real dev server. The gate's worktree has no
 Supabase / Resend / reCAPTCHA secrets, so it can't run the env-dependent suite -
