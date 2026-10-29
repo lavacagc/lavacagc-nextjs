@@ -124,3 +124,77 @@ None of these ran against a real provider:
 All `ZZTEST-RB` rows are deleted: 1 lead, 1 request, 6 subs, 3 offers with their recipients, responses and decline calls, and the rate-limit buckets for my tokens and IPs.
 No storage objects were created under `service-request-photos/offers/` by my walk.
 One bucket for a random, non-existent token from the body-size probe remains; it expires with its window.
+
+## Re-verification at 4701947
+
+Reviewed `aa5b8a4..4701947`, including the cherry-picks for the CommonJS script config, the `closed` response status and the local `leads` columns.
+Fable's deviations on D7 and D8 are judged below.
+
+**Verdict after fixes: ACCEPT**
+
+All nine defects and the builder's extra finding are fixed with my own evidence.
+The two combined spec runs Fable asked for were not both green: one of them failed twice on page waits while the shared machine was overloaded (see "Spec runs").
+
+### Per item
+
+| Item | Result | Evidence |
+| --- | --- | --- |
+| D1 push status | FIXED | Unconfigured assignment recorded `pending` and the note "SpecNook push: pending" (production build). With the dev server pointed at a stand-in SpecNook, three real calls to `/api/cron/offers-expire` moved the offer from `pending` to `failed` on the stand-in's 503, then to `sent` on 201, then found nothing left to push. The note "SpecNook push sent for Gutter cleaning (retry)" was appended. Each push carried `Authorization: Bearer <key>` and `Idempotency-Key: <offer id>`. A fresh assignment on the configured server recorded `sent` straight away. |
+| D2 notes leak | FIXED | The bid form starts the scope empty, lists the answers, and shows the notes in a private box that says they are never sent. On the production build and the dev server, the raw HTML of all three live offer pages and the winner's page contains none of the homeowner's notes, phone, email, admin notes or last name, and no `admin_notes`, `notes` or `phone` keys. The one `"email"` hit is the site's own organization JSON-LD (info@lavacagc.com). On the dev server, one `9931` hit is a timing number in the dev payload, not the gate code. The winner's page shows only the street address and first name, as specified. |
+| Extra: whole request row in page data | FIXED | `requestForOfferPage` reads only `services,answers`, plus `address,town,zip,first_name` for the winner. Raw HTML evidence is as for D2, on both the dev server and the production build. |
+| Email body | FIXED | The project's own `buildOfferEmail`, `buildOfferSms` and `buildNotice` were rendered from the real seeded rows, in English and Spanish, for both trades. None of the marker fields appear. The job line is the answers in the sub's language plus Alex's scope text. |
+| SpecNook job text | FIXED | The captured `jobOrderText` holds the trade and customer name, the address, the answers, Alex's scope text and the prices. The homeowner notes and admin notes are absent from the whole payload. The customer contact and address are present, as the spec requires for SpecNook. |
+| D3 stale inbox items | FIXED | A pending counter on an open offer showed under counters. After Withdraw it was `closed` in the DB and moved to the inbox's `closed` list with no actions. `closePendingResponses` is also called on assignment and expiry. |
+| D4 upload size | FIXED locally; Vercel still to verify | Two 11.6 MB 4032x3024 JPEGs uploaded through the real offer page at 390 px arrived as 836 KB JPEGs each. On the server, one 3.8 MB file answers 413 `file_too_big`, and two 2.5 MB files answer 413 `body_too_big`, with or without Content-Length. Alex's reply form uses the same compression and caps. |
+| Sub deleted mid-send | FIXED | A temporary trigger, scoped to one test sub, paused the recipient insert while a second session deleted that sub. The route logged the 23503, re-read the eligible subs, and answered 200 with the remaining subs. The deleted sub got no row. An earlier attempt where the delete rolled back with the insert answered 500 and removed the empty offer, which is the intended failure path. |
+| D5 skip link | FIXED | The offer page has `<main id="main-content">` and the root layout's link targets `#main-content`. |
+| D6 Spanish strings | FIXED | The Spanish sub's title is "Oferta de trabajo de La Vaca"; answers render in Spanish on the page and in the email. Alex's free-text scope stays as he wrote it, which is expected. |
+| D7 request status | FIXED; deviation accepted | Assigning gutter left the request `bid_sent` with "Still out: Drywall". Assigning drywall then made it `assigned`. Counting per trade's latest offer, so that an expired trade resent and assigned does not hold the request back, is the right reading. |
+| D8 contrast | FIXED; deviation accepted | Every `text-destructive` in the slice's admin components is now `text-red-700` (#b91c1c, 6.47:1 on white). That clears AA where the theme token (3.76:1) does not. |
+| D9 county by ZIP | FIXED | `countyForRequest` checks the ZIP table first; 07043 (Upper Montclair) and 07042 are in it. Clifton (07013) and Rahway (07065) still resolve through the town map. |
+
+New, low: the email names the drywall service "Reparación de drywall", while the page's trade label reads "Paneles de yeso".
+It is cosmetic and not blocking.
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck` | pass |
+| `eslint --max-warnings 0` on every changed `.ts`/`.tsx` since `fc6fe33` | pass |
+| `npm run chaos:static` | pass, 0 new, 0 baselined |
+| `npm run build` | pass |
+
+### Spec runs (port 3115, 35 tests)
+
+| Run | Result |
+| --- | --- |
+| 1 | 33 passed, 2 failed (OF1 and one other page wait) |
+| 2 | 35 passed |
+| 3 to 13 (diagnosis) | 9 of 11 runs fully green; run 3 failed OF4 and BD5/OF5, run 13 failed BD5/OF5 and admin BD5/BD7 |
+| Offers spec alone, `--repeat-each=3` | 75 of 75 passed |
+| Right after a cold dev restart | 35 passed |
+
+Every failure was a page waiting for the result of a sub's or Alex's action.
+None came with a server error.
+The three failing runs took about twice as long as the green ones.
+In run 13 the server log shows three offer pages taking about 36 s to render and a route taking 15 s to compile.
+The machine's load average was 36 at the time, with other agents' Playwright suites and servers running on ports 3101, 3113 and 3116.
+The cause is shared-machine load, not the code.
+The offers spec's page waits use Playwright's default 5 s expect timeout, while the admin spec uses 15 s.
+Raising the offers spec to 15 s, as the admin spec does, would remove most of this flake.
+It is a low test-robustness item, not a blocker.
+
+### Still to verify after deploy
+
+The list above stands.
+D4 adds one concrete check: a details upload with real phone photos on a Vercel preview.
+D1 adds one: the cron retrying a `pending` push once the real SpecNook keys are set.
+
+### Cleanup
+
+All `ZZTEST-RB2` rows are deleted: 2 requests, 1 lead, 5 subs, their offers, recipients and responses.
+The two uploaded attachments under `service-request-photos/offers/` are deleted.
+The temporary trigger and function are dropped.
+The rate-limit buckets for my tokens and my `10.97.*` IPs are deleted.
+The stand-in SpecNook and my server on 3115 are stopped.
