@@ -1,6 +1,6 @@
 ---
 name: articles
-description: Write, refresh or SEO-edit a La Vaca blog article, publish it through the article CLI, and write its social copy. Use when asked to write a blog post or article, refresh or fix a decaying post, answer an SEO queue action, improve an article for search, AEO or local SEO, or write social posts for an article.
+description: Write, refresh or SEO-edit a La Vaca blog article, publish it through the article CLI, write its social copy and queue it as Postiz drafts. Use when asked to write a blog post or article, refresh or fix a decaying post, answer an SEO queue action, improve an article for search, AEO or local SEO, or write social posts for an article.
 ---
 
 # La Vaca articles
@@ -58,6 +58,8 @@ Claims you leave out (the guard holds them, so write around them):
 
 The detailed AEO and local-SEO checklist is in [references/aeo-local-seo.md](references/aeo-local-seo.md); read it for every new article.
 
+SpecNook links (optional): run `node scripts/ingest-article.mjs specnook-articles` and add at most two, only where the topic genuinely overlaps, never in the opening paragraph and never counted among the three La Vaca links, following [references/specnook-links.md](references/specnook-links.md).
+
 ## 4. Grill the draft
 
 Run every check in [references/grill.md](references/grill.md) against `article.md` and `faq.json`, and fix the draft until each one passes.
@@ -82,9 +84,8 @@ Done when the CLI printed the post id and the preview link.
 
 ## 6. Social copy
 
-Write the article's social copy to `docs/social/<slug>.md` in the repo (the slug the CLI printed), following [references/social.md](references/social.md): an Instagram and Facebook caption, a Google Business post, an X post, 3 to 5 hashtags, the article URL and today's date.
-It obeys the article's price and legal rules word for word.
-Done when every item in the social.md checklist passes.
+Write the article's social copy to `docs/social/<slug>.md` in the repo (the slug the CLI printed), following [references/social.md](references/social.md): an Instagram and Facebook caption, a plain Google Business post (no hashtags), an X post, a Threads post of its own, 3 to 5 hashtags, the article URL and today's date.
+It obeys the article's price and legal rules word for word; done when every item in the social.md checklist passes.
 It goes out with the publish below, which checks it like the article and puts the caption in Alex's Telegram.
 
 ## 7. Publish
@@ -97,10 +98,21 @@ node scripts/ingest-article.mjs publish <post id> --social docs/social/<slug>.md
 - Exit 2: the guard held it, or the social copy failed (nothing published), and it printed the reasons. "paragraph N" counts every blank-line block, headings and lists included.
   Fix each reason in `article.md` (then `patch`) or in the social file, and `publish` again.
   "Price catalog unavailable" is not about the text: change nothing and `publish` again in a minute.
-  If a reason is a claim the article cannot do without, stop and leave it held for Alex; report the reasons and the admin link.
-  Only Alex can publish over a hold ("Publish anyway" in the admin); never work around the guard.
+  If a reason is a claim the article cannot do without, stop and leave it held for Alex (only he can "Publish anyway"; never work around the guard), and report the reasons and the admin link.
 - Exit 1: an error; report it.
 
-## 8. Report
+## 8. Social PR, then Postiz drafts
 
-Tell Alex, in this order: what you published or left held, its URL or admin link, the social copy file, the target and action id, the questions it answers, and the grill result in one line per section.
+Only after exit 0: commit the social file alone on a branch from main and open its PR (no Co-Authored-By line), then queue the posts as Postiz drafts for Alex to approve (never posted from here).
+A docs-only social PR is the one change that may skip the no-mistakes gate (CLAUDE.md, "Shipping changes"); the time suffix keeps a second run on the same day from colliding with the first branch.
+
+```bash
+git fetch origin && git switch -c social/<slug>-<YYYY-MM-DD>-<HHMM> origin/main && git add docs/social/<slug>.md
+git commit -m "docs(social): <article title>" && git push -u origin HEAD && gh pr create --fill
+node scripts/postiz-drafts.mjs --file docs/social/<slug>.md --postiz "$POSTIZ_URL"
+```
+Needs `POSTIZ_API_KEY`, plus `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` for the hosted instance; it skips channels that already have the post, and on a failure (401, 403, 429) you report its message, the article staying published.
+
+## 9. Report
+
+Tell Alex, in this order: what you published or left held, its URL or admin link, the social copy file, the Postiz drafts per channel, the target and action id, the questions it answers, and the grill result in one line per section.

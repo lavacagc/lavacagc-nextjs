@@ -251,6 +251,11 @@ The gate's pre-push smoke run needs port 3000, so never start `npm run test:e2e`
 refused with "something is already listening on port 3000" and the run has to be
 started again once the suite finishes (2026-10-29).
 
+One exception, decided 2026-10-29: the weekly article routine's social-copy
+PR (a single new file under `docs/social/`, nothing else) is opened directly
+with `gh pr create` and merged without a gate run; the No Co-Authored-By CI
+check and the docs-only pre-push rule still apply to it.
+
 What stays a **manual pre-gate step**: browser-level Playwright / visual
 acceptance checks against a real dev server. The gate's worktree has no
 Supabase / Resend / reCAPTCHA secrets, so it can't run the env-dependent suite -

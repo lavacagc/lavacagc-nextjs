@@ -1,8 +1,9 @@
 /**
  * Social copy written by the articles skill at publish time (decision 006,
  * Q22). It replaces the retired Supabase function's "post published" email,
- * whose point was ready-made copy for Instagram, Facebook, Google Business
- * and X.
+ * whose point was ready-made copy for Instagram, Facebook, Google Business,
+ * X and Threads. After the publish, scripts/postiz-drafts.mjs queues the
+ * text posts as Postiz drafts for Alex to approve (it reads this same file).
  *
  * The skill saves the copy as docs/social/<slug>.md and passes the file to
  * `ingest-article.mjs publish --social <file>`; the publish route parses and
@@ -20,7 +21,7 @@
  *   Date: 2026-10-30
  *
  *   ## Instagram and Facebook
- *   <caption, up to 2,200 characters>
+ *   <caption, up to 2,200 characters with the hashtags below it>
  *
  *   ## Google Business
  *   <post, up to 1,500 characters>
@@ -28,14 +29,21 @@
  *   ## X
  *   <post, up to 280 characters>
  *
+ *   ## Threads
+ *   <post, up to 500 characters, at most one hashtag, no "link in bio">
+ *
  *   ## Hashtags
  *   #one #two #three
+ *
+ * Google Business is a search surface, not a feed: no hashtags and no emoji.
  *
  * Pure: tests/articles-social-copy.spec.ts.
  */
 import { claimReasons, type PublishFacts } from './publishGuard';
 
-export const SOCIAL_LIMITS = { instagram: 2200, google: 1500, x: 280 } as const;
+export const SOCIAL_LIMITS = { instagram: 2200, google: 1500, x: 280, threads: 500 } as const;
+/** Threads is text-first: at most one hashtag, never a hashtag wall. */
+export const THREADS_HASHTAGS_MAX = 1;
 export const HASHTAGS_MIN = 3;
 export const HASHTAGS_MAX = 5;
 /** The largest social file the publish route accepts. */
@@ -47,16 +55,18 @@ export interface SocialCopy {
   instagram: string;
   google: string;
   x: string;
+  threads: string;
   hashtags: string[];
 }
 
-type Section = 'instagram' | 'google' | 'x' | 'hashtags';
+type Section = 'instagram' | 'google' | 'x' | 'threads' | 'hashtags';
 
 function sectionOf(heading: string): Section | null {
   const h = heading.toLowerCase();
   if (/instagram|facebook/.test(h)) return 'instagram';
   if (/google/.test(h)) return 'google';
   if (/hashtag/.test(h)) return 'hashtags';
+  if (/threads/.test(h)) return 'threads';
   if (/^x\b|twitter/.test(h.trim())) return 'x';
   return null;
 }
@@ -64,7 +74,7 @@ function sectionOf(heading: string): Section | null {
 /** Read docs/social/<slug>.md. Unknown sections are ignored; missing ones come back empty. */
 export function parseSocialMarkdown(markdown: string): SocialCopy {
   const text = markdown.replace(/\r\n?/g, '\n');
-  const sections: Record<Section, string[]> = { instagram: [], google: [], x: [], hashtags: [] };
+  const sections: Record<Section, string[]> = { instagram: [], google: [], x: [], threads: [], hashtags: [] };
   let current: Section | null = null;
   for (const line of text.split('\n')) {
     const heading = /^##\s+(.+?)\s*$/.exec(line);
@@ -85,6 +95,7 @@ export function parseSocialMarkdown(markdown: string): SocialCopy {
     instagram: body('instagram'),
     google: body('google'),
     x: body('x'),
+    threads: body('threads'),
     hashtags: body('hashtags').split(/\s+/).filter(Boolean),
   };
 }
@@ -114,6 +125,19 @@ function hasServiceCall(text: string, hosts: string[]): boolean {
     }
   }
   return /(?:^|\s)\/(?:home-services\/[a-z0-9-]+|services\/[a-z0-9-]+|free-estimate)\b/i.test(text);
+}
+
+/** The article's own URL on a La Vaca host, somewhere in the text. */
+function hasArticleUrl(text: string, slug: string, hosts: string[]): boolean {
+  for (const m of text.matchAll(/https?:\/\/[^\s<>"')]+/gi)) {
+    try {
+      const url = new URL(m[0].replace(/[.,;:!?]+$/, ''));
+      if (hosts.includes(url.host.toLowerCase()) && url.pathname.replace(/\/$/, '') === `/blog/${slug}`) return true;
+    } catch {
+      // Not a URL; keep looking.
+    }
+  }
+  return false;
 }
 
 /**
@@ -162,8 +186,21 @@ export function oneCaseHashtagClaim(tag: string): string | null {
   return null;
 }
 
+/** Hashtags written inside a post's text (a "#" after a space or at the start, then a letter). */
+export function hashtagsIn(text: string): string[] {
+  return [...text.matchAll(/(?:^|\s)(#\p{L}[\p{L}\p{N}_]*)/gu)].map((m) => m[1]);
+}
+
+const LINK_IN_BIO = /\blinks?\s+in\s+(?:my\s+|our\s+|the\s+)?(?:bio|profile)\b/i;
+const EMOJI = /\p{Extended_Pictographic}/u;
+
 /** A discount number in a hashtag ("#Save20", "#20Off"), which prose rules would read as a bare number. */
 const HASHTAG_DISCOUNT = /\b(?:save|saving|savings|off|discount|deal|sale|cheaper)\s+\d|\d+\s+(?:off|percent|discount)\b/i;
+
+/** What Instagram and Facebook receive: the caption, a blank line, then the hashtags. */
+export function captionWithHashtags(copy: Pick<SocialCopy, 'instagram' | 'hashtags'>): string {
+  return [copy.instagram, copy.hashtags.join(' ')].filter(Boolean).join('\n\n');
+}
 
 /**
  * Every reason this copy may not go out, as plain sentences; empty means it
@@ -176,6 +213,7 @@ export function checkSocialCopy(copy: SocialCopy, slug: string, facts: PublishFa
     ['instagram', 'the Instagram caption', copy.instagram],
     ['google', 'the Google Business post', copy.google],
     ['x', 'the X post', copy.x],
+    ['threads', 'the Threads post', copy.threads],
   ];
 
   let articleOk = false;
@@ -194,10 +232,33 @@ export function checkSocialCopy(copy: SocialCopy, slug: string, facts: PublishFa
       continue;
     }
     const limit = SOCIAL_LIMITS[key as keyof typeof SOCIAL_LIMITS];
-    if (text.length > limit) reasons.push(`Social copy: ${where} has ${text.length} characters; the limit is ${limit}.`);
+    if (key === 'instagram') {
+      const posted = captionWithHashtags(copy);
+      if (posted.length > limit) reasons.push(`Social copy: the Instagram caption with its hashtags has ${posted.length} characters; the limit is ${limit}.`);
+    } else if (text.length > limit) reasons.push(`Social copy: ${where} has ${text.length} characters; the limit is ${limit}.`);
+  }
+  for (const [key, where, text] of named) {
+    if (key !== 'instagram' && text && !hasArticleUrl(text, slug, hosts)) {
+      reasons.push(`Social copy: ${where} must contain the article URL (https://www.lavacagc.com/blog/${slug}).`);
+    }
   }
   if (copy.instagram && !hasServiceCall(copy.instagram, hosts)) {
     reasons.push('Social copy: the Instagram caption needs a call to a La Vaca service page (https://www.lavacagc.com/home-services/<slug>, /services/<slug> or /free-estimate).');
+  }
+
+  const threadsTags = hashtagsIn(copy.threads);
+  if (threadsTags.length > THREADS_HASHTAGS_MAX) {
+    reasons.push(`Social copy: the Threads post has ${threadsTags.length} hashtags; at most ${THREADS_HASHTAGS_MAX}.`);
+  }
+  if (LINK_IN_BIO.test(copy.threads)) {
+    reasons.push('Social copy: the Threads post says "link in bio"; Threads posts carry their own link, so put the URL in the post.');
+  }
+  const googleTags = hashtagsIn(copy.google);
+  if (googleTags.length > 0) {
+    reasons.push(`Social copy: the Google Business post has hashtags (${googleTags.join(' ')}); keep it plain, with none.`);
+  }
+  if (EMOJI.test(copy.google)) {
+    reasons.push('Social copy: the Google Business post has emoji; keep it plain sentences.');
   }
 
   const n = copy.hashtags.length;
@@ -211,9 +272,10 @@ export function checkSocialCopy(copy: SocialCopy, slug: string, facts: PublishFa
   const places = [
     ...named.filter(([, , text]) => text).map(([, where, text]) => ({ where, text })),
     ...(n > 0 ? [{ where: 'the hashtags', text: copy.hashtags.map(hashtagWords).join('. ') }] : []),
+    ...(threadsTags.length > 0 ? [{ where: 'the Threads hashtag', text: threadsTags.map(hashtagWords).join('. ') }] : []),
   ];
   for (const reason of claimReasons(places, facts)) reasons.push(`Social copy: ${reason}`);
-  for (const tag of copy.hashtags) {
+  for (const tag of [...copy.hashtags, ...threadsTags]) {
     if (HASHTAG_DISCOUNT.test(hashtagWords(tag))) {
       reasons.push(`Social copy: Price claim: "${tag}" in the hashtags`);
       continue;
