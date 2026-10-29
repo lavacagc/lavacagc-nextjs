@@ -7,6 +7,8 @@
 #                               stub env, so it never dials hosted Supabase)
 #   4. Playwright smoke        (critical-path specs only, against the build
 #                               from step 3 - see `npm run test:smoke`)
+# A docs-only push (docs/, root Markdown, .lavish/, .claude/) skips all of
+# them - see the rule above the ref loop below.
 #
 # Emergency bypass: `git push --no-verify`. Use it knowingly: the trimmed CI
 # no longer repeats the expensive checks, so whatever you skip stays unchecked.
