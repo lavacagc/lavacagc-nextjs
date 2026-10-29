@@ -10,6 +10,7 @@ import { sniffMedia, isHeic, judgeStoredObject, totalFromContentRange, STORED_CA
 import { discardRefused, isMintedUploadKey } from '../src/lib/projects/storage';
 import { defaultAltText, defaultMetaDescription, defaultSeoTitle, deriveSlug, slugify } from '../src/lib/projects/slug';
 import { formatMonthYear, parseDateOnly } from '../src/lib/projects/dates';
+import { projectPagePaths, SITEMAP_TAG } from '../src/lib/revalidate';
 
 /**
  * Slice D: portfolio projects as drafts, no AI, and an ingest API for Claude Code.
@@ -141,6 +142,32 @@ test.describe('ingest token check (direct import)', () => {
     const src = read('src/lib/projects/ingestAuth.ts');
     expect(src).toContain('timingSafeEqual');
     expect(src).toContain("createHash('sha256')");
+  });
+});
+
+test.describe('project revalidation paths', () => {
+  test('a visibility change drops the project page, portfolio, homepage and sitemap', () => {
+    expect(projectPagePaths('kitchen-essex')).toEqual(['/projects/kitchen-essex', '/portfolio', '/', '/sitemap.xml']);
+    expect(projectPagePaths()).toEqual(['/portfolio', '/', '/sitemap.xml']);
+    expect(projectPagePaths('../evil')).toEqual(['/portfolio', '/', '/sitemap.xml']);
+    expect(read('src/lib/projects/http.ts')).toContain('projectPagePaths(slug)');
+  });
+
+  test('the sitemap is ISR and a failed database read throws instead of listing nothing', () => {
+    const src = read('src/app/sitemap.ts');
+    expect(src).toMatch(/export const revalidate = \d+/);
+    expect(src).toContain("readOrThrow('blog posts'");
+    expect(src).toContain("readOrThrow('projects'");
+    expect(src).toMatch(/throw new Error\(`sitemap: /);
+  });
+
+  test('the sitemap reads carry the sitemap tag, and all three writers expire it', () => {
+    // revalidatePath('/sitemap.xml') alone does not refresh the metadata route on Vercel.
+    expect(SITEMAP_TAG).toBe('sitemap');
+    expect(read('src/app/sitemap.ts')).toMatch(/unstable_cache\([\s\S]*tags: \[SITEMAP_TAG\], revalidate: 3600/);
+    for (const file of ['src/lib/articles/revalidate.ts', 'src/lib/projects/http.ts', 'src/app/api/admin/revalidate/route.ts']) {
+      expect(read(file), file).toContain('revalidateTag(SITEMAP_TAG, { expire: 0 })');
+    }
   });
 });
 

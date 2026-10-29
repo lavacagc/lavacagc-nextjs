@@ -8,11 +8,11 @@
  *
  * Admin auth is enforced by middleware on /api/admin/*.
  */
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { BodyError, readJsonBody, validationResponse } from '@/lib/projects/http';
-import { isRevalidatablePath } from '@/lib/revalidate';
+import { isRevalidatablePath, SITEMAP_TAG } from '@/lib/revalidate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,6 +39,8 @@ export async function POST(request: NextRequest) {
     // '/' is the homepage alone and '/sitemap.xml' is one file; every other
     // path drops itself and everything below it.
     for (const path of paths) revalidatePath(path, path === '/' || path === '/sitemap.xml' ? 'page' : 'layout');
+    // The path alone does not refresh the sitemap on Vercel; its reads carry this tag.
+    if (paths.includes('/sitemap.xml')) revalidateTag(SITEMAP_TAG, { expire: 0 });
   } catch (err) {
     console.error('admin revalidate failed:', err instanceof Error ? err.message : err);
     return NextResponse.json({ error: 'Could not revalidate' }, { status: 500 });

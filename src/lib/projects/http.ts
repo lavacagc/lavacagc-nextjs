@@ -2,9 +2,10 @@
  * Small request/response helpers the project routes share (admin and ingest).
  * Server-only.
  */
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { NextResponse, type NextRequest } from 'next/server';
 import type { ZodError } from 'zod';
+import { projectPagePaths, SITEMAP_TAG } from '@/lib/revalidate';
 
 /** JSON bodies are form fields and URLs; nothing legitimate comes near this. */
 export const MAX_JSON_BYTES = 256 * 1024;
@@ -42,11 +43,16 @@ export function validationResponse(error: ZodError): NextResponse {
  */
 export function revalidateProjectPages(slug?: string | null): void {
   try {
-    if (slug) revalidatePath(`/projects/${slug}`);
-    revalidatePath('/portfolio');
-    revalidatePath('/');
+    revalidateTag(SITEMAP_TAG, { expire: 0 });
   } catch (err) {
-    console.error('project revalidate failed:', err instanceof Error ? err.message : err);
+    console.error('project revalidate failed for the sitemap tag:', err instanceof Error ? err.message : err);
+  }
+  for (const path of projectPagePaths(slug)) {
+    try {
+      revalidatePath(path);
+    } catch (err) {
+      console.error(`project revalidate failed for ${path}:`, err instanceof Error ? err.message : err);
+    }
   }
 }
 

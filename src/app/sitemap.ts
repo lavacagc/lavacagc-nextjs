@@ -1,15 +1,56 @@
 import { MetadataRoute } from 'next'
+import { unstable_cache } from 'next/cache'
+import { PHASE_PRODUCTION_BUILD } from 'next/constants'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { Database } from '@/integrations/supabase/types'
 import { getAllResourceSlugs } from '@/data/resourceData'
 import { SERVICE_SLUGS } from '@/lib/home-services/catalog'
 import { getCatalog } from '@/lib/home-services/catalogData'
+import { SITEMAP_TAG } from '@/lib/revalidate'
 
 // Create a static client for build-time data fetching (no cookies/SSR)
 function getStaticSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   return createSupabaseClient<Database>(supabaseUrl, supabaseKey)
+}
+
+const isBuildOffVercel = () => process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD && !process.env.VERCEL
+
+// Each database list is cached under SITEMAP_TAG, which every blog and project
+// writer expires. A failed read throws inside the cache, so it is never stored.
+function cachedRows<T>(
+  key: string,
+  read: () => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): () => Promise<T[]> {
+  return unstable_cache(async () => {
+    const { data, error } = await read()
+    if (error) throw new Error(error.message)
+    return data ?? []
+  }, ['sitemap', key], { tags: [SITEMAP_TAG], revalidate: 3600 })
+}
+
+const readPosts = cachedRows('blog-posts', () => getStaticSupabaseClient()
+  .from('blog_posts')
+  .select('slug, updated_at, published')
+  .eq('published', true)
+  .order('updated_at', { ascending: false }))
+
+const readProjects = cachedRows('projects', () => getStaticSupabaseClient()
+  .from('projects')
+  .select('url_slug, updated_at, active')
+  .eq('active', true)
+  .order('updated_at', { ascending: false }))
+
+async function readOrThrow<T>(what: string, read: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await read()
+  } catch (err) {
+    const failure = err instanceof Error ? err.message : err
+    console.error(`sitemap: ${what} read failed:`, failure)
+    if (isBuildOffVercel()) return []
+    throw new Error(`sitemap: ${what} read failed: ${String(failure)}`)
+  }
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -259,51 +300,44 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })
   })
 
-  // Fetch dynamic blog posts from Supabase (using static client)
-  try {
-    const supabase = getStaticSupabaseClient()
-    const { data: posts } = await supabase
-      .from('blog_posts')
-      .select('slug, updated_at, published')
-      .eq('published', true)
-      .order('updated_at', { ascending: false })
+  // A failed read throws rather than listing nothing: during an ISR
+  // regeneration Next then keeps serving the last good sitemap, and a deploy
+  // build on Vercel fails instead of shipping one without posts or projects.
+  // Builds off Vercel (pre-push, CI, the gate) point at a stub or at nothing,
+  // so there the database entries are left out and the build goes on.
+  const [posts, projects] = await Promise.all([
+    readOrThrow('blog posts', readPosts),
+    readOrThrow('projects', readProjects),
+  ])
 
-    if (posts && posts.length > 0) {
-      posts.forEach(post => {
-        routes.push({
-          url: `${baseUrl}/blog/${post.slug}`,
-          lastModified: new Date(post.updated_at),
-          changeFrequency: 'monthly',
-          priority: 0.7,
-        })
-      })
-    }
-  } catch (error) {
-    console.error('Error fetching blog posts for sitemap:', error)
-  }
+  posts.forEach(post => {
+    routes.push({
+      url: `${baseUrl}/blog/${post.slug}`,
+      lastModified: new Date(post.updated_at),
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    })
+  })
 
-  // Fetch dynamic project pages from Supabase (using static client)
-  try {
-    const supabase = getStaticSupabaseClient()
-    const { data: projects } = await supabase
-      .from('projects')
-      .select('url_slug, updated_at, active')
-      .eq('active', true)
-      .order('updated_at', { ascending: false })
-
-    if (projects && projects.length > 0) {
-      projects.forEach(project => {
-        routes.push({
-          url: `${baseUrl}/projects/${project.url_slug}`,
-          lastModified: new Date(project.updated_at),
-          changeFrequency: 'yearly',
-          priority: 0.6,
-        })
-      })
-    }
-  } catch (error) {
-    console.error('Error fetching projects for sitemap:', error)
-  }
+  projects.forEach(project => {
+    routes.push({
+      url: `${baseUrl}/projects/${project.url_slug}`,
+      lastModified: new Date(project.updated_at),
+      changeFrequency: 'yearly',
+      priority: 0.6,
+    })
+  })
 
   return routes
 }
+
+
+// ISR, explicit: the sitemap regenerates at least hourly. On-demand refresh
+// does NOT come from revalidatePath('/sitemap.xml'): on Vercel that call does
+// not take effect for this metadata route (2026-10-29, an article published at
+// 20:47Z was still missing at 21:00Z, x-vercel-cache HIT, while the hourly
+// regeneration at 20:37Z had picked up one published at 20:28Z). So the post
+// and project reads above are cached under SITEMAP_TAG, and every blog and
+// project writer (revalidateArticlePages, revalidateProjectPages and
+// /api/admin/revalidate) expires that tag alongside the path.
+export const revalidate = 3600;

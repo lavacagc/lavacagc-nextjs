@@ -25,6 +25,13 @@ export const REVALIDATE_PREFIXES = [
  */
 export const REVALIDATE_EXACT = ['/sitemap.xml'] as const;
 
+/**
+ * Data-cache tag on the sitemap's database reads. revalidatePath('/sitemap.xml')
+ * alone does not refresh the metadata route on Vercel, so every writer that
+ * changes what the sitemap lists expires this tag too.
+ */
+export const SITEMAP_TAG = 'sitemap';
+
 const SAFE_PATH = /^\/[A-Za-z0-9\-_/]*$/;
 
 export function isRevalidatablePath(path: string): boolean {
@@ -59,6 +66,18 @@ export function blogPagePaths(...slugs: Array<string | null | undefined>): strin
     .filter((s) => /^[a-z0-9][a-z0-9-]*$/i.test(s))
     .map((s) => `/blog/${s}`);
   return [...new Set(['/blog', ...posts, '/sitemap.xml'])];
+}
+
+/**
+ * Every public path a project's visibility shows on: the project page, the
+ * portfolio, the homepage gallery and the sitemap, which lists every active
+ * project. The server writers hand it to revalidatePath through
+ * revalidateProjectPages.
+ */
+export function projectPagePaths(slug?: string | null): string[] {
+  const clean = (slug ?? '').trim().replace(/^\/+|\/+$/g, '');
+  const page = /^[a-z0-9][a-z0-9-]*$/i.test(clean) ? [`/projects/${clean}`] : [];
+  return [...page, '/portfolio', '/', '/sitemap.xml'];
 }
 
 /**
