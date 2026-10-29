@@ -76,7 +76,7 @@ test.describe('source checks', () => {
     }
   });
 
-  test('SEO1: the landing title is under 60 characters and the description under 160 with the three counties', () => {
+  test('SEO1: the landing title is under 60 characters and the description under 160 with every county', () => {
     for (const lang of ['en', 'es'] as const) {
       expect(brandedTitle(s('metaTitle', lang)).length, lang).toBeLessThan(60);
       const description = s('metaDescription', lang);
@@ -115,6 +115,18 @@ test.describe('source checks', () => {
     expect(isInServiceArea({ zip: '', town: 'Montclair' })).toBe(true);
     expect(isInServiceArea({ zip: '070', town: 'Montclair' })).toBe(true);
     expect(isInServiceArea({ zip: '08540' })).toBe(false);
+  });
+
+  test('Q21: Union County is served - its ZIPs map to Union and pass the gate; a Somerset neighbour still does not', () => {
+    for (const zip of ['07090', '07201', '07083', '07901', '07922', '07974', '07016', '07060']) {
+      expect(countyForZip(zip), zip).toBe('Union');
+      expect(isInServiceArea({ zip }), zip).toBe(true);
+    }
+    expect(countyForZip('07065')).toBe('Union'); // Rahway: now by county, not only the scorer list
+    expect(countyForZip('07069')).toBeNull(); // Watchung, Somerset County
+    expect(isInServiceArea({ zip: '07069' })).toBe(false);
+    expect(isInServiceArea({ zip: '07920' })).toBe(false); // Basking Ridge, Somerset
+    expect(COUNTIES).toEqual(['Essex', 'Morris', 'Bergen', 'Union']);
   });
 
   test('RF7 sanitizer: a well-formed request becomes a leads row with no sanitizer adjustments', () => {

@@ -67,12 +67,12 @@ export const HOME_SERVICES_SEED: HomeServiceContent[] = [
       { en: 'Islands, glass doors or heavy damage', es: 'Islas, puertas de vidrio o daños importantes' },
     ],
     seo: {
-      title: { en: 'Cabinet Repainting in Essex, Morris & Bergen NJ from $2,095', es: 'Pintura de gabinetes en Essex, Morris y Bergen desde $2,095' },
+      title: { en: 'Cabinet Painting in Essex, Morris, Bergen & Union NJ, $2,095', es: 'Pintar gabinetes en Essex, Morris, Bergen y Union, $2,095' },
       description: {
-        en: 'Cabinet repainting costs from $2,095 in Essex, Morris and Bergen Counties NJ. Sprayed enamel, two coats, firm quote from your photos the same day.',
-        es: 'Repintado de gabinetes desde $2,095 en Essex, Morris y Bergen NJ. Esmalte con pistola, dos capas y cotización firme con sus fotos el mismo día.',
+        en: 'Cabinet repainting costs from $2,095 in Essex, Morris, Bergen and Union NJ. Sprayed enamel, two coats, firm quote from your photos the same day.',
+        es: 'Repintado de gabinetes desde $2,095 en Essex, Morris, Bergen y Union NJ. Esmalte con pistola, dos capas y cotización firme con sus fotos el mismo día.',
       },
-      keywords: ['cabinet painting NJ', 'how much does cabinet painting cost in NJ', 'cabinet painting near me', 'cabinet refinishing Essex County', 'kitchen cabinet painting Morris County', 'cabinet painters Bergen County'],
+      keywords: ['cabinet painting NJ', 'how much does cabinet painting cost in NJ', 'cabinet painting near me', 'cabinet refinishing Essex County', 'kitchen cabinet painting Morris County', 'cabinet painters Bergen County', 'cabinet painting Union County'],
     },
     faq: [
       costFaq({ en: 'cabinet repainting', es: 'el repintado de gabinetes' }, {
@@ -108,12 +108,12 @@ export const HOME_SERVICES_SEED: HomeServiceContent[] = [
       { en: 'Repairs found during the service (quoted separately)', es: 'Reparaciones encontradas durante el servicio (se cotizan aparte)' },
     ],
     seo: {
-      title: { en: 'HVAC Cleaning in Essex, Morris & Bergen NJ from $299', es: 'Limpieza de HVAC en Essex, Morris y Bergen NJ desde $299' },
+      title: { en: 'HVAC Cleaning in Essex, Morris, Bergen & Union NJ from $299', es: 'Limpieza de HVAC en Essex, Morris, Bergen y Union desde $299' },
       description: {
-        en: 'HVAC cleaning costs from $299 per system in Essex, Morris and Bergen NJ: coil, blower and drain line cleaned, filter changed. Firm price, fast scheduling.',
-        es: 'Limpieza de HVAC desde $299 por sistema en Essex, Morris y Bergen NJ: serpentín, ventilador y drenaje limpios, filtro nuevo. Precio firme y agenda rápida.',
+        en: 'HVAC cleaning costs from $299 per system in Essex, Morris, Bergen and Union NJ: coil, blower and drain line cleaned, filter changed. Firm price.',
+        es: 'Limpieza de HVAC desde $299 por sistema en Essex, Morris, Bergen y Union NJ: serpentín, ventilador y drenaje limpios, filtro nuevo. Precio firme.',
       },
-      keywords: ['HVAC cleaning NJ', 'how much does HVAC cleaning cost', 'HVAC cleaning near me', 'AC coil cleaning Essex County', 'furnace cleaning Morris County', 'HVAC tune up Bergen County'],
+      keywords: ['HVAC cleaning NJ', 'how much does HVAC cleaning cost', 'HVAC cleaning near me', 'AC coil cleaning Essex County', 'furnace cleaning Morris County', 'HVAC tune up Bergen County', 'HVAC cleaning Union County'],
     },
     faq: [
       costFaq({ en: 'HVAC cleaning', es: 'la limpieza de HVAC' }, {
@@ -148,12 +148,12 @@ export const HOME_SERVICES_SEED: HomeServiceContent[] = [
       { en: 'Heavy debris, pet hair or renovation dust', es: 'Mucho polvo, pelo de mascotas o polvo de obra' },
     ],
     seo: {
-      title: { en: 'Air Duct Cleaning in Essex, Morris & Bergen NJ from $449', es: 'Limpieza de ductos en Essex, Morris y Bergen NJ desde $449' },
+      title: { en: 'Air Duct Cleaning in Essex, Morris, Bergen & Union NJ, $449', es: 'Limpieza de ductos: Essex, Morris, Bergen y Union, $449' },
       description: {
-        en: 'Air duct cleaning costs from $449 for up to 10 vents in Essex, Morris and Bergen NJ. Vacuumed and sanitized in one visit, firm price from your photos.',
-        es: 'Limpieza de ductos desde $449 por hasta 10 rejillas en Essex, Morris y Bergen NJ. Aspirado y desinfectado en una visita, precio firme con sus fotos.',
+        en: 'Air duct cleaning costs from $449 for up to 10 vents in Essex, Morris, Bergen and Union NJ. Vacuumed and sanitized in one visit, firm price from your photos.',
+        es: 'Limpieza de ductos desde $449 por hasta 10 rejillas en Essex, Morris, Bergen y Union NJ. Aspirado y desinfectado en una visita, precio firme con sus fotos.',
       },
-      keywords: ['duct cleaning NJ', 'how much does duct cleaning cost', 'air duct cleaning near me', 'air duct cleaning Essex County', 'vent cleaning Morris County', 'duct cleaning Bergen County'],
+      keywords: ['duct cleaning NJ', 'how much does duct cleaning cost', 'air duct cleaning near me', 'air duct cleaning Essex County', 'vent cleaning Morris County', 'duct cleaning Bergen County', 'air duct cleaning Union County'],
     },
     faq: [
       costFaq({ en: 'air duct cleaning', es: 'la limpieza de ductos' }, {
@@ -188,12 +188,12 @@ export const HOME_SERVICES_SEED: HomeServiceContent[] = [
       { en: 'Recurring visits are priced lower per visit', es: 'Las visitas recurrentes tienen menor precio por visita' },
     ],
     seo: {
-      title: { en: 'Home Cleaning in Essex, Morris & Bergen County NJ from $259', es: 'Limpieza de casa en Essex, Morris y Bergen NJ desde $259' },
+      title: { en: 'Home Cleaning in Essex, Morris, Bergen & Union NJ from $259', es: 'Limpieza de casa en Essex, Morris, Bergen y Union desde $259' },
       description: {
-        en: 'House cleaning costs from $259 for up to 2 bedrooms and 1 bath in Essex, Morris and Bergen NJ. Vetted crews, firm price up front, one-time or recurring.',
-        es: 'Limpieza de casa desde $259 para hasta 2 recámaras y 1 baño en Essex, Morris y Bergen NJ. Equipos verificados, precio firme, una vez o recurrente.',
+        en: 'House cleaning costs from $259 for up to 2 bedrooms and 1 bath in Essex, Morris, Bergen and Union NJ. Vetted crews, firm price up front, one-time or recurring.',
+        es: 'Limpieza de casa desde $259 para hasta 2 recámaras y 1 baño en Essex, Morris, Bergen y Union NJ. Equipos verificados, precio firme, una vez o recurrente.',
       },
-      keywords: ['house cleaning NJ', 'how much does house cleaning cost in NJ', 'house cleaning near me', 'home cleaning Essex County', 'cleaning service Morris County', 'house cleaners Bergen County'],
+      keywords: ['house cleaning NJ', 'how much does house cleaning cost in NJ', 'house cleaning near me', 'home cleaning Essex County', 'cleaning service Morris County', 'house cleaners Bergen County', 'house cleaning Union County'],
     },
     faq: [
       costFaq({ en: 'home cleaning', es: 'la limpieza de casa' }, {
@@ -229,12 +229,12 @@ export const HOME_SERVICES_SEED: HomeServiceContent[] = [
       { en: 'Doors, shutters, decks and railings added', es: 'Puertas, contraventanas, terrazas y barandas' },
     ],
     seo: {
-      title: { en: 'Exterior Painting in Essex, Morris & Bergen NJ, $2.95/sq ft', es: 'Pintura exterior en Essex, Morris y Bergen desde $2.95/pie²' },
+      title: { en: 'Exterior Painting $2.95/sq ft: Essex, Morris, Bergen & Union', es: 'Pintura exterior: Essex, Morris, Bergen y Union, $2.95/pie²' },
       description: {
-        en: 'Exterior painting costs $2.95 per sq ft, $3,600 minimum, in Essex, Morris and Bergen NJ. Power wash, prime and two coats, firm quote from your photos.',
-        es: 'Pintura exterior a $2.95 por pie², mínimo $3,600, en Essex, Morris y Bergen NJ. Lavado a presión, imprimación y dos capas, cotización firme con sus fotos.',
+        en: 'Exterior painting costs $2.95 per sq ft, $3,600 minimum, in Essex, Morris, Bergen and Union NJ. Power wash, prime, two coats, firm quote from photos.',
+        es: 'Pintura exterior a $2.95 por pie², mínimo $3,600, en Essex, Morris, Bergen y Union NJ. Lavado a presión, imprimación y dos capas, precio firme con fotos.',
       },
-      keywords: ['exterior painting NJ', 'how much does exterior painting cost in NJ', 'exterior painters near me', 'house painters Essex County', 'exterior painters Morris County', 'exterior painting Bergen County'],
+      keywords: ['exterior painting NJ', 'how much does exterior painting cost in NJ', 'exterior painters near me', 'house painters Essex County', 'exterior painters Morris County', 'exterior painting Bergen County', 'exterior painting Union County'],
     },
     faq: [
       costFaq({ en: 'exterior painting', es: 'la pintura exterior' }, {
@@ -271,12 +271,12 @@ export const HOME_SERVICES_SEED: HomeServiceContent[] = [
       { en: 'Repairs, resealing or new hangers', es: 'Reparaciones, resellado o soportes nuevos' },
     ],
     seo: {
-      title: { en: 'Gutter Cleaning in Essex, Morris & Bergen NJ from $279', es: 'Limpieza de canaletas en Essex, Morris y Bergen desde $279' },
+      title: { en: 'Gutter Cleaning in Essex, Morris, Bergen & Union NJ, $279', es: 'Limpieza de canaletas en Essex, Morris, Bergen y Union, $279' },
       description: {
-        en: 'Gutter cleaning costs from $279 single story, $349 two story, in Essex, Morris and Bergen NJ. Cleared, flushed, checked and photographed, firm price.',
-        es: 'Limpieza de canaletas desde $279 un piso, $349 dos pisos, en Essex, Morris y Bergen NJ. Despejadas, enjuagadas, revisadas y con fotos, precio firme.',
+        en: 'Gutter cleaning costs from $279 single story, $349 two story, in Essex, Morris, Bergen and Union NJ. Cleared, flushed, checked and photographed, firm price.',
+        es: 'Limpieza de canaletas desde $279 un piso, $349 dos pisos, en Essex, Morris, Bergen y Union NJ. Despejadas, enjuagadas, revisadas y con fotos, precio firme.',
       },
-      keywords: ['gutter cleaning NJ', 'how much does gutter cleaning cost', 'gutter cleaning near me', 'gutter cleaning Essex County', 'gutter cleaning Morris County', 'gutter cleaning Bergen County'],
+      keywords: ['gutter cleaning NJ', 'how much does gutter cleaning cost', 'gutter cleaning near me', 'gutter cleaning Essex County', 'gutter cleaning Morris County', 'gutter cleaning Bergen County', 'gutter cleaning Union County'],
     },
     faq: [
       costFaq({ en: 'gutter cleaning', es: 'la limpieza de canaletas' }, {
@@ -311,12 +311,12 @@ export const HOME_SERVICES_SEED: HomeServiceContent[] = [
       { en: 'Color matching when no leftover paint is on hand', es: 'Igualar el color cuando no hay pintura sobrante' },
     ],
     seo: {
-      title: { en: 'Drywall Repair in Essex, Morris & Bergen NJ from $349', es: 'Reparación de drywall en Essex, Morris y Bergen desde $349' },
+      title: { en: 'Drywall Repair in Essex, Morris, Bergen & Union NJ from $349', es: 'Reparación de drywall en Essex, Morris, Bergen y Union, $349' },
       description: {
-        en: 'Drywall repair costs from $349 for the first patch in Essex, Morris and Bergen NJ: cut, patched, taped, primed and painted to blend. Firm price from photos.',
-        es: 'Reparación de drywall desde $349 por el primer parche en Essex, Morris y Bergen NJ: cortado, parchado, encintado, imprimado y pintado. Precio firme con fotos.',
+        en: 'Drywall repair costs from $349 for the first patch in Essex, Morris, Bergen and Union NJ: patched, taped, primed and painted to blend. Firm price.',
+        es: 'Reparación de drywall desde $349 por el primer parche en Essex, Morris, Bergen y Union NJ: parchado, encintado, imprimado y pintado. Precio firme.',
       },
-      keywords: ['drywall repair NJ', 'how much does drywall repair cost', 'drywall repair near me', 'drywall patching Essex County', 'drywall repair Morris County', 'drywall contractor Bergen County'],
+      keywords: ['drywall repair NJ', 'how much does drywall repair cost', 'drywall repair near me', 'drywall patching Essex County', 'drywall repair Morris County', 'drywall contractor Bergen County', 'drywall repair Union County'],
     },
     faq: [
       costFaq({ en: 'drywall repair', es: 'la reparación de drywall' }, {

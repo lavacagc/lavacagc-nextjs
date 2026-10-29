@@ -6,7 +6,7 @@
  * it and the admin components render with it, so the list filter, the detail
  * panel and the summary card all agree on what "Essex" or "close rate" means.
  */
-import { describeAnswers, serviceTrade, type County, type Lang, type ServiceNames, type Trade } from './catalog';
+import { COUNTIES, describeAnswers, serviceTrade, type County, type Lang, type ServiceNames, type Trade } from './catalog';
 import { countyForZip } from './countyZips';
 
 export const REQUEST_STATUSES = ['held', 'new', 'contacted', 'bid_sent', 'assigned', 'won', 'lost'] as const;
@@ -78,7 +78,8 @@ export const REQUEST_ADMIN_COLUMNS = [
 ].join(',');
 
 /**
- * County for each town in SERVICE_AREAS (src/lib/leadScoring.ts). Bid
+ * County for each town in SERVICE_AREAS (src/lib/leadScoring.ts), plus the
+ * larger Union County towns (decision 006 Q21), for requests with no ZIP. Bid
  * eligibility matches a sub's counties against this, so a town missing here
  * means "no county", and only subs with no county restriction get that offer.
  */
@@ -106,6 +107,14 @@ export const TOWN_COUNTY: Record<string, string> = {
   'ho-ho-kus': 'Bergen',
   summit: 'Union',
   rahway: 'Union',
+  westfield: 'Union',
+  cranford: 'Union',
+  'new providence': 'Union',
+  'berkeley heights': 'Union',
+  'scotch plains': 'Union',
+  springfield: 'Union',
+  union: 'Union',
+  elizabeth: 'Union',
   clifton: 'Passaic',
 };
 
@@ -138,7 +147,7 @@ export function countyForRequest(req: Pick<HomeServiceRequestRow, 'town' | 'addr
 }
 
 export function isServedCounty(county: string | null): county is County {
-  return county === 'Essex' || county === 'Morris' || county === 'Bergen';
+  return (COUNTIES as readonly string[]).includes(county ?? '');
 }
 
 /** Trades on a request, one per service, in service order and de-duplicated. */

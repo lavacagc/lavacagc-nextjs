@@ -297,7 +297,7 @@ export function alertDetailLines(
 ): string[] {
   const lines = [
     `Address: ${req.address}${req.town ? `, ${req.town}` : ''} ${req.zip}`.trim(),
-    `County: ${countyForZip(req.zip) ?? 'outside Essex, Morris and Bergen (in the scorer ZIP list)'}`,
+    `County: ${countyForZip(req.zip) ?? 'outside Essex, Morris, Bergen and Union (in the scorer ZIP list)'}`,
     `Timing: ${timingLabel(req.timing, 'en')}`,
     `Language: ${req.language === 'es' ? 'Spanish' : 'English'}`,
   ];

@@ -902,7 +902,7 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
     // table (Q20 locked both on 2026-10-29, migration 20261030000004).
     const claims = await rest<Array<{ key: string; lock: boolean }>>(request, 'GET', 'content_facts?select=key,lock&key=like.claim_*');
     for (const c of claims) expect(keys.includes(c.key), c.key).toBe(c.lock);
-    expect(fb.counties).toEqual(['Essex', 'Morris', 'Bergen']);
+    expect(fb.counties).toEqual(['Essex', 'Morris', 'Bergen', 'Union']);
   });
 
   test('a price edited in Services & Prices is the price the guard allows on the next publish', async ({ page, request }) => {
