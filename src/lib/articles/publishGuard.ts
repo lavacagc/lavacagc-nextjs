@@ -129,8 +129,11 @@ function maskLockedSentences(text: string, locked: string[]): string {
 
 /** A short window around a match, for reasons the owner can find in the post. */
 function contextOf(text: string, start: number, end: number): string {
-  const from = Math.max(0, start - 30);
-  const to = Math.min(text.length, end + 30);
+  // About 30 characters each side, widened to whole words.
+  let from = Math.max(0, start - 30);
+  while (from > 0 && /\S/.test(text[from - 1])) from -= 1;
+  let to = Math.min(text.length, end + 30);
+  while (to < text.length && /\S/.test(text[to])) to += 1;
   const head = from > 0 ? '...' : '';
   const tail = to < text.length ? '...' : '';
   return `${head}${text.slice(from, to).trim()}${tail}`;
@@ -163,7 +166,7 @@ function allMatches(re: RegExp, text: string): Span[] {
 
 const UNIT = String.raw`(?:\s*(?:\/|per|a)\s*(?:sq\.?\s*ft\.?|square\s+f(?:oo|ee)t|linear\s+f(?:oo|ee)t|lin\.?\s*ft\.?|pie²|pie\s+cuadrado))?`;
 /** $9,000 / $9k / $2.95 / sq ft / USD 9000 / 9,000 dollars. */
-const CURRENCY_SOURCE = String.raw`(?:\$\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:k|thousand|million)\b)?|\bUSD\s?\d[\d,]*(?:\.\d+)?|\b\d[\d,]*(?:\.\d+)?\s?(?:k\s)?(?:USD|dollars?)\b)${UNIT}`;
+const CURRENCY_SOURCE = String.raw`(?:\$\s?\d(?:[\d,]*\d)?(?:\.\d+)?(?:\s?(?:k|thousand|million)\b)?|\bUSD\s?\d(?:[\d,]*\d)?(?:\.\d+)?|\b\d(?:[\d,]*\d)?(?:\.\d+)?\s?(?:k\s)?(?:USD|dollars?)\b)${UNIT}`;
 const CURRENCY_RE = new RegExp(CURRENCY_SOURCE, 'gi');
 /** A per-unit price phrase standing on its own ("priced per square foot"). */
 const UNIT_ONLY_RE = /\bper\s+(?:sq\.?\s*ft\.?|square\s+f(?:oo|ee)t|linear\s+f(?:oo|ee)t)/gi;
@@ -172,13 +175,13 @@ const UNIT_ONLY_RE = /\bper\s+(?:sq\.?\s*ft\.?|square\s+f(?:oo|ee)t|linear\s+f(?
  * year (2026) is not a price: "the cost of a kitchen remodel in 2026" is the
  * most common title on the subject and says nothing about money.
  */
-const PRICE_WORD_RE = /\b(?:start(?:s|ing)?\s+at|from(?=\s*\$)|costs|cost\s+of|prices?|priced|estimates?\s+of|quotes?\s+of)\b[^.!?\n]{0,40}?(?:\$\s?)?(?<!\d)(?!(?:19|20)\d\d\b)\d[\d,]*(?:\.\d+)?/gi;
+const PRICE_WORD_RE = /\b(?:start(?:s|ing)?\s+at|from(?=\s*\$)|costs|cost\s+of|prices?|priced|estimates?\s+of|quotes?\s+of)\b[^.!?\n]{0,40}?(?:\$\s?)?(?<!\d)(?!(?:19|20)\d\d\b)\d(?:[\d,]*\d)?(?:\.\d+)?/gi;
 /** A percentage next to a discount word, either way round. */
 const PERCENT_RE = /\b(?:save|saving|savings|discount(?:ed)?|off|cheaper)\b[^.!?\n]{0,20}?\d+(?:\.\d+)?\s?(?:%|percent\b)|\d+(?:\.\d+)?\s?(?:%|percent\b)[^.!?\n]{0,20}?\b(?:off|save|savings?|discount(?:ed)?|cheaper)\b/gi;
 
 /** "$2,095" -> 2095, "$2.95 / sq ft" -> 2.95, "9k dollars" -> 9000. NaN when there is no number. */
 export function amountValue(text: string): number {
-  const m = /(\d[\d,]*(?:\.\d+)?)\s?(k|thousand|million)?/i.exec(text);
+  const m = /(\d(?:[\d,]*\d)?(?:\.\d+)?)\s?(k|thousand|million)?/i.exec(text);
   if (!m) return NaN;
   const base = Number(m[1].replace(/,/g, ''));
   const scale = !m[2] ? 1 : /million/i.test(m[2]) ? 1_000_000 : 1_000;

@@ -50,7 +50,7 @@ node scripts/ingest-article.mjs feedback --summary
 | `--summary` | For `feedback`: a short readable summary instead of the full JSON. |
 | `--dry-run` | Show what would be sent, send nothing. |
 
-The CLI exits 0 on success, 2 when the publish guard held the article (it prints the reasons), and 1 on any other failure.
+The CLI exits 0 on success, 2 when the publish guard held the article or refused a change to a live one (it prints the reasons), and 1 on any other failure.
 
 ## Worked example for Claude Code
 
@@ -110,9 +110,9 @@ The site's bot filter refuses a few client user agents (curl, wget, python-reque
 | --- | --- |
 | `POST /api/articles/ingest` | Create an unpublished draft (`source = 'claude'`). JSON: `{ title, slug?, content, category, excerpt?, meta_title?, meta_description?, meta_keywords?, featured_image?, faq?: [{ q, a }], action_id? }`. Answers 201 `{ id, slug, adminUrl, previewUrl }`. `action_id` must name an open `new` action. |
 | `PATCH /api/articles/ingest/<id>` | Change any subset of the same fields. `published` is kept as it was. With the `action_id` of a refresh or consolidate whose live post is `<id>`, the post is not changed and the result becomes the action's draft. |
-| `POST /api/articles/ingest/<id>/publish` | `{ action_id? }`. Runs the publish guard. Pass: `{ published: true, id, slug, url, published_at }`, the action (if any) is marked completed. Hold: 409 `{ published: false, hold: [reasons], adminUrl }` and the post stays a draft with `review_hold` set. |
+| `POST /api/articles/ingest/<id>/publish` | `{ action_id? }`. Runs the publish guard. Pass: `{ published: true, id, slug, url, published_at, unpublish_url, telegram }`, the action (if any) is marked completed. Hold: 409 `{ published: false, hold: [reasons], adminUrl, telegram }` and the post stays a draft with `review_hold` set. |
 | `POST /api/articles/ingest/<id>/unpublish` | Take it down. `{ published: false, id, slug }`. |
-| `GET /api/articles/seo-feedback?days=28` | `{ window, pages: [{ path, impressions, clicks, ctr, position, trend_delta, decaying, post? }], pages_total, refresh_candidates, new_article_candidates, suggested_actions, open_actions: [{ id, kind, status, target, rationale }], truncated }`. At most 200 pages; `decaying` means fewer clicks in the last 14 days than the 14 before; `post` is the blog post when the path is `/blog/<slug>`. |
+| `GET /api/articles/seo-feedback?days=28` | `{ window, pages: [{ path, impressions, clicks, ctr, position, trend_delta, decaying, post? }], pages_total, refresh_candidates, new_article_candidates, suggested_actions, open_actions: [{ id, kind, status, target, rationale }], truncated, facts: [{ key, value }], counties }`. At most 200 pages; `decaying` means fewer clicks in the last 14 days than the 14 before; `post` is the blog post when the path is `/blog/<slug>`. |
 
 Example, publishing a draft:
 
@@ -128,5 +128,42 @@ The SEO tab shows each queued action with a "Draft with Claude Code" button that
 
 ## Publish guard
 
-Every publish runs `checkPublishable` in `src/lib/articles/publishGuard.ts`.
-In this release it is a stub that always passes; the price, legal-claim and shape checks arrive with Phase 2 slice G, and the routes and CLI above already handle a hold.
+Every publish runs `checkPublishable` in `src/lib/articles/publishGuard.ts`: Claude's publish route, the admin editor's Save on a draft going live, the admin list's Publish button, and the scheduled-publish cron.
+A token `patch` of a post that is already live is checked too, so a live article cannot pick up a claim by an edit; a refused patch writes nothing and answers 409 (`changed: false`), and the CLI exits 2.
+
+It checks, in order, and holds the article on any reason:
+
+1. The fact-lock (`validateDraft`): at least three internal links, any phone number equals `phone_main`, any HIC number equals `hic_number`.
+2. Price claims: dollar amounts, per-square-foot or per-linear-foot prices, "starting at", "from $", "costs", "cost of", "price(s)", "estimate(s) of", "quote(s) of" followed by a number, and percentages next to off, save, discount or cheaper. A home-services starting price, exactly as the catalog shows it, in a paragraph that names that service, is allowed. A bare year ("in 2026") is not a price.
+3. Legal claims: permit, code compliant, to code, building code, warranty, guarantee(d), insured, bonded, liability, lawsuit, legal(ly), ADA, OSHA, lead-safe, EPA, asbestos, mold remediation. A sentence that is, verbatim, the value of a locked `claim_*` fact in `content_facts` is allowed; the seeded `claim_license` and `claim_insurance` are unlocked placeholders until Alex approves their wording.
+4. Shape: the opening paragraph is 25 to 70 words with no link, there is at least one `##` heading, and a title starting with How, What, Why, When, Should, Can, Does or Is has a FAQ of 2 to 6 items.
+
+The title, every paragraph, the FAQ, and an excerpt or meta description of their own are all checked.
+Each reason names the text and where it is, for example `Price claim: "from $9,000" in paragraph 4`.
+
+A held article stays a draft with `review_hold = { reasons, checked_at }`.
+It is cleared in exactly two ways: a later publish whose guard passes on the post's current content, or Alex's "Publish anyway" in the admin editor, which publishes it and records his user id and the reasons in `review_override`.
+The ingest token can never clear a hold while the guard still fails, and no route takes `review_hold` as an input.
+
+## Telegram and the one-tap unpublish link
+
+When Claude publishes (or the cron publishes a scheduled post), Alex's Telegram chat gets:
+
+```
+New article published: <title> <url>
+Unpublish: <signed link>
+```
+
+When the guard holds it: `Article held for review: <title> <adminUrl>` and the first three reasons.
+The admin's own publishes from the editor or list send nothing.
+
+The link opens `/articles/unpublish/<token>`, a page with the title, the slug and one Unpublish button; opening it changes nothing, the button does.
+The token is `base64url(postId.publishedAtUnix).HMAC-SHA256(INTERNAL_WEBHOOK_SECRET)`, valid 7 days, and only while the post is still live with that publish date: once used, or after the article is published again, the link answers 410.
+After the button Alex gets `Article unpublished: <title> <url>`.
+
+The publish response carries `unpublish_url` and `telegram` (`sent`, `not_configured` or `failed`), and the CLI prints both; Telegram never decides whether the publish happens.
+
+## Locked facts and counties
+
+`feedback` also returns `facts` (the locked `content_facts` rows an article may quote verbatim: phone, license, service area, year, approved `claim_*` sentences) and `counties` (the home-services counties); `feedback --summary` prints both.
+The Claude Code skill `.claude/skills/articles/SKILL.md` drives the whole loop: read feedback, pick a target, draft, grill (`references/grill.md`), create or patch, publish.

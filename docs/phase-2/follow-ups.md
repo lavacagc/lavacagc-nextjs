@@ -16,5 +16,9 @@ Each line says who does it and when.
 
 ## Slice G (publish guard, Telegram, skill)
 
-- Seed `claim_license` and `claim_insurance` in `content_facts` with the exact wording Alex approves.
-- Replace the stub in `src/lib/articles/publishGuard.ts` and add the Telegram messages where the publish route marks them.
+- Alex: write the exact `claim_license` and `claim_insurance` sentences. Migration `20261030000002_content_facts_claims.sql` seeds both as unlocked placeholders, which the guard ignores, so until then no sentence with a legal keyword can be published by Claude. To approve one, in the Supabase SQL editor: `UPDATE public.content_facts SET value = '<the exact sentence>', lock = true, verified_at = now(), verified_by = 'alex' WHERE key = 'claim_insurance';` (same for `claim_license`).
+- Apply migration `20261030000002_content_facts_claims.sql` to production with the release (it adds `blog_posts.review_override`, which the article routes read).
+- Make sure `INTERNAL_WEBHOOK_SECRET` (32 characters or more) is set in Vercel Production; it signs the one-tap unpublish links. Without it the publish Telegram says there is no link and every old link answers 410. It already guards `/api/notify/*`, so it should be set.
+- Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in Vercel if not already (they carry the lead alerts today); the publish, held and unpublished messages use the same chat.
+- When slice E (catalog in the database) merges, point `loadCatalogPrices()` in `src/lib/articles/catalogPrices.ts` at `getCatalog()`, so the price the guard allows is the price the admin set.
+- The service area fact (`Northern New Jersey (Bergen, Essex, Morris, Union counties)`) names Union county, which the home-services `COUNTIES` list (Essex, Morris, Bergen) does not. The skill uses both as written; Alex may want them to agree.

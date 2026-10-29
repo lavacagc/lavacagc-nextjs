@@ -94,6 +94,8 @@ test.describe('PG1: checkPublishable', () => {
     ['Spring bookings get 15% off the second room.', '15% off'],
     ['Ask about the 10 percent discount for neighbors.', '10 percent discount'],
     ['A repaint is 30% cheaper than new doors.', '30% cheaper'],
+    // Punctuation after an amount is not part of the claim.
+    ['Gutters from $199, every fall.', 'from $199'],
   ];
   for (const [sentence, matched] of PRICE_CASES) {
     test(`price pattern: "${matched}" is a reason`, () => {
@@ -411,6 +413,43 @@ test.describe('TG / SEC2: the unpublish page and its routes (source and render)'
     expect(sql).toMatch(/'placeholder', false\)/);
     expect(sql).toContain('ON CONFLICT (key) DO NOTHING');
     expect(sql).toContain('ADD COLUMN IF NOT EXISTS review_override jsonb');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SK - the Claude Code skill
+// ---------------------------------------------------------------------------
+
+test.describe('SK: the articles skill', () => {
+  const skill = '.claude/skills/articles/SKILL.md';
+
+  test('SK1: SKILL.md exists with its two references and is under 120 lines', () => {
+    const text = read(skill);
+    expect(text.split('\n').length).toBeLessThan(120);
+    expect(text).toMatch(/^---\nname: articles\ndescription: .+\n---/);
+    expect(text).toContain('(references/grill.md)');
+    expect(text).toContain('(references/aeo-local-seo.md)');
+    expect(existsSync(join(root, '.claude/skills/articles/references/grill.md'))).toBe(true);
+    expect(existsSync(join(root, '.claude/skills/articles/references/aeo-local-seo.md'))).toBe(true);
+    // Every step has its command, through the CLI alone.
+    for (const cmd of ['feedback --summary', 'ingest-article.mjs create', 'ingest-article.mjs patch', 'ingest-article.mjs publish']) {
+      expect(text, cmd).toContain(cmd);
+    }
+    expect(text).toMatch(/Exit 2/);
+  });
+
+  test('SK3: the grill checklist names its sources', () => {
+    const grill = read('.claude/skills/articles/references/grill.md');
+    for (const source of ['content_facts', 'COUNTIES', 'service_area', '/api/articles/seo-feedback', 'phone_main', 'hic_number', 'claim_']) {
+      expect(grill, source).toContain(source);
+    }
+    expect(grill).toMatch(/grade 8 or below/);
+  });
+
+  test('SEO3: the local-SEO checklist requires a town, a county and the service-area sentence', () => {
+    const aeo = read('.claude/skills/articles/references/aeo-local-seo.md');
+    expect(aeo).toMatch(/At least one town and one county from `counties`/);
+    expect(aeo).toContain('`service_area` fact sentence');
   });
 });
 
@@ -750,6 +789,18 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
     expect(out.hold).toEqual(expect.arrayContaining([expect.stringContaining('Legal claim: "insured"'), expect.stringContaining('Legal claim: "bonded"')]));
     expect((await row(request, post.id)).content).toBe(before);
     await request.post(`/api/articles/ingest/${post.id}/unpublish`, { headers: auth });
+  });
+
+  test('SK3: the feedback the skill reads carries the locked facts (never the lead address) and the counties', async ({ request }) => {
+    const res = await request.get('/api/articles/seo-feedback', { headers: auth });
+    expect(res.status()).toBe(200);
+    const fb = await res.json();
+    const keys = (fb.facts as Array<{ key: string }>).map((f) => f.key);
+    expect(keys).toEqual(expect.arrayContaining(['hic_number', 'phone_main', 'service_area', 'current_year']));
+    expect(keys).not.toContain('email_leads');
+    // The placeholders are unlocked, so they are not offered as quotable.
+    expect(keys).not.toContain('claim_license');
+    expect(fb.counties).toEqual(['Essex', 'Morris', 'Bergen']);
   });
 
   test('the publish cron runs the guard: a held post stays a draft with its schedule cleared, a clean one goes live', async ({ request }) => {
