@@ -189,6 +189,29 @@ Required in `.env.local`:
 - Images are optimized via Next.js Image component with Supabase storage
 - Security headers are configured in `next.config.ts`
 
+## Progress board in the CLI (standing rule, added 2026-10-29)
+
+Alex follows the work from the terminal, so every long-running phase gets a progress board in the reply, refreshed whenever a step changes state.
+Post one when a phase starts, when it moves, and when it ends; never let more than one step pass silently.
+The board has, in this order:
+
+- A one-line title: what is running, on which branch or commit.
+- A bar and a percent, counted in steps done out of steps total, with an estimated time to completion from the measured durations of the steps already finished (say "no estimate yet" rather than invent one).
+- One line per step: name, state (done, running, pending, failed), measured duration, and round when it has one.
+- A "Who" line per active worker: the agent (pipeline daemon, a named builder or reviewer subagent, the Lavish poll, me) and the model it runs on, or "model unknown" when the tool does not expose it.
+
+Format, so it reads the same every time:
+
+```
+Pipeline run 3 · no-mistakes · feat/home-services-request-flow @ 776297a
+[██████░░░░] 6/9 · 67% · ETA ~5 min (review 4m38s, test 3m11s measured)
+  intent done 0s · rebase done 2s · review done 4m38s (fix round 1) · test done 3m11s
+  document running 29s · lint pending · push pending · pr pending · ci pending
+Who: no-mistakes daemon v1.41 (Claude Code CLI, Opus per ~/.no-mistakes/config.yaml) on document · Fable 5.1 driving the gates · Lavish poll idle, waiting on Q7-Q12
+```
+
+Subagents are named in the board by role (builder slice A, reviewer B) with their model, so the record shows who built and who reviewed what.
+
 ## Shipping changes - the no-mistakes gate
 
 Every change ships through the **no-mistakes** gate (`/no-mistakes`), not by
