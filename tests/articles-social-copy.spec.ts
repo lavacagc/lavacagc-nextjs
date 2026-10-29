@@ -339,7 +339,8 @@ test.describe('Q22: publish with social copy (live backend)', () => {
     const draft = await (await request.post('/api/articles/ingest', {
       headers: auth, data: { title: `${PREFIX} Over`, content: body, category: 'Gutter Cleaning' },
     })).json() as { id: string; slug: string };
-    const over = socialFile({ url: `${baseURL}/blog/${draft.slug}`, x: `${x}!` });
+    const overUrl = `${baseURL}/blog/${draft.slug}`;
+    const over = socialFile({ url: overUrl, x: fill('Clean gutters in late fall. ', ` ${overUrl}`, 281) });
     const refused = await request.post(`/api/articles/ingest/${draft.id}/publish`, { headers: auth, data: { social: over } });
     expect(refused.status()).toBe(422);
     expect((await refused.json()).social).toEqual(['Social copy: the X post has 281 characters; the limit is 280.']);
