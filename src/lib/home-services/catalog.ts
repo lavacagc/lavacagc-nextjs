@@ -36,7 +36,7 @@ export const TRADE_LABEL: Record<Trade, L> = {
   home_cleaning: { en: 'Home cleaning', es: 'Limpieza de casa' },
   exterior_painting: { en: 'Exterior painting', es: 'Pintura exterior' },
   gutter_cleaning: { en: 'Gutter cleaning', es: 'Limpieza de canaletas' },
-  drywall: { en: 'Drywall', es: 'Paneles de yeso' },
+  drywall: { en: 'Drywall', es: 'Reparación de drywall' },
 };
 
 export const COUNTIES = ['Essex', 'Morris', 'Bergen'] as const;

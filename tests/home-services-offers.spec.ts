@@ -1,8 +1,12 @@
-import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
+import { test, expect as baseExpect, type APIRequestContext, type Page } from '@playwright/test';
 import { createHash, randomBytes } from 'crypto';
 import { existsSync, mkdirSync, readFileSync } from 'fs';
 import path from 'path';
 import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
+
+// Offer pages render slowly on a loaded shared machine (review: 3 of 13 runs
+// failed on page waits at load average 36); the admin spec already waits 15 s.
+const expect = baseExpect.configure({ timeout: 15_000 });
 import {
   customerPriceForSubPay, maxSubPayForCustomerPrice, parseDollarsToCents, subPayViolation,
 } from '../src/lib/home-services/pricing';

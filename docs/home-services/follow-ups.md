@@ -62,6 +62,10 @@ Each is recorded with its reasoning in `00-site-audit.md` or `docs/decisions/`.
 - Verify-code attempt counter is read-then-write; bounded by the per-id limit of 15 an hour (slice A review D9).
 - Bulk Feature, Archive and Reorder in the Portfolio Manager now go through the server; the remaining browser-side reads rely on the production admin policies.
 - Dashboard tab on the local rig fails on a missing `blog_posts.title` column; add it to the preview baseline with the other production-only columns.
+- CTA events: a request with no cookie still mints a counted visitor, so a cookieless script can inflate views from one IP up to the rate limit (slice C re-verification); consider requiring the `cta_v` seed cookie to exist before minting.
+- The homepage pushes three history entries after load on the base commit as well, so one Back press stays on `/` (slice C re-verification); separate ticket.
+- Dev server intermittently fails to SSR `Testimonials` with "No QueryClient set": not reproduced in about 550 renders by the reviewer; keep an eye on Vercel logs.
+- Playwright: the home-services and offers specs can time out on a cold dev server under load; warm the pages in `beforeAll` (slice A and B re-verifications).
 
 ## Craigslist and listings
 

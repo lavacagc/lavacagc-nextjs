@@ -81,13 +81,13 @@ export function VariantEditor({ initial, submitLabel, busy, onSubmit, onCancel, 
           <Input
             id={`${id}-color`}
             value={draft.color}
-            placeholder="#1f7a4d"
+            placeholder="#ee9639"
             maxLength={120}
             aria-invalid={colorInvalid}
             onChange={(e) => setDraft({ ...draft, color: e.target.value })}
           />
         </div>
-        {colorInvalid && <p className="text-xs text-destructive">Use a hex colour like #1f7a4d.</p>}
+        {colorInvalid && <p className="text-xs text-destructive">Use a hex colour like #ee9639.</p>}
       </div>
       <div className="flex flex-wrap gap-2 md:col-span-3">
         <Button type="submit" disabled={busy || wordingMissing || colorInvalid}>

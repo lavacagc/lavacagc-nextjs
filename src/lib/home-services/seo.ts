@@ -79,7 +79,9 @@ function offerFor(service: HomeService, lang: Lang, url: string): Record<string,
       price,
       priceCurrency: 'USD',
       unitText: 'per square foot',
-      minPrice: (service.minimumCents / 100).toFixed(2),
+      // The $3,500 job minimum stays in the offer description: inside a
+      // per-square-foot UnitPriceSpecification, minPrice reads as the lowest
+      // unit price (review D12 re-verification note).
     },
   };
 }

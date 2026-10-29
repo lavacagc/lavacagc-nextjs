@@ -54,7 +54,7 @@ export function ctaBootstrap(c: CtaBootstrapConfig, x: (seed: string, button: st
     if (!/^[0-9a-f]{32}$/.test(r)) r = Array.from(crypto.getRandomValues(new Uint8Array(16)), (n) => (n + 256).toString(16).slice(1)).join('');
     ([['P', 'primary', c.p], ['S', 'secondary', c.s]] as string[][]).forEach(([l, n, k]) => {
       if (k) {
-        v = o[l] && k.indexOf(o[l]) + 1 ? o[l] : k[x(r, n, k.length)];
+        v = o[l] && o[l].length == 1 && k.indexOf(o[l]) + 1 ? o[l] : k[x(r, n, k.length)];
         q.push(l + '%3D' + v);
         d.setAttribute('data-cta-' + l, v);
       }
