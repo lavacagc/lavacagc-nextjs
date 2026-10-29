@@ -307,3 +307,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return routes
 }
+
+
+// ISR: the sitemap reads published posts and projects from the database. Without
+// a revalidate export Next builds it once per deploy and Vercel serves that file
+// from its cache, so revalidatePath('/sitemap.xml') on a publish had nothing to
+// refresh and a new article stayed out of the sitemap until the next deploy
+// (seen on 2026-10-29 with the first routine-written article). One hour plus
+// on-demand revalidation on every blog and project write.
+export const revalidate = 3600;
