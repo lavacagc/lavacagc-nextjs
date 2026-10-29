@@ -120,3 +120,29 @@ Recommended:
 5. Check that the X, Threads and Google Business posts contain the article URL, in `checkSocialCopy` (and so in the drafts script's `fileProblems`).
 6. One sentence in docs/articles-ingest.md that the drafts land as four separate calendar entries (Postiz's public API gives each its own group).
 7. Do not cache SpecNook pages that failed to fetch.
+
+## Re-review (head f312d2d): ACCEPT
+
+The builder's round 1 (0a29742, f312d2d) closes all seven items; re-checked in my worktree reset to f312d2d.
+
+- Fix 1, dedup window: the local Postiz baseline was `Post` 1757, `TagsPosts` 0, `Notifications` 357, `Errors` 19, `Media` 4, newest `createdAt` 2026-10-13 18:13:14, Temporal 261.
+  `--date 2027-03-01T14:00:00Z` run once created four drafts (facebook, threads, x, gmb), all `state = DRAFT`, Temporal still 261.
+  The same run again printed "already in Postiz ... skipped" for all four and "Nothing to create.", exit 0.
+  `dedupWindow(now, date)` now spans 60 days before the earlier of today and `--date` to 60 days after the later.
+  I deleted the four rows; every count and the newest `createdAt` are back to baseline, and no review draft is left in Postiz.
+- Fix 2, skill: step 8 is now "Social PR, then Postiz drafts": after exit 0, commit the social file alone on a branch from `origin/main`, push, `gh pr create --fill`, then run the drafts script.
+  It reads in order and a reader can follow it; docs/articles-ingest.md mirrors it.
+  SKILL.md is 118 lines.
+- Fix 3, 429: the message now names Postiz's `API_LIMIT` setting (90 unless the instance sets it), and the docs add that the local instance runs 30; the stub test asserts the new text.
+- Fix 4, 302: a new CLI test answers 302 with a Cloudflare Access `Location`, asserts exit 1, the Cloudflare message, and that the redirect is not followed (one request seen).
+- Fix 5, article URL: `checkSocialCopy` now holds an X, Threads or Google Business post without the article URL, with tests.
+  The drafts script holds it too: my copy of the test file with the URL removed from the X post exits 1 with `the "X" post must contain the article URL`.
+- Fix 6: docs/articles-ingest.md says the drafts land as four separate calendar entries.
+- Fix 7: SpecNook pages that failed to load are no longer cached; the spec covers it.
+- Gates: `npm run typecheck` 0, `npm run lint` 0, `npm run chaos:static` 0 ("no new violations"), `npm run test:e2e -- tests/postiz-drafts.spec.ts tests/articles-specnook-links.spec.ts tests/articles-social-copy.spec.ts tests/articles-publish-guard.spec.ts` exit 0, 198 passed, 32 skipped (the live-backend specs), no `.env.local` in this worktree.
+
+Two notes for Alex, not blockers:
+
+- Step 8 opens the social PR with `gh pr create` directly, while CLAUDE.md says every change ships through the no-mistakes gate.
+  For a single docs-only file written by the routine that seems a reasonable exception, but it is his call, and if it stands it is worth one line in CLAUDE.md or the skill naming it as one.
+- `git switch -c social/<slug>-<YYYY-MM-DD>` fails if that branch already exists (a second run on the same day); the reader would have to notice and reuse it.
