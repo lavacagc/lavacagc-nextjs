@@ -124,3 +124,46 @@ Conflicts: `CLAUDE.md` (both pointers kept) and `src/middleware.ts`: slice G's b
 
 The bypass token is passed on the command line only; the env files stay exactly `env.rig`.
 The rig still holds `hero-primary`, `hero-secondary` (running) and `landing-hero` (draft, as seeded).
+
+## Fix round 2
+
+Re-review: REJECT on R1 (flaky live specs on the production build), R2 recommended; taken by fast-forward to `baab7c9`.
+
+### What changed
+
+- R1, EX2 cleanup (`tests/experiments.spec.ts`): after the retire, a visitor seeded for B is polled for up to 10 seconds until the page shows the default again, instead of asserting the first response.
+- R1, CT5 (`tests/cta-tests.spec.ts`): the "homepage now serves B" check retries with a fresh visitor for up to 10 seconds; the whole test body runs in `try`, and its `finally` calls `restoreHeroButtons`.
+- R1, CT cleanup: `restoreHeroButtons` rewrites the variants (dropping the test's own) and then writes once per button through `/api/admin/cta/variants` (which expires the experiments cache, the event sink's active-pair cache and revalidates `/`), calls `POST /api/admin/revalidate` for `/`, and polls `/` until no test variant is rendered. `afterAll` signs in an admin and calls it too, so a failed run can no longer leave its variant on the cached homepage.
+  The poll matches rendered links only: the inline CSS names every key A to G, which made my first version of the check wait forever (two of my runs failed on it before I found it).
+- R1, docs: `docs/local-rig.md` says a revalidated page shows within seconds under `next start`, that specs poll after a write, and that shared state is restored through the admin route; `docs/experiments.md` says "within seconds".
+- R2: `copy` now marks slots that state a locked fact (the hero `body` carries "Licensed NJ contractor"): the report's `current_copy` has `locked`, and the CLI prints "locked: ... leave it out of every variant".
+  The skill now says to put in each variant only the slots the test changes, with the hero title as the worked example.
+  New unit test "R2": the hero's locked slot is `body`; a title-only experiment built from the `copy` output passes the create schema; the whole `copy` output is refused on the license; the skill's template carries only `title`.
+
+### Five consecutive runs (R1 item 3)
+
+One production build of the round 2 head (`npm run build` with the env exactly `env.rig`), one server for all five runs, never restarted:
+`EXPERIMENTS_FAKE_CLOCK=1 RECAPTCHA_E2E_BYPASS_TOKEN=<32+ chars> next start -p 3120`, then five times
+`RECAPTCHA_E2E_BYPASS_TOKEN=<same> TEST_URL=http://localhost:3120 E2E_LIVE_BACKEND=1 playwright test tests/experiments.spec.ts tests/cta-tests.spec.ts --project=chromium --workers=1`.
+
+| Run | Result | Hero button rows after |
+| --- | --- | --- |
+| 1 | 45 passed, 0 failed | 6 (as before the runs) |
+| 2 | 45 passed, 0 failed | 6 |
+| 3 | 45 passed, 0 failed | 6 |
+| 4 | 45 passed, 0 failed | 6 |
+| 5 | 45 passed, 0 failed | 6 |
+
+Tally: 5 of 5 green.
+After the runs no `slice-h-*` experiment remains and the cached homepage renders primary A and B and secondary A only.
+An earlier attempt at the tally was stopped after two runs because of the CSS-matching bug in my restore poll (both runs failed in CT5's `finally`, after its assertions had passed); I deleted that attempt's leftover rows (2 experiments, 1 request, 6 homepage button rows) and ran the five above from a clean rig.
+
+### Gates on the final head
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck`, `npm run lint` | clean, clean |
+| `npm run chaos:static` | total 0, baselined 0, new 0 |
+| Units (experiments spec, `E2E_STUB_BACKEND=1`) | 13 passed |
+
+The env files are exactly `env.rig`; the bypass token is passed on the command line only.

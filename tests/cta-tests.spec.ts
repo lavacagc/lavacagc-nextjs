@@ -362,7 +362,8 @@ async function restoreHeroButtons(adminApi: APIRequestContext) {
   await expect
     .poll(async () => {
       const html = await (await adminApi.get('/')).text();
-      return html.includes(TAG) || /data-cta-button="secondary"[^>]*data-cta-variant="[B-G]"/.test(html);
+      // Rendered links only: the inline CSS names every key A to G for both buttons.
+      return html.includes(TAG) || /<a[^>]*data-cta-button="secondary"[^>]*data-cta-variant="[B-G]"/.test(html);
     }, { timeout: 10_000, intervals: [250, 500, 1000] })
     .toBe(false);
 }
