@@ -58,6 +58,13 @@ const nextConfig: NextConfig = {
         hostname: 'xrvbrnrbnyfdwkfdoepq.supabase.co',
         pathname: '/storage/v1/object/**',
       },
+      // The local Supabase stack (see memory: local-supabase-rig) serves
+      // storage from 127.0.0.1, so a project seeded there crashed next/image
+      // on the homepage for every builder sharing the rig. Dev only: the
+      // production allowlist stays exactly the hosted project above.
+      ...(process.env.NODE_ENV === 'development'
+        ? [{ protocol: 'http' as const, hostname: '127.0.0.1', pathname: '/storage/v1/object/**' }]
+        : []),
     ],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
