@@ -145,9 +145,13 @@ const nextConfig: NextConfig = {
               // Additional img-src hosts:
               // - c.bing.com — Clarity ↔ Bing identity sync pixel
               // - googleads.g.doubleclick.net — Google Ads conversion-tracking 1x1 img
-              "img-src 'self' data: blob: https://www.lavacagc.com https://lavacagc.com https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://www.googletagmanager.com https://www.google.com https://www.gstatic.com https://*.googleusercontent.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://fonts.gstatic.com https://c.bing.com https://googleads.g.doubleclick.net",
+              `img-src 'self' data: blob: ${process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:* http://localhost:* ' : ''}https://www.lavacagc.com https://lavacagc.com https://xrvbrnrbnyfdwkfdoepq.supabase.co https://www.google-analytics.com https://www.googletagmanager.com https://www.google.com https://www.gstatic.com https://*.googleusercontent.com https://www.facebook.com https://connect.facebook.net https://www.clarity.ms https://*.clarity.ms https://fonts.gstatic.com https://c.bing.com https://googleads.g.doubleclick.net`,
               "font-src 'self' https://fonts.gstatic.com https://r2cdn.perplexity.ai",
-              "media-src 'self' https://xrvbrnrbnyfdwkfdoepq.supabase.co",
+              // blob: so the admin project form can preview a video while it uploads
+              // (the preview is a createObjectURL of the picked file; without
+              // blob: it is blocked until the storage URL replaces it). The
+              // development branch mirrors connect-src for the local rig.
+              `media-src 'self' blob: ${process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:* http://localhost:* ' : ''}https://xrvbrnrbnyfdwkfdoepq.supabase.co`,
               // Additional connect-src hosts:
               // - *.a.run.app and *.on.aws — Meta Pixel's CAPI Lite event-ingestion endpoints
               //   live on dynamically-routed Cloud Run / AWS App Runner instances (the exact
