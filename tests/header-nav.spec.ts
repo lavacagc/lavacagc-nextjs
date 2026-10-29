@@ -125,7 +125,10 @@ test.describe('open mobile menu', () => {
       }]),
     }));
 
-    await page.goto('/portfolio');
+    // On `/`, not `/portfolio`: SmartBanner suppresses itself on the portfolio
+    // page on phones altogether (Lavish review Q5, 2026-10-29), so there this
+    // test would find no card and say nothing about the menu.
+    await page.goto('/');
     // Scoped to `.bottom-20` on purpose: the banner renders BOTH its phone card
     // and its (display:none here) desktop card, so the message alone is
     // ambiguous. `bottom-20` is the phone one - the card this test is about.
