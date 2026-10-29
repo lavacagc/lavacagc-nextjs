@@ -163,6 +163,7 @@ verification stays a **manual pre-gate step**.
 - Home Services build (priced services, request flow, bids, CTA tests, portfolio drafts): `docs/home-services/` (audit, acceptance criteria, follow-ups, reports) and `docs/decisions/`.
 - Claude Code project ingest: `docs/projects-ingest.md`.
 - Claude Code article routes and CLI (write, publish, SEO feedback): `docs/articles-ingest.md`.
+- A/B experiments (assignment, funnel, weekly evaluator and veto, agent routes and CLI): `docs/experiments.md`; the weekly routine is the `experiments` skill.
 
 ## Path Aliases
 

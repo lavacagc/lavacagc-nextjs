@@ -295,7 +295,8 @@ async function overrunsOn(page: Page): Promise<string[]> {
 
     for (let el: Element | null = root; el; el = el.parentElement) {
       const overflowX = getComputedStyle(el).overflowX;
-      if (overflowX !== 'hidden' && overflowX !== 'auto' && overflowX !== 'scroll') continue;
+      // 'clip' clips too (the admin shell moved to overflow-x-clip in the slice E polish round).
+      if (overflowX !== 'hidden' && overflowX !== 'clip' && overflowX !== 'auto' && overflowX !== 'scroll') continue;
       const over = el.scrollWidth - el.clientWidth;
       if (over > 1) overruns.push(`${name(el)} clips ${Math.round(over)}px of its own content`);
     }
