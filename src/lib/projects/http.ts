@@ -5,6 +5,7 @@
 import { revalidatePath } from 'next/cache';
 import { NextResponse, type NextRequest } from 'next/server';
 import type { ZodError } from 'zod';
+import { projectPagePaths } from '@/lib/revalidate';
 
 /** JSON bodies are form fields and URLs; nothing legitimate comes near this. */
 export const MAX_JSON_BYTES = 256 * 1024;
@@ -41,12 +42,12 @@ export function validationResponse(error: ZodError): NextResponse {
  * Never throws: a failed revalidation still leaves the hourly ceiling.
  */
 export function revalidateProjectPages(slug?: string | null): void {
-  try {
-    if (slug) revalidatePath(`/projects/${slug}`);
-    revalidatePath('/portfolio');
-    revalidatePath('/');
-  } catch (err) {
-    console.error('project revalidate failed:', err instanceof Error ? err.message : err);
+  for (const path of projectPagePaths(slug)) {
+    try {
+      revalidatePath(path);
+    } catch (err) {
+      console.error(`project revalidate failed for ${path}:`, err instanceof Error ? err.message : err);
+    }
   }
 }
 

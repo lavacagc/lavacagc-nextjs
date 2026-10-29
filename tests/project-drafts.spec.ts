@@ -10,6 +10,7 @@ import { sniffMedia, isHeic, judgeStoredObject, totalFromContentRange, STORED_CA
 import { discardRefused, isMintedUploadKey } from '../src/lib/projects/storage';
 import { defaultAltText, defaultMetaDescription, defaultSeoTitle, deriveSlug, slugify } from '../src/lib/projects/slug';
 import { formatMonthYear, parseDateOnly } from '../src/lib/projects/dates';
+import { projectPagePaths } from '../src/lib/revalidate';
 
 /**
  * Slice D: portfolio projects as drafts, no AI, and an ingest API for Claude Code.
@@ -141,6 +142,23 @@ test.describe('ingest token check (direct import)', () => {
     const src = read('src/lib/projects/ingestAuth.ts');
     expect(src).toContain('timingSafeEqual');
     expect(src).toContain("createHash('sha256')");
+  });
+});
+
+test.describe('project revalidation paths', () => {
+  test('a visibility change drops the project page, portfolio, homepage and sitemap', () => {
+    expect(projectPagePaths('kitchen-essex')).toEqual(['/projects/kitchen-essex', '/portfolio', '/', '/sitemap.xml']);
+    expect(projectPagePaths()).toEqual(['/portfolio', '/', '/sitemap.xml']);
+    expect(projectPagePaths('../evil')).toEqual(['/portfolio', '/', '/sitemap.xml']);
+    expect(read('src/lib/projects/http.ts')).toContain('projectPagePaths(slug)');
+  });
+
+  test('the sitemap is ISR and a failed database read throws instead of listing nothing', () => {
+    const src = read('src/app/sitemap.ts');
+    expect(src).toMatch(/export const revalidate = \d+/);
+    expect(src).toContain("readOrThrow('blog posts'");
+    expect(src).toContain("readOrThrow('projects'");
+    expect(src).toMatch(/throw new Error\(`sitemap: /);
   });
 });
 

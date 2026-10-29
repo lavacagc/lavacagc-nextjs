@@ -1,4 +1,5 @@
 import { MetadataRoute } from 'next'
+import { PHASE_PRODUCTION_BUILD } from 'next/constants'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { Database } from '@/integrations/supabase/types'
 import { getAllResourceSlugs } from '@/data/resourceData'
@@ -10,6 +11,25 @@ function getStaticSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   return createSupabaseClient<Database>(supabaseUrl, supabaseKey)
+}
+
+const isBuildOffVercel = () => process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD && !process.env.VERCEL
+
+async function readOrThrow<T>(
+  what: string,
+  read: () => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  let failure: unknown
+  try {
+    const { data, error } = await read()
+    if (!error) return data ?? []
+    failure = error.message
+  } catch (err) {
+    failure = err instanceof Error ? err.message : err
+  }
+  console.error(`sitemap: ${what} read failed:`, failure)
+  if (isBuildOffVercel()) return []
+  throw new Error(`sitemap: ${what} read failed: ${String(failure)}`)
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -259,51 +279,41 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })
   })
 
-  // Fetch dynamic blog posts from Supabase (using static client)
-  try {
-    const supabase = getStaticSupabaseClient()
-    const { data: posts } = await supabase
+  // A failed read throws rather than listing nothing: during an ISR
+  // regeneration Next then keeps serving the last good sitemap, and a deploy
+  // build on Vercel fails instead of shipping one without posts or projects.
+  // Builds off Vercel (pre-push, CI, the gate) point at a stub or at nothing,
+  // so there the database entries are left out and the build goes on.
+  const [posts, projects] = await Promise.all([
+    readOrThrow('blog posts', () => getStaticSupabaseClient()
       .from('blog_posts')
       .select('slug, updated_at, published')
       .eq('published', true)
-      .order('updated_at', { ascending: false })
-
-    if (posts && posts.length > 0) {
-      posts.forEach(post => {
-        routes.push({
-          url: `${baseUrl}/blog/${post.slug}`,
-          lastModified: new Date(post.updated_at),
-          changeFrequency: 'monthly',
-          priority: 0.7,
-        })
-      })
-    }
-  } catch (error) {
-    console.error('Error fetching blog posts for sitemap:', error)
-  }
-
-  // Fetch dynamic project pages from Supabase (using static client)
-  try {
-    const supabase = getStaticSupabaseClient()
-    const { data: projects } = await supabase
+      .order('updated_at', { ascending: false })),
+    readOrThrow('projects', () => getStaticSupabaseClient()
       .from('projects')
       .select('url_slug, updated_at, active')
       .eq('active', true)
-      .order('updated_at', { ascending: false })
+      .order('updated_at', { ascending: false })),
+  ])
 
-    if (projects && projects.length > 0) {
-      projects.forEach(project => {
-        routes.push({
-          url: `${baseUrl}/projects/${project.url_slug}`,
-          lastModified: new Date(project.updated_at),
-          changeFrequency: 'yearly',
-          priority: 0.6,
-        })
-      })
-    }
-  } catch (error) {
-    console.error('Error fetching projects for sitemap:', error)
-  }
+  posts.forEach(post => {
+    routes.push({
+      url: `${baseUrl}/blog/${post.slug}`,
+      lastModified: new Date(post.updated_at),
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    })
+  })
+
+  projects.forEach(project => {
+    routes.push({
+      url: `${baseUrl}/projects/${project.url_slug}`,
+      lastModified: new Date(project.updated_at),
+      changeFrequency: 'yearly',
+      priority: 0.6,
+    })
+  })
 
   return routes
 }

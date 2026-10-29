@@ -62,6 +62,18 @@ export function blogPagePaths(...slugs: Array<string | null | undefined>): strin
 }
 
 /**
+ * Every public path a project's visibility shows on: the project page, the
+ * portfolio, the homepage gallery and the sitemap, which lists every active
+ * project. The server writers hand it to revalidatePath through
+ * revalidateProjectPages.
+ */
+export function projectPagePaths(slug?: string | null): string[] {
+  const clean = (slug ?? '').trim().replace(/^\/+|\/+$/g, '');
+  const page = /^[a-z0-9][a-z0-9-]*$/i.test(clean) ? [`/projects/${clean}`] : [];
+  return [...page, '/portfolio', '/', '/sitemap.xml'];
+}
+
+/**
  * Ask the server to revalidate these paths. Never throws: the save already
  * succeeded, so a failure only means the hourly ISR window applies. Returns
  * whether the request went through, so the caller can say so.
