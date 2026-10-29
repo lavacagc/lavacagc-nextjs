@@ -101,7 +101,7 @@ curl -A "Mozilla/5.0" -X POST "https://www.lavacagc.com/api/projects/ingest/<id>
 ## What the owner sees
 
 In the admin, Content > Projects shows the draft at the top under Drafts, marked "From Claude Code", with Publish, Publish + feature, Edit and Delete.
-Publishing makes it live on `/projects/<slug>`, `/portfolio`, and with feature on the homepage, at once (the pages are revalidated on publish).
+Publishing makes it live on `/projects/<slug>`, `/portfolio`, `sitemap.xml`, and with feature on the homepage, at once (the pages are revalidated on publish).
 
 ## First run after deploy: the twenty photos already in `drafts/`
 
