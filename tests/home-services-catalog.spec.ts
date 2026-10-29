@@ -136,16 +136,22 @@ test.describe('CAT7 and CAT8 (source)', () => {
 
   test('CAT7: the built client chunks do not contain the catalog copy (needs a production build in .next)', () => {
     const dir = join(ROOT, '.next/static/chunks');
-    test.skip(!existsSync(dir) || existsSync(join(ROOT, '.next/dev')), 'no production client chunks in .next (the live run checks the chunks the browser loads instead)');
+    let scanned = 0;
+    // BUILD_ID marks a production build; `next dev` keeps its own output under .next/dev.
+    test.skip(!existsSync(join(ROOT, '.next/BUILD_ID')), 'no production build in .next (the live run checks the chunks the browser loads instead)');
     const hits: string[] = [];
     const walk = (d: string) => {
       for (const name of readdirSync(d)) {
         const p = join(d, name);
         if (statSync(p).isDirectory()) walk(p);
-        else if (name.endsWith('.js') && readFileSync(p, 'utf8').includes(SPANISH_MARKER)) hits.push(p);
+        else if (name.endsWith('.js')) {
+          scanned += 1;
+          if (readFileSync(p, 'utf8').includes(SPANISH_MARKER)) hits.push(p);
+        }
       }
     };
     walk(dir);
+    expect(scanned).toBeGreaterThan(20);
     expect(hits).toEqual([]);
   });
 
