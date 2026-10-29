@@ -152,10 +152,10 @@ export const HOME_SERVICES_CATALOG: HomeService[] = [
       yesNo('island', { en: 'Island included?', es: '¿Incluye isla?' }),
     ],
     seo: {
-      title: { en: 'Cabinet Repainting in Essex, Morris & Bergen County NJ from $1,995', es: 'Repintado de gabinetes en Essex, Morris y Bergen NJ desde $1,995' },
+      title: { en: 'Cabinet Repainting in Essex, Morris & Bergen NJ from $1,995', es: 'Repintado de gabinetes en Essex, Morris y Bergen NJ, $1,995' },
       description: {
-        en: 'Kitchen cabinet repainting from $1,995 by a licensed NJ contractor. Sprayed enamel finish, firm quote from your photos, serving Essex, Morris and Bergen Counties.',
-        es: 'Repintado de gabinetes de cocina desde $1,995 por un contratista con licencia en NJ. Acabado de esmalte con pistola y cotización firme con sus fotos.',
+        en: 'Cabinet repainting from $1,995 by a licensed NJ contractor. Sprayed enamel finish, firm quote from your photos. Essex, Morris and Bergen Counties.',
+        es: 'Repintado de gabinetes desde $1,995 por un contratista con licencia en NJ. Esmalte con pistola y cotización firme con fotos. Condados de Essex, Morris y Bergen.',
       },
       keywords: ['cabinet painting NJ', 'cabinet refinishing Essex County', 'kitchen cabinet painting Morris County', 'cabinet painters Bergen County'],
     },
@@ -220,7 +220,7 @@ export const HOME_SERVICES_CATALOG: HomeService[] = [
       title: { en: 'HVAC Coil & System Cleaning in Northern NJ from $199', es: 'Limpieza de HVAC en el norte de NJ desde $199' },
       description: {
         en: 'HVAC coil, blower and drain line cleaning with a filter change from $199 per system. Licensed NJ contractor serving Essex, Morris and Bergen Counties.',
-        es: 'Limpieza de serpentín, ventilador y drenaje de HVAC con cambio de filtro desde $199 por sistema. Contratista con licencia en NJ.',
+        es: 'Limpieza de serpentín, ventilador y drenaje de HVAC con filtro desde $199 por sistema. Contratista con licencia en NJ, condados de Essex, Morris y Bergen.',
       },
       keywords: ['HVAC cleaning NJ', 'AC coil cleaning Essex County', 'furnace cleaning Morris County', 'HVAC tune up Bergen County'],
     },
@@ -275,7 +275,7 @@ export const HOME_SERVICES_CATALOG: HomeService[] = [
       title: { en: 'Air Duct & Vent Cleaning in Northern NJ from $349', es: 'Limpieza de ductos y rejillas en el norte de NJ desde $349' },
       description: {
         en: 'Air duct and vent cleaning from $349 for up to 10 vents. Vacuumed and sanitized by a licensed NJ contractor in Essex, Morris and Bergen Counties.',
-        es: 'Limpieza de ductos y rejillas desde $349 por hasta 10 rejillas. Aspirado y desinfectado por un contratista con licencia en NJ.',
+        es: 'Limpieza de ductos y rejillas desde $349 por hasta 10 rejillas. Aspirado y desinfectado por un contratista con licencia en NJ en Essex, Morris y Bergen.',
       },
       keywords: ['duct cleaning NJ', 'air duct cleaning Essex County', 'vent cleaning Morris County', 'duct cleaning Bergen County'],
     },
@@ -337,7 +337,7 @@ export const HOME_SERVICES_CATALOG: HomeService[] = [
       title: { en: 'Home Cleaning in Essex, Morris & Bergen County NJ from $159', es: 'Limpieza de casa en Essex, Morris y Bergen NJ desde $159' },
       description: {
         en: 'Standard home cleaning from $159 for up to two bedrooms and one bath. Vetted crews, firm price up front, serving Essex, Morris and Bergen Counties.',
-        es: 'Limpieza de casa estándar desde $159 para hasta dos recámaras y un baño. Equipos verificados y precio firme por adelantado.',
+        es: 'Limpieza de casa estándar desde $159 para hasta dos recámaras y un baño. Equipos verificados y precio firme. Condados de Essex, Morris y Bergen.',
       },
       keywords: ['house cleaning NJ', 'home cleaning Essex County', 'cleaning service Morris County', 'house cleaners Bergen County'],
     },
@@ -382,10 +382,10 @@ export const HOME_SERVICES_CATALOG: HomeService[] = [
       yesNo('trim_doors', { en: 'Trim and doors included?', es: '¿Incluye molduras y puertas?' }),
     ],
     seo: {
-      title: { en: 'Exterior House Painting in Northern NJ from $2.95 per sq ft', es: 'Pintura exterior de casas en el norte de NJ desde $2.95 por pie²' },
+      title: { en: 'Exterior House Painting in Northern NJ from $2.95 per sq ft', es: 'Pintura exterior de casas en NJ desde $2.95 por pie²' },
       description: {
-        en: 'Exterior painting from $2.95 per square foot with a $3,500 minimum. Power wash, prime and two coats by a licensed NJ contractor in Essex, Morris and Bergen Counties.',
-        es: 'Pintura exterior desde $2.95 por pie cuadrado con mínimo de $3,500. Lavado, imprimación y dos capas por un contratista con licencia en NJ.',
+        en: 'Exterior painting from $2.95 per sq ft, $3,500 minimum. Power wash, prime and two coats by a licensed NJ contractor in Essex, Morris and Bergen Counties.',
+        es: 'Pintura exterior desde $2.95 por pie², mínimo $3,500. Lavado, imprimación y dos capas por un contratista con licencia en NJ. Essex, Morris y Bergen.',
       },
       keywords: ['exterior painting NJ', 'house painters Essex County', 'exterior painters Morris County', 'exterior painting Bergen County'],
     },
@@ -431,10 +431,10 @@ export const HOME_SERVICES_CATALOG: HomeService[] = [
       },
     ],
     seo: {
-      title: { en: 'Gutter Cleaning in Essex, Morris & Bergen County NJ from $179', es: 'Limpieza de canaletas en Essex, Morris y Bergen NJ desde $179' },
+      title: { en: 'Gutter Cleaning in Essex, Morris & Bergen NJ from $179', es: 'Limpieza de canaletas en Essex, Morris y Bergen desde $179' },
       description: {
-        en: 'Gutter and downspout cleaning from $179 single story, $249 two story. Flushed, checked and photographed by a licensed NJ contractor.',
-        es: 'Limpieza de canaletas y bajantes desde $179 un piso, $249 dos pisos. Enjuagadas, revisadas y fotografiadas por un contratista con licencia en NJ.',
+        en: 'Gutter and downspout cleaning from $179 single story, $249 two story. Flushed, checked and photographed. Essex, Morris and Bergen Counties, NJ.',
+        es: 'Limpieza de canaletas y bajantes desde $179 un piso, $249 dos pisos. Enjuagadas, revisadas y con fotos. Condados de Essex, Morris y Bergen, NJ.',
       },
       keywords: ['gutter cleaning NJ', 'gutter cleaning Essex County', 'gutter cleaning Morris County', 'gutter cleaning Bergen County'],
     },
@@ -489,7 +489,7 @@ export const HOME_SERVICES_CATALOG: HomeService[] = [
       title: { en: 'Drywall Patching & Repair in Northern NJ from $249', es: 'Reparación de drywall en el norte de NJ desde $249' },
       description: {
         en: 'Drywall patching from $249 for the first patch, primed and painted to blend. Licensed NJ contractor serving Essex, Morris and Bergen Counties.',
-        es: 'Reparación de drywall desde $249 por el primer parche, imprimado y pintado para igualar. Contratista con licencia en NJ.',
+        es: 'Reparación de drywall desde $249 por el primer parche, imprimado y pintado. Contratista con licencia en NJ en Essex, Morris y Bergen.',
       },
       keywords: ['drywall repair NJ', 'drywall patching Essex County', 'drywall repair Morris County', 'drywall contractor Bergen County'],
     },

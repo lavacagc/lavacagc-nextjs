@@ -81,3 +81,72 @@ AS $$
     SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = _role
   );
 $$;
+
+-- rate_limits: dashboard-created on production and read by src/lib/rateLimit.ts
+-- (columns per src/integrations/supabase/types.ts). Without it every limiter
+-- fails open on a from-scratch replay, so no 429 path can be verified locally.
+CREATE TABLE IF NOT EXISTS public.rate_limits (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  ip_address text NOT NULL,
+  count integer NOT NULL DEFAULT 0,
+  last_reset timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS rate_limits_ip_address_idx ON public.rate_limits (ip_address, last_reset DESC);
+ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
+
+-- google_reviews: dashboard-created on production (filled by the sync-reviews
+-- cron) and read by the homepage Hero and Testimonials. Columns per
+-- src/integrations/supabase/types.ts. Without it a replay renders the homepage
+-- without testimonials and two hero specs fail for an environmental reason.
+CREATE TABLE IF NOT EXISTS public.google_reviews (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  review_id text NOT NULL UNIQUE,
+  reviewer_name text,
+  reviewer_photo_url text,
+  star_rating integer,
+  comment text,
+  review_reply text,
+  create_time timestamptz,
+  update_time timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.google_reviews ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public can read google reviews" ON public.google_reviews;
+CREATE POLICY "Public can read google reviews" ON public.google_reviews FOR SELECT USING (true);
+
+-- leads: production-only shape (dashboard-created; see the leadSanitize.ts
+-- docblock for the constraints verified against production). The baseline
+-- stub has an id only, so a replay refuses every lead insert and the whole
+-- form pipeline is untestable off production. Every column is guarded.
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS first_name text NOT NULL DEFAULT '';
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS last_name text NOT NULL DEFAULT '';
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS email text NOT NULL DEFAULT '';
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS phone text NOT NULL DEFAULT '';
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS inquiry_type text NOT NULL DEFAULT 'contact';
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS address text;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS city text;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS zip_code text;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS project_type text;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS project_timeline text;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS budget_range text;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS message text;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS current_project_status text;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS preferred_contact_method text;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS square_footage integer;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'leads_inquiry_type_check') THEN
+    ALTER TABLE public.leads ADD CONSTRAINT leads_inquiry_type_check
+      CHECK (inquiry_type IN ('estimate', 'contact', 'exit_intent'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'leads_contact_time_preference_check') THEN
+    ALTER TABLE public.leads ADD CONSTRAINT leads_contact_time_preference_check
+      CHECK (contact_time_preference IS NULL OR contact_time_preference IN ('anytime', 'morning', 'afternoon', 'evening', 'weekends', 'specific'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS leads_created_at_idx ON public.leads (created_at DESC);
