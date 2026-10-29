@@ -94,3 +94,24 @@ CREATE TABLE IF NOT EXISTS public.rate_limits (
 );
 CREATE INDEX IF NOT EXISTS rate_limits_ip_address_idx ON public.rate_limits (ip_address, last_reset DESC);
 ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
+
+-- google_reviews: dashboard-created on production (filled by the sync-reviews
+-- cron) and read by the homepage Hero and Testimonials. Columns per
+-- src/integrations/supabase/types.ts. Without it a replay renders the homepage
+-- without testimonials and two hero specs fail for an environmental reason.
+CREATE TABLE IF NOT EXISTS public.google_reviews (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  review_id text NOT NULL UNIQUE,
+  reviewer_name text,
+  reviewer_photo_url text,
+  star_rating integer,
+  comment text,
+  review_reply text,
+  create_time timestamptz,
+  update_time timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.google_reviews ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public can read google reviews" ON public.google_reviews;
+CREATE POLICY "Public can read google reviews" ON public.google_reviews FOR SELECT USING (true);
