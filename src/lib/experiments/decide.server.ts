@@ -46,8 +46,8 @@ function withHistory(decision: ExperimentDecision | null, what: string, by: stri
   return { ...base, ...extra, history };
 }
 
-export function vetoUrl(origin: string, key: string, proposedAt: string): string | null {
-  const token = createVetoToken(key, proposedAt);
+export function vetoUrl(origin: string, key: string, proposedAt: string, issuedAt: string): string | null {
+  const token = createVetoToken(key, proposedAt, issuedAt);
   return token ? `${origin.replace(/\/$/, '')}/experiments/veto/${token}` : null;
 }
 
@@ -107,7 +107,7 @@ async function deliverVeto(
   origin: string,
   evaluation: Evaluation | null,
 ): Promise<{ row: ExperimentRow | null; pending: PendingPromotion; message: string }> {
-  const link = vetoUrl(origin, row.key, pending.proposed_at);
+  const link = vetoUrl(origin, row.key, pending.proposed_at, now.toISOString());
   const promoteAt = promotionRunAfter(now).toISOString();
   const message = winnerProposedMessage({ row, winnerKey: pending.winner_key, evaluation, promoteAt, vetoUrl: link, by: pending.by });
   const outcome: PendingPromotion['veto_outcome'] = link ? await telegram(message) : 'no_link';
@@ -116,6 +116,7 @@ async function deliverVeto(
     veto_outcome: outcome,
     attempts: (pending.attempts ?? 0) + 1,
     last_attempt_at: now.toISOString(),
+    veto_link_issued_at: link ? now.toISOString() : null,
     veto_sent_at: outcome === 'sent' ? now.toISOString() : null,
     promote_at: outcome === 'sent' ? promoteAt : null,
   };
@@ -138,6 +139,7 @@ export async function proposeWinner(row: ExperimentRow, winnerKey: string, by: s
     winner_key: winnerKey,
     proposed_at: now.toISOString(),
     by,
+    veto_link_issued_at: null,
     veto_sent_at: null,
     veto_outcome: 'failed',
     attempts: 0,

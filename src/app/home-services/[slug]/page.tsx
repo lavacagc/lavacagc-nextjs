@@ -16,6 +16,7 @@ import { getCatalog } from '@/lib/home-services/catalogData';
 import { s } from '@/lib/home-services/i18n';
 import { LANG_COOKIE, resolveLang } from '@/lib/home-services/lang';
 import { brandedTitle, breadcrumbJsonLd, faqJsonLd, languageAlternates, pageUrl, serviceJsonLd } from '@/lib/home-services/seo';
+import { jsonLdScript } from '@/lib/jsonLd';
 
 /**
  * /home-services/<slug> - one page per catalog service (LP8, SEO1, SEO2; audit
@@ -79,9 +80,9 @@ export default async function HomeServicePage({ params, searchParams }: { params
 
   return (
     <div id="top" className="flex min-h-screen flex-col">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumb) }} />
-      {faq && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faq) }} />}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(breadcrumb) }} />
+      {faq && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(faq) }} />}
       <AttributionCapture />
       <HeaderComponent />
       <ServicesTrustBar />

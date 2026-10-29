@@ -44,6 +44,7 @@ import {
 } from '../src/lib/experiments/types';
 import { createExperimentSchema, priceFieldsIn } from '../src/lib/experiments/schemas';
 import { createVetoToken, verifyVetoToken } from '../src/lib/experiments/vetoToken';
+import { MIN_ONE_TAP_LINK_SECRET_LENGTH } from '../src/lib/oneTapLinkSecret';
 import { currentCopy } from '../src/lib/experiments/currentCopy';
 import { winnerProposedMessage } from '../src/lib/experiments/messages';
 import { isEvaluationDay, isPromotionDue, promotionRunAfter } from '../src/lib/experiments/schedule';
@@ -265,18 +266,45 @@ test.describe('experiments - units and source (EX4, payload, assignment)', () =>
     expect(parsePreview('Landing:B')).toBeNull();
   });
 
-  test('veto token: signed, timing-safe, 7 days, and bound to its proposal', () => {
+  test('veto token: signed, timing-safe, 7 days from issue, and bound to its proposal', () => {
     const env = { INTERNAL_WEBHOOK_SECRET: 'unit-test-secret-0123456789abcdef' };
     const at = '2026-11-16T07:30:00.000Z';
-    const token = createVetoToken('landing-hero', at, env)!;
+    const unix = Date.parse(at) / 1000;
+    const token = createVetoToken('landing-hero', at, at, env)!;
     expect(token).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/);
-    expect(verifyVetoToken(token, new Date(at), env)).toEqual({ ok: true, experimentKey: 'landing-hero', proposedAtUnix: Date.parse(at) / 1000 });
+    expect(verifyVetoToken(token, new Date(at), env)).toEqual({ ok: true, experimentKey: 'landing-hero', proposedAtUnix: unix, issuedAtUnix: unix });
     expect(verifyVetoToken(token, new Date(Date.parse(at) + 8 * DAY), env)).toEqual({ ok: false, reason: 'expired' });
     expect(verifyVetoToken(`${token.slice(0, -2)}AA`, new Date(at), env)).toEqual({ ok: false, reason: 'bad_signature' });
     expect(verifyVetoToken(token, new Date(at), { INTERNAL_WEBHOOK_SECRET: 'another-secret-0123456789abcdef!' })).toEqual({ ok: false, reason: 'bad_signature' });
     expect(verifyVetoToken(token, new Date(at), {})).toEqual({ ok: false, reason: 'not_configured' });
     expect(verifyVetoToken('nodot', new Date(at), env)).toEqual({ ok: false, reason: 'malformed' });
     expect(src('src/lib/experiments/vetoToken.ts')).toContain('timingSafeEqual');
+  });
+
+  test('veto token: a message delivered 8 days after the proposal carries a link that works through its promotion run', () => {
+    const env = { INTERNAL_WEBHOOK_SECRET: 'unit-test-secret-0123456789abcdef' };
+    const proposedAt = '2026-11-16T07:30:00.000Z';
+    const deliveredAt = new Date(Date.parse(proposedAt) + 8 * DAY);
+    const promoteAt = promotionRunAfter(deliveredAt);
+    const token = createVetoToken('landing-hero', proposedAt, deliveredAt.toISOString(), env)!;
+    expect(verifyVetoToken(token, promoteAt, env)).toEqual({
+      ok: true,
+      experimentKey: 'landing-hero',
+      proposedAtUnix: Date.parse(proposedAt) / 1000,
+      issuedAtUnix: deliveredAt.getTime() / 1000,
+    });
+    expect(verifyVetoToken(token, new Date(deliveredAt.getTime() + 7 * DAY - 1000), env).ok).toBe(true);
+    expect(verifyVetoToken(token, new Date(deliveredAt.getTime() + 7 * DAY + 1000), env)).toEqual({ ok: false, reason: 'expired' });
+    expect(src('src/lib/experiments/decide.server.ts')).toContain('vetoUrl(origin, row.key, pending.proposed_at, now.toISOString())');
+  });
+
+  test('one-tap links share a 32-character secret minimum', () => {
+    const short = { INTERNAL_WEBHOOK_SECRET: 'x'.repeat(31) };
+    const at = '2026-11-16T07:30:00.000Z';
+    expect(MIN_ONE_TAP_LINK_SECRET_LENGTH).toBe(32);
+    expect(createVetoToken('landing-hero', at, at, short)).toBeNull();
+    expect(verifyVetoToken('a.b', new Date(at), short)).toEqual({ ok: false, reason: 'not_configured' });
+    expect(createVetoToken('landing-hero', at, at, { INTERNAL_WEBHOOK_SECRET: 'x'.repeat(32) })).not.toBeNull();
   });
 
   test('the winner message carries the veto link and the promotion time', () => {

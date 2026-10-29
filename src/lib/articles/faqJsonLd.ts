@@ -21,10 +21,4 @@ export function faqPageJsonLd(faq: unknown, pageUrl: string): Record<string, unk
   };
 }
 
-/**
- * JSON for a `<script type="application/ld+json">`. `<` is escaped so text
- * such as `</script>` inside an answer cannot end the script element early.
- */
-export function jsonLdScript(data: unknown): string {
-  return JSON.stringify(data).replace(/</g, '\\u003c');
-}
+export { jsonLdScript } from '../jsonLd';

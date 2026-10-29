@@ -5,6 +5,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { Badge } from '@/components/ui/badge';
 import BlogPostGrid from '@/components/BlogPostGrid';
+import { jsonLdScript } from '@/lib/jsonLd';
 
 // Every blog writer now revalidates /blog on save and publish (see
 // src/lib/articles/revalidate.ts), so this window is only the ceiling.
@@ -117,7 +118,7 @@ export default async function Blog() {
       {/* JSON-LD Structured Data */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }}
       />
 
       <main className="min-h-screen bg-background">

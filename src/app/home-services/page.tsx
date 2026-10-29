@@ -20,6 +20,7 @@ import { withExperiment, type AppliedExperiment } from '@/lib/experiments/withEx
 import { ExperimentZone } from '@/lib/experiments/ExperimentZone';
 import { HOME_SERVICES_SECTIONS, type HomeServicesSection } from '@/lib/experiments/surfaces';
 import { brandedTitle, breadcrumbJsonLd, faqJsonLd, jsonLdGraph, languageAlternates, pageUrl, serviceJsonLd } from '@/lib/home-services/seo';
+import { jsonLdScript } from '@/lib/jsonLd';
 
 /**
  * /home-services - the seven priced services and the in-page request flow
@@ -255,7 +256,7 @@ export default async function HomeServicesPage({ searchParams }: { searchParams:
 
   return (
     <div id="top" className="flex min-h-screen flex-col">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
       <AttributionCapture />
       <HeaderComponent />
       <ServicesTrustBar />

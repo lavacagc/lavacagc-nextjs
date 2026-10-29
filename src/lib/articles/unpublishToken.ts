@@ -24,16 +24,16 @@
  * override, so tests/articles-publish-guard.spec.ts covers it without a server.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { MIN_ONE_TAP_LINK_SECRET_LENGTH, oneTapLinkSecret } from '../oneTapLinkSecret';
 
 export const UNPUBLISH_LINK_TTL_SECONDS = 7 * 24 * 60 * 60;
-export const MIN_UNPUBLISH_SECRET_LENGTH = 32;
+export const MIN_UNPUBLISH_SECRET_LENGTH = MIN_ONE_TAP_LINK_SECRET_LENGTH;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NONCE = /^[A-Za-z0-9_-]{8,64}$/;
 
 export function unpublishSecret(env: Record<string, string | undefined> = process.env): string | null {
-  const secret = env.INTERNAL_WEBHOOK_SECRET?.trim();
-  return secret && secret.length >= MIN_UNPUBLISH_SECRET_LENGTH ? secret : null;
+  return oneTapLinkSecret(env);
 }
 
 /** Whole seconds, the precision the token carries for its 7-day window. */

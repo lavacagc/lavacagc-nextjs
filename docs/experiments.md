@@ -51,7 +51,7 @@ On the Monday run it evaluates every running experiment (`src/lib/experiments/ev
 Beta(1,1) posteriors on the primary metric per visitor and 10,000 seeded Monte Carlo draws give, per challenger, the probability it beats the control and the expected loss.
 A winner needs a 95 percent probability, at most 0.5 percent expected loss, at least `min_visitors` visitors in every variant and at least `min_days` days.
 A challenger at 5 percent or less is retired; when every challenger loses, the control is kept and the experiment concludes.
-A winner goes to `pending_promotion` and gets a Telegram message carrying a one-tap veto link (`/experiments/veto/<token>`, signed, 7 days, read-only page with one button).
+A winner goes to `pending_promotion` and gets a Telegram message carrying a one-tap veto link (`/experiments/veto/<token>`, signed, valid 7 days from the message that carries it, read-only page with one button).
 It is promoted only after that message was delivered (Telegram answered `sent`, recorded on the experiment with its time).
 If the send failed, Telegram is not configured, or there is no secret to sign the link, it stays pending, every daily run sends it again, and the admin card says "Veto message not delivered".
 Once delivered, the daily run at least 24 hours later promotes it unless vetoed (`src/lib/experiments/schedule.ts`; the message and the admin card name that run): the winner becomes the control and the experiment concludes.
@@ -81,6 +81,6 @@ The homepage buttons keep their Phase 1 editor there, and the old `cta_events` c
 ## Setup
 
 - Cron: `vercel.json` has `/api/cron/experiments-evaluate` at `30 7 * * *` (daily; evaluation on Mondays inside the route).
-- Env: `PROJECT_INGEST_TOKEN` (agent routes), `CRON_SECRET`, `INTERNAL_WEBHOOK_SECRET` (visitor ids and veto links), `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (messages; without them every message reports `not_configured`).
+- Env: `PROJECT_INGEST_TOKEN` (agent routes), `CRON_SECRET`, `INTERNAL_WEBHOOK_SECRET` (visitor ids and veto links; at least 32 characters, like the unpublish link), `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (messages; without them every message reports `not_configured`).
 - Migration: `supabase/migrations/20261030000003_cta_to_experiments.sql` (guarded, re-runnable).
 - Weekly agent: a `/schedule` routine running the experiments skill every Monday after the cron.

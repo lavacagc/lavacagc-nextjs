@@ -45,7 +45,7 @@ export function winnerProposedMessage(input: {
     `<b>Experiment winner</b>: ${escapeTelegram(row.key)} on ${escapeTelegram(row.page)}`,
     `Variant ${escapeTelegram(winnerKey)} "${escapeTelegramClipped(label(row, winnerKey), 120)}" beats control ${escapeTelegram(row.control_key)} "${escapeTelegramClipped(label(row, row.control_key), 120)}"${stats}.${armsLine(evaluation, row.primary_metric)}`,
     `Unless you veto it, the daily run on ${escapeTelegram(runLabel(promoteAt))} makes variant ${escapeTelegram(winnerKey)} the page default (24 hours after this message). Proposed by ${escapeTelegram(by)}.`,
-    vetoUrl ? `Veto: ${escapeTelegram(vetoUrl)}` : 'Veto link unavailable (INTERNAL_WEBHOOK_SECRET is not set): veto from the admin Experiments tab.',
+    vetoUrl ? `Veto: ${escapeTelegram(vetoUrl)}` : 'Veto link unavailable (INTERNAL_WEBHOOK_SECRET is unset or under 32 characters): veto from the admin Experiments tab.',
   ].join('\n');
 }
 

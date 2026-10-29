@@ -150,6 +150,12 @@ function requiresCronAuth(pathname: string): boolean {
   return CRON_AUTH_ROUTES.some(route => pathname.startsWith(route));
 }
 
+const SUPABASE_AUTH_COOKIE_RE = /^sb-.+-auth-token(\.\d+)?$/;
+
+function hasSupabaseAuthCookie(request: NextRequest): boolean {
+  return request.cookies.getAll().some((c) => SUPABASE_AUTH_COOKIE_RE.test(c.name));
+}
+
 async function verifySupabaseSession(request: NextRequest): Promise<boolean> {
   try {
     const supabase = createServerClient(
@@ -314,7 +320,7 @@ export async function middleware(request: NextRequest) {
   requestHeaders.delete(PREVIEW_HEADER);
   const isBot = isCrawlerUserAgent(ua);
   const preview = request.nextUrl.searchParams.get(PREVIEW_PARAM);
-  if (preview && PREVIEW_RE.test(preview) && !pathname.startsWith('/api/') && (await verifySupabaseSession(request))) {
+  if (preview && PREVIEW_RE.test(preview) && !pathname.startsWith('/api/') && hasSupabaseAuthCookie(request) && (await verifySupabaseSession(request))) {
     requestHeaders.set(PREVIEW_HEADER, preview);
   }
   // Pages that apply experiments on the server need the visitor's assignment

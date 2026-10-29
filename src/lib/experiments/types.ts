@@ -157,9 +157,11 @@ export type ExperimentVariant = z.infer<typeof variantSchema>;
  */
 export interface PendingPromotion {
   winner_key: string;
-  /** When the winner was proposed; the veto token is bound to this instant. */
+  /** When the winner was proposed; the veto token is bound to this proposal. */
   proposed_at: string;
   by: string;
+  /** When the last attempt minted its veto link; that link's 7 days run from here. Null when none was minted. */
+  veto_link_issued_at?: string | null;
   /** Telegram answered `sent` at this time; null while undelivered. */
   veto_sent_at: string | null;
   /** The last delivery outcome: sent, not_configured, failed, or no_link (no INTERNAL_WEBHOOK_SECRET to sign it). */

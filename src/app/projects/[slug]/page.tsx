@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import ProjectDetailClient from '@/components/ProjectDetailClient';
+import { jsonLdScript } from '@/lib/jsonLd';
 
 // Hourly: publishing or unpublishing a project revalidates this page on demand (src/lib/projects/http.ts, docs/cost-review.md).
 export const revalidate = 3600;
@@ -283,10 +284,10 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       <Header />
 
       {/* JSON-LD Structured Data */}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(cleanJsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(cleanJsonLd) }} />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(breadcrumbJsonLd) }}
       />
 
       <main className="flex-1">
