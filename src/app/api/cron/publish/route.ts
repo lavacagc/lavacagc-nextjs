@@ -6,7 +6,7 @@
  * revalidated, and the owner gets "New article published" with the signed
  * one-tap unpublish link, because nobody is watching when a schedule fires.
  * A post that is held stays a draft with `review_hold` set and its schedule
- * cleared (so tomorrow's run does not hold and notify again), and the owner
+ * cleared (so the next hourly run does not hold and notify again), and the owner
  * gets "Article held for review". A post held only because the price catalog
  * could not be read keeps its schedule, so the next run publishes it once the
  * table is back; it is reported under `deferred`, without a Telegram message
@@ -68,8 +68,8 @@ export async function GET(request: NextRequest) {
     // Find posts that are scheduled and past their publish time
     const posts = await supabaseRest(
       'GET',
-      // Capped: a daily run publishes what is due; anything past the cap is
-      // still due tomorrow, so nothing is lost.
+      // Capped: an hourly run publishes what is due; anything past the cap is
+      // still due on the next run, so nothing is lost.
       `blog_posts?select=id,title,slug,scheduled_publish_at&published=eq.false&scheduled_publish_at=not.is.null&scheduled_publish_at=lte.${encodeURIComponent(now)}&order=scheduled_publish_at.asc&limit=50`
     );
 

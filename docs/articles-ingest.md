@@ -137,11 +137,13 @@ It checks, in order, and holds the article on any reason:
 
 1. The fact-lock (`validateDraft`): at least three internal links, any phone number equals `phone_main`, any HIC number equals `hic_number`.
 2. Price claims: dollar amounts, per-square-foot or per-linear-foot prices, "starting at", "from $", "costs", "cost of", "price(s)", "estimate(s) of", "quote(s) of" followed by a number (a year-shaped number too: "costs 2000"), and percentages, in digits or words, next to off, save, discount or cheaper. A home service's starting price, exactly as the Services & Prices table holds it and in its unit, stated as a starting price (never inside save, off or discount wording) in a paragraph that names that service, is allowed. A year in prose ("in 2026", "since 2020") is not a price.
-3. Legal claims: permit, code compliant, to code, building code, warranty, guarantee(d), insured, bonded, liability, lawsuit, legal(ly), ADA, OSHA, lead-safe, EPA, asbestos, mold remediation. A sentence that is, verbatim, the value of a locked `claim_*` fact in `content_facts` is allowed; the seeded `claim_license` and `claim_insurance` are unlocked placeholders until Alex approves their wording.
+3. Legal claims: permit, code compliant, to code, building code, warranty, guarantee(d), insured, bonded, liability, lawsuit, legal(ly), ADA, OSHA, lead-safe, EPA, asbestos, mold remediation. A sentence that is, verbatim, the value of a locked `claim_*` fact in `content_facts` is allowed; `claim_license` and `claim_insurance` hold Alex's approved sentences, locked by migration `20261030000004_lock_claim_facts.sql`.
 4. Shape: the opening paragraph is 25 to 70 words with no link, there is at least one `##` heading, and a title starting with How, What, Why, When, Should, Can, Does or Is has a FAQ of 2 to 6 items.
 
 The title, every paragraph, the FAQ, and an excerpt or meta description of their own are all checked.
 Each reason names the text and where it is, for example `Price claim: "from $9,000" in paragraph 4`.
+If the Services & Prices table cannot be read, the guard never falls back to the seed the public pages use: it holds the article with the reason `Price catalog unavailable; publish again in a minute` (`CATALOG_UNAVAILABLE_REASON`).
+When that is the only reason, the scheduled-publish cron keeps the post's schedule, reports it under `deferred` instead of `held`, and sends no Telegram, so the next hourly run publishes it once the table is back.
 
 A held article stays a draft with `review_hold = { reasons, checked_at }`.
 It is cleared in exactly two ways: a later publish whose guard passes on the post's current content, or Alex's "Publish anyway" in the admin editor, which publishes it and records his user id and the reasons in `review_override`.

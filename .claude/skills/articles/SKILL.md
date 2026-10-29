@@ -96,6 +96,7 @@ node scripts/ingest-article.mjs publish <post id> --social docs/social/<slug>.md
 - Exit 0: it is live. Report the URL, the unpublish link and the Telegram status it printed.
 - Exit 2: the guard held it, or the social copy failed (nothing published), and it printed the reasons. "paragraph N" counts every blank-line block, headings and lists included.
   Fix each reason in `article.md` (then `patch`) or in the social file, and `publish` again.
+  "Price catalog unavailable" is not about the text: change nothing and `publish` again in a minute.
   If a reason is a claim the article cannot do without, stop and leave it held for Alex; report the reasons and the admin link.
   Only Alex can publish over a hold ("Publish anyway" in the admin); never work around the guard.
 - Exit 1: an error; report it.
