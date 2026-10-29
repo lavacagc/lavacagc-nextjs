@@ -730,6 +730,9 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
     const expected = unpublishLink(new URL(out.url).origin, signUnpublishToken(post.id, r.published_at as string, secret)!);
     expect(liveLink).toBe(expected);
     expect(await status(request, `/blog/${post.slug}`)).toBe(200);
+    // Warm the cached copies, so on a production build TG1 proves the one-tap unpublish revalidates them.
+    expect(await (await request.get('/blog')).text()).toContain(post.slug);
+    expect(await (await request.get('/sitemap.xml')).text()).toContain(`/blog/${post.slug}<`);
   });
 
   test('TG3: a GET to the link never unpublishes (fetched twice, still live)', async ({ request }) => {
@@ -760,6 +763,8 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
     await page.screenshot({ path: `test-results/slice-g-unpublished-${RUN}.png` });
     expect((await row(request, liveId)).published).toBe(false);
     expect(await status(request, `/blog/${liveSlug}`)).toBe(404);
+    expect(await (await request.get('/blog')).text()).not.toContain(liveSlug);
+    expect(await (await request.get('/sitemap.xml')).text()).not.toContain(`/blog/${liveSlug}<`);
   });
 
   test('TG2: a used, tampered, expired or superseded link renders 410 and changes nothing', async ({ request }) => {
