@@ -41,6 +41,7 @@ const SeoSuggestionsDashboard = dynamic(() => import('@/components/admin/SeoSugg
 const ServiceRequestsManager = dynamic(() => import('@/components/admin/home-services/ServiceRequestsManager'), { ssr: false });
 const SubsManager = dynamic(() => import('@/components/admin/home-services/SubsManager'), { ssr: false });
 const PricingReport = dynamic(() => import('@/components/admin/home-services/PricingReport'), { ssr: false });
+const ServicesPricesEditor = dynamic(() => import('@/components/admin/home-services/ServicesPricesEditor'), { ssr: false });
 const CtaTestsDashboard = dynamic(() => import('@/components/admin/home-services/CtaTestsDashboard'), { ssr: false });
 const CMSPageEditor = dynamic(() => import('@/components/admin/CMSPageEditor').then(m => ({ default: m.CMSPageEditor })), { ssr: false });
 import { BannerManager } from '@/components/admin/BannerManager';
@@ -307,6 +308,10 @@ export default function AdminContent() {
 
           <TabsContent value="pricing-report">
             <PricingReport />
+          </TabsContent>
+
+          <TabsContent value="home-services-catalog">
+            <ServicesPricesEditor />
           </TabsContent>
 
           <TabsContent value="cta-tests">

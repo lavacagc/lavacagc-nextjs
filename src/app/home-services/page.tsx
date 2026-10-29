@@ -12,7 +12,8 @@ import LangToggle from '@/components/home-services/LangToggle';
 import { s, type StringKey } from '@/lib/home-services/i18n';
 import { LANG_COOKIE, resolveLang } from '@/lib/home-services/lang';
 import ServiceIcon from '@/components/home-services/ServiceIcon';
-import { HOME_SERVICES_CATALOG, t, type Lang } from '@/lib/home-services/catalog';
+import { t, type Lang } from '@/lib/home-services/catalog';
+import { getCatalog } from '@/lib/home-services/catalogData';
 import { brandedTitle, breadcrumbJsonLd, faqJsonLd, jsonLdGraph, languageAlternates, pageUrl, serviceJsonLd } from '@/lib/home-services/seo';
 
 /**
@@ -21,7 +22,9 @@ import { brandedTitle, breadcrumbJsonLd, faqJsonLd, jsonLdGraph, languageAlterna
  * nine-tile catalog that used to live here).
  *
  * Rendered per request because the language comes from `?lang=` or the
- * `lv_lang` cookie (LP7). Every string comes from i18n.ts or catalog.ts.
+ * `lv_lang` cookie (LP7). Page copy comes from i18n.ts; service names, prices
+ * and descriptions come from the home_services table through getCatalog()
+ * (CAT1), and the cards get them as props.
  */
 
 const PHONE_HREF = 'tel:+12012124917';
@@ -69,12 +72,12 @@ const FAQ: Array<[StringKey, StringKey]> = [
 ];
 
 export default async function HomeServicesPage({ searchParams }: { searchParams: SearchParams }) {
-  const lang = await pageLang(searchParams);
+  const [lang, catalog] = await Promise.all([pageLang(searchParams), getCatalog()]);
   const langQuery = lang === 'es' ? '?lang=es' : '';
   // The seven Service nodes (same @id as on each service page, provider by the
   // layout's organization @id, no rating), the visible FAQ and the breadcrumb.
   const jsonLd = jsonLdGraph([
-    ...HOME_SERVICES_CATALOG.map((service) => serviceJsonLd(service, lang)),
+    ...catalog.map((service) => serviceJsonLd(service, lang)),
     faqJsonLd(
       FAQ.map(([q, a]) => ({ q: s(q, lang), a: s(a, lang) })),
       pageUrl('/home-services', lang),
@@ -127,7 +130,7 @@ export default async function HomeServicesPage({ searchParams }: { searchParams:
             <nav aria-label={s('servicesNav', lang)} className="hidden rounded-3xl border border-border bg-card p-6 shadow-elegant lg:block">
               <p className="text-xs font-bold uppercase tracking-wider text-text-muted">{s('startingAt', lang)}</p>
               <ul className="mt-3 divide-y divide-border">
-                {HOME_SERVICES_CATALOG.map((service) => (
+                {catalog.map((service) => (
                   <li key={service.slug}>
                     <Link
                       href={`/home-services/${service.slug}${langQuery}`}
@@ -156,12 +159,12 @@ export default async function HomeServicesPage({ searchParams }: { searchParams:
               </h2>
               <p className="mt-3 text-lg leading-relaxed text-text-secondary">{s('servicesIntro', lang)}</p>
             </div>
-            <ServiceCatalog lang={lang} />
+            <ServiceCatalog lang={lang} services={catalog} />
             {/* Phones do not get the hero price list, so each service page is linked here too. */}
             <nav aria-label={s('serviceDetails', lang)} className="mt-8 lg:hidden">
               <p className="text-sm font-bold uppercase tracking-wider text-text-muted">{s('serviceDetails', lang)}</p>
               <ul className="mt-3 flex flex-wrap gap-2">
-                {HOME_SERVICES_CATALOG.map((service) => (
+                {catalog.map((service) => (
                   <li key={service.slug}>
                     <Link
                       href={`/home-services/${service.slug}${langQuery}`}

@@ -25,6 +25,7 @@ import {
   ClipboardList,
   BarChart3,
   FlaskConical,
+  Tags,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -90,6 +91,8 @@ const NAVIGATION: NavItem[] = [
       { id: 'service-requests', icon: ClipboardList, label: 'Service Requests' },
       { id: 'subs', icon: HardHat, label: 'Subs' },
       { id: 'pricing-report', icon: BarChart3, label: 'Pricing Report' },
+      // Phase 2 slice E: the seven services' prices and copy, from the home_services table.
+      { id: 'home-services-catalog', icon: Tags, label: 'Services & Prices' },
     ],
   },
   {

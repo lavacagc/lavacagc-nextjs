@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { describeAnswers } from '@/lib/home-services/catalog';
+import { getServiceNames } from '@/lib/home-services/catalogData';
 import { STATUS_LABEL, answerLinesFor, countyForRequest, tradesForServices } from '@/lib/home-services/requestsAdmin';
 import {
   OFFER_COLUMNS, RECIPIENT_COLUMNS, RESPONSE_COLUMNS, appendRequestNote, getRequest, previewRecipients, tradeAssignment,
@@ -59,13 +60,14 @@ export async function GET(_request: NextRequest, { params }: Params) {
           'GET', `subs?select=id,business_name,language&id=in.(${subIds.join(',')})`,
         )) ?? []
       : [];
+    const names = await getServiceNames();
     const subName = (sid: string | null) => subs.find((s) => s.id === sid)?.business_name ?? 'Unknown sub';
 
     return NextResponse.json({
       request: {
         ...request,
         county: countyForRequest(request),
-        answer_lines: describeAnswers(request.services, request.answers ?? {}),
+        answer_lines: describeAnswers(request.services, request.answers ?? {}, 'en', names),
       },
       photos,
       offers: (offers ?? []).map((o) => ({
@@ -85,7 +87,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
         trades: tradesForServices(request.services).map((trade) => ({
           trade,
           // English for Alex; each sub reads these in their own language.
-          answers: answerLinesFor(request, trade, 'en'),
+          answers: answerLinesFor(request, trade, 'en', names),
           preview: preview.find((p) => p.trade === trade) ?? null,
         })),
       },

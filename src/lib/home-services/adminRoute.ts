@@ -17,6 +17,17 @@ export async function actingAdmin(): Promise<string | null> {
   }
 }
 
+/** The signed-in admin's user id (for `updated_by` columns); null when it cannot be read. */
+export async function actingAdminId(): Promise<string | null> {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function readJson(request: Request, maxBytes = 64 * 1024): Promise<{ ok: true; body: unknown } | { ok: false; response: NextResponse }> {

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { ArrowLeft, Loader2, X } from 'lucide-react';
-import { getService, t, TIMING_OPTIONS, type Lang } from '@/lib/home-services/catalog';
+import { t, TIMING_OPTIONS, type HomeService, type Lang } from '@/lib/home-services/catalog';
 import { s } from '@/lib/home-services/i18n';
 import { isInServiceArea, normalizeZip, ZIP_RE } from '@/lib/home-services/serviceArea';
 import { executeRecaptcha, loadRecaptcha, submitHomeServiceRequest } from '@/lib/home-services/submitRequest';
@@ -78,17 +78,24 @@ function Segmented({
  * Radix Dialog for the focus trap, Escape and labelled close. Loaded with
  * next/dynamic only when first opened, so none of this ships with the landing
  * page's initial JavaScript.
+ *
+ * `services` are the chosen slugs; `catalog` is the service data the page read
+ * from the home_services table, passed down as props (names, the price line
+ * and the questions), so a price the admin changes shows here on the next
+ * request (CAT2).
  */
 export default function RequestFlow({
   open,
   lang,
   services,
+  catalog,
   onClose,
   onSubmitted,
 }: {
   open: boolean;
   lang: Lang;
   services: string[];
+  catalog: HomeService[];
   onClose: () => void;
   onSubmitted?: () => void;
 }) {
@@ -295,11 +302,15 @@ export default function RequestFlow({
               </h3>
               <div className="mt-5 space-y-6">
                 {services.map((slug) => {
-                  const service = getService(slug);
+                  const service = catalog.find((x) => x.slug === slug);
                   if (!service) return null;
                   return (
                     <section key={slug} className="rounded-2xl border border-border p-4" data-testid={`details-${slug}`}>
                       <h4 className="text-base font-extrabold text-text-primary">{t(service.name, lang)}</h4>
+                      <p className="mt-0.5 text-sm text-text-secondary" data-testid={`flow-price-${slug}`}>
+                        {s('startingAt', lang)} <span className="font-bold text-text-primary">{t(service.priceDisplay, lang)}</span>{' '}
+                        {t(service.priceUnit, lang)}
+                      </p>
                       <div className="mt-3 space-y-4">
                         {service.questions.map((q) => (
                           <Segmented
