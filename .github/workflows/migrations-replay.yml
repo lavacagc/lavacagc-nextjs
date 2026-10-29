@@ -1,0 +1,40 @@
+# Replay every migration from an empty database.
+#
+# The preview baseline exists so a from-scratch replay reaches the end, and
+# nobody ran it from scratch until four agents in parallel found four
+# production-only objects it was missing (docs/local-rig.md). This job is the
+# gate: if the replay stops, the PR is red before anyone builds on the schema.
+name: migrations-replay
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/migrations-replay.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start a local stack and replay all migrations
+        run: |
+          supabase start -x studio,imgproxy,inbucket,edge-runtime,logflare,vector
+          supabase db reset
+      - name: Every migration file is recorded as applied
+        run: |
+          applied=$(psql "postgresql://postgres:postgres@127.0.0.1:55422/postgres" -Atc "select count(*) from supabase_migrations.schema_migrations")
+          files=$(ls supabase/migrations/*.sql | wc -l | tr -d ' ')
+          echo "applied=$applied files=$files"
+          test "$applied" = "$files"
+      - name: Stop
+        if: always()
+        run: supabase stop --no-backup

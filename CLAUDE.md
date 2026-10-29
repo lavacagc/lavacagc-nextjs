@@ -157,6 +157,12 @@ checklist. The Playwright suite is deliberately NOT in that gauntlet: it needs
 `.env.local` secrets the gate's worktree does not have, so browser-level
 verification stays a **manual pre-gate step**.
 
+## Where to look
+
+- Testing off production: `docs/local-rig.md` (local Supabase, admin sign-in, dev versus production build on the rig).
+- Home Services build (priced services, request flow, bids, CTA tests, portfolio drafts): `docs/home-services/` (audit, acceptance criteria, follow-ups, reports) and `docs/decisions/`.
+- Claude Code project ingest: `docs/projects-ingest.md`.
+
 ## Path Aliases
 
 Use `@/` to import from `src/`:
