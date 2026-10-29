@@ -1,14 +1,14 @@
 {
   "schema": "codemap/1",
-  "generatedAt": "2026-10-29T18:36:42.865Z",
+  "generatedAt": "2026-10-29T22:13:45.661Z",
   "repo": "luxury-nj-remodel-boost-nextjs",
   "git": {
-    "sha": "ea86edaf39dc7b9a9583307d9f394659003d55c1",
-    "shortSha": "ea86eda",
-    "branch": "feat/phase-2-admin-catalog-articles-experiments",
-    "subject": "no-mistakes(document): Docs: drop stale OpenAI, seo-maintain and CTA Tests references",
-    "author": "BuildSync Labs",
-    "committedAt": "2026-10-29T14:32:01-04:00"
+    "sha": "9fd791b3d4b46b987b14ac142c7242d6595dde59",
+    "shortSha": "9fd791b",
+    "branch": "chore/codemap-refresh",
+    "subject": "Merge pull request #113 from lavacagc/fix/sitemap-route-handler",
+    "author": "lavacagc",
+    "committedAt": "2026-10-29T18:13:19-04:00"
   },
   "config": {
     "roots": [
@@ -19,12 +19,12 @@
     "tsconfig": "tsconfig.json"
   },
   "totals": {
-    "files": 685,
+    "files": 688,
     "testFiles": 0,
-    "loc": 96018,
-    "edges": 2040,
+    "loc": 96472,
+    "edges": 2048,
     "modules": 13,
-    "entries": 228,
+    "entries": 229,
     "externalPackages": 53
   },
   "files": {
@@ -974,9 +974,9 @@
     },
     "src/app/api/admin/revalidate/route.ts": {
       "path": "src/app/api/admin/revalidate/route.ts",
-      "loc": 31,
-      "rawLoc": 48,
-      "bytes": 1872,
+      "loc": 36,
+      "rawLoc": 56,
+      "bytes": 2428,
       "exports": [
         "POST",
         "dynamic",
@@ -985,7 +985,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0bab9a6c011b5e8a",
+      "hash": "06d4df050122163a",
       "fanOut": 2,
       "fanIn": 0,
       "module": "app"
@@ -1166,9 +1166,9 @@
     },
     "src/app/api/articles/ingest/[id]/publish/route.ts": {
       "path": "src/app/api/articles/ingest/[id]/publish/route.ts",
-      "loc": 94,
-      "rawLoc": 150,
-      "bytes": 7199,
+      "loc": 114,
+      "rawLoc": 183,
+      "bytes": 8803,
       "exports": [
         "POST",
         "dynamic",
@@ -1177,8 +1177,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "03fda8afe15f06bb",
-      "fanOut": 9,
+      "hash": "08dfd4414170e102",
+      "fanOut": 11,
       "fanIn": 0,
       "module": "app"
     },
@@ -1476,9 +1476,9 @@
     },
     "src/app/api/cron/publish/route.ts": {
       "path": "src/app/api/cron/publish/route.ts",
-      "loc": 89,
-      "rawLoc": 124,
-      "bytes": 5081,
+      "loc": 98,
+      "rawLoc": 136,
+      "bytes": 5827,
       "exports": [
         "GET",
         "dynamic"
@@ -1486,8 +1486,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 1,
-      "hash": "05cb2af2814f938b",
-      "fanOut": 4,
+      "hash": "0f1baa6e8158604f",
+      "fanOut": 5,
       "fanIn": 0,
       "module": "app"
     },
@@ -2489,6 +2489,23 @@
       "todos": 0,
       "commentedOutCode": 0,
       "hash": "0d62993e8158cf1b",
+      "fanOut": 2,
+      "fanIn": 0,
+      "module": "app"
+    },
+    "src/app/api/sitemap/route.ts": {
+      "path": "src/app/api/sitemap/route.ts",
+      "loc": 13,
+      "rawLoc": 56,
+      "bytes": 2756,
+      "exports": [
+        "GET",
+        "revalidate"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "056a8953010ba289",
       "fanOut": 2,
       "fanIn": 0,
       "module": "app"
@@ -3628,9 +3645,9 @@
     },
     "src/app/projects/[slug]/page.tsx": {
       "path": "src/app/projects/[slug]/page.tsx",
-      "loc": 243,
-      "rawLoc": 302,
-      "bytes": 9707,
+      "loc": 244,
+      "rawLoc": 306,
+      "bytes": 10065,
       "exports": [
         "ProjectDetailPage",
         "default",
@@ -3641,7 +3658,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 1,
-      "hash": "0d186600e195fd61",
+      "hash": "00608072219824d3",
       "fanOut": 4,
       "fanIn": 0,
       "module": "app"
@@ -3863,23 +3880,6 @@
       "commentedOutCode": 0,
       "hash": "09be27c0e264787f",
       "fanOut": 5,
-      "fanIn": 0,
-      "module": "app"
-    },
-    "src/app/sitemap.ts": {
-      "path": "src/app/sitemap.ts",
-      "loc": 272,
-      "rawLoc": 310,
-      "bytes": 9566,
-      "exports": [
-        "default",
-        "sitemap"
-      ],
-      "isTest": false,
-      "todos": 0,
-      "commentedOutCode": 4,
-      "hash": "085891dd719b6196",
-      "fanOut": 4,
       "fanIn": 0,
       "module": "app"
     },
@@ -8464,9 +8464,9 @@
     },
     "src/lib/articles/catalogPrices.ts": {
       "path": "src/lib/articles/catalogPrices.ts",
-      "loc": 21,
-      "rawLoc": 40,
-      "bytes": 1668,
+      "loc": 26,
+      "rawLoc": 48,
+      "bytes": 2090,
       "exports": [
         "catalogPricesFrom",
         "loadCatalogPrices"
@@ -8474,7 +8474,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "019a05aee112fde1",
+      "hash": "049f541f6116a988",
       "fanOut": 3,
       "fanIn": 1,
       "module": "lib"
@@ -8560,11 +8560,12 @@
     },
     "src/lib/articles/notify.ts": {
       "path": "src/lib/articles/notify.ts",
-      "loc": 32,
-      "rawLoc": 63,
-      "bytes": 2821,
+      "loc": 47,
+      "rawLoc": 86,
+      "bytes": 3759,
       "exports": [
         "HELD_REASONS_SHOWN",
+        "PublishedNotice",
         "heldMessage",
         "notifyArticleHeld",
         "notifyArticlePublished",
@@ -8575,19 +8576,20 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "03d342fd81293a73",
+      "hash": "0aceacc38135b385",
       "fanOut": 1,
       "fanIn": 2,
       "module": "lib"
     },
     "src/lib/articles/publishFlow.ts": {
       "path": "src/lib/articles/publishFlow.ts",
-      "loc": 46,
-      "rawLoc": 71,
-      "bytes": 3253,
+      "loc": 51,
+      "rawLoc": 78,
+      "bytes": 3562,
       "exports": [
         "announceHeld",
         "announcePublished",
+        "loadPublishFacts",
         "postForUnpublishToken",
         "runPublishGuard",
         "unpublishUrlFor"
@@ -8595,17 +8597,18 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "04e96baf81317782",
+      "hash": "0c73176081367bc2",
       "fanOut": 7,
       "fanIn": 6,
       "module": "lib"
     },
     "src/lib/articles/publishGuard.ts": {
       "path": "src/lib/articles/publishGuard.ts",
-      "loc": 312,
-      "rawLoc": 426,
-      "bytes": 21247,
+      "loc": 325,
+      "rawLoc": 449,
+      "bytes": 22171,
       "exports": [
+        "CATALOG_UNAVAILABLE_REASON",
         "CatalogPrice",
         "FAQ_MAX_FOR_QUESTION",
         "FAQ_MIN_FOR_QUESTION",
@@ -8616,6 +8619,7 @@
         "PublishVerdict",
         "amountValue",
         "checkPublishable",
+        "claimReasons",
         "isQuestionTitle",
         "legalClaimsIn",
         "lockedClaimSentences",
@@ -8626,32 +8630,32 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0a70f10dc2791c2c",
+      "hash": "00103348e2752ea6",
       "fanOut": 2,
-      "fanIn": 3,
+      "fanIn": 6,
       "module": "lib"
     },
     "src/lib/articles/revalidate.ts": {
       "path": "src/lib/articles/revalidate.ts",
-      "loc": 13,
-      "rawLoc": 26,
-      "bytes": 936,
+      "loc": 18,
+      "rawLoc": 31,
+      "bytes": 1152,
       "exports": [
         "revalidateArticlePages"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0d6eb5ed8109be54",
+      "hash": "05262e6a610e1e2b",
       "fanOut": 1,
       "fanIn": 8,
       "module": "lib"
     },
     "src/lib/articles/schemas.ts": {
       "path": "src/lib/articles/schemas.ts",
-      "loc": 52,
-      "rawLoc": 77,
-      "bytes": 3438,
+      "loc": 53,
+      "rawLoc": 83,
+      "bytes": 3757,
       "exports": [
         "ARTICLE_SLUG_MAX",
         "ARTICLE_SLUG_PATTERN",
@@ -8672,9 +8676,37 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0e14e28d013375a3",
+      "hash": "03a671d6613570de",
       "fanOut": 0,
       "fanIn": 10,
+      "module": "lib"
+    },
+    "src/lib/articles/socialCopy.ts": {
+      "path": "src/lib/articles/socialCopy.ts",
+      "loc": 212,
+      "rawLoc": 290,
+      "bytes": 12307,
+      "exports": [
+        "HASHTAGS_MAX",
+        "HASHTAGS_MIN",
+        "ONE_CASE_HASHTAG_CLAIMS",
+        "SOCIAL_LIMITS",
+        "SOCIAL_MARKDOWN_MAX",
+        "SocialCopy",
+        "THREADS_HASHTAGS_MAX",
+        "captionWithHashtags",
+        "checkSocialCopy",
+        "hashtagWords",
+        "hashtagsIn",
+        "oneCaseHashtagClaim",
+        "parseSocialMarkdown"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "03382d2f01c8079a",
+      "fanOut": 1,
+      "fanIn": 1,
       "module": "lib"
     },
     "src/lib/articles/unpublishPage.ts": {
@@ -9725,8 +9757,8 @@
     "src/lib/home-services/catalog.ts": {
       "path": "src/lib/home-services/catalog.ts",
       "loc": 289,
-      "rawLoc": 363,
-      "bytes": 13189,
+      "rawLoc": 364,
+      "bytes": 13286,
       "exports": [
         "COUNTIES",
         "County",
@@ -9757,20 +9789,22 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0eafaecc01bbf4fc",
+      "hash": "03c75d4d81bc6647",
       "fanOut": 0,
       "fanIn": 37,
       "module": "lib"
     },
     "src/lib/home-services/catalogData.ts": {
       "path": "src/lib/home-services/catalogData.ts",
-      "loc": 49,
-      "rawLoc": 92,
-      "bytes": 3996,
+      "loc": 64,
+      "rawLoc": 124,
+      "bytes": 5456,
       "exports": [
         "CATALOG_TAG",
         "getAllServices",
+        "getAllServicesStrict",
         "getCatalog",
+        "getCatalogStrict",
         "getServiceData",
         "getServiceNames",
         "invalidateCatalog"
@@ -9778,7 +9812,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0d5e6eb5012e24c4",
+      "hash": "09978c4f613b8a6b",
       "fanOut": 4,
       "fanIn": 10,
       "module": "lib"
@@ -9824,14 +9858,14 @@
       "path": "src/lib/home-services/catalogSeed.ts",
       "loc": 299,
       "rawLoc": 332,
-      "bytes": 26119,
+      "bytes": 26375,
       "exports": [
         "HOME_SERVICES_SEED"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0b1f270382fa969b",
+      "hash": "0c62377602fe0a5d",
       "fanOut": 1,
       "fanIn": 1,
       "module": "lib"
@@ -9857,9 +9891,9 @@
     },
     "src/lib/home-services/countyZips.ts": {
       "path": "src/lib/home-services/countyZips.ts",
-      "loc": 39,
-      "rawLoc": 62,
-      "bytes": 3035,
+      "loc": 46,
+      "rawLoc": 77,
+      "bytes": 3821,
       "exports": [
         "SERVICE_COUNTY_ZIPS",
         "countyForZip",
@@ -9868,7 +9902,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0ecbb63aa11f15e5",
+      "hash": "000c3c452122fbd9",
       "fanOut": 1,
       "fanIn": 2,
       "module": "lib"
@@ -9877,7 +9911,7 @@
       "path": "src/lib/home-services/i18n.ts",
       "loc": 218,
       "rawLoc": 240,
-      "bytes": 25046,
+      "bytes": 25151,
       "exports": [
         "STRINGS",
         "StringKey",
@@ -9886,7 +9920,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 2,
-      "hash": "0891a2566303d636",
+      "hash": "066e9835e309669c",
       "fanOut": 1,
       "fanIn": 16,
       "module": "lib"
@@ -10106,7 +10140,7 @@
       "path": "src/lib/home-services/requests.ts",
       "loc": 300,
       "rawLoc": 389,
-      "bytes": 15028,
+      "bytes": 15035,
       "exports": [
         "AlertableRequest",
         "DEDUPE_WINDOW_MS",
@@ -10141,16 +10175,16 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "08ee05fe61f0373b",
+      "hash": "0bb68b3c81f049ca",
       "fanOut": 5,
       "fanIn": 2,
       "module": "lib"
     },
     "src/lib/home-services/requestsAdmin.ts": {
       "path": "src/lib/home-services/requestsAdmin.ts",
-      "loc": 192,
-      "rawLoc": 261,
-      "bytes": 9668,
+      "loc": 200,
+      "rawLoc": 270,
+      "bytes": 9947,
       "exports": [
         "ALL_REQUEST_COUNTIES",
         "HomeServiceRequestRow",
@@ -10177,7 +10211,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0ac6af7a0192cf61",
+      "hash": "04e86e76e1966118",
       "fanOut": 2,
       "fanIn": 10,
       "module": "lib"
@@ -10210,7 +10244,7 @@
       "path": "src/lib/home-services/serviceArea.ts",
       "loc": 14,
       "rawLoc": 37,
-      "bytes": 1745,
+      "bytes": 1752,
       "exports": [
         "SERVICE_AREAS",
         "SERVICE_ZIPS",
@@ -12051,9 +12085,9 @@
     },
     "src/lib/projects/http.ts": {
       "path": "src/lib/projects/http.ts",
-      "loc": 42,
-      "rawLoc": 63,
-      "bytes": 2365,
+      "loc": 48,
+      "rawLoc": 69,
+      "bytes": 2623,
       "exports": [
         "BodyError",
         "MAX_JSON_BYTES",
@@ -12066,8 +12100,8 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "02595793e1243737",
-      "fanOut": 0,
+      "hash": "0bbb135b012962c7",
+      "fanOut": 1,
       "fanIn": 24,
       "module": "lib"
     },
@@ -12581,23 +12615,28 @@
     },
     "src/lib/revalidate.ts": {
       "path": "src/lib/revalidate.ts",
-      "loc": 45,
-      "rawLoc": 84,
-      "bytes": 3074,
+      "loc": 56,
+      "rawLoc": 123,
+      "bytes": 4758,
       "exports": [
         "REVALIDATE_EXACT",
         "REVALIDATE_PREFIXES",
+        "SITEMAP_PATHS",
+        "SITEMAP_ROUTE",
+        "SITEMAP_TAG",
         "blogPagePaths",
         "cmsPagePaths",
         "isRevalidatablePath",
-        "requestRevalidate"
+        "projectPagePaths",
+        "requestRevalidate",
+        "touchesSitemap"
       ],
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 0,
-      "hash": "0fe9acbee1213b71",
+      "hash": "0d45c2ed012d2476",
       "fanOut": 0,
-      "fanIn": 6,
+      "fanIn": 8,
       "module": "lib"
     },
     "src/lib/reviews/syncGoogleReviews.ts": {
@@ -12824,6 +12863,50 @@
       "fanIn": 2,
       "module": "lib"
     },
+    "src/lib/sitemap.ts": {
+      "path": "src/lib/sitemap.ts",
+      "loc": 312,
+      "rawLoc": 385,
+      "bytes": 12903,
+      "exports": [
+        "SITE_URL",
+        "SitemapDb",
+        "SitemapPost",
+        "SitemapProject",
+        "SitemapSources",
+        "buildSitemapEntries",
+        "cachedSitemapSources",
+        "selectActiveProjects",
+        "selectPublishedPosts",
+        "sitemapSourcesFrom"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 1,
+      "hash": "05ebf9f981c7468f",
+      "fanOut": 5,
+      "fanIn": 1,
+      "module": "lib"
+    },
+    "src/lib/sitemapXml.ts": {
+      "path": "src/lib/sitemapXml.ts",
+      "loc": 51,
+      "rawLoc": 77,
+      "bytes": 3359,
+      "exports": [
+        "SITEMAP_RETRY_AFTER_SECONDS",
+        "renderSitemapXml",
+        "sitemapResponse",
+        "xmlEscape"
+      ],
+      "isTest": false,
+      "todos": 0,
+      "commentedOutCode": 0,
+      "hash": "0fcfe2cc012fedab",
+      "fanOut": 0,
+      "fanIn": 1,
+      "module": "lib"
+    },
     "src/lib/specnook/client.ts": {
       "path": "src/lib/specnook/client.ts",
       "loc": 74,
@@ -12930,9 +13013,9 @@
     },
     "src/middleware.ts": {
       "path": "src/middleware.ts",
-      "loc": 239,
-      "rawLoc": 386,
-      "bytes": 16833,
+      "loc": 251,
+      "rawLoc": 407,
+      "bytes": 17879,
       "exports": [
         "config",
         "middleware"
@@ -12940,7 +13023,7 @@
       "isTest": false,
       "todos": 0,
       "commentedOutCode": 7,
-      "hash": "007f68dcc1b73a11",
+      "hash": "067a504f01bec8af",
       "fanOut": 5,
       "fanIn": 0,
       "module": "(root)"
@@ -14050,6 +14133,14 @@
     },
     {
       "from": "src/app/api/articles/ingest/[id]/publish/route.ts",
+      "to": "src/lib/articles/publishGuard.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/publish/route.ts",
+      "to": "src/lib/articles/socialCopy.ts"
+    },
+    {
+      "from": "src/app/api/articles/ingest/[id]/publish/route.ts",
       "to": "src/lib/seo/draftGuardrails.ts"
     },
     {
@@ -14331,6 +14422,10 @@
     {
       "from": "src/app/api/cron/publish/route.ts",
       "to": "src/lib/articles/publishFlow.ts"
+    },
+    {
+      "from": "src/app/api/cron/publish/route.ts",
+      "to": "src/lib/articles/publishGuard.ts"
     },
     {
       "from": "src/app/api/cron/publish/route.ts",
@@ -15271,6 +15366,14 @@
     {
       "from": "src/app/api/referrals/route.ts",
       "to": "src/lib/rateLimit.ts"
+    },
+    {
+      "from": "src/app/api/sitemap/route.ts",
+      "to": "src/lib/sitemap.ts"
+    },
+    {
+      "from": "src/app/api/sitemap/route.ts",
+      "to": "src/lib/sitemapXml.ts"
     },
     {
       "from": "src/app/api/webhooks/resend/route.ts",
@@ -16683,22 +16786,6 @@
     {
       "from": "src/app/services/whole-home-remodeling/page.tsx",
       "to": "src/components/CallTrackingWrapper.tsx"
-    },
-    {
-      "from": "src/app/sitemap.ts",
-      "to": "src/integrations/supabase/types.ts"
-    },
-    {
-      "from": "src/app/sitemap.ts",
-      "to": "src/data/resourceData.ts"
-    },
-    {
-      "from": "src/app/sitemap.ts",
-      "to": "src/lib/home-services/catalog.ts"
-    },
-    {
-      "from": "src/app/sitemap.ts",
-      "to": "src/lib/home-services/catalogData.ts"
     },
     {
       "from": "src/app/spring-renovation/page.tsx",
@@ -20201,6 +20288,10 @@
       "to": "src/lib/revalidate.ts"
     },
     {
+      "from": "src/lib/articles/socialCopy.ts",
+      "to": "src/lib/articles/publishGuard.ts"
+    },
+    {
       "from": "src/lib/articles/unpublishToken.ts",
       "to": "src/lib/oneTapLinkSecret.ts"
     },
@@ -21165,6 +21256,10 @@
       "to": "src/components/gallery/PhotoGallery.tsx"
     },
     {
+      "from": "src/lib/projects/http.ts",
+      "to": "src/lib/revalidate.ts"
+    },
+    {
       "from": "src/lib/projects/ingest.ts",
       "to": "src/lib/rateLimit.ts"
     },
@@ -21327,6 +21422,26 @@
     {
       "from": "src/lib/seo/scoring.ts",
       "to": "src/lib/seo/report.ts"
+    },
+    {
+      "from": "src/lib/sitemap.ts",
+      "to": "src/integrations/supabase/types.ts"
+    },
+    {
+      "from": "src/lib/sitemap.ts",
+      "to": "src/data/resourceData.ts"
+    },
+    {
+      "from": "src/lib/sitemap.ts",
+      "to": "src/lib/home-services/catalog.ts"
+    },
+    {
+      "from": "src/lib/sitemap.ts",
+      "to": "src/lib/home-services/catalogData.ts"
+    },
+    {
+      "from": "src/lib/sitemap.ts",
+      "to": "src/lib/revalidate.ts"
     },
     {
       "from": "src/lib/specnook/client.ts",
@@ -21505,6 +21620,7 @@
         "src/app/api/projects/ingest/uploads/route.ts",
         "src/app/api/proposal/[token]/submit/route.ts",
         "src/app/api/referrals/route.ts",
+        "src/app/api/sitemap/route.ts",
         "src/app/api/webhooks/resend/route.ts",
         "src/app/articles/unpublish/[token]/route.ts",
         "src/app/auth/layout.tsx",
@@ -21580,7 +21696,6 @@
         "src/app/services/interior-finishing/page.tsx",
         "src/app/services/page.tsx",
         "src/app/services/whole-home-remodeling/page.tsx",
-        "src/app/sitemap.ts",
         "src/app/spring-renovation/page.tsx",
         "src/app/terms-and-conditions/layout.tsx",
         "src/app/terms-and-conditions/page.tsx",
@@ -21603,12 +21718,12 @@
         "src/app/warranty/layout.tsx",
         "src/app/warranty/page.tsx"
       ],
-      "loc": 29218,
+      "loc": 28994,
       "exports": 726,
       "internalEdges": 15,
-      "outgoingEdges": 952,
+      "outgoingEdges": 953,
       "incomingEdges": 10,
-      "cohesion": 0.016,
+      "cohesion": 0.015,
       "fileCount": 233
     },
     "components": {
@@ -21910,6 +22025,7 @@
         "src/lib/articles/publishGuard.ts",
         "src/lib/articles/revalidate.ts",
         "src/lib/articles/schemas.ts",
+        "src/lib/articles/socialCopy.ts",
         "src/lib/articles/unpublishPage.ts",
         "src/lib/articles/unpublishToken.ts",
         "src/lib/articles/writer.ts",
@@ -22095,6 +22211,8 @@
         "src/lib/seo/stageToBlog.ts",
         "src/lib/seo/supabase-rest.ts",
         "src/lib/seo/url.ts",
+        "src/lib/sitemap.ts",
+        "src/lib/sitemapXml.ts",
         "src/lib/specnook/client.ts",
         "src/lib/submitLead.ts",
         "src/lib/supabase-server.ts",
@@ -22102,20 +22220,20 @@
         "src/lib/supabase/server.ts",
         "src/lib/utils.ts"
       ],
-      "loc": 19816,
-      "exports": 1471,
-      "internalEdges": 308,
-      "outgoingEdges": 5,
-      "incomingEdges": 781,
-      "cohesion": 0.984,
-      "fileCount": 205
+      "loc": 20482,
+      "exports": 1509,
+      "internalEdges": 313,
+      "outgoingEdges": 7,
+      "incomingEdges": 784,
+      "cohesion": 0.978,
+      "fileCount": 208
     },
     "(root)": {
       "name": "(root)",
       "files": [
         "src/middleware.ts"
       ],
-      "loc": 239,
+      "loc": 251,
       "exports": 2,
       "internalEdges": 0,
       "outgoingEdges": 5,
@@ -22212,7 +22330,7 @@
     {
       "from": "app",
       "to": "lib",
-      "count": 607,
+      "count": 610,
       "examples": [
         "src/app/api/admin/articles/[id]/publish/route.ts -> src/lib/projects/http.ts",
         "src/app/api/admin/articles/[id]/publish/route.ts -> src/lib/projects/session.ts",
@@ -22294,18 +22412,6 @@
       ]
     },
     {
-      "from": "app",
-      "to": "data",
-      "count": 10,
-      "examples": [
-        "src/app/faq/page.tsx -> src/data/faqData.ts",
-        "src/app/locations/[city]/page.tsx -> src/data/locationData.ts",
-        "src/app/locations/[city]/services/[service]/page.tsx -> src/data/locationData.ts",
-        "src/app/locations/[city]/services/page.tsx -> src/data/locationData.ts",
-        "src/app/locations/page.tsx -> src/data/locationData.ts"
-      ]
-    },
-    {
       "from": "components",
       "to": "app",
       "count": 10,
@@ -22319,14 +22425,14 @@
     },
     {
       "from": "app",
-      "to": "integrations",
-      "count": 5,
+      "to": "data",
+      "count": 9,
       "examples": [
-        "src/app/blog/[slug]/layout.tsx -> src/integrations/supabase/client.ts",
-        "src/app/blog/preview/[slug]/page.tsx -> src/integrations/supabase/client.ts",
-        "src/app/data-rights/page.tsx -> src/integrations/supabase/client.ts",
-        "src/app/do-not-sell/page.tsx -> src/integrations/supabase/client.ts",
-        "src/app/sitemap.ts -> src/integrations/supabase/types.ts"
+        "src/app/faq/page.tsx -> src/data/faqData.ts",
+        "src/app/locations/[city]/page.tsx -> src/data/locationData.ts",
+        "src/app/locations/[city]/services/[service]/page.tsx -> src/data/locationData.ts",
+        "src/app/locations/[city]/services/page.tsx -> src/data/locationData.ts",
+        "src/app/locations/page.tsx -> src/data/locationData.ts"
       ]
     },
     {
@@ -22351,6 +22457,17 @@
         "src/middleware.ts -> src/lib/cta/types.ts",
         "src/middleware.ts -> src/lib/botFilter.ts",
         "src/middleware.ts -> src/lib/experiments/seed.ts"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "integrations",
+      "count": 4,
+      "examples": [
+        "src/app/blog/[slug]/layout.tsx -> src/integrations/supabase/client.ts",
+        "src/app/blog/preview/[slug]/page.tsx -> src/integrations/supabase/client.ts",
+        "src/app/data-rights/page.tsx -> src/integrations/supabase/client.ts",
+        "src/app/do-not-sell/page.tsx -> src/integrations/supabase/client.ts"
       ]
     },
     {
@@ -22412,6 +22529,15 @@
       ]
     },
     {
+      "from": "lib",
+      "to": "integrations",
+      "count": 2,
+      "examples": [
+        "src/lib/sitemap.ts -> src/integrations/supabase/types.ts",
+        "src/lib/supabase-server.ts -> src/integrations/supabase/types.ts"
+      ]
+    },
+    {
       "from": "hooks",
       "to": "components",
       "count": 1,
@@ -22445,10 +22571,10 @@
     },
     {
       "from": "lib",
-      "to": "integrations",
+      "to": "data",
       "count": 1,
       "examples": [
-        "src/lib/supabase-server.ts -> src/integrations/supabase/types.ts"
+        "src/lib/sitemap.ts -> src/data/resourceData.ts"
       ]
     },
     {
@@ -22605,6 +22731,7 @@
     "src/app/api/projects/ingest/uploads/route.ts",
     "src/app/api/proposal/[token]/submit/route.ts",
     "src/app/api/referrals/route.ts",
+    "src/app/api/sitemap/route.ts",
     "src/app/api/webhooks/resend/route.ts",
     "src/app/articles/unpublish/[token]/route.ts",
     "src/app/auth/layout.tsx",
@@ -22703,7 +22830,6 @@
     "orphans": [
       "src/app/not-found.tsx",
       "src/app/robots.ts",
-      "src/app/sitemap.ts",
       "src/components/BeforeAfterGallery.tsx",
       "src/components/EstimateForm.tsx",
       "src/components/HeatMap.tsx",
@@ -23085,6 +23211,7 @@
       "src/app/api/projects/ingest/uploads/route.ts",
       "src/app/api/proposal/[token]/submit/route.ts",
       "src/app/api/referrals/route.ts",
+      "src/app/api/sitemap/route.ts",
       "src/app/api/webhooks/resend/route.ts",
       "src/app/articles/unpublish/[token]/route.ts",
       "src/app/auth/layout.tsx",
@@ -23152,7 +23279,6 @@
       "src/app/services/interior-finishing/page.tsx",
       "src/app/services/page.tsx",
       "src/app/services/whole-home-remodeling/page.tsx",
-      "src/app/sitemap.ts",
       "src/app/spring-renovation/page.tsx",
       "src/app/terms-and-conditions/layout.tsx",
       "src/app/unsub/UnsubClient.tsx",
@@ -23248,6 +23374,8 @@
       "src/lib/projects/http.ts",
       "src/lib/projects/ingest.ts",
       "src/lib/projects/session.ts",
+      "src/lib/sitemap.ts",
+      "src/lib/sitemapXml.ts",
       "src/lib/supabase/server.ts",
       "src/middleware.ts"
     ],
@@ -23493,7 +23621,6 @@
       "src/app/portfolio/page.tsx",
       "src/app/projects/[slug]/page.tsx",
       "src/app/services/[slug]/page.tsx",
-      "src/app/sitemap.ts",
       "src/hooks/useAuth.tsx",
       "src/lib/click-fraud-detector.ts",
       "src/lib/cms.ts",
@@ -23504,6 +23631,7 @@
       "src/lib/notify/leadFollowUp.ts",
       "src/lib/projects/storage.ts",
       "src/lib/rateLimit.ts",
+      "src/lib/sitemap.ts",
       "src/lib/supabase-server.ts"
     ],
     "crypto": [

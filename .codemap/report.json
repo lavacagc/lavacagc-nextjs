@@ -1,223 +1,68 @@
 {
   "schema": "codemap-report/1",
-  "generatedAt": "2026-10-29T18:36:42.910Z",
+  "generatedAt": "2026-10-29T22:13:45.706Z",
   "baseline": false,
   "comparedAgainst": "git HEAD:.codemap/snapshot.json",
   "git": {
-    "sha": "ea86edaf39dc7b9a9583307d9f394659003d55c1",
-    "shortSha": "ea86eda",
-    "branch": "feat/phase-2-admin-catalog-articles-experiments",
-    "subject": "no-mistakes(document): Docs: drop stale OpenAI, seo-maintain and CTA Tests references",
-    "author": "BuildSync Labs",
-    "committedAt": "2026-10-29T14:32:01-04:00"
+    "sha": "9fd791b3d4b46b987b14ac142c7242d6595dde59",
+    "shortSha": "9fd791b",
+    "branch": "chore/codemap-refresh",
+    "subject": "Merge pull request #113 from lavacagc/fix/sitemap-route-handler",
+    "author": "lavacagc",
+    "committedAt": "2026-10-29T18:13:19-04:00"
   },
   "totals": {
-    "files": 685,
+    "files": 688,
     "testFiles": 0,
-    "loc": 96018,
-    "edges": 2040,
+    "loc": 96472,
+    "edges": 2048,
     "modules": 13,
-    "entries": 228,
+    "entries": 229,
     "externalPackages": 53
   },
   "changed": {
     "addedFiles": [
-      "src/app/api/admin/articles/[id]/publish/route.ts",
-      "src/app/api/admin/experiments/[key]/route.ts",
-      "src/app/api/admin/experiments/route.ts",
-      "src/app/api/admin/home-services/[slug]/route.ts",
-      "src/app/api/admin/home-services/route.ts",
+      "src/app/api/sitemap/route.ts",
+      "src/lib/articles/socialCopy.ts",
+      "src/lib/sitemap.ts",
+      "src/lib/sitemapXml.ts"
+    ],
+    "removedFiles": [
+      "src/app/sitemap.ts"
+    ],
+    "changedFiles": [
       "src/app/api/admin/revalidate/route.ts",
       "src/app/api/articles/ingest/[id]/publish/route.ts",
-      "src/app/api/articles/ingest/[id]/route.ts",
-      "src/app/api/articles/ingest/[id]/unpublish/route.ts",
-      "src/app/api/articles/ingest/route.ts",
-      "src/app/api/articles/seo-feedback/route.ts",
-      "src/app/api/articles/unpublish/[token]/route.ts",
-      "src/app/api/cron/experiments-evaluate/route.ts",
-      "src/app/api/experiments/[key]/conclude/route.ts",
-      "src/app/api/experiments/[key]/start/route.ts",
-      "src/app/api/experiments/backlog/route.ts",
-      "src/app/api/experiments/event/route.ts",
-      "src/app/api/experiments/notify/route.ts",
-      "src/app/api/experiments/report/route.ts",
-      "src/app/api/experiments/route.ts",
-      "src/app/api/experiments/veto/route.ts",
-      "src/app/articles/unpublish/[token]/route.ts",
-      "src/app/experiments/veto/[token]/VetoButton.tsx",
-      "src/app/experiments/veto/[token]/page.tsx",
-      "src/components/admin/experiments/ExperimentsDashboard.tsx",
-      "src/components/admin/home-services/ServicesPricesEditor.tsx",
-      "src/components/blog/BlogFaq.tsx",
-      "src/lib/articles/actions.ts",
-      "src/lib/articles/adminPublish.ts",
-      "src/lib/articles/auth.ts",
+      "src/app/api/cron/publish/route.ts",
+      "src/app/projects/[slug]/page.tsx",
       "src/lib/articles/catalogPrices.ts",
-      "src/lib/articles/cliCommand.ts",
-      "src/lib/articles/faqJsonLd.ts",
-      "src/lib/articles/feedback.ts",
-      "src/lib/articles/http.ts",
       "src/lib/articles/notify.ts",
       "src/lib/articles/publishFlow.ts",
       "src/lib/articles/publishGuard.ts",
       "src/lib/articles/revalidate.ts",
       "src/lib/articles/schemas.ts",
-      "src/lib/articles/unpublishPage.ts",
-      "src/lib/articles/unpublishToken.ts",
-      "src/lib/articles/writer.ts",
-      "src/lib/botFilter.ts",
-      "src/lib/cta/heroStore.server.ts",
-      "src/lib/experiments/ExperimentZone.tsx",
-      "src/lib/experiments/assign.ts",
-      "src/lib/experiments/auth.server.ts",
-      "src/lib/experiments/client.ts",
-      "src/lib/experiments/currentCopy.ts",
-      "src/lib/experiments/decide.server.ts",
-      "src/lib/experiments/evaluate.ts",
-      "src/lib/experiments/events.server.ts",
-      "src/lib/experiments/messages.ts",
-      "src/lib/experiments/schedule.ts",
-      "src/lib/experiments/schemas.ts",
-      "src/lib/experiments/seed.ts",
-      "src/lib/experiments/store.server.ts",
-      "src/lib/experiments/surfaces.ts",
-      "src/lib/experiments/types.ts",
-      "src/lib/experiments/vetoLookup.server.ts",
-      "src/lib/experiments/vetoToken.ts",
-      "src/lib/experiments/withExperiment.server.ts",
-      "src/lib/home-services/catalogData.ts",
-      "src/lib/home-services/catalogRow.ts",
-      "src/lib/home-services/catalogSchema.ts",
-      "src/lib/home-services/catalogSeed.ts",
-      "src/lib/jsonLd.ts",
-      "src/lib/oneTapLinkSecret.ts",
-      "src/lib/revalidate.ts"
-    ],
-    "removedFiles": [
-      "src/app/api/admin/content-actions/draft/route.ts",
-      "src/app/api/cron/seo-maintain/route.ts",
-      "src/components/admin/BlogPostGenerator.tsx",
-      "src/components/admin/ui/AdminRadioGroup.tsx",
-      "src/lib/seo/maintainedArticles.ts",
-      "supabase/functions/_shared/internalLinks.ts",
-      "supabase/functions/_shared/openai.ts",
-      "supabase/functions/enhance-blog-content/index.ts",
-      "supabase/functions/generate-blog-image/index.ts",
-      "supabase/functions/generate-blog-post/index.ts",
-      "supabase/functions/publish-scheduled-articles/index.ts"
-    ],
-    "changedFiles": [
-      "src/app/api/admin/content-actions/apply/route.ts",
-      "src/app/api/admin/content-actions/stage/route.ts",
-      "src/app/api/admin/cta/variants/route.ts",
-      "src/app/api/admin/service-requests/[id]/route.ts",
-      "src/app/api/cron/publish/route.ts",
-      "src/app/api/cron/seo-rollback/route.ts",
-      "src/app/api/cta/event/route.ts",
-      "src/app/api/home-services/request/route.ts",
-      "src/app/blog/[slug]/page.tsx",
-      "src/app/blog/page.tsx",
-      "src/app/blog/preview/[slug]/page.tsx",
-      "src/app/cms/[...slug]/page.tsx",
-      "src/app/commercial-services/page.tsx",
-      "src/app/contact/page.tsx",
-      "src/app/free-estimate/page.tsx",
-      "src/app/home-services/[slug]/page.tsx",
-      "src/app/home-services/page.tsx",
-      "src/app/layout.tsx",
-      "src/app/lp/basement-finishing/page.tsx",
-      "src/app/lp/bathroom-renovation/page.tsx",
-      "src/app/lp/kitchen-remodel/page.tsx",
-      "src/app/offer/[token]/page.tsx",
-      "src/app/portfolio/page.tsx",
-      "src/app/projects/[slug]/page.tsx",
-      "src/app/robots.ts",
-      "src/app/services/[slug]/page.tsx",
-      "src/app/services/page.tsx",
-      "src/app/sitemap.ts",
-      "src/app/spring-renovation/page.tsx",
-      "src/components/AdminContent.tsx",
-      "src/components/CityLandingClient.tsx",
-      "src/components/ContactHeroPhone.tsx",
-      "src/components/ContactTrustBadges.tsx",
-      "src/components/FreeEstimateLanding.tsx",
-      "src/components/Hero.tsx",
-      "src/components/LocationServiceClient.tsx",
-      "src/components/PortfolioContent.tsx",
-      "src/components/ReviewsBottomCTA.tsx",
-      "src/components/ReviewsPageClient.tsx",
-      "src/components/ServiceDetailClient.tsx",
-      "src/components/SmartBanner.tsx",
-      "src/components/StickyCTA.tsx",
-      "src/components/admin/AdminSidebar.tsx",
-      "src/components/admin/BannerManager.tsx",
-      "src/components/admin/BlogPostEditor.tsx",
-      "src/components/admin/BlogPostList.tsx",
-      "src/components/admin/CMSPageEditor.tsx",
-      "src/components/admin/SeoSuggestionsDashboard.tsx",
-      "src/components/admin/ServicesEditor.tsx",
-      "src/components/admin/home-services/BidRequestForm.tsx",
-      "src/components/admin/home-services/CtaTestsDashboard.tsx",
-      "src/components/admin/home-services/RequestDetail.tsx",
-      "src/components/admin/home-services/ServiceRequestsManager.tsx",
-      "src/components/admin/home-services/cta/VariantEditor.tsx",
-      "src/components/admin/home-services/cta/ctaApi.ts",
-      "src/components/admin/home-services/shared.tsx",
-      "src/components/home-services/PhotoUploader.tsx",
-      "src/components/home-services/RequestFlow.tsx",
-      "src/components/home-services/RequestServiceButton.tsx",
-      "src/components/home-services/ServiceCatalog.tsx",
-      "src/components/home-services/useRequestFlow.ts",
-      "src/components/mobile/AMPBlogPost.tsx",
-      "src/components/mobile/MobileContactBanner.tsx",
-      "src/components/mobile/MobileNavigation.tsx",
-      "src/components/mobile/MobileSEO.tsx",
-      "src/components/mobile/MobileTestingUtils.tsx",
-      "src/data/locationData.ts",
-      "src/data/seo-blog-posts-batch2.ts",
-      "src/data/seo-blog-posts-batch3.ts",
-      "src/data/seo-blog-posts-batch4.ts",
-      "src/lib/analytics/excluded.ts",
-      "src/lib/cta/activePairs.server.ts",
-      "src/lib/cta/admin.server.ts",
-      "src/lib/cta/bootstrap.ts",
-      "src/lib/cta/variants.server.ts",
-      "src/lib/home-services/adminRoute.ts",
       "src/lib/home-services/catalog.ts",
+      "src/lib/home-services/catalogData.ts",
+      "src/lib/home-services/catalogSeed.ts",
+      "src/lib/home-services/countyZips.ts",
       "src/lib/home-services/i18n.ts",
-      "src/lib/home-services/offers.ts",
       "src/lib/home-services/requests.ts",
       "src/lib/home-services/requestsAdmin.ts",
-      "src/lib/privatePages.ts",
-      "src/lib/seo/draftGuardrails.ts",
-      "src/lib/seo/stageToBlog.ts",
-      "src/lib/seo/supabase-rest.ts",
+      "src/lib/projects/http.ts",
+      "src/lib/revalidate.ts",
       "src/middleware.ts"
     ],
     "addedModules": [],
-    "removedModules": [
-      "enhance-blog-content",
-      "generate-blog-image",
-      "generate-blog-post",
-      "publish-scheduled-articles"
-    ],
-    "newModuleEdges": [],
-    "droppedModuleEdges": [
+    "removedModules": [],
+    "newModuleEdges": [
       {
-        "from": "enhance-blog-content",
-        "to": "_shared"
-      },
-      {
-        "from": "generate-blog-post",
-        "to": "_shared"
-      },
-      {
-        "from": "generate-blog-image",
-        "to": "_shared"
+        "from": "lib",
+        "to": "data"
       }
     ],
-    "addedEdges": 276,
-    "removedEdges": 33
+    "droppedModuleEdges": [],
+    "addedEdges": 12,
+    "removedEdges": 4
   },
   "excess": {
     "godFiles": [
@@ -227,7 +72,7 @@
         "exports": 8,
         "fanIn": 4,
         "module": "integrations",
-        "reason": "2152 LOC (p90 is 321)"
+        "reason": "2152 LOC (p90 is 325)"
       },
       {
         "path": "src/components/admin/ProposalBuilder.tsx",
@@ -235,7 +80,7 @@
         "exports": 3,
         "fanIn": 1,
         "module": "components",
-        "reason": "1130 LOC (p90 is 321)"
+        "reason": "1130 LOC (p90 is 325)"
       },
       {
         "path": "src/app/vaca-mgmt/proposals/page.tsx",
@@ -243,7 +88,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "app",
-        "reason": "1088 LOC (p90 is 321)"
+        "reason": "1088 LOC (p90 is 325)"
       },
       {
         "path": "src/components/admin/CMSPageEditor.tsx",
@@ -251,7 +96,7 @@
         "exports": 1,
         "fanIn": 1,
         "module": "components",
-        "reason": "1007 LOC (p90 is 321)"
+        "reason": "1007 LOC (p90 is 325)"
       },
       {
         "path": "src/data/locationData.ts",
@@ -259,7 +104,7 @@
         "exports": 8,
         "fanIn": 9,
         "module": "data",
-        "reason": "971 LOC (p90 is 321)"
+        "reason": "971 LOC (p90 is 325)"
       },
       {
         "path": "src/components/homecare/HomeCareChecklistClient.tsx",
@@ -267,7 +112,7 @@
         "exports": 3,
         "fanIn": 1,
         "module": "components",
-        "reason": "953 LOC (p90 is 321)"
+        "reason": "953 LOC (p90 is 325)"
       },
       {
         "path": "src/data/faqData.ts",
@@ -275,7 +120,7 @@
         "exports": 5,
         "fanIn": 1,
         "module": "data",
-        "reason": "947 LOC (p90 is 321)"
+        "reason": "947 LOC (p90 is 325)"
       },
       {
         "path": "src/app/vaca-mgmt/send-service-quote/page.tsx",
@@ -283,7 +128,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "app",
-        "reason": "883 LOC (p90 is 321)"
+        "reason": "883 LOC (p90 is 325)"
       },
       {
         "path": "src/components/WarrantyForm.tsx",
@@ -291,7 +136,7 @@
         "exports": 1,
         "fanIn": 1,
         "module": "components",
-        "reason": "798 LOC (p90 is 321)"
+        "reason": "798 LOC (p90 is 325)"
       },
       {
         "path": "src/data/seo-blog-posts-batch4.ts",
@@ -299,7 +144,7 @@
         "exports": 2,
         "fanIn": 0,
         "module": "data",
-        "reason": "766 LOC (p90 is 321)"
+        "reason": "766 LOC (p90 is 325)"
       },
       {
         "path": "src/lib/emailTemplates.ts",
@@ -307,7 +152,7 @@
         "exports": 13,
         "fanIn": 6,
         "module": "lib",
-        "reason": "763 LOC (p90 is 321)"
+        "reason": "763 LOC (p90 is 325)"
       },
       {
         "path": "src/app/services/interior-finishing/page.tsx",
@@ -315,7 +160,7 @@
         "exports": 3,
         "fanIn": 0,
         "module": "app",
-        "reason": "717 LOC (p90 is 321)"
+        "reason": "717 LOC (p90 is 325)"
       },
       {
         "path": "src/components/EstimateForm.tsx",
@@ -323,7 +168,7 @@
         "exports": 1,
         "fanIn": 0,
         "module": "components",
-        "reason": "717 LOC (p90 is 321)"
+        "reason": "717 LOC (p90 is 325)"
       },
       {
         "path": "src/data/seo-blog-posts-batch2.ts",
@@ -331,7 +176,7 @@
         "exports": 2,
         "fanIn": 0,
         "module": "data",
-        "reason": "711 LOC (p90 is 321)"
+        "reason": "711 LOC (p90 is 325)"
       },
       {
         "path": "src/lib/home-services/offers.ts",
@@ -339,7 +184,7 @@
         "exports": 38,
         "fanIn": 10,
         "module": "lib",
-        "reason": "700 LOC (p90 is 321), 38 exports"
+        "reason": "700 LOC (p90 is 325), 38 exports"
       },
       {
         "path": "src/components/admin/BlogPostEditor.tsx",
@@ -347,7 +192,7 @@
         "exports": 1,
         "fanIn": 1,
         "module": "components",
-        "reason": "678 LOC (p90 is 321)"
+        "reason": "678 LOC (p90 is 325)"
       },
       {
         "path": "src/lib/homecare/dispatch.ts",
@@ -355,7 +200,7 @@
         "exports": 33,
         "fanIn": 7,
         "module": "lib",
-        "reason": "623 LOC (p90 is 321), 33 exports"
+        "reason": "623 LOC (p90 is 325), 33 exports"
       },
       {
         "path": "src/components/admin/HomeCareShopManager.tsx",
@@ -363,7 +208,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "components",
-        "reason": "620 LOC (p90 is 321)"
+        "reason": "620 LOC (p90 is 325)"
       },
       {
         "path": "src/app/locations/[city]/page.tsx",
@@ -371,7 +216,7 @@
         "exports": 4,
         "fanIn": 0,
         "module": "app",
-        "reason": "573 LOC (p90 is 321)"
+        "reason": "573 LOC (p90 is 325)"
       },
       {
         "path": "src/components/ui/sidebar.tsx",
@@ -379,7 +224,7 @@
         "exports": 24,
         "fanIn": 0,
         "module": "components",
-        "reason": "571 LOC (p90 is 321), 24 exports"
+        "reason": "571 LOC (p90 is 325), 24 exports"
       },
       {
         "path": "src/data/resourceContent.tsx",
@@ -387,7 +232,7 @@
         "exports": 1,
         "fanIn": 1,
         "module": "data",
-        "reason": "566 LOC (p90 is 321)"
+        "reason": "566 LOC (p90 is 325)"
       },
       {
         "path": "src/components/services/RequestEstimateForm.tsx",
@@ -395,7 +240,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "components",
-        "reason": "561 LOC (p90 is 321)"
+        "reason": "561 LOC (p90 is 325)"
       },
       {
         "path": "src/components/HomeEstimateForm.tsx",
@@ -403,7 +248,7 @@
         "exports": 1,
         "fanIn": 1,
         "module": "components",
-        "reason": "552 LOC (p90 is 321)"
+        "reason": "552 LOC (p90 is 325)"
       },
       {
         "path": "src/components/CMSPageRenderer.tsx",
@@ -411,7 +256,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "components",
-        "reason": "530 LOC (p90 is 321)"
+        "reason": "530 LOC (p90 is 325)"
       },
       {
         "path": "src/components/ProcessPageClient.tsx",
@@ -419,7 +264,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "components",
-        "reason": "516 LOC (p90 is 321)"
+        "reason": "516 LOC (p90 is 325)"
       },
       {
         "path": "src/app/vaca-mgmt/send-estimate/page.tsx",
@@ -427,7 +272,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "app",
-        "reason": "515 LOC (p90 is 321)"
+        "reason": "515 LOC (p90 is 325)"
       },
       {
         "path": "src/components/admin/LeadsManager.tsx",
@@ -435,7 +280,7 @@
         "exports": 1,
         "fanIn": 1,
         "module": "components",
-        "reason": "511 LOC (p90 is 321)"
+        "reason": "511 LOC (p90 is 325)"
       },
       {
         "path": "src/app/api/leads/submit/route.ts",
@@ -443,7 +288,7 @@
         "exports": 2,
         "fanIn": 0,
         "module": "app",
-        "reason": "508 LOC (p90 is 321)"
+        "reason": "508 LOC (p90 is 325)"
       },
       {
         "path": "src/components/ContactForm.tsx",
@@ -451,7 +296,7 @@
         "exports": 1,
         "fanIn": 1,
         "module": "components",
-        "reason": "505 LOC (p90 is 321)"
+        "reason": "505 LOC (p90 is 325)"
       },
       {
         "path": "src/components/admin/PortfolioManager.tsx",
@@ -459,7 +304,7 @@
         "exports": 1,
         "fanIn": 1,
         "module": "components",
-        "reason": "505 LOC (p90 is 321)"
+        "reason": "505 LOC (p90 is 325)"
       },
       {
         "path": "src/components/services/serviceData.ts",
@@ -467,7 +312,7 @@
         "exports": 7,
         "fanIn": 3,
         "module": "components",
-        "reason": "504 LOC (p90 is 321)"
+        "reason": "504 LOC (p90 is 325)"
       },
       {
         "path": "src/services/analyticsManager.ts",
@@ -475,7 +320,7 @@
         "exports": 14,
         "fanIn": 20,
         "module": "services",
-        "reason": "499 LOC (p90 is 321)"
+        "reason": "499 LOC (p90 is 325)"
       },
       {
         "path": "src/components/admin/ProjectUploadSystem.tsx",
@@ -483,7 +328,7 @@
         "exports": 1,
         "fanIn": 1,
         "module": "components",
-        "reason": "482 LOC (p90 is 321)"
+        "reason": "482 LOC (p90 is 325)"
       },
       {
         "path": "src/data/seo-blog-posts-batch3.ts",
@@ -491,7 +336,7 @@
         "exports": 2,
         "fanIn": 0,
         "module": "data",
-        "reason": "469 LOC (p90 is 321)"
+        "reason": "469 LOC (p90 is 325)"
       },
       {
         "path": "src/components/ServiceDetailClient.tsx",
@@ -499,7 +344,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "components",
-        "reason": "455 LOC (p90 is 321)"
+        "reason": "455 LOC (p90 is 325)"
       },
       {
         "path": "src/components/SmartBanner.tsx",
@@ -507,7 +352,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "components",
-        "reason": "454 LOC (p90 is 321)"
+        "reason": "454 LOC (p90 is 325)"
       },
       {
         "path": "src/components/home-services/RequestFlow.tsx",
@@ -515,7 +360,7 @@
         "exports": 2,
         "fanIn": 3,
         "module": "components",
-        "reason": "449 LOC (p90 is 321)"
+        "reason": "449 LOC (p90 is 325)"
       },
       {
         "path": "src/components/admin/GMBSettings.tsx",
@@ -523,7 +368,7 @@
         "exports": 1,
         "fanIn": 1,
         "module": "components",
-        "reason": "448 LOC (p90 is 321)"
+        "reason": "448 LOC (p90 is 325)"
       },
       {
         "path": "src/lib/proposals/store.ts",
@@ -531,7 +376,7 @@
         "exports": 22,
         "fanIn": 2,
         "module": "lib",
-        "reason": "442 LOC (p90 is 321), 22 exports"
+        "reason": "442 LOC (p90 is 325), 22 exports"
       },
       {
         "path": "src/components/admin/home-services/ServicesPricesEditor.tsx",
@@ -539,7 +384,7 @@
         "exports": 3,
         "fanIn": 1,
         "module": "components",
-        "reason": "439 LOC (p90 is 321)"
+        "reason": "439 LOC (p90 is 325)"
       },
       {
         "path": "src/app/services/whole-home-remodeling/page.tsx",
@@ -547,7 +392,7 @@
         "exports": 3,
         "fanIn": 0,
         "module": "app",
-        "reason": "436 LOC (p90 is 321)"
+        "reason": "436 LOC (p90 is 325)"
       },
       {
         "path": "src/app/warranty/page.tsx",
@@ -555,7 +400,7 @@
         "exports": 3,
         "fanIn": 0,
         "module": "app",
-        "reason": "433 LOC (p90 is 321)"
+        "reason": "433 LOC (p90 is 325)"
       },
       {
         "path": "src/components/admin/BannerManager.tsx",
@@ -563,7 +408,7 @@
         "exports": 1,
         "fanIn": 1,
         "module": "components",
-        "reason": "421 LOC (p90 is 321)"
+        "reason": "421 LOC (p90 is 325)"
       },
       {
         "path": "src/components/FreeEstimateLanding.tsx",
@@ -571,7 +416,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "components",
-        "reason": "407 LOC (p90 is 321)"
+        "reason": "407 LOC (p90 is 325)"
       },
       {
         "path": "src/app/data-rights/page.tsx",
@@ -579,7 +424,7 @@
         "exports": 2,
         "fanIn": 0,
         "module": "app",
-        "reason": "402 LOC (p90 is 321)"
+        "reason": "402 LOC (p90 is 325)"
       },
       {
         "path": "src/components/admin/ComplianceDocumentsManager.tsx",
@@ -587,7 +432,7 @@
         "exports": 1,
         "fanIn": 1,
         "module": "components",
-        "reason": "396 LOC (p90 is 321)"
+        "reason": "396 LOC (p90 is 325)"
       },
       {
         "path": "src/app/commercial-services/page.tsx",
@@ -595,7 +440,7 @@
         "exports": 4,
         "fanIn": 0,
         "module": "app",
-        "reason": "393 LOC (p90 is 321)"
+        "reason": "393 LOC (p90 is 325)"
       },
       {
         "path": "src/app/vaca-mgmt/preferences/page.tsx",
@@ -603,7 +448,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "app",
-        "reason": "382 LOC (p90 is 321)"
+        "reason": "382 LOC (p90 is 325)"
       },
       {
         "path": "src/lib/homecare/newsletter.ts",
@@ -611,7 +456,7 @@
         "exports": 5,
         "fanIn": 1,
         "module": "lib",
-        "reason": "382 LOC (p90 is 321)"
+        "reason": "382 LOC (p90 is 325)"
       },
       {
         "path": "src/lib/projects/draft.ts",
@@ -619,7 +464,7 @@
         "exports": 23,
         "fanIn": 13,
         "module": "lib",
-        "reason": "382 LOC (p90 is 321), 23 exports"
+        "reason": "382 LOC (p90 is 325), 23 exports"
       },
       {
         "path": "src/components/admin/home-services/RequestDetail.tsx",
@@ -627,7 +472,7 @@
         "exports": 3,
         "fanIn": 1,
         "module": "components",
-        "reason": "369 LOC (p90 is 321)"
+        "reason": "369 LOC (p90 is 325)"
       },
       {
         "path": "src/components/admin/BlogPostList.tsx",
@@ -635,7 +480,7 @@
         "exports": 1,
         "fanIn": 1,
         "module": "components",
-        "reason": "366 LOC (p90 is 321)"
+        "reason": "366 LOC (p90 is 325)"
       },
       {
         "path": "src/components/admin/experiments/ExperimentsDashboard.tsx",
@@ -643,7 +488,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "components",
-        "reason": "362 LOC (p90 is 321)"
+        "reason": "362 LOC (p90 is 325)"
       },
       {
         "path": "src/components/ProjectDetailClient.tsx",
@@ -651,7 +496,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "components",
-        "reason": "359 LOC (p90 is 321)"
+        "reason": "359 LOC (p90 is 325)"
       },
       {
         "path": "src/components/admin/AnalyticsSettings.tsx",
@@ -659,7 +504,7 @@
         "exports": 1,
         "fanIn": 1,
         "module": "components",
-        "reason": "358 LOC (p90 is 321)"
+        "reason": "358 LOC (p90 is 325)"
       },
       {
         "path": "src/app/do-not-sell/page.tsx",
@@ -667,7 +512,7 @@
         "exports": 2,
         "fanIn": 0,
         "module": "app",
-        "reason": "357 LOC (p90 is 321)"
+        "reason": "357 LOC (p90 is 325)"
       },
       {
         "path": "src/components/admin/AdminSidebar.tsx",
@@ -675,7 +520,7 @@
         "exports": 3,
         "fanIn": 1,
         "module": "components",
-        "reason": "357 LOC (p90 is 321)"
+        "reason": "357 LOC (p90 is 325)"
       },
       {
         "path": "src/components/Header.tsx",
@@ -683,7 +528,7 @@
         "exports": 1,
         "fanIn": 45,
         "module": "components",
-        "reason": "355 LOC (p90 is 321)"
+        "reason": "355 LOC (p90 is 325)"
       },
       {
         "path": "src/components/admin/ConversionDashboard.tsx",
@@ -691,7 +536,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "components",
-        "reason": "346 LOC (p90 is 321)"
+        "reason": "346 LOC (p90 is 325)"
       },
       {
         "path": "src/components/admin/SeoSuggestionsDashboard.tsx",
@@ -699,7 +544,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "components",
-        "reason": "346 LOC (p90 is 321)"
+        "reason": "346 LOC (p90 is 325)"
       },
       {
         "path": "src/app/proposal/[token]/ProposalView.tsx",
@@ -707,7 +552,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "app",
-        "reason": "345 LOC (p90 is 321)"
+        "reason": "345 LOC (p90 is 325)"
       },
       {
         "path": "src/app/vaca-mgmt/home-records/page.tsx",
@@ -715,7 +560,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "app",
-        "reason": "335 LOC (p90 is 321)"
+        "reason": "335 LOC (p90 is 325)"
       },
       {
         "path": "src/components/ReviewsPageClient.tsx",
@@ -723,7 +568,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "components",
-        "reason": "335 LOC (p90 is 321)"
+        "reason": "335 LOC (p90 is 325)"
       },
       {
         "path": "src/data/seoContent.ts",
@@ -731,7 +576,7 @@
         "exports": 9,
         "fanIn": 0,
         "module": "data",
-        "reason": "335 LOC (p90 is 321)"
+        "reason": "335 LOC (p90 is 325)"
       },
       {
         "path": "src/components/LandingPageLeadForm.tsx",
@@ -739,7 +584,7 @@
         "exports": 1,
         "fanIn": 2,
         "module": "components",
-        "reason": "334 LOC (p90 is 321)"
+        "reason": "334 LOC (p90 is 325)"
       },
       {
         "path": "src/app/vaca-mgmt/emails/page.tsx",
@@ -747,7 +592,7 @@
         "exports": 3,
         "fanIn": 1,
         "module": "app",
-        "reason": "333 LOC (p90 is 321)"
+        "reason": "333 LOC (p90 is 325)"
       },
       {
         "path": "src/app/vaca-mgmt/follow-ups/page.tsx",
@@ -755,7 +600,7 @@
         "exports": 2,
         "fanIn": 1,
         "module": "app",
-        "reason": "328 LOC (p90 is 321)"
+        "reason": "328 LOC (p90 is 325)"
       },
       {
         "path": "supabase/functions/send-lead-notification/index.ts",
@@ -763,15 +608,15 @@
         "exports": 0,
         "fanIn": 0,
         "module": "send-lead-notification",
-        "reason": "326 LOC (p90 is 321)"
+        "reason": "326 LOC (p90 is 325)"
       },
       {
         "path": "src/lib/articles/publishGuard.ts",
-        "loc": 312,
-        "exports": 16,
-        "fanIn": 3,
+        "loc": 325,
+        "exports": 18,
+        "fanIn": 6,
         "module": "lib",
-        "reason": "16 exports"
+        "reason": "18 exports"
       },
       {
         "path": "src/lib/home-services/requests.ts",
@@ -823,7 +668,7 @@
       },
       {
         "path": "src/lib/home-services/requestsAdmin.ts",
-        "loc": 192,
+        "loc": 200,
         "exports": 21,
         "fanIn": 10,
         "module": "lib",
@@ -1069,9 +914,9 @@
     "leakyModules": [
       {
         "name": "app",
-        "cohesion": 0.016,
+        "cohesion": 0.015,
         "files": 233,
-        "outgoing": 952
+        "outgoing": 953
       },
       {
         "name": "hooks",
@@ -1085,10 +930,12 @@
   "deltas": [
     {
       "name": "orphans",
-      "count": 44,
+      "count": 43,
       "previousCount": 44,
       "introduced": [],
-      "resolved": []
+      "resolved": [
+        "src/app/sitemap.ts"
+      ]
     },
     {
       "name": "testOnly",
