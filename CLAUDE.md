@@ -164,6 +164,7 @@ verification stays a **manual pre-gate step**.
 - Claude Code project ingest: `docs/projects-ingest.md`.
 - Claude Code article routes and CLI (write, publish, SEO feedback, publish guard, unpublish link): `docs/articles-ingest.md`; the skill that drives them: `.claude/skills/articles/SKILL.md`.
 - A/B experiments (assignment, funnel, evaluator and veto, agent routes and CLI): `docs/experiments.md`; the routine that drives them: `.claude/skills/experiments/SKILL.md`.
+- The sitemap (why it is a route handler, the daily watcher, how to move it back when the Next.js fix ships): `docs/sitemap.md`.
 
 ## Path Aliases
 

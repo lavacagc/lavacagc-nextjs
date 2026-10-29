@@ -33,7 +33,9 @@ export interface SitemapSources {
 }
 
 // A static client for data fetching (no cookies), so the route stays cacheable.
-function getStaticSupabaseClient(): SitemapDb {
+// Exported for the watcher (src/app/api/cron/sitemap-watch), which reads the
+// same rows uncached to compare them with the served copy.
+export function getStaticSupabaseClient(): SitemapDb {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   return createSupabaseClient<Database>(supabaseUrl, supabaseKey)
