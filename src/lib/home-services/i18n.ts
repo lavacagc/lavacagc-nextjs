@@ -138,6 +138,7 @@ export const STRINGS = {
   offerPausedNote: { en: 'Your clock is paused while Alex answers your question.', es: 'Su reloj está en pausa mientras Alex responde su pregunta.' },
   offerAcceptBody: { en: 'First approved sub to accept gets the job. You will see the full address right away.', es: 'El primer subcontratista aprobado que acepte se queda con el trabajo. Verá la dirección completa de inmediato.' },
   offerOtherOptions: { en: 'Or respond another way', es: 'O responda de otra forma' },
+  offerCounterTab: { en: 'Name my price', es: 'Dar mi precio' },
   offerCounterTitle: { en: "I won't do it for this price, but I'll do it for", es: 'No lo hago por este precio, pero lo hago por' },
   offerCounterPrice: { en: 'Your price (USD)', es: 'Su precio (USD)' },
   offerCounterPriceRequired: { en: 'Enter your price in dollars, for example 1500.', es: 'Escriba su precio en dólares, por ejemplo 1500.' },

@@ -70,7 +70,7 @@ export default async function OfferPage({
     const body = view.kind === 'taken' ? 'offerTaken' : view.kind === 'expired' ? 'offerExpired' : 'offerCancelled';
     return (
       <Shell lang={lang}>
-        <p className="text-xs font-bold uppercase tracking-wider text-[#D97D1A]">{trade} · {offer.town}</p>
+        <p className="text-xs font-bold uppercase tracking-wider text-[#B4600F]">{trade} · {offer.town}</p>
         <h1 className="mt-1 text-xl font-bold text-[#1A1A1A]" data-testid={`offer-${view.kind}`}>{s(title, lang)}</h1>
         <p className="mt-2 text-sm text-[#555]">{s(body, lang)}</p>
         <p className="mt-6 text-xs text-[#666]">{s('offerHelp', lang)}</p>
@@ -85,7 +85,7 @@ export default async function OfferPage({
     const request = await getRequest(offer.request_id);
     return (
       <Shell lang={lang}>
-        <p className="text-xs font-bold uppercase tracking-wider text-[#D97D1A]">{trade} · {offer.town}</p>
+        <p className="text-xs font-bold uppercase tracking-wider text-[#B4600F]">{trade} · {offer.town}</p>
         <h1 className="mt-1 text-2xl font-bold text-[#1A1A1A]" data-testid="offer-won">{s('offerWonTitle', lang)}</h1>
         <p className="mt-2 text-sm text-[#555]">{s('offerAccepted', lang)}</p>
         <dl className="mt-5 divide-y divide-[#E2E8F0] border-y border-[#E2E8F0]">
@@ -114,7 +114,7 @@ export default async function OfferPage({
 
   return (
     <Shell lang={lang}>
-      <p className="text-xs font-bold uppercase tracking-wider text-[#D97D1A]">{trade} · {offer.town}</p>
+      <p className="text-xs font-bold uppercase tracking-wider text-[#B4600F]">{trade} · {offer.town}</p>
       <h1 className="mt-1 text-2xl font-bold text-[#1A1A1A]">{s('offerTitle', lang)}</h1>
 
       <div className="mt-4 rounded-lg bg-[#FBEEDF] px-4 py-3">

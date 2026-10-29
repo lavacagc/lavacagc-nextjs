@@ -116,9 +116,10 @@ export default function OfferActions({
   }
 
   const status = (
-    <div aria-live="polite" className="mt-3 min-h-[1px]">
-      {error && <p role="alert" className="rounded-md bg-[#FDECEC] px-3 py-2 text-sm font-medium text-[#9B1C1C]" data-testid="offer-error">{error}</p>}
-      {done && !error && <p className="rounded-md bg-[#EAF6EC] px-3 py-2 text-sm font-medium text-[#1E5B2A]" data-testid="offer-done">{done}</p>}
+    <div aria-live="polite" className={error ? 'mt-3' : ''}>
+      {error && <p role="alert" id="offer-action-error" className="rounded-md bg-[#FDECEC] px-3 py-2 text-sm font-medium text-[#9B1C1C]" data-testid="offer-error">{error}</p>}
+      {/* The refreshed server page shows the lasting notice; this only announces the change. */}
+      {done && !error && <p className="sr-only" data-testid="offer-done">{done}</p>}
     </div>
   );
 
@@ -168,12 +169,12 @@ export default function OfferActions({
         {s('offerRespond', lang)}
       </button>
 
-      {status}
+      {!respondOpen && status}
 
       {respondOpen && (
         <div id="offer-respond-panel" className="mt-3 rounded-lg border border-[#E2E8F0] p-4">
           <p className="text-xs font-bold uppercase tracking-wider text-[#666]">{s('offerOtherOptions', lang)}</p>
-          <div className="mt-2 grid grid-cols-3 gap-2" role="group">
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3" role="group" aria-label={s('offerOtherOptions', lang)}>
             {(['counter', 'details', 'decline'] as Form[]).map((f) => (
               <button
                 key={f}
@@ -183,22 +184,24 @@ export default function OfferActions({
                 className={`rounded-md border px-2 py-2 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#B4600F] ${open === f ? 'border-[#B4600F] bg-[#FBEEDF] text-[#1A1A1A]' : 'border-[#C9C2BA] bg-white text-[#303030]'}`}
                 data-testid={`offer-open-${f}`}
               >
-                {f === 'counter' ? s('offerCounter', lang) : f === 'details' ? s('offerDetails', lang) : s('offerDecline', lang)}
+                {f === 'counter' ? s('offerCounterTab', lang) : f === 'details' ? s('offerDetails', lang) : s('offerDecline', lang)}
               </button>
             ))}
           </div>
+          {!open && status}
 
           {open === 'counter' && (
             <form className="mt-4 space-y-3" onSubmit={submitCounter} noValidate data-testid="offer-counter-form">
               <p className="text-sm text-[#303030]">{s('offerCounterTitle', lang)}</p>
               <div>
                 <label htmlFor="offer-price" className={labelCls}>{s('offerCounterPrice', lang)}</label>
-                <input id="offer-price" inputMode="decimal" autoComplete="off" className={inputCls} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="1500" required aria-required="true" />
+                <input id="offer-price" inputMode="decimal" autoComplete="off" className={inputCls} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="1500" required aria-required="true" aria-invalid={!!error} aria-describedby={error ? "offer-action-error" : undefined} />
               </div>
               <div>
                 <label htmlFor="offer-counter-note" className={labelCls}>{s('offerNoteOptional', lang)}</label>
                 <textarea id="offer-counter-note" rows={2} maxLength={1000} className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} />
               </div>
+              {status}
               <button type="submit" className={primaryBtn} disabled={busy} data-testid="offer-counter-submit">{busy ? s('offerSending', lang) : s('offerSendCounter', lang)}</button>
             </form>
           )}
@@ -222,6 +225,7 @@ export default function OfferActions({
                   onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
                 />
               </div>
+              {status}
               <button type="submit" className={primaryBtn} disabled={busy} data-testid="offer-details-submit">{busy ? s('offerSending', lang) : s('offerSendDetails', lang)}</button>
             </form>
           )}
@@ -243,6 +247,7 @@ export default function OfferActions({
                 <label htmlFor="offer-decline-note" className={labelCls}>{s('offerNoteOptional', lang)}</label>
                 <textarea id="offer-decline-note" rows={2} maxLength={1000} className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} />
               </div>
+              {status}
               <button type="submit" className={secondaryBtn} disabled={busy} data-testid="offer-decline-submit">{busy ? s('offerSending', lang) : s('offerSendDecline', lang)}</button>
             </form>
           )}
