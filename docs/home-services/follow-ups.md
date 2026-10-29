@@ -42,7 +42,8 @@ Each is recorded with its reasoning in `00-site-audit.md` or `docs/decisions/`.
 
 ## Database
 
-- The migration `20261029000000_home_services.sql` and `20261029000001_projects_anon_draft_guard.sql` apply through the normal pipeline (Supabase branching on the PR, production on merge).
+- The migration `20261029000000_home_services.sql` and `20261029000001_projects_anon_draft_guard.sql` were expected to apply through the Supabase GitHub integration on merge. They did not (2026-10-29, merge 4f0e295): the integration's production apply failed at `20260218000000_create_lead_events.sql` with `policy "Allow public inserts" for table "lead_events" already exists`, because every migration from February 2026 on exists in production without being recorded in `supabase_migrations.schema_migrations`. Until the history is repaired, every merge fails the same way and no new table reaches production.
+  Fix, needs a Supabase login on the machine: `supabase login`, then `supabase migration list --linked` to see the gap, `supabase migration repair --status applied <every version already live>`, then `supabase db push` to apply the Home Services migrations. Verify with a REST probe of `home_service_requests` (404 before, 200 after).
 - Launch check: confirm in the Supabase dashboard that the `projects` and `project_images` policies for the `anon` role do not expose `active=false` rows.
   The restrictive guard in `20261029000001` narrows anon reads only where row security is already on; if the dashboard shows RLS off for `projects`, turn it on with a permissive `active = true` SELECT policy for anon and an `authenticated` policy for admin writes.
 - Vercel crons added: `purge-draft-photos` (daily 05:00), `offers-expire` (every 30 minutes).
