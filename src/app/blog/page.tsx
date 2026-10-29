@@ -6,7 +6,6 @@ import Footer from '@/components/Footer';
 import { Badge } from '@/components/ui/badge';
 import BlogPostGrid from '@/components/BlogPostGrid';
 
-// Revalidate every 60 seconds (ISR - Incremental Static Regeneration)
 // Five minutes: the blog editor writes straight to the database and cannot revalidate on save (docs/cost-review.md).
 export const revalidate = 300;
 

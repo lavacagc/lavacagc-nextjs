@@ -10,7 +10,6 @@ import { format } from 'date-fns';
 import Link from 'next/link';
 import PageViewTracker from '@/components/PageViewTracker';
 
-// Revalidate every 60 seconds (ISR - Incremental Static Regeneration)
 // Five minutes: the blog editor writes straight to the database and cannot revalidate on save (docs/cost-review.md).
 export const revalidate = 300;
 

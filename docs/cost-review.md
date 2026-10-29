@@ -99,6 +99,6 @@ Items 4 and 5 are where any surprising Supabase number will be.
 | 6 | Applied | Middleware matcher excludes `_next/static`, `_next/image`, favicon, images, fonts, robots and sitemap. |
 | 7 | Applied | `revalidate = 3600` on services, portfolio, project, landing and CMS pages, with the CMS and services editors revalidating on save through `/api/admin/revalidate`; `300` on the two blog pages because the blog editor writes straight to the database and cannot revalidate on save. |
 | 8 | Applied | The root-layout `<link rel="preload" as="video">` is gone; the homepage `<video>` fetches it itself. |
-| 9 | Deliberately not applied | Deleting the four unused hero videos and re-encoding 33 blog PNGs are irreversible production changes with no measurable saving: storage is inside the Pro allowance and `next/image` already serves WebP and AVIF to visitors. Listed in follow-ups for a content-cleanup day. |
+| 9 | Deliberately not applied | Deleting the four unused hero videos and re-encoding 33 blog PNGs are irreversible production changes with no measurable saving: storage is inside the Pro allowance and `next/image` already serves WebP and AVIF to visitors. Left for a content-cleanup day. |
 
 Expected Vercel bill after 1, 3, 6, 7 and 8: the Pro plan plus about $1 of usage, plus Speed Insights Plus until item 2 is done in the dashboard.

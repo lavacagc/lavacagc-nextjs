@@ -142,7 +142,7 @@ those 33 failures were that analytics noise.
 
 Anything headless you point at this site must identify as a real browser.
 The bad-bot filter in `src/middleware.ts` matches `/headlesschrome/i` and answers
-403 on every path, which is why `scripts/site-audit.ts` and
+403 on every page and API route, which is why `scripts/site-audit.ts` and
 `playwright.config.ts` both use `devices['Desktop Chrome']`.
 A first-party tool that skips this measures the bot filter, not the site.
 
