@@ -50,7 +50,6 @@ type View = 'requests' | 'responses';
 export default function ServiceRequestsManager() {
   const [view, setView] = useState<View>('requests');
   const [data, setData] = useState<ListResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState('');
   const [service, setService] = useState('');
@@ -59,36 +58,32 @@ export default function ServiceRequestsManager() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [inboxCount, setInboxCount] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const q = new URLSearchParams();
-      if (status) q.set('status', status);
-      if (service) q.set('service', service);
-      if (source) q.set('source', source);
-      if (county) q.set('county', county);
-      setData(await fetchJson<ListResponse>(`/api/admin/service-requests?${q}`));
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load requests');
-    } finally {
-      setLoading(false);
-    }
-  }, [status, service, source, county]);
+  const [version, setVersion] = useState(0);
+  const query = new URLSearchParams(Object.entries({ status, service, source, county }).filter(([, v]) => v)).toString();
+  // The query the rows on screen answer. While it differs from `query` the list
+  // is stale: it is dimmed and not clickable, so a click cannot open a request
+  // the new filter would not show.
+  const [shownQuery, setShownQuery] = useState<string | null>(null);
+  const loading = shownQuery !== query;
 
-  const loadInboxCount = useCallback(async () => {
-    try {
-      const inbox = await fetchJson<{ counters: unknown[]; details: unknown[]; declineCalls: unknown[] }>('/api/admin/offers/responses');
-      setInboxCount(inbox.counters.length + inbox.details.length + inbox.declineCalls.length);
-    } catch {
-      setInboxCount(null);
-    }
-  }, []);
+  useEffect(() => {
+    // A slow answer for an old filter must never replace the answer for the current one.
+    let current = true;
+    fetchJson<ListResponse>(`/api/admin/service-requests?${query}`)
+      .then((d) => { if (current) { setData(d); setError(null); setShownQuery(query); } })
+      .catch((e) => { if (current) { setError(e instanceof Error ? e.message : 'Could not load requests'); setShownQuery(query); } });
+    return () => { current = false; };
+  }, [query, version]);
+  // The inbox badge reloads with every refresh of the list.
+  useEffect(() => {
+    let current = true;
+    fetchJson<{ counters: unknown[]; details: unknown[]; declineCalls: unknown[] }>('/api/admin/offers/responses')
+      .then((inbox) => { if (current) setInboxCount(inbox.counters.length + inbox.details.length + inbox.declineCalls.length); })
+      .catch(() => { if (current) setInboxCount(null); });
+    return () => { current = false; };
+  }, [version]);
 
-  useEffect(() => { void load(); }, [load]);
-  useEffect(() => { void loadInboxCount(); }, [loadInboxCount]);
-
-  const refreshAll = () => { void load(); void loadInboxCount(); };
+  const refreshAll = useCallback(() => setVersion((v) => v + 1), []);
 
   return (
     <div className="space-y-4" data-testid="service-requests">
@@ -159,7 +154,7 @@ export default function ServiceRequestsManager() {
           ) : data && data.requests.length === 0 ? (
             <p className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">No requests match these filters.</p>
           ) : (
-            <ul className="space-y-2" data-testid="sr-list" aria-busy={loading}>
+            <ul className={`space-y-2 transition-opacity ${loading ? "pointer-events-none opacity-60" : ""}`} data-testid="sr-list" aria-busy={loading}>
               {data?.requests.map((r) => (
                 <li key={r.id}>
                   <button
@@ -211,6 +206,25 @@ export default function ServiceRequestsManager() {
   );
 }
 
+const SUMMARY_TOP = 6;
+
+function TopList({ items, label, testId }: { items: Array<{ key: string; count: number }>; label: (key: string) => string; testId: string }) {
+  const shown = items.slice(0, SUMMARY_TOP);
+  const rest = items.slice(SUMMARY_TOP);
+  return (
+    <ul className="mt-1 space-y-0.5 text-sm" data-testid={testId}>
+      {items.length === 0 && <li className="text-muted-foreground">None yet</li>}
+      {shown.map((s) => <li key={s.key} className="flex justify-between gap-2"><span className="truncate">{label(s.key)}</span><span className="font-medium tabular-nums">{s.count}</span></li>)}
+      {rest.length > 0 && (
+        <li className="flex justify-between gap-2 text-muted-foreground">
+          <span>{rest.length} more</span>
+          <span className="tabular-nums">{rest.reduce((n, s) => n + s.count, 0)}</span>
+        </li>
+      )}
+    </ul>
+  );
+}
+
 function SummaryCard({ summary }: { summary: RequestSummary }) {
   const rate = summary.closeRate === null ? 'n/a' : `${Math.round(summary.closeRate * 100)}%`;
   return (
@@ -226,17 +240,11 @@ function SummaryCard({ summary }: { summary: RequestSummary }) {
         </div>
         <div>
           <p className="text-xs font-medium text-muted-foreground">By source</p>
-          <ul className="mt-1 space-y-0.5 text-sm" data-testid="sr-by-source">
-            {summary.bySource.length === 0 && <li className="text-muted-foreground">None yet</li>}
-            {summary.bySource.map((s) => <li key={s.key} className="flex justify-between gap-2"><span className="truncate">{s.key}</span><span className="font-medium tabular-nums">{s.count}</span></li>)}
-          </ul>
+          <TopList items={summary.bySource} label={(k) => k} testId="sr-by-source" />
         </div>
         <div>
           <p className="text-xs font-medium text-muted-foreground">By service</p>
-          <ul className="mt-1 space-y-0.5 text-sm" data-testid="sr-by-service">
-            {summary.byService.length === 0 && <li className="text-muted-foreground">None yet</li>}
-            {summary.byService.map((s) => <li key={s.key} className="flex justify-between gap-2"><span className="truncate">{serviceName(s.key)}</span><span className="font-medium tabular-nums">{s.count}</span></li>)}
-          </ul>
+          <TopList items={summary.byService} label={serviceName} testId="sr-by-service" />
         </div>
       </CardContent>
     </Card>

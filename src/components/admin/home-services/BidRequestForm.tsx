@@ -17,7 +17,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import { HOME_SERVICES_CATALOG, type Trade } from '@/lib/home-services/catalog';
 import {
-  OFFER_TTL_HOURS, customerPriceForSubPay, formatDollars, margin, parseDollarsToCents, subPayViolation,
+  OFFER_TTL_HOURS, SUB_MARKUP, customerPriceForSubPay, formatDollars, margin, parseDollarsToCents, subPayViolation,
 } from '@/lib/home-services/pricing';
 import type { HomeServiceRequestRow } from '@/lib/home-services/requestsAdmin';
 import { channelLabel, formatWhen, jsonInit, tradeName } from './shared';
@@ -226,7 +226,7 @@ export default function BidRequestForm({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label htmlFor={`${idp}-pay`} className="mb-1 block text-xs font-medium">Sub pay (USD)</label>
-                    <Input id={`${idp}-pay`} inputMode="decimal" value={f.subPay} onChange={(e) => update(t.trade, { subPay: e.target.value })} placeholder="1400" data-testid="bid-sub-pay" />
+                    <Input id={`${idp}-pay`} inputMode="decimal" value={f.subPay} onChange={(e) => update(t.trade, { subPay: e.target.value })} placeholder={catalog ? String(Math.round(catalog.startingPriceCents / SUB_MARKUP / 100)) : "1400"} data-testid="bid-sub-pay" />
                   </div>
                   <div>
                     <label htmlFor={`${idp}-customer`} className="mb-1 block text-xs font-medium">Customer price (USD)</label>
@@ -235,7 +235,7 @@ export default function BidRequestForm({
                       inputMode="decimal"
                       value={f.customerEdited ? f.customer : c.customer ? toDollars(c.customer) : ''}
                       onChange={(e) => update(t.trade, { customer: e.target.value, customerEdited: true })}
-                      placeholder="auto: sub pay x 1.43"
+                      placeholder="auto (1.43x)"
                       data-testid="bid-customer"
                     />
                     {f.customerEdited && (
