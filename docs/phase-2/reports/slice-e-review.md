@@ -138,3 +138,54 @@ Each dump equals the seed rows field for field (`updated_at` and `updated_by` as
   The quick close is "Allow new users to sign up: off" in the Supabase dashboard; a role check in middleware is the durable one.
 - F2: production does not have `home_services` yet. With the key set and the table missing, `/home-services` and every service page throw.
   Confirm `supabase migration list --linked` shows `20261030000000` applied before the Vercel deploy of this branch goes live.
+
+## Re-review of `6b08cf7` (round 1 fixes, U1 to U5)
+
+Reviewed head: `6b08cf7` on `phase2/slice-e`, on top of the review commit `913643d`.
+Rig: branch dev server on 3113 with `env.rig` as both env files; for before-and-after comparisons, a second worktree at `913643d` on 3114 with the same env.
+Screenshots: `docs/phase-2/reports/shots/slice-e-rereview-*.png` (iPhone 13 and Desktop Chrome at 1366 px).
+
+### Final verdict: ACCEPT
+
+U1 to U5 are fixed at both widths.
+The `overflow-x-clip` change regresses nothing on the six other admin tabs I opened.
+The live catalog spec, the admin-nav spec, typecheck and lint pass, and the table equals the seed.
+One small should-fix (N1) and one nit (N2) are listed below; neither blocks the merge.
+
+### U1 to U5
+
+| Item | Verdict | Evidence |
+| --- | --- | --- |
+| U1 list row on a phone | FIXED | Every name is one line, 298 px wide at 390 px (was about 100 px and one word per line); the Spanish name and path wrap as a sentence; price, switch and Edit share one line under it. `slice-e-rereview-phone-list.png`, `slice-e-rereview-desktop-list.png` (one row per service at 1366 px, name block 840 px). |
+| U2 "seo" labels | FIXED | Labels now read "SEO title (English)", "SEO title (Spanish)", "SEO description (English)", "SEO description (Spanish)", read from the DOM at both widths. `slice-e-rereview-phone-seo-labels.png`. |
+| U3 gap above the switch | FIXED | On a phone the gap from the job minimum block to the switch is 18 px (was about 60 px); on desktop the switch sits beside the inputs as before. `slice-e-rereview-phone-form-top.png`. |
+| U4 clipping and counters | FIXED | 0 textareas in the form have content taller than their box at either width (auto-grow). FAQ questions and answers show "n/300" and "n/1200", keywords show "6/10". `slice-e-rereview-phone-faq.png`, `slice-e-rereview-phone-keywords.png`. |
+| U5 save reachable | FIXED | With the form scrolled to the top, Save is inside the viewport at both widths (sticky bar). Clicking into the last FAQ answer and pressing End leaves the field (255 to 393 px) clear of the bar (486 to 559 px). Typing shows "Unsaved changes"; Discard clears it; the live CAT2 to CAT5 tests still find "Saved at" after a save. `slice-e-rereview-phone-sticky-dirty.png`, `slice-e-rereview-phone-typing-last-faq.png`, `slice-e-rereview-desktop-form-bottom.png`. |
+
+No console errors on the editor at either width.
+
+### `overflow-x-clip` on the admin shell
+
+Tabs opened at both widths: Projects, Service Requests, Blog, Smart Banners, Leads, Dashboard (`slice-e-rereview-{phone,desktop}-tab-*.png`).
+
+- No horizontal scroll anywhere: `scrollWidth` equals the viewport on every tab (390 and 1366).
+- Header: it now stays at the top on every tab (`top=0` after scrolling 273 to 393 px on Projects, Service Requests, Smart Banners and Dashboard at phone width). At `913643d` it scrolled away (`top=-288`, `-393`, `-273`). It is 81 px of a 664 px phone viewport. I judge that acceptable and arguably better, since the menu and sign-out stay in reach. Nothing on these tabs sits under it: no other admin component inside this shell uses `sticky top-0`. The one that does, `ProposalBuilder`, lives on its own route, `/vaca-mgmt/proposals`, outside `AdminContent`.
+- Menus and popovers: the phone menu sheet renders pixel-identical at `913643d` and `6b08cf7` (`slice-e-rereview-phone-menu-before.png`, `-after.png`, `cmp` says identical). The Service Requests filters are native selects, which the wrapper cannot clip.
+- Smart Banners on a phone overflows its cards: badges at `right=463` and `455` on a 390 px screen, overlapping icons, and the "New Banner" button cut off. I measured the same 4 offscreen elements at the same positions on `913643d`, so this predates the change and is not caused by it (`slice-e-rereview-phone-banners-before.png` and `-after.png`). It is a follow-up for that tab, not slice E.
+- The phone menu's "New Post" button covers the bottom of the item list. This also appears pixel-identical on both heads, so it is a follow-up outside slice E as well.
+
+### Gates on `6b08cf7`
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm run lint` | exit 0 |
+| Live `tests/home-services-catalog.spec.ts` alone on 3113, `--workers=1` | 19 passed (the chunk scan ran too, against the `.next` the earlier stub build left) |
+| `npm run test:e2e -- tests/admin-nav-simplified.spec.ts tests/home-services-catalog.spec.ts` (stub, both env files moved aside and restored) | exit 0, 38 passed, 16 skipped (live-only) |
+| `home_services` after the live run | 7 rows, 0 differences from the seed (stamps aside); seed SQL verbatim in the migration |
+
+### Remaining notes (not blocking)
+
+- N1 (should fix): FAQ questions changed from an input to an auto-growing textarea, so Enter now puts a line break into a question (checked: the value contains `\n` after Enter, at both widths). A question is one line on the page and in the `FAQPage` JSON-LD. Block Enter on that field, or strip line breaks on save.
+- N2 (nit): on the phone list, the Exterior painting row's switch and Edit sit about 4 to 5 px right of the other rows, because "$2.95 / sq ft" is wider than the other prices. A fixed-width price column on phones would line them up.
+- F1 (open sign-ups in production) and F2 (migration must reach production before the deploy) from the first review still stand for Alex.
