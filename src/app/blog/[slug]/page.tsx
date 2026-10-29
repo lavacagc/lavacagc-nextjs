@@ -48,21 +48,22 @@ interface BlogPost {
 
 interface PageProps {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ preview?: string }>;
 }
 
-async function getBlogPost(slug: string, allowPreview: boolean = false): Promise<BlogPost | null> {
-  let query = supabase
+/**
+ * Published posts only. This page is ISR, so it must not read searchParams:
+ * the old `?preview=true` read in generateMetadata made every slug that was
+ * not prebuilt at build time - every post published after a deploy - fail
+ * with "Page changed from static to dynamic at runtime" (a 500). Drafts are
+ * previewed at /blog/preview/[slug].
+ */
+async function getBlogPost(slug: string): Promise<BlogPost | null> {
+  const { data, error } = await supabase
     .from('blog_posts')
     .select('*')
-    .eq('slug', slug);
-
-  // Only filter by published if not in preview mode
-  if (!allowPreview) {
-    query = query.eq('published', true);
-  }
-
-  const { data, error } = await query.maybeSingle();
+    .eq('slug', slug)
+    .eq('published', true)
+    .maybeSingle();
 
   if (error) {
     console.error('Error loading blog post:', error);
@@ -86,11 +87,9 @@ export async function generateStaticParams() {
 }
 
 // Dynamic metadata for SEO
-export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const { preview } = await searchParams;
-  const isPreview = preview === 'true';
-  const post = await getBlogPost(slug, isPreview);
+  const post = await getBlogPost(slug);
 
   if (!post) {
     return {
@@ -144,7 +143,7 @@ export default async function BlogPostPage({ params }: PageProps) {
   const { slug } = await params;
   // Note: Draft previews are handled at /blog/preview/[slug] with client-side auth
   // This public page only shows published posts for SEO
-  const post = await getBlogPost(slug, false);
+  const post = await getBlogPost(slug);
 
   if (!post) {
     notFound();
@@ -235,15 +234,6 @@ export default async function BlogPostPage({ params }: PageProps) {
 
       <main className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-12">
-          {/* Preview Mode Banner */}
-          {!post.published && (
-            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-yellow-800 font-medium">
-                Preview Mode - This post is not published yet and is only visible with the preview link.
-              </p>
-            </div>
-          )}
-
           {/* Back to Blog Button */}
           <div className="mb-8">
             <Link

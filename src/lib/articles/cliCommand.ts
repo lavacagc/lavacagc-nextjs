@@ -22,11 +22,14 @@ export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-/** A readable working title from the target query: "kitchen remodel cost nj" -> "Kitchen Remodel Cost Nj". */
+/** A readable working title from the target query: "kitchen remodel cost nj" -> "Kitchen Remodel Cost NJ". */
 function titleFromQuery(query: string | null): string {
   const q = (query ?? '').trim();
   if (!q) return 'New article';
-  return q.replace(/\s+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return q.replace(/\s+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    // State abbreviations read as one word otherwise: "Nj" -> "NJ".
+    .replace(/\b(Nj|Ny|Pa|Ct)\b/g, (s) => s.toUpperCase());
 }
 
 /**

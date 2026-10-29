@@ -66,9 +66,15 @@ function cutAtWord(text: string, max: number, ellipsis = false): string {
   return ellipsis ? `${base}…` : base;
 }
 
-/** The first plain-text sentence run of the article, for the list card and the meta description. */
+/**
+ * The article's opening paragraph as plain text, for the list card and the
+ * meta description. Only the first block of prose: running on into the next
+ * heading read as "...the plans. What drives the timeline".
+ */
 export function defaultExcerpt(markdown: string): string {
-  return cutAtWord(toPlain(markdown), EXCERPT_MAX, true);
+  const blocks = markdown.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+  const opening = blocks.find((b) => !/^(#|>|[-*+]\s|\d+\.\s|!\[|```|\|)/.test(b)) ?? markdown;
+  return cutAtWord(toPlain(opening), EXCERPT_MAX, true);
 }
 
 export function defaultMetaDescription(excerpt: string | null | undefined, markdown: string): string {

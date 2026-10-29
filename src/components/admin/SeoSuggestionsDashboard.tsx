@@ -363,7 +363,7 @@ function ClaudeCodePanel({ a }: { a: ActionItem }) {
       </p>
       <p className="mt-2 text-slate-600">Or run these after writing the article to <code>article.md</code>:</p>
       <div className="mt-2 flex items-start gap-2">
-        <pre className="flex-1 min-w-0 overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100 whitespace-pre-wrap break-all">
+        <pre className="flex-1 min-w-0 overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100 whitespace-pre">
           {commands.join('\n')}
         </pre>
         <Button size="sm" variant="outline" onClick={() => void copy()} aria-label="Copy commands">

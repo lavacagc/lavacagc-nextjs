@@ -53,5 +53,6 @@ test('wrong NJ license number fails', () => {
 
 test('RM1: the OpenAI prompt builders are gone; only the validator remains', async () => {
   const mod = await import('../src/lib/seo/draftGuardrails');
-  expect(Object.keys(mod).sort()).toEqual(['validateDraft']);
+  const exported = Object.keys(mod).filter((k) => k !== 'default' && k !== '__esModule');
+  expect(exported.sort()).toEqual(['validateDraft']);
 });
