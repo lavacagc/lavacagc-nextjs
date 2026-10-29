@@ -256,7 +256,8 @@ CREATE TABLE IF NOT EXISTS public.offer_responses (
   attachments jsonb NOT NULL DEFAULT '[]'::jsonb,  -- [{storage_path, content_type, bytes}]
   -- Counter: pending -> accepted (awaiting sub confirm) -> confirmed, or rejected / replied (new price).
   -- Details: pending -> replied. Accept/decline: recorded.
-  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'confirmed', 'rejected', 'replied', 'recorded')),
+  -- closed: the offer was assigned, expired or withdrawn while this was still pending.
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'confirmed', 'rejected', 'replied', 'recorded', 'closed')),
   admin_reply text,
   admin_reply_at timestamptz,
   admin_price_cents integer,
