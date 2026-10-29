@@ -131,6 +131,37 @@ export function hashtagWords(tag: string): string {
     .replace(/(\p{N})(\p{L})/gu, '$1 $2');
 }
 
+/**
+ * A hashtag in ONE case ("#fullyinsured", "#LICENSEDANDINSURED") cannot be
+ * split into words, so it is searched for these as substrings instead
+ * (Q22 re-review follow-up). Deliberately broad: a false hold on a social
+ * hashtag costs one rewrite, a missed one puts a legal or price claim in
+ * front of every follower. A hashtag with case changes ("#GutterCleaning")
+ * is split into words and read by the ordinary rules, so it is not searched.
+ */
+export const ONE_CASE_HASHTAG_CLAIMS = [
+  'insured', 'insurance', 'warrant', 'guarant', 'licensed', 'bonded', 'permit', 'code', 'liability', 'lawsuit',
+  'legal', 'asbestos', 'leadsafe', 'moldremediation',
+  'save', 'saving', 'off', 'discount', 'deal', 'free', 'half', 'percent', 'sale', 'cheaper', 'rebate', 'dollar', 'usd',
+] as const;
+
+/** A number in a one-case hashtag is a price ("#gutters199", "#20off", "#2k"), unless it is a year ("#fall2026"). */
+const ONE_CASE_PRICE_DIGITS = /\d/;
+const ONE_CASE_YEAR_ONLY = /^[a-z]*(?:19|20)\d\d[a-z]*$/;
+
+/** The claim a one-case hashtag hides, or null. */
+export function oneCaseHashtagClaim(tag: string): string | null {
+  const body = tag.replace(/^#/, '');
+  const letters = body.replace(/[^\p{L}]/gu, '');
+  const oneCase = letters === letters.toLowerCase() || letters === letters.toUpperCase();
+  if (!oneCase) return null;
+  const lower = body.toLowerCase();
+  const word = ONE_CASE_HASHTAG_CLAIMS.find((w) => lower.includes(w));
+  if (word) return word;
+  if (ONE_CASE_PRICE_DIGITS.test(lower) && !ONE_CASE_YEAR_ONLY.test(lower)) return 'a number';
+  return null;
+}
+
 /** A discount number in a hashtag ("#Save20", "#20Off"), which prose rules would read as a bare number. */
 const HASHTAG_DISCOUNT = /\b(?:save|saving|savings|off|discount|deal|sale|cheaper)\s+\d|\d+\s+(?:off|percent|discount)\b/i;
 
@@ -183,7 +214,14 @@ export function checkSocialCopy(copy: SocialCopy, slug: string, facts: PublishFa
   ];
   for (const reason of claimReasons(places, facts)) reasons.push(`Social copy: ${reason}`);
   for (const tag of copy.hashtags) {
-    if (HASHTAG_DISCOUNT.test(hashtagWords(tag))) reasons.push(`Social copy: Price claim: "${tag}" in the hashtags`);
+    if (HASHTAG_DISCOUNT.test(hashtagWords(tag))) {
+      reasons.push(`Social copy: Price claim: "${tag}" in the hashtags`);
+      continue;
+    }
+    const hidden = oneCaseHashtagClaim(tag);
+    if (hidden) {
+      reasons.push(`Social copy: Claim inside the one-case hashtag "${tag}" (${hidden === 'a number' ? 'a number' : `"${hidden}"`}); use plain topic hashtags such as #GutterCleaning.`);
+    }
   }
   return reasons;
 }

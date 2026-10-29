@@ -40,7 +40,7 @@ The `Article:` URL must be this post on the La Vaca site (`https://www.lavacagc.
 | Instagram and Facebook caption | 2,200 characters | A hook line that names the reader's problem; three plain sentences with the article's answer; a call to the matching La Vaca service page (`https://www.lavacagc.com/home-services/<slug>` or `/services/<slug>`), or `/free-estimate` when no service fits. A link to any other site or page does not count. |
 | Google Business post | 1,500 characters | The answer in two or three sentences, the county from the article, and the article URL. |
 | X post | 280 characters, URL included | One sentence of the answer and the article URL. |
-| Hashtags | 3 to 5 | Each `#` plus letters and digits only: the service, the county, and NJ home topics (`#BergenCounty`, `#NJHomes`, `#GutterCleaning`). They are read as words (`#FullyInsured` is "Fully Insured"), so the claim rules apply inside them, and a number next to save, off or discount (`#Save20`) is a price claim. |
+| Hashtags | 3 to 5 | Each `#` plus letters and digits only: the service, the county, and NJ home topics (`#BergenCounty`, `#NJHomes`, `#GutterCleaning`). They are read as words (`#FullyInsured` is "Fully Insured"), so the claim rules apply inside them, and a number next to save, off or discount (`#Save20`) is a price claim. A hashtag in one case (`#fullyinsured`) cannot be split, so it is held if it contains any claim word or a number other than a year; write topic hashtags in CamelCase. |
 
 ## Checklist (the publish route enforces every item)
 

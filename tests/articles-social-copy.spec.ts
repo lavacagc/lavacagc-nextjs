@@ -128,6 +128,26 @@ test.describe('Q22 fix round 1: compound hashtags and La Vaca hosts', () => {
     expect(check(socialFile({ hashtags: '#GutterCleaning #EssexCounty #NJHomes #FallChecklist' }))).toEqual([]);
   });
 
+  test('a one-case hashtag is searched for claim words and numbers (#fullyinsured, #LICENSEDANDINSURED)', () => {
+    const one = (tag: string) => check(socialFile({ hashtags: `#GutterCleaning #EssexCounty ${tag}` }));
+    expect(one('#fullyinsured')).toEqual(['Social copy: Claim inside the one-case hashtag "#fullyinsured" ("insured"); use plain topic hashtags such as #GutterCleaning.']);
+    expect(one('#LICENSEDANDINSURED')).toEqual(['Social copy: Claim inside the one-case hashtag "#LICENSEDANDINSURED" ("insured"); use plain topic hashtags such as #GutterCleaning.']);
+    for (const [tag, word] of [
+      ['#lifetimewarranty', 'warrant'], ['#guaranteedwork', 'guarant'], ['#licensedpros', 'licensed'], ['#bondedcrew', 'bonded'],
+      ['#nopermitneeded', 'permit'], ['#uptocode', 'code'], ['#savebig', 'save'], ['#halfoff', 'off'], ['#discountgutters', 'discount'],
+      ['#falldeal', 'deal'], ['#freeestimate', 'free'], ['#tenpercent', 'percent'],
+    ]) {
+      expect(one(tag), tag).toEqual([`Social copy: Claim inside the one-case hashtag "${tag}" ("${word}"); use plain topic hashtags such as #GutterCleaning.`]);
+    }
+    // Digit-adjacent price forms.
+    for (const tag of ['#gutters199', '#20off', '#2k', '#SAVE20']) {
+      expect(one(tag).length, tag).toBe(1);
+    }
+    // Ordinary tags pass, in one case or mixed: a year is not a price.
+    expect(check(socialFile({ hashtags: '#guttercleaning #essexcounty #njhomes #fall2026' }))).toEqual([]);
+    expect(check(socialFile({ hashtags: '#gutterCleaning #EssexCounty #NJHomes' }))).toEqual([]);
+  });
+
   test('the call to action and the Article line must be on the La Vaca site', () => {
     const other = check(socialFile({ instagram: 'Leaves again? Clean them in fall. Book: https://example.com/anything' }));
     expect(other).toContain('Social copy: the Instagram caption needs a call to a La Vaca service page (https://www.lavacagc.com/home-services/<slug>, /services/<slug> or /free-estimate).');

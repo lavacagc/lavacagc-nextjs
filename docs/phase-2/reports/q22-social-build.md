@@ -80,3 +80,22 @@ Review: `docs/phase-2/reports/q22-social-review.md` (REJECT, two fixes and three
 | `TEST_URL=http://localhost:3119 E2E_LIVE_BACKEND=1 E2E_ISR=1 playwright test tests/articles-social-copy.spec.ts tests/articles-publish-guard.spec.ts tests/articles-ingest.spec.ts --project=chromium` (production build) | 127 passed, 1 skipped (ART1 over HTTP, stub only) |
 | `npm run test:e2e -- <the stub subset> --project=chromium` (`.env.local` aside) | exit 0, 270 passed, 51 skipped (live-backend specs) |
 | Row check: `slice-g-%` posts on the rig | 0 |
+
+## Re-review follow-up (one-case hashtags)
+
+Re-review: ACCEPT (`f53571f`, taken with `git merge --ff-only`), with one follow-up the coordinator asked to close before merge: a hashtag in one case (`#fullyinsured`, `#LICENSEDANDINSURED`) cannot be split into words, so it passed.
+
+- `oneCaseHashtagClaim` in `src/lib/articles/socialCopy.ts`: a hashtag whose letters are all lower or all upper case is searched, lower-cased, for the claim words as substrings (insured, insurance, warrant, guarant, licensed, bonded, permit, code, liability, lawsuit, legal, asbestos, leadsafe, moldremediation, save, saving, off, discount, deal, free, half, percent, sale, cheaper, rebate, dollar, usd), and any number other than a year (`#fall2026` passes) counts as a price.
+- A mixed-case hashtag (`#GutterCleaning`, `#gutterCleaning`) is split into words and read by the ordinary rules, as before.
+- The check is deliberately broad: a false hold costs one rewrite of a hashtag, and the reason says to use CamelCase topic tags.
+- `references/social.md` and `docs/articles-ingest.md` say so.
+
+Evidence: `a one-case hashtag is searched for claim words and numbers (#fullyinsured, #LICENSEDANDINSURED)` covers those two, the twelve listed words, the digit forms (`#gutters199`, `#20off`, `#2k`, `#SAVE20`), and ordinary tags passing in one case (`#guttercleaning #essexcounty #njhomes #fall2026`) and mixed (`#gutterCleaning #EssexCounty #NJHomes`).
+
+| Command | Result |
+| --- | --- |
+| `npm run typecheck`, `npm run lint` | clean |
+| `npm run chaos:static` | no new violations |
+| `npm run build` (rig env) | exit 0 |
+| `TEST_URL=http://localhost:3119 E2E_LIVE_BACKEND=1 E2E_ISR=1 playwright test tests/articles-social-copy.spec.ts --project=chromium` (production build) | 10 passed |
+| Row check: `slice-g-%` posts on the rig | 0 |
