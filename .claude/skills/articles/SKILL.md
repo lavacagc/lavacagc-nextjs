@@ -1,6 +1,6 @@
 ---
 name: articles
-description: Write, refresh or SEO-edit a La Vaca blog article and publish it through the article CLI. Use when asked to write a blog post or article, refresh or fix a decaying post, answer an SEO queue action, or improve an article for search, AEO or local SEO.
+description: Write, refresh or SEO-edit a La Vaca blog article, publish it through the article CLI, and write its social copy. Use when asked to write a blog post or article, refresh or fix a decaying post, answer an SEO queue action, improve an article for search, AEO or local SEO, or write social posts for an article.
 ---
 
 # La Vaca articles
@@ -80,19 +80,26 @@ node scripts/ingest-article.mjs patch <post id> --file article.md --faq faq.json
 A plain `patch` of a live post without `--action` is checked by the guard too; exit code 2 means nothing changed.
 Done when the CLI printed the post id and the preview link.
 
-## 6. Publish
+## 6. Social copy
+
+Write the article's social copy to `docs/social/<slug>.md` in the repo (the slug the CLI printed), following [references/social.md](references/social.md): an Instagram and Facebook caption, a Google Business post, an X post, 3 to 5 hashtags, the article URL and today's date.
+It obeys the article's price and legal rules word for word.
+Done when every item in the social.md checklist passes.
+It goes out with the publish below, which checks it like the article and puts the caption in Alex's Telegram.
+
+## 7. Publish
 
 ```bash
-node scripts/ingest-article.mjs publish <post id> [--action <action id>]
+node scripts/ingest-article.mjs publish <post id> --social docs/social/<slug>.md [--action <action id>]
 ```
 
 - Exit 0: it is live. Report the URL, the unpublish link and the Telegram status it printed.
-- Exit 2: the guard held it and printed the reasons. "paragraph N" counts every blank-line block, headings and lists included.
-  Fix each reason in `article.md`, `patch`, and `publish` again.
+- Exit 2: the guard held it, or the social copy failed (nothing published), and it printed the reasons. "paragraph N" counts every blank-line block, headings and lists included.
+  Fix each reason in `article.md` (then `patch`) or in the social file, and `publish` again.
   If a reason is a claim the article cannot do without, stop and leave it held for Alex; report the reasons and the admin link.
   Only Alex can publish over a hold ("Publish anyway" in the admin); never work around the guard.
 - Exit 1: an error; report it.
 
-## 7. Report
+## 8. Report
 
-Tell Alex, in this order: what you published or left held, its URL or admin link, the target and action id, the questions it answers, and the grill result in one line per section.
+Tell Alex, in this order: what you published or left held, its URL or admin link, the social copy file, the target and action id, the questions it answers, and the grill result in one line per section.

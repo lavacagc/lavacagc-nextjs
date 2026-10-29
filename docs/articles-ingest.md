@@ -45,6 +45,7 @@ node scripts/ingest-article.mjs feedback --summary
 | `--image` | Optional featured image, an https URL. |
 | `--faq` | A JSON file holding `[{ "q": "...", "a": "..." }]`, up to 10 items. It renders as a FAQ section under the article and as `FAQPage` structured data. |
 | `--action` | The id of a content action from the SEO queue this article answers (see below). |
+| `--social` | For `publish` (or `create --publish`): the social copy file, `docs/social/<slug>.md`. It is checked like the article, and its Instagram caption goes in the Telegram (see "Social copy" below). |
 | `--publish` | On create, publish right after creating. |
 | `--days` | For `feedback`: the window, 7 to 90 days, default 28. |
 | `--summary` | For `feedback`: a short readable summary instead of the full JSON. |
@@ -75,15 +76,16 @@ Alex says: "Write something for people searching how long a kitchen remodel take
    ```
 
    It prints the post id, the slug, a preview link (admin sign-in) and an admin link.
-5. Publish.
+5. Write the social copy to `docs/social/<slug>.md` (see "Social copy" below).
+6. Publish with it.
 
    ```bash
-   node scripts/ingest-article.mjs publish <post id> --action 6f1c2d3e-0000-4000-8000-000000000000
+   node scripts/ingest-article.mjs publish <post id> --social docs/social/<slug>.md --action 6f1c2d3e-0000-4000-8000-000000000000
    ```
 
    On success it prints the live URL; the article is on `/blog`, its own page and `sitemap.xml` on the next request.
    On exit code 2 it was refused or held: fix what the reasons name (patch the article) and publish again, or leave it for Alex and say so.
-6. To take it down: `node scripts/ingest-article.mjs unpublish <post id>`.
+7. To take it down: `node scripts/ingest-article.mjs unpublish <post id>`.
 
 ### Refreshing an existing article from the SEO queue
 
@@ -110,7 +112,7 @@ The site's bot filter refuses a few client user agents (curl, wget, python-reque
 | --- | --- |
 | `POST /api/articles/ingest` | Create an unpublished draft (`source = 'claude'`). JSON: `{ title, slug?, content, category, excerpt?, meta_title?, meta_description?, meta_keywords?, featured_image?, faq?: [{ q, a }], action_id? }`. Answers 201 `{ id, slug, adminUrl, previewUrl }`. `action_id` must name an open `new` action. |
 | `PATCH /api/articles/ingest/<id>` | Change any subset of the same fields. `published` is kept as it was. With the `action_id` of a refresh or consolidate whose live post is `<id>`, the post is not changed and the result becomes the action's draft. |
-| `POST /api/articles/ingest/<id>/publish` | `{ action_id? }`. First the fact-lock (`validateDraft`: three internal links, only the locked phone and license) on the content that would go live, action draft included: a failure is 422 `{ published: false, error, issues }` and nothing changes. Then the publish guard, on every call, held post or not. Pass: `{ published: true, id, slug, url, published_at, unpublish_url, telegram }`, any review hold cleared, the action (if any) marked completed. Hold: 409 `{ published: false, hold: [reasons], adminUrl, telegram }` and the post stays a draft with `review_hold` set. |
+| `POST /api/articles/ingest/<id>/publish` | `{ action_id?, social? }` (`social` is the markdown of the social copy file, up to 16 KB). First the fact-lock (`validateDraft`: three internal links, only the locked phone and license) on the content that would go live, action draft included: a failure is 422 `{ published: false, error, issues }` and nothing changes. Then the publish guard, on every call, held post or not. After the guard passes, the social copy (when sent): a failure is 422 `{ published: false, error, social: [reasons] }` and nothing changes. Pass: `{ published: true, id, slug, url, published_at, unpublish_url, telegram, social: 'included' or 'none' }`, any review hold cleared, the action (if any) marked completed. Hold: 409 `{ published: false, hold: [reasons], adminUrl, telegram }` and the post stays a draft with `review_hold` set. |
 | `POST /api/articles/ingest/<id>/unpublish` | Take it down. `{ published: false, id, slug }`. |
 | `GET /api/articles/seo-feedback?days=28` | `{ window, pages: [{ path, impressions, clicks, ctr, position, trend_delta, decaying, post? }], pages_total, refresh_candidates, new_article_candidates, suggested_actions, open_actions: [{ id, kind, status, target, rationale }], truncated, facts: [{ key, value }], counties }`. At most 200 pages; `decaying` means fewer clicks in the last 14 days than the 14 before; `post` is the blog post when the path is `/blog/<slug>`. |
 
@@ -162,6 +164,26 @@ The token is `base64url(postId.publishedAtUnix.publishNonce).HMAC-SHA256(INTERNA
 After the button Alex gets `Article unpublished: <title> <url>`.
 
 The publish response carries `unpublish_url` and `telegram` (`sent`, `not_configured` or `failed`), and the CLI prints both; Telegram never decides whether the publish happens.
+
+## Social copy
+
+Decision 006 (Q22): the retired Supabase function used to email Alex a "post published" note with ready-made social copy; now Claude writes that copy with each article, and it reaches Alex in the publish Telegram.
+
+1. After `create` (the slug is known, so is the URL), the skill writes `docs/social/<slug>.md` in the repo: the article URL and date, an Instagram and Facebook caption (up to 2,200 characters: a hook, three plain sentences, a call to the service page), a Google Business post (up to 1,500), an X post (up to 280) and 3 to 5 hashtags. The format and checklist are in `.claude/skills/articles/references/social.md`.
+2. `publish <id> --social docs/social/<slug>.md` sends the file with the publish.
+3. The route checks it after the publish guard passes and before anything is written (`src/lib/articles/socialCopy.ts`): the article's own price and legal rules on every post and the hashtags (`claimReasons`, shared with the guard), the length limits, 3 to 5 hashtags, the `Article:` line pointing at this post and a call to a service page in the caption. A failure is 422 with the reasons; the CLI exits 2 and nothing is published.
+4. On a pass the publish Telegram carries the caption after the unpublish link:
+
+   ```
+   New article published: <title> <url>
+   Unpublish: <signed link>
+
+   Instagram caption:
+   <caption>
+   ```
+
+   The message stays under Telegram's 4,096 characters: a caption that does not fit is cut with "(Caption cut to fit Telegram; the full copy is in docs/social/<slug>.md.)".
+5. The file stays in the repo as the record of what was suggested; Alex pastes from the Telegram or the file.
 
 ## Locked facts and counties
 

@@ -55,6 +55,12 @@ export type ArticleUpdate = z.infer<typeof articleUpdateSchema>;
 
 export const articlePublishSchema = z.object({
   action_id: z.string().uuid('action_id must be a content_actions id').optional(),
+  /**
+   * The social copy file (docs/social/<slug>.md) as markdown, from
+   * `ingest-article.mjs publish --social <file>` (decision 006, Q22).
+   * Checked by src/lib/articles/socialCopy.ts before anything is written.
+   */
+  social: z.string().min(1).max(16 * 1024, 'The social copy file is over 16 KB').optional(),
 }).strict();
 
 /** `?days=` for the feedback route: 7 to 90 (SEC3), default 28. */
