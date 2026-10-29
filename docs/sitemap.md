@@ -18,7 +18,9 @@ A route handler whose path does not end in `sitemap.xml` is an ordinary ISR func
 `/api/cron/sitemap-watch` runs daily at 06:45 UTC (vercel.json) and reads the sitemap back the way a crawler does.
 
 - It fetches `/sitemap.xml` through the CDN, rebuilds the expected entries from the database, and compares them (`src/lib/sitemapWatch.ts`).
-  The fetch goes to the deployment's own host (`VERCEL_PROJECT_PRODUCTION_URL`, or `SITEMAP_WATCH_HOST` when set), not to `www.lavacagc.com`: Cloudflare answers a Vercel function's request to the public host with its managed challenge (proven on a preview on 2026-10-29), and `/sitemap.xml` is outside the middleware matcher so the vercel.app host serves it from the same route and the same ISR cache without the canonical redirect.
+  The fetch goes to `SITEMAP_WATCH_HOST`, which is set to the project's vercel.app alias (`lavacagc-nextjs-138k.vercel.app`) in every Vercel environment (production, preview and development), else to `VERCEL_URL` (the deployment's own address), and never to `www.lavacagc.com`: Cloudflare answers a Vercel function's request to the public host with its managed challenge (proven on a preview on 2026-10-29).
+  `/sitemap.xml` is outside the middleware matcher, so the vercel.app alias serves it from the same route and the same ISR cache without the canonical redirect.
+  `VERCEL_PROJECT_PRODUCTION_URL` is deliberately not used: Vercel sets it to the shortest production custom domain, which is behind Cloudflare, and on the preview it resolved to `https://www.lavacagc.com/sitemap.xml` and was challenged.
   That covers the bug class the watcher exists for (a file no publish regenerates) and leaves out the Cloudflare hop and the www edge entry; to check those by hand, compare the blog lastmods of `https://www.lavacagc.com/sitemap.xml` and the vercel.app host from a browser or curl (they matched on 2026-10-29).
   The JSON answer names the URL it read under `fetched`.
   Posts and projects are read uncached.

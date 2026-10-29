@@ -78,22 +78,25 @@ export const SITEMAP_GRACE_MS = 2 * 60 * 60 * 1000
  * Not the public host: a fetch from a Vercel function to www.lavacagc.com is
  * answered by Cloudflare's managed challenge (proven on a preview on
  * 2026-10-29: 403, "Just a moment"), the same interception telegramLead.ts
- * warns about. The deployment's own vercel.app host sits behind Cloudflare,
- * and /sitemap.xml is outside the middleware matcher there, so it is served by
- * the same route handler from the same ISR cache that the public host reads;
- * the bug this watcher exists for (a static file no publish regenerates) shows
- * on both hosts alike. What it does not cover is the Cloudflare hop itself and
- * the www edge cache entry; docs/sitemap.md says how to check those by hand.
+ * warns about. The project's vercel.app alias is not behind Cloudflare, and
+ * /sitemap.xml is outside the middleware matcher there, so it is served by the
+ * same route handler from the same ISR cache that the public host reads; the
+ * bug this watcher exists for (a static file no publish regenerates) shows on
+ * both hosts alike. What it does not cover is the Cloudflare hop itself and the
+ * www edge cache entry; docs/sitemap.md says how to check those by hand.
  *
- * SITEMAP_WATCH_HOST wins when set (a host name, no scheme), then Vercel's
- * VERCEL_PROJECT_PRODUCTION_URL, then the public site as a last resort for a
- * run off Vercel.
+ * SITEMAP_WATCH_HOST wins when set (a host name, no scheme; on Vercel it is the
+ * project's vercel.app alias in every environment), then VERCEL_URL, the
+ * deployment's own address, then the public site as a last resort for a run
+ * off Vercel. Never VERCEL_PROJECT_PRODUCTION_URL: that is the shortest custom
+ * domain, which is behind Cloudflare and was proven challenged on a preview.
  */
-export function sitemapWatchUrl(env: Record<string, string | undefined>): { url: string; via: 'override' | 'vercel' | 'public' } {
-  const override = env.SITEMAP_WATCH_HOST?.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '')
+export function sitemapWatchUrl(env: Record<string, string | undefined>): { url: string; via: 'override' | 'deployment' | 'public' } {
+  const host = (value: string | undefined) => value?.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  const override = host(env.SITEMAP_WATCH_HOST)
   if (override) return { url: `https://${override}/sitemap.xml`, via: 'override' }
-  const vercel = env.VERCEL_PROJECT_PRODUCTION_URL?.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '')
-  if (vercel) return { url: `https://${vercel}/sitemap.xml`, via: 'vercel' }
+  const deployment = host(env.VERCEL_URL)
+  if (deployment) return { url: `https://${deployment}/sitemap.xml`, via: 'deployment' }
   return { url: `${SITE_URL}/sitemap.xml`, via: 'public' }
 }
 

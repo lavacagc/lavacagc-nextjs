@@ -39,7 +39,7 @@ import { diffSitemap, hasDrift, parseSitemapXml, SITEMAP_GRACE_MS, sitemapWatchU
 
 export const dynamic = 'force-dynamic';
 
-/** The public address, for the owner's messages; the fetch goes to sitemapWatchUrl (see there). */
+/** The public address, for the drift message's Open: link and the JSON; the fetch goes to sitemapWatchUrl (see there). */
 export const SITEMAP_URL = `${SITE_URL}/sitemap.xml`;
 const UPSTREAM_PR_API = 'https://api.github.com/repos/vercel/next.js/pulls/99056';
 const UPSTREAM_PR_URL = 'https://github.com/vercel/next.js/pull/99056';
@@ -173,12 +173,12 @@ export async function GET(request: NextRequest) {
     }
   } else if (served.outcome === 'unavailable') {
     status = 'sitemap_unavailable';
-    detail = `503 from ${SITEMAP_URL}, Retry-After ${served.retryAfter ?? 'none'}`;
-    messages.push(`⚠️ <b>Sitemap is answering 503</b>\nRetry-After ${escapeTelegram(served.retryAfter ?? 'none')} s. Crawlers keep their last copy; the database read behind /api/sitemap is failing.\n${SITEMAP_URL}`);
+    detail = `503 from ${source.url}, Retry-After ${served.retryAfter ?? 'none'}`;
+    messages.push(`⚠️ <b>Sitemap is answering 503</b>\nRetry-After ${escapeTelegram(served.retryAfter ?? 'none')} s. Crawlers keep their last copy; the database read behind /api/sitemap is failing.\n${source.url}`);
   } else {
     status = 'sitemap_unreadable';
     detail = served.detail;
-    messages.push(`⚠️ <b>Sitemap watcher cannot read the sitemap</b>\n${escapeTelegram(served.detail)}\n${SITEMAP_URL}`);
+    messages.push(`⚠️ <b>Sitemap watcher cannot read the sitemap</b>\n${escapeTelegram(served.detail)}\n${source.url}`);
   }
 
   let telegram: TelegramOutcome | 'not_needed' = 'not_needed';
