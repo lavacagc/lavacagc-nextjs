@@ -93,7 +93,7 @@ Items 4 and 5 are where any surprising Supabase number will be.
 | --- | --- | --- |
 | 1 | Applied | Project `resourceConfig.buildMachineType` set to `standard`, elastic concurrency off, through the Vercel API; read back and confirmed. |
 | 2 | Needs the dashboard | No API exists for the Speed Insights Plus add-on. Vercel > Team settings > Billing > Add-ons > Speed Insights Plus > Cancel (or Project > Speed Insights > Disable). |
-| 3 | Applied | `scripts/vercel-ignore-build.sh` registered as the project's Ignored Build Step: preview pushes with no pull request behind them are skipped, and so are commits that touch only docs, tests, review pages or agent config. |
+| 3 | Applied | `scripts/vercel-ignore-build.sh` registered as the project's Ignored Build Step: preview pushes with no pull request behind them are skipped, and so are commits that touch only docs, tests, review pages, agent config or gate/CI config (`.no-mistakes.yaml`, `.github/`). |
 | 4 | Needs Alex | PR #103 (phone fix) should be merged after #104; PR #86's portfolio half is already in #104, its header and menu half is not, so it is a cherry-pick or a close. Supabase branching cleanup needs the dashboard or `supabase login`. |
 | 5 | Needs the dashboard | Supabase > Project > Settings > Compute; the site needs Micro. |
 | 6 | Applied | Middleware matcher excludes `_next/static`, `_next/image`, favicon, images, fonts, robots and sitemap. |
