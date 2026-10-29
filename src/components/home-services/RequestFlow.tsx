@@ -9,7 +9,7 @@ import { isInServiceArea, normalizeZip, ZIP_RE } from '@/lib/home-services/servi
 import { executeRecaptcha, loadRecaptcha, submitHomeServiceRequest } from '@/lib/home-services/submitRequest';
 import { useRecaptchaChallenge } from '@/components/recaptcha/RecaptchaChallengeProvider';
 import { cn } from '@/lib/utils';
-import PhotoUploader, { type PhotoState } from './PhotoUploader';
+import PhotoUploader, { usePhotoUploads } from './PhotoUploader';
 import AddressField, { type AddressValue } from './AddressField';
 import FlowDone from './FlowDone';
 
@@ -95,7 +95,9 @@ export default function RequestFlow({
   const { requestChallenge } = useRecaptchaChallenge();
   const [step, setStep] = useState<Step>('details');
   const [answers, setAnswers] = useState<Record<string, Record<string, string>>>({});
-  const [photos, setPhotos] = useState<PhotoState>({ ids: [], draftToken: null, busy: false });
+  // Owned here, not by the uploader's markup: the sheet content unmounts on close, the flow does not.
+  const uploads = usePhotoUploads(lang);
+  const photos = uploads.state;
   const [address, setAddress] = useState<AddressValue>({ address: '', zip: '', town: '' });
   const [addressError, setAddressError] = useState<string | null>(null);
   const [zipError, setZipError] = useState<string | null>(null);
@@ -131,6 +133,19 @@ export default function RequestFlow({
     focusHeading();
   }, [step]);
 
+  /**
+   * Bring an error into view (review D5). On a phone the decline sits under the
+   * sticky Continue footer, so a red border was all the homeowner saw. Runs
+   * after the step effect above, so it wins when both fire on one render.
+   */
+  const [reveal, setReveal] = useState<{ errorId: string; focusId: string | null; n: number } | null>(null);
+  useEffect(() => {
+    if (!reveal) return;
+    document.getElementById(reveal.errorId)?.scrollIntoView({ block: 'center' });
+    if (reveal.focusId) document.getElementById(reveal.focusId)?.focus({ preventScroll: true });
+  }, [reveal]);
+  const revealError = (errorId: string, focusId: string | null) => setReveal({ errorId, focusId, n: Date.now() });
+
   const close = () => {
     onClose();
     if (step === 'done') {
@@ -141,35 +156,34 @@ export default function RequestFlow({
         setResult(null);
         setNotes('');
         setConsent(false);
+        uploads.reset();
         startedAt.current = null;
       }, 250);
     }
   };
 
-  function checkZip(zip: string): boolean {
+  /** Validate the ZIP and set its message. `show` scrolls the message into view (not on Continue, which reveals with focus). */
+  function checkZip(zip: string, show = true): boolean {
     const z = normalizeZip(zip);
-    if (!ZIP_RE.test(z)) {
-      setZipError(s('invalidZip', lang));
-      return false;
-    }
-    if (!isInServiceArea({ zip: z, town: address.town })) {
-      setZipError(s('outOfArea', lang));
-      return false;
-    }
-    setZipError(null);
-    return true;
+    let error: string | null = null;
+    if (!ZIP_RE.test(z)) error = s('invalidZip', lang);
+    else if (!isInServiceArea({ zip: z, town: address.town })) error = s('outOfArea', lang);
+    setZipError(error);
+    if (error && show) revealError('hs-zip-error', null);
+    return error === null;
   }
 
   function continueToContact() {
-    let ok = true;
-    if (address.address.trim().length < 3) {
-      setAddressError(s('requiredAddress', lang));
-      ok = false;
-    } else {
-      setAddressError(null);
+    const addressOk = address.address.trim().length >= 3;
+    setAddressError(addressOk ? null : s('requiredAddress', lang));
+    const zipOk = checkZip(address.zip, false);
+    if (addressOk && zipOk) {
+      setStep('contact');
+      return;
     }
-    if (!checkZip(address.zip)) ok = false;
-    if (ok) setStep('contact');
+    // Refused: show the first problem, with focus on its field.
+    if (!addressOk) revealError('hs-address-error', 'hs-address');
+    else revealError('hs-zip-error', 'hs-zip');
   }
 
   function validateContact(): boolean {
@@ -222,6 +236,7 @@ export default function RequestFlow({
       case 'out_of_area':
         setZipError(s('outOfArea', lang));
         setStep('details');
+        revealError('hs-zip-error', 'hs-zip');
         return;
       case 'rate_limited':
         setFormError(s('errorRate', lang));
@@ -307,7 +322,7 @@ export default function RequestFlow({
                     </section>
                   );
                 })}
-                <PhotoUploader lang={lang} onChange={setPhotos} />
+                <PhotoUploader lang={lang} uploads={uploads} />
                 <AddressField
                   lang={lang}
                   value={address}

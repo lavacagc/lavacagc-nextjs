@@ -11,15 +11,17 @@ import { s } from '@/lib/home-services/i18n';
  */
 export default function PriceSheet({
   service,
+  open,
   lang,
   onClose,
 }: {
   service: HomeService | null;
+  open: boolean;
   lang: Lang;
   onClose: () => void;
 }) {
   return (
-    <DialogPrimitive.Root open={Boolean(service)} onOpenChange={(open) => !open && onClose()}>
+    <DialogPrimitive.Root open={open && Boolean(service)} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content

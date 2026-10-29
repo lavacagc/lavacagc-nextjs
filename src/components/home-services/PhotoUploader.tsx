@@ -113,15 +113,25 @@ function upload(
   });
 }
 
+export interface PhotoUploads {
+  items: PhotoItem[];
+  notice: string | null;
+  state: PhotoState;
+  add: (files: FileList | null) => void;
+  remove: (key: string) => void;
+  /** Forget everything (after a submitted request); in-flight uploads are aborted. */
+  reset: () => void;
+}
+
 /**
- * Camera first, gallery second (RF2; the camera button only shows on touch
- * devices, where `capture` opens the camera). Each photo is compressed and
- * uploaded the moment it is picked, one at a time so the first response's
- * draft token is reused by the rest. Thumbnails show progress and a remove
- * control; a removed photo is simply not named on submit, and the server purge
- * deletes it after 48 h.
+ * The upload queue, owned by the request flow rather than by the uploader's
+ * markup. The sheet's content unmounts when it closes (Radix), and the flow
+ * itself stays mounted, so keeping the queue here means a homeowner who closes
+ * the sheet to look at another card and reopens it still has every photo, the
+ * draft token, and any upload still in flight - exactly like the answers and
+ * the address.
  */
-export default function PhotoUploader({ lang, onChange }: { lang: Lang; onChange: (state: PhotoState) => void }) {
+export function usePhotoUploads(lang: Lang): PhotoUploads {
   const [items, setItems] = useState<PhotoItem[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const tokenRef = useRef<string | null>(null);
@@ -133,15 +143,7 @@ export default function PhotoUploader({ lang, onChange }: { lang: Lang; onChange
   const patch = (key: string, change: Partial<PhotoItem>) =>
     setItems((prev) => prev.map((it) => (it.key === key ? { ...it, ...change } : it)));
 
-  useEffect(() => {
-    onChange({
-      ids: items.filter((i) => i.status === 'done' && i.id).map((i) => i.id!),
-      draftToken: tokenRef.current,
-      busy: items.some((i) => i.status === 'queued' || i.status === 'uploading'),
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onChange is a parent setter; items drive this
-  }, [items]);
-
+  // Leaving the page is the only unmount: abort what is still uploading.
   useEffect(() => {
     const live = xhrs.current;
     return () => {
@@ -212,6 +214,34 @@ export default function PhotoUploader({ lang, onChange }: { lang: Lang; onChange
     setItems(itemsRef.current);
   }
 
+  function reset() {
+    xhrs.current.forEach((x) => x.abort());
+    itemsRef.current.forEach((i) => i.previewUrl && URL.revokeObjectURL(i.previewUrl));
+    itemsRef.current = [];
+    tokenRef.current = null;
+    setItems([]);
+    setNotice(null);
+  }
+
+  const state: PhotoState = {
+    ids: items.filter((i) => i.status === 'done' && i.id).map((i) => i.id!),
+    draftToken: tokenRef.current,
+    busy: items.some((i) => i.status === 'queued' || i.status === 'uploading'),
+  };
+
+  return { items, notice, state, add, remove, reset };
+}
+
+/**
+ * Camera first, gallery second (RF2; the camera button only shows on touch
+ * devices, where `capture` opens the camera). Each photo is compressed and
+ * uploaded the moment it is picked, one at a time so the first response's
+ * draft token is reused by the rest. Thumbnails show progress and a remove
+ * control; a removed photo is simply not named on submit, and the server purge
+ * deletes it after 48 h. Presentational: the queue lives in usePhotoUploads.
+ */
+export default function PhotoUploader({ lang, uploads }: { lang: Lang; uploads: PhotoUploads }) {
+  const { items, notice, add, remove } = uploads;
   const count = items.filter((i) => i.status !== 'error').length;
   const full = count >= MAX_PHOTOS;
 

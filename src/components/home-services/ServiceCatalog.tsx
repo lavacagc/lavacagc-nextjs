@@ -8,7 +8,7 @@ import { s } from '@/lib/home-services/i18n';
 import { cn } from '@/lib/utils';
 import ServiceIcon from './ServiceIcon';
 import PriceSheet from './PriceSheet';
-import { preloadRequestFlow, useRequestFlow } from './useRequestFlow';
+import { preloadRequestFlow, useHashSheet, useRequestFlow } from './useRequestFlow';
 
 const RequestFlow = dynamic(() => import('./RequestFlow'), { ssr: false });
 
@@ -23,6 +23,8 @@ export default function ServiceCatalog({ lang }: { lang: Lang }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [priceFor, setPriceFor] = useState<HomeService | null>(null);
   const flow = useRequestFlow();
+  // The price sheet is a full-width bottom sheet on phones, so Back must close it too (review D2).
+  const priceSheet = useHashSheet('#price');
 
   const toggle = (slug: string) => {
     preloadRequestFlow();
@@ -86,7 +88,10 @@ export default function ServiceCatalog({ lang }: { lang: Lang }) {
               </button>
               <button
                 type="button"
-                onClick={() => setPriceFor(service)}
+                onClick={() => {
+                  setPriceFor(service);
+                  priceSheet.openSheet();
+                }}
                 data-testid={`price-${service.slug}`}
                 className="mx-4 mb-4 flex min-h-[52px] items-center justify-between gap-3 rounded-xl bg-background-soft px-4 py-2.5 text-left transition-colors hover:bg-primary/10 focus:outline-none focus-visible:ring-4 focus-visible:ring-secondary/40"
               >
@@ -108,7 +113,7 @@ export default function ServiceCatalog({ lang }: { lang: Lang }) {
         })}
       </ul>
 
-      <PriceSheet service={priceFor} lang={lang} onClose={() => setPriceFor(null)} />
+      <PriceSheet service={priceFor} open={priceSheet.open} lang={lang} onClose={priceSheet.closeSheet} />
 
       {ordered.length > 0 && !flow.open && (
         <div
