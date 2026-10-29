@@ -37,7 +37,11 @@ export async function POST(request: NextRequest) {
   try {
     const uploads = [];
     for (const file of parsed.data.files) uploads.push(await signUpload(file));
-    return NextResponse.json({ uploads });
+    // The Supabase gateway may want an apikey on the PUT as well as the token in
+    // the URL. The publishable key is public (it ships in every page), so hand
+    // it over rather than make the CLI know it.
+    const apikey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    return NextResponse.json({ uploads, headers: apikey ? { apikey } : {} });
   } catch (err) {
     const { status, body } = errorResponseBody(err, 'Could not prepare the uploads.');
     return NextResponse.json(body, { status });
