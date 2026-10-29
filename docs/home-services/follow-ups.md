@@ -66,6 +66,7 @@ Each is recorded with its reasoning in `00-site-audit.md` or `docs/decisions/`.
 - The homepage pushes three history entries after load on the base commit as well, so one Back press stays on `/` (slice C re-verification); separate ticket.
 - Dev server intermittently fails to SSR `Testimonials` with "No QueryClient set": not reproduced in about 550 renders by the reviewer; keep an eye on Vercel logs.
 - Playwright: the home-services and offers specs can time out on a cold dev server under load; warm the pages in `beforeAll` (slice A and B re-verifications).
+- Playwright: RF10 (merge) failed once in four full-file runs on the merged branch while another agent was probing the same route; the response had the silent-drop shape (`ok: true, merged: false`, random id), which the route returns for a submit timed under five seconds or a filled honeypot. It passed in isolation and in three full-file runs. If it recurs, log the drop reason server-side under a debug flag and check whether the sheet's `started_at` can reset between screens.
 
 ## Craigslist and listings
 
