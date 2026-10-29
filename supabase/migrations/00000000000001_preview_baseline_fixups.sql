@@ -81,3 +81,16 @@ AS $$
     SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = _role
   );
 $$;
+
+-- rate_limits: dashboard-created on production and read by src/lib/rateLimit.ts
+-- (columns per src/integrations/supabase/types.ts). Without it every limiter
+-- fails open on a from-scratch replay, so no 429 path can be verified locally.
+CREATE TABLE IF NOT EXISTS public.rate_limits (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  ip_address text NOT NULL,
+  count integer NOT NULL DEFAULT 0,
+  last_reset timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS rate_limits_ip_address_idx ON public.rate_limits (ip_address, last_reset DESC);
+ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
