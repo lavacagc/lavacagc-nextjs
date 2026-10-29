@@ -152,10 +152,10 @@ export const HOME_SERVICES_CATALOG: HomeService[] = [
       yesNo('island', { en: 'Island included?', es: '¿Incluye isla?' }),
     ],
     seo: {
-      title: { en: 'Cabinet Repainting in Essex, Morris & Bergen NJ from $1,995', es: 'Repintado de gabinetes en Essex, Morris y Bergen NJ, $1,995' },
+      title: { en: 'Cabinet Repainting in Essex, Morris & Bergen NJ from $1,995', es: 'Pintura de gabinetes en Essex, Morris y Bergen desde $1,995' },
       description: {
         en: 'Cabinet repainting from $1,995 by a licensed NJ contractor. Sprayed enamel finish, firm quote from your photos. Essex, Morris and Bergen Counties.',
-        es: 'Repintado de gabinetes desde $1,995 por un contratista con licencia en NJ. Esmalte con pistola y cotización firme con fotos. Condados de Essex, Morris y Bergen.',
+        es: 'Repintado de gabinetes desde $1,995 por contratista con licencia en NJ. Acabado con pistola y cotización firme con fotos. Condados de Essex, Morris y Bergen.',
       },
       keywords: ['cabinet painting NJ', 'cabinet refinishing Essex County', 'kitchen cabinet painting Morris County', 'cabinet painters Bergen County'],
     },
@@ -217,7 +217,7 @@ export const HOME_SERVICES_CATALOG: HomeService[] = [
       },
     ],
     seo: {
-      title: { en: 'HVAC Coil & System Cleaning in Northern NJ from $199', es: 'Limpieza de HVAC en el norte de NJ desde $199' },
+      title: { en: 'HVAC Cleaning in Essex, Morris & Bergen NJ from $199', es: 'Limpieza de HVAC en Essex, Morris y Bergen NJ desde $199' },
       description: {
         en: 'HVAC coil, blower and drain line cleaning with a filter change from $199 per system. Licensed NJ contractor serving Essex, Morris and Bergen Counties.',
         es: 'Limpieza de serpentín, ventilador y drenaje de HVAC con filtro desde $199 por sistema. Contratista con licencia en NJ, condados de Essex, Morris y Bergen.',
@@ -272,7 +272,7 @@ export const HOME_SERVICES_CATALOG: HomeService[] = [
       yesNo('pets', { en: 'Pets in the home?', es: '¿Mascotas en casa?' }),
     ],
     seo: {
-      title: { en: 'Air Duct & Vent Cleaning in Northern NJ from $349', es: 'Limpieza de ductos y rejillas en el norte de NJ desde $349' },
+      title: { en: 'Air Duct Cleaning in Essex, Morris & Bergen NJ from $349', es: 'Limpieza de ductos en Essex, Morris y Bergen NJ desde $349' },
       description: {
         en: 'Air duct and vent cleaning from $349 for up to 10 vents. Vacuumed and sanitized by a licensed NJ contractor in Essex, Morris and Bergen Counties.',
         es: 'Limpieza de ductos y rejillas desde $349 por hasta 10 rejillas. Aspirado y desinfectado por un contratista con licencia en NJ en Essex, Morris y Bergen.',
@@ -382,7 +382,7 @@ export const HOME_SERVICES_CATALOG: HomeService[] = [
       yesNo('trim_doors', { en: 'Trim and doors included?', es: '¿Incluye molduras y puertas?' }),
     ],
     seo: {
-      title: { en: 'Exterior House Painting in Northern NJ from $2.95 per sq ft', es: 'Pintura exterior de casas en NJ desde $2.95 por pie²' },
+      title: { en: 'Exterior Painting in Essex, Morris & Bergen NJ, $2.95/sq ft', es: 'Pintura exterior en Essex, Morris y Bergen desde $2.95/pie²' },
       description: {
         en: 'Exterior painting from $2.95 per sq ft, $3,500 minimum. Power wash, prime and two coats by a licensed NJ contractor in Essex, Morris and Bergen Counties.',
         es: 'Pintura exterior desde $2.95 por pie², mínimo $3,500. Lavado, imprimación y dos capas por un contratista con licencia en NJ. Essex, Morris y Bergen.',
@@ -486,7 +486,7 @@ export const HOME_SERVICES_CATALOG: HomeService[] = [
       yesNo('paint_match', { en: 'Need the paint matched?', es: '¿Necesita igualar la pintura?' }),
     ],
     seo: {
-      title: { en: 'Drywall Patching & Repair in Northern NJ from $249', es: 'Reparación de drywall en el norte de NJ desde $249' },
+      title: { en: 'Drywall Repair in Essex, Morris & Bergen NJ from $249', es: 'Reparación de drywall en Essex, Morris y Bergen desde $249' },
       description: {
         en: 'Drywall patching from $249 for the first patch, primed and painted to blend. Licensed NJ contractor serving Essex, Morris and Bergen Counties.',
         es: 'Reparación de drywall desde $249 por el primer parche, imprimado y pintado. Contratista con licencia en NJ en Essex, Morris y Bergen.',

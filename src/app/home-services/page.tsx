@@ -13,7 +13,7 @@ import { s, type StringKey } from '@/lib/home-services/i18n';
 import { LANG_COOKIE, resolveLang } from '@/lib/home-services/lang';
 import ServiceIcon from '@/components/home-services/ServiceIcon';
 import { HOME_SERVICES_CATALOG, t, type Lang } from '@/lib/home-services/catalog';
-import { brandedTitle, languageAlternates } from '@/lib/home-services/seo';
+import { brandedTitle, breadcrumbJsonLd, faqJsonLd, jsonLdGraph, languageAlternates, pageUrl, serviceJsonLd } from '@/lib/home-services/seo';
 
 /**
  * /home-services - the seven priced services and the in-page request flow
@@ -68,9 +68,21 @@ const FAQ: Array<[StringKey, StringKey]> = [
 
 export default async function HomeServicesPage({ searchParams }: { searchParams: SearchParams }) {
   const lang = await pageLang(searchParams);
+  const langQuery = lang === 'es' ? '?lang=es' : '';
+  // The seven Service nodes (same @id as on each service page, provider by the
+  // layout's organization @id, no rating), the visible FAQ and the breadcrumb.
+  const jsonLd = jsonLdGraph([
+    ...HOME_SERVICES_CATALOG.map((service) => serviceJsonLd(service, lang)),
+    faqJsonLd(
+      FAQ.map(([q, a]) => ({ q: s(q, lang), a: s(a, lang) })),
+      pageUrl('/home-services', lang),
+    ),
+    breadcrumbJsonLd(lang),
+  ]);
 
   return (
     <div id="top" className="flex min-h-screen flex-col">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <AttributionCapture />
       <HeaderComponent />
       <ServicesTrustBar />
@@ -116,7 +128,7 @@ export default async function HomeServicesPage({ searchParams }: { searchParams:
                 {HOME_SERVICES_CATALOG.map((service) => (
                   <li key={service.slug}>
                     <Link
-                      href={`/home-services/${service.slug}${lang === 'es' ? '?lang=es' : ''}`}
+                      href={`/home-services/${service.slug}${langQuery}`}
                       className="flex min-h-[44px] items-center justify-between gap-4 py-2.5 text-[15px] font-semibold text-text-primary hover:text-secondary"
                     >
                       <span className="flex items-center gap-3">
@@ -143,6 +155,23 @@ export default async function HomeServicesPage({ searchParams }: { searchParams:
               <p className="mt-3 text-lg leading-relaxed text-text-secondary">{s('servicesIntro', lang)}</p>
             </div>
             <ServiceCatalog lang={lang} />
+            {/* Phones do not get the hero price list, so each service page is linked here too. */}
+            <nav aria-label={s('serviceDetails', lang)} className="mt-8 lg:hidden">
+              <p className="text-sm font-bold uppercase tracking-wider text-text-muted">{s('serviceDetails', lang)}</p>
+              <ul className="mt-3 flex flex-wrap gap-2">
+                {HOME_SERVICES_CATALOG.map((service) => (
+                  <li key={service.slug}>
+                    <Link
+                      href={`/home-services/${service.slug}${langQuery}`}
+                      className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-border bg-card px-4 text-[15px] font-semibold text-secondary underline-offset-4 hover:underline"
+                    >
+                      {t(service.name, lang)}
+                      <ArrowRight aria-hidden className="h-4 w-4" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
           </div>
         </section>
 
@@ -186,6 +215,7 @@ export default async function HomeServicesPage({ searchParams }: { searchParams:
                 </li>
               ))}
             </ul>
+            <p className="mt-4 text-[15px] leading-relaxed text-text-secondary">{s('areaTowns', lang)}</p>
           </div>
         </section>
 
