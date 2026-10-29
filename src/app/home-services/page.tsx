@@ -11,7 +11,8 @@ import AttributionCapture from '@/components/home-services/AttributionCapture';
 import LangToggle from '@/components/home-services/LangToggle';
 import { s, type StringKey } from '@/lib/home-services/i18n';
 import { LANG_COOKIE, resolveLang } from '@/lib/home-services/lang';
-import type { Lang } from '@/lib/home-services/catalog';
+import ServiceIcon from '@/components/home-services/ServiceIcon';
+import { HOME_SERVICES_CATALOG, t, type Lang } from '@/lib/home-services/catalog';
 import { brandedTitle } from '@/lib/home-services/seo';
 
 /**
@@ -82,7 +83,8 @@ export default async function HomeServicesPage({ searchParams }: { searchParams:
             <div className="flex justify-end">
               <LangToggle lang={lang} />
             </div>
-            <div className="mt-4 max-w-3xl">
+            <div className="mt-4 grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+            <div className="max-w-3xl">
               <p className="inline-flex items-center gap-2 rounded-full border border-secondary/20 bg-secondary/5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-secondary">
                 {s('heroEyebrow', lang)}
               </p>
@@ -106,6 +108,27 @@ export default async function HomeServicesPage({ searchParams }: { searchParams:
                   {s('callUs', lang)}
                 </a>
               </div>
+            </div>
+            {/* Desktop only: the price list at a glance, each linking to its own page. Phones go straight to the cards. */}
+            <nav aria-label={s('servicesNav', lang)} className="hidden rounded-3xl border border-border bg-card p-6 shadow-elegant lg:block">
+              <p className="text-xs font-bold uppercase tracking-wider text-text-muted">{s('startingAt', lang)}</p>
+              <ul className="mt-3 divide-y divide-border">
+                {HOME_SERVICES_CATALOG.map((service) => (
+                  <li key={service.slug}>
+                    <Link
+                      href={`/home-services/${service.slug}${lang === 'es' ? '?lang=es' : ''}`}
+                      className="flex min-h-[44px] items-center justify-between gap-4 py-2.5 text-[15px] font-semibold text-text-primary hover:text-secondary"
+                    >
+                      <span className="flex items-center gap-3">
+                        <ServiceIcon icon={service.icon} className="h-4 w-4 text-secondary" />
+                        {t(service.name, lang)}
+                      </span>
+                      <span className="font-extrabold">{t(service.priceDisplay, lang)}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
             </div>
           </div>
         </section>

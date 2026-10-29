@@ -97,7 +97,6 @@ export const STRINGS = {
   heroCta: { en: 'See services and prices', es: 'Ver servicios y precios' },
   servicesNav: { en: 'Home services', es: 'Servicios para el hogar' },
   priceDetails: { en: 'See what this price includes', es: 'Ver qué incluye este precio' },
-  minimum: { en: 'Minimum', es: 'Mínimo' },
   homeCareEyebrow: { en: 'La Vaca Home Care', es: 'La Vaca Home Care' },
   closerTitle: { en: 'Rather talk it through?', es: '¿Prefiere hablarlo?' },
   closerBody: { en: 'Call and Alex will help you pick the right service and price it on the phone.', es: 'Llame y Alex le ayudará a elegir el servicio correcto y a cotizarlo por teléfono.' },

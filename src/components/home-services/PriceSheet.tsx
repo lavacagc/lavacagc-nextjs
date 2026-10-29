@@ -4,7 +4,6 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Check, Plus, X } from 'lucide-react';
 import { t, type HomeService, type Lang } from '@/lib/home-services/catalog';
 import { s } from '@/lib/home-services/i18n';
-import { formatDollars } from '@/lib/home-services/pricing';
 
 /**
  * "What's included" and "What raises the price" for one service (LP3).
@@ -37,7 +36,6 @@ export default function PriceSheet({
                   {s('startingAt', lang)} <span className="font-bold text-text-primary">{t(service.priceDisplay, lang)}</span>{' '}
                   {t(service.priceUnit, lang)}
                   {service.priceNote ? `. ${t(service.priceNote, lang)}` : ''}
-                  {service.minimumCents ? `. ${s('minimum', lang)} ${formatDollars(service.minimumCents)}` : ''}
                 </DialogPrimitive.Description>
               </div>
               <h3 className="mt-6 text-sm font-extrabold uppercase tracking-wider text-secondary">{s('whatsIncluded', lang)}</h3>

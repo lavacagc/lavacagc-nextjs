@@ -14,7 +14,6 @@ import ServiceIcon from '@/components/home-services/ServiceIcon';
 import { getService, SERVICE_SLUGS, t, type Lang } from '@/lib/home-services/catalog';
 import { s } from '@/lib/home-services/i18n';
 import { LANG_COOKIE, resolveLang } from '@/lib/home-services/lang';
-import { formatDollars } from '@/lib/home-services/pricing';
 import { brandedTitle, serviceJsonLd, SITE } from '@/lib/home-services/seo';
 
 /**
@@ -112,16 +111,11 @@ export default async function HomeServicePage({ params, searchParams }: { params
                 </p>
                 <p className="mt-1 text-[15px] text-text-secondary">{t(service.priceUnit, lang)}</p>
                 {service.priceNote && <p className="mt-1 text-[15px] text-text-secondary">{t(service.priceNote, lang)}</p>}
-                {service.minimumCents ? (
-                  <p className="mt-1 text-[15px] text-text-secondary">
-                    {s('minimum', lang)} {formatDollars(service.minimumCents)}
-                  </p>
-                ) : null}
                 <div className="mt-6 flex flex-col gap-3">
                   <RequestServiceButton slug={service.slug} lang={lang} className="w-full" />
                   <a
                     href="tel:+12012124917"
-                    className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl border-2 border-secondary bg-card px-6 py-3 text-[17px] font-bold text-secondary transition-colors hover:bg-secondary hover:text-white"
+                    className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl border-2 border-secondary bg-card px-6 py-3 text-[17px] font-bold text-secondary transition-colors hover:bg-secondary hover:text-white"
                   >
                     <Phone aria-hidden className="h-5 w-5" />
                     {s('callUs', lang)}
