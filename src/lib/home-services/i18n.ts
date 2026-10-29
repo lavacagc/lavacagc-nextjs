@@ -100,7 +100,7 @@ export const STRINGS = {
   close: { en: 'Close', es: 'Cerrar' },
 
   // Slice A additions (landing, service pages, request flow)
-  metaTitle: { en: 'Fixed-Price Home Services in Essex, Morris, Bergen & Union', es: 'Servicios del hogar en Essex, Morris, Bergen y Union NJ' },
+  metaTitle: { en: 'Fixed-Price Home Services: Essex, Morris, Bergen & Union NJ', es: 'Servicios del hogar en Essex, Morris, Bergen y Union NJ' },
   metaDescription: { en: 'One-stop home services in Essex, Morris, Bergen and Union NJ: cabinet painting, HVAC, ducts, cleaning, exterior paint, gutters, drywall. Firm prices.', es: 'Servicios del hogar en un solo lugar en Essex, Morris, Bergen y Union NJ: gabinetes, HVAC, ductos, limpieza, pintura, canaletas, drywall. Precios firmes.' },
   heroCta: { en: 'See services and prices', es: 'Ver servicios y precios' },
   servicesNav: { en: 'Home services', es: 'Servicios para el hogar' },

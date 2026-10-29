@@ -4,7 +4,8 @@
 -- (the local rig, any preview) to the same copy.
 --
 -- Guarded per column: a column is rewritten only while it still holds the
--- exact three-county seed text, so anything the admin has edited in
+-- exact three-county seed text (or, for two titles, the first Union wording
+-- this file carried at f454809, which the local rig ran), so anything the admin has edited in
 -- Services & Prices is left alone. The Union keyword is appended only when
 -- it is missing and the list has room (the editor caps keywords at 10).
 -- Re-running it changes nothing.
@@ -32,8 +33,8 @@ UPDATE public.home_services SET seo_description_es = 'Limpieza de HVAC desde $29
 UPDATE public.home_services SET seo_keywords = seo_keywords || jsonb_build_array('HVAC cleaning Union County'::text), updated_at = now()
   WHERE slug = 'hvac-cleaning' AND NOT seo_keywords ? 'HVAC cleaning Union County' AND jsonb_array_length(seo_keywords) < 10;
 -- duct-and-vent-cleaning
-UPDATE public.home_services SET seo_title_en = 'Air Duct Cleaning in Essex, Morris, Bergen & Union from $449', updated_at = now()
-  WHERE slug = 'duct-and-vent-cleaning' AND seo_title_en = 'Air Duct Cleaning in Essex, Morris & Bergen NJ from $449';
+UPDATE public.home_services SET seo_title_en = 'Air Duct Cleaning in Essex, Morris, Bergen & Union NJ, $449', updated_at = now()
+  WHERE slug = 'duct-and-vent-cleaning' AND seo_title_en IN ('Air Duct Cleaning in Essex, Morris & Bergen NJ from $449', 'Air Duct Cleaning in Essex, Morris, Bergen & Union from $449');
 UPDATE public.home_services SET seo_title_es = 'Limpieza de ductos: Essex, Morris, Bergen y Union, $449', updated_at = now()
   WHERE slug = 'duct-and-vent-cleaning' AND seo_title_es = 'Limpieza de ductos en Essex, Morris y Bergen NJ desde $449';
 UPDATE public.home_services SET seo_description_en = 'Air duct cleaning costs from $449 for up to 10 vents in Essex, Morris, Bergen and Union NJ. Vacuumed and sanitized in one visit, firm price from your photos.', updated_at = now()
@@ -65,8 +66,8 @@ UPDATE public.home_services SET seo_description_es = 'Pintura exterior a $2.95 p
 UPDATE public.home_services SET seo_keywords = seo_keywords || jsonb_build_array('exterior painting Union County'::text), updated_at = now()
   WHERE slug = 'exterior-painting' AND NOT seo_keywords ? 'exterior painting Union County' AND jsonb_array_length(seo_keywords) < 10;
 -- gutter-cleaning
-UPDATE public.home_services SET seo_title_en = 'Gutter Cleaning in Essex, Morris, Bergen & Union from $279', updated_at = now()
-  WHERE slug = 'gutter-cleaning' AND seo_title_en = 'Gutter Cleaning in Essex, Morris & Bergen NJ from $279';
+UPDATE public.home_services SET seo_title_en = 'Gutter Cleaning in Essex, Morris, Bergen & Union NJ, $279', updated_at = now()
+  WHERE slug = 'gutter-cleaning' AND seo_title_en IN ('Gutter Cleaning in Essex, Morris & Bergen NJ from $279', 'Gutter Cleaning in Essex, Morris, Bergen & Union from $279');
 UPDATE public.home_services SET seo_title_es = 'Limpieza de canaletas en Essex, Morris, Bergen y Union, $279', updated_at = now()
   WHERE slug = 'gutter-cleaning' AND seo_title_es = 'Limpieza de canaletas en Essex, Morris y Bergen desde $279';
 UPDATE public.home_services SET seo_description_en = 'Gutter cleaning costs from $279 single story, $349 two story, in Essex, Morris, Bergen and Union NJ. Cleared, flushed, checked and photographed, firm price.', updated_at = now()

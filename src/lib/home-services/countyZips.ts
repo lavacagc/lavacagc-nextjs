@@ -15,7 +15,7 @@
  *
  * Union: the 30 ZIPs zip-codes.com lists for Union County, NJ (26 standard,
  * 4 PO box: 07061, 07091, 07207, 07902), checked 2026-10-29, the same way the
- * other counties include their PO box ZIPs. 07060 and 07063 (Plainfield) also
+ * other counties include their PO box ZIPs. 07060, 07062 and 07063 (Plainfield) also
  * deliver to North Plainfield in Somerset County, so a North Plainfield
  * address reads as Union here; the ZIP is the gate, as for the other counties.
  */

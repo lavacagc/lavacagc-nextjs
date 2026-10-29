@@ -148,7 +148,7 @@ export const HOME_SERVICES_SEED: HomeServiceContent[] = [
       { en: 'Heavy debris, pet hair or renovation dust', es: 'Mucho polvo, pelo de mascotas o polvo de obra' },
     ],
     seo: {
-      title: { en: 'Air Duct Cleaning in Essex, Morris, Bergen & Union from $449', es: 'Limpieza de ductos: Essex, Morris, Bergen y Union, $449' },
+      title: { en: 'Air Duct Cleaning in Essex, Morris, Bergen & Union NJ, $449', es: 'Limpieza de ductos: Essex, Morris, Bergen y Union, $449' },
       description: {
         en: 'Air duct cleaning costs from $449 for up to 10 vents in Essex, Morris, Bergen and Union NJ. Vacuumed and sanitized in one visit, firm price from your photos.',
         es: 'Limpieza de ductos desde $449 por hasta 10 rejillas en Essex, Morris, Bergen y Union NJ. Aspirado y desinfectado en una visita, precio firme con sus fotos.',
@@ -271,7 +271,7 @@ export const HOME_SERVICES_SEED: HomeServiceContent[] = [
       { en: 'Repairs, resealing or new hangers', es: 'Reparaciones, resellado o soportes nuevos' },
     ],
     seo: {
-      title: { en: 'Gutter Cleaning in Essex, Morris, Bergen & Union from $279', es: 'Limpieza de canaletas en Essex, Morris, Bergen y Union, $279' },
+      title: { en: 'Gutter Cleaning in Essex, Morris, Bergen & Union NJ, $279', es: 'Limpieza de canaletas en Essex, Morris, Bergen y Union, $279' },
       description: {
         en: 'Gutter cleaning costs from $279 single story, $349 two story, in Essex, Morris, Bergen and Union NJ. Cleared, flushed, checked and photographed, firm price.',
         es: 'Limpieza de canaletas desde $279 un piso, $349 dos pisos, en Essex, Morris, Bergen y Union NJ. Despejadas, enjuagadas, revisadas y con fotos, precio firme.',

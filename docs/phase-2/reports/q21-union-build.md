@@ -32,7 +32,7 @@ The list differs from the one in the brief in four places:
   07203, 07204 and 07205 in the brief's "07201-07208" range are Roselle, Roselle Park and Hillside, which the brief also lists by name; each appears once.
 - Winfield has no ZIP of its own; it is served by Linden's 07036, already in the list.
 - Plainfield is 07060, 07062 and 07063, plus the PO box 07061.
-  07060 and 07063 also deliver to North Plainfield, which is in Somerset County; a five-digit ZIP cannot tell them apart, so a North Plainfield address reads as Union.
+  07060, 07062 and 07063 also deliver to North Plainfield (zip-codes.com and Wikipedia both list 07062 for it, added after review), which is in Somerset County; a five-digit ZIP cannot tell them apart, so a North Plainfield address reads as Union.
   This is the same trade-off the map already makes elsewhere, and is noted in the file.
 - Summit includes the PO box 07902; Westfield the PO box 07091.
 
@@ -47,15 +47,15 @@ Measured with the same `brandedTitle()` the spec uses:
 
 | String | Length |
 | --- | --- |
-| Landing title en "Fixed-Price Home Services in Essex, Morris, Bergen & Union" | 58 |
+| Landing title en "Fixed-Price Home Services: Essex, Morris, Bergen & Union NJ" (after review) | 59 |
 | Landing title es "Servicios del hogar en Essex, Morris, Bergen y Union NJ" | 55 |
 | Landing description en / es | 149 / 153 |
-| Service titles en (7) | 58 to 60 |
+| Service titles en (7) | 57 to 60 |
 | Service titles es (7) | 55 to 60 |
 | Service descriptions en (7) | 144 to 159 |
 | Service descriptions es (7) | 145 to 155 |
 
-Some trims, so the reviewer can judge them: the cabinet title says "Cabinet Painting" (the keyword) instead of "Cabinet Repainting"; four titles dropped "NJ" (Air duct, Gutter, Exterior and the landing page, which says "Fixed-Price" instead of "Priced Up Front"); the HVAC descriptions dropped "fast scheduling" / "agenda rápida"; drywall dropped "cut,"; exterior painting en says "firm quote from photos".
+Some trims, so the reviewer can judge them: the cabinet title says "Cabinet Painting" (the keyword) instead of "Cabinet Repainting"; the exterior painting title has no "NJ" and the landing page says "Fixed-Price" instead of "Priced Up Front" (after review, the air duct, gutter and landing titles carry "NJ" again); the HVAC descriptions dropped "fast scheduling" / "agenda rápida"; drywall dropped "cut,"; exterior painting en says "firm quote from photos".
 `areaTowns` adds Summit, Westfield and Cranford.
 
 ## Evidence
@@ -87,3 +87,29 @@ cta_v=P%3DB%3BS%3DA%3BR%3D<seed>  -> no Set-Cookie (seed present, nothing minted
 
 The remodel side of the site names its own counties and was out of this brief's scope: the contact page ("Essex, Bergen, Morris & Passaic"), referral FAQ, `/services/[slug]` town list, interior-finishing page, the two Montclair and Verona bathroom pages, `StructuredData.tsx` and the intake chat's opening line.
 Whether those should name Union is a call for Alex, since they describe the remodel business, not the priced home services.
+
+## Follow-up after review (`acd0845`)
+
+The reviewer accepted at `acd0845`; the planner asked for two changes, both made here.
+
+1. 07062 joins 07060 and 07063 in the North Plainfield note, in `countyZips.ts` and above (zip-codes.com and Wikipedia list it as also delivering to North Plainfield).
+   The ZIP list itself is unchanged.
+2. "NJ" stays where it fits, with the reviewer's three titles exactly:
+   - air duct `Air Duct Cleaning in Essex, Morris, Bergen & Union NJ, $449` (59);
+   - gutter `Gutter Cleaning in Essex, Morris, Bergen & Union NJ, $279` (57);
+   - landing `Fixed-Price Home Services: Essex, Morris, Bergen & Union NJ` (59, under 60 as SEO1 requires).
+   The exterior painting title is unchanged.
+
+The seed in `20261030000000_phase_2.sql` is regenerated from `catalogSeed.ts`.
+In `20261030000005_union_county_copy.sql` the two table titles take the new `SET` values, and their `WHERE` now accepts either the three-county seed text or the first Union wording this file carried at `f454809`, because the rig (and any database that ran that version) holds the latter; every other statement is unchanged.
+The landing title is in `i18n.ts`, not the table, so it needs no migration.
+
+| Check | Result |
+| --- | --- |
+| `psql -f supabase/migrations/20261030000005_union_county_copy.sql` on the rig, twice | first run 2 x `UPDATE 1` (the air duct and gutter titles; the third title, the landing one, is code) and 33 x `UPDATE 0`; second run 35 x `UPDATE 0` |
+| SEO1 source checks in `home-services-landing.spec.ts` (with LP10 and the Q21 ZIP test) | 4 passed |
+| `tests/home-services-catalog.spec.ts` live, alone, `--workers=1` | 20 passed (CAT1 renders every page from the table and matches the new seed) |
+| Rig table against the seed afterwards | 7 rows, none differing |
+| `npm run typecheck`, `npm run lint` | clean, clean |
+
+The SEO1 run was started without `TEST_URL`, so Playwright briefly served the existing `.next` on port 3000 for its two browser cases, which skipped; port 3000 was free before and after.
