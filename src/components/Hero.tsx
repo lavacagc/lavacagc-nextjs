@@ -4,16 +4,40 @@ import React from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Star, Shield, Award, Users, ChevronDown } from "lucide-react";
-import { useRouter, usePathname } from "next/navigation";
 import { supabase } from '@/integrations/supabase/client';
+import { cn } from "@/lib/utils";
+import { ctaColorStyle } from "@/lib/cta/color";
+import { useHeroCta } from "@/lib/cta/useHeroCta";
+import { CTA_HREF, FALLBACK_VARIANTS, type CtaVariant, type HeroCtaVariants } from "@/lib/cta/types";
 
 // Hero background video - single optimized video for consistent LCP performance
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const DEFAULT_VIDEO = `${SUPABASE_URL}/storage/v1/object/public/hero-videos/hero-background-1.mp4`;
 
-const Hero = () => {
-  const router = useRouter();
-  const pathname = usePathname();
+interface HeroProps {
+  /**
+   * Active CTA variants, fetched by the homepage server component so the
+   * client makes no extra request. Defaults to the hardcoded fallback.
+   */
+  ctaVariants?: HeroCtaVariants;
+}
+
+/** Two lines: the wording, and the optional subtext in smaller type. */
+function CtaLabel({ variant }: { variant: CtaVariant }) {
+  return (
+    <span className="flex flex-col items-center leading-tight">
+      <span>{variant.wording}</span>
+      {variant.subtext && <span className="text-sm font-normal opacity-90 mt-1">{variant.subtext}</span>}
+    </span>
+  );
+}
+
+const CTA_BASE = "text-lg px-8 py-3 min-h-16 h-auto whitespace-normal text-center font-semibold transition-all duration-300";
+
+const Hero = ({ ctaVariants = FALLBACK_VARIANTS }: HeroProps) => {
+  const cta = useHeroCta(ctaVariants);
+  const primaryColor = ctaColorStyle(cta.primary.color);
+  const secondaryColor = ctaColorStyle(cta.secondary.color);
   const videoRef = React.useRef<HTMLVideoElement>(null);
 
   // Start with static data, render immediately
@@ -46,29 +70,6 @@ const Hero = () => {
     }
   }, []);
 
-  const scrollToEstimate = () => {
-    // On mobile and tablet (below lg breakpoint = 1024px), go to estimate page
-    if (window.innerWidth < 1024) {
-      router.push('/free-estimate');
-      return;
-    }
-
-    // On desktop, scroll to estimate form
-    if (pathname !== '/') {
-      router.push('/');
-      setTimeout(() => {
-        document.getElementById('estimate')?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start'
-        });
-      }, 100);
-    } else {
-      document.getElementById('estimate')?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start'
-      });
-    }
-  };
   return (
     <section className="relative bg-gradient-to-br from-background via-background to-muted py-10 md:py-20 lg:py-32 overflow-hidden">
       {/* Background Video Layer - Single optimized video for consistent LCP */}
@@ -113,40 +114,55 @@ const Hero = () => {
             <span className="font-semibold text-secondary"> Trusted Renovation Experts</span>
           </p>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
+          {/* CTA Buttons - real links (crawlable), wording under multivariate test.
+              See src/lib/cta and docs/home-services/reports/slice-c-build.md. */}
+          <div
+            className="flex flex-col sm:flex-row gap-4 justify-center items-stretch mb-12"
+            data-cta-ready={cta.ready ? 'true' : 'false'}
+          >
             <Button
-              onClick={scrollToEstimate}
+              asChild
               size="lg"
-              className="bg-gradient-to-r from-primary to-accent-tangerine hover:shadow-button text-lg px-8 py-6 font-semibold transition-all duration-300 hover:scale-105 h-16"
+              className={cn(
+                CTA_BASE,
+                "text-primary-foreground hover:shadow-button hover:scale-105",
+                primaryColor?.className ?? "bg-gradient-to-r from-primary to-accent-tangerine",
+              )}
+              style={primaryColor?.style}
             >
-              <div className="flex flex-col">
-                {/* Mobile/Tablet Text */}
-                <span className="lg:hidden">Estimate Your Project</span>
-                <span className="text-sm font-normal opacity-90 lg:hidden">It only takes 5 minutes</span>
-                {/* Desktop Text */}
-                <span className="hidden lg:inline">Schedule Your Estimate</span>
-                <span className="text-sm font-normal opacity-90 hidden lg:inline">24 Hour Response Guaranteed</span>
-              </div>
-            </Button>
-            <a
-              href="#projects"
-              onClick={(e) => {
-                e.preventDefault();
-                document.getElementById('projects')?.scrollIntoView({
-                  behavior: 'smooth',
-                  block: 'start'
-                });
-              }}
-            >
-              <Button
-                variant="outline"
-                size="lg"
-                className="border-2 border-secondary text-secondary hover:bg-secondary hover:text-secondary-foreground text-lg px-8 py-6 font-semibold transition-all duration-300 h-16"
+              <Link
+                href={CTA_HREF.primary}
+                data-cta-button="primary"
+                data-cta-variant={cta.primary.variant_key}
+                onPointerDown={() => cta.trackClick('primary')}
+                onClick={() => cta.trackClick('primary')}
               >
-                View Our Work
-              </Button>
-            </a>
+                <CtaLabel variant={cta.primary} />
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className={cn(
+                CTA_BASE,
+                "border-2",
+                secondaryColor
+                  ? cn("text-white hover:text-white hover:opacity-90", secondaryColor.className)
+                  : "border-secondary text-secondary hover:bg-secondary hover:text-secondary-foreground",
+              )}
+              style={secondaryColor?.style}
+            >
+              <Link
+                href={CTA_HREF.secondary}
+                data-cta-button="secondary"
+                data-cta-variant={cta.secondary.variant_key}
+                onPointerDown={() => cta.trackClick('secondary')}
+                onClick={() => cta.trackClick('secondary')}
+              >
+                <CtaLabel variant={cta.secondary} />
+              </Link>
+            </Button>
           </div>
 
           {/* Trust Indicators */}

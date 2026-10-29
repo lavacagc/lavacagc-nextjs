@@ -5,6 +5,13 @@ import Services from '@/components/Services'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import type { Metadata } from 'next'
+import { fetchHeroCtaVariants } from '@/lib/cta/variants.server'
+
+/**
+ * Static, refreshed every five minutes so hero CTA variant edits appear without
+ * making the homepage dynamic (the admin API also revalidates '/' on each edit).
+ */
+export const revalidate = 300
 
 export const metadata: Metadata = {
   title: 'Home Remodeling in Northern New Jersey',
@@ -93,12 +100,13 @@ const HomeCareBanner = dynamic(() => import('@/components/homecare/HomeCareBanne
   loading: () => <div className="h-64 bg-secondary" />
 })
 
-export default function Home() {
+export default async function Home() {
+  const ctaVariants = await fetchHeroCtaVariants()
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main id="main-content" className="pb-20 md:pb-0">
-        <Hero />
+        <Hero ctaVariants={ctaVariants} />
 
         {/* Project Gallery — moved up for immediate visual impact */}
         <div id="projects" className="scroll-mt-20">
