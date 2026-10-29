@@ -2,7 +2,7 @@ import { test, expect, type APIRequestContext } from '@playwright/test';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
-import { checkSocialCopy, hashtagWords, parseSocialMarkdown } from '../src/lib/articles/socialCopy';
+import { checkSocialCopy, hashtagWords, hashtagsIn, parseSocialMarkdown } from '../src/lib/articles/socialCopy';
 import { catalogPricesFrom } from '../src/lib/articles/catalogPrices';
 import { publishedMessage } from '../src/lib/articles/notify';
 import { HOME_SERVICES_SEED } from '../src/lib/home-services/catalogSeed';
@@ -30,7 +30,7 @@ const FACTS: PublishFacts = {
 };
 const SLUG = 'when-to-clean-gutters-in-essex-county';
 
-function socialFile(parts: { instagram?: string; google?: string; x?: string; hashtags?: string; url?: string } = {}): string {
+function socialFile(parts: { instagram?: string; google?: string; x?: string; threads?: string; hashtags?: string; url?: string } = {}): string {
   return [
     '# Social copy: When should you clean gutters in Essex County?',
     '',
@@ -51,6 +51,9 @@ function socialFile(parts: { instagram?: string; google?: string; x?: string; ha
     '',
     '## X',
     parts.x ?? `Clean gutters in late fall, after the leaves drop. https://www.lavacagc.com/blog/${SLUG}`,
+    '',
+    '## Threads',
+    parts.threads ?? `Most people clean gutters too early. Wait until the oaks and maples are bare, then do it once, properly. When do you usually clean yours? #EssexCounty https://www.lavacagc.com/blog/${SLUG}`,
     '',
     '## Hashtags',
     parts.hashtags ?? '#GutterCleaning #EssexCounty #NJHomes',
@@ -108,8 +111,40 @@ test.describe('Q22: the social-copy guard', () => {
       'Social copy: the Instagram caption is missing.',
       'Social copy: the Google Business post is missing.',
       'Social copy: the X post is missing.',
+      'Social copy: the Threads post is missing.',
       'Social copy: 3 to 5 hashtags are needed; there are 0.',
     ]);
+  });
+});
+
+test.describe('Postiz drafts: the Threads post and a plain Google Business post', () => {
+  test('the Threads post is parsed and held to 500 characters, one hashtag and no "link in bio"', () => {
+    const copy = parseSocialMarkdown(socialFile());
+    expect(copy.threads.startsWith('Most people clean gutters too early.')).toBe(true);
+    expect(copy.x).not.toContain('Most people'); // the X section ends at the Threads heading
+    expect(hashtagsIn(copy.threads)).toEqual(['#EssexCounty']);
+    expect(check(socialFile({ threads: `${'Plain words. '.repeat(40)}` })))
+      .toEqual(['Social copy: the Threads post has 519 characters; the limit is 500.']);
+    expect(check(socialFile({ threads: 'Clean gutters late in fall. #GutterCleaning #EssexCounty' })))
+      .toEqual(['Social copy: the Threads post has 2 hashtags; at most 1.']);
+    expect(check(socialFile({ threads: 'Clean gutters late in fall. Link in bio.' })))
+      .toEqual(['Social copy: the Threads post says "link in bio"; Threads posts carry their own link, so put the URL in the post.']);
+  });
+
+  test('the Threads post obeys the price and legal rules, its hashtag included', () => {
+    expect(check(socialFile({ threads: 'Our gutter work is guaranteed. #EssexCounty' })))
+      .toEqual(['Social copy: Legal claim: "guaranteed" in the Threads post ("Our gutter work is guaranteed. #EssexCounty")']);
+    expect(check(socialFile({ threads: 'Clean gutters late in fall. #fullyinsured' })))
+      .toEqual(['Social copy: Claim inside the one-case hashtag "#fullyinsured" ("insured"); use plain topic hashtags such as #GutterCleaning.']);
+  });
+
+  test('the Google Business post has no hashtags and no emoji', () => {
+    expect(check(socialFile({ google: 'Clean gutters in late fall in Essex County. #GutterCleaning' })))
+      .toEqual(['Social copy: the Google Business post has hashtags (#GutterCleaning); keep it plain, with none.']);
+    expect(check(socialFile({ google: 'Clean gutters in late fall in Essex County 🍂' })))
+      .toEqual(['Social copy: the Google Business post has emoji; keep it plain sentences.']);
+    // A "#" that is not a hashtag (a unit number) is fine.
+    expect(check(socialFile({ google: 'Clean gutters in late fall in Essex County. Call us about unit #2.' }))).toEqual([]);
   });
 });
 
@@ -260,7 +295,7 @@ test.describe('Q22: publish with social copy (live backend)', () => {
     await request.post(`/api/articles/ingest/${created.id}/unpublish`, { headers: auth });
   });
 
-  test('fix round 1: a file with every post at its limit (2,200 / 1,500 / 280) publishes; the body cap fits the 16 KB field', async ({ request, baseURL }) => {
+  test('fix round 1: a file with every post at its limit (2,200 / 1,500 / 280 / 500) publishes; the body cap fits the 16 KB field', async ({ request, baseURL }) => {
     const created = await (await request.post('/api/articles/ingest', {
       headers: auth, data: { title: `${PREFIX} Limits`, content: body, category: 'Gutter Cleaning' },
     })).json() as { id: string; slug: string };
@@ -274,8 +309,9 @@ test.describe('Q22: publish with social copy (live backend)', () => {
     const instagram = fill('Leaves in your gutters again? ', ' https://www.lavacagc.com/home-services/gutter-cleaning', 2200);
     const google = fill('Clean your gutters in late fall. ', ` ${url}`, 1500);
     const x = fill('Clean gutters in late fall. ', ` ${url}`, 280);
-    expect([instagram.length, google.length, x.length]).toEqual([2200, 1500, 280]);
-    const md = socialFile({ url, instagram, google, x, hashtags: '#GutterCleaning #EssexCounty #NJHomes #FallChecklist #HomeCare' })
+    const threads = fill('Most people clean gutters too early. ', ` ${url}`, 500);
+    expect([instagram.length, google.length, x.length, threads.length]).toEqual([2200, 1500, 280, 500]);
+    const md = socialFile({ url, instagram, google, x, threads, hashtags: '#GutterCleaning #EssexCounty #NJHomes #FallChecklist #HomeCare' })
       .replace('# Social copy: When should you clean gutters in Essex County?', `# Social copy: ${PREFIX} Limits`);
     expect(Buffer.byteLength(md)).toBeGreaterThan(4000);
 
