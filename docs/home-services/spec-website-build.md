@@ -28,6 +28,8 @@ The hero carries two buttons. Primary: "Explore My Service Options" to the home 
 
 One page: service cards with a checkbox each, one "Request These" button, and a home care signup section below the cards.
 
+The prices below are the original spec; every flat price, and the exterior painting job minimum, has since gone up $100 (docs/decisions/005-prices-plus-100-and-ab-testing.md), and `src/lib/home-services/catalog.ts` owns the live prices.
+
 | Service | Starting price | Card description (two lines) |
 | --- | --- | --- |
 | Cabinet repainting | $1,995 per kitchen | Clean, sand, prime and spray paint existing cabinet doors and boxes. Price covers a standard kitchen up to 25 doors and drawers. |

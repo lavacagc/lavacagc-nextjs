@@ -8,6 +8,8 @@ A landing page on the La Vaca website offering seven home services at published 
 
 Market ranges are from NJ 2026 pricing guides. Starting prices sit at or slightly above the low end of market so they attract clicks while leaving room for your premium after sub cost.
 
+The suggested prices below are the original spec; every flat price, and the exterior painting job minimum, has since gone up $100 (docs/decisions/005-prices-plus-100-and-ab-testing.md), and `src/lib/home-services/catalog.ts` owns the live prices.
+
 | Service | NJ market range | Suggested "starting at" | Pricing unit |
 | --- | --- | --- | --- |
 | Cabinet repainting | $1,500 to $6,250 per kitchen (avg $3,500) | $1,995 | Per kitchen, up to 20 doors and drawers |
