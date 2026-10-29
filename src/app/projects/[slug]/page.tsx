@@ -64,8 +64,12 @@ async function getProject(slug: string): Promise<ProjectData | null> {
       .eq('active', true)
       .maybeSingle();
 
-    // If not found by slug, try by ID
-    if (!data && !error) {
+    // If not found by slug, try by ID. Only when the value is shaped like a
+    // uuid: an old or mistyped slug otherwise reaches Postgres as a uuid and
+    // logs "invalid input syntax for type uuid" on every hit (seen in the
+    // production error log since June 2026).
+    const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
+    if (!data && !error && looksLikeUuid) {
       const { data: projectById, error: errorById } = await supabase
         .from('projects')
         .select(
