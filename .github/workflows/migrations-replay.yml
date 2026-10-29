@@ -30,8 +30,11 @@ jobs:
           supabase start -x studio,imgproxy,inbucket,edge-runtime,logflare,vector
           supabase db reset
       - name: Every migration file is recorded as applied
+        # Ask the CLI for the URL: supabase/config.toml is gitignored, so CI
+        # runs on the default ports, not the local rig's 55422.
         run: |
-          applied=$(psql "postgresql://postgres:postgres@127.0.0.1:55422/postgres" -Atc "select count(*) from supabase_migrations.schema_migrations")
+          eval "$(supabase status -o env | grep '^DB_URL=')"
+          applied=$(psql "$DB_URL" -Atc "select count(*) from supabase_migrations.schema_migrations")
           files=$(ls supabase/migrations/*.sql | wc -l | tr -d ' ')
           echo "applied=$applied files=$files"
           test "$applied" = "$files"
