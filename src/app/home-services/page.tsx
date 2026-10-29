@@ -13,7 +13,7 @@ import { s, type StringKey } from '@/lib/home-services/i18n';
 import { LANG_COOKIE, resolveLang } from '@/lib/home-services/lang';
 import ServiceIcon from '@/components/home-services/ServiceIcon';
 import { HOME_SERVICES_CATALOG, t, type Lang } from '@/lib/home-services/catalog';
-import { brandedTitle } from '@/lib/home-services/seo';
+import { brandedTitle, languageAlternates } from '@/lib/home-services/seo';
 
 /**
  * /home-services - the seven priced services and the in-page request flow
@@ -24,7 +24,6 @@ import { brandedTitle } from '@/lib/home-services/seo';
  * `lv_lang` cookie (LP7). Every string comes from i18n.ts or catalog.ts.
  */
 
-const CANONICAL = 'https://www.lavacagc.com/home-services';
 const PHONE_HREF = 'tel:+12012124917';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -38,15 +37,16 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
   const lang = await pageLang(searchParams);
   const title = brandedTitle(s('metaTitle', lang));
   const description = s('metaDescription', lang);
+  const alternates = languageAlternates('/home-services', (await searchParams).lang);
   return {
     title: { absolute: title },
     description,
-    alternates: { canonical: CANONICAL, languages: { en: CANONICAL, es: `${CANONICAL}?lang=es` } },
+    alternates,
     openGraph: {
       title,
       description,
       type: 'website',
-      url: CANONICAL,
+      url: alternates.canonical,
       locale: lang === 'es' ? 'es_US' : 'en_US',
       images: [{ url: 'https://www.lavacagc.com/logo.png', width: 800, height: 800, alt: 'La Vaca General Contractors' }],
     },

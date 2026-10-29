@@ -49,6 +49,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'monthly' as const,
       priority: 0.8,
     })),
+    // The Spanish versions are their own canonical URLs (?lang=es), the ones
+    // Spanish listing links use, so they are listed too.
+    ...['', ...SERVICE_SLUGS.map((slug) => `/${slug}`)].map((suffix) => ({
+      url: `${baseUrl}/home-services${suffix}?lang=es`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly' as const,
+      priority: 0.7,
+    })),
     {
       url: `${baseUrl}/commercial-services`,
       lastModified: currentDate,

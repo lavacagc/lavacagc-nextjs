@@ -14,7 +14,7 @@ import ServiceIcon from '@/components/home-services/ServiceIcon';
 import { getService, SERVICE_SLUGS, t, type Lang } from '@/lib/home-services/catalog';
 import { s } from '@/lib/home-services/i18n';
 import { LANG_COOKIE, resolveLang } from '@/lib/home-services/lang';
-import { brandedTitle, serviceJsonLd, SITE } from '@/lib/home-services/seo';
+import { brandedTitle, languageAlternates, serviceJsonLd, SITE } from '@/lib/home-services/seo';
 
 /**
  * /home-services/<slug> - one page per catalog service (LP8, SEO1, SEO2; audit
@@ -42,15 +42,15 @@ export async function generateMetadata({ params, searchParams }: { params: Param
   const service = getService(slug);
   if (!service) return {};
   const lang = await pageLang(searchParams);
-  const canonical = `${SITE}/home-services/${slug}`;
+  const alternates = languageAlternates(`/home-services/${slug}`, (await searchParams).lang);
   const title = brandedTitle(t(service.seo.title, lang));
   const description = t(service.seo.description, lang);
   return {
     title: { absolute: title },
     description,
     keywords: service.seo.keywords,
-    alternates: { canonical, languages: { en: canonical, es: `${canonical}?lang=es` } },
-    openGraph: { title, description, type: 'website', url: canonical, locale: lang === 'es' ? 'es_US' : 'en_US' },
+    alternates,
+    openGraph: { title, description, type: 'website', url: alternates.canonical, locale: lang === 'es' ? 'es_US' : 'en_US' },
   };
 }
 
