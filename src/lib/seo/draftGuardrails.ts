@@ -16,6 +16,12 @@ export interface Fact {
   key: string;
   value: string;
   description?: string | null;
+  /**
+   * content_facts.lock. The publish guard honours a `claim_*` sentence only
+   * when it is locked: the seeded placeholders ship unlocked until Alex
+   * approves the wording (src/lib/articles/publishGuard.ts).
+   */
+  lock?: boolean | null;
 }
 
 export interface DraftValidation {

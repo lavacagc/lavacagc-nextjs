@@ -7,7 +7,7 @@ import { checkIngestToken, MIN_INGEST_TOKEN_LENGTH } from '../src/lib/projects/i
 import { articleCreateSchema, articleUpdateSchema, parseFeedbackDays, readFaq } from '../src/lib/articles/schemas';
 import { buildSeoFeedback, blogSlugOf, FEEDBACK_MAX_PAGES } from '../src/lib/articles/feedback';
 import { faqPageJsonLd, jsonLdScript } from '../src/lib/articles/faqJsonLd';
-import { checkPublishable, PUBLISH_GUARD_IS_STUB } from '../src/lib/articles/publishGuard';
+import { checkPublishable } from '../src/lib/articles/publishGuard';
 import { blogPagePaths, isRevalidatablePath, REVALIDATE_PREFIXES } from '../src/lib/revalidate';
 import type { SeoMetricRow } from '../src/lib/seo/report';
 
@@ -124,7 +124,9 @@ test.describe('ART1: token unset or short means every article route is 404', () 
   });
 
   test('every article route is self-guarded by authorizeArticles and listed public in middleware', () => {
-    const routes = walk(join(root, 'src/app/api/articles')).filter((f) => f.endsWith('route.ts'));
+    // The one-tap unpublish route (slice G) is the exception: the signed link
+    // is its credential, not the ingest token (tests/articles-publish-guard.spec.ts).
+    const routes = walk(join(root, 'src/app/api/articles')).filter((f) => f.endsWith('route.ts') && !f.includes('/unpublish/[token]/'));
     expect(routes.length).toBe(5);
     for (const file of routes) {
       const src = readFileSync(file, 'utf8');
@@ -244,16 +246,18 @@ test.describe('pure article modules', () => {
     expect(blogPagePaths('new-slug', 'old-slug', '../evil', null)).toEqual(['/blog', '/blog/new-slug', '/blog/old-slug', '/sitemap.xml']);
     // ART9: every blog writer calls it.
     expect(read('src/components/admin/BlogPostList.tsx')).toContain('requestRevalidate(blogPagePaths(');
+    // Publishing from the list or editor goes through the guarded admin route, which revalidates server-side.
+    expect(read('src/app/api/admin/articles/[id]/publish/route.ts')).toContain('revalidateArticlePages(');
     expect(read('src/components/admin/BlogPostEditor.tsx')).toContain('requestRevalidate(blogPagePaths(');
     expect(read('src/app/api/cron/publish/route.ts')).toContain('revalidateArticlePages(');
     expect(read('src/app/api/cron/seo-rollback/route.ts')).toContain('revalidateArticlePages(');
   });
 
-  test('the publish guard is still the documented slice F stub, and the publish route calls it', () => {
-    expect(PUBLISH_GUARD_IS_STUB).toBe(true);
-    expect(checkPublishable({ title: 't', slug: 's', content: 'from $9,000', category: 'c' }, { contentFacts: [] }))
-      .toEqual({ ok: true, reasons: [] });
-    expect(read('src/app/api/articles/ingest/[id]/publish/route.ts')).toContain('checkPublishable(candidate');
+  test('the publish guard is real since slice G (tests/articles-publish-guard.spec.ts), and the publish route runs it', () => {
+    const verdict = checkPublishable({ title: 't', slug: 's', content: 'from $9,000', category: 'c' }, { contentFacts: [] });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.reasons).toContain('Price claim: "from $9,000" in paragraph 1');
+    expect(read('src/app/api/articles/ingest/[id]/publish/route.ts')).toContain('runPublishGuard(candidate)');
   });
 });
 
@@ -381,7 +385,7 @@ test.describe('article routes, CLI and feedback (live backend)', () => {
       title: `${PREFIX} Kitchen Timeline Guide`,
       content: articleMarkdown('How long does a kitchen remodel take?'),
       category: 'Kitchen Remodeling',
-      faq: [{ q: 'How long does a kitchen remodel take?', a: 'Usually six to ten weeks.' }, { q: 'Do you need a permit?', a: 'Your town decides.' }],
+      faq: [{ q: 'How long does a kitchen remodel take?', a: 'Usually six to ten weeks.' }, { q: 'Does the town review the plans?', a: 'Your town decides.' }],
     });
     expect(Object.keys(created).sort()).toEqual(['adminUrl', 'id', 'previewUrl', 'slug']);
     expect(created.id).toMatch(UUID);
@@ -451,7 +455,7 @@ test.describe('article routes, CLI and feedback (live backend)', () => {
     expect(html).toContain('Frequently asked questions');
     const blocks = jsonLdBlocks(html);
     const faq = blocks.find((b) => b['@type'] === 'FAQPage') as { mainEntity: Array<{ name: string; acceptedAnswer: { text: string } }> };
-    expect(faq.mainEntity.map((q) => q.name)).toEqual(['How long does a kitchen remodel take?', 'Do you need a permit?']);
+    expect(faq.mainEntity.map((q) => q.name)).toEqual(['How long does a kitchen remodel take?', 'Does the town review the plans?']);
     const [row] = await rest<Array<{ published_at: string }>>(request, 'GET', `blog_posts?select=published_at&id=eq.${postId}`);
     const posting = blocks.find((b) => b['@type'] === 'BlogPosting')!;
     expect(new Date(posting.datePublished as string).getTime()).toBe(new Date(row.published_at).getTime());
@@ -512,7 +516,8 @@ test.describe('article routes, CLI and feedback (live backend)', () => {
     await page.goto('/vaca-mgmt?tab=blog');
     const row = page.getByRole('row').filter({ hasText: `${PREFIX} Admin Toggle` });
     await expect(row.getByText('From Claude Code')).toBeVisible({ timeout: 30_000 });
-    const revalidated = page.waitForResponse((r) => r.url().endsWith('/api/admin/revalidate') && r.request().method() === 'POST');
+    // Since slice G the list publishes through the guarded admin route, which revalidates on the server.
+    const revalidated = page.waitForResponse((r) => r.url().endsWith(`/api/admin/articles/${draft.id}/publish`) && r.request().method() === 'POST');
     await row.getByTitle('Publish', { exact: true }).click();
     expect((await revalidated).status()).toBe(200);
     expect(await text(request, '/blog')).toContain(draft.slug);

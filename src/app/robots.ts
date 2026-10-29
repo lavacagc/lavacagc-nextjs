@@ -7,12 +7,12 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: 'Googlebot',
         allow: '/',
-        disallow: ['/admin/', '/vaca-mgmt/', '/auth/', '/insurance', '/bond', '/license'],
+        disallow: ['/admin/', '/vaca-mgmt/', '/auth/', '/articles/', '/insurance', '/bond', '/license'],
       },
       {
         userAgent: 'Bingbot',
         allow: '/',
-        disallow: ['/admin/', '/vaca-mgmt/', '/auth/', '/insurance', '/bond', '/license'],
+        disallow: ['/admin/', '/vaca-mgmt/', '/auth/', '/articles/', '/insurance', '/bond', '/license'],
       },
       {
         userAgent: 'facebookexternalhit',
@@ -41,7 +41,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: '*',
         allow: '/',
-        disallow: ['/admin/', '/vaca-mgmt/', '/api/', '/auth/', '/_next/', '/private/', '/insurance', '/bond', '/license', '/brand-kit', '/nextdoor/'],
+        disallow: ['/admin/', '/vaca-mgmt/', '/api/', '/auth/', '/articles/', '/_next/', '/private/', '/insurance', '/bond', '/license', '/brand-kit', '/nextdoor/'],
       },
     ],
     sitemap: 'https://www.lavacagc.com/sitemap.xml',

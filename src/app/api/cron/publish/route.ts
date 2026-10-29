@@ -1,5 +1,19 @@
+/**
+ * GET /api/cron/publish - publish the scheduled blog posts that are due.
+ *
+ * Every post goes through the publish guard first (Phase 2 slice G: the guard
+ * runs on every publish path). A post that passes goes live, its pages are
+ * revalidated, and the owner gets "New article published" with the signed
+ * one-tap unpublish link, because nobody is watching when a schedule fires.
+ * A post that is held stays a draft with `review_hold` set and its schedule
+ * cleared (so tomorrow's run does not hold and notify again), and the owner
+ * gets "Article held for review".
+ */
 import { NextRequest, NextResponse } from 'next/server';
+import { announceHeld, announcePublished, runPublishGuard } from '@/lib/articles/publishFlow';
 import { revalidateArticlePages } from '@/lib/articles/revalidate';
+import { getArticle, holdArticle } from '@/lib/articles/writer';
+import { siteOrigin } from '@/lib/projects/http';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,18 +73,32 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: 'No posts to publish', published: 0 });
     }
 
-    // Publish each post
+    // Publish each post that passes the guard; hold the rest.
+    const origin = siteOrigin(request);
     const published: string[] = [];
+    const held: Array<{ title: string; reasons: string[] }> = [];
     const slugs: string[] = [];
+    const live: Array<NonNullable<Awaited<ReturnType<typeof getArticle>>>> = [];
     for (const post of posts) {
       try {
+        const full = await getArticle(post.id);
+        if (!full) continue;
+        const verdict = await runPublishGuard(full);
+        if (!verdict.ok) {
+          await holdArticle(full, verdict.reasons);
+          await supabaseRest('PATCH', `blog_posts?id=eq.${post.id}`, { scheduled_publish_at: null });
+          held.push({ title: full.title, reasons: verdict.reasons });
+          await announceHeld(origin, full, verdict.reasons);
+          continue;
+        }
         await supabaseRest(
           'PATCH',
           `blog_posts?id=eq.${post.id}`,
-          { published: true, published_at: now, scheduled_publish_at: null, created_at: now, updated_at: now }
+          { published: true, published_at: now, review_hold: null, scheduled_publish_at: null, created_at: now, updated_at: now }
         );
         published.push(post.title);
         slugs.push(post.slug);
+        live.push({ ...full, published: true, published_at: now });
       } catch (err) {
         console.error(`Failed to publish "${post.title}":`, err);
       }
@@ -78,10 +106,13 @@ export async function GET(request: NextRequest) {
 
     // Show them on /blog, their pages and the sitemap now, not after the ISR window.
     if (slugs.length > 0) revalidateArticlePages(...slugs);
+    // Then tell the owner, each with its one-tap undo.
+    for (const post of live) await announcePublished(origin, post);
 
     return NextResponse.json({
       message: `Published ${published.length} posts`,
       published,
+      held,
       checked_at: now,
     });
   } catch (error) {

@@ -41,6 +41,8 @@ export interface ArticleRow {
   published: boolean;
   published_at: string | null;
   review_hold: { reasons: string[]; checked_at: string } | null;
+  /** Who cleared a hold with "Publish anyway" (migration 20261030000002). */
+  review_override: { by: string; at: string; reasons: string[] } | null;
   source: string | null;
   created_at: string;
   updated_at: string;
@@ -48,7 +50,7 @@ export interface ArticleRow {
 
 const ROW_COLUMNS = [
   'id', 'title', 'slug', 'content', 'category', 'excerpt', 'meta_title', 'meta_description',
-  'meta_keywords', 'featured_image', 'faq', 'published', 'published_at', 'review_hold', 'source',
+  'meta_keywords', 'featured_image', 'faq', 'published', 'published_at', 'review_hold', 'review_override', 'source',
   'created_at', 'updated_at',
 ].join(',');
 
@@ -194,13 +196,22 @@ export function mergeArticle(post: ArticleRow, input: ArticleUpdate): ArticleRow
  * Go live (ART4). `published_at` is stamped on the transition from draft to
  * live only; publishing a post that is already live keeps its date (a refresh
  * changes dateModified, not datePublished). Any review hold is cleared.
+ *
+ * Callers run the publish guard first (src/lib/articles/publishFlow.ts). The
+ * one way past a failed guard is `override`, which only the admin-session
+ * route passes: it records the admin's id and the reasons they overrode in
+ * `review_override` (SEC4, PG3).
  */
-export async function publishArticle(post: ArticleRow): Promise<ArticleRow> {
+export async function publishArticle(
+  post: ArticleRow,
+  opts: { override?: { by: string; reasons: string[] } } = {},
+): Promise<ArticleRow> {
   const now = new Date().toISOString();
   await supabaseRest('PATCH', `blog_posts?id=eq.${post.id}`, {
     published: true,
     ...(post.published && post.published_at ? {} : { published_at: now }),
     review_hold: null,
+    ...(opts.override ? { review_override: { by: opts.override.by, at: now, reasons: opts.override.reasons } } : {}),
     scheduled_publish_at: null,
     updated_at: now,
   }, { prefer: 'return=minimal' });
@@ -208,7 +219,7 @@ export async function publishArticle(post: ArticleRow): Promise<ArticleRow> {
 }
 
 /** Record why the guard held a publish; the post stays as it was (PG2 uses this shape). */
-export async function holdArticle(post: ArticleRow, reasons: string[]): Promise<void> {
+export async function holdArticle(post: Pick<ArticleRow, 'id'>, reasons: string[]): Promise<void> {
   await supabaseRest('PATCH', `blog_posts?id=eq.${post.id}`, {
     review_hold: { reasons, checked_at: new Date().toISOString() },
   }, { prefer: 'return=minimal' });
@@ -225,7 +236,7 @@ export async function unpublishArticle(post: ArticleRow): Promise<ArticleRow> {
 
 /** The locked facts (content_facts) the guard and validateDraft read. A small table; capped anyway. */
 export async function loadContentFacts(): Promise<Fact[]> {
-  const rows = await supabaseRest<Fact[]>('GET', 'content_facts?select=key,value,description&limit=100');
+  const rows = await supabaseRest<Fact[]>('GET', 'content_facts?select=key,value,description,lock&limit=100');
   return rows ?? [];
 }
 

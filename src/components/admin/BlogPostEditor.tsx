@@ -22,13 +22,14 @@ import {
 } from '@/components/ui/popover';
 import { MarkdownEditor } from './MarkdownEditor';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, Save, Eye, Upload, X, Clock, CalendarIcon } from 'lucide-react';
+import { Loader2, Save, Eye, Upload, X, Clock, CalendarIcon, AlertTriangle } from 'lucide-react';
 import { convertHeicToJpeg } from '@/utils/heicConverter';
 import { format, parse } from 'date-fns';
 import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { blogPagePaths, requestRevalidate } from '@/lib/revalidate';
+import { adminPublishArticle } from '@/lib/articles/adminPublish';
 
 interface BlogPost {
   id: string;
@@ -46,6 +47,8 @@ interface BlogPost {
   scheduled_publish_at: string | null;
   published_at?: string | null;
   source?: string | null;
+  /** Set by the publish guard when it held a publish (Phase 2 slice G). */
+  review_hold?: { reasons?: string[]; checked_at?: string } | null;
 }
 
 const EASTERN_TZ = 'America/New_York';
@@ -118,6 +121,10 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
   // What the database held when the post was loaded: a save compares against it
   // to stamp published_at on a publish and to revalidate the old slug's page.
   const [loaded, setLoaded] = useState<{ published: boolean; slug: string } | null>(null);
+  // The row this editor writes: the post it opened, or the one its first save created.
+  const [savedId, setSavedId] = useState<string | null>(postId ?? null);
+  // Why the publish guard held this post; shown above the form with "Publish anyway".
+  const [holdReasons, setHoldReasons] = useState<string[]>([]);
 
   // Scheduling state
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
@@ -142,7 +149,11 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
       if (error) throw error;
       setPost(data);
+      setSavedId(data.id);
       setLoaded({ published: !!data.published, slug: data.slug ?? '' });
+      // `review_hold` (Phase 2 migration) is not in the generated types file yet.
+      const hold = (data as { review_hold?: BlogPost['review_hold'] }).review_hold;
+      setHoldReasons(!data.published && Array.isArray(hold?.reasons) ? hold.reasons : []);
 
       // Load scheduling info if present
       if (data.scheduled_publish_at) {
@@ -185,7 +196,14 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     }));
   };
 
-  const handleSave = async () => {
+  /**
+   * Save the post. A draft-to-live change is saved as a draft first and then
+   * published through /api/admin/articles/<id>/publish, so the publish guard
+   * checks exactly what was saved and can hold it (PG4). `override` is
+   * "Publish anyway" (PG3): it saves, then publishes despite the hold, and the
+   * server records the admin's id.
+   */
+  const handleSave = async (opts: { override?: boolean } = {}) => {
     if (!post.title || !post.content || !post.category) {
       toast({
         title: 'Validation Error',
@@ -195,8 +213,8 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
       return;
     }
 
-    // Validate schedule if set
-    if (isScheduled && scheduleDate) {
+    // Validate schedule if set ("Publish anyway" publishes now, schedule or not)
+    if (isScheduled && scheduleDate && !opts.override) {
       const scheduledUtc = easternToUtc(scheduleDate, scheduleTime);
       if (new Date(scheduledUtc) <= new Date()) {
         toast({
@@ -210,7 +228,9 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
     setIsSaving(true);
     try {
-      const willPublish = isScheduled ? false : (post.published || false);
+      const willPublish = opts.override ? true : isScheduled ? false : (post.published || false);
+      // Draft to live goes through the guard on the server, after this write.
+      const goingLive = willPublish && !loaded?.published;
       const postData = {
         title: post.title,
         slug: post.slug || generateSlug(post.title),
@@ -222,24 +242,56 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
         meta_title: post.meta_title || post.title,
         meta_description: post.meta_description || post.excerpt || '',
         meta_keywords: post.meta_keywords || '',
-        // If scheduled, don't publish immediately
-        published: willPublish,
-        // A publish (draft to live) is stamped now; an edit of a live post keeps
-        // its date, and an unpublish keeps the last one for the record.
-        ...(willPublish && !loaded?.published ? { published_at: new Date().toISOString() } : {}),
+        // A draft stays a draft here even when it is about to go live: the
+        // publish route flips it (and stamps published_at) only if the guard
+        // passes. An edit of a live post keeps it live and keeps its date.
+        published: goingLive ? false : willPublish,
         updated_at: new Date().toISOString(),
         // Set scheduled time if scheduling is enabled
-        scheduled_publish_at: isScheduled && scheduleDate
+        scheduled_publish_at: isScheduled && scheduleDate && !opts.override
           ? easternToUtc(scheduleDate, scheduleTime)
           : null,
       };
 
-      if (postId) {
-        const { error } = await supabase.from('blog_posts').update(postData).eq('id', postId);
+      let id = savedId;
+      if (id) {
+        const { error } = await supabase.from('blog_posts').update(postData).eq('id', id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('blog_posts').insert(postData);
+        const { data, error } = await supabase.from('blog_posts').insert(postData).select('id').single();
         if (error) throw error;
+        id = data.id as string;
+        setSavedId(id);
+      }
+
+      if (goingLive && id) {
+        const result = await adminPublishArticle(id, { override: opts.override });
+        if (result.status === 'held') {
+          // Saved as a draft; the reasons show above the form with "Publish anyway".
+          setHoldReasons(result.reasons);
+          setPost((prev) => ({ ...prev, published: false }));
+          setLoaded({ published: false, slug: postData.slug });
+          toast({
+            title: 'Held for review',
+            description: `Saved as a draft. ${result.reasons.length} thing${result.reasons.length === 1 ? '' : 's'} to check before it can go live.`,
+            variant: 'destructive',
+          });
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return;
+        }
+        if (result.status === 'error') {
+          setLoaded({ published: false, slug: postData.slug });
+          toast({ title: 'Saved as a draft', description: `Could not publish: ${result.message}`, variant: 'destructive' });
+          return;
+        }
+        // Published: the route revalidated /blog, the post and the sitemap.
+        setHoldReasons([]);
+        toast({
+          title: result.overridden ? 'Published anyway' : 'Published',
+          description: result.overridden ? 'Published over the review hold; your override is recorded.' : 'Blog post saved and published.',
+        });
+        onSave();
+        return;
       }
 
       // The public blog pages are ISR copies; drop the ones this save touched
@@ -349,6 +401,35 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
   return (
     <div className="space-y-6">
+      {holdReasons.length > 0 && !post.published && (
+        <div role="alert" data-testid="review-hold" className="rounded-lg border border-amber-300 bg-amber-50 p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-semibold text-amber-900">Held for review</h3>
+              <p className="mt-1 text-sm text-amber-900">
+                The publish guard kept this post off the site. Fix what it names and save again, or publish it as it is.
+              </p>
+              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-amber-950" data-testid="review-hold-reasons">
+                {holdReasons.map((reason) => (
+                  <li key={reason} className="break-words">{reason}</li>
+                ))}
+              </ul>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-4 border-amber-400 bg-white text-amber-900 hover:bg-amber-100"
+                onClick={() => handleSave({ override: true })}
+                disabled={isSaving}
+              >
+                {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Publish anyway
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
@@ -672,7 +753,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
               Preview
             </Button>
           )}
-          <Button onClick={handleSave} disabled={isSaving}>
+          <Button onClick={() => handleSave()} disabled={isSaving}>
             {isSaving ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
