@@ -2,6 +2,7 @@
 
 Every published article gets ready-made posts for Alex to paste (decision 006, Q22).
 Write them after the article is created and before the publish, because `publish --social <file>` checks them and carries the caption in the "New article published" Telegram.
+After the publish, `scripts/postiz-drafts.mjs` queues the Facebook caption, the Threads, X and Google Business posts as Postiz drafts from this same file (SKILL.md step 8); Alex approves them in the Postiz calendar.
 
 ## The file
 
@@ -26,6 +27,9 @@ Date: <today, YYYY-MM-DD>
 ## X
 <post>
 
+## Threads
+<post>
+
 ## Hashtags
 #one #two #three
 ```
@@ -38,9 +42,10 @@ The `Article:` URL must be this post on the La Vaca site (`https://www.lavacagc.
 | Post | Limit | What it holds |
 | --- | --- | --- |
 | Instagram and Facebook caption | 2,200 characters | A hook line that names the reader's problem; three plain sentences with the article's answer; a call to the matching La Vaca service page (`https://www.lavacagc.com/home-services/<slug>` or `/services/<slug>`), or `/free-estimate` when no service fits. A link to any other site or page does not count. |
-| Google Business post | 1,500 characters | The answer in two or three sentences, the county from the article, and the article URL. |
+| Google Business post | 1,500 characters | A search surface, not a feed: plain sentences a homeowner searching for the service finds useful, the answer in two or three of them, the town or county from the article, and one closing call with the article URL. No hashtags, no emoji. |
 | X post | 280 characters, URL included | One sentence of the answer and the article URL. |
-| Hashtags | 3 to 5 | Each `#` plus letters and digits only: the service, the county, and NJ home topics (`#BergenCounty`, `#NJHomes`, `#GutterCleaning`). They are read as words (`#FullyInsured` is "Fully Insured"), so the claim rules apply inside them, and a number next to save, off or discount (`#Save20`) is a price claim. A hashtag in one case (`#fullyinsured`) cannot be split, so it is held if it contains any claim word or a number other than a year; write topic hashtags in CamelCase. |
+| Threads post | 500 characters, URL included | Its own text, not the caption: conversational, a hook first, one concrete thing the reader learns (a step, a timing, a mistake to avoid), a question back to the reader if it fits, and the article URL. At most one hashtag; never "link in bio" or an Instagram-only call such as "comment PLAN". |
+| Hashtags | 3 to 5 | Used on Instagram and Facebook only (the drafts script appends them to the Facebook post). Each `#` plus letters and digits only: the service, the county, and NJ home topics (`#BergenCounty`, `#NJHomes`, `#GutterCleaning`). They are read as words (`#FullyInsured` is "Fully Insured"), so the claim rules apply inside them, and a number next to save, off or discount (`#Save20`) is a price claim. A hashtag in one case (`#fullyinsured`) cannot be split, so it is held if it contains any claim word or a number other than a year; write topic hashtags in CamelCase. |
 
 ## Checklist (the publish route enforces every item)
 
@@ -49,6 +54,8 @@ The `Article:` URL must be this post on the La Vaca site (`https://www.lavacagc.
 - [ ] Every fact in a post is in the article; nothing new is claimed on social.
 - [ ] Plain English at grade 8 or below, the same voice as the article ("you" for the homeowner, "we" for La Vaca).
 - [ ] Each post within its limit; 3 to 5 hashtags.
+- [ ] The Threads post: at most one hashtag, no "link in bio".
+- [ ] The Google Business post: no hashtags and no emoji.
 
 If the publish exits 2 with "The social copy did not pass", nothing was published: fix the file and publish again.
 A caption too long for one Telegram (4,096 characters with the rest of the message) is cut there with a note; the file keeps the whole copy.

@@ -1,6 +1,6 @@
 ---
 name: articles
-description: Write, refresh or SEO-edit a La Vaca blog article, publish it through the article CLI, and write its social copy. Use when asked to write a blog post or article, refresh or fix a decaying post, answer an SEO queue action, improve an article for search, AEO or local SEO, or write social posts for an article.
+description: Write, refresh or SEO-edit a La Vaca blog article, publish it through the article CLI, write its social copy and queue it as Postiz drafts. Use when asked to write a blog post or article, refresh or fix a decaying post, answer an SEO queue action, improve an article for search, AEO or local SEO, or write social posts for an article.
 ---
 
 # La Vaca articles
@@ -58,6 +58,8 @@ Claims you leave out (the guard holds them, so write around them):
 
 The detailed AEO and local-SEO checklist is in [references/aeo-local-seo.md](references/aeo-local-seo.md); read it for every new article.
 
+SpecNook links (optional): run `node scripts/ingest-article.mjs specnook-articles` and add at most two, only where the topic genuinely overlaps, never in the opening paragraph and never counted among the three La Vaca links, following [references/specnook-links.md](references/specnook-links.md).
+
 ## 4. Grill the draft
 
 Run every check in [references/grill.md](references/grill.md) against `article.md` and `faq.json`, and fix the draft until each one passes.
@@ -82,7 +84,7 @@ Done when the CLI printed the post id and the preview link.
 
 ## 6. Social copy
 
-Write the article's social copy to `docs/social/<slug>.md` in the repo (the slug the CLI printed), following [references/social.md](references/social.md): an Instagram and Facebook caption, a Google Business post, an X post, 3 to 5 hashtags, the article URL and today's date.
+Write the article's social copy to `docs/social/<slug>.md` in the repo (the slug the CLI printed), following [references/social.md](references/social.md): an Instagram and Facebook caption, a plain Google Business post (no hashtags), an X post, a Threads post of its own, 3 to 5 hashtags, the article URL and today's date.
 It obeys the article's price and legal rules word for word.
 Done when every item in the social.md checklist passes.
 It goes out with the publish below, which checks it like the article and puts the caption in Alex's Telegram.
@@ -101,6 +103,16 @@ node scripts/ingest-article.mjs publish <post id> --social docs/social/<slug>.md
   Only Alex can publish over a hold ("Publish anyway" in the admin); never work around the guard.
 - Exit 1: an error; report it.
 
-## 8. Report
+## 8. Postiz drafts
 
-Tell Alex, in this order: what you published or left held, its URL or admin link, the social copy file, the target and action id, the questions it answers, and the grill result in one line per section.
+Only after exit 0 and the social file's PR is open: queue the posts as Postiz drafts for Alex to approve (never posted from here).
+
+```bash
+node scripts/postiz-drafts.mjs --file docs/social/<slug>.md --postiz "$POSTIZ_URL"
+```
+
+Needs `POSTIZ_API_KEY`, plus `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` for the hosted instance; it skips channels that already have the post, and on a failure (401, 403, 429) you report its message, the article staying published.
+
+## 9. Report
+
+Tell Alex, in this order: what you published or left held, its URL or admin link, the social copy file, the Postiz drafts per channel, the target and action id, the questions it answers, and the grill result in one line per section.

@@ -43,6 +43,7 @@ General knowledge about remodeling is a source only for statements a homeowner c
 - [ ] The opening paragraph answers the question in 25 to 70 words, with no link.
 - [ ] At least one `##` heading; sections follow the questions a homeowner asks next.
 - [ ] At least three internal links, each to a page that exists (open it).
+- [ ] SpecNook links, if any: at most two, each passing every item in [specnook-links.md](specnook-links.md), and none counted among the three internal links.
 - [ ] `faq.json` has 2 to 6 items when the title is a question, and each answer stands alone in one to three sentences.
 
 ## 5. Search fit
