@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { fetchHeroCtaVariants } from '@/lib/cta/variants.server'
+import { HeroCta } from '@/lib/cta/HeroCta'
 
 /**
  * Static, refreshed every five minutes so hero CTA variant edits appear without
@@ -106,7 +107,7 @@ export default async function Home() {
     <div className="min-h-screen bg-background">
       <Header />
       <main id="main-content" className="pb-20 md:pb-0">
-        <Hero ctaVariants={ctaVariants} />
+        <Hero cta={<HeroCta variants={ctaVariants} />} />
 
         {/* Project Gallery — moved up for immediate visual impact */}
         <div id="projects" className="scroll-mt-20">

@@ -1,46 +1,60 @@
 /**
  * Sticky, even, reproducible variant assignment. Pure functions, client-safe.
  *
- * The `cta_v` cookie holds `P=<key>;S=<key>`. A raw `;` or `=` is not legal in
- * a cookie value (the `;` would end the cookie), so the value is stored
- * URI-encoded (`P%3DA%3BS%3DB`) and decoded on read.
+ * The `cta_v` cookie holds `P=<key>;S=<key>;R=<seed>`. `R` is a random
+ * per-visitor assignment seed (32 hex chars) drawn by the pre-paint script on
+ * the first visit; P and S are the keys that visitor was served. A raw `;` or
+ * `=` is not legal in a cookie value, so the value is stored URI-encoded.
+ *
+ * The seed lives here, not in `cta_vid`, because `cta_vid` is server-minted and
+ * httpOnly (it is the COUNTING identity, see /api/cta/event) and does not exist
+ * yet when a first-time visitor's buttons have to be chosen before first paint.
  */
 import type { CtaButton, CtaVariant, CtaVariantKey } from './types';
 import { isCtaVariantKey } from './types';
 
-export type CtaAssignment = Partial<Record<CtaButton, CtaVariantKey>>;
-
-const COOKIE_LETTER: Record<CtaButton, string> = { primary: 'P', secondary: 'S' };
-
 /**
- * FNV-1a, 32-bit. Stable across browsers and releases, which is the point:
- * the same visitor id always maps to the same index for a given active set.
+ * Index of the variant for (seed, button) among `count` active variants.
+ *
+ * FNV-1a over `seed:button`, then the murmur3 fmix32 finalizer, then modulo.
+ * The finalizer is load-bearing: FNV-1a multiplies by an odd prime, so its low
+ * k bits depend only on the low k bits of the input, and `% n` for an even n
+ * reads exactly those bits. Without it the ":primary" and ":secondary" suffixes
+ * shift the low bits by a constant and the two buttons come out perfectly
+ * correlated (with two variants each, only AA and BB were ever served).
+ *
+ * s: seed, b: button name, n: active variant count; short names because the
+ * function ships in the under-1-KB pre-paint script.
+ *
+ * SELF-CONTAINED ON PURPOSE: no references outside its own body, because the
+ * pre-paint script embeds this exact function via `toString()` (see
+ * bootstrap.ts). The browser and the tests therefore run the same code.
  */
-export function stableHash(input: string): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
+export function ctaIndex(s: string, b: string, n: number): number {
+  const t = s + ':' + b;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < t.length; i++) h = Math.imul(h ^ t.charCodeAt(i), 0x01000193);
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return ((h ^ (h >>> 16)) >>> 0) % n;
 }
 
-/**
- * Index of the variant for this visitor among the active ones.
- *
- * The button name is mixed into the hash so the two buttons are assigned
- * independently. Hashing the visitor id alone would pair primary A with
- * secondary A for every visitor whenever both buttons have the same number of
- * variants, and the two tests would confound each other.
- */
 export function pickVariant<T extends Pick<CtaVariant, 'variant_key'>>(
   active: readonly T[],
-  visitorId: string,
+  seed: string,
   button: CtaButton,
 ): T | undefined {
   if (active.length === 0) return undefined;
-  return active[stableHash(`${visitorId}:${button}`) % active.length];
+  return active[ctaIndex(seed, button, active.length)];
 }
+
+export interface CtaAssignment {
+  primary?: CtaVariantKey;
+  secondary?: CtaVariantKey;
+  seed?: string;
+}
+
+export const SEED_PATTERN = /^[0-9a-f]{32}$/;
 
 export function parseAssignmentCookie(raw: string | undefined | null): CtaAssignment {
   const out: CtaAssignment = {};
@@ -52,37 +66,30 @@ export function parseAssignmentCookie(raw: string | undefined | null): CtaAssign
     return out;
   }
   for (const part of decoded.split(';')) {
-    const [letter, key] = part.split('=').map((s) => s.trim());
-    if (!isCtaVariantKey(key)) continue;
-    if (letter === 'P') out.primary = key;
-    else if (letter === 'S') out.secondary = key;
+    const [letter, value] = part.split('=').map((s) => s.trim());
+    if (letter === 'R' && SEED_PATTERN.test(value ?? '')) out.seed = value;
+    else if (!isCtaVariantKey(value)) continue;
+    else if (letter === 'P') out.primary = value;
+    else if (letter === 'S') out.secondary = value;
   }
   return out;
 }
 
 export function serializeAssignmentCookie(assignment: CtaAssignment): string {
   const parts: string[] = [];
-  if (assignment.primary) parts.push(`${COOKIE_LETTER.primary}=${assignment.primary}`);
-  if (assignment.secondary) parts.push(`${COOKIE_LETTER.secondary}=${assignment.secondary}`);
+  if (assignment.primary) parts.push(`P=${assignment.primary}`);
+  if (assignment.secondary) parts.push(`S=${assignment.secondary}`);
+  if (assignment.seed) parts.push(`R=${assignment.seed}`);
   return encodeURIComponent(parts.join(';'));
 }
 
-/**
- * Keep the stored key while it is still active; otherwise assign by hash.
- * Returns the chosen variant (undefined only when `active` is empty).
- */
+/** Keep the stored key while it is still active; otherwise assign by hash of the seed. */
 export function resolveVariant<T extends Pick<CtaVariant, 'variant_key'>>(
   active: readonly T[],
   stored: CtaVariantKey | undefined,
-  visitorId: string,
+  seed: string,
   button: CtaButton,
 ): T | undefined {
   const kept = stored ? active.find((v) => v.variant_key === stored) : undefined;
-  return kept ?? pickVariant(active, visitorId, button);
-}
-
-const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-export function isUuidV4(value: unknown): value is string {
-  return typeof value === 'string' && UUID_V4.test(value);
+  return kept ?? pickVariant(active, seed, button);
 }

@@ -5,7 +5,11 @@
  * POST   { button, wording, subtext?, color?, active? } -> next free key A..G;
  *        409 once a button has seven.
  * PATCH  { button, variant_key, wording?, subtext?, color?, active? };
- *        409 when it would leave a button with no active variant.
+ *        409 when it would leave a button with no active variant, and 409 for
+ *        a wording change on a variant that already has events: its counts
+ *        belong to the old wording, so the change would merge two variants'
+ *        results under one key. Deactivate it and add a new variant instead.
+ *        Subtext and colour edits stay allowed.
  *
  * Every write revalidates '/', so the homepage shows the change on its next
  * request instead of waiting out its 300 second revalidate window.
@@ -15,9 +19,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { supabaseRest, supabaseRestCounted } from '@/lib/notify/supabase-rest';
 import { listVariants, nextFreeKey, variantsForButton } from '@/lib/cta/admin.server';
 import { readCappedJson } from '@/lib/cta/http';
+import { forgetActivePairs } from '@/lib/cta/activePairs.server';
 import { isValidCtaColor } from '@/lib/cta/color';
 import { CTA_BUTTONS, CTA_VARIANT_KEYS, MAX_VARIANTS_PER_BUTTON } from '@/lib/cta/types';
 
@@ -91,6 +96,7 @@ export async function POST(request: NextRequest) {
       button, variant_key: key, wording, subtext: subtext ?? null, color: color ?? null, active: active ?? false,
     }]);
     revalidatePath('/');
+    forgetActivePairs();
     return NextResponse.json({ status: 'created', variant: created?.[0] ?? null }, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -121,12 +127,26 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    if (patch.wording !== undefined && patch.wording !== target.wording) {
+      const events = await supabaseRestCounted<{ id: number }>(
+        `cta_events?select=id&button=eq.${button}&variant_key=eq.${variant_key}&limit=1`,
+      );
+      if ((events.total ?? events.rows.length) > 0) {
+        return fail(
+          409,
+          `Variant ${variant_key} already has ${events.total ?? 'some'} recorded views and clicks under its current wording. ` +
+            'Changing the wording would mix two variants in one result. Deactivate it and add a new variant instead.',
+        );
+      }
+    }
+
     const updated = await supabaseRest<unknown[]>(
       'PATCH',
       `cta_variants?button=eq.${button}&variant_key=eq.${variant_key}`,
       patch,
     );
     revalidatePath('/');
+    forgetActivePairs();
     return NextResponse.json({ status: 'updated', variant: updated?.[0] ?? null });
   } catch (err) {
     return serverError('update', err);

@@ -121,6 +121,24 @@ export default function CtaTestsDashboard() {
       'Variant added (inactive). Switch it on to start showing it.',
     );
 
+  /**
+   * Wording of a variant with events is frozen server-side, so a new wording
+   * becomes a new variant: create it (inactive), switch it on, then switch the
+   * old one off (in that order, so the button never has zero active).
+   */
+  const onReplace = (button: CtaButton) => (oldKey: CtaVariantKey, draft: VariantDraft) =>
+    mutate(async () => {
+      const created = (await ctaApi.create(button, {
+        wording: draft.wording,
+        subtext: draft.subtext,
+        color: draft.color,
+      })) as { variant?: { variant_key?: CtaVariantKey } };
+      const newKey = created.variant?.variant_key;
+      if (!newKey) throw new Error('The new variant was not created');
+      await ctaApi.update(button, newKey, { active: true });
+      await ctaApi.update(button, oldKey, { active: false });
+    }, `Added a new variant and switched ${oldKey} off`);
+
   if (loading && !report) {
     return (
       <div className="flex items-center justify-center p-12 text-muted-foreground">
@@ -187,6 +205,7 @@ export default function CtaTestsDashboard() {
           busy={busy}
           onUpdate={onUpdate(button)}
           onCreate={onCreate(button)}
+          onReplace={onReplace(button)}
         />
       ))}
     </div>

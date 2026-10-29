@@ -2,42 +2,19 @@
 
 import React from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { Star, Shield, Award, Users, ChevronDown } from "lucide-react";
 import { supabase } from '@/integrations/supabase/client';
-import { cn } from "@/lib/utils";
-import { ctaColorStyle } from "@/lib/cta/color";
-import { useHeroCta } from "@/lib/cta/useHeroCta";
-import { CTA_HREF, FALLBACK_VARIANTS, type CtaVariant, type HeroCtaVariants } from "@/lib/cta/types";
 
 // Hero background video - single optimized video for consistent LCP performance
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const DEFAULT_VIDEO = `${SUPABASE_URL}/storage/v1/object/public/hero-videos/hero-background-1.mp4`;
 
 interface HeroProps {
-  /**
-   * Active CTA variants, fetched by the homepage server component so the
-   * client makes no extra request. Defaults to the hardcoded fallback.
-   */
-  ctaVariants?: HeroCtaVariants;
+  /** The CTA pair, rendered on the server (src/lib/cta/HeroCta.tsx). */
+  cta: React.ReactNode;
 }
 
-/** Two lines: the wording, and the optional subtext in smaller type. */
-function CtaLabel({ variant }: { variant: CtaVariant }) {
-  return (
-    <span className="flex flex-col items-center leading-tight">
-      <span>{variant.wording}</span>
-      {variant.subtext && <span className="text-sm font-normal opacity-90 mt-1">{variant.subtext}</span>}
-    </span>
-  );
-}
-
-const CTA_BASE = "text-lg px-8 py-3 min-h-16 h-auto whitespace-normal text-center font-semibold transition-all duration-300";
-
-const Hero = ({ ctaVariants = FALLBACK_VARIANTS }: HeroProps) => {
-  const cta = useHeroCta(ctaVariants);
-  const primaryColor = ctaColorStyle(cta.primary.color);
-  const secondaryColor = ctaColorStyle(cta.secondary.color);
+const Hero = ({ cta }: HeroProps) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
 
   // Start with static data, render immediately
@@ -114,66 +91,10 @@ const Hero = ({ ctaVariants = FALLBACK_VARIANTS }: HeroProps) => {
             <span className="font-semibold text-secondary"> Trusted Renovation Experts</span>
           </p>
 
-          {/* CTA Buttons - real links (crawlable), wording under multivariate test.
-              See src/lib/cta and docs/home-services/reports/slice-c-build.md.
-              Until hydration applies the visitor's own variant the pair is
-              transparent (layout kept, links still in the HTML), so a visitor
-              assigned B never sees A's wording flash first. If JS never runs,
-              the CSS animation reveals the server-rendered variant after 1.5s. */}
-          <style href="hero-cta-reveal" precedence="default">
-            {'.hero-cta-pending{opacity:0;animation:hero-cta-reveal 0s linear 1.5s forwards}@keyframes hero-cta-reveal{to{opacity:1}}'}
-          </style>
-          <div
-            className={cn(
-              "flex flex-col sm:flex-row gap-4 justify-center items-stretch mb-12",
-              cta.ready ? "opacity-100 transition-opacity duration-150" : "hero-cta-pending",
-            )}
-            data-cta-ready={cta.ready ? 'true' : 'false'}
-          >
-            <Button
-              asChild
-              size="lg"
-              className={cn(
-                CTA_BASE,
-                "text-primary-foreground hover:shadow-button hover:scale-105",
-                primaryColor?.className ?? "bg-gradient-to-r from-primary to-accent-tangerine",
-              )}
-              style={primaryColor?.style}
-            >
-              <Link
-                href={CTA_HREF.primary}
-                data-cta-button="primary"
-                data-cta-variant={cta.primary.variant_key}
-                onPointerDown={() => cta.trackClick('primary')}
-                onClick={() => cta.trackClick('primary')}
-              >
-                <CtaLabel variant={cta.primary} />
-              </Link>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              size="lg"
-              className={cn(
-                CTA_BASE,
-                "border-2",
-                secondaryColor
-                  ? cn("text-white hover:text-white hover:opacity-90", secondaryColor.className)
-                  : "border-secondary text-secondary hover:bg-secondary hover:text-secondary-foreground",
-              )}
-              style={secondaryColor?.style}
-            >
-              <Link
-                href={CTA_HREF.secondary}
-                data-cta-button="secondary"
-                data-cta-variant={cta.secondary.variant_key}
-                onPointerDown={() => cta.trackClick('secondary')}
-                onClick={() => cta.trackClick('secondary')}
-              >
-                <CtaLabel variant={cta.secondary} />
-              </Link>
-            </Button>
-          </div>
+          {/* CTA Buttons: server-rendered by src/lib/cta/HeroCta.tsx and passed
+              in from the page, so the pre-paint variant script comes from a
+              server component. Real links, wording under multivariate test. */}
+          {cta}
 
           {/* Trust Indicators */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 max-w-4xl mx-auto">

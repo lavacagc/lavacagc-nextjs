@@ -22,6 +22,8 @@ interface Props {
   busy: boolean;
   onUpdate: (variantKey: CtaVariantKey, patch: VariantPatch) => Promise<boolean>;
   onCreate: (draft: VariantDraft) => Promise<boolean>;
+  /** Add `draft` as a new active variant and deactivate `variantKey`. */
+  onReplace: (variantKey: CtaVariantKey, draft: VariantDraft) => Promise<boolean>;
 }
 
 function LeaderCallout({ report, minVisitors }: { report: CtaButtonReport; minVisitors: number }) {
@@ -80,7 +82,7 @@ function Swatch({ color }: { color: string | null }) {
   );
 }
 
-export function ButtonReportCard({ report, minVisitors, busy, onUpdate, onCreate }: Props) {
+export function ButtonReportCard({ report, minVisitors, busy, onUpdate, onCreate, onReplace }: Props) {
   const [editing, setEditing] = useState<CtaVariantKey | null>(null);
   const [adding, setAdding] = useState(false);
   const full = report.variants.length >= MAX_VARIANTS_PER_BUTTON;
@@ -137,6 +139,16 @@ export function ButtonReportCard({ report, minVisitors, busy, onUpdate, onCreate
               submitLabel="Save"
               busy={busy}
               onCancel={() => setEditing(null)}
+              wordingLocked={
+                v.views + v.clicks > 0
+                  ? {
+                      variantKey: v.variant_key,
+                      onReplace: async (draft) => {
+                        if (await onReplace(v.variant_key, draft)) setEditing(null);
+                      },
+                    }
+                  : undefined
+              }
               onSubmit={async (draft) => {
                 const ok = await onUpdate(v.variant_key, {
                   wording: draft.wording,

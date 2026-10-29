@@ -18,6 +18,12 @@ interface Props {
   busy: boolean;
   onSubmit: (draft: VariantDraft) => void;
   onCancel?: () => void;
+  /**
+   * Set when the variant already has views or clicks. Its wording is then
+   * frozen (the counts belong to it); a new wording is offered as "deactivate
+   * this one and add a new variant" through `onReplace` instead.
+   */
+  wordingLocked?: { variantKey: string; onReplace: (draft: VariantDraft) => void };
 }
 
 /**
@@ -25,12 +31,13 @@ interface Props {
  * adding a new variant. Colour is a hex value (recommended; applied inline) or
  * Tailwind classes, which only render if the class already exists in the site CSS.
  */
-export function VariantEditor({ initial, submitLabel, busy, onSubmit, onCancel }: Props) {
+export function VariantEditor({ initial, submitLabel, busy, onSubmit, onCancel, wordingLocked }: Props) {
   const id = useId();
   const [draft, setDraft] = useState<VariantDraft>(initial);
   const color = draft.color.trim();
   const colorInvalid = color !== '' && !isValidCtaColor(color);
   const wordingMissing = draft.wording.trim() === '';
+  const replacing = !!wordingLocked && draft.wording.trim() !== initial.wording.trim();
 
   return (
     <form
@@ -38,7 +45,8 @@ export function VariantEditor({ initial, submitLabel, busy, onSubmit, onCancel }
       onSubmit={(e) => {
         e.preventDefault();
         if (wordingMissing || colorInvalid) return;
-        onSubmit(draft);
+        if (replacing) wordingLocked!.onReplace(draft);
+        else onSubmit(draft);
       }}
     >
       <div className="space-y-1">
@@ -83,7 +91,7 @@ export function VariantEditor({ initial, submitLabel, busy, onSubmit, onCancel }
       </div>
       <div className="flex gap-2">
         <Button type="submit" disabled={busy || wordingMissing || colorInvalid}>
-          {submitLabel}
+          {replacing ? `Deactivate ${wordingLocked!.variantKey} and add new variant` : submitLabel}
         </Button>
         {onCancel && (
           <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>
@@ -91,6 +99,13 @@ export function VariantEditor({ initial, submitLabel, busy, onSubmit, onCancel }
           </Button>
         )}
       </div>
+      {replacing && (
+        <p className="text-sm text-amber-800 md:col-span-4" role="status">
+          Variant {wordingLocked!.variantKey} already has views or clicks under its current wording, so its wording
+          cannot change. Saving will add a new variant with this wording, switch it on, and switch{' '}
+          {wordingLocked!.variantKey} off. Subtext and colour can be edited in place.
+        </p>
+      )}
     </form>
   );
 }
