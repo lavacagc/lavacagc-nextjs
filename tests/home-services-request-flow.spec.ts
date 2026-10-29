@@ -337,7 +337,7 @@ for (const lang of ['en', 'es'] as const) {
       preferred_contact_method: 'text',
       source: 'home_services:craigslist',
     });
-    expect(leads[0].message).toContain('Gutter cleaning - How many stories?: 2');
+    expect(leads[0].message).toContain('Gutter cleaning - How many stories: 2');
     expect(leads[0].message).toContain('Timing: This week');
     expect(['hot', 'warm', 'cold']).toContain(leads[0].tier);
     expect(typeof leads[0].score).toBe('number');

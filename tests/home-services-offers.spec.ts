@@ -13,6 +13,7 @@ import {
 import {
   confirmablePrice, extendedExpiry, offerExclusion, recipientView,
 } from '../src/lib/home-services/offerRules';
+import { describeAnswers } from '../src/lib/home-services/catalog';
 import { answerLinesFor, countyForRequest, countyForTown, summarizeRequests, tradesForServices } from '../src/lib/home-services/requestsAdmin';
 import { buildNotice, buildOfferEmail, buildOfferSms } from '../src/lib/home-services/offerEmail';
 import { retrySpecNookPushes } from '../src/lib/home-services/offers';
@@ -53,6 +54,14 @@ test.describe('pricing and offer rules (pure)', () => {
     expect(subPayViolation(0, 100)).toMatch(/Customer price/);
     expect(parseDollarsToCents('$1,400.50')).toBe(140050);
     expect(parseDollarsToCents('abc')).toBeNull();
+  });
+
+  test('answer lines read as statements in both languages, without question marks', () => {
+    const answers = { 'gutter-cleaning': { stories: '2' } };
+    expect(describeAnswers(['gutter-cleaning'], answers, 'en')).toEqual(['Gutter cleaning - How many stories: 2']);
+    const [es] = describeAnswers(['gutter-cleaning'], answers, 'es');
+    expect(es).toContain('Cuántos pisos: 2');
+    expect(es).not.toMatch(/[?¿]/);
   });
 
   test('BD3: eligibility is approved + trade + county (or none) + nothing expired', () => {

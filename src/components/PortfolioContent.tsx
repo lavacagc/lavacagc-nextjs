@@ -11,6 +11,7 @@ import { useScrollTracking } from '@/hooks/useScrollTracking';
 import { useHorizontalScrollTracking } from '@/hooks/useHorizontalScrollTracking';
 import { trackEvent } from '@/services/analyticsManager';
 import { ScrollHint } from '@/components/ScrollHint';
+import { LazyProjectVideo } from '@/components/LazyProjectVideo';
 
 interface Project {
   id: string;
@@ -86,6 +87,16 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
     return featured?.image_url || project.project_images?.[0]?.image_url || '/placeholder.svg';
   };
 
+  /**
+   * A still for a project whose card is a video.
+   *
+   * Uses a photograph the project already has, so the card shows real work
+   * immediately instead of a grey box - and so the video underneath can be
+   * `preload="none"`. Undefined when a project is video-only.
+   */
+  const getPosterImage = (project: Project) =>
+    project.project_images?.find(img => img.media_type !== 'video')?.image_url;
+
   const getProjectDescription = (project: Project) => {
     return project.challenge || project.solution || 'Quality construction and renovation services.';
   };
@@ -144,12 +155,12 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
               the photos for a 664 px viewport (the wrapped grid was 267 px tall
               and sat on top of every project card; Alex, 2026-10-29). */}
           <div className="flex items-center justify-between gap-2 sm:gap-4">
-            <div className="flex items-center gap-2 shrink-0" aria-label="Filter by type">
+            <div className="flex items-center gap-2 shrink-0">
               <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-text-secondary" />
               <span className="hidden sm:inline font-medium text-sm sm:text-base text-text-primary">Filter by Type:</span>
             </div>
 
-            <div className="min-w-0 flex-1 sm:flex-none flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div role="group" aria-label="Filter by type" className="min-w-0 flex-1 sm:flex-none flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {categories.map((category) => (
                 <Button
                   key={category}
@@ -200,13 +211,11 @@ export default function PortfolioContent({ projects, defaultFilter }: PortfolioC
                     }}
                   >
                     {(project.project_images?.find(img => img.is_featured) || project.project_images?.[0])?.media_type === 'video' ? (
-                      <video
+                      <LazyProjectVideo
                         src={getProjectImage(project)}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
+                        title={project.title}
+                        poster={getPosterImage(project)}
+                        className="h-full w-full"
                       />
                     ) : (
                       <Image
