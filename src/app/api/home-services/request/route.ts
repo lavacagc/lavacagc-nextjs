@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
       }, { prefer: 'return=minimal' });
       const claimed = await claimDraftPhotos(prior.id, body.draft_token ?? undefined, body.photo_ids);
       console.log(`[home-services/request] merged into ${prior.id} (+${claimed.length} photos)`);
-      return NextResponse.json({ ok: true, request_id: prior.id, status: prior.status, verification: 'skipped', merged: true });
+      return NextResponse.json({ ok: true, request_id: randomUUID(), status: 'new', verification: 'skipped', merged: true });
     }
 
     // ---- leads row: the existing pipeline's record --------------------------

@@ -52,21 +52,31 @@ export async function POST(request: NextRequest) {
     const idLimit = await checkRateLimit(`hs-verify-req:${requestId}`, VERIFY_MAX_ATTEMPTS * 3, 60 * 60 * 1000);
     if (!ipLimit.allowed || !idLimit.allowed) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
-    const rows = await supabaseRest<HeldRow[]>(
-      'GET',
-      `home_service_requests?select=id,lead_id,status,services,answers,first_name,last_name,phone,email,address,town,zip,timing,notes,language,source,listing_id,phone_verified,verify_code_hash,verify_expires_at,verify_attempts&id=eq.${requestId}&limit=1`,
-    );
-    const row = rows?.[0];
-    if (!row) return invalid();
-    if (row.phone_verified) return NextResponse.json({ ok: true, status: row.status });
-    if (row.status !== 'held' || !row.verify_code_hash) return invalid();
-    if (row.verify_attempts >= VERIFY_MAX_ATTEMPTS) return invalid();
-    if (!row.verify_expires_at || Date.parse(row.verify_expires_at) < Date.now()) return invalid();
+    let row: HeldRow | undefined;
+    let reserved = false;
+    for (let tries = 0; tries < 2 && !reserved; tries++) {
+      const rows = await supabaseRest<HeldRow[]>(
+        'GET',
+        `home_service_requests?select=id,lead_id,status,services,answers,first_name,last_name,phone,email,address,town,zip,timing,notes,language,source,listing_id,phone_verified,verify_code_hash,verify_expires_at,verify_attempts&id=eq.${requestId}&limit=1`,
+      );
+      row = rows?.[0];
+      if (!row) return invalid();
+      if (row.phone_verified) return NextResponse.json({ ok: true, status: row.status });
+      if (row.status !== 'held' || !row.verify_code_hash) return invalid();
+      if (row.verify_attempts >= VERIFY_MAX_ATTEMPTS) return invalid();
+      if (!row.verify_expires_at || Date.parse(row.verify_expires_at) < Date.now()) return invalid();
 
-    if (!codeMatches(code, row.verify_code_hash)) {
-      await supabaseRest('PATCH', `home_service_requests?id=eq.${row.id}`, { verify_attempts: row.verify_attempts + 1 }, { prefer: 'return=minimal' });
-      return invalid();
+      const claimed = await supabaseRest<Array<{ id: string }>>(
+        'PATCH',
+        `home_service_requests?id=eq.${row.id}&status=eq.held&verify_attempts=eq.${row.verify_attempts}` +
+          `&verify_code_hash=eq.${encodeURIComponent(row.verify_code_hash)}&select=id`,
+        { verify_attempts: row.verify_attempts + 1 },
+      );
+      reserved = Boolean(claimed?.length);
     }
+    if (!row || !reserved || !row.verify_code_hash) return invalid();
+
+    if (!codeMatches(code, row.verify_code_hash)) return invalid();
 
     // Conditional on still being held, so two racing correct submits alert once.
     const updated = await supabaseRest<Array<{ id: string }>>(

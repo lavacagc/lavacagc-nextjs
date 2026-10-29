@@ -374,7 +374,9 @@ for (const lang of ['en', 'es'] as const) {
     const submitted = page.waitForResponse('**/api/home-services/request');
     await flow.getByRole('button', { name: L('Send my request', 'Enviar mi solicitud') }).click();
     const body = await (await submitted).json();
-    expect(body).toMatchObject({ ok: true, merged: true, request_id: firstBody.request_id });
+    expect(body).toMatchObject({ ok: true, merged: true, status: 'new', verification: 'skipped' });
+    expect(body.request_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(body.request_id).not.toBe(firstBody.request_id);
     await expect(flow.getByTestId('done-merged')).toHaveText(
       L(
         'We already had a request for this address and service from today, so we added this to it.',
@@ -591,7 +593,7 @@ test('RF8 (partial): the code field verifies a held request and flips it to new'
   const [row] = await rest<Array<{ status: string; phone_verified: boolean; verify_attempts: number }>>(
     `home_service_requests?select=status,phone_verified,verify_attempts&id=eq.${held.id}`,
   );
-  expect(row).toMatchObject({ status: 'new', phone_verified: true, verify_attempts: 1 });
+  expect(row).toMatchObject({ status: 'new', phone_verified: true, verify_attempts: 2 });
 });
 
 test('SEC3: verify answers the same for an unknown request and a wrong code', async ({ request }) => {
