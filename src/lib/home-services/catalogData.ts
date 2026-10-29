@@ -42,8 +42,12 @@ let warnedSeed = false;
  *
  * Without SUPABASE_SECRET_KEY (the stub-backed test build and CI, which have no
  * database) the day-one seed stands in so the pages still render. Production
- * always has the key; when the configured read fails it throws rather than
- * render a price the admin may since have changed.
+ * always has the key; when the configured read fails (the table not migrated
+ * yet because the deploy landed before the Supabase integration ran, or a
+ * database outage) the seed stands in as well and the failure is logged, so
+ * the landing and service pages never 500 over a price the admin may since
+ * have changed. Verified 2026-10-29 on a preview against a database without the
+ * table: the pages returned 500 before this fallback.
  */
 export async function getAllServices(): Promise<HomeService[]> {
   if (!process.env.SUPABASE_SECRET_KEY) {
@@ -53,8 +57,13 @@ export async function getAllServices(): Promise<HomeService[]> {
     }
     return HOME_SERVICES_SEED.map((content, i) => rowToService(contentToRow(content, i + 1)));
   }
-  const rows = await readRows();
-  return rows.filter((row) => isServiceSlug(row.slug)).map(rowToService);
+  try {
+    const rows = await readRows();
+    return rows.filter((row) => isServiceSlug(row.slug)).map(rowToService);
+  } catch (err) {
+    console.error('home services: table read failed, rendering the day-one seed:', err instanceof Error ? err.message : String(err));
+    return HOME_SERVICES_SEED.map((content, i) => rowToService(contentToRow(content, i + 1)));
+  }
 }
 
 /** The active services, in `sort` order: what the landing page, the sitemap and the flow show. */
