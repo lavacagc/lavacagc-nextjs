@@ -181,6 +181,7 @@ export default function RequestDetail({ id, onChanged }: { id: string; onChanged
           <Field label="Merged">{r.merged_count > 0 ? `${r.merged_count} later request(s) merged in` : 'No'}</Field>
           <Field label="Created">{formatWhen(r.created_at)}</Field>
           {r.status === 'won' && <Field label="Won">{r.customer_price_cents ? formatDollars(r.customer_price_cents) : '-'} · {formatWhen(r.won_at)}</Field>}
+          {r.status === 'won' && <Field label="Paid">{r.paid_at ? formatWhen(r.paid_at) : 'Not yet'}</Field>}
           {r.status === 'lost' && <Field label="Lost reason">{r.lost_reason ?? '-'}</Field>}
         </dl>
       </section>
@@ -237,6 +238,11 @@ export default function RequestDetail({ id, onChanged }: { id: string; onChanged
           </Button>
           <Button size="sm" variant="outline" className="border-green-400 text-green-800" onClick={() => setOutcome(outcome === 'won' ? null : 'won')} aria-expanded={outcome === 'won'} data-testid="sr-won">Mark won</Button>
           <Button size="sm" variant="outline" onClick={() => setOutcome(outcome === 'lost' ? null : 'lost')} aria-expanded={outcome === 'lost'} data-testid="sr-lost">Mark lost</Button>
+          {r.status === 'won' && !r.paid_at && (
+            <Button size="sm" variant="outline" className="border-green-400 text-green-800" disabled={!!busy} onClick={() => void patch({ action: 'paid' }, 'mark paid')} data-testid="sr-paid">
+              {busy === 'mark paid' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Mark paid'}
+            </Button>
+          )}
         </div>
         {outcome === 'won' && (
           <form

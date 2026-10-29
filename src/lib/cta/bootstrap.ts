@@ -37,6 +37,10 @@ export interface CtaBootstrapConfig {
  * asserted in tests/cta-tests.spec.ts). No comments inside the body:
  * toString() would ship them.
  *
+ * A crawler (the bot filter's allow-list and the generic bot words) returns
+ * at once: nothing is assigned, stored or sent, and CSS shows the first link,
+ * which is the control (experiments slice H: crawlers always get the control).
+ *
  * c: config. x: ctaIndex. The cookie name `cta_v` (CTA_ASSIGN_COOKIE) is
  * spelled out because it is fixed; the spec asserts the two agree. The stored value is read in its encoded
  * form (`P%3DA%3BS%3DB%3BR%3D<seed>`), so nothing here can throw on a
@@ -47,6 +51,7 @@ export interface CtaBootstrapConfig {
  */
 export function ctaBootstrap(c: CtaBootstrapConfig, x: (seed: string, button: string, count: number) => number): void {
   try {
+    if (/bot|crawl|spider|slurp|fetch|preview|facebook|instagram|whatsapp|pinterest|google-|lighthouse/i.test(navigator.userAgent)) return;
     const D = document, d = D.documentElement, m = D.cookie.match(/(?:^|;\s*)cta_v=([^;]*)/), o: Record<string, string> = {}, q: string[] = [];
     let r: string, v: string;
     if (m) m[1].split('%3B').forEach((p) => { const k = p.split('%3D'); o[k[0]] = k[1]; });
@@ -81,7 +86,10 @@ export function compactJs(source: string): string {
 
 /** The bootstrap config for these variants (fallback buttons contribute no keys). */
 export function heroCtaBootstrapConfig(variants: HeroCtaVariants): CtaBootstrapConfig {
-  const keys = (list: HeroCtaVariants['primary']) => list.filter((v) => !v.fallback).map((v) => v.variant_key).join('');
+  // Key order, whatever the render order (the control renders first): the
+  // hash indexes the sorted keys, exactly as the server-side assignment does
+  // (src/lib/experiments/assign.ts).
+  const keys = (list: HeroCtaVariants['primary']) => list.filter((v) => !v.fallback).map((v) => v.variant_key).sort().join('');
   return { p: keys(variants.primary), s: keys(variants.secondary), a: CTA_COOKIE_MAX_AGE };
 }
 

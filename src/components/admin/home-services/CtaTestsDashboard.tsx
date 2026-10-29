@@ -1,7 +1,9 @@
 'use client';
 
 /**
- * Marketing > CTA Tests: the homepage hero buttons under multivariate test.
+ * The homepage hero buttons, inside Marketing > Experiments (Phase 1's
+ * "CTA Tests"; since Phase 2 slice H the experiments hero-primary and
+ * hero-secondary, with the Phase 1 cta_events counts shown as history).
  *
  * Per button and variant: views, clicks, requests, valid leads, won jobs and
  * rates; the leader (named only once every active variant has the minimum
@@ -162,10 +164,10 @@ export default function CtaTestsDashboard() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold">CTA Tests</h2>
+          <h3 id="exp-hero" className="text-lg font-semibold">Homepage buttons (hero-primary, hero-secondary)</h3>
           <p className="text-sm text-muted-foreground">
-            Homepage hero buttons. Each visitor keeps the variant they first saw; views and clicks count once per
-            visitor per variant.
+            The Phase 1 CTA test, now two experiments. Each visitor keeps the variant they first saw; views and clicks
+            count once per visitor per variant.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading || busy}>
@@ -208,6 +210,31 @@ export default function CtaTestsDashboard() {
           onReplace={onReplace(button)}
         />
       ))}
+
+      {report.history.length > 0 && (
+        <Card data-testid="cta-history">
+          <CardHeader className="space-y-1 pb-3">
+            <CardTitle className="text-base">Phase 1 history (read only)</CardTitle>
+            <CardDescription>
+              Views and clicks recorded in cta_events before the buttons became experiments. Visitors with a signed id
+              were carried into the experiments above; nothing writes this table any more.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y text-sm">
+              {report.history.map((h) => (
+                <li key={`${h.button}-${h.variant_key}`} className="flex flex-wrap gap-x-4 py-1.5">
+                  <span className="w-24 text-muted-foreground">{h.button}</span>
+                  <span className="w-6 font-semibold">{h.variant_key}</span>
+                  <span className="min-w-0 flex-1">{h.wording}</span>
+                  <span className="tabular-nums">{h.views} views</span>
+                  <span className="tabular-nums">{h.clicks} clicks</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

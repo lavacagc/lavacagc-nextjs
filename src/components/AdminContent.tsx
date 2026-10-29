@@ -42,7 +42,7 @@ const ServiceRequestsManager = dynamic(() => import('@/components/admin/home-ser
 const SubsManager = dynamic(() => import('@/components/admin/home-services/SubsManager'), { ssr: false });
 const PricingReport = dynamic(() => import('@/components/admin/home-services/PricingReport'), { ssr: false });
 const ServicesPricesEditor = dynamic(() => import('@/components/admin/home-services/ServicesPricesEditor'), { ssr: false });
-const CtaTestsDashboard = dynamic(() => import('@/components/admin/home-services/CtaTestsDashboard'), { ssr: false });
+const ExperimentsDashboard = dynamic(() => import('@/components/admin/experiments/ExperimentsDashboard'), { ssr: false });
 const CMSPageEditor = dynamic(() => import('@/components/admin/CMSPageEditor').then(m => ({ default: m.CMSPageEditor })), { ssr: false });
 import { BannerManager } from '@/components/admin/BannerManager';
 import { ComplianceDocumentsManager } from '@/components/admin/ComplianceDocumentsManager';
@@ -61,7 +61,8 @@ export default function AdminContent() {
     if (typeof window === 'undefined') return 'dashboard';
     const params = new URLSearchParams(window.location.search);
     if (params.has('project')) return 'projects';
-    const tab = params.get('tab');
+    // `cta-tests` was the Phase 1 name of the Experiments tab; old links still land there.
+    const tab = params.get('tab') === 'cta-tests' ? 'experiments' : params.get('tab');
     return tab && ADMIN_TAB_IDS.includes(tab) ? tab : 'dashboard';
   });
   const [editingPost, setEditingPost] = useState<string | null>(null);
@@ -314,8 +315,8 @@ export default function AdminContent() {
             <ServicesPricesEditor />
           </TabsContent>
 
-          <TabsContent value="cta-tests">
-            <CtaTestsDashboard />
+          <TabsContent value="experiments">
+            <ExperimentsDashboard />
           </TabsContent>
 
           <TabsContent value="new-post">

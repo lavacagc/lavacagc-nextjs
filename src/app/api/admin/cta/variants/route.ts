@@ -11,20 +11,27 @@
  *        results under one key. Deactivate it and add a new variant instead.
  *        Subtext and colour edits stay allowed.
  *
- * Every write revalidates '/', so the homepage shows the change on its next
- * request instead of waiting out its 300 second revalidate window.
+ * Since Phase 2 slice H the variants are entries of the experiments
+ * hero-primary / hero-secondary (payload { wording, subtext?, color? }, a hex
+ * colour only, copy that states no price, phone or license), and "has events"
+ * means experiment_events rows. Writes are guarded by the experiment's
+ * updated_at (a concurrent edit answers 409, reload and retry).
+ *
+ * Every write expires the experiments cache and revalidates '/', so the
+ * homepage shows the change on its next request instead of waiting out its
+ * 300 second revalidate window.
  *
  * Admin auth is enforced by middleware on /api/admin/*. Secret key only.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { supabaseRest, supabaseRestCounted } from '@/lib/notify/supabase-rest';
+import { supabaseRestCounted } from '@/lib/notify/supabase-rest';
 import { listVariants, nextFreeKey, variantsForButton } from '@/lib/cta/admin.server';
+import { heroKey, heroPayload, readHeroRow, type HeroRow } from '@/lib/cta/heroStore.server';
 import { readCappedJson } from '@/lib/cta/http';
-import { forgetActivePairs } from '@/lib/cta/activePairs.server';
-import { isValidCtaColor } from '@/lib/cta/color';
-import { CTA_BUTTONS, CTA_VARIANT_KEYS, MAX_VARIANTS_PER_BUTTON } from '@/lib/cta/types';
+import { CTA_BUTTONS, CTA_VARIANT_KEYS, MAX_VARIANTS_PER_BUTTON, type CtaButton } from '@/lib/cta/types';
+import { invalidateExperiments, updateExperiment } from '@/lib/experiments/store.server';
+import { forbiddenClaim, HEX_COLOR_RE, type ExperimentVariant } from '@/lib/experiments/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -35,15 +42,21 @@ const MAX_BODY_BYTES = 2048;
 const optionalText = (max: number) =>
   z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? null : typeof v === 'string' ? v.trim() : v),
-    z.string().max(max).nullable(),
+    z.string().max(max).nullable().superRefine(noClaims),
   );
 
 const colorField = z.preprocess(
   (v) => (typeof v === 'string' && v.trim() === '' ? null : typeof v === 'string' ? v.trim() : v),
-  z.string().max(120).refine(isValidCtaColor, 'Use a hex colour like #1f7a4d, or Tailwind classes').nullable(),
+  z.string().max(120).regex(HEX_COLOR_RE, 'Use a hex colour like #1f7a4d').nullable(),
 );
 
-const wordingField = z.string().trim().min(1, 'Wording is required').max(60);
+/** Copy rules of every experiment payload: no price, phone number or license. */
+const noClaims = (value: string | null | undefined, ctx: z.RefinementCtx) => {
+  const reason = value ? forbiddenClaim(value) : null;
+  if (reason) ctx.addIssue({ code: 'custom', message: reason });
+};
+
+const wordingField = z.string().trim().min(1, 'Wording is required').max(60).superRefine(noClaims);
 
 const createSchema = z.object({
   button: z.enum(CTA_BUTTONS),
@@ -79,6 +92,21 @@ export async function GET() {
   }
 }
 
+async function heroOr404(button: CtaButton): Promise<HeroRow | NextResponse> {
+  const row = await readHeroRow(button);
+  return row ?? fail(404, `The ${button} button has no experiment (${heroKey(button)}). Apply migration 20261030000003_cta_to_experiments.sql.`);
+}
+
+/** Write the button's variants, only if nobody changed the experiment since it was read. */
+async function saveVariants(button: CtaButton, row: HeroRow, variants: ExperimentVariant[]): Promise<boolean> {
+  const updated = await updateExperiment(heroKey(button), { variants }, row.updated_at);
+  if (!updated) return false;
+  invalidateExperiments(['/']);
+  return true;
+}
+
+const busy = () => fail(409, 'Another change was just saved. Reload and try again.');
+
 export async function POST(request: NextRequest) {
   const body = await readCappedJson(request, MAX_BODY_BYTES);
   if ('error' in body) return fail(body.status, body.error);
@@ -87,22 +115,23 @@ export async function POST(request: NextRequest) {
   const { button, wording, subtext, color, active } = parsed.data;
 
   try {
+    const row = await heroOr404(button);
+    if (row instanceof NextResponse) return row;
     const existing = await variantsForButton(button);
     const key = nextFreeKey(existing.map((v) => v.variant_key));
     if (!key) {
       return fail(409, `The ${button} button already has ${MAX_VARIANTS_PER_BUTTON} variants (A to G). Edit one instead.`);
     }
-    const created = await supabaseRest<unknown[]>('POST', 'cta_variants', [{
-      button, variant_key: key, wording, subtext: subtext ?? null, color: color ?? null, active: active ?? false,
-    }]);
-    revalidatePath('/');
-    forgetActivePairs();
-    return NextResponse.json({ status: 'created', variant: created?.[0] ?? null }, { status: 201 });
+    const variant: ExperimentVariant = {
+      key,
+      label: wording,
+      active: active ?? false,
+      payload: heroPayload({ wording, subtext: subtext ?? null, color: color ?? null }),
+    };
+    if (!(await saveVariants(button, row, [...row.variants, variant]))) return busy();
+    const created = (await variantsForButton(button)).find((v) => v.variant_key === key) ?? null;
+    return NextResponse.json({ status: 'created', variant: created }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    // Two admins creating at once can race for the same key; the unique
-    // (button, variant_key) constraint catches it.
-    if (/23505|duplicate key/i.test(message)) return fail(409, 'Another variant was just added. Reload and try again.');
     return serverError('create', err);
   }
 }
@@ -116,9 +145,12 @@ export async function PATCH(request: NextRequest) {
   if (Object.keys(patch).length === 0) return fail(400, 'Nothing to update');
 
   try {
+    const row = await heroOr404(button);
+    if (row instanceof NextResponse) return row;
     const existing = await variantsForButton(button);
     const target = existing.find((v) => v.variant_key === variant_key);
-    if (!target) return fail(404, `There is no ${button} variant ${variant_key}`);
+    const stored = row.variants.find((v) => v.key === variant_key);
+    if (!target || !stored) return fail(404, `There is no ${button} variant ${variant_key}`);
 
     if (patch.active === false && target.active) {
       const othersActive = existing.filter((v) => v.active && v.variant_key !== variant_key).length;
@@ -129,7 +161,7 @@ export async function PATCH(request: NextRequest) {
 
     if (patch.wording !== undefined && patch.wording !== target.wording) {
       const events = await supabaseRestCounted<{ id: number }>(
-        `cta_events?select=id&button=eq.${button}&variant_key=eq.${variant_key}&limit=1`,
+        `experiment_events?select=id&experiment_key=eq.${heroKey(button)}&variant_key=eq.${variant_key}&limit=1`,
       );
       if ((events.total ?? events.rows.length) > 0) {
         return fail(
@@ -140,14 +172,21 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const updated = await supabaseRest<unknown[]>(
-      'PATCH',
-      `cta_variants?button=eq.${button}&variant_key=eq.${variant_key}`,
-      patch,
-    );
-    revalidatePath('/');
-    forgetActivePairs();
-    return NextResponse.json({ status: 'updated', variant: updated?.[0] ?? null });
+    const wording = patch.wording ?? target.wording;
+    const next: ExperimentVariant = {
+      ...stored,
+      label: wording,
+      active: patch.active ?? stored.active !== false,
+      payload: heroPayload({
+        wording,
+        subtext: patch.subtext !== undefined ? patch.subtext : target.subtext,
+        color: patch.color !== undefined ? patch.color : target.color,
+      }),
+    };
+    const variants = row.variants.map((v) => (v.key === variant_key ? next : v));
+    if (!(await saveVariants(button, row, variants))) return busy();
+    const updated = (await variantsForButton(button)).find((v) => v.variant_key === variant_key) ?? null;
+    return NextResponse.json({ status: 'updated', variant: updated });
   } catch (err) {
     return serverError('update', err);
   }

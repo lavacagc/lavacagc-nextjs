@@ -58,6 +58,10 @@ export interface HomeServiceRequestRow {
   customer_price_cents: number | null;
   lost_reason: string | null;
   won_at: string | null;
+  /** When Alex marked the job paid (slice H: the job_paid funnel step). */
+  paid_at: string | null;
+  /** The signed visitor id the request was sent with (slice H: funnel attribution). */
+  visitor_id: string | null;
   admin_notes: string;
   specnook_job_id: string | null;
   created_at: string;
@@ -69,7 +73,7 @@ export const REQUEST_ADMIN_COLUMNS = [
   'id', 'lead_id', 'status', 'services', 'answers', 'language', 'first_name', 'last_name', 'phone', 'email',
   'address', 'town', 'zip', 'in_service_area', 'timing', 'notes', 'consent_sms', 'source', 'listing_id', 'utm',
   'landing_path', 'cta_variant_primary', 'cta_variant_secondary', 'captcha_score', 'phone_verified',
-  'phone_verified_at', 'merged_count', 'customer_price_cents', 'lost_reason', 'won_at', 'admin_notes',
+  'phone_verified_at', 'merged_count', 'customer_price_cents', 'lost_reason', 'won_at', 'paid_at', 'visitor_id', 'admin_notes',
   'specnook_job_id', 'created_at', 'updated_at',
 ].join(',');
 

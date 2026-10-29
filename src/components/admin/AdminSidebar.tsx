@@ -73,8 +73,9 @@ const NAVIGATION: NavItem[] = [
       { id: 'conversions', icon: TrendingUp, label: 'Conversions' },
       { id: 'gmb', icon: Activity, label: 'Google Reviews' },
       { id: 'preferences', icon: Users, label: 'Subscriptions' },
-      // Home Services build (docs/home-services): hero button multivariate tests.
-      { id: 'cta-tests', icon: FlaskConical, label: 'CTA Tests' },
+      // Phase 2 slice H: every experiment, the homepage hero buttons (the Phase 1
+      // CTA Tests) included, with their Phase 1 history.
+      { id: 'experiments', icon: FlaskConical, label: 'Experiments' },
     ],
   },
   {

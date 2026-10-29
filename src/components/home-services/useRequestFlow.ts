@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { sendRequestStarted } from '@/lib/experiments/client';
 
 /** Warm the flow's chunk before the first open, so the sheet appears instantly. */
 export function preloadRequestFlow(): void {
@@ -103,5 +104,10 @@ export function useHashSheet(hash: string, { openOnHash = false }: { openOnHash?
 /** The request flow sheet: `#request`. */
 export function useRequestFlow(options: { openOnHash?: boolean } = {}) {
   const sheet = useHashSheet('#request', options);
+  // The `request_started` funnel step (slice H): the server attributes it to
+  // the experiments this visitor was shown, if any; once per page load.
+  useEffect(() => {
+    if (sheet.open) sendRequestStarted();
+  }, [sheet.open]);
   return { open: sheet.open, mounted: sheet.mounted, openFlow: sheet.openSheet, closeFlow: sheet.closeSheet };
 }
