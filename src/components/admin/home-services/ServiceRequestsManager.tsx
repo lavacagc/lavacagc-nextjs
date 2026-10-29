@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { REQUEST_STATUSES, STATUS_LABEL, ageLabel, ALL_REQUEST_COUNTIES, type RequestStatus, type RequestSummary } from '@/lib/home-services/requestsAdmin';
-import { LabeledSelect, SERVICE_OPTIONS, StatusBadge, fetchJson, serviceName } from './shared';
+import { LabeledSelect, StatusBadge, fetchJson, useServiceName, useServiceOptions } from './shared';
 import RequestDetail from './RequestDetail';
 import SubResponsesInbox from './SubResponsesInbox';
 
@@ -48,6 +48,8 @@ interface ListResponse {
 type View = 'requests' | 'responses';
 
 export default function ServiceRequestsManager() {
+  const serviceName = useServiceName();
+  const serviceOptions = useServiceOptions();
   const [view, setView] = useState<View>('requests');
   const [data, setData] = useState<ListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +132,7 @@ export default function ServiceRequestsManager() {
                 </LabeledSelect>
                 <LabeledSelect id="sr-filter-service" label="Service" value={service} onChange={(e) => setService(e.target.value)}>
                   <option value="">All services</option>
-                  {SERVICE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {serviceOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </LabeledSelect>
                 <LabeledSelect id="sr-filter-source" label="Source" value={source} onChange={(e) => setSource(e.target.value)}>
                   <option value="">All sources</option>
@@ -226,6 +228,7 @@ function TopList({ items, label, testId }: { items: Array<{ key: string; count: 
 }
 
 function SummaryCard({ summary }: { summary: RequestSummary }) {
+  const serviceName = useServiceName();
   const rate = summary.closeRate === null ? 'n/a' : `${Math.round(summary.closeRate * 100)}%`;
   return (
     <Card data-testid="sr-summary">

@@ -20,6 +20,7 @@ import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import { cleanEnv } from '@/lib/envClean';
 import { getSubStatus, isSpecNookConfigured, pushJob, specNookSignupUrl, type SpecNookPushStatus } from '@/lib/specnook/client';
 import { TRADE_LABEL, type Trade } from './catalog';
+import { getServiceNames } from './catalogData';
 import { OFFER_TTL_HOURS, formatDollars, subPayViolation } from './pricing';
 import {
   REQUEST_ADMIN_COLUMNS, answerLinesFor, appendNote, countyForRequest, noteLine, tradesForServices,
@@ -311,11 +312,12 @@ async function sendOneOffer(
   }
 
   const signupUrl = specNookSignupUrl(input.trade, offer.id);
+  const names = await getServiceNames();
   const outcomes = await Promise.all(recipients.map(async (rcpt) => {
     const sub = subsById.get(rcpt.sub_id)!;
     const ctx = {
       lang: sub.language, subName: sub.contact_name || sub.business_name, trade: input.trade, town: input.town,
-      payCents: input.sub_pay_cents, scope: input.scope_summary, answerLines: answerLinesFor(request, input.trade, sub.language),
+      payCents: input.sub_pay_cents, scope: input.scope_summary, answerLines: answerLinesFor(request, input.trade, sub.language, names),
       targetStart: input.target_start, targetEnd: input.target_end,
       expiresAt, token: rcpt.token, signupUrl,
     };
@@ -586,7 +588,7 @@ export type StoredPushStatus = Exclude<SpecNookPushStatus, 'skipped'> | 'pending
 export async function pushAssignedOffer(offer: JobOfferRow, request: HomeServiceRequestRow, sub: SubRow): Promise<StoredPushStatus> {
   const photos = await sharedPhotoUrls(offer.photo_ids);
   // The job order goes to La Vaca's own system, in English, with the full picture.
-  const answers = answerLinesFor(request, offer.trade, 'en');
+  const answers = answerLinesFor(request, offer.trade, 'en', await getServiceNames());
   const result = await pushJob({
     offerId: offer.id,
     requestId: request.id,

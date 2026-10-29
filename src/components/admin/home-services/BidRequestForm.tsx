@@ -18,12 +18,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
-import { HOME_SERVICES_CATALOG, type Trade } from '@/lib/home-services/catalog';
+import type { Trade } from '@/lib/home-services/catalog';
 import {
   OFFER_TTL_HOURS, SUB_MARKUP, customerPriceForSubPay, formatDollars, margin, parseDollarsToCents, subPayViolation,
 } from '@/lib/home-services/pricing';
 import type { HomeServiceRequestRow } from '@/lib/home-services/requestsAdmin';
-import { channelLabel, formatWhen, jsonInit, tradeName } from './shared';
+import { channelLabel, formatWhen, jsonInit, tradeName, useServiceRows } from './shared';
 
 export interface BidTrade {
   trade: Trade;
@@ -65,6 +65,7 @@ export default function BidRequestForm({
   onBack: () => void;
   onSent: () => void;
 }) {
+  const serviceRows = useServiceRows();
   const [forms, setForms] = useState<Record<string, TradeForm>>(() =>
     Object.fromEntries(trades.map((t) => [t.trade, {
       include: (t.preview?.eligible.length ?? 0) > 0,
@@ -207,7 +208,7 @@ export default function BidRequestForm({
       {trades.map((t) => {
         const f = forms[t.trade];
         const c = computed[t.trade];
-        const catalog = HOME_SERVICES_CATALOG.find((s) => s.trade === t.trade);
+        const catalog = serviceRows?.find((s) => s.trade === t.trade);
         const eligible = t.preview?.eligible ?? [];
         const excluded = t.preview?.excluded ?? [];
         const idp = `bid-${t.trade}`;
@@ -217,7 +218,7 @@ export default function BidRequestForm({
             <div className="flex items-center gap-2">
               <Checkbox id={`${idp}-include`} checked={f.include} onCheckedChange={(v) => update(t.trade, { include: v === true })} disabled={eligible.length === 0} />
               <label htmlFor={`${idp}-include`}>Send this trade</label>
-              {catalog && <span className="ml-auto text-xs text-muted-foreground">Catalog starting price {catalog.priceDisplay.en}</span>}
+              {catalog && <span className="ml-auto text-xs text-muted-foreground">Catalog starting price {catalog.price_display_en}</span>}
             </div>
 
             <div className="text-xs">
@@ -238,7 +239,7 @@ export default function BidRequestForm({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label htmlFor={`${idp}-pay`} className="mb-1 block text-xs font-medium">Sub pay (USD)</label>
-                    <Input id={`${idp}-pay`} inputMode="decimal" value={f.subPay} onChange={(e) => update(t.trade, { subPay: e.target.value })} placeholder={catalog ? String(Math.round(catalog.startingPriceCents / SUB_MARKUP / 100)) : "1400"} data-testid="bid-sub-pay" />
+                    <Input id={`${idp}-pay`} inputMode="decimal" value={f.subPay} onChange={(e) => update(t.trade, { subPay: e.target.value })} placeholder={catalog ? String(Math.round(catalog.starting_price_cents / SUB_MARKUP / 100)) : "1400"} data-testid="bid-sub-pay" />
                   </div>
                   <div>
                     <label htmlFor={`${idp}-customer`} className="mb-1 block text-xs font-medium">Customer price (USD)</label>

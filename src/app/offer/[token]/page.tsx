@@ -16,6 +16,7 @@ import type { Metadata } from 'next';
 import { cache } from 'react';
 import { TRADE_LABEL, t, toLang, type Lang, type Trade } from '@/lib/home-services/catalog';
 import { answerLinesFor } from '@/lib/home-services/requestsAdmin';
+import { getServiceNames } from '@/lib/home-services/catalogData';
 import { s } from '@/lib/home-services/i18n';
 import { formatDollars } from '@/lib/home-services/pricing';
 import { lookupOfferByToken, requestForOfferPage, sharedPhotoUrls, subCanAccept } from '@/lib/home-services/offers';
@@ -98,15 +99,16 @@ export default async function OfferPage({ params, searchParams }: PageProps) {
     );
   }
 
-  const [photoUrls, request] = await Promise.all([
+  const [photoUrls, request, names] = await Promise.all([
     sharedPhotoUrls(offer.photo_ids, PAGE_LINK_TTL_SECONDS),
     requestForOfferPage(offer.request_id, view.kind === 'won'),
+    getServiceNames(),
   ]);
   const photos = photoUrls.filter((u): u is string => !!u);
   const start = startWindowLabel(offer.target_start, offer.target_end, lang);
   // The homeowner's taps for this trade in the sub's language, then Alex's own
   // scope text. Never the homeowner's free-text notes (D2).
-  const answers = request ? answerLinesFor(request, offer.trade, lang) : [];
+  const answers = request ? answerLinesFor(request, offer.trade, lang, names) : [];
   const job = answers.length || offer.scope_summary
     ? <JobLines answers={answers} scope={offer.scope_summary} />
     : null;

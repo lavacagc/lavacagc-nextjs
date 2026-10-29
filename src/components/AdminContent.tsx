@@ -41,6 +41,7 @@ const SeoSuggestionsDashboard = dynamic(() => import('@/components/admin/SeoSugg
 const ServiceRequestsManager = dynamic(() => import('@/components/admin/home-services/ServiceRequestsManager'), { ssr: false });
 const SubsManager = dynamic(() => import('@/components/admin/home-services/SubsManager'), { ssr: false });
 const PricingReport = dynamic(() => import('@/components/admin/home-services/PricingReport'), { ssr: false });
+const ServicesPricesEditor = dynamic(() => import('@/components/admin/home-services/ServicesPricesEditor'), { ssr: false });
 const CtaTestsDashboard = dynamic(() => import('@/components/admin/home-services/CtaTestsDashboard'), { ssr: false });
 const CMSPageEditor = dynamic(() => import('@/components/admin/CMSPageEditor').then(m => ({ default: m.CMSPageEditor })), { ssr: false });
 import { BannerManager } from '@/components/admin/BannerManager';
@@ -117,8 +118,11 @@ export default function AdminContent() {
     return null; // Will redirect to auth page
   }
 
+  // overflow-x-clip, not -hidden: hidden turns these wrappers into scroll
+  // containers, which silently disables every `sticky` inside them (the header
+  // below and the Services & Prices save bar).
   return (
-    <div className="min-h-screen bg-muted/30 flex overflow-x-hidden">
+    <div className="min-h-screen bg-muted/30 flex overflow-x-clip">
       <AdminSidebar
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -126,7 +130,7 @@ export default function AdminContent() {
         onMobileClose={() => setIsMobileSidebarOpen(false)}
       />
 
-      <div className={`flex-1 ${isMobile ? 'ml-0' : 'ml-16'} overflow-x-hidden max-w-full`}>
+      <div className={`flex-1 ${isMobile ? 'ml-0' : 'ml-16'} overflow-x-clip max-w-full`}>
         <div className="border-b bg-background sticky top-[var(--smart-banner-height,0px)] transition-[top] duration-300 z-10 max-w-full">
           <div className="container mx-auto px-4 py-4 max-w-full">
             <div className="flex items-center justify-between">
@@ -171,7 +175,7 @@ export default function AdminContent() {
           </div>
         </div>
 
-        <div className="container mx-auto px-2 md:px-4 py-4 md:py-8 pb-20 max-w-7xl overflow-x-hidden">
+        <div className="container mx-auto px-2 md:px-4 py-4 md:py-8 pb-20 max-w-7xl overflow-x-clip">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
 
           <TabsContent value="dashboard">
@@ -317,6 +321,10 @@ export default function AdminContent() {
 
           <TabsContent value="pricing-report">
             <PricingReport />
+          </TabsContent>
+
+          <TabsContent value="home-services-catalog">
+            <ServicesPricesEditor />
           </TabsContent>
 
           <TabsContent value="cta-tests">

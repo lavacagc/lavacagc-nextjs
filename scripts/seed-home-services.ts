@@ -1,12 +1,15 @@
 /**
- * Prints the INSERT that seeds public.home_services from the catalog constants,
- * so the Phase 2 migration's seed equals the code on the day it ships
- * (docs/phase-2/acceptance-criteria.md, "Migration"). Run with
- *   npx -y tsx scripts/seed-home-services.ts > /tmp/seed.sql
- * and paste the output into the migration. A unit test re-runs this and
- * compares it to the migration, so a catalog edit without a re-seed fails.
+ * Prints the INSERT that seeds public.home_services from HOME_SERVICES_SEED
+ * (src/lib/home-services/catalogSeed.ts), the day-one rows of the table the
+ * admin edits under Services & Prices (docs/phase-2/acceptance-criteria.md,
+ * "Migration" and CAT6). Run with
+ *   node_modules/.bin/ts-node -P tsconfig.scripts.json scripts/seed-home-services.ts > seed.sql
+ * (never a bare npx, see .no-mistakes.yaml) and paste the output into the
+ * migration. tests/home-services-catalog.spec.ts re-runs this and requires the
+ * migration to contain it verbatim, so the seed file and the migration cannot
+ * drift. A price change after day one is an admin edit, not a re-seed.
  */
-import { HOME_SERVICES_CATALOG } from '../src/lib/home-services/catalog';
+import { HOME_SERVICES_SEED } from '../src/lib/home-services/catalogSeed';
 
 const q = (v: unknown): string => {
   if (v === undefined || v === null) return 'null';
@@ -16,7 +19,7 @@ const q = (v: unknown): string => {
 const j = (v: unknown): string => `${q(JSON.stringify(v))}::jsonb`;
 
 export function seedSql(): string {
-  const rows = HOME_SERVICES_CATALOG.map((s, i) =>
+  const rows = HOME_SERVICES_SEED.map((s, i) =>
     [
       q(s.slug), i + 1, 'true', q(s.trade), q(s.icon), q(s.image ?? null),
       s.startingPriceCents, q(s.priceDisplay.en), q(s.priceDisplay.es), q(s.priceUnit.en), q(s.priceUnit.es),

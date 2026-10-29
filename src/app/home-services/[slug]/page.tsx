@@ -11,7 +11,8 @@ import AttributionCapture from '@/components/home-services/AttributionCapture';
 import LangToggle from '@/components/home-services/LangToggle';
 import RequestServiceButton from '@/components/home-services/RequestServiceButton';
 import ServiceIcon from '@/components/home-services/ServiceIcon';
-import { getService, HOME_SERVICES_CATALOG, SERVICE_SLUGS, t, type Lang } from '@/lib/home-services/catalog';
+import { SERVICE_SLUGS, t, type Lang } from '@/lib/home-services/catalog';
+import { getCatalog } from '@/lib/home-services/catalogData';
 import { s } from '@/lib/home-services/i18n';
 import { LANG_COOKIE, resolveLang } from '@/lib/home-services/lang';
 import { brandedTitle, breadcrumbJsonLd, faqJsonLd, languageAlternates, pageUrl, serviceJsonLd } from '@/lib/home-services/seo';
@@ -21,6 +22,10 @@ import { brandedTitle, breadcrumbJsonLd, faqJsonLd, languageAlternates, pageUrl,
  * C8 chose this namespace over /services/<slug>, which is the remodel table).
  * Built for listing links (`?src=craigslist&lid=...`): the request button opens
  * the same in-page flow with this service preselected.
+ *
+ * Content and prices come from the home_services table (CAT1). The slug set is
+ * fixed in code, so the seven paths are known at build time, but a service the
+ * admin switched off renders 404 (CAT4).
  */
 
 type Params = Promise<{ slug: string }>;
@@ -39,9 +44,9 @@ async function pageLang(searchParams: SearchParams): Promise<Lang> {
 
 export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: SearchParams }): Promise<Metadata> {
   const { slug } = await params;
-  const service = getService(slug);
+  const [catalog, lang] = await Promise.all([getCatalog(), pageLang(searchParams)]);
+  const service = catalog.find((x) => x.slug === slug);
   if (!service) return {};
-  const lang = await pageLang(searchParams);
   const alternates = languageAlternates(`/home-services/${slug}`, (await searchParams).lang);
   const title = brandedTitle(t(service.seo.title, lang));
   const description = t(service.seo.description, lang);
@@ -56,9 +61,9 @@ export async function generateMetadata({ params, searchParams }: { params: Param
 
 export default async function HomeServicePage({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
   const { slug } = await params;
-  const service = getService(slug);
+  const [catalog, lang] = await Promise.all([getCatalog(), pageLang(searchParams)]);
+  const service = catalog.find((x) => x.slug === slug);
   if (!service) notFound();
-  const lang = await pageLang(searchParams);
   const jsonLd = serviceJsonLd(service, lang);
   const breadcrumb = breadcrumbJsonLd(lang, service);
   const faq =
@@ -70,7 +75,7 @@ export default async function HomeServicePage({ params, searchParams }: { params
       : null;
   // Links stay in the page's language so a crawler on a Spanish page stays on Spanish pages.
   const langQuery = lang === 'es' ? '?lang=es' : '';
-  const siblings = HOME_SERVICES_CATALOG.filter((other) => other.slug !== slug);
+  const siblings = catalog.filter((other) => other.slug !== slug);
 
   return (
     <div id="top" className="flex min-h-screen flex-col">
@@ -115,7 +120,7 @@ export default async function HomeServicePage({ params, searchParams }: { params
                 <p className="mt-1 text-[15px] text-text-secondary">{t(service.priceUnit, lang)}</p>
                 {service.priceNote && <p className="mt-1 text-[15px] text-text-secondary">{t(service.priceNote, lang)}</p>}
                 <div className="mt-6 flex flex-col gap-3">
-                  <RequestServiceButton slug={service.slug} lang={lang} className="w-full" />
+                  <RequestServiceButton service={service} lang={lang} className="w-full" />
                   <a
                     href="tel:+12012124917"
                     className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl border-2 border-secondary bg-card px-6 py-3 text-[17px] font-bold text-secondary transition-colors hover:bg-secondary hover:text-white"

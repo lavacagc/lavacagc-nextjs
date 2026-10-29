@@ -6,7 +6,7 @@
  * it and the admin components render with it, so the list filter, the detail
  * panel and the summary card all agree on what "Essex" or "close rate" means.
  */
-import { describeAnswers, getService, type County, type Lang, type Trade } from './catalog';
+import { describeAnswers, serviceTrade, type County, type Lang, type ServiceNames, type Trade } from './catalog';
 import { countyForZip } from './countyZips';
 
 export const REQUEST_STATUSES = ['held', 'new', 'contacted', 'bid_sent', 'assigned', 'won', 'lost'] as const;
@@ -141,7 +141,7 @@ export function isServedCounty(county: string | null): county is County {
 export function tradesForServices(services: string[]): Trade[] {
   const out: Trade[] = [];
   for (const slug of services) {
-    const trade = getService(slug)?.trade;
+    const trade = serviceTrade(slug);
     if (trade && !out.includes(trade)) out.push(trade);
   }
   return out;
@@ -149,7 +149,7 @@ export function tradesForServices(services: string[]): Trade[] {
 
 /** The catalog slug a trade came from on this request (one service = one trade). */
 export function serviceForTrade(services: string[], trade: string): string | undefined {
-  return services.find((slug) => getService(slug)?.trade === trade);
+  return services.find((slug) => serviceTrade(slug) === trade);
 }
 
 /**
@@ -157,14 +157,16 @@ export function serviceForTrade(services: string[], trade: string): string | und
  * service, in the sub's language. Never the homeowner's free-text notes - they
  * can hold gate codes, schedules or an address, and subs see the town only
  * until one wins. Alex reads the notes and paraphrases what matters.
+ * `names` are the service names from the table (`getServiceNames()`).
  */
 export function answerLinesFor(
   request: Pick<HomeServiceRequestRow, 'services' | 'answers'>,
   trade: string,
   lang: Lang,
+  names: ServiceNames,
 ): string[] {
   const slug = serviceForTrade(request.services, trade);
-  return slug ? describeAnswers([slug], request.answers ?? {}, lang) : [];
+  return slug ? describeAnswers([slug], request.answers ?? {}, lang, names) : [];
 }
 
 /**

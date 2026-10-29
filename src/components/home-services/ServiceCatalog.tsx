@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useState } from 'react';
 import { ArrowRight, Check, Info } from 'lucide-react';
-import { HOME_SERVICES_CATALOG, t, type HomeService, type Lang } from '@/lib/home-services/catalog';
+import { t, type HomeService, type Lang } from '@/lib/home-services/catalog';
 import { s } from '@/lib/home-services/i18n';
 import { cn } from '@/lib/utils';
 import ServiceIcon from './ServiceIcon';
@@ -18,8 +18,11 @@ const RequestFlow = dynamic(() => import('./RequestFlow'), { ssr: false });
  * keyboard and announces its state; the price is a separate button that opens
  * the "what's included" sheet and never toggles. A sticky bar counts the
  * selection and opens the request flow in-page.
+ *
+ * The services arrive as props from the server page (read from the
+ * home_services table), so no catalog copy ships in this bundle (CAT7).
  */
-export default function ServiceCatalog({ lang }: { lang: Lang }) {
+export default function ServiceCatalog({ lang, services }: { lang: Lang; services: HomeService[] }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [priceFor, setPriceFor] = useState<HomeService | null>(null);
   const flow = useRequestFlow();
@@ -31,12 +34,12 @@ export default function ServiceCatalog({ lang }: { lang: Lang }) {
     setSelected((prev) => (prev.includes(slug) ? prev.filter((x) => x !== slug) : [...prev, slug]));
   };
   // Keep catalog order no matter the tap order, so the flow reads top to bottom like the page.
-  const ordered = HOME_SERVICES_CATALOG.map((x) => x.slug).filter((slug) => selected.includes(slug));
+  const ordered = services.map((x) => x.slug).filter((slug) => selected.includes(slug));
 
   return (
     <>
       <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-testid="service-cards">
-        {HOME_SERVICES_CATALOG.map((service) => {
+        {services.map((service) => {
           const isOn = selected.includes(service.slug);
           return (
             <li
@@ -138,6 +141,7 @@ export default function ServiceCatalog({ lang }: { lang: Lang }) {
           open={flow.open}
           lang={lang}
           services={ordered}
+          catalog={services}
           onClose={flow.closeFlow}
           onSubmitted={() => setSelected([])}
         />

@@ -3,11 +3,13 @@
 /**
  * Small pieces the Service Requests, Subs and Pricing Report screens share:
  * a JSON fetch that surfaces the server's own error text, the status badge,
- * a labelled native select, and catalog name lookups.
+ * a labelled native select, and the service catalog (names, prices) read from
+ * the home_services table through GET /api/admin/home-services.
  */
-import type { ReactNode, SelectHTMLAttributes } from 'react';
+import { useEffect, useState, type ReactNode, type SelectHTMLAttributes } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { HOME_SERVICES_CATALOG, TRADE_LABEL, getService, type Trade } from '@/lib/home-services/catalog';
+import { SERVICE_SLUGS, TRADE_LABEL, type Trade } from '@/lib/home-services/catalog';
+import type { HomeServiceRow } from '@/lib/home-services/catalogRow';
 import { STATUS_LABEL, type RequestStatus } from '@/lib/home-services/requestsAdmin';
 
 export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -39,15 +41,62 @@ export function StatusBadge({ status }: { status: RequestStatus }) {
   );
 }
 
-export function serviceName(slug: string): string {
-  return getService(slug)?.name.en ?? slug;
+/**
+ * Every service row, active or not, so an old request keeps its names after a
+ * service is switched off. One fetch per admin session; the Services & Prices
+ * editor calls `refreshServiceRows()` after a save.
+ */
+let rowsPromise: Promise<HomeServiceRow[]> | null = null;
+const listeners = new Set<(rows: HomeServiceRow[]) => void>();
+
+export function loadServiceRows(): Promise<HomeServiceRow[]> {
+  if (!rowsPromise) {
+    rowsPromise = fetchJson<{ services: HomeServiceRow[] }>('/api/admin/home-services')
+      .then((d) => d.services)
+      .catch((err) => {
+        rowsPromise = null;
+        throw err;
+      });
+  }
+  return rowsPromise;
+}
+
+export function refreshServiceRows(rows: HomeServiceRow[]): void {
+  rowsPromise = Promise.resolve(rows);
+  for (const listener of listeners) listener(rows);
+}
+
+/** The service rows; null until loaded (and on a failed load, which leaves slugs on screen). */
+export function useServiceRows(): HomeServiceRow[] | null {
+  const [rows, setRows] = useState<HomeServiceRow[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadServiceRows().then((r) => live && setRows(r)).catch(() => undefined);
+    listeners.add(setRows);
+    return () => {
+      live = false;
+      listeners.delete(setRows);
+    };
+  }, []);
+  return rows;
+}
+
+/** `slug -> English name`, falling back to the slug until the rows load. */
+export function useServiceName(): (slug: string) => string {
+  const rows = useServiceRows();
+  return (slug: string) => rows?.find((r) => r.slug === slug)?.name_en ?? slug;
+}
+
+/** Filter options in landing order; slugs until the names load. */
+export function useServiceOptions(): Array<{ value: string; label: string }> {
+  const name = useServiceName();
+  return SERVICE_SLUGS.map((slug) => ({ value: slug, label: name(slug) }));
 }
 
 export function tradeName(trade: string): string {
   return TRADE_LABEL[trade as Trade]?.en ?? trade;
 }
 
-export const SERVICE_OPTIONS = HOME_SERVICES_CATALOG.map((s) => ({ value: s.slug, label: s.name.en }));
 export const TRADE_OPTIONS = Object.entries(TRADE_LABEL).map(([value, l]) => ({ value, label: l.en }));
 
 export const selectCls =

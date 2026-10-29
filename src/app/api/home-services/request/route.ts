@@ -34,6 +34,7 @@ import { isSmsConfigured, normalizeUsPhone, sendSms } from '@/lib/home-services/
 import { isInServiceArea } from '@/lib/home-services/serviceArea';
 import { readAttribution } from '@/lib/home-services/attribution';
 import { claimDraftPhotos, signPhotoUrls } from '@/lib/home-services/photos';
+import { getServiceNames } from '@/lib/home-services/catalogData';
 import { generateCode, hashCode, VERIFY_CODE_TTL_MS } from '@/lib/home-services/verify';
 import {
   RequestBodySchema,
@@ -192,7 +193,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ---- leads row: the existing pipeline's record --------------------------
-    const { lead: sanitized, adjustments } = sanitizeLeadForInsert(leadFields(req, attribution.source));
+    const { lead: sanitized, adjustments } = sanitizeLeadForInsert(leadFields(req, attribution.source, await getServiceNames()));
     if (adjustments.length) console.warn(`[home-services/request] sanitizer adjusted: ${adjustments.join('; ')}`);
     const scoring = scoreLead(prepareLeadForScoring(sanitized as Record<string, string | null | undefined>));
     const leadRow = { ...sanitized, score: scoring.score, tier: scoring.tier, scoring_reasons: scoring.reasons };

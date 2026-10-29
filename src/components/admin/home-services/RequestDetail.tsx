@@ -18,7 +18,7 @@ import { formatDollars, parseDollarsToCents } from '@/lib/home-services/pricing'
 import { dialable, mapsUrl, type HomeServiceRequestRow, type RequestStatus } from '@/lib/home-services/requestsAdmin';
 import type { JobOfferRow, OfferRecipientRow, OfferResponseRow } from '@/lib/home-services/offerRules';
 import { DECLINE_REASON_LABEL } from '@/lib/home-services/offerRules';
-import { LabeledSelect, StatusBadge, channelLabel, fetchJson, formatWhen, jsonInit, serviceName, tradeName } from './shared';
+import { LabeledSelect, StatusBadge, channelLabel, fetchJson, formatWhen, jsonInit, tradeName, useServiceName } from './shared';
 import BidRequestForm, { type BidTrade } from './BidRequestForm';
 
 export interface DetailResponse {
@@ -51,6 +51,7 @@ const TRADE_STATE_STYLE: Record<string, string> = {
 };
 
 export default function RequestDetail({ id, onChanged }: { id: string; onChanged: () => void }) {
+  const serviceName = useServiceName();
   const [data, setData] = useState<DetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);

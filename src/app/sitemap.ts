@@ -3,6 +3,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { Database } from '@/integrations/supabase/types'
 import { getAllResourceSlugs } from '@/data/resourceData'
 import { SERVICE_SLUGS } from '@/lib/home-services/catalog'
+import { getCatalog } from '@/lib/home-services/catalogData'
 
 // Create a static client for build-time data fetching (no cookies/SSR)
 function getStaticSupabaseClient() {
@@ -14,6 +15,15 @@ function getStaticSupabaseClient() {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://www.lavacagc.com'
   const currentDate = new Date()
+  // Only the services the admin has switched on get an entry (CAT4). The read
+  // is the same tagged cache the pages use; if it fails the seven fixed slugs
+  // stand in, so a database blip never empties the sitemap.
+  const homeServiceSlugs = await getCatalog()
+    .then((services) => services.map((service) => service.slug))
+    .catch((err) => {
+      console.error('sitemap: home services read failed, listing every slug:', err instanceof Error ? err.message : String(err))
+      return [...SERVICE_SLUGS]
+    })
   // Home services pages come in English and Spanish (?lang=es); both entries
   // carry the same hreflang set the pages declare in <head>.
   const homeServicesAlternates = (suffix: string) => ({
@@ -51,9 +61,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.9,
       alternates: homeServicesAlternates(''),
     },
-    // One page per priced home service (LP10), from the catalog so a new
-    // service cannot ship without its sitemap entry.
-    ...SERVICE_SLUGS.map((slug) => ({
+    // One page per active priced home service (LP10, CAT4), from the table so
+    // a service switched off in the admin leaves the sitemap with its page.
+    ...homeServiceSlugs.map((slug) => ({
       url: `${baseUrl}/home-services/${slug}`,
       lastModified: currentDate,
       changeFrequency: 'monthly' as const,
@@ -62,7 +72,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })),
     // The Spanish versions are their own canonical URLs (?lang=es), the ones
     // Spanish listing links use, so they are listed too.
-    ...['', ...SERVICE_SLUGS.map((slug) => `/${slug}`)].map((suffix) => ({
+    ...['', ...homeServiceSlugs.map((slug) => `/${slug}`)].map((suffix) => ({
       url: `${baseUrl}/home-services${suffix}?lang=es`,
       lastModified: currentDate,
       changeFrequency: 'monthly' as const,
