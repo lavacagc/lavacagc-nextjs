@@ -424,7 +424,8 @@ test('AC-R11: chrome suppression ADDS to each widget without removing what it al
 });
 
 test('AC-R12: the private-page list covers the tokenized routes and nothing adjacent', () => {
-  expect([...PRIVATE_TOKEN_PATHS]).toEqual(['/proposal', '/intake', '/crew']);
+  expect([...PRIVATE_TOKEN_PATHS]).toEqual(['/proposal', '/intake', '/crew', '/offer']);
+  expect(isPrivateTokenPage('/offer/abc')).toBe(true);
   expect(isPrivateTokenPage('/proposal/abc')).toBe(true);
   expect(isPrivateTokenPage('/intake/abc')).toBe(true);
   expect(isPrivateTokenPage('/crew/confirm/abc')).toBe(true);

@@ -72,6 +72,10 @@
     {
       "path": "/api/cron/intake-chase?stage=abandoned",
       "schedule": "0 13,16,19,22 * * *"
+    },
+    {
+      "path": "/api/cron/offers-expire",
+      "schedule": "*/30 * * * *"
     }
   ]
 }
