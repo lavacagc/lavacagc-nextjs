@@ -55,14 +55,12 @@ const BAD_BOT_PATTERNS = [
  * and an undo (Phase 2 SEC2: the unpublish link is excluded from the bot
  * filter). Exact prefixes; nothing else on the site is exempt.
  */
-const BOT_FILTER_EXEMPT_PREFIXES = [
-  '/articles/unpublish/', '/api/articles/unpublish/',
-  // Slice H: the experiment veto link and its one button, same reasoning.
-  '/experiments/veto/', '/api/experiments/veto',
-];
+const BOT_FILTER_EXEMPT_PREFIXES = ['/articles/unpublish/', '/api/articles/unpublish/'];
+/** Slice H: the experiment veto link and its one button, for the same reason. */
+const EXPERIMENT_VETO_PREFIXES = ['/experiments/veto/', '/api/experiments/veto'];
 
 function isBotFilterExempt(pathname: string): boolean {
-  return BOT_FILTER_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p));
+  return [...BOT_FILTER_EXEMPT_PREFIXES, ...EXPERIMENT_VETO_PREFIXES].some((p) => pathname.startsWith(p));
 }
 
 function isBadBot(ua: string): boolean {

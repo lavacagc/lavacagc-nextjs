@@ -80,3 +80,47 @@ The reviewer of slice E may prefer that fix to land on the integration branch di
 - Homepage `?exp=` preview (decision 4) and a homepage-button image slot: the homepage is static and the buttons have no image.
 - Production follow-ups: run the migration after the deploy a second time (re-runnable) to carry any `cta_events` the old code wrote between migration and deploy; the public read policy on `cta_variants` is now unused and can be dropped once the deploy is live.
 - `home-services-admin.spec.ts` and the other slices' live specs were not run live (shared database); their stub halves ran in the full stub run.
+
+## Fix round 1
+
+Review: `docs/phase-2/reports/slice-h-review.md` (REJECT at `d0e369b`), taken by fast-forward to `fc1efcd`.
+Then merged `feat/phase-2-admin-catalog-articles-experiments` at `ba6967a` (slice G) in `740089d`.
+Conflicts: `CLAUDE.md` (both pointers kept) and `src/middleware.ts`: slice G's bot-filter exemption for the unpublish link is kept, and its copy of the good-bot list is dropped in favour of `src/lib/botFilter.ts` (one list).
+
+### What changed
+
+- F1, prices in copy (the reject). No separate detector any more: `forbiddenClaim` (`src/lib/experiments/types.ts`) runs slice G's detectors, `priceClaimsIn` and `legalClaimsIn`, newly exported from `src/lib/articles/publishGuard.ts`, on every copy string in both languages and on the label, with no published price allowed.
+  The shared detector now also holds, for articles too: a currency sign after the number (`2,095$`), the full-width sign (`＄99`), euro and pound, `bucks`, `dólares`, spelled-out amounts in English and Spanish (`two hundred dollars`, `doscientos dólares`), and `half price`, `half off`, `a mitad de precio`, `two for one`, `BOGO`.
+  A strict short-copy mode, used only by experiments, adds deal words (free, gratis, discount, descuento, deal, oferta, sale, rebaja, save, ahorre, off, promo, cheap, barato) and any bare number of three or more digits; these stay out of articles because prose legitimately says "feel free", "save time", "in 2026" and links the free-estimate page.
+  Legal claims (insured, guaranteed, permits, warranty...) are now refused in variant copy too; the phone number and the license checks stay.
+- F2: the homepage buttons render only payload `wording` (no label fallback; a variant without wording renders nothing), and the button surfaces require `wording` in every variant (the create route refuses a colour-only variant). Labels are held to the copy rules anyway.
+- F3: a proposed winner is promoted only after its veto message was delivered. `decision.pending` records `proposed_at` (the veto token is bound to it), `veto_outcome`, `attempts`, `last_attempt_at`, `veto_sent_at` and `promote_at`. Not delivered (failed, not configured, or no secret to sign the link): it stays pending, every daily run sends it again, and the admin card says "Veto message not delivered" with the outcome and attempts. Admin Promote and Veto still work at any time.
+- F6: the cron is daily, `30 7 * * *`; evaluation runs on the Monday run only; promotion is checked daily. `promote_at` is the first 07:30 UTC run at least 24 hours after delivery (with ten minutes of slack for the scheduler starting early), and the Telegram message, the veto page and the admin card name that exact run (`src/lib/experiments/schedule.ts`).
+- F4: the preview test names `&lang=en` on every URL. F5: the spec header gives the full run line (production build, `EXPERIMENTS_FAKE_CLOCK=1`, `RECAPTCHA_E2E_BYPASS_TOKEN` on the server and the test), EX3 skips with that reason when the token is missing, and the admin contexts in both specs use `bypassCSP` (only the admin ones, so the visitor contexts still prove the inline pre-paint script under the real CSP).
+- F7: at phone width each variant is a stacked block with "Beats control" first and every number on screen; the table is kept for wider screens. Promote preselects the pending or evaluated winner, else the challenger with a better than even chance, else the control ("Promote A (keep the control)"); the button says the chance and is the primary style only for an evaluated winner. Probabilities near certainty read ">99.9%" or "<0.1%"; the header says the cron proposes; the control-wins reason reads correctly.
+- F8: the skill starts drafts first (the seeded `landing-hero`), maps backlog items to surfaces (`sections` for "How it works above the service cards"), gives a key naming rule, and uses `node scripts/experiments.mjs copy --site <url> --page ... --element ...` to print today's copy (the report now carries `current_copy` per surface). The CLI refuses to run without `--site`, and `start` and `conclude` print the message Alex receives.
+- The veto page is also in `PRIVATE_TOKEN_PATHS` (no sticky CTA or popups on it) and exempt from the bot filter like the unpublish link; `tests/proposal-pod-slice3.spec.ts` AC-R12 lists both Phase 2 links (it was red on the integration branch after slice G added the unpublish link).
+- Specs: both record every visitor id the server mints for their browser contexts (any response, including the homepage itself) and remove those visitors' `hero-primary` and `hero-secondary` rows in `afterAll`; I deleted the 18 rows my own earlier runs of this round had left. Experiment fixture copy carries no digits (the strict rule refuses them).
+
+### Evidence
+
+| Fix | Evidence |
+| --- | --- |
+| F1 | Units: `experiments.spec.ts` "prices are unaddressable" (19 refused phrasings including every one the review got through, two legal claims, nine of today's real copies accepted, a priced label refused) and `articles-publish-guard.spec.ts` "price pattern (slice H)" (nine new forms held in articles) plus "the strict short-copy rules stay out of articles". Live EX6: the review's seven phrasings in a valid body on `/home-services hero` and a `$99 special` label all answer 400 "never tested". |
+| F2 | Unit: no `?? v.label` in `heroStore.server.ts`; a colour-only button variant is refused with "renders nothing without wording". |
+| F3, F6 | Units: `promotionRunAfter`, `isPromotionDue`, `isEvaluationDay`, the daily schedule in `vercel.json`, the message text. Live EX5 with a fake clock on the next Monday: proposed but not delivered (`not_configured`, attempt 1, `promote_at` null), the admin card shows "Veto message not delivered", Tuesday and Thursday runs retry and promote nothing, a winner seeded on Tuesday is not evaluated until Monday, the veto link still works while undelivered (the page says the promotion is not scheduled), and once delivery is recorded the run one hour early waits and Friday's run promotes. |
+| F4, F5 | The full live run below passes on a production build with the documented command. |
+| F7 | Live EX7: ">99.9%" on the desktop table, "Promote B (>99.9% chance it beats A)" for a winner, "Promote A (keep the control)" for an experiment whose challenger is losing, and on an iPhone 13 viewport the stacked block is inside 390 px with no page-level sideways scroll. I looked at the phone render of the `hero-primary` card: every number visible, buttons on one row. |
+| F8 | Read the skill against the review's list; the CLI prints the "--site" refusal with no argument. |
+
+### Commands run and results
+
+| Command | Result |
+| --- | --- |
+| `npm run typecheck`, `npm run lint`, `npm run chaos:static` on the final head | clean, clean, total 0 baselined 0 new 0 |
+| `npm run build` (env exactly `env.rig`), `EXPERIMENTS_FAKE_CLOCK=1 RECAPTCHA_E2E_BYPASS_TOKEN=<32+ chars> next start -p 3120`, then `RECAPTCHA_E2E_BYPASS_TOKEN=<same> TEST_URL=http://localhost:3120 E2E_LIVE_BACKEND=1 playwright test tests/experiments.spec.ts tests/cta-tests.spec.ts tests/home-services-landing.spec.ts --project=chromium --workers=1` | 68 passed; afterwards `hero-primary` and `hero-secondary` hold the same 6 rows as before the run, and no `slice-h-*` experiment remains |
+| `npm run test:build` with `.env.local` moved aside, `next start -p 3122`, `E2E_STUB_BACKEND=1 TEST_URL=http://localhost:3122 playwright test` (chromium and mobile) | 2765 passed, 476 skipped (live-only), 0 failed; `.env.local` restored and identical to `env.rig` |
+| `curl -A "facebookexternalhit/1.1 python-requests" /experiments/veto/x.y` on the production build | 200 (exempt from the bot filter like the unpublish link) |
+
+The bypass token is passed on the command line only; the env files stay exactly `env.rig`.
+The rig still holds `hero-primary`, `hero-secondary` (running) and `landing-hero` (draft, as seeded).
