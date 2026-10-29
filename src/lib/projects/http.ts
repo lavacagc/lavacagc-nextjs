@@ -37,8 +37,8 @@ export function validationResponse(error: ZodError): NextResponse {
 
 /**
  * Drop the ISR copies a visibility change affects, so Publish shows up now
- * rather than after the 60-second window, and Unpublish disappears now too.
- * Never throws: a failed revalidation still leaves the 60-second ceiling.
+ * rather than after the hourly ISR window, and Unpublish disappears now too.
+ * Never throws: a failed revalidation still leaves the hourly ceiling.
  */
 export function revalidateProjectPages(slug?: string | null): void {
   try {

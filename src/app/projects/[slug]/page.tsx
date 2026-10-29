@@ -6,7 +6,7 @@ import Footer from '@/components/Footer';
 import ProjectDetailClient from '@/components/ProjectDetailClient';
 
 // Revalidate every 60 seconds (ISR - Incremental Static Regeneration)
-// Hourly: content here changes a few times a month and publishing revalidates on demand (docs/cost-review.md).
+// Hourly: publishing or unpublishing a project revalidates this page on demand (src/lib/projects/http.ts, docs/cost-review.md).
 export const revalidate = 3600;
 
 // Server-side Supabase client (trim to handle any whitespace in env vars)

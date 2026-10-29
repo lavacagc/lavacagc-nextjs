@@ -16,7 +16,7 @@ import Footer from "@/components/Footer";
 import ServicesTrustBar from "@/components/services/ServicesTrustBar";
 import ServicesBottomTabs from "@/components/services/ServicesBottomTabs";
 
-// Hourly: content here changes a few times a month and publishing revalidates on demand (docs/cost-review.md).
+// Hourly: this content is in code, so changes ship with a deploy (docs/cost-review.md).
 export const revalidate = 3600;
 
 export const metadata: Metadata = {

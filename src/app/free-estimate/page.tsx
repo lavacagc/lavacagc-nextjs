@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import FreeEstimateLanding from '@/components/FreeEstimateLanding';
 
-// Hourly: content here changes a few times a month and publishing revalidates on demand (docs/cost-review.md).
+// Hourly: reads projects, reviews and blog posts, whose editors do not revalidate this path, so a change can take up to an hour to show here (docs/cost-review.md).
 export const revalidate = 3600;
 
 const supabase = createClient(

@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
+import { cmsPagePaths, requestRevalidate } from '@/lib/revalidate';
 import {
   Plus, Edit, Trash2, Save, X, ArrowUp, ArrowDown,
   Copy, Eye, FileText, ChevronDown, ExternalLink, Loader2,
@@ -792,6 +793,7 @@ export function CMSPageEditor() {
 
       if (error) throw error;
       toast({ title: 'Deleted', description: `"${page.title}" has been deleted.` });
+      void requestRevalidate([...cmsPagePaths(page.slug), '/services']);
       loadPages();
     } catch (error) {
       console.error('Error deleting page:', error);
@@ -824,6 +826,7 @@ export function CMSPageEditor() {
         ...(publish ? { published_at: new Date().toISOString() } : {}),
       };
 
+      const previousSlug = pages.find((p) => p.id === editingPageId)?.slug;
       if (editingPageId) {
         const { error } = await supabaseCms
           .from('cms_pages')
@@ -837,11 +840,19 @@ export function CMSPageEditor() {
         if (error) throw error;
       }
 
+      const revalidated = await requestRevalidate([
+        ...cmsPagePaths(payload.slug),
+        ...(previousSlug ? cmsPagePaths(previousSlug) : []),
+        '/services',
+      ]);
+
       toast({
         title: publish ? 'Published!' : 'Saved',
-        description: publish
-          ? `"${formData.title}" is now live at /cms/${formData.slug}`
-          : `"${formData.title}" saved as draft.`,
+        description: !revalidated
+          ? `"${formData.title}" saved, but the public page may take up to an hour to update.`
+          : publish
+            ? `"${formData.title}" is now live at /cms/${formData.slug}`
+            : `"${formData.title}" saved as draft.`,
       });
 
       if (publish) {

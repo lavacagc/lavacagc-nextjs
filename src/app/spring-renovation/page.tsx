@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { getCMSPage } from '@/lib/cms';
 import CMSPageLayout from '@/components/CMSPageLayout';
 
-// Hourly: content here changes a few times a month and publishing revalidates on demand (docs/cost-review.md).
+// Hourly: CMS content changes a few times a month and the CMS editor revalidates on save (/api/admin/revalidate, docs/cost-review.md).
 export const revalidate = 3600;
 
 const SLUG = 'spring-renovation';

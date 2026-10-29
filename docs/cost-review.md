@@ -97,7 +97,7 @@ Items 4 and 5 are where any surprising Supabase number will be.
 | 4 | Needs Alex | PR #103 (phone fix) should be merged after #104; PR #86's portfolio half is already in #104, its header and menu half is not, so it is a cherry-pick or a close. Supabase branching cleanup needs the dashboard or `supabase login`. |
 | 5 | Needs the dashboard | Supabase > Project > Settings > Compute; the site needs Micro. |
 | 6 | Applied | Middleware matcher excludes `_next/static`, `_next/image`, favicon, images, fonts, robots and sitemap. |
-| 7 | Applied | `revalidate = 3600` on services, locations, portfolio, project, landing and CMS pages; `300` on the two blog pages because the blog editor writes straight to the database and cannot revalidate on save. |
+| 7 | Applied | `revalidate = 3600` on services, portfolio, project, landing and CMS pages, with the CMS and services editors revalidating on save through `/api/admin/revalidate`; `300` on the two blog pages because the blog editor writes straight to the database and cannot revalidate on save. |
 | 8 | Applied | The root-layout `<link rel="preload" as="video">` is gone; the homepage `<video>` fetches it itself. |
 | 9 | Deliberately not applied | Deleting the four unused hero videos and re-encoding 33 blog PNGs are irreversible production changes with no measurable saving: storage is inside the Pro allowance and `next/image` already serves WebP and AVIF to visitors. Listed in follow-ups for a content-cleanup day. |
 
