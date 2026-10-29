@@ -102,3 +102,29 @@ curl -A "Mozilla/5.0" -X POST "https://www.lavacagc.com/api/projects/ingest/<id>
 
 In the admin, Content > Projects shows the draft at the top under Drafts, marked "From Claude Code", with Publish, Publish + feature, Edit and Delete.
 Publishing makes it live on `/projects/<slug>`, `/portfolio`, and with feature on the homepage, at once (the pages are revalidated on publish).
+
+## First run after deploy: the twenty photos already in `drafts/`
+
+Production's `project-images/drafts/` folder holds twenty uploads from October 2025 that never became projects.
+Their upload timestamps fall into eight groups, three of which are the same photo and video uploaded three times (identical sizes).
+After the branch is deployed and `PROJECT_INGEST_TOKEN` is set in Vercel, this creates one draft per group with a placeholder title; Alex retitles, picks the location and service, and publishes from the Drafts section.
+
+| Draft | Files (bucket path under `drafts/`) | Note |
+| --- | --- | --- |
+| 1 | `1760035527927-bund8n.jpg`, `1760035528881-sy94v.jpg` | two photos |
+| 2 | `1760036430841-997oy.jpg`, `1760036431194-oxllou.jpg` | two photos |
+| 3 | `1760037196040-lzxu8f.jpg`, `1760037197481-ph4st.MOV` | photo plus video; `1760037210351-mp7c1j.jpg`, `1760037211988-gazxuf.MOV`, `1760037415857-j94tr5.jpg`, `1760037417342-8egksa.MOV` are byte-identical re-uploads and are skipped |
+| 4 | `1760037993595-43pmp.jpg`, `1760037995478-kjyqn.jpg` | two photos |
+| 5 | `1760038440520-7gyl9.jpg`, `1760038443111-tmdypk.jpg` | two photos |
+| 6 | `1760039172881-u0uk3.jpg`, `1760039174662-s2r0l.jpeg` | two photos |
+| 7 | `1760040697398-dspj0f.jpeg`, `1760040698288-2sgnil.jpeg` | two photos |
+| 8 | `1760979633596-z72pch.jpeg`, `1760979633887-6161ab.jpeg` | two photos, uploaded 2025-10-20 |
+
+```bash
+export SITE=https://www.lavacagc.com PROJECT_INGEST_TOKEN=<from Vercel>
+node scripts/ingest-project.mjs --site $SITE --token $PROJECT_INGEST_TOKEN --title "Draft 1 - retitle me" --location "Northern NJ" --service "Kitchen Remodeling" --from-storage drafts/1760035527927-bund8n.jpg --from-storage drafts/1760035528881-sy94v.jpg
+# ... one call per row above; the CLI prints each draft's admin URL
+```
+
+The location and service type are placeholders because the photos carry no metadata; the admin form requires both, so the CLI passes them and Alex corrects them before publishing.
+Nothing is published by this run.
