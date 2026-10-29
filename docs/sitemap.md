@@ -17,7 +17,10 @@ A route handler whose path does not end in `sitemap.xml` is an ordinary ISR func
 
 `/api/cron/sitemap-watch` runs daily at 06:45 UTC (vercel.json) and reads the sitemap back the way a crawler does.
 
-- It fetches `https://www.lavacagc.com/sitemap.xml` through the CDN, rebuilds the expected entries from the database, and compares them (`src/lib/sitemapWatch.ts`).
+- It fetches `/sitemap.xml` through the CDN, rebuilds the expected entries from the database, and compares them (`src/lib/sitemapWatch.ts`).
+  The fetch goes to the deployment's own host (`VERCEL_PROJECT_PRODUCTION_URL`, or `SITEMAP_WATCH_HOST` when set), not to `www.lavacagc.com`: Cloudflare answers a Vercel function's request to the public host with its managed challenge (proven on a preview on 2026-10-29), and `/sitemap.xml` is outside the middleware matcher so the vercel.app host serves it from the same route and the same ISR cache without the canonical redirect.
+  That covers the bug class the watcher exists for (a file no publish regenerates) and leaves out the Cloudflare hop and the www edge entry; to check those by hand, compare the blog lastmods of `https://www.lavacagc.com/sitemap.xml` and the vercel.app host from a browser or curl (they matched on 2026-10-29).
+  The JSON answer names the URL it read under `fetched`.
   Posts and projects are read uncached.
   The active home-service slugs come through the catalog's tagged cache, the same one the sitemap uses, which `invalidateCatalog` expires on every save.
 - Blog and project entries are compared by lastmod; every other entry is dated by the clock at generation and compared by presence only.

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { MetadataRoute } from 'next';
 import { renderSitemapXml } from '../src/lib/sitemapXml';
-import { diffSitemap, hasDrift, parseSitemapXml, SITEMAP_GRACE_MS } from '../src/lib/sitemapWatch';
+import { diffSitemap, hasDrift, parseSitemapXml, SITEMAP_GRACE_MS, sitemapWatchUrl } from '../src/lib/sitemapWatch';
 
 /**
  * The sitemap watcher (/api/cron/sitemap-watch) compares the served sitemap
@@ -113,5 +113,25 @@ test.describe('diffSitemap', () => {
     const served = servedFrom(entries).map((entry) => (entry.url === `${SITE}/blog/old-post` ? { ...entry, lastmod: null } : entry));
     const drift = diffSitemap(entries, served, NOW);
     expect(drift.stale).toEqual([{ url: `${SITE}/blog/old-post`, served: null, expected: hoursAgo(72) }]);
+  });
+});
+
+test.describe('sitemapWatchUrl', () => {
+  test("reads the deployment's own host on Vercel, so Cloudflare's challenge never answers the function", () => {
+    expect(sitemapWatchUrl({ VERCEL_PROJECT_PRODUCTION_URL: 'lavacagc-nextjs-138k.vercel.app' })).toEqual({
+      url: 'https://lavacagc-nextjs-138k.vercel.app/sitemap.xml',
+      via: 'vercel',
+    });
+  });
+
+  test('an explicit SITEMAP_WATCH_HOST wins, with or without a scheme or trailing slash', () => {
+    expect(sitemapWatchUrl({ SITEMAP_WATCH_HOST: 'https://example.vercel.app/', VERCEL_PROJECT_PRODUCTION_URL: 'other.vercel.app' })).toEqual({
+      url: 'https://example.vercel.app/sitemap.xml',
+      via: 'override',
+    });
+  });
+
+  test('off Vercel it falls back to the public site', () => {
+    expect(sitemapWatchUrl({})).toEqual({ url: `${SITE}/sitemap.xml`, via: 'public' });
   });
 });

@@ -72,6 +72,31 @@ export interface SitemapDrift {
  */
 export const SITEMAP_GRACE_MS = 2 * 60 * 60 * 1000
 
+/**
+ * Where the watcher reads the sitemap from.
+ *
+ * Not the public host: a fetch from a Vercel function to www.lavacagc.com is
+ * answered by Cloudflare's managed challenge (proven on a preview on
+ * 2026-10-29: 403, "Just a moment"), the same interception telegramLead.ts
+ * warns about. The deployment's own vercel.app host sits behind Cloudflare,
+ * and /sitemap.xml is outside the middleware matcher there, so it is served by
+ * the same route handler from the same ISR cache that the public host reads;
+ * the bug this watcher exists for (a static file no publish regenerates) shows
+ * on both hosts alike. What it does not cover is the Cloudflare hop itself and
+ * the www edge cache entry; docs/sitemap.md says how to check those by hand.
+ *
+ * SITEMAP_WATCH_HOST wins when set (a host name, no scheme), then Vercel's
+ * VERCEL_PROJECT_PRODUCTION_URL, then the public site as a last resort for a
+ * run off Vercel.
+ */
+export function sitemapWatchUrl(env: Record<string, string | undefined>): { url: string; via: 'override' | 'vercel' | 'public' } {
+  const override = env.SITEMAP_WATCH_HOST?.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  if (override) return { url: `https://${override}/sitemap.xml`, via: 'override' }
+  const vercel = env.VERCEL_PROJECT_PRODUCTION_URL?.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  if (vercel) return { url: `https://${vercel}/sitemap.xml`, via: 'vercel' }
+  return { url: `${SITE_URL}/sitemap.xml`, via: 'public' }
+}
+
 const toMs = (value: string | Date | undefined | null): number | null => {
   if (!value) return null
   const ms = value instanceof Date ? value.getTime() : Date.parse(value)

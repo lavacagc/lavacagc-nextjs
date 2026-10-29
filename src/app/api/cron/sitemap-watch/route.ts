@@ -5,9 +5,10 @@
  * Why: between Next.js 16.2 and 2026-10-29 every publish "refreshed" the
  * sitemap and none of them did (vercel/next.js#99055); the served file was the
  * one from the last deploy, and nothing read it back to notice. This route is
- * the reader. It fetches https://www.lavacagc.com/sitemap.xml the way a
- * crawler does (through the CDN, never in-process, because the served copy is
- * the thing under test), rebuilds the expected entries from the database
+ * the reader. It fetches /sitemap.xml the way a crawler does (through the CDN,
+ * never in-process, because the served copy is the thing under test; on the
+ * deployment's own host rather than www, because Cloudflare challenges a
+ * function's egress, see sitemapWatchUrl), rebuilds the expected entries from the database
  * (posts and projects read uncached; the active home-service slugs through
  * the catalog's tagged cache, the same one the sitemap uses, which
  * invalidateCatalog expires on every save), and reports the difference
@@ -34,10 +35,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCatalogStrict } from '@/lib/home-services/catalogData';
 import { escapeTelegram, sendTelegramMessage, type TelegramOutcome } from '@/lib/notify/telegramMessage';
 import { buildSitemapEntries, getStaticSupabaseClient, SITE_URL, sitemapSourcesFrom } from '@/lib/sitemap';
-import { diffSitemap, hasDrift, parseSitemapXml, SITEMAP_GRACE_MS, type ServedEntry, type SitemapDrift } from '@/lib/sitemapWatch';
+import { diffSitemap, hasDrift, parseSitemapXml, SITEMAP_GRACE_MS, sitemapWatchUrl, type ServedEntry, type SitemapDrift } from '@/lib/sitemapWatch';
 
 export const dynamic = 'force-dynamic';
 
+/** The public address, for the owner's messages; the fetch goes to sitemapWatchUrl (see there). */
 export const SITEMAP_URL = `${SITE_URL}/sitemap.xml`;
 const UPSTREAM_PR_API = 'https://api.github.com/repos/vercel/next.js/pulls/99056';
 const UPSTREAM_PR_URL = 'https://github.com/vercel/next.js/pull/99056';
@@ -52,10 +54,10 @@ type ServedCopy =
   | { outcome: 'blocked'; status: number; detail: string }
   | { outcome: 'error'; detail: string };
 
-async function fetchServedCopy(): Promise<ServedCopy> {
+async function fetchServedCopy(url: string): Promise<ServedCopy> {
   let res: Response;
   try {
-    res = await fetch(SITEMAP_URL, {
+    res = await fetch(url, {
       headers: { 'User-Agent': USER_AGENT, Accept: 'application/xml' },
       cache: 'no-store',
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -137,7 +139,8 @@ export async function GET(request: NextRequest) {
   }
 
   const now = new Date();
-  const [served, upstream] = await Promise.all([fetchServedCopy(), checkUpstreamFix()]);
+  const source = sitemapWatchUrl(process.env);
+  const [served, upstream] = await Promise.all([fetchServedCopy(source.url), checkUpstreamFix()]);
 
   const messages: string[] = [];
   if (upstreamMergedRecently(upstream, now) && upstream.checked) {
@@ -187,6 +190,7 @@ export async function GET(request: NextRequest) {
     status,
     checkedAt: now.toISOString(),
     sitemap: SITEMAP_URL,
+    fetched: source,
     served:
       served.outcome === 'ok'
         ? { outcome: served.outcome, status: served.status, age: served.age, cache: served.cache, count: served.entries.length }
