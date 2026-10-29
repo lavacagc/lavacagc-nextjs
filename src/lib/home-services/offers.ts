@@ -260,15 +260,28 @@ async function sendOneOffer(
     created_by: createdBy,
   }]);
 
+  // Re-read the subs and re-apply the rule: one suspended or removed since the
+  // preview must not get the offer.
   const subsById = new Map<string, SubRow>();
-  const fullSubs = (await supabaseRest<SubRow[]>(
+  const today = todayInNewJersey(now);
+  const fullSubs = ((await supabaseRest<SubRow[]>(
     'GET', `subs?select=${SUB_COLUMNS}&id=${inList(preview.eligible.map((e) => e.id))}`,
-  )) ?? [];
+  )) ?? []).filter((sub) => offerExclusion(sub, input.trade, preview.county, today) === null);
   for (const sub of fullSubs) subsById.set(sub.id, sub);
 
-  const recipients = await supabaseRest<OfferRecipientRow[]>('POST', `offer_recipients?select=${RECIPIENT_COLUMNS}`,
-    preview.eligible.map((e) => ({ offer_id: offer.id, sub_id: e.id, token: generateOfferToken(), expires_at: expiresAt })),
-  );
+  // An offer with no recipients is a dead row that blocks a resend of the
+  // trade, so it is removed if the recipients cannot be written.
+  let recipients: OfferRecipientRow[];
+  try {
+    if (fullSubs.length === 0) throw new Error('every eligible sub changed before the send');
+    recipients = await supabaseRest<OfferRecipientRow[]>('POST', `offer_recipients?select=${RECIPIENT_COLUMNS}`,
+      fullSubs.map((sub) => ({ offer_id: offer.id, sub_id: sub.id, token: generateOfferToken(), expires_at: expiresAt })),
+    );
+  } catch (err) {
+    await supabaseRest('DELETE', `job_offers?id=eq.${offer.id}`, undefined, { prefer: 'return=minimal' }).catch(() => undefined);
+    if (fullSubs.length === 0) return { trade: input.trade, status: 'no_eligible_subs', excluded: preview.excluded };
+    throw err;
+  }
 
   const signupUrl = specNookSignupUrl(input.trade, offer.id);
   const outcomes = await Promise.all(recipients.map(async (rcpt) => {

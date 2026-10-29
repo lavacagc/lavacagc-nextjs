@@ -9,12 +9,14 @@
  * Every action POSTs to /api/offers/<token>; on success the server page is
  * re-rendered so what the sub sees is always what the database says.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Lang } from '@/lib/home-services/catalog';
 import { s, type StringKey } from '@/lib/home-services/i18n';
 import { formatDollars } from '@/lib/home-services/pricing';
 import { DECLINE_REASONS, DECLINE_REASON_KEY, MAX_RESPONSE_FILES, MAX_RESPONSE_FILE_BYTES, type DeclineReason } from '@/lib/home-services/offerRules';
+
+const noopSubscribe = () => () => {};
 
 const ERROR_KEY: Record<string, StringKey> = {
   taken: 'offerTaken',
@@ -47,6 +49,8 @@ export default function OfferActions({
   confirm: { cents: number; source: 'accepted_counter' | 'admin_price' } | null;
 }) {
   const router = useRouter();
+  // False in the server HTML, true once React owns the page: a tap before hydration would be lost silently.
+  const hydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -145,14 +149,14 @@ export default function OfferActions({
             {confirm.source === 'accepted_counter' ? s('offerConfirmBody', lang) : s('offerAlexPriceBody', lang)}
           </p>
           <p className="mt-2 text-2xl font-bold text-[#1A1A1A]">{formatDollars(confirm.cents)}</p>
-          <button type="button" className={`${primaryBtn} mt-3`} disabled={busy} onClick={() => sendJson({ action: 'confirm' }, s('offerConfirmed', lang))} data-testid="offer-confirm">
+          <button type="button" className={`${primaryBtn} mt-3`} disabled={busy || !hydrated} onClick={() => sendJson({ action: 'confirm' }, s('offerConfirmed', lang))} data-testid="offer-confirm">
             {busy ? s('offerSending', lang) : s('offerConfirm', lang)}
           </button>
         </div>
       ) : (
         <div>
           <p className="text-sm text-[#303030]">{s('offerAcceptBody', lang)}</p>
-          <button type="button" className={`${primaryBtn} mt-3`} disabled={busy} onClick={() => sendJson({ action: 'accept' }, s('offerAccepted', lang))} data-testid="offer-accept">
+          <button type="button" className={`${primaryBtn} mt-3`} disabled={busy || !hydrated} onClick={() => sendJson({ action: 'accept' }, s('offerAccepted', lang))} data-testid="offer-accept">
             {busy && !open ? s('offerSending', lang) : s('offerAccept', lang)}
           </button>
         </div>
@@ -162,6 +166,7 @@ export default function OfferActions({
         type="button"
         className={`${secondaryBtn} mt-3`}
         aria-expanded={respondOpen}
+        disabled={!hydrated}
         aria-controls="offer-respond-panel"
         onClick={() => { setRespondOpen((v) => !v); setError(null); }}
         data-testid="offer-respond"
@@ -202,7 +207,7 @@ export default function OfferActions({
                 <textarea id="offer-counter-note" rows={2} maxLength={1000} className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} />
               </div>
               {status}
-              <button type="submit" className={primaryBtn} disabled={busy} data-testid="offer-counter-submit">{busy ? s('offerSending', lang) : s('offerSendCounter', lang)}</button>
+              <button type="submit" className={primaryBtn} disabled={busy || !hydrated} data-testid="offer-counter-submit">{busy ? s('offerSending', lang) : s('offerSendCounter', lang)}</button>
             </form>
           )}
 
@@ -226,7 +231,7 @@ export default function OfferActions({
                 />
               </div>
               {status}
-              <button type="submit" className={primaryBtn} disabled={busy} data-testid="offer-details-submit">{busy ? s('offerSending', lang) : s('offerSendDetails', lang)}</button>
+              <button type="submit" className={primaryBtn} disabled={busy || !hydrated} data-testid="offer-details-submit">{busy ? s('offerSending', lang) : s('offerSendDetails', lang)}</button>
             </form>
           )}
 
@@ -248,7 +253,7 @@ export default function OfferActions({
                 <textarea id="offer-decline-note" rows={2} maxLength={1000} className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} />
               </div>
               {status}
-              <button type="submit" className={secondaryBtn} disabled={busy} data-testid="offer-decline-submit">{busy ? s('offerSending', lang) : s('offerSendDecline', lang)}</button>
+              <button type="submit" className={secondaryBtn} disabled={busy || !hydrated} data-testid="offer-decline-submit">{busy ? s('offerSending', lang) : s('offerSendDecline', lang)}</button>
             </form>
           )}
         </div>
