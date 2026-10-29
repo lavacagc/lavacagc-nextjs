@@ -118,3 +118,52 @@ Both sabotages were reverted with `git checkout`, and `git status` was clean aft
 
 Every row titled `ZZTEST-RD...`, its image rows, the 13 storage objects I created, and the `project-ingest:*` rate-limit rows were deleted.
 The `project-images` bucket and the `projects` table were empty afterwards, as they were before I started.
+
+## Re-verification at bb1ba08
+
+Re-checked: the fix commits `9c23c74` (chaos:static on Node 20) and `bb1ba08` (the seven review fixes), diffed against `84d50a4`.
+Rig: a fresh dev server on 3114 for the specs and API checks, then `next start` on 3114 for the ISR check, with the same local Supabase.
+
+**Verdict after re-verification: ACCEPT.**
+
+All seven defects and both builder findings are fixed.
+The fix for defect 5 introduced one new low-severity follow-up: an unknown `?tab=` value renders a blank admin page.
+It does not block acceptance.
+
+### Per defect
+
+| # | Result | Evidence |
+| --- | --- | --- |
+| 1 | FIXED | I signed an upload, PUT a text file named `.jpg`, and referenced it in an ingest create call. The answer was 415 and the object was gone from `storage.objects` afterwards. A `drafts/` object with wrong bytes was refused (415) but never deleted, which is correct because only keys the server minted are discarded. |
+| 2 | FIXED | Admin video path: declared 100 bytes, uploaded 11,401. Verify answered 413 "not the size that was declared" and deleted the object. With the true size declared, verify answered 200 and kept it. Ingest path: a 27,262,988-byte JPEG signed as 100 bytes and then referenced got 413 "Photos are limited to 25 MB" and was deleted. Signing with a declared 30 MB got 413. On the ingest path the per-type cap, not the exact declared size, is what is enforced, which covers the risk. The bucket still has no `file_size_limit`; setting one in production remains worth doing. |
+| 3 | FIXED | I ran the real `verifyStored` against a fake storage server answering 503, 500 and 429. Each answered 503 "storage did not answer" and sent no DELETE; the only request was the HEAD. Sabotage, with non-2xx counted as "bad", made the same rig send `DELETE /storage/v1/object/project-images`, and it turned the spec's verdict test red. A second sabotage, removing the verdict check from `discardRefused`, also turned the spec red, though by reaching a storage call rather than by a clean assertion. Both sabotages were reverted and `git status` was clean. |
+| 4 | FIXED | The `FF D8 FF` + HTML polyglot got 415 through multipart and through a signed upload plus `path`, and the signed object was deleted. The guard scans the first kilobyte for `<html`, `<script` and `<?php`, and buffers under 12 bytes are never trusted. Real JPEGs, including the 676-byte spec fixture and my sample photos, still pass. |
+| 5 | FIXED | Every ingest and admin answer now carries `admin_url` as `/vaca-mgmt?tab=projects&project=<id>`, and `docs/projects-ingest.md` matches. That link opened the edit form for the right project with no console errors. |
+| 6 | FIXED | The follow-ups test now skips under `E2E_LIVE_BACKEND`. The live run reports it as skipped, not failed. |
+| 7 | FIXED | Against `next start`, with real ISR: a warm `/portfolio` answered `x-nextjs-cache: HIT`. As a control, flipping a project's `active` to false directly in the database left it on the cached page (still HIT). In the manager I ticked a project and clicked Feature, which sent `POST /api/admin/projects/bulk {"action":"feature",...}`, got 200, and set `featured=true`. Archive sent `{"action":"archive",...}`, got 200, and set `status=archived, active=false`. The very next `/portfolio` was a MISS without the project, and `/projects/<slug>` answered 404. Reorder now goes through the same route. The browser no longer writes `projects` at all. |
+| B1, Range-read hang on small objects | FIXED | Storage reads now HEAD first and never ask for a range past the end, with a 10-second timeout. Referencing a 676-byte `drafts/` JPEG created the draft in 0.05 s. |
+| B2, toast covering the sticky Save button | FIXED | I forced the create call to fail with a 409. "Not saved: That URL slug is already used by another project." appeared inline at the left of the sticky bar, no toast opened, the element at the centre of Save was the Save button itself, and the form stayed open for a retry. |
+
+### New follow-up (low)
+
+- `src/components/AdminContent.tsx:124-130` accepts any `?tab=` value matching `^[a-z][a-z-]{1,39}$`, not only tabs that exist.
+  `/vaca-mgmt?tab=nonexistent` rendered the header and sidebar with an empty main area and no way back except the sidebar.
+  Fix: check the value against the list of known tab ids and fall back to `dashboard`.
+
+### Gates and specs
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `eslint --max-warnings 0` on all 43 added or modified ts/tsx/mjs files since `fc6fe33` | exit 0 |
+| `npm run chaos:static` (now works on Node 20) | exit 0, 0 new violations |
+| `npm run build` | exit 0; `/api/admin/projects/bulk` is in the route table |
+| The three spec files, live backend, fresh dev server | 36 passed, 0 failed, 2 skipped |
+
+The two skips are the stub-only follow-ups test (defect 6, by design) and the lightbox test, which skips when no project is published, as before.
+
+### Rig notes
+
+The production-build sign-in needed `bypassCSP` for the ISR check only, because the production CSP correctly does not allow the local Supabase origin.
+The CSP itself was checked earlier on the dev server with no bypass.
+Every `ZZTEST-RD` row and storage object from this pass was deleted, and the bucket and `projects` table are empty again.
