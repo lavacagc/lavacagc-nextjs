@@ -116,3 +116,67 @@ It signs in as `slice-e-admin@local.test` (created on first run).
 - No change to slice F (blog, OpenAI, articles, SEO) or slice H (experiments) areas.
 - `public.services` is missing on the rig (`next build` logs "Could not find the table 'public.services'"); that is the older remodel table, not mine, and the build does not fail on it.
 - The rest of the Phase 2 gates (Lavish review with screenshots, `/no-mistakes`) belong to the planner after review.
+
+## Fix round 1 (review REJECT on the editor's phone UI, `slice-e-review.md`)
+
+The reviewer accepted CAT1 to CAT8 and rejected the editor's phone layout (U1 to U4) with one should-fix (U5).
+All five are fixed in `src/components/admin/home-services/ServicesPricesEditor.tsx`, plus one line of the admin shell for U5.
+Screenshots are in `docs/phase-2/reports/shots/` with the prefix `slice-e-fix-`, taken at iPhone 13 (390 x 844) and at 1366 x 900 against the dev server on the rig.
+The measurements below come from the same script that took the screenshots.
+
+| Item | Fix | Evidence |
+| --- | --- | --- |
+| U1 list squeezes names on a phone | Each row stacks below `sm`: name, Spanish name and path on top at full width (the path may break anywhere), then price, switch, badge and Edit in one row; from `sm` up it is one row as before. The price never wraps (`$2.95 / sq ft` stays on one line). | Name block 298 px of a 322 px row on the phone (was about 100 px), 840 of 1196 on desktop. `slice-e-fix-phone-list.png`, `slice-e-fix-desktop-list.png`. |
+| U2 lowercase "SEO" | Labels are now "<Field> (English)" and "<Field> (Spanish)", the field name kept as written. FAQ labels read "Question (English)" and "Answer (Spanish)". | Labels read "SEO title (English)" and "SEO description (Spanish)" on both widths. `slice-e-fix-phone-seo-labels.png`, `slice-e-fix-desktop-seo-labels.png`. |
+| U3 gap above the switch on a phone | The price row stacks on a phone and the switch's top offset (`pt-7`, which lines it up with the inputs beside it) applies from `sm` up only. | Gap between the Job minimum input and the switch is 18 px on the phone (was about 60 px); on desktop the switch sits beside the inputs. `slice-e-fix-phone-form-top.png`, `slice-e-fix-desktop-form-top.png`. |
+| U4 clipped text and missing counters | Every multi-line field (description, included, raises, SEO description, keywords, FAQ answers) grows with its text; FAQ questions are growing textareas instead of single-line inputs. FAQ questions show n/300 and answers n/1200; keywords show n/10 (red past the limit), matching the schema caps. | No textarea in the form scrolls internally on either width (scrollHeight compared with clientHeight on every textarea: none clipped); keywords show 6/10. `slice-e-fix-phone-faq.png`, `slice-e-fix-phone-keywords.png`, `slice-e-fix-desktop-faq.png`. |
+| U5 Save scrolls away | Save, Discard and the status sit in a bar stuck to the bottom of the viewport on both widths, with an "Unsaved changes" note once the form differs from what is stored. | With the price changed at the top and the view scrolled to the raises lists, the Save button is inside the viewport on the phone (form 5,735 px tall) and on desktop (3,251 px). `slice-e-fix-phone-sticky-save.png`, `slice-e-fix-desktop-sticky-save.png`, `slice-e-fix-*-form-bottom.png`. |
+
+The first attempt at U5 measured the bar out of view on both widths.
+The cause was in the admin shell, not the editor: three wrappers in `src/components/AdminContent.tsx` used `overflow-x-hidden`, which makes an element a scroll container and so silently disables every `position: sticky` inside it.
+They now use `overflow-x-clip`, which clips the same way without creating a scroll container.
+That also lets the admin header's existing `sticky` class work as written, so on every admin tab the header now stays on screen while the page scrolls; the stub `admin-nav-simplified` browser check, which renders an admin tab through that shell, passed after the change.
+
+In the phone screenshots the round "N" badge at the bottom left is the Next.js dev-mode indicator; it is not in a production build.
+
+### Commands run in this round and their results
+
+| Command | Result |
+| --- | --- |
+| `git merge --ff-only 913643d` | fast-forwarded to the reviewer's commit |
+| Screenshot and measurement script (Playwright, iPhone 13 and 1366 x 900, dev server on 3111 with the rig env) | the values in the table above |
+| Live, alone: `TEST_URL=http://localhost:3111 E2E_LIVE_BACKEND=1 playwright test tests/home-services-catalog.spec.ts --project=chromium --workers=1` | 19 passed (the production-chunk scan ran too, against the stub build left in `.next`) |
+| Rig table against the seed afterwards (every column except `updated_at` and `updated_by`, jsonb compared key-order independent) | 7 rows, none differing from the seed |
+| Live: `playwright test tests/admin-nav-simplified.spec.ts` (chromium and mobile) | 14 passed, 2 skipped (the stub-cookie check, which only works against the GoTrue stub) |
+| Stub: `npm run test:build` (with `.env.local` moved aside, since it now holds the rig's service key), `next start` on 3112, `playwright test tests/admin-nav-simplified.spec.ts tests/home-services-catalog.spec.ts` | 38 passed, 16 skipped (live-only), 0 failed |
+| `npm run typecheck`, `npm run lint`, `npm run chaos:static` | clean, clean, no new violations |
+
+Both env files in the worktree are now copies of the coordinator's `env.rig`; the repo's production `.env.local` is not used.
+
+## Polish round (re-review ACCEPT at `d426a7f`, notes N1 and N2, plus two older admin phone defects)
+
+Taken in with `git merge --ff-only d426a7f`.
+Screenshots are in `docs/phase-2/reports/shots/` with the prefix `slice-e-polish-`, at iPhone 13 (390 x 844) unless the name says desktop (1366 x 900).
+The measurements come from the script that took the screenshots, against the dev server on the rig.
+
+| Item | Fix | Evidence |
+| --- | --- | --- |
+| N1 Enter in a FAQ question | The question box ignores Enter, and a pasted line break becomes a space; answers stay multi-line. The PATCH schema also turns line breaks in a question into spaces, so a question saved any other way is one line too. | Typing Enter then " Really" gave "Is this a repair visit? Really" (no line break); a pasted "Line one\nline two" became "Line one line two"; Enter in the answer still adds a line break. Unit test "CAT5: a FAQ question is saved as one line (review N1); answers keep their line breaks". `slice-e-polish-phone-faq-question.png`. |
+| N2 Exterior painting row 4 to 5 px off | On a phone the controls row is full width, so the price's `mr-auto` pushes the switch and Edit to the right edge, and the gap is 8 px below `sm`, so the widest price ("$2.95 / sq ft") no longer pushes them past the edge. | Edit button at x = 263 on all seven rows; one switch position (x = 154) for all seven. `slice-e-polish-phone-list.png`, `slice-e-polish-desktop-list.png`. |
+| Smart Banners on a phone (older defect) | `BannerManager.tsx`: the header stacks on a phone, so "New Banner" sits under the title; badges wrap; the four actions take their own right-aligned row. Desktop is unchanged (one row per banner). | No element past the right edge of the 390 px viewport (the reviewer measured 4 at right = 455 to 463); "New Banner" spans x = 10 to 156. `slice-e-polish-phone-banners.png`, `slice-e-polish-phone-banners-full.png`, `slice-e-polish-desktop-banners.png`. |
+| "New Post" covering the menu list (older defect) | `AdminSidebar.tsx`: the menu is `h-dvh` (falling back to `h-screen`), so it no longer runs under a phone browser's toolbar; the item list is the only scroller (`min-h-0`) with bottom padding; "New Post" is a footer with a divider and the safe-area inset. | With the list scrolled to the end, the last item ends at y = 573 and the footer starts at y = 583, inside a 664 px viewport; New Post ends at 646. `slice-e-polish-phone-menu.png`, `slice-e-polish-phone-menu-scrolled.png`; desktop sidebar `slice-e-polish-desktop-sidebar-expanded.png` (the second orange item there is the mouse hover). |
+
+`slice-e-polish-phone-blog.png` is the Blog tab with the menu closed, for reference.
+
+### Commands run in this round and their results
+
+| Command | Result |
+| --- | --- |
+| `git merge --ff-only d426a7f` | fast-forwarded |
+| Live, alone: `TEST_URL=http://localhost:3111 E2E_LIVE_BACKEND=1 playwright test tests/home-services-catalog.spec.ts --project=chromium --workers=1` | 20 passed |
+| Rig table against the seed afterwards | 7 rows, none differing |
+| Live: `admin-nav-simplified`, `smart-banner-push-content`, `admin-dashboard` (chromium and mobile) | admin-nav and smart-banner green; `admin-dashboard` fails 10 live because it signs in with the GoTrue stub cookie by design (its header says it runs against the stub backend), so it was run stub-backed below |
+| Stub: `npm run test:build` (`.env.local` moved aside and restored), `next start` on 3112, `playwright test` on `admin-nav-simplified`, `smart-banner-push-content`, `admin-dashboard`, `home-services-catalog` | 54 passed, 16 skipped (live-only), 0 failed |
+| `npm run typecheck`, `npm run lint`, `npm run chaos:static` | clean, clean, total 0 and no new violations |
+
+There is no admin spec for the Smart Banners manager or the blog list; `smart-banner-push-content` covers the public banner, and `admin-dashboard` and `admin-nav-simplified` render the admin shell and sidebar this round touched.

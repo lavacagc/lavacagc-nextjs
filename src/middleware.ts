@@ -105,6 +105,10 @@ const PUBLIC_ROUTES = [
   '/api/offers/',
   '/api/cta/',
   '/api/projects/ingest',
+  // Phase 2 article routes for Claude Code (docs/articles-ingest.md). Self-
+  // guarded like the project ingest: the same constant-time bearer token (404
+  // for everyone when it is unset) and a 30-a-minute per-IP rate limit.
+  '/api/articles/',
   // Phase 2 slice H (experiments). Self-guarded: the agent routes by the
   // ingest token (404 without it) with their own rate limit, the event sink
   // by a per-IP rate limit and the signed visitor cookie, the veto by its

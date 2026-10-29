@@ -1,7 +1,7 @@
 /**
  * On-demand ISR for the admin editors that write straight to Supabase from the
- * browser (CMS pages, services). Those pages cache for an hour, so an editor
- * asks POST /api/admin/revalidate to drop the affected copies after a save.
+ * browser (CMS pages, services, the blog). Those pages are ISR copies, so an
+ * editor asks POST /api/admin/revalidate to drop the affected copies after a save.
  *
  * Shared by the route (validation) and the editors (building the path list).
  */
@@ -15,11 +15,20 @@ export const REVALIDATE_PREFIXES = [
   '/free-estimate',
   '/commercial-services',
   '/spring-renovation',
+  '/blog',
 ] as const;
+
+/**
+ * Single files outside every prefix that an editor may still revalidate.
+ * The sitemap lists every published blog post, so a publish or unpublish
+ * has to drop it too.
+ */
+export const REVALIDATE_EXACT = ['/sitemap.xml'] as const;
 
 const SAFE_PATH = /^\/[A-Za-z0-9\-_/]*$/;
 
 export function isRevalidatablePath(path: string): boolean {
+  if ((REVALIDATE_EXACT as readonly string[]).includes(path)) return true;
   if (!SAFE_PATH.test(path) || path.includes('//')) return false;
   if (path === '/') return true;
   return REVALIDATE_PREFIXES.some((prefix) => prefix !== '/' && (path === prefix || path.startsWith(`${prefix}/`)));
@@ -33,6 +42,23 @@ export function cmsPagePaths(slug: string): string[] {
   const clean = slug.trim().replace(/^\/+|\/+$/g, '');
   if (!clean) return [];
   return [`/cms/${clean}`, `/${clean}`].filter(isRevalidatablePath);
+}
+
+/**
+ * Every public path a blog post's visibility or content shows on: the list,
+ * the post itself (under each slug it has had, so a renamed post's old URL
+ * stops serving the old copy) and the sitemap.
+ *
+ * One list for both sides: the browser editors send it to
+ * /api/admin/revalidate, and the server writers (article routes, crons) hand
+ * it to revalidatePath through revalidateArticlePages.
+ */
+export function blogPagePaths(...slugs: Array<string | null | undefined>): string[] {
+  const posts = slugs
+    .map((s) => (s ?? '').trim().replace(/^\/+|\/+$/g, ''))
+    .filter((s) => /^[a-z0-9][a-z0-9-]*$/i.test(s))
+    .map((s) => `/blog/${s}`);
+  return [...new Set(['/blog', ...posts, '/sitemap.xml'])];
 }
 
 /**

@@ -15,7 +15,7 @@
  * amount (SEO copy, FAQ answers), because those are written prose and are
  * not rewritten behind the admin's back.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type TextareaHTMLAttributes } from 'react';
 import { AlertTriangle, ArrowLeft, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -76,6 +76,9 @@ function centsOf(input: string): number {
   if (!/^\d+(\.\d{1,2})?$/.test(clean)) return Number.NaN;
   return Math.round(Number(clean) * 100);
 }
+
+/** Line breaks (typed or pasted) become one space. */
+const oneLine = (text: string) => text.replace(/[ \t]*[\r\n]+[ \t]*/g, ' ');
 
 const toLines = (text: string) => text.split('\n').map((l) => l.trim()).filter(Boolean);
 
@@ -198,12 +201,15 @@ export default function ServicesPricesEditor() {
         {rows && (
           <ul className="divide-y rounded-md border" data-testid="catalog-list">
             {rows.map((r) => (
-              <li key={r.slug} className="flex flex-wrap items-center gap-3 p-3" data-testid="catalog-row" data-slug={r.slug}>
-                <div className="min-w-0 flex-1">
+              <li key={r.slug} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center" data-testid="catalog-row" data-slug={r.slug}>
+                {/* Phones stack the name over the controls; from `sm` up it is one row. */}
+                <div className="min-w-0 sm:flex-1">
                   <p className="font-medium">{r.name_en}</p>
-                  <p className="text-xs text-muted-foreground">{r.name_es} · /home-services/{r.slug}</p>
+                  <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{r.name_es} · /home-services/{r.slug}</p>
                 </div>
-                <span className="w-28 text-right font-semibold tabular-nums" data-testid="catalog-price">{r.price_display_en}</span>
+                {/* Full width on a phone, so the price's mr-auto pushes the controls to the right edge and every row lines up (review N2). */}
+                <div className="flex w-full items-center gap-2 sm:w-auto sm:gap-3">
+                <span className="mr-auto whitespace-nowrap font-semibold tabular-nums sm:mr-0 sm:w-28 sm:text-right" data-testid="catalog-price">{r.price_display_en}</span>
                 <label className="flex items-center gap-2 text-sm">
                   <Switch
                     checked={r.active}
@@ -217,6 +223,7 @@ export default function ServicesPricesEditor() {
                 <Button size="sm" variant="outline" onClick={() => setEditing(r.slug)} aria-label={`Edit ${r.name_en}`}>
                   <Pencil className="mr-1 h-4 w-4" /> Edit
                 </Button>
+                </div>
               </li>
             ))}
           </ul>
@@ -236,6 +243,27 @@ function Counter({ value, max }: { value: string; max: number }) {
   return <span className={`text-xs tabular-nums ${over ? 'font-semibold text-red-700' : 'text-muted-foreground'}`}>{value.length}/{max}</span>;
 }
 
+/**
+ * A textarea that grows with its text, so nothing is cut off or hidden behind an
+ * inner scroll on a phone (review U4). `rows` is the minimum height.
+ */
+function AutoTextarea({ value, className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement> & { value: string }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const fit = () => {
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight + 2}px`;
+    };
+    fit();
+    // The width, and so the line count, changes with the viewport.
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [value]);
+  return <Textarea ref={ref} value={value} className={`resize-none overflow-hidden ${className ?? ''}`} {...props} />;
+}
+
 function ServiceForm({ row, onBack, onSaved }: { row: HomeServiceRow; onBack: () => void; onSaved: (row: HomeServiceRow) => void }) {
   const [saved, setSaved] = useState<HomeServiceRow>(row);
   const [draft, setDraft] = useState<Draft>(() => draftOf(row));
@@ -243,6 +271,8 @@ function ServiceForm({ row, onBack, onSaved }: { row: HomeServiceRow; onBack: ()
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+
+  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(draftOf(saved)), [draft, saved]);
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
 
@@ -329,11 +359,11 @@ function ServiceForm({ row, onBack, onSaved }: { row: HomeServiceRow; onBack: ()
           return (
             <div key={lang}>
               <div className="mb-1 flex items-center justify-between">
-                <label htmlFor={id} className="text-xs font-medium">{langLabel} {label.toLowerCase()}</label>
+                <label htmlFor={id} className="text-xs font-medium">{label} ({langLabel})</label>
                 {opts.max && <Counter value={value} max={opts.max} />}
               </div>
               {opts.area ? (
-                <Textarea id={id} rows={opts.rows ?? 3} className={INVALID} value={value} onChange={(e) => set(key, e.target.value as never)} {...aria(id)} />
+                <AutoTextarea id={id} rows={opts.rows ?? 3} className={INVALID} value={value} onChange={(e) => set(key, e.target.value as never)} {...aria(id)} />
               ) : (
                 <Input id={id} className={INVALID} value={value} onChange={(e) => set(key, e.target.value as never)} {...aria(id)} />
               )}
@@ -361,7 +391,7 @@ function ServiceForm({ row, onBack, onSaved }: { row: HomeServiceRow; onBack: ()
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="flex flex-wrap items-start gap-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:gap-6">
           <div>
             <label htmlFor="starting_price" className="mb-1 block text-sm font-semibold">Starting price (USD)</label>
             <Input id="starting_price" inputMode="decimal" className={`w-40 ${INVALID}`} value={draft.price} onChange={(e) => setPrice(e.target.value)} {...aria('starting_price_cents')} aria-describedby={err('starting_price_cents') ? 'starting_price_cents-error' : 'starting_price-hint'} />
@@ -373,7 +403,8 @@ function ServiceForm({ row, onBack, onSaved }: { row: HomeServiceRow; onBack: ()
             <Input id="minimum_price" inputMode="decimal" className={`w-40 ${INVALID}`} value={draft.minimum} onChange={(e) => set('minimum', e.target.value)} {...aria('minimum_cents')} />
             <FieldError id="minimum_cents" message={err('minimum_cents')} />
           </div>
-          <label className="flex min-h-10 items-center gap-2 pt-7 text-sm font-semibold">
+          {/* sm:pt-7 lines the switch up with the inputs beside it; stacked on a phone it needs no offset. */}
+          <label className="flex min-h-10 items-center gap-2 text-sm font-semibold sm:pt-7">
             <Switch checked={draft.active} onCheckedChange={(v) => set('active', v)} aria-label="Active" />
             {draft.active ? 'On: shown on the site' : 'Off: hidden, its page returns 404'}
           </label>
@@ -399,9 +430,14 @@ function ServiceForm({ row, onBack, onSaved }: { row: HomeServiceRow; onBack: ()
         {pair('SEO description', 'seo_description', { area: true, max: 160, hint: 'The search result snippet. Lead with the cost and the counties.' })}
 
         <div>
-          <label htmlFor="seo_keywords" className="mb-1 block text-sm font-semibold">Keywords</label>
+          <div className="mb-1 flex items-center justify-between">
+            <label htmlFor="seo_keywords" className="text-sm font-semibold">Keywords</label>
+            <span className={`text-xs tabular-nums ${toLines(draft.seo_keywords).length > 10 ? 'font-semibold text-red-700' : 'text-muted-foreground'}`} data-testid="keywords-count">
+              {toLines(draft.seo_keywords).length}/10
+            </span>
+          </div>
           <p className="mb-1 text-xs text-muted-foreground">One per line, up to 10.</p>
-          <Textarea id="seo_keywords" rows={5} className={INVALID} value={draft.seo_keywords} onChange={(e) => set('seo_keywords', e.target.value)} {...aria('seo_keywords')} />
+          <AutoTextarea id="seo_keywords" rows={5} className={INVALID} value={draft.seo_keywords} onChange={(e) => set('seo_keywords', e.target.value)} {...aria('seo_keywords')} />
           <FieldError id="seo_keywords" message={err('seo_keywords')} />
         </div>
 
@@ -418,10 +454,26 @@ function ServiceForm({ row, onBack, onSaved }: { row: HomeServiceRow; onBack: ()
               <div className="grid gap-3 md:grid-cols-2">
                 {(['en', 'es'] as const).map((lang) => (
                   <div key={lang} className="space-y-2">
-                    <label htmlFor={`faq-${i}-q-${lang}`} className="block text-xs font-medium">{lang === 'en' ? 'English' : 'Spanish'} question</label>
-                    <Input id={`faq-${i}-q-${lang}`} value={item.q[lang]} onChange={(e) => setFaq(i, 'q', lang, e.target.value)} />
-                    <label htmlFor={`faq-${i}-a-${lang}`} className="block text-xs font-medium">{lang === 'en' ? 'English' : 'Spanish'} answer</label>
-                    <Textarea id={`faq-${i}-a-${lang}`} rows={4} value={item.a[lang]} onChange={(e) => setFaq(i, 'a', lang, e.target.value)} />
+                    <div className="flex items-center justify-between">
+                      <label htmlFor={`faq-${i}-q-${lang}`} className="text-xs font-medium">Question ({lang === 'en' ? 'English' : 'Spanish'})</label>
+                      <Counter value={item.q[lang]} max={300} />
+                    </div>
+                    {/* A question is one line on the page and in the FAQPage JSON-LD: Enter does nothing, and a pasted line break becomes a space (review N1). */}
+                    <AutoTextarea
+                      id={`faq-${i}-q-${lang}`}
+                      rows={1}
+                      className="min-h-10"
+                      value={item.q[lang]}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.preventDefault();
+                      }}
+                      onChange={(e) => setFaq(i, 'q', lang, oneLine(e.target.value))}
+                    />
+                    <div className="flex items-center justify-between">
+                      <label htmlFor={`faq-${i}-a-${lang}`} className="text-xs font-medium">Answer ({lang === 'en' ? 'English' : 'Spanish'})</label>
+                      <Counter value={item.a[lang]} max={1200} />
+                    </div>
+                    <AutoTextarea id={`faq-${i}-a-${lang}`} rows={3} value={item.a[lang]} onChange={(e) => setFaq(i, 'a', lang, e.target.value)} />
                   </div>
                 ))}
               </div>
@@ -435,7 +487,8 @@ function ServiceForm({ row, onBack, onSaved }: { row: HomeServiceRow; onBack: ()
 
         {formError && <p role="alert" className="rounded-md bg-red-50 p-3 text-sm font-medium text-red-800" data-testid="catalog-form-error">{formError}</p>}
 
-        <div className="flex flex-wrap items-center gap-3 border-t pt-4">
+        {/* Sticky, so a price changed at the top can be saved without scrolling past every FAQ (review U5). */}
+        <div className="sticky bottom-0 z-10 -mx-6 -mb-6 flex flex-wrap items-center gap-3 rounded-b-lg border-t bg-card/95 px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur" data-testid="catalog-save-bar">
           <Button onClick={save} disabled={saving} data-testid="catalog-save">
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save
@@ -443,7 +496,11 @@ function ServiceForm({ row, onBack, onSaved }: { row: HomeServiceRow; onBack: ()
           <Button variant="outline" onClick={() => { setDraft(draftOf(saved)); setErrors({}); setFormError(null); }} disabled={saving}>
             Discard changes
           </Button>
-          {savedAt && <span className="text-sm text-green-800" data-testid="catalog-saved">Saved at {savedAt}. Live on the next page load.</span>}
+          {dirty ? (
+            <span className="text-sm text-amber-800" data-testid="catalog-dirty">Unsaved changes</span>
+          ) : (
+            savedAt && <span className="text-sm text-green-800" data-testid="catalog-saved">Saved at {savedAt}. Live on the next page load.</span>
+          )}
         </div>
       </CardContent>
     </Card>

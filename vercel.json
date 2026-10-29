@@ -54,10 +54,6 @@
       "schedule": "0 10 * * 1"
     },
     {
-      "path": "/api/cron/seo-maintain",
-      "schedule": "0 8 2 * *"
-    },
-    {
       "path": "/api/cron/visit-reminders",
       "schedule": "30 23 * * *"
     },

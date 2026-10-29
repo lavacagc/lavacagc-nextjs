@@ -39,7 +39,7 @@ Prefixes: `CAT` catalog and admin editor, `ART` article routes, `FB` SEO feedbac
 
 - `POST /api/articles/ingest` body: `{ title, slug?, content, category, excerpt?, meta_title?, meta_description?, meta_keywords?, featured_image?, faq?: [{ q, a }], action_id? }`. Creates `published = false`, `source = 'claude'`. Returns `{ id, slug, adminUrl, previewUrl }`.
 - `PATCH /api/articles/ingest/[id]`: same fields, partial. Revalidates when the post is published.
-- `POST /api/articles/ingest/[id]/publish`: runs the publish guard (PG). On pass: `published = true`, `published_at = now()`, `review_hold = null`, revalidate, Telegram (TG), marks `action_id` applied when given, returns `{ published: true, url }`. On hold: `published` unchanged, `review_hold = { reasons: [...], checked_at }`, returns 409 `{ published: false, hold: reasons, adminUrl }`.
+- `POST /api/articles/ingest/[id]/publish`: runs the publish guard (PG) on the content that will go live, including a draft applied through `action_id` (the existing `validateDraft` 422 path in stage and apply is the floor, never bypassed). On pass: `published = true`, `published_at = now()`, `review_hold = null`, revalidate, Telegram (TG), marks `action_id` applied when given, returns `{ published: true, url }`. On hold: `published` unchanged, `review_hold = { reasons: [...], checked_at }`, returns 409 `{ published: false, hold: reasons, adminUrl }`.
 - `POST /api/articles/ingest/[id]/unpublish`: `published = false`, revalidate, returns `{ published: false }`.
 - `GET /api/articles/seo-feedback?days=28`: `{ window, pages: [{ path, impressions, clicks, ctr, position, trend_delta, decaying: bool, post?: { id, slug, title, published_at } }], refresh_candidates, new_article_candidates, open_actions: [{ id, kind, target, rationale }] }`, built from `buildSeoReport` and `proposeContentActions`, read with the service key, capped at 200 pages.
 - Auth: `ingestAuth.ts` shared as is; `authorizeArticles` copies `authorizeIngest` with its own rate-limit key (30 a minute per IP) and the same 404-when-unset behaviour.
@@ -170,7 +170,7 @@ Steps, each with a command: read `GET /api/articles/seo-feedback`; pick a target
 - SEC1 Every new route is either admin-session guarded by middleware (`/api/admin/*`) or self-guarded by the ingest token with rate limiting; none is both unlisted and unguarded (`chaos:static` CM-01, CM-08, CM-11 pass with the baseline still empty).
 - SEC2 The unpublish page and route are `noindex`, excluded from the bot filter, and the token is compared with `timingSafeEqual`.
 - SEC3 Service-key reads are bounded (`limit`) and the feedback route caps its window at 90 days.
-- SEC4 `review_hold` can be cleared only through the admin route with a session (the ingest token cannot clear it).
+- SEC4 `review_hold` is cleared in exactly two ways: a publish whose guard passes on the post's current content (the hold existed because the guard failed, so a passing guard is the only honest way to lift it, whoever calls publish), or the admin-session "Publish anyway" route, which records the admin's user id. The ingest token can never clear a hold while the guard still fails, and no route accepts `review_hold` as an input field. (Clarified 2026-10-29 after the slice F review found the two sentences in conflict.)
 
 ## SEO
 
@@ -181,6 +181,6 @@ Steps, each with a command: read `GET /api/articles/seo-feedback`; pick a target
 ## Gates and reports
 
 - Every slice: typecheck, lint, `chaos:static`, the full stub suite, and its live specs on the local rig; the builder writes `docs/phase-2/reports/slice-<x>-build.md`, the reviewer writes `-review.md` with ACCEPT or REJECT per AC and evidence.
-- Order: slice E and slice F in parallel from the base SHA; slice G starts after F merges (it needs the writer and routes); slice H starts after E merges (it needs the catalog data path for variant payloads) and can run beside G.
+- Order: slice E and slice F in parallel from the base SHA; slice G builds on F's head and slice H on E's head; the Phase 2 PR ships all four together, so slice F's always-pass guard stub never reaches production without slice G's real guard (merge gate, from the slice F review).
 - Lavish review of every flow with screenshots before the gate; then `/no-mistakes` on the branch.
 - `follow-ups.md` lists: delete `OPENAI_API_KEY` from Vercel and Supabase, set `PROJECT_INGEST_TOKEN` if unset, seed `claim_license` and `claim_insurance` facts with Alex's wording, `supabase functions delete` for the removed functions (Q13), read production blog RLS.
