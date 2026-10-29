@@ -7,13 +7,15 @@
  * hour, and every admin save calls `invalidateCatalog()`, which expires the
  * tag immediately (`{ expire: 0 }`: the next request reads the new row rather
  * than being served the old one while it refreshes) and revalidates the
- * landing page, the seven service pages and the sitemap.
+ * landing page, the seven service pages and the sitemap (SITEMAP_TAG and
+ * every path in SITEMAP_PATHS, as the blog and project writers do).
  *
  * Imports next/cache and the service key helper, so it cannot be bundled into
  * a client component; client components get the services as props.
  */
 import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
+import { SITEMAP_PATHS, SITEMAP_TAG } from '@/lib/revalidate';
 import { isServiceSlug, SERVICE_SLUGS, type HomeService, type ServiceNames } from './catalog';
 import { contentToRow, HOME_SERVICE_COLUMNS, rowToService, type HomeServiceRow } from './catalogRow';
 import { HOME_SERVICES_SEED } from './catalogSeed';
@@ -117,7 +119,8 @@ export async function getServiceNames(): Promise<ServiceNames> {
 /** Drop the cached catalog and the pages that render it, after an admin save. */
 export function invalidateCatalog(): void {
   revalidateTag(CATALOG_TAG, { expire: 0 });
+  revalidateTag(SITEMAP_TAG, { expire: 0 });
   revalidatePath('/home-services');
   for (const slug of SERVICE_SLUGS) revalidatePath(`/home-services/${slug}`);
-  revalidatePath('/sitemap.xml');
+  for (const path of SITEMAP_PATHS) revalidatePath(path);
 }

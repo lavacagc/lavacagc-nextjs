@@ -17,7 +17,10 @@
  * (export default buildSitemapEntries, export const revalidate = 3600), then
  * drop this route, the rewrite, SITEMAP_ROUTE in the revalidation path lists
  * and the middleware exclusion, and confirm on a Vercel preview that a publish
- * shows in /sitemap.xml on the next request.
+ * shows in /sitemap.xml on the next request. The steps are in docs/sitemap.md.
+ * The daily watcher at /api/cron/sitemap-watch reads the served copy back and
+ * tells the owner when it stops matching the database, and when that upstream
+ * fix merges.
  *
  * ISR: no request APIs are read, so the response is prerendered and
  * regenerated at least hourly; every blog and project writer also expires
