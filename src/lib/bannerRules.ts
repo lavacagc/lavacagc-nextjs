@@ -59,10 +59,7 @@ export const bannerRules: BannerRule[] = [
     conditions: {
       visitorType: 'new',
       maxVisits: 1,
-      // /home-services carries its own priced flow and a sticky request bar;
-      // an English remodel offer on top of it (on the Spanish page too) competes
-      // with the page's one job. Home Services audit decision, 2026-10-29.
-      excludePaths: ['/vaca-mgmt', '/admin', '/auth', '/home-services'],
+      excludePaths: ['/vaca-mgmt', '/admin', '/auth'],
     },
     display: {
       type: 'top-bar',
@@ -109,10 +106,7 @@ export const bannerRules: BannerRule[] = [
     conditions: {
       visitorType: 'returning',
       minVisits: 4,
-      // /home-services carries its own priced flow and a sticky request bar;
-      // an English remodel offer on top of it (on the Spanish page too) competes
-      // with the page's one job. Home Services audit decision, 2026-10-29.
-      excludePaths: ['/vaca-mgmt', '/admin', '/auth', '/home-services'],
+      excludePaths: ['/vaca-mgmt', '/admin', '/auth'],
     },
     display: {
       type: 'top-bar',
@@ -163,10 +157,7 @@ export const bannerRules: BannerRule[] = [
       visitorType: 'returning',
       minDaysSinceFirst: 7,
       minVisits: 2,
-      // /home-services carries its own priced flow and a sticky request bar;
-      // an English remodel offer on top of it (on the Spanish page too) competes
-      // with the page's one job. Home Services audit decision, 2026-10-29.
-      excludePaths: ['/vaca-mgmt', '/admin', '/auth', '/home-services'],
+      excludePaths: ['/vaca-mgmt', '/admin', '/auth'],
     },
     display: {
       type: 'top-bar',
