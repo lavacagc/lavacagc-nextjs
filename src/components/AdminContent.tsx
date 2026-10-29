@@ -52,11 +52,12 @@ export default function AdminContent() {
   const router = useRouter();
   const { user, loading, signOut } = useAuth();
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTabRaw] = useState('dashboard');
+  // `?project=<id>` is the admin_url the project ingest API returns: open the
+  // Projects tab, where ProjectUploadSystem opens that project's edit form.
+  // (Nothing tab-dependent renders before auth resolves, so no hydration gap.)
+  const [activeTab, setActiveTabRaw] = useState(() =>
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('project') ? 'projects' : 'dashboard');
   const [editingPost, setEditingPost] = useState<string | null>(null);
-  const [projectMode, setProjectMode] = useState<'manage' | 'upload' | 'edit'>('manage');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [editingProject, setEditingProject] = useState<any>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -65,14 +66,12 @@ export default function AdminContent() {
     }
   }, [user, loading, router]);
 
-  // Reset project mode when switching to projects tab
+  // The Projects tab keeps its own state (manager vs form) and resets on
+  // remount, so switching tabs needs no bookkeeping here.
   const setActiveTab = useCallback((tab: string) => {
     setActiveTabRaw(tab);
-    if (tab === 'projects') {
-      setProjectMode('manage');
-      setEditingProject(null);
-    }
   }, []);
+
 
   const handleSignOut = async () => {
     try {
@@ -222,18 +221,7 @@ export default function AdminContent() {
           </TabsContent>
 
           <TabsContent value="projects">
-            <ProjectUploadSystem
-              mode={projectMode}
-              onModeChange={(mode, project) => {
-                setProjectMode(mode);
-                if (mode === 'edit' && project) {
-                  setEditingProject(project);
-                } else if (mode === 'manage' || mode === 'upload') {
-                  setEditingProject(null);
-                }
-              }}
-              editProject={editingProject}
-            />
+            <ProjectUploadSystem />
           </TabsContent>
 
           <TabsContent value="banners">

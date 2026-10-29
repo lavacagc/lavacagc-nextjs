@@ -1,6 +1,6 @@
 /**
  * Deterministic defaults for a project: URL slug, SEO title, meta description
- * and image alt text. These replaced the Gemini suggestions (decision 002, Q3),
+ * and image alt text. These replaced the old AI suggestions (decision 002, Q3),
  * so the same inputs always produce the same text, on the client while the
  * form is being filled and on the server when the ingest API leaves a field out.
  *

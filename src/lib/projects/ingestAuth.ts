@@ -7,11 +7,14 @@
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
 
+/** The slice of the environment this module reads (a plain object in specs). */
+export type IngestEnv = Partial<Record<string, string | undefined>>;
+
 /** A shorter token is treated as no token at all: the route stays dark. */
 export const MIN_INGEST_TOKEN_LENGTH = 32;
 
 /** The configured token, or null when it is unset or too short to be safe. */
-export function configuredIngestToken(env: NodeJS.ProcessEnv = process.env): string | null {
+export function configuredIngestToken(env: IngestEnv = process.env): string | null {
   const token = env.PROJECT_INGEST_TOKEN?.trim() ?? '';
   return token.length >= MIN_INGEST_TOKEN_LENGTH ? token : null;
 }
@@ -48,7 +51,7 @@ export type IngestTokenVerdict = 'disabled' | 'valid' | 'invalid' | 'absent';
  */
 export function checkIngestToken(
   authorizationHeader: string | null | undefined,
-  env: NodeJS.ProcessEnv = process.env,
+  env: IngestEnv = process.env,
 ): IngestTokenVerdict {
   const expected = configuredIngestToken(env);
   if (!expected) return 'disabled';
