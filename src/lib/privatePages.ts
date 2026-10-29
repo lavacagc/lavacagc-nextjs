@@ -26,7 +26,7 @@
  */
 
 /** Route prefixes whose pages are reached by a private token. */
-export const PRIVATE_TOKEN_PATHS = ['/proposal', '/intake', '/crew', '/offer'] as const;
+export const PRIVATE_TOKEN_PATHS = ['/proposal', '/intake', '/crew', '/offer', '/articles/unpublish'] as const;
 
 /**
  * Is this path a private, token-reached page?

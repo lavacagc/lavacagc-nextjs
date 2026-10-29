@@ -14,10 +14,11 @@ import {
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
-import { Edit, Eye, Trash2, Globe, FileX, Clock, XCircle } from 'lucide-react';
+import { Edit, Eye, Trash2, Globe, FileX, Clock, XCircle, AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { blogPagePaths, requestRevalidate } from '@/lib/revalidate';
+import { adminPublishArticle } from '@/lib/articles/adminPublish';
 
 interface BlogPost {
   id: string;
@@ -28,6 +29,7 @@ interface BlogPost {
   published: boolean;
   scheduled_publish_at: string | null;
   source?: string | null;
+  review_hold?: { reasons?: string[] } | null;
   created_at: string;
   updated_at: string;
 }
@@ -50,13 +52,13 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
     try {
       const { data, error } = await supabase
         .from('blog_posts')
-        .select('id, title, slug, category, author, published, scheduled_publish_at, source, created_at, updated_at')
+        .select('id, title, slug, category, author, published, scheduled_publish_at, source, review_hold, created_at, updated_at')
         .order('updated_at', { ascending: false })
         // The admin list, not the public one; a cap keeps it a bounded read.
         .limit(500);
 
       if (error) throw error;
-      // `source` (Phase 2 migration) is not in the generated types file yet.
+      // `source` and `review_hold` (Phase 2 migration) are not in the generated types file yet.
       setPosts((data ?? []) as unknown as BlogPost[]);
     } catch (error) {
       console.error('Error loading posts:', error);
@@ -70,25 +72,57 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
     }
   };
 
+  /**
+   * Publish goes through /api/admin/articles/<id>/publish, so the publish
+   * guard can hold it (PG4): a held post gets a toast naming the first reason
+   * and opens in the editor, which lists every reason with "Publish anyway".
+   * Unpublish is a plain write; taking a post down needs no check.
+   */
+  const publishPost = async (id: string) => {
+    const result = await adminPublishArticle(id);
+    const now = new Date().toISOString();
+    if (result.status === 'held') {
+      setPosts(posts.map((post) => (post.id === id ? { ...post, review_hold: { reasons: result.reasons } } : post)));
+      toast({
+        title: 'Held for review',
+        description: `${result.reasons[0].replace(/\.$/, '')}${result.reasons.length > 1 ? ` (and ${result.reasons.length - 1} more)` : ''}. Opening the editor.`,
+        variant: 'destructive',
+      });
+      onEditPost(id);
+      return;
+    }
+    if (result.status === 'error') {
+      toast({ title: 'Error', description: result.message, variant: 'destructive' });
+      return;
+    }
+    // The route revalidated /blog, the post and the sitemap.
+    setPosts(posts.map((post) => (post.id === id ? { ...post, published: true, review_hold: null, updated_at: now } : post)));
+    toast({ title: 'Success', description: 'Post published successfully' });
+  };
+
   const togglePublished = async (id: string, published: boolean) => {
+    if (!published) {
+      await publishPost(id);
+      return;
+    }
     const now = new Date().toISOString();
     try {
       const { error } = await supabase
         .from('blog_posts')
-        // A publish stamps published_at; an unpublish keeps the last one.
-        .update(published ? { published: false, updated_at: now } : { published: true, published_at: now, updated_at: now })
+        // An unpublish keeps the last published_at for the record.
+        .update({ published: false, updated_at: now })
         .eq('id', id);
 
       if (error) throw error;
 
-      setPosts(posts.map((post) => (post.id === id ? { ...post, published: !published, updated_at: now } : post)));
-      // Show (or hide) it on /blog, its page and the sitemap on the next request.
+      setPosts(posts.map((post) => (post.id === id ? { ...post, published: false, updated_at: now } : post)));
+      // Hide it on /blog, its page and the sitemap on the next request.
       const slug = posts.find((post) => post.id === id)?.slug;
       void requestRevalidate(blogPagePaths(slug));
 
       toast({
         title: 'Success',
-        description: `Post ${!published ? 'published' : 'unpublished'} successfully`,
+        description: 'Post unpublished successfully',
       });
     } catch (error) {
       console.error('Error updating post:', error);
@@ -189,6 +223,10 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
     ) : post.scheduled_publish_at ? (
       <Badge variant="secondary" className="bg-amber-100 text-amber-800 hover:bg-amber-100">
         <Clock className="w-3 h-3 mr-1" /> Scheduled
+      </Badge>
+    ) : post.review_hold ? (
+      <Badge variant="secondary" className="bg-amber-100 text-amber-900 hover:bg-amber-100" title="The publish guard held this post; open it to see why">
+        <AlertTriangle className="w-3 h-3 mr-1" /> Held for review
       </Badge>
     ) : (
       <Badge variant="secondary">

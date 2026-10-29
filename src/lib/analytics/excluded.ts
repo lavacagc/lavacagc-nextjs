@@ -29,6 +29,7 @@ export const ANALYTICS_EXCLUDED_PATTERNS: RegExp[] = [
   /^\/offer\//,        // sub job offer - token in the URL; the winner sees the full address
   /^\/preferences/,    // email preference centre - token in the query string
   /^\/unsub/,          // unsubscribe - carries an address or a token
+  /^\/articles\/unpublish\//, // one-tap article unpublish - the signed link is the credential
 ];
 
 /** True when third-party analytics must not load or report on this path. */

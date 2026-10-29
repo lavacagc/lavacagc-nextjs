@@ -66,6 +66,20 @@ const GOOD_BOT_PATTERNS = [
   /apis-google/i,
 ];
 
+/**
+ * Pages reached by a signed one-tap link that the owner may open from any
+ * client (Telegram's in-app browser, a desktop app, a script). The token is
+ * the whole credential and is checked before anything is read, so the
+ * user-agent filter adds nothing there and could only stand between the owner
+ * and an undo (Phase 2 SEC2: the unpublish link is excluded from the bot
+ * filter). Exact prefixes; nothing else on the site is exempt.
+ */
+const BOT_FILTER_EXEMPT_PREFIXES = ['/articles/unpublish/', '/api/articles/unpublish/'];
+
+function isBotFilterExempt(pathname: string): boolean {
+  return BOT_FILTER_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
 function isGoodBot(ua: string): boolean {
   return GOOD_BOT_PATTERNS.some(p => p.test(ua));
 }
@@ -249,7 +263,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Block known bad bots (unless they're spoofing a good bot UA)
-  if (ua && isBadBot(ua) && !isGoodBot(ua)) {
+  if (ua && isBadBot(ua) && !isGoodBot(ua) && !isBotFilterExempt(pathname)) {
     return new NextResponse('Forbidden', { status: 403 });
   }
 
