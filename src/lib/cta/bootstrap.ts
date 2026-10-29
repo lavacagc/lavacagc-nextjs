@@ -37,9 +37,12 @@ export interface CtaBootstrapConfig {
  * asserted in tests/cta-tests.spec.ts). No comments inside the body:
  * toString() would ship them.
  *
- * A crawler (the bot filter's allow-list and the generic bot words) returns
- * at once: nothing is assigned, stored or sent, and CSS shows the first link,
- * which is the control (experiments slice H: crawlers always get the control).
+ * A crawler that runs JavaScript (Googlebot, Bingbot, the Google tools, and
+ * the generic bot words) returns at once: nothing is assigned, stored or sent,
+ * and CSS shows the first link, which is the control (experiments slice H:
+ * crawlers always get the control). Link-preview fetchers on the allow-list
+ * (Facebook, WhatsApp, Pinterest) run no script, so they get the CSS default
+ * without a check. The pattern is short on purpose: the 1 KB budget.
  *
  * c: config. x: ctaIndex. The cookie name `cta_v` (CTA_ASSIGN_COOKIE) is
  * spelled out because it is fixed; the spec asserts the two agree. The stored value is read in its encoded
@@ -51,7 +54,7 @@ export interface CtaBootstrapConfig {
  */
 export function ctaBootstrap(c: CtaBootstrapConfig, x: (seed: string, button: string, count: number) => number): void {
   try {
-    if (/bot|crawl|spider|slurp|fetch|preview|facebook|instagram|whatsapp|pinterest|google-|lighthouse/i.test(navigator.userAgent)) return;
+    if (/bot|crawl|spider|slurp|google/i.test(navigator.userAgent)) return;
     const D = document, d = D.documentElement, m = D.cookie.match(/(?:^|;\s*)cta_v=([^;]*)/), o: Record<string, string> = {}, q: string[] = [];
     let r: string, v: string;
     if (m) m[1].split('%3B').forEach((p) => { const k = p.split('%3D'); o[k[0]] = k[1]; });
