@@ -22,7 +22,11 @@ test.describe('portfolio filter bar (source)', () => {
 
 test.describe('portfolio filter bar (live backend)', () => {
   test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
-  test.use({ ...devices['iPhone 13'] });
+  // iPhone 13 size and touch, on the project's own browser: the device's
+  // defaultBrowserType would force a new worker, which a describe-level use()
+  // cannot do, and Playwright then refuses to load the whole file.
+  const { defaultBrowserType: _browser, ...iPhone13 } = devices['iPhone 13'];
+  test.use(iPhone13);
 
   test('the sticky bar stays under 80 px on a phone and the chips scroll sideways', async ({ page }) => {
     await page.goto('/portfolio', { waitUntil: 'networkidle' });
