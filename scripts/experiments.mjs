@@ -5,7 +5,11 @@
  * Built for the experiments skill (.claude/skills/experiments/SKILL.md);
  * docs/experiments.md has the details.
  *
- *   node scripts/experiments.mjs report [--json]
+ * Every command needs --site: there is no default, so a dry run can never
+ * write to production by accident.
+ *
+ *   node scripts/experiments.mjs report --site <url> [--json]
+ *   node scripts/experiments.mjs copy --site <url> --page /home-services --element hero
  *   node scripts/experiments.mjs backlog
  *   node scripts/experiments.mjs backlog-add --page /home-services --element hero --hypothesis "..." [--priority 50]
  *   node scripts/experiments.mjs create <experiment.json>
@@ -14,7 +18,7 @@
  *   node scripts/experiments.mjs conclude <key> --retire "reason"
  *   node scripts/experiments.mjs notify "summary text"
  *
- * Options: --site (default EXPERIMENTS_SITE, then https://www.lavacagc.com),
+ * Options: --site (required, e.g. http://localhost:3120 or https://www.lavacagc.com),
  * --token (default PROJECT_INGEST_TOKEN). Node 18+, no dependencies.
  */
 import { readFileSync } from 'node:fs';
@@ -39,14 +43,15 @@ function fail(message) {
 }
 
 function usage(code = 0) {
-  const text = readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(2, 19).map((l) => l.replace(/^ \* ?/, '')).join('\n');
+  const text = readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(2, 23).map((l) => l.replace(/^ \* ?/, '')).join('\n');
   (code ? console.error : console.log)(text);
   process.exit(code);
 }
 
 const args = parse(process.argv.slice(2));
 if (args.help || args._.length === 0) usage(args.help ? 0 : 1);
-const site = (args.site || process.env.EXPERIMENTS_SITE || 'https://www.lavacagc.com').replace(/\/$/, '');
+if (!args.site) fail('pass --site <url> (http://localhost:<port> for the local rig, https://www.lavacagc.com for production); there is no default');
+const site = args.site.replace(/\/$/, '');
 const token = args.token || process.env.PROJECT_INGEST_TOKEN;
 if (!token) fail('set PROJECT_INGEST_TOKEN or pass --token');
 
@@ -82,10 +87,15 @@ function printReport(r) {
       console.log(`  ${v.key}${v.is_control ? '*' : ' '} ${v.active ? '' : '(off) '}${v.label}: view ${f.view}, click ${f.click}, started ${f.request_started}, sent ${f.request_submitted}, accepted ${f.quote_accepted}, paid ${f.job_paid}; beats control ${pct(a?.p_beat_control)}, loss ${pct(a?.expected_loss, 2)}`);
     }
     if (e.evaluation) console.log(`  verdict: ${e.evaluation.verdict.kind}: ${e.evaluation.verdict.reason}${e.evaluation.verdict.ready_on ? ` (ready about ${e.evaluation.verdict.ready_on})` : ''}`);
-    if (e.decision?.pending) console.log(`  pending: ${e.decision.pending.winner_key} promotes after ${e.decision.pending.promote_after} unless vetoed`);
+    const p = e.decision?.pending;
+    if (p) console.log(p.veto_sent_at
+      ? `  pending: ${p.winner_key} becomes the default at the daily run ${p.promote_at} unless vetoed (veto message sent ${p.veto_sent_at})`
+      : `  pending: ${p.winner_key} NOT promoted yet: veto message not delivered (${p.veto_outcome}, ${p.attempts} attempts); the daily run retries`);
   }
   console.log('\nBacklog (open):');
   for (const b of r.backlog) console.log(`  #${b.id} P${b.priority} ${b.page} ${b.element}: ${b.hypothesis}`);
+  console.log('\nDrafts (start these before anything new):');
+  for (const e of r.experiments.filter((x) => x.status === 'draft')) console.log(`  ${e.key} ${e.page} ${e.element}`);
   console.log('\nSurfaces:');
   for (const s of r.surfaces) console.log(`  ${s.page} ${s.element}: slots ${s.slots.join(', ')}${s.sections ? ` (sections ${s.sections.join(', ')})` : ''}`);
 }
@@ -96,6 +106,17 @@ switch (command) {
     const r = await call('GET', '/api/experiments/report');
     if (args.json) console.log(JSON.stringify(r, null, 2));
     else printReport(r);
+    break;
+  }
+  case 'copy': {
+    // Today's copy for one surface, as a payload to paste as the control.
+    const r = await call('GET', '/api/experiments/report');
+    const found = r.current_copy.filter((c) => (!args.page || c.page === args.page) && (!args.element || c.element === args.element));
+    if (!found.length) fail(`no surface ${args.page ?? ''} ${args.element ?? ''}; surfaces: ${r.current_copy.map((c) => `${c.page} ${c.element}`).join('; ')}`);
+    for (const c of found) {
+      console.log(`# ${c.page} ${c.element} (from ${c.source})`);
+      console.log(JSON.stringify(c.payload, null, 2));
+    }
     break;
   }
   case 'backlog':
@@ -120,6 +141,7 @@ switch (command) {
     if (!key) fail('start needs a key');
     const r = await call('POST', `/api/experiments/${encodeURIComponent(key)}/start`, {});
     console.log(`${r.experiment.key} is ${r.experiment.status}. Telegram: ${r.telegram}`);
+    if (r.message) console.log(`Message:\n${r.message}`);
     break;
   }
   case 'conclude': {
@@ -127,6 +149,7 @@ switch (command) {
     const body = args.winner ? { winner_key: args.winner } : args.retire ? { retire: true, reason: args.retire } : fail('pass --winner <key> or --retire "reason"');
     const r = await call('POST', `/api/experiments/${encodeURIComponent(key)}/conclude`, body);
     console.log(`${r.experiment.key} is ${r.experiment.status}. Telegram: ${r.telegram}`);
+    if (r.message) console.log(`Message:\n${r.message}`);
     break;
   }
   case 'notify': {

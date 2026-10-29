@@ -1,14 +1,16 @@
 /**
- * GET /api/cron/experiments-evaluate - the weekly evaluator (Monday 07:30 UTC,
- * vercel.json). Auth: Bearer CRON_SECRET (also enforced by middleware on
- * /api/cron/*).
+ * GET /api/cron/experiments-evaluate - DAILY at 07:30 UTC (vercel.json).
+ * Auth: Bearer CRON_SECRET (also enforced by middleware on /api/cron/*).
  *
- * For every running experiment: evaluate (src/lib/experiments/evaluate.ts),
- * write the decision, and act on it - a winner goes to pending_promotion with
- * a Telegram message carrying the one-tap veto link; a loser is retired; when
- * every challenger loses the control is kept and the experiment concludes.
- * For every pending one whose 24 hours have passed without a veto: promote
- * (the winner becomes the control, the experiment concludes).
+ * Every day, for every pending winner: if its veto message was not delivered,
+ * send it again (it is never promoted unannounced); once delivered, promote it
+ * at the daily run 24 hours later unless vetoed (the winner becomes the
+ * control, the experiment concludes). src/lib/experiments/schedule.ts.
+ *
+ * On the Monday run only, for every running experiment: evaluate
+ * (src/lib/experiments/evaluate.ts), write the decision, and act on it - a
+ * winner goes to pending_promotion with the one-tap veto link; a loser is
+ * retired; when every challenger loses the control is kept and it concludes.
  *
  * Answers { now, results: [{ key, action, verdict, status_after, telegram, message }] }.
  * `?now=<iso>` moves the clock off production (src/lib/experiments/auth.server.ts),

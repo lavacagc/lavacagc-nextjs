@@ -62,7 +62,9 @@ export function toCtaRow(button: CtaButton, row: HeroRow, v: ExperimentVariant):
     id: `${row.key}:${v.key}`,
     button,
     variant_key: v.key,
-    wording: copyText(payload.wording) ?? v.label,
+    // Only the payload reaches a visitor, never the admin label: a variant
+    // without wording renders nothing (variants.server.ts drops it).
+    wording: copyText(payload.wording) ?? '',
     subtext: copyText(payload.subtext),
     color: typeof payload.color === 'string' ? payload.color : null,
     active: v.active !== false,

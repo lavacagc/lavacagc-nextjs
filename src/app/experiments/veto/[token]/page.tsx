@@ -9,6 +9,7 @@
  */
 import type { Metadata } from 'next';
 import { lookupVeto } from '@/lib/experiments/vetoLookup.server';
+import { runLabel } from '@/lib/experiments/schedule';
 import VetoButton from './VetoButton';
 
 export const dynamic = 'force-dynamic';
@@ -53,7 +54,7 @@ export default async function VetoPage({ params }: PageProps) {
     );
   }
 
-  const { row, winnerKey, promoteAfter } = found;
+  const { row, winnerKey, promoteAt } = found;
   const label = (key: string) => row.variants.find((v) => v.key === key)?.label ?? key;
   return (
     <Shell>
@@ -63,7 +64,7 @@ export default async function VetoPage({ params }: PageProps) {
         <div className="flex gap-3 py-2.5"><dt className="w-28 shrink-0 font-bold text-[#666]">Page</dt><dd>{row.page} ({row.element})</dd></div>
         <div className="flex gap-3 py-2.5"><dt className="w-28 shrink-0 font-bold text-[#666]">Winner</dt><dd>{winnerKey}: {label(winnerKey)}</dd></div>
         <div className="flex gap-3 py-2.5"><dt className="w-28 shrink-0 font-bold text-[#666]">Control</dt><dd>{row.control_key}: {label(row.control_key)}</dd></div>
-        <div className="flex gap-3 py-2.5"><dt className="w-28 shrink-0 font-bold text-[#666]">Promotes</dt><dd>{promoteAfter.replace('T', ' ').slice(0, 16)} UTC</dd></div>
+        <div className="flex gap-3 py-2.5"><dt className="w-28 shrink-0 font-bold text-[#666]">Promotes</dt><dd>{promoteAt ? `the daily run on ${runLabel(promoteAt)}` : 'not scheduled: the veto message has not been delivered yet'}</dd></div>
       </dl>
       <p className="mt-4 text-sm text-[#555]">Vetoing keeps the control on the page and ends the experiment.</p>
       <VetoButton token={token} />

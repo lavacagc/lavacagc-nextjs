@@ -26,7 +26,9 @@ A signed-in admin can preview any variant, drafts included, with `?exp=<key>:<va
 
 `withExperiment(page, element, lang)` (`src/lib/experiments/withExperiment.server.ts`) applies the payload on the server.
 A concluded experiment renders its control, which is the promoted winner; a retired or draft one renders the page's own default.
-The payload schema is a closed set of slots with no price field (`src/lib/experiments/types.ts`), and copy that states an amount, a percentage, the phone number or the license is refused.
+The payload schema is a closed set of slots with no price field (`src/lib/experiments/types.ts`).
+Every string of a variant, both languages and the label, goes through the article publish guard's price and legal detectors (`src/lib/articles/publishGuard.ts`) in their strict short-copy mode with no published price allowed: `$99`, `2,095$`, `＄99`, `99 bucks`, `two hundred dollars`, `doscientos dólares`, `half price`, `free`, `discount`, `save`, `deal`, any bare number of three or more digits, and legal claims are all refused, as are the phone number and the license.
+The label is for the admin and Telegram only; a visitor only ever sees payload fields, and the homepage button surfaces require `wording`.
 
 ## The funnel
 
@@ -43,12 +45,15 @@ Downstream events go to the variants the visitor viewed while the experiment ran
 
 ## The decision
 
-Each Monday at 07:30 UTC, `GET /api/cron/experiments-evaluate` evaluates every running experiment (`src/lib/experiments/evaluate.ts`).
+`GET /api/cron/experiments-evaluate` runs daily at 07:30 UTC.
+On the Monday run it evaluates every running experiment (`src/lib/experiments/evaluate.ts`).
 Beta(1,1) posteriors on the primary metric per visitor and 10,000 seeded Monte Carlo draws give, per challenger, the probability it beats the control and the expected loss.
 A winner needs a 95 percent probability, at most 0.5 percent expected loss, at least `min_visitors` visitors in every variant and at least `min_days` days.
 A challenger at 5 percent or less is retired; when every challenger loses, the control is kept and the experiment concludes.
-A winner goes to `pending_promotion` with a Telegram message carrying a one-tap veto link (`/experiments/veto/<token>`, signed, 7 days, read-only page with one button).
-The next run after 24 hours promotes it unless vetoed: the winner becomes the control and the experiment concludes.
+A winner goes to `pending_promotion` and gets a Telegram message carrying a one-tap veto link (`/experiments/veto/<token>`, signed, 7 days, read-only page with one button).
+It is promoted only after that message was delivered (Telegram answered `sent`, recorded on the experiment with its time).
+If the send failed, Telegram is not configured, or there is no secret to sign the link, it stays pending, every daily run sends it again, and the admin card says "Veto message not delivered".
+Once delivered, the daily run at least 24 hours later promotes it unless vetoed (`src/lib/experiments/schedule.ts`; the message and the admin card name that run): the winner becomes the control and the experiment concludes.
 A veto keeps the control and concludes the experiment.
 
 ## Agent routes
@@ -57,14 +62,14 @@ All take `Authorization: Bearer $PROJECT_INGEST_TOKEN` (or an admin session), an
 
 | Route | Does |
 | --- | --- |
-| `GET /api/experiments/report` | every experiment with funnel, evaluation and decision, the open backlog, the surfaces |
+| `GET /api/experiments/report` | every experiment with funnel, evaluation and decision, the open backlog, the surfaces, and the copy each surface shows today |
 | `POST /api/experiments` | create a draft (409 when the page has a running experiment) |
 | `POST /api/experiments/<key>/start` | start a draft |
 | `POST /api/experiments/<key>/conclude` | `{ winner_key }` (via the veto window) or `{ retire: true, reason }` |
 | `GET`, `POST /api/experiments/backlog` | read or add hypotheses |
 | `POST /api/experiments/notify` | post the weekly summary to Telegram |
 
-The CLI is `scripts/experiments.mjs` (`report`, `backlog`, `backlog-add`, `create`, `start`, `conclude`, `notify`).
+The CLI is `scripts/experiments.mjs` (`report`, `copy`, `backlog`, `backlog-add`, `create`, `start`, `conclude`, `notify`); every command needs `--site`, there is no default.
 
 ## Admin
 
@@ -74,7 +79,7 @@ The homepage buttons keep their Phase 1 editor there, and the old `cta_events` c
 
 ## Setup
 
-- Cron: `vercel.json` has `/api/cron/experiments-evaluate` at `30 7 * * 1`.
+- Cron: `vercel.json` has `/api/cron/experiments-evaluate` at `30 7 * * *` (daily; evaluation on Mondays inside the route).
 - Env: `PROJECT_INGEST_TOKEN` (agent routes), `CRON_SECRET`, `INTERNAL_WEBHOOK_SECRET` (visitor ids and veto links), `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (messages; without them every message reports `not_configured`).
 - Migration: `supabase/migrations/20261030000003_cta_to_experiments.sql` (guarded, re-runnable).
 - Weekly agent: a `/schedule` routine running the experiments skill every Monday after the cron.

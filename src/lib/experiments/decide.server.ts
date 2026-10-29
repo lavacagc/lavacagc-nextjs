@@ -31,7 +31,8 @@ import {
 import { createVetoToken } from './vetoToken';
 import { getExperiment, invalidateExperiments, liveExperimentOnPage, loadFunnel, listExperiments, reportFor, updateExperiment } from './store.server';
 import type { Evaluation } from './evaluate';
-import { VETO_WINDOW_MS, type ExperimentDecision, type ExperimentRow } from './types';
+import { isEvaluationDay, isPromotionDue, promotionRunAfter } from './schedule';
+import type { ExperimentDecision, ExperimentRow, PendingPromotion } from './types';
 
 export type ActionResult =
   | { ok: true; row: ExperimentRow; telegram?: TelegramOutcome; message?: string }
@@ -45,8 +46,8 @@ function withHistory(decision: ExperimentDecision | null, what: string, by: stri
   return { ...base, ...extra, history };
 }
 
-export function vetoUrl(origin: string, key: string, notifiedAt: string): string | null {
-  const token = createVetoToken(key, notifiedAt);
+export function vetoUrl(origin: string, key: string, proposedAt: string): string | null {
+  const token = createVetoToken(key, proposedAt);
   return token ? `${origin.replace(/\/$/, '')}/experiments/veto/${token}` : null;
 }
 
@@ -93,27 +94,66 @@ export async function startExperiment(key: string, by: string, now: Date): Promi
   return { ok: true, row: updated, telegram: await telegram(message), message };
 }
 
-/** Running -> pending_promotion, with the Telegram veto link. A winner equal to the control concludes at once (nothing changes on the page). */
+/**
+ * Send (or re-send) the veto message for a pending winner. Promotion is
+ * scheduled only when Telegram answers `sent`: a window nobody was told about
+ * is not a veto window (planner fix F3). The outcome, the attempt count and,
+ * on delivery, the time and the promotion run are recorded on the experiment.
+ */
+async function deliverVeto(
+  row: ExperimentRow,
+  pending: PendingPromotion,
+  now: Date,
+  origin: string,
+  evaluation: Evaluation | null,
+): Promise<{ row: ExperimentRow | null; pending: PendingPromotion; message: string }> {
+  const link = vetoUrl(origin, row.key, pending.proposed_at);
+  const promoteAt = promotionRunAfter(now).toISOString();
+  const message = winnerProposedMessage({ row, winnerKey: pending.winner_key, evaluation, promoteAt, vetoUrl: link, by: pending.by });
+  const outcome: PendingPromotion['veto_outcome'] = link ? await telegram(message) : 'no_link';
+  const next: PendingPromotion = {
+    ...pending,
+    veto_outcome: outcome,
+    attempts: (pending.attempts ?? 0) + 1,
+    last_attempt_at: now.toISOString(),
+    veto_sent_at: outcome === 'sent' ? now.toISOString() : null,
+    promote_at: outcome === 'sent' ? promoteAt : null,
+  };
+  const what = outcome === 'sent' ? `veto message for ${pending.winner_key} sent` : `veto message for ${pending.winner_key} not delivered (${outcome})`;
+  const updated = await updateExperiment(row.key, { decision: withHistory(row.decision, what, 'cron', now, { pending: next }) }, row.updated_at);
+  return { row: updated, pending: next, message };
+}
+
+/**
+ * Running -> pending_promotion, then the veto message. A winner equal to the
+ * control concludes at once (nothing changes on the page). If the message is
+ * not delivered the experiment stays pending and is never promoted until a
+ * later daily run delivers it.
+ */
 export async function proposeWinner(row: ExperimentRow, winnerKey: string, by: string, now: Date, origin: string, evaluation: Evaluation | null): Promise<ActionResult> {
   if (!row.variants.some((v) => v.key === winnerKey)) return { ok: false, status: 409, error: `${row.key} has no variant ${winnerKey}` };
   if (winnerKey === row.control_key) return concludeKeepControl(row, by, now, 'The control won.', []);
   if (row.status !== 'running') return { ok: false, status: 409, error: `${row.key} is ${row.status}; only a running experiment can propose a winner` };
-  const notifiedAt = now.toISOString();
-  const promoteAfter = new Date(now.getTime() + VETO_WINDOW_MS).toISOString();
-  const updated = await updateExperiment(
+  const pending: PendingPromotion = {
+    winner_key: winnerKey,
+    proposed_at: now.toISOString(),
+    by,
+    veto_sent_at: null,
+    veto_outcome: 'failed',
+    attempts: 0,
+    last_attempt_at: now.toISOString(),
+    promote_at: null,
+  };
+  const proposed = await updateExperiment(
     row.key,
-    {
-      status: 'pending_promotion',
-      decision: withHistory(row.decision, `winner ${winnerKey} proposed`, by, now, {
-        pending: { winner_key: winnerKey, notified_at: notifiedAt, promote_after: promoteAfter, by },
-      }),
-    },
+    { status: 'pending_promotion', decision: withHistory(row.decision, `winner ${winnerKey} proposed`, by, now, { pending }) },
     row.updated_at,
   );
-  if (!updated) return conflict();
-  invalidateExperiments([updated.page]);
-  const message = winnerProposedMessage({ row: updated, winnerKey, evaluation, promoteAfter, vetoUrl: vetoUrl(origin, row.key, notifiedAt), by });
-  return { ok: true, row: updated, telegram: await telegram(message), message };
+  if (!proposed) return conflict();
+  invalidateExperiments([proposed.page]);
+  const delivered = await deliverVeto(proposed, pending, now, origin, evaluation);
+  const telegramOutcome = delivered.pending.veto_outcome === 'no_link' ? 'not_configured' : delivered.pending.veto_outcome;
+  return { ok: true, row: delivered.row ?? proposed, telegram: telegramOutcome, message: delivered.message };
 }
 
 /** The winner becomes the control and the experiment concludes. */
@@ -216,7 +256,7 @@ async function retireLosers(row: ExperimentRow, losers: string[], by: string, no
 export interface EvaluationOutcome {
   key: string;
   status_before: string;
-  action: 'promoted' | 'proposed' | 'concluded' | 'retired_losers' | 'waiting_for_veto_window' | 'recorded' | 'conflict' | 'error';
+  action: 'promoted' | 'proposed' | 'concluded' | 'retired_losers' | 'waiting_for_veto_window' | 'veto_message_sent' | 'veto_message_not_delivered' | 'recorded' | 'conflict' | 'error';
   verdict?: string;
   reason?: string;
   status_after?: string;
@@ -225,10 +265,12 @@ export interface EvaluationOutcome {
 }
 
 /**
- * The Monday run: every running or pending experiment, in turn.
- *  - pending_promotion: promote once its 24 hours have passed (a vetoed one is
- *    no longer pending, so it is never promoted).
- *  - running: evaluate, write the decision, then act on the verdict.
+ * The daily run (07:30 UTC): every running or pending experiment, in turn.
+ *  - pending_promotion: if the veto message was not delivered, send it again
+ *    (never promote); once delivered, promote at the run 24 hours later (a
+ *    vetoed one is no longer pending, so it is never promoted).
+ *  - running, on the Monday run only: evaluate, write the decision, then act
+ *    on the verdict.
  */
 export async function runEvaluation(now: Date, origin: string, by = 'cron', onlyKeys?: readonly string[]): Promise<EvaluationOutcome[]> {
   const rows = (await listExperiments(['running', 'pending_promotion'])).filter((r) => !onlyKeys || onlyKeys.includes(r.key));
@@ -243,15 +285,33 @@ export async function runEvaluation(now: Date, origin: string, by = 'cron', only
           out.push({ key: row.key, status_before: row.status, action: 'error', reason: 'pending_promotion without a pending winner' });
           continue;
         }
-        if (now.getTime() < Date.parse(pending.promote_after)) {
-          out.push({ key: row.key, status_before: row.status, action: 'waiting_for_veto_window', reason: `promotes after ${pending.promote_after}` });
+        if (!pending.veto_sent_at) {
+          // Not delivered yet: try again; it is never promoted unannounced.
+          const evaluation = reportFor(row, funnel, now).evaluation;
+          const d = await deliverVeto(row, pending, now, origin, evaluation);
+          out.push({
+            key: row.key,
+            status_before: row.status,
+            action: d.pending.veto_sent_at ? 'veto_message_sent' : 'veto_message_not_delivered',
+            reason: d.pending.veto_sent_at ? `promotes at ${d.pending.promote_at}` : `veto message not delivered (${d.pending.veto_outcome}, attempt ${d.pending.attempts}); not promoted`,
+            status_after: row.status,
+            telegram: d.pending.veto_outcome === 'no_link' ? 'not_configured' : d.pending.veto_outcome,
+            message: d.message,
+          });
           continue;
         }
-        const r = await promote(row, pending.winner_key, `${by} (after the 24 hour veto window)`, now);
+        if (!isPromotionDue(now, pending.promote_at)) {
+          out.push({ key: row.key, status_before: row.status, action: 'waiting_for_veto_window', reason: `promotes at ${pending.promote_at}` });
+          continue;
+        }
+        const r = await promote(row, pending.winner_key, `${by} (24 hours after the veto message)`, now);
         if (r.ok === false) out.push({ key: row.key, status_before: row.status, action: 'conflict', reason: r.error });
         else out.push({ key: row.key, status_before: row.status, action: 'promoted', status_after: r.row.status, telegram: r.telegram, message: r.message });
         continue;
       }
+
+      // Evaluation is weekly: running experiments are judged on the Monday run only.
+      if (!isEvaluationDay(now)) continue;
 
       const report = reportFor(row, funnel, now);
       const evaluation = report.evaluation;

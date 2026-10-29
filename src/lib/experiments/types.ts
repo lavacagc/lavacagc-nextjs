@@ -16,6 +16,7 @@
  *  3. Prices render from the catalog (getCatalog), which no payload touches.
  */
 import { z } from 'zod';
+import { legalClaimsIn, priceClaimsIn } from '@/lib/articles/publishGuard';
 
 export const EXPERIMENT_STATUSES = ['draft', 'running', 'pending_promotion', 'concluded', 'retired'] as const;
 export type ExperimentStatus = (typeof EXPERIMENT_STATUSES)[number];
@@ -45,22 +46,29 @@ export const WIN_PROBABILITY = 0.95;
 export const LOSE_PROBABILITY = 0.05;
 export const MAX_EXPECTED_LOSS = 0.005;
 export const MONTE_CARLO_DRAWS = 10_000;
-export const VETO_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Payload
 // ---------------------------------------------------------------------------
 
 /**
- * What copy may not say. Plain-English reasons, because the agent reads them.
- * Amounts (prices, discounts), the phone number and the license are fixed
- * facts, never variables.
+ * What a variant may not say, as one plain-English reason (the agent reads
+ * it), or null. Prices and legal claims use the SAME detectors as the article
+ * publish guard (src/lib/articles/publishGuard.ts, slice G) in their strict
+ * short-copy mode, with no published price allowed: a variant never states a
+ * price, however it is written ("$99", "2,095$", "99 bucks", "two hundred
+ * dollars", "doscientos dólares", "half price", "free", a bare 2095). The
+ * phone number and the license are fixed facts, never variables.
  */
 export function forbiddenClaim(text: string): string | null {
-  if (/[$€£]\s?\d|\d[\d,.]*\s?(?:usd|dollars?|d[oó]lares)\b|\bcents?\b/i.test(text)) return 'Copy may not state a price or an amount; prices are never tested.';
-  if (/\d+\s?%|\bpercent\b|\bpor ciento\b/i.test(text)) return 'Copy may not state a percentage or discount; prices are never tested.';
+  // Phone and license first: a phone number is also a run of digits, and the precise reason helps.
   if (/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/.test(text)) return 'Copy may not contain a phone number; the phone number is fixed.';
   if (/\bHIC\b|\blicen[sc]e[ds]?\b|\blicencia\b|\b13VH\d+/i.test(text)) return 'Copy may not mention the license; it is a fixed fact.';
+  const price = priceClaimsIn(text, { strict: true });
+  if (price.length) return `Copy may not state a price, an amount or a deal ("${price[0]}"); prices are never tested.`;
+  const legal = legalClaimsIn(text);
+  if (legal.length) return `Copy may not make a legal claim ("${legal[0]}"); those are locked facts, never tested.`;
+  if (/\d+\s?%|\bpercent\b|\bpor ciento\b/i.test(text)) return 'Copy may not state a percentage; prices are never tested.';
   return null;
 }
 
@@ -132,7 +140,8 @@ export const NO_PRICE_SLOTS: NoPriceSlots = true;
 export const variantSchema = z
   .object({
     key: z.enum(VARIANT_KEYS),
-    label: z.string().trim().min(1).max(80),
+    /** Admin and Telegram only: never rendered to a visitor, and held to the same copy rules anyway. */
+    label: copyText.pipe(z.string().max(80)),
     /** False takes a variant out of assignment (a retired loser, or a Phase 1 variant switched off). */
     active: z.boolean().optional(),
     payload: payloadSchema,
@@ -140,12 +149,33 @@ export const variantSchema = z
   .strict();
 export type ExperimentVariant = z.infer<typeof variantSchema>;
 
+/**
+ * A proposed winner waiting out its veto window. It is promoted only once the
+ * veto message was delivered (`veto_sent_at`), at `promote_at`, the daily run
+ * at least 24 hours later (src/lib/experiments/schedule.ts). Until delivery
+ * every daily run retries the message.
+ */
+export interface PendingPromotion {
+  winner_key: string;
+  /** When the winner was proposed; the veto token is bound to this instant. */
+  proposed_at: string;
+  by: string;
+  /** Telegram answered `sent` at this time; null while undelivered. */
+  veto_sent_at: string | null;
+  /** The last delivery outcome: sent, not_configured, failed, or no_link (no INTERNAL_WEBHOOK_SECRET to sign it). */
+  veto_outcome: 'sent' | 'not_configured' | 'failed' | 'no_link';
+  attempts: number;
+  last_attempt_at: string;
+  /** The daily run that promotes it; null until the message is delivered. */
+  promote_at: string | null;
+}
+
 export interface ExperimentDecision {
   evaluated_at?: string;
   verdict?: { kind: string; reason: string; winner_key?: string; retire?: string[]; ready_on?: string | null };
   arms?: Array<{ key: string; visitors: number; conversions: number; rate: number | null; p_beat_control: number | null; expected_loss: number | null; revenue_per_visitor_cents: number | null }>;
   /** Set while status is pending_promotion. */
-  pending?: { winner_key: string; notified_at: string; promote_after: string; by: string } | null;
+  pending?: PendingPromotion | null;
   promoted?: { at: string; by: string; winner_key: string; previous_control: string };
   vetoed?: { at: string; by: string; winner_key: string };
   retired?: { at: string; by: string; reason?: string };

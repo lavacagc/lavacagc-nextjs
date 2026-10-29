@@ -39,7 +39,7 @@
     },
     {
       "path": "/api/cron/experiments-evaluate",
-      "schedule": "30 7 * * 1"
+      "schedule": "30 7 * * *"
     },
     {
       "path": "/api/cron/home-care-newsletter",

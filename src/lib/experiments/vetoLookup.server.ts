@@ -7,7 +7,7 @@ import type { ExperimentRow } from './types';
 import { verifyVetoToken } from './vetoToken';
 
 export type VetoLookup =
-  | { ok: true; row: ExperimentRow; winnerKey: string; promoteAfter: string }
+  | { ok: true; row: ExperimentRow; winnerKey: string; promoteAt: string | null }
   | { ok: false; reason: 'invalid' | 'expired' | 'not_pending' };
 
 export async function lookupVeto(token: string, now: Date = new Date()): Promise<VetoLookup> {
@@ -16,9 +16,9 @@ export async function lookupVeto(token: string, now: Date = new Date()): Promise
   const row = await getExperiment(check.experimentKey);
   if (!row) return { ok: false, reason: 'invalid' };
   const pending = row.decision?.pending;
-  // Only the proposal this link was sent for: a later proposal has a later notified_at.
-  if (row.status !== 'pending_promotion' || !pending || Math.floor(Date.parse(pending.notified_at) / 1000) !== check.notifiedAtUnix) {
+  // Only the proposal this link was sent for: a later proposal has a later proposed_at.
+  if (row.status !== 'pending_promotion' || !pending || Math.floor(Date.parse(pending.proposed_at) / 1000) !== check.proposedAtUnix) {
     return { ok: false, reason: 'not_pending' };
   }
-  return { ok: true, row, winnerKey: pending.winner_key, promoteAfter: pending.promote_after };
+  return { ok: true, row, winnerKey: pending.winner_key, promoteAt: pending.promote_at };
 }

@@ -4,10 +4,19 @@
  */
 import { escapeTelegram, escapeTelegramClipped } from '@/lib/notify/telegramMessage';
 import type { Evaluation } from './evaluate';
+import { runLabel } from './schedule';
 import type { ExperimentRow } from './types';
 
 function pct(value: number | null | undefined, digits = 1): string {
   return value === null || value === undefined ? 'n/a' : `${(value * 100).toFixed(digits)}%`;
+}
+
+/** A Monte Carlo estimate is never certain: 1.0 reads "more than 99.9%", 0 reads "less than 0.1%". */
+export function chance(value: number | null | undefined): string {
+  if (value === null || value === undefined) return 'n/a';
+  if (value > 0.999) return 'more than 99.9%';
+  if (value < 0.001) return 'less than 0.1%';
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 function label(row: Pick<ExperimentRow, 'variants'>, key: string): string {
@@ -24,17 +33,18 @@ export function winnerProposedMessage(input: {
   row: Pick<ExperimentRow, 'key' | 'page' | 'variants' | 'control_key' | 'primary_metric'>;
   winnerKey: string;
   evaluation: Evaluation | null;
-  promoteAfter: string;
+  /** The daily run that promotes it if this message is the one delivered. */
+  promoteAt: string;
   vetoUrl: string | null;
   by: string;
 }): string {
-  const { row, winnerKey, evaluation, promoteAfter, vetoUrl, by } = input;
+  const { row, winnerKey, evaluation, promoteAt, vetoUrl, by } = input;
   const arm = evaluation?.arms.find((a) => a.key === winnerKey);
-  const stats = arm ? ` (chance it beats the control ${pct(arm.p_beat_control)}, expected loss ${pct(arm.expected_loss, 2)})` : '';
+  const stats = arm ? ` (chance it beats the control ${chance(arm.p_beat_control)}, expected loss ${pct(arm.expected_loss, 2)})` : '';
   return [
     `<b>Experiment winner</b>: ${escapeTelegram(row.key)} on ${escapeTelegram(row.page)}`,
     `Variant ${escapeTelegram(winnerKey)} "${escapeTelegramClipped(label(row, winnerKey), 120)}" beats control ${escapeTelegram(row.control_key)} "${escapeTelegramClipped(label(row, row.control_key), 120)}"${stats}.${armsLine(evaluation, row.primary_metric)}`,
-    `It becomes the page default at ${escapeTelegram(promoteAfter.replace('T', ' ').slice(0, 16))} UTC unless vetoed. Proposed by ${escapeTelegram(by)}.`,
+    `Unless you veto it, the daily run on ${escapeTelegram(runLabel(promoteAt))} makes variant ${escapeTelegram(winnerKey)} the page default (24 hours after this message). Proposed by ${escapeTelegram(by)}.`,
     vetoUrl ? `Veto: ${escapeTelegram(vetoUrl)}` : 'Veto link unavailable (INTERNAL_WEBHOOK_SECRET is not set): veto from the admin Experiments tab.',
   ].join('\n');
 }

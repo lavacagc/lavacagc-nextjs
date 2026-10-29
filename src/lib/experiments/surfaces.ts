@@ -14,6 +14,8 @@ export interface Surface {
   page: string;
   element: string;
   slots: readonly PayloadSlot[];
+  /** Slots every variant must set, because the element renders nothing without them. */
+  required?: readonly PayloadSlot[];
   /** Copy must come in English and Spanish (every surface on a bilingual page). */
   bilingual: boolean;
   /** For an `order` slot: the section ids, every one of which the order must name exactly once. */
@@ -44,6 +46,7 @@ export const SURFACES: readonly Surface[] = [
     page: '/home-services',
     element: 'sections',
     slots: ['order'],
+    required: ['order'],
     bilingual: false,
     sections: HOME_SERVICES_SECTIONS,
     note: 'The order of the sections below the hero.',
@@ -52,6 +55,7 @@ export const SURFACES: readonly Surface[] = [
     page: '/',
     element: 'hero-primary',
     slots: ['wording', 'subtext', 'color'],
+    required: ['wording'],
     bilingual: false,
     note: 'The homepage primary button (Phase 1 CTA test). English only; edited in the Experiments tab.',
   },
@@ -59,6 +63,7 @@ export const SURFACES: readonly Surface[] = [
     page: '/',
     element: 'hero-secondary',
     slots: ['wording', 'subtext', 'color'],
+    required: ['wording'],
     bilingual: false,
     note: 'The homepage secondary button (Phase 1 CTA test). English only; edited in the Experiments tab.',
   },

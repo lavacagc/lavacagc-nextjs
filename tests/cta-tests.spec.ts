@@ -241,8 +241,8 @@ async function freshContext(browser: Browser, extra: Parameters<Browser['newCont
   browserContexts.push(ctx);
   // Record every visitor id the sink mints for this context as it happens, so
   // afterAll deletes its rows even when a test fails before asking for it.
+  // Any response can set it: middleware mints one with the homepage itself.
   ctx.on('response', async (res) => {
-    if (!res.url().endsWith('/api/cta/event')) return;
     const id = uuidOfCookie((await res.headerValue('set-cookie').catch(() => null))?.match(/cta_vid=([^;]+)/)?.[1]);
     if (id) createdVisitors.add(id);
   });
@@ -304,7 +304,8 @@ async function ensureAdminUser() {
 
 async function adminContext(browser: Browser): Promise<{ ctx: BrowserContext; page: Page }> {
   await ensureAdminUser();
-  const ctx = await freshContext(browser);
+  // The production CSP keeps the browser off the rig's 127.0.0.1 Supabase; only the admin sign-in needs it lifted (docs/local-rig.md).
+  const ctx = await freshContext(browser, { bypassCSP: true });
   const page = await ctx.newPage();
   await page.goto('/auth');
   await page.locator('input[type=email]').fill(ADMIN.email);

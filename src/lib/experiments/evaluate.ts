@@ -226,14 +226,14 @@ export function evaluate(input: EvaluateInput): Evaluation {
       verdict = {
         kind: 'winner',
         winner_key: w.key,
-        reason: `Variant ${w.key} beats control ${control.key} with probability ${pct(w.p_beat_control)} and expected loss ${pct(w.expected_loss, 2)}.`,
+        reason: `Variant ${w.key} beats control ${control.key} with probability ${chanceText(w.p_beat_control)} and expected loss ${pct(w.expected_loss, 2)}.`,
       };
     } else if (losers.length === challengers.length) {
       verdict = {
         kind: 'control_wins',
         winner_key: control.key,
         retire: losers,
-        reason: `Every challenger (${losers.join(', ')}) beats control ${control.key} with probability ${LOSE_PROBABILITY * 100}% or less: the control stays.`,
+        reason: `${losers.length === 1 ? `Challenger ${losers[0]} has` : `Challengers ${losers.join(', ')} each have`} a ${LOSE_PROBABILITY * 100}% or lower chance of beating control ${control.key}: the control stays.`,
       };
     } else if (losers.length > 0) {
       verdict = { kind: 'retire_losers', retire: losers, reason: `Retiring ${losers.join(', ')}: probability of beating control ${LOSE_PROBABILITY * 100}% or less.` };
@@ -243,6 +243,13 @@ export function evaluate(input: EvaluateInput): Evaluation {
   }
 
   return { arms: results, verdict, sample, thresholds, draws, seed };
+}
+
+function chanceText(value: number | null): string {
+  if (value === null) return 'n/a';
+  if (value > 0.999) return 'more than 99.9%';
+  if (value < 0.001) return 'less than 0.1%';
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 function pct(value: number | null, digits = 1): string {

@@ -1,13 +1,13 @@
 /**
  * The one-tap veto link in the winner's Telegram message.
  *
- * Token: base64url(key + "." + notifiedAtUnix) + "." + base64url(HMAC-SHA256(
+ * Token: base64url(key + "." + proposedAtUnix) + "." + base64url(HMAC-SHA256(
  * that first part, INTERNAL_WEBHOOK_SECRET)), compared with timingSafeEqual.
  * The same signed-link pattern as the article unpublish link
  * (docs/phase-2/acceptance-criteria.md, "Telegram unpublish link"):
  *  - valid for 7 days, and
  *  - only while the experiment is still pending promotion with that same
- *    `notified_at` (checked by the caller against the row), so a link from an
+ *    `proposed_at` (checked by the caller against the row), so a link from an
  *    earlier proposal can never veto a later one.
  * A GET of the link page never changes anything; the page's one button POSTs.
  *
@@ -26,16 +26,16 @@ function sign(body: string, key: string): string {
   return createHmac('sha256', key).update(body).digest('base64url');
 }
 
-export function createVetoToken(experimentKey: string, notifiedAt: string, env: Partial<Record<string, string | undefined>> = process.env): string | null {
+export function createVetoToken(experimentKey: string, proposedAt: string, env: Partial<Record<string, string | undefined>> = process.env): string | null {
   const key = secret(env);
-  const unix = Math.floor(Date.parse(notifiedAt) / 1000);
+  const unix = Math.floor(Date.parse(proposedAt) / 1000);
   if (!key || !Number.isFinite(unix)) return null;
   const body = Buffer.from(`${experimentKey}.${unix}`).toString('base64url');
   return `${body}.${sign(body, key)}`;
 }
 
 export type VetoTokenCheck =
-  | { ok: true; experimentKey: string; notifiedAtUnix: number }
+  | { ok: true; experimentKey: string; proposedAtUnix: number }
   | { ok: false; reason: 'malformed' | 'bad_signature' | 'expired' | 'not_configured' };
 
 export function verifyVetoToken(
@@ -58,5 +58,5 @@ export function verifyVetoToken(
   const unix = Number(decoded.slice(dot + 1));
   if (dot < 1 || !Number.isInteger(unix)) return { ok: false, reason: 'malformed' };
   if (now.getTime() - unix * 1000 > VETO_TOKEN_TTL_MS) return { ok: false, reason: 'expired' };
-  return { ok: true, experimentKey, notifiedAtUnix: unix };
+  return { ok: true, experimentKey, proposedAtUnix: unix };
 }

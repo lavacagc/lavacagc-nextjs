@@ -11,9 +11,18 @@
  *    `slice-h*`, and afterAll deletes exactly those. `landing-hero` and the two
  *    homepage buttons are only read (and previewed), never changed.
  *
- * Run: TEST_URL=http://localhost:3120 E2E_LIVE_BACKEND=1 \
- *      node_modules/.bin/playwright test tests/experiments.spec.ts --project=chromium --workers=1
- * The env is read from the shell, else from .env.local.
+ * Run against a production build of the rig env (`npm run build`), served with
+ * the fake-clock hook and an E2E reCAPTCHA bypass token (32+ characters, any
+ * value; the same value in the server's env and the test's):
+ *
+ *   EXPERIMENTS_FAKE_CLOCK=1 RECAPTCHA_E2E_BYPASS_TOKEN=<token> next start -p 3120
+ *   RECAPTCHA_E2E_BYPASS_TOKEN=<token> TEST_URL=http://localhost:3120 E2E_LIVE_BACKEND=1 \
+ *     node_modules/.bin/playwright test tests/experiments.spec.ts --project=chromium --workers=1
+ *
+ * The admin browser contexts use `bypassCSP` (the production CSP keeps the browser off
+ * 127.0.0.1:55421, so the admin could not sign in on the rig otherwise; see
+ * docs/local-rig.md). EX3 skips, saying why, without the bypass token.
+ * The rest of the env is read from the shell, else from .env.local.
  */
 import { randomBytes, randomUUID } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
@@ -36,6 +45,7 @@ import {
 import { createExperimentSchema, priceFieldsIn } from '../src/lib/experiments/schemas';
 import { createVetoToken, verifyVetoToken } from '../src/lib/experiments/vetoToken';
 import { winnerProposedMessage } from '../src/lib/experiments/messages';
+import { isEvaluationDay, isPromotionDue, promotionRunAfter } from '../src/lib/experiments/schedule';
 import { evaluate as evaluateFn } from '../src/lib/experiments/evaluate';
 
 const ROOT = join(__dirname, '..');
@@ -168,9 +178,36 @@ test.describe('experiments - units and source (EX4, payload, assignment)', () =>
     // Nested anywhere in a create body, a price-looking key is found before validation.
     expect(priceFieldsIn([{ key: 'A', payload: { title: { en: 'x' }, startingPriceCents: 1 } }, { payload: { deep: { minimumCents: 1 } } }]))
       .toEqual(['0.payload.startingPriceCents', '1.payload.deep.minimumCents']);
-    // Copy cannot carry an amount, the phone number or the license either.
-    expect(forbiddenClaim('Only $99 this week')).toMatch(/price/);
-    expect(forbiddenClaim('Save 20% today')).toMatch(/percentage/);
+    // Copy cannot carry an amount, a deal, the phone number or the license
+    // either. The price and legal rules are slice G's publish-guard detectors
+    // in strict mode; every phrasing the slice H review got through is here.
+    for (const text of [
+      'Only $99 this week', 'Cabinets 2,095$', 'Cabinet repainting from 2095', 'Gutters for 99 bucks',
+      'Under two hundred dollars', 'Menos de doscientos dólares', 'Only ＄99', 'Half price this week',
+      'First visit free', 'Estimado gratis', 'Big discount on gutters', 'Save today', 'Best deal in Bergen',
+      'Repintado por 2095 dólares', 'A mitad de precio', '$ 99', 'US$99', '2,095', 'Save 20% today',
+    ]) {
+      expect(forbiddenClaim(text), text).toMatch(/price|percentage/);
+    }
+    expect(forbiddenClaim('Fully insured crews')).toMatch(/legal claim/);
+    expect(forbiddenClaim('Guaranteed on time')).toMatch(/legal claim/);
+    // Today's copy, and copy like it, passes.
+    for (const text of [
+      'Pick your services. See the price. Sit back.', 'Elija sus servicios. Vea el precio. Relájese.',
+      'Your one-stop shop for home services', 'Su tienda única para servicios del hogar',
+      'Starting prices, firm quote from photos', 'Seven services, prices up front', 'Explore My Service Options',
+      'Help 24/7, seven days a week', 'Pick a service. See the price. Send photos.',
+    ]) {
+      expect(forbiddenClaim(text), text).toBeNull();
+    }
+    // The label is held to the same rules, though it is never rendered.
+    expect(payloadSchema.safeParse({ title: { en: 'ok', es: 'ok' } }).success).toBe(true);
+    const labelled = createExperimentSchema.safeParse({
+      key: 'slice-h-label', page: '/home-services', element: 'hero', hypothesis: 'A label with a price is refused too.', expected_effect: 'none, a schema test',
+      variants: [{ key: 'A', label: 'Control', payload: { title: { en: 'One', es: 'Uno' } } }, { key: 'B', label: '$99 special', payload: { title: { en: 'Two', es: 'Dos' } } }],
+    });
+    expect(labelled.success).toBe(false);
+    expect(forbiddenClaim('Save 20% today')).toMatch(/price/);
     expect(forbiddenClaim('Call 201-212-4917')).toMatch(/phone/);
     expect(forbiddenClaim('NJ HIC licensed')).toMatch(/license/);
     expect(forbiddenClaim('Pick your services. See the price. Sit back.')).toBeNull();
@@ -232,7 +269,7 @@ test.describe('experiments - units and source (EX4, payload, assignment)', () =>
     const at = '2026-11-16T07:30:00.000Z';
     const token = createVetoToken('landing-hero', at, env)!;
     expect(token).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/);
-    expect(verifyVetoToken(token, new Date(at), env)).toEqual({ ok: true, experimentKey: 'landing-hero', notifiedAtUnix: Date.parse(at) / 1000 });
+    expect(verifyVetoToken(token, new Date(at), env)).toEqual({ ok: true, experimentKey: 'landing-hero', proposedAtUnix: Date.parse(at) / 1000 });
     expect(verifyVetoToken(token, new Date(Date.parse(at) + 8 * DAY), env)).toEqual({ ok: false, reason: 'expired' });
     expect(verifyVetoToken(`${token.slice(0, -2)}AA`, new Date(at), env)).toEqual({ ok: false, reason: 'bad_signature' });
     expect(verifyVetoToken(token, new Date(at), { INTERNAL_WEBHOOK_SECRET: 'another-secret-0123456789abcdef!' })).toEqual({ ok: false, reason: 'bad_signature' });
@@ -246,13 +283,34 @@ test.describe('experiments - units and source (EX4, payload, assignment)', () =>
       row: { key: 'landing-hero', page: '/home-services', control_key: 'A', primary_metric: 'request_submitted', variants: [{ key: 'A', label: 'One-stop', payload: {} }, { key: 'B', label: 'Three <steps>', payload: {} }] as ExperimentVariant[] },
       winnerKey: 'B',
       evaluation: null,
-      promoteAfter: '2026-11-17T07:30:00.000Z',
+      promoteAt: '2026-11-17T07:30:00.000Z',
       vetoUrl: 'https://www.lavacagc.com/experiments/veto/abc.def',
       by: 'cron',
     });
     expect(text).toContain('Veto: https://www.lavacagc.com/experiments/veto/abc.def');
-    expect(text).toContain('2026-11-17 07:30 UTC');
+    expect(text).toContain('the daily run on Tue, Nov 17, 2026, 07:30 UTC makes variant B the page default (24 hours after this message)');
     expect(text).toContain('Three &lt;steps&gt;');
+  });
+
+  test('F3/F6: promotion is the daily 07:30 UTC run at least 24 hours after the delivered veto message; evaluation is Mondays', () => {
+    // Delivered by the Monday 07:30 run (a few seconds in): promoted by Tuesday's run.
+    expect(promotionRunAfter(new Date('2026-11-02T07:30:05Z')).toISOString()).toBe('2026-11-03T07:30:00.000Z');
+    // Delivered at 15:00 (an admin or agent conclude): the first run 24 hours later is Wednesday's.
+    expect(promotionRunAfter(new Date('2026-11-02T15:00:00Z')).toISOString()).toBe('2026-11-04T07:30:00.000Z');
+    // The scheduler may start the run a few minutes early: that run still promotes; an hour early does not.
+    expect(isPromotionDue(new Date('2026-11-03T07:25:00Z'), '2026-11-03T07:30:00.000Z')).toBe(true);
+    expect(isPromotionDue(new Date('2026-11-03T06:30:00Z'), '2026-11-03T07:30:00.000Z')).toBe(false);
+    expect(isPromotionDue(new Date('2026-11-09T07:30:00Z'), null)).toBe(false);
+    expect(isEvaluationDay(new Date('2026-11-02T07:30:00Z'))).toBe(true);
+    expect(isEvaluationDay(new Date('2026-11-03T07:30:00Z'))).toBe(false);
+    expect(JSON.parse(src('vercel.json')).crons.find((c: { path: string }) => c.path === '/api/cron/experiments-evaluate').schedule).toBe('30 7 * * *');
+    // A label never reaches a visitor; the button surfaces require wording.
+    expect(src('src/lib/cta/heroStore.server.ts')).not.toMatch(/\?\?\s*v\.label/);
+    const noWording = createExperimentSchema.safeParse({
+      key: 'slice-h-nowording', page: '/', element: 'hero-primary', hypothesis: 'A colour alone changes the clicks.', expected_effect: 'clicks up a little',
+      variants: [{ key: 'A', label: 'Orange', payload: { color: '#f26f21' } }, { key: 'B', label: 'Green', payload: { color: '#1f7a4d' } }],
+    });
+    expect(noWording.error?.issues.map((i) => i.message).join(' ')).toMatch(/renders nothing without "wording"/);
   });
 
   test('SEC1 + wiring: routes self-guarded and listed, the cron registered, the migration guarded, the preview header ours only', () => {
@@ -269,7 +327,7 @@ test.describe('experiments - units and source (EX4, payload, assignment)', () =>
     expect(src('src/app/api/experiments/event/route.ts')).toContain('checkRateLimit(`exp-event:');
     expect(src('src/app/api/experiments/veto/route.ts')).toContain('checkRateLimit(`exp-veto:');
     const cron = JSON.parse(src('vercel.json')).crons.find((c: { path: string }) => c.path === '/api/cron/experiments-evaluate');
-    expect(cron?.schedule).toBe('30 7 * * 1');
+    expect(cron?.schedule).toBe('30 7 * * *');
     const migration = src('supabase/migrations/20261030000003_cta_to_experiments.sql');
     expect(migration).toMatch(/ADD COLUMN IF NOT EXISTS visitor_id/);
     expect(migration).toMatch(/ON CONFLICT \(key\) DO NOTHING/);
@@ -325,7 +383,7 @@ async function rest<T = unknown>(method: string, path: string, body?: unknown, p
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-interface Row { key: string; status: string; control_key: string; winner_key: string | null; variants: ExperimentVariant[]; decision: Record<string, unknown> & { pending?: { winner_key: string; notified_at: string; promote_after: string } | null; promoted?: { by: string; winner_key: string }; vetoed?: { by: string }; retired?: { by: string } } | null; started_at: string | null }
+interface Row { key: string; status: string; control_key: string; winner_key: string | null; variants: ExperimentVariant[]; decision: Record<string, unknown> & { pending?: { winner_key: string; proposed_at: string; veto_sent_at: string | null; promote_at: string | null; attempts: number } | null; promoted?: { by: string; winner_key: string }; vetoed?: { by: string }; retired?: { by: string } } | null; started_at: string | null }
 const experiment = async (key: string) => (await rest<Row[]>('GET', `experiments?select=*&key=eq.${key}`))[0];
 interface EventRow { experiment_key: string; variant_key: string; visitor_id: string; event: string; value_cents: number | null }
 const eventsOf = (visitor: string) => rest<EventRow[]>('GET', `experiment_events?select=experiment_key,variant_key,visitor_id,event,value_cents&visitor_id=eq.${visitor}&limit=100`);
@@ -362,10 +420,18 @@ async function visitorWithSeed(seed: string): Promise<APIRequestContext> {
 }
 
 const contexts: BrowserContext[] = [];
+const mintedVisitors = new Set<string>();
 async function browserContext(browser: Browser, extra: Parameters<Browser['newContext']>[0] = {}): Promise<BrowserContext> {
   const a = ip();
   const ctx = await browser.newContext({ ...DESKTOP, baseURL: BASE, extraHTTPHeaders: { 'cf-connecting-ip': a, 'x-forwarded-for': a }, ...extra });
   contexts.push(ctx);
+  // Every signed visitor id the server mints for this context (middleware sets
+  // one with the first page), so afterAll removes its homepage button views
+  // even when the test closed the context itself.
+  ctx.on('response', async (res) => {
+    const id = uuidOf((await res.headerValue('set-cookie').catch(() => null))?.match(/cta_vid=([^;]+)/)?.[1]);
+    if (id) mintedVisitors.add(id);
+  });
   // The homepage gallery reads whatever other slices seeded; the hero never reads it.
   await ctx.route(/\/rest\/v1\/(projects|project_images)(\?|$)/, (route) => route.fulfill({ json: [] }));
   return ctx;
@@ -378,7 +444,8 @@ async function adminContext(browser: Browser): Promise<BrowserContext> {
     body: JSON.stringify({ ...ADMIN, email_confirm: true }),
   });
   if (!res.ok && res.status !== 422) throw new Error(`admin user: ${res.status} ${await res.text()}`);
-  const ctx = await browserContext(browser);
+  // The production CSP keeps the browser off the rig's 127.0.0.1 Supabase; only the admin sign-in needs it lifted (docs/local-rig.md).
+  const ctx = await browserContext(browser, { bypassCSP: true });
   const page = await ctx.newPage();
   await page.goto('/auth');
   await page.locator('input[type=email]').fill(ADMIN.email);
@@ -389,10 +456,12 @@ async function adminContext(browser: Browser): Promise<BrowserContext> {
   return ctx;
 }
 
+/** The run id in letters only: copy may not carry a run of digits (the strict price rule). */
+const RUN_WORD = RUN.replace(/\d/g, (d) => 'ghijklmnop'[Number(d)]);
 const HERO_KEY = `slice-h-hero-${RUN}`;
 const HERO_COPY = {
-  A: { eyebrow: { en: 'Slice H control eyebrow', es: 'Slice H control eyebrow es' }, title: { en: `Slice H control title ${RUN}`, es: `Slice H titulo control ${RUN}` } },
-  B: { eyebrow: { en: 'Slice H challenger eyebrow', es: 'Slice H challenger eyebrow es' }, title: { en: `Slice H challenger title ${RUN}`, es: `Slice H titulo reto ${RUN}` } },
+  A: { eyebrow: { en: 'Slice H control eyebrow', es: 'Slice H control eyebrow es' }, title: { en: `Slice H control title ${RUN_WORD}`, es: `Slice H titulo control ${RUN_WORD}` } },
+  B: { eyebrow: { en: 'Slice H challenger eyebrow', es: 'Slice H challenger eyebrow es' }, title: { en: `Slice H challenger title ${RUN_WORD}`, es: `Slice H titulo reto ${RUN_WORD}` } },
 };
 const heroVariants: ExperimentVariant[] = [
   { key: 'A', label: 'Slice H control', payload: HERO_COPY.A },
@@ -442,9 +511,24 @@ test.describe('experiments - live backend', () => {
   test.describe.configure({ mode: 'serial' });
 
   test.afterAll(async () => {
-    for (const c of contexts) await c.close().catch(() => undefined);
-    for (const a of apiClients) await a.dispose().catch(() => undefined);
+    // Every visitor id this spec caused, so its hero-primary / hero-secondary
+    // views (homepage visits) go too; the shared rig keeps no rows of ours.
+    const visitors = new Set<string>();
+    const remember = (value: string | undefined) => { const id = uuidOf(value); if (id && /^[0-9a-f-]{36}$/.test(id)) visitors.add(id); };
+    for (const c of contexts) {
+      for (const cookie of await c.cookies().catch(() => [])) if (cookie.name === 'cta_vid') remember(cookie.value);
+      await c.close().catch(() => undefined);
+    }
+    for (const a of apiClients) {
+      for (const cookie of (await a.storageState().catch(() => ({ cookies: [] as Array<{ name: string; value: string }> }))).cookies) if (cookie.name === 'cta_vid') remember(cookie.value);
+      await a.dispose().catch(() => undefined);
+    }
     await new Promise((r) => setTimeout(r, 1500));
+    for (const id of mintedVisitors) visitors.add(id);
+    const ids = [...visitors];
+    for (let i = 0; i < ids.length; i += 50) {
+      await rest('DELETE', `experiment_events?experiment_key=in.(hero-primary,hero-secondary)&visitor_id=in.(${ids.slice(i, i + 50).join(',')})`, undefined, 'return=minimal');
+    }
     // Events cascade with their experiment.
     await rest('DELETE', 'experiments?key=like.slice-h-*', undefined, 'return=minimal');
     await rest('DELETE', 'experiment_backlog?source=eq.slice-h-spec', undefined, 'return=minimal');
@@ -592,14 +676,15 @@ test.describe('experiments - live backend', () => {
     const sent: string[] = [];
     admin.on('request', (r) => { if (r.url().includes('/api/experiments/event')) sent.push(r.postData() ?? ''); });
     const page = await admin.newPage();
-    await page.goto(`/home-services?exp=${HERO_KEY}:B`, { waitUntil: 'load' });
+    // Every URL names its language: an earlier ?lang=es leaves the lv_lang cookie behind (LP7).
+    await page.goto(`/home-services?exp=${HERO_KEY}:B&lang=en`, { waitUntil: 'load' });
     await expect(page.locator('h1')).toHaveText(HERO_COPY.B.title.en);
     // The first experiment: control and variant B are the two hero copies of decision 005.
-    await page.goto('/home-services?exp=landing-hero:A', { waitUntil: 'load' });
+    await page.goto('/home-services?exp=landing-hero:A&lang=en', { waitUntil: 'load' });
     await expect(page.locator('h1')).toHaveText('Pick your services. See the price. Sit back.');
     await page.goto('/home-services?exp=landing-hero:B&lang=es', { waitUntil: 'load' });
     await expect(page.locator('h1')).toHaveText('Elija un servicio. Vea el precio. Envíe fotos.');
-    await page.goto('/home-services?exp=landing-hero:B', { waitUntil: 'load' });
+    await page.goto('/home-services?exp=landing-hero:B&lang=en', { waitUntil: 'load' });
     await expect(page.locator('h1')).toHaveText('Pick a service. See the price. Send photos.');
     await expect(page.locator('main p').first()).toHaveText('Home services, priced up front');
     await page.waitForTimeout(1500);
@@ -611,7 +696,7 @@ test.describe('experiments - live backend', () => {
     await visitor.addCookies([{ name: 'cta_v', value: encodeURIComponent(`R=${seedFor('A')}`), url: BASE }]);
     const vpage = await visitor.newPage();
     await vpage.setExtraHTTPHeaders({ 'x-exp-preview': `${HERO_KEY}:B` });
-    await vpage.goto(`/home-services?exp=${HERO_KEY}:B`, { waitUntil: 'domcontentloaded' });
+    await vpage.goto(`/home-services?exp=${HERO_KEY}:B&lang=en`, { waitUntil: 'domcontentloaded' });
     await expect(vpage.locator('h1')).toHaveText(HERO_COPY.A.title.en);
     await visitor.close();
   });
@@ -634,6 +719,7 @@ test.describe('experiments - live backend', () => {
   });
 
   test('EX3: request_started, request_submitted, quote_accepted and job_paid are recorded for the visitor\'s variant, once each', async ({ browser }) => {
+    test.skip(BYPASS.length < 32, 'needs RECAPTCHA_E2E_BYPASS_TOKEN (32+ characters) in the server env and the test env; see the header');
     test.setTimeout(120_000);
     const a = await visitorWithSeed(seedFor('B'));
     await a.get('/home-services');
@@ -710,6 +796,19 @@ test.describe('experiments - live backend', () => {
     const copy = await a.post('/api/experiments', { data: heroBody(`slice-h-price-${RUN}`, { page: '/home-services/drywall-repair', variants: [heroVariants[0], { key: 'B', label: 'B', payload: { eyebrow: { en: 'x', es: 'x' }, title: { en: 'Now $99', es: 'Ahora $99' } } }] }) });
     expect(copy.status()).toBe(400);
     expect(JSON.stringify(await copy.json())).toMatch(/never tested/);
+    // Every phrasing the slice H review got through, in a valid body on a real surface, and a priced label.
+    for (const [en, es] of [
+      ['Cabinet repainting from 2095', 'Repintado de gabinetes desde 2095'], ['Cabinets 2,095$', 'Gabinetes 2,095$'],
+      ['Gutters for 99 bucks', 'Canaletas por 99 bucks'], ['Under two hundred dollars', 'Menos de doscientos dólares'],
+      ['Only ＄99', 'Solo ＄99'], ['Half price this week', 'A mitad de precio esta semana'], ['First visit free', 'Primera visita gratis'],
+    ]) {
+      const res = await a.post('/api/experiments', { data: heroBody(`slice-h-price-${RUN}`, { variants: [heroVariants[0], { key: 'B', label: 'B', payload: { eyebrow: { en: 'Hello', es: 'Hola' }, title: { en, es } } }] }) });
+      expect(res.status(), en).toBe(400);
+      expect(JSON.stringify(await res.json()), en).toMatch(/never tested/);
+    }
+    const label = await a.post('/api/experiments', { data: heroBody(`slice-h-price-${RUN}`, { variants: [heroVariants[0], { ...heroVariants[1], label: '$99 special' }] }) });
+    expect(label.status()).toBe(400);
+    expect(JSON.stringify(await label.json())).toMatch(/never tested/);
     expect(await experiment(`slice-h-price-${RUN}`)).toBeUndefined();
 
     // Report and backlog with the token.
@@ -727,30 +826,46 @@ test.describe('experiments - live backend', () => {
     expect(await notified.json()).toMatchObject({ telegram: 'not_configured' });
   });
 
-  test('EX5: the cron proposes with a veto link, waits 24 hours, then promotes; a vetoed winner is never promoted', async ({ browser }) => {
-    test.setTimeout(120_000);
+  test('EX5 + F3/F6: the Monday run proposes; an undelivered veto message is retried daily and never promoted; a delivered one promotes at the next run 24 hours later; a vetoed winner never does', async ({ browser }) => {
+    test.setTimeout(150_000);
     const win = `slice-h-cron-${RUN}`;
     const veto = `slice-h-veto-${RUN}`;
+    const later = `slice-h-tuesday-${RUN}`;
     await seedRunning(win, `/slice-h-cron-${RUN}`, { A: { views: 300, submitted: 15 }, B: { views: 300, submitted: 45 } });
     await seedRunning(veto, `/slice-h-veto-${RUN}`, { A: { views: 300, submitted: 15 }, B: { views: 300, submitted: 45 } });
     const cron = await api({ Authorization: `Bearer ${CRON}` });
-    const run = async (at: Date) => {
-      const res = await cron.get(`/api/cron/experiments-evaluate?now=${encodeURIComponent(at.toISOString())}&keys=${win},${veto}`);
+    const run = async (when: Date, keys = [win, veto, later]) => {
+      const res = await cron.get(`/api/cron/experiments-evaluate?now=${encodeURIComponent(when.toISOString())}&keys=${keys.join(',')}`);
       expect(res.status(), await res.text()).toBe(200);
-      return (await res.json()) as { results: Array<{ key: string; action: string; verdict?: string; telegram?: string; message?: string; status_after?: string }> };
+      return (await res.json()) as { now: string; results: Array<{ key: string; action: string; verdict?: string; telegram?: string; message?: string; status_after?: string; reason?: string }> };
     };
+    // The next Monday 07:30 UTC: the fake clock must be an evaluation day, and
+    // within the veto token's 7 days of the real clock.
     const t0 = new Date();
+    t0.setUTCHours(7, 30, 0, 0);
+    while (t0.getUTCDay() !== 1 || t0.getTime() < Date.now()) t0.setTime(t0.getTime() + DAY);
+    const at = (ms: number) => new Date(t0.getTime() + ms);
+
+    // Monday: proposed; Telegram is not configured on the rig, so the message is not delivered.
     const first = await run(t0);
+    expect(first.now).toBe(t0.toISOString());
     const proposed = first.results.find((r) => r.key === win)!;
     expect(proposed).toMatchObject({ action: 'proposed', verdict: 'winner', status_after: 'pending_promotion', telegram: 'not_configured' });
     expect(proposed.message).toContain('Experiment winner');
+    expect(proposed.message).toMatch(/Unless you veto it, the daily run on \w{3}, \w{3} \d+, \d{4}, 07:30 UTC makes variant B the page default \(24 hours after this message\)/);
     const link = /Veto: (\S+)/.exec(proposed.message!)?.[1];
     expect(link).toMatch(/\/experiments\/veto\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/);
-    const row = await experiment(win);
+    let row = await experiment(win);
     expect(row.status).toBe('pending_promotion');
-    expect(row.decision!.pending).toMatchObject({ winner_key: 'B' });
-    expect(Date.parse(row.decision!.pending!.promote_after) - Date.parse(row.decision!.pending!.notified_at)).toBe(DAY);
+    expect(row.decision!.pending).toMatchObject({ winner_key: 'B', veto_sent_at: null, veto_outcome: 'not_configured', attempts: 1, promote_at: null, proposed_at: t0.toISOString() });
     expect((row.decision!.verdict as { kind: string }).kind).toBe('winner');
+
+    // The admin card says the message was not delivered.
+    const admin = await adminContext(browser);
+    const apage = await admin.newPage();
+    await apage.goto('/vaca-mgmt?tab=experiments');
+    await expect(apage.getByTestId(`exp-card-${win}`).getByTestId('exp-pending-undelivered')).toContainText('Veto message not delivered (Telegram: not configured, 1 attempt', { timeout: 30_000 });
+    await apage.close();
 
     // Veto the other one through its link: the page is read-only, the button POSTs.
     const vetoLink = /Veto: (\S+)/.exec(first.results.find((r) => r.key === veto)!.message!)![1];
@@ -759,6 +874,7 @@ test.describe('experiments - live backend', () => {
     await page.goto(new URL(vetoLink).pathname);
     await expect(page.getByRole('heading', { name: 'Veto this promotion?' })).toBeVisible();
     await expect(page.getByTestId('veto-summary')).toContainText(veto);
+    await expect(page.getByTestId('veto-summary')).toContainText('not scheduled: the veto message has not been delivered yet');
     expect((await experiment(veto)).status).toBe('pending_promotion');
     expect(await page.locator('meta[name="robots"]').getAttribute('content')).toMatch(/noindex/);
     await page.getByRole('button', { name: 'Veto' }).click();
@@ -766,25 +882,38 @@ test.describe('experiments - live backend', () => {
     const vetoed = await experiment(veto);
     expect(vetoed).toMatchObject({ status: 'concluded', control_key: 'A', winner_key: 'A' });
     expect(vetoed.decision!.vetoed).toMatchObject({ by: 'Telegram veto link' });
-    // The link is spent.
     await page.reload();
     await expect(page.getByTestId('veto-dead')).toHaveText('Nothing to veto');
     await ctx.close();
 
-    // An hour later: still waiting.
-    const second = await run(new Date(t0.getTime() + 60 * 60 * 1000));
-    expect(second.results.find((r) => r.key === win)).toMatchObject({ action: 'waiting_for_veto_window' });
-    expect(second.results.find((r) => r.key === veto)).toBeUndefined();
-    expect((await experiment(win)).status).toBe('pending_promotion');
+    // Tuesday and Thursday: the message is retried and nothing is promoted; a winner
+    // started on Tuesday is not evaluated until the next Monday.
+    await seedRunning(later, `/slice-h-tuesday-${RUN}`, { A: { views: 300, submitted: 15 }, B: { views: 300, submitted: 45 } });
+    const tuesday = await run(at(DAY));
+    expect(tuesday.results.find((r) => r.key === win)).toMatchObject({ action: 'veto_message_not_delivered', status_after: 'pending_promotion', telegram: 'not_configured' });
+    expect(tuesday.results.find((r) => r.key === veto)).toBeUndefined();
+    expect(tuesday.results.find((r) => r.key === later)).toBeUndefined();
+    expect((await experiment(later)).status).toBe('running');
+    const thursday = await run(at(3 * DAY));
+    expect(thursday.results.find((r) => r.key === win)).toMatchObject({ action: 'veto_message_not_delivered' });
+    row = await experiment(win);
+    expect(row.status).toBe('pending_promotion');
+    expect(row.decision!.pending).toMatchObject({ attempts: 3, veto_sent_at: null });
 
-    // A day later: promoted; the vetoed one is untouched.
-    const third = await run(new Date(t0.getTime() + DAY + 60_000));
-    expect(third.results.find((r) => r.key === win)).toMatchObject({ action: 'promoted', status_after: 'concluded', telegram: 'not_configured' });
-    expect(third.results.find((r) => r.key === veto)).toBeUndefined();
+    // Delivered on Thursday's run (written the way the cron records a `sent`
+    // answer, since the rig has no bot): promoted by Friday's run, not before.
+    const sentAt = at(3 * DAY + 5_000).toISOString();
+    const promoteAt = at(4 * DAY).toISOString();
+    await rest('PATCH', `experiments?key=eq.${win}`, { decision: { ...row.decision, pending: { ...row.decision!.pending, veto_sent_at: sentAt, veto_outcome: 'sent', promote_at: promoteAt } } }, 'return=minimal');
+    const early = await run(at(4 * DAY - 60 * 60 * 1000), [win]);
+    expect(early.results.find((r) => r.key === win)).toMatchObject({ action: 'waiting_for_veto_window' });
+    expect((await experiment(win)).status).toBe('pending_promotion');
+    const friday = await run(at(4 * DAY), [win]);
+    expect(friday.results.find((r) => r.key === win)).toMatchObject({ action: 'promoted', status_after: 'concluded' });
     const promoted = await experiment(win);
     expect(promoted).toMatchObject({ status: 'concluded', control_key: 'B', winner_key: 'B' });
     expect(promoted.decision!.promoted).toMatchObject({ winner_key: 'B', previous_control: 'A' });
-    expect((await experiment(veto))).toMatchObject({ status: 'concluded', control_key: 'A' });
+    expect(await experiment(veto)).toMatchObject({ status: 'concluded', control_key: 'A' });
   });
 
   test('EX7: the admin tab shows the funnel, probability and decision, and one tap promotes or retires with the admin id', async ({ browser }) => {
@@ -800,11 +929,32 @@ test.describe('experiments - live backend', () => {
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card.getByTestId(`exp-row-${promo}-A`)).toContainText('260');
     await expect(card.getByTestId(`exp-row-${promo}-B`)).toContainText('250');
-    await expect(card.getByTestId(`exp-p-${promo}-B`)).toHaveText(/^(9\d|100)\.\d%$/);
+    // A Monte Carlo estimate near certainty reads ">99.9%", never "100.0%".
+    await expect(card.getByTestId(`exp-p-${promo}-B`)).toHaveText(/^(>99\.9|9\d\.\d)%$/);
+    // Promote offers the evaluator's winner first, with its chance, as the primary button.
+    await expect(card.getByTestId('exp-promote')).toHaveText(/^Promote B \((>99\.9|9\d\.\d)% chance it beats A\)$/);
+    // A losing challenger is never preselected: the retire fixture's B is behind, so the control is offered.
+    await seedRunning(`slice-h-admin-c-${RUN}`, `/slice-h-admin-c-${RUN}`, { A: { views: 260, submitted: 40 }, B: { views: 250, submitted: 10 } });
+    await page.getByRole('button', { name: 'Refresh' }).first().click();
+    await expect(page.getByTestId(`exp-card-slice-h-admin-c-${RUN}`).getByTestId('exp-promote')).toHaveText('Promote A (keep the control)', { timeout: 15_000 });
     await expect(card.getByTestId('exp-verdict')).toContainText('beats control A');
     await expect(page.getByTestId(`exp-card-${ret}`).getByTestId('exp-verdict')).toContainText('Not enough data yet');
     await expect(page.getByTestId(`exp-card-${HERO_KEY}`).getByTestId('exp-status')).toHaveText('Running');
     await page.screenshot({ path: test.info().outputPath('ex7-experiments-tab.png'), fullPage: true });
+
+    // F7: on an iPhone 13 the decision numbers are on screen, stacked per variant, with no sideways scroll.
+    const phone = await admin.newPage();
+    await phone.setViewportSize(devices['iPhone 13'].viewport);
+    await phone.goto('/vaca-mgmt?tab=experiments');
+    const arms = phone.getByTestId(`exp-arms-phone-${promo}`);
+    await expect(arms).toBeVisible({ timeout: 30_000 });
+    await expect(arms).toContainText('Beats control');
+    const box = await arms.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+    expect(await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await phone.screenshot({ path: test.info().outputPath('ex7-experiments-iphone13.png'), fullPage: true });
+    await phone.close();
 
     await card.getByTestId('exp-promote').click();
     await expect(page.getByTestId(`exp-card-${promo}`).getByTestId('exp-status')).toHaveText('Concluded', { timeout: 15_000 });

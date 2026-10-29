@@ -87,6 +87,9 @@ export const createExperimentSchema = z
           ctx.addIssue({ code: 'custom', path: ['variants', i, 'payload', 'order'], message: `The order must name each section exactly once: ${surface.sections.join(', ')}` });
         }
       }
+      for (const slot of surface.required ?? []) {
+        if (!(slot in v.payload)) ctx.addIssue({ code: 'custom', path: ['variants', i, 'payload', slot], message: `${body.page} ${body.element} renders nothing without "${slot}"; every variant must set it (the label is never shown to visitors)` });
+      }
       if (v.active === false) ctx.addIssue({ code: 'custom', path: ['variants', i, 'active'], message: 'A new experiment starts with every variant active' });
     });
   });
