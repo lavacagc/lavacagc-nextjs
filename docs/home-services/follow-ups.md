@@ -40,6 +40,12 @@ Each is recorded with its reasoning in `00-site-audit.md` or `docs/decisions/`.
 - S-08 Recommendation: the admin's signed video upload lets the uploader pick the stored content type; a JPEG-headed HTML file is stored (served as text, harmless today). Validate the type server-side after the upload lands.
 - S-10 Recommendation: focus should return to the opening button when the request sheet closes.
 
+## Done after launch (2026-10-29)
+
+- S-03: public sign-up turned off in the hosted Supabase project through the Management API (`disable_signup: true`), after confirming the only `signUp` caller is the unused helper in `src/hooks/useAuth.tsx`; a sign-up probe now fails.
+- Production migration history repaired and the Home Services migrations applied (see Database below).
+- `PROJECT_INGEST_TOKEN` set in Vercel production and preview; the eight drafts from the orphaned `drafts/` photos were created by CLI and wait unpublished in the admin.
+
 ## Database
 
 - The migration `20261029000000_home_services.sql` and `20261029000001_projects_anon_draft_guard.sql` were expected to apply through the Supabase GitHub integration on merge. They did not (2026-10-29, merge 4f0e295): the integration's production apply failed at `20260218000000_create_lead_events.sql` with `policy "Allow public inserts" for table "lead_events" already exists`, because every migration from February 2026 on exists in production without being recorded in `supabase_migrations.schema_migrations`. Until the history is repaired, every merge fails the same way and no new table reaches production.
