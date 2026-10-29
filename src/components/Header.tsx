@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Phone, Menu, X, Home } from "lucide-react";
 import logo from "@/assets/logo.png";
@@ -10,9 +10,28 @@ import Image from "next/image";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 import { readHcKnown } from "@/lib/homecare/knownClient";
 import { trackEvent } from "@/services/analyticsManager";
+import { setMobileMenuOpen as publishMobileMenuOpen } from "@/hooks/useMobileMenuState";
 
 const ITEM_CLASS =
   "block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors";
+
+/**
+ * One row in the mobile menu, whether it is a <Link>, a <button> or the phone
+ * link, so every entry shares one left edge and one height.
+ *
+ * Three base rules in globals.css would otherwise pull the entries apart. They
+ * are overridden here, inside the menu only, never weakened site-wide:
+ * - `a, button { margin: 2px }` shifted every link and button 2px off the
+ *   headings' edge: `m-0`.
+ * - `button { min-width: 44px }` plus the default `text-align: center`
+ *   centered short labels ("Blog") inside a 44px box: `w-full min-w-0 text-left`.
+ * - `button { min-height: 44px }` gave buttons 44px rows while links had 26px
+ *   ones. Rather than shrink the buttons, EVERY row gets `min-h-11` (44px), so
+ *   each tap target keeps the size that rule exists to guarantee.
+ */
+const MOBILE_ROW_LAYOUT = "m-0 flex w-full min-w-0 min-h-11 items-center py-2 text-left";
+const MOBILE_ROW = `${MOBILE_ROW_LAYOUT} text-text-secondary hover:text-primary transition-colors`;
+const MOBILE_HEADING = "m-0 font-semibold text-text-primary";
 
 /** A hover/click/keyboard-accessible desktop nav dropdown. Manages its own open state. */
 function NavDropdown({ label, children }: { label: string; children: React.ReactNode }) {
@@ -69,6 +88,73 @@ const Header = () => {
   // non-members (members use the My Home Care chip). Hide the whole menu if it
   // would be empty.
   const showPrograms = !hcKnown;
+
+  // Tell the bottom-pinned chrome - the StickyCTA bar, the SmartBanner cards
+  // and the ReviewToast - to get out of the way while the menu is open. They
+  // are all fixed to the bottom of the viewport, which is where the menu's last
+  // entries are. See useMobileMenuState for why they gate on this flag rather
+  // than on a breakpoint.
+  useEffect(() => {
+    publishMobileMenuOpen(mobileMenuOpen);
+  }, [mobileMenuOpen]);
+  // Always publish `false` on unmount. Every page renders its own <Header>, so
+  // navigating away from a page with the menu open unmounts this instance while
+  // the flag still reads `true`, and the chrome would stay hidden on the next
+  // page with no menu left to explain why.
+  useEffect(() => () => publishMobileMenuOpen(false), []);
+
+  // Close the menu when the viewport crosses to the desktop layout. The toggle
+  // and the menu are BOTH `lg:hidden`, so a menu opened at 900px and then
+  // widened past 1024px would otherwise stay open with no X button on screen to
+  // clear it - and, now that the chrome subscribes to that flag, would strand
+  // the chrome hidden on a viewport where it belongs. Listening only for the
+  // crossing is enough: `mobileMenuOpen` starts false and the only thing that
+  // sets it true is a toggle that does not exist at this width.
+  useEffect(() => {
+    const mql = window.matchMedia('(min-width: 1024px)');
+    const closeOnDesktop = (e: MediaQueryListEvent) => {
+      if (e.matches) setMobileMenuOpen(false);
+    };
+    mql.addEventListener('change', closeOnDesktop);
+    return () => mql.removeEventListener('change', closeOnDesktop);
+  }, []);
+
+  // The menu lives inside a `sticky` header that stays pinned at the top, so a
+  // menu taller than the viewport is not reachable by scrolling the page - its
+  // overflow is simply cut off (measured 188px, including the phone number, on
+  // a 390x844 phone). Cap it to the space actually left below the header and
+  // let it scroll itself. Measured rather than a `calc(100dvh - ...)` guess:
+  // the header row has three heights across breakpoints, the promo bar above it
+  // scrolls away, and a SmartBanner can offset the whole header.
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = menuRef.current;
+    if (!mobileMenuOpen || !el) return;
+
+    const fitToViewport = () => {
+      const top = el.getBoundingClientRect().top;
+      el.style.maxHeight = `${Math.max(160, window.innerHeight - top)}px`;
+    };
+    fitToViewport();
+
+    // A SmartBanner top bar mounting - or being dismissed - while the menu is
+    // already open rewrites --smart-banner-height, which slides this header's
+    // sticky `top` without firing either a resize or a scroll. Re-measure when
+    // that transition lands, or the cap keeps the height of the old position
+    // and the menu runs off the bottom of the viewport again.
+    const header = el.closest('header');
+    const onHeaderSettled = (e: TransitionEvent) => {
+      if (e.propertyName === 'top') fitToViewport();
+    };
+    header?.addEventListener('transitionend', onHeaderSettled);
+    window.addEventListener('resize', fitToViewport);
+    window.addEventListener('scroll', fitToViewport, { passive: true });
+    return () => {
+      header?.removeEventListener('transitionend', onHeaderSettled);
+      window.removeEventListener('resize', fitToViewport);
+      window.removeEventListener('scroll', fitToViewport);
+    };
+  }, [mobileMenuOpen]);
 
   const scrollToSection = (sectionId: string) => {
     // Close mobile menu if open
@@ -265,13 +351,19 @@ const Header = () => {
 
         {/* Mobile/Tablet Menu */}
         {mobileMenuOpen && (
-          <div id="mobile-menu" className="lg:hidden bg-background border-t border-border" role="navigation" aria-label="Mobile navigation">
+          <div
+            id="mobile-menu"
+            ref={menuRef}
+            className="lg:hidden bg-background border-t border-border overflow-y-auto overscroll-contain"
+            role="navigation"
+            aria-label="Mobile navigation"
+          >
             <div className="container mx-auto px-4 py-4 space-y-4">
               {/* Returning member portal access, surfaced first. */}
               {hcKnown && (
                 <button
                   onClick={() => navigateToPage('/home-care/checklist')}
-                  className="flex w-full items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-primary font-semibold hover:bg-primary/10 transition-colors"
+                  className="m-0 flex w-full min-h-11 items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-primary font-semibold hover:bg-primary/10 transition-colors"
                   aria-label="Open my Home Care checklist"
                 >
                   <Home className="h-4 w-4" /> My Home Care
@@ -279,39 +371,37 @@ const Header = () => {
               )}
 
               <div>
-                <p className="font-semibold text-text-primary mb-2">Services</p>
-                <div className="pl-4 space-y-2">
-                  <Link href="/services" className="block font-semibold text-text-primary hover:text-primary transition-colors">
-                    Services Hub
-                  </Link>
-                  <Link href="/home-services" className="block text-text-secondary hover:text-primary transition-colors">
-                    Home Services
-                  </Link>
-                  <Link href="/commercial-services" className="block text-text-secondary hover:text-primary transition-colors">
-                    Commercial Services
-                  </Link>
-                  <p className="pt-2 text-[11px] font-bold uppercase tracking-wider text-text-muted">Remodeling</p>
-                  <Link href="/services/kitchen-remodeling" className="block text-text-secondary hover:text-primary transition-colors">
-                    Kitchen Remodeling
-                  </Link>
-                  <Link href="/services/bathroom-renovation" className="block text-text-secondary hover:text-primary transition-colors">
-                    Bathroom Renovation
-                  </Link>
-                  <Link href="/services/basement-finishing" className="block text-text-secondary hover:text-primary transition-colors">
-                    Basement Finishing
-                  </Link>
-                  <Link href="/services/home-additions" className="block text-text-secondary hover:text-primary transition-colors">
-                    Home Additions
-                  </Link>
-                  <Link href="/services/interior-finishing" className="block text-text-secondary hover:text-primary transition-colors">
-                    Interior Finishing
-                  </Link>
-                </div>
+                <p className={MOBILE_HEADING}>Services</p>
+                <Link href="/services" className={`${MOBILE_ROW_LAYOUT} font-semibold text-text-primary hover:text-primary transition-colors`}>
+                  Services Hub
+                </Link>
+                <Link href="/home-services" className={MOBILE_ROW}>
+                  Home Services
+                </Link>
+                <Link href="/commercial-services" className={MOBILE_ROW}>
+                  Commercial Services
+                </Link>
+                <p className="m-0 pt-2 text-[11px] font-bold uppercase tracking-wider text-text-muted">Remodeling</p>
+                <Link href="/services/kitchen-remodeling" className={MOBILE_ROW}>
+                  Kitchen Remodeling
+                </Link>
+                <Link href="/services/bathroom-renovation" className={MOBILE_ROW}>
+                  Bathroom Renovation
+                </Link>
+                <Link href="/services/basement-finishing" className={MOBILE_ROW}>
+                  Basement Finishing
+                </Link>
+                <Link href="/services/home-additions" className={MOBILE_ROW}>
+                  Home Additions
+                </Link>
+                <Link href="/services/interior-finishing" className={MOBILE_ROW}>
+                  Interior Finishing
+                </Link>
               </div>
 
               <button
                 onClick={() => scrollToSection('projects')}
-                className="block text-text-secondary hover:text-primary transition-colors font-medium"
+                className={`${MOBILE_ROW} font-medium`}
                 aria-label="View our project gallery"
               >
                 Projects
@@ -319,67 +409,63 @@ const Header = () => {
 
               {showPrograms && (
                 <div>
-                  <p className="font-semibold text-text-primary mb-2">Programs</p>
-                  <div className="pl-4 space-y-2">
-                    {!hcKnown && (
-                      <button
-                        onClick={() => navigateToPage('/home-care')}
-                        className="block text-text-secondary hover:text-primary transition-colors"
-                        aria-label="Go to home care page"
-                      >
-                        Home Care
-                      </button>
-                    )}
-                  </div>
+                  <p className={MOBILE_HEADING}>Programs</p>
+                  {!hcKnown && (
+                    <button
+                      onClick={() => navigateToPage('/home-care')}
+                      className={MOBILE_ROW}
+                      aria-label="Go to home care page"
+                    >
+                      Home Care
+                    </button>
+                  )}
                 </div>
               )}
 
               <div>
-                <p className="font-semibold text-text-primary mb-2">Company</p>
-                <div className="pl-4 space-y-2">
-                  <button
-                    onClick={() => navigateToPage('/about')}
-                    className="block text-text-secondary hover:text-primary transition-colors"
-                    aria-label="Go to about us page"
-                  >
-                    About
-                  </button>
-                  <button
-                    onClick={() => navigateToPage('/process')}
-                    className="block text-text-secondary hover:text-primary transition-colors"
-                    aria-label="Go to our process page"
-                  >
-                    Process
-                  </button>
-                  <button
-                    onClick={() => navigateToPage('/resources')}
-                    className="block text-text-secondary hover:text-primary transition-colors"
-                    aria-label="Go to homeowner resources page"
-                  >
-                    Resources
-                  </button>
-                  <button
-                    onClick={() => navigateToPage('/blog')}
-                    className="block text-text-secondary hover:text-primary transition-colors"
-                    aria-label="Go to blog page"
-                  >
-                    Blog
-                  </button>
-                </div>
+                <p className={MOBILE_HEADING}>Company</p>
+                <button
+                  onClick={() => navigateToPage('/about')}
+                  className={MOBILE_ROW}
+                  aria-label="Go to about us page"
+                >
+                  About
+                </button>
+                <button
+                  onClick={() => navigateToPage('/process')}
+                  className={MOBILE_ROW}
+                  aria-label="Go to our process page"
+                >
+                  Process
+                </button>
+                <button
+                  onClick={() => navigateToPage('/resources')}
+                  className={MOBILE_ROW}
+                  aria-label="Go to homeowner resources page"
+                >
+                  Resources
+                </button>
+                <button
+                  onClick={() => navigateToPage('/blog')}
+                  className={MOBILE_ROW}
+                  aria-label="Go to blog page"
+                >
+                  Blog
+                </button>
               </div>
 
               <button
                 onClick={() => navigateToPage('/request-estimate')}
-                className="block text-text-secondary hover:text-primary transition-colors font-medium"
+                className={`${MOBILE_ROW} font-medium`}
                 aria-label="Request an estimate"
               >
                 Request an Estimate
               </button>
 
-              <div className="pt-4 border-t border-border space-y-3">
+              <div className="pt-4 border-t border-border">
                 <CallTrackingWrapper
                   href="tel:2012124917"
-                  className="flex items-center text-secondary font-semibold"
+                  className={`${MOBILE_ROW_LAYOUT} text-secondary font-semibold`}
                 >
                   <Phone className="h-4 w-4 mr-2" />
                   (201) 212-4917

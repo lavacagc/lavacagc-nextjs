@@ -150,6 +150,14 @@ Note `test:e2e` leaves `.next` built against a stub Supabase, and `test:links`
 replaces it with a real one - run `npm run test:build` before returning to the
 rest of the suite, or `npm run build` before serving the app for anything else.
 
+#### Chromium-only runs are desktop width - a width-specific spec pins its own viewport
+
+`.github/workflows/playwright.yml` (manual dispatch only) and `npm run test:smoke` both run `playwright test --project=chromium`, which is Desktop Chrome.
+The `mobile` project (Pixel 5) in `playwright.config.ts` runs only when it is asked for, with `npm run test:mobile` or `--project=mobile`.
+A spec whose assertion only means something at phone or tablet width therefore states that width itself, with a `test.use({ viewport: ... })` in its `describe`, rather than inheriting it from a device profile.
+Left to the profile, it runs at desktop width in every chromium-only run, where it either fails for a reason unrelated to what it pins or passes without the layout it was written for ever being on screen.
+`tests/header-nav.spec.ts` is the worked example, at 390x844 and at 820x1024 for the 768-1023px band where the hamburger menu still exists but the page chrome is already desktop.
+
 `npm run lint`, `npm run typecheck` and `npm run build` are the gauntlet the
 **no-mistakes gate runs for you** on every ship - see *Shipping changes* below.
 Run them by hand only for quick local iteration, not as a manual pre-push
