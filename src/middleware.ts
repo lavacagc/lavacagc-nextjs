@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr';
 import {
   classifyGeo, isGeoTier, GEO_TIER_COOKIE, GEO_TIER_HEADER, GEO_OVERRIDE_COOKIE, type GeoTier,
 } from '@/lib/geo/tier';
+import { mintVisitorCookieEdge, VISITOR_COOKIE_EDGE } from '@/lib/cta/visitor.edge';
 
 // Known bad bot user-agent patterns (scrapers, vulnerability scanners, spam crawlers)
 const BAD_BOT_PATTERNS = [
@@ -319,8 +320,20 @@ export async function middleware(request: NextRequest) {
     response.cookies.set(GEO_OVERRIDE_COOKIE, overrideCookie, { path: '/', sameSite: 'lax' });
   }
 
-  // Detect if this looks like a bot (no UA, or matches known bot patterns)
+  // The CTA counting id is issued with the first homepage response, so the
+  // view and click beacons never depend on each other's Set-Cookie (see
+  // src/lib/cta/visitor.edge.ts). Only the homepage renders the hero, only
+  // humans are counted, and a visitor who already has one keeps it.
   const isBot = !ua || isGoodBot(ua) || /bot|crawl|spider|slurp|fetch|preview/i.test(ua);
+  if (pathname === '/' && !isBot && !request.cookies.get(VISITOR_COOKIE_EDGE.name)) {
+    const minted = await mintVisitorCookieEdge();
+    if (minted) {
+      const secure = request.nextUrl.protocol === 'https:' || request.headers.get('x-forwarded-proto') === 'https';
+      response.cookies.set(VISITOR_COOKIE_EDGE.name, minted, VISITOR_COOKIE_EDGE.options(secure));
+    }
+  }
+
+  // Detect if this looks like a bot (no UA, or matches known bot patterns)
   if (isBot) {
     response.headers.set('x-is-bot', '1');
   }

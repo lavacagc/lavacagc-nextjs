@@ -5,11 +5,13 @@
  * the variant was chosen before paint by the inline script, which left it on
  * <html> as data-cta-p / data-cta-s. This only reports it.
  *
- * The visitor id is NOT handled here. /api/cta/event mints it as a signed,
- * httpOnly `cta_vid` cookie on the first event. Events are therefore sent one
- * after another: if a first-time visitor's two views went out in parallel,
- * each would mint its own id and the click that follows would not find its
- * view under the id that stuck.
+ * The visitor id is NOT handled here. Middleware issues it as a signed,
+ * httpOnly `cta_vid` cookie with the first homepage response (and
+ * /api/cta/event mints one if that somehow did not happen), so every beacon
+ * already carries the same id and they are sent independently. A click
+ * therefore never waits on a view's round trip, which is what used to lose
+ * clicks on slow connections; the route records a missing view alongside the
+ * click.
  *
  * Self-healing: if the server render of the page failed and React rendered it
  * on the client, the inline script was inserted by React and never executed,
@@ -34,7 +36,6 @@ function canStore(): boolean {
 }
 
 export function HeroCtaEvents({ className, config, children }: { className?: string; config: CtaBootstrapConfig; children: ReactNode }) {
-  const queue = useRef<Promise<unknown>>(Promise.resolve());
   // Refs survive React's dev-only double effect run: one load, one view each.
   const viewsSent = useRef(false);
   const clicksSent = useRef(new Set<CtaButton>());
@@ -42,17 +43,13 @@ export function HeroCtaEvents({ className, config, children }: { className?: str
   const send = useCallback((button: CtaButton, eventType: EventType) => {
     const key = assigned(button);
     if (!key || !canStore()) return;
-    queue.current = queue.current
-      .then(() =>
-        fetch('/api/cta/event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ button, variant_key: key, event_type: eventType }),
-          // Survives the navigation a click starts.
-          keepalive: true,
-        }),
-      )
-      .catch(() => undefined);
+    fetch('/api/cta/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ button, variant_key: key, event_type: eventType }),
+      // Survives the navigation a click starts.
+      keepalive: true,
+    }).catch(() => undefined);
   }, []);
 
   useEffect(() => {

@@ -12,9 +12,12 @@
  *  - a cookie whose signature does not verify: 204, nothing recorded, and a
  *    fresh cookie is set so a real visitor recovers on the next event;
  *  - a valid cookie: the event is recorded under its id.
- * Only (button, variant_key) pairs that are active are recorded, and a click
- * only when the same visitor already has a view of the same variant; anything
- * else is answered 204 and dropped. Repeats are free: the unique index
+ * Only (button, variant_key) pairs that are active are recorded. A click from a
+ * visitor whose cookie arrived with the request (so the server issued it on an
+ * earlier response) records its view as well if that view is not there yet:
+ * the two beacons race the navigation the click starts, and a lost view must
+ * not lose the click. A click on a freshly minted id (no cookie came in) is
+ * dropped: that is the one shape a cookieless script can produce at will. Repeats are free: the unique index
  * (button, variant_key, event_type, visitor_id) absorbs them (23505).
  * Errors are logged and answered generically.
  */
@@ -80,20 +83,26 @@ export async function POST(request: NextRequest) {
     if (!visitorId) return respond(false);
     if (!(await isActivePair(event.button, event.variant_key))) return respond(false);
 
+    const rows: Array<{ button: string; variant_key: string; event_type: 'view' | 'click'; visitor_id: string }> = [];
     if (event.event_type === 'click') {
+      // A click on an id minted by this very request never counts.
+      if (minted) return respond(false);
       const views = await supabaseRest<{ id: number }[]>(
         'GET',
         `cta_events?select=id&visitor_id=eq.${visitorId}&button=eq.${event.button}` +
           `&variant_key=eq.${event.variant_key}&event_type=eq.view&limit=1`,
       );
-      if (!views?.length) return respond(false);
+      if (!views?.length) rows.push({ ...event, event_type: 'view', visitor_id: visitorId });
     }
+    rows.push({ ...event, visitor_id: visitorId });
 
-    try {
-      await supabaseRest('POST', 'cta_events', [{ ...event, visitor_id: visitorId }], { prefer: 'return=minimal' });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (!/23505|duplicate key/i.test(message)) throw err;
+    for (const row of rows) {
+      try {
+        await supabaseRest('POST', 'cta_events', [row], { prefer: 'return=minimal' });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!/23505|duplicate key/i.test(message)) throw err;
+      }
     }
     return respond(true);
   } catch (err) {

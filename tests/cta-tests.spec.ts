@@ -523,7 +523,14 @@ test.describe('CTA test - live backend', () => {
     expect(await shown(page, 'primary').evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
     await shown(page, 'secondary').click();
     await page.waitForURL(/\/portfolio/);
-    expect(await cookieValue(ctx, 'cta_vid')).toBeUndefined();
+    // Middleware issues the signed id with the page itself, JavaScript or not,
+    // but a visitor who runs no script sends no beacons: nothing is counted.
+    const noJsCookie = await cookieValue(ctx, 'cta_vid');
+    if (noJsCookie) {
+      const noJsVid = noJsCookie.slice(0, 36);
+      createdVisitors.add(noJsVid);
+      expect((await eventsFor(noJsVid)).length).toBe(0);
+    }
     await ctx.close();
   });
 
@@ -582,6 +589,13 @@ test.describe('CTA test - live backend', () => {
       expect((await a.post('/api/cta/event', { data: bad })).status()).toBe(204);
     }
     expect((await eventsFor(vid)).length).toBe(2);
+    // A click from a visitor whose cookie came in with the request, on a variant
+    // with no view yet: the view is recorded alongside the click (the two beacons
+    // race the navigation; a lost view must not lose the click).
+    const clickFirst = await a.post('/api/cta/event', { data: { button: 'secondary', variant_key: 'A', event_type: 'click' } });
+    expect(clickFirst.status()).toBe(200);
+    const secondaryRows = (await eventsFor(vid)).filter((r) => r.button === 'secondary' && r.variant_key === 'A');
+    expect(secondaryRows.map((r) => r.event_type).sort()).toEqual(['click', 'view']);
     await a.dispose();
 
     // A click with no view first (fresh visitor): minted, but not recorded.
@@ -611,6 +625,26 @@ test.describe('CTA test - live backend', () => {
     const withId = await d.post('/api/cta/event', { data: { ...view, visitor_id: vid } });
     expect(withId.status()).toBe(400);
     await d.dispose();
+  });
+
+  test('fix 3b: the homepage response issues the signed id (middleware), and the event sink accepts it as its own', async ({ browser }) => {
+    const ctx = await freshContext(browser);
+    const page = await ctx.newPage();
+    await openHome(page);
+    const cookie = (await ctx.cookies()).find((c) => c.name === 'cta_vid');
+    expect(cookie, 'middleware sets cta_vid on the first homepage response').toBeTruthy();
+    expect(cookie!.httpOnly).toBe(true);
+    expect(cookie!.value).toMatch(/^[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/);
+    const vid = cookie!.value.slice(0, 36);
+    createdVisitors.add(vid);
+    await ctx.close();
+
+    const api = await apiClient(`10.207.${Date.now() % 250}.9`, { Cookie: `cta_vid=${cookie!.value}` });
+    const res = await api.post('/api/cta/event', { data: { button: 'primary', variant_key: 'A', event_type: 'view' } });
+    expect(res.status(), 'the node verifier accepts the WebCrypto signature').toBe(200);
+    expect(setCookieOf(res), 'no re-mint for a valid cookie').toBeUndefined();
+    expect((await eventsFor(vid)).length).toBe(1);
+    await api.dispose();
   });
 
   test('SEC1: the event sink caps, validates, never echoes errors, and rate limits per IP', async () => {
