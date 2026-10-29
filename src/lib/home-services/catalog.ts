@@ -543,7 +543,9 @@ export function describeAnswers(
     for (const [key, value] of Object.entries(serviceAnswers)) {
       const question = service?.questions.find((q) => q.key === key);
       const option = question?.options.find((o) => o.value === value);
-      parts.push(`${question ? t(question.label, lang) : key}: ${option ? t(option.label, lang) : value}`);
+      // A label that is a question ("How many stories?") reads as "How many stories: 2".
+      const label = (question ? t(question.label, lang) : key).replace(/[?¿]+$/, '');
+      parts.push(`${label}: ${option ? t(option.label, lang) : value}`);
     }
     lines.push(`${service ? t(service.name, lang) : slug}${parts.length ? ' - ' + parts.join(', ') : ''}`);
   }
