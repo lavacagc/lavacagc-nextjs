@@ -13,7 +13,7 @@ import { ServicesEditor } from '@/components/admin/ServicesEditor';
 import { ServiceAreasEditor } from '@/components/admin/ServiceAreasEditor';
 import { ProjectUploadSystem } from '@/components/admin/ProjectUploadSystem';
 import { AdminDashboard } from '@/components/admin/AdminDashboard';
-import AdminSidebar from '@/components/admin/AdminSidebar';
+import AdminSidebar, { ADMIN_TAB_IDS } from '@/components/admin/AdminSidebar';
 import AnalyticsSettings from '@/components/admin/AnalyticsSettings';
 import { GMBSettings } from '@/components/admin/GMBSettings';
 import { LeadsManager } from '@/components/admin/LeadsManager';
@@ -61,7 +61,7 @@ export default function AdminContent() {
     const params = new URLSearchParams(window.location.search);
     if (params.has('project')) return 'projects';
     const tab = params.get('tab');
-    return tab && /^[a-z][a-z-]{1,39}$/.test(tab) ? tab : 'dashboard';
+    return tab && ADMIN_TAB_IDS.includes(tab) ? tab : 'dashboard';
   });
   const [editingPost, setEditingPost] = useState<string | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);

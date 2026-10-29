@@ -107,6 +107,15 @@ const NAVIGATION: NavItem[] = [
   },
 ];
 
+/**
+ * Every tab id the admin can show, for validating a `?tab=` deep link. `new-post`
+ * is reachable only from the blog list, so it is not in the sidebar tree.
+ */
+export const ADMIN_TAB_IDS: readonly string[] = [
+  ...NAVIGATION.flatMap((item) => (isGroup(item) ? item.children.map((c) => c.id) : [item.id])),
+  'new-post',
+];
+
 const STORAGE_KEY = 'vaca-mgmt:sidebar:expanded';
 
 // Returns the id of the group containing `leafId`, or null if the leaf is
