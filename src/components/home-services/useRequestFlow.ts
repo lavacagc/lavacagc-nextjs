@@ -35,10 +35,15 @@ export function useRequestFlow() {
   const closeFlow = useCallback(() => {
     setOpen(false);
     if (window.location.hash !== HASH) return;
-    if (pushed.current) {
+    // Pop only an entry this hook pushed. If something else has pushed on top
+    // of it since (any site-wide component that traps Back), going back would
+    // land on another #request entry and leave the URL claiming an open sheet.
+    const ours = (window.history.state as { hsRequest?: boolean } | null)?.hsRequest === true;
+    if (pushed.current && ours) {
       pushed.current = false;
       window.history.back();
     } else {
+      pushed.current = false;
       // Arrived with #request already in the URL: drop it without leaving the page.
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
     }
