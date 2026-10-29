@@ -164,7 +164,7 @@ export function ButtonReportCard({ report, minVisitors, busy, onUpdate, onCreate
       <CardContent className="space-y-4">
         <LeaderCallout report={report} minVisitors={minVisitors} />
         {/* Fixed layout with the same widths in both cards, so the columns line up. */}
-        <Table className="min-w-[960px] table-fixed">
+        <Table className="min-w-[1100px] table-fixed">
           <TableHeader className="[&_th]:whitespace-nowrap">
             <TableRow>
               <TableHead className="w-[72px]">Key</TableHead>
