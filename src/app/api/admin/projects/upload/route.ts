@@ -9,8 +9,11 @@
  * - JSON `{ action: 'sign', filename, size, kind }`: a signed upload URL for a
  *   video (too big for a function body). The browser uploads straight to
  *   storage with `uploadToSignedUrl`, then calls...
- * - JSON `{ action: 'verify', path }`: sniffs the stored object, deletes it if
- *   it is not an accepted type, and answers `{ url, path, media_type }`.
+ * - JSON `{ action: 'verify', path, size }`: sniffs the stored object and checks
+ *   it is a video of exactly the declared size within the cap. A definitive
+ *   refusal deletes the object (only a freshly minted, unreferenced key); a
+ *   storage error deletes nothing and answers 503 so the browser can retry.
+ *   Answers `{ url, path, media_type }`.
  *
  * Admin auth is enforced by middleware on /api/admin/*.
  */
@@ -26,7 +29,12 @@ export const runtime = 'nodejs';
 
 const jsonSchema = z.discriminatedUnion('action', [
   signRequestSchema.extend({ action: z.literal('sign') }),
-  z.object({ action: z.literal('verify'), path: z.string().trim().min(1).max(255) }),
+  z.object({
+    action: z.literal('verify'),
+    path: z.string().trim().min(1).max(255),
+    /** The size declared when the upload was signed; the stored object must match it. */
+    size: z.number().int().positive(),
+  }),
 ]);
 
 export async function POST(request: NextRequest) {
@@ -69,7 +77,7 @@ export async function POST(request: NextRequest) {
     if (parsed.data.action === 'sign') {
       return NextResponse.json(await signUpload(parsed.data));
     }
-    const stored = await verifyStored(parsed.data.path);
+    const stored = await verifyStored(parsed.data.path, { declaredSize: parsed.data.size, expectKind: 'video' });
     return NextResponse.json({ url: stored.url, path: stored.path, media_type: stored.media_type });
   } catch (err) {
     const { status, body } = errorResponseBody(err, 'Could not prepare the upload.');

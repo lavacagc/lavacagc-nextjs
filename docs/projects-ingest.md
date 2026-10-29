@@ -37,7 +37,7 @@ node scripts/ingest-project.mjs \
   --date 2026-10
 ```
 
-It prints the draft id, its slug, and an admin link such as `https://www.lavacagc.com/vaca-mgmt?project=<id>`, which opens the project in the editor.
+It prints the draft id, its slug, and an admin link such as `https://www.lavacagc.com/vaca-mgmt?tab=projects&project=<id>`, which opens the project in the editor.
 
 | Option | Meaning |
 | --- | --- |
@@ -87,7 +87,7 @@ The site's bot filter refuses a few client user agents (curl, wget, python-reque
 | Route | What it does |
 | --- | --- |
 | `POST /api/projects/ingest` | Create a draft. JSON: `{ title, location, service_types: [...], images: [{ path \| url, category, alt_text?, is_featured?, pair_key?, caption? }], ...optional fields }`. `path` is a key in `project-images`; `url` is a public URL in that bucket. Or multipart: a `project` field holding that JSON plus `files[]`; each file is stored as `projects/<id>_<n>.<ext>`, an image entry can point at one with `{ "file": n }`, and unreferenced files are added as After photos. Multipart bodies are capped at 4.5 MB on Vercel, so use signed uploads for large files. |
-| `POST /api/projects/ingest/uploads` | `{ files: [{ filename, size, kind: "image" \| "video" }] }` answers signed upload URLs. PUT each file's bytes to its `signed_url` with its `Content-Type` (and the returned `headers`), then reference it by `path` in the create call. Photos up to 25 MB, videos up to 200 MB. |
+| `POST /api/projects/ingest/uploads` | `{ files: [{ filename, size, kind: "image" \| "video" }] }` answers signed upload URLs. PUT each file's bytes to its `signed_url` with its `Content-Type` (and the returned `headers`), then reference it by `path` in the create call. Photos up to 25 MB, videos up to 200 MB, checked again on the stored object. A stored object the create call refuses (wrong bytes, over the cap) is deleted, since nothing references it; a `drafts/` photo you merely referenced is never deleted. A 503 means storage did not answer the check; retry. |
 | `PATCH /api/projects/ingest/<id>` | Update a draft. Any subset of the create fields; `images`, when sent, replaces all media. A published project answers 409 unless the body has `"allow_published": true`. |
 | `POST /api/projects/ingest/<id>/publish` | Publish (`{ "feature": true }` also puts it on the homepage). |
 

@@ -56,7 +56,7 @@ export function siteOrigin(request: NextRequest): string {
   return configured || request.nextUrl.origin;
 }
 
-/** Where the owner opens a project in the admin. */
+/** Where the owner opens a project in the admin (the contract in acceptance-criteria.md). */
 export function adminUrl(request: NextRequest, id: string): string {
-  return `${siteOrigin(request)}/vaca-mgmt?project=${id}`;
+  return `${siteOrigin(request)}/vaca-mgmt?tab=projects&project=${id}`;
 }

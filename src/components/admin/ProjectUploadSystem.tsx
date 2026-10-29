@@ -149,6 +149,7 @@ function ProjectForm({ target, onClose }: { target: FormTarget; onClose: () => v
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [areas, setAreas] = useState<string[]>([]);
   const fieldsRef = useRef(fields);
   fieldsRef.current = fields;
@@ -392,6 +393,7 @@ function ProjectForm({ target, onClose }: { target: FormTarget; onClose: () => v
       })),
     };
     setSaving(true);
+    setSaveError(null);
     try {
       if (target.kind === 'edit') {
         await projectsApi.update(target.id, body);
@@ -402,8 +404,10 @@ function ProjectForm({ target, onClose }: { target: FormTarget; onClose: () => v
       }
       onClose();
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Could not save. Try again.';
-      toast({ title: 'Not saved', description: message, variant: 'destructive' });
+      // Inline, next to the button, not a toast: the toast viewport sits bottom
+      // right on desktop, exactly over this sticky bar's Save button, so a
+      // failure toast would cover the retry for its five seconds.
+      setSaveError(err instanceof ApiError ? err.message : 'Could not save. Try again.');
     } finally {
       setSaving(false);
     }
@@ -531,6 +535,11 @@ function ProjectForm({ target, onClose }: { target: FormTarget; onClose: () => v
             {uploading > 0 && `Uploading ${uploading} file${uploading > 1 ? 's' : ''}...`}
             {uploading > 0 && failed > 0 && ' '}
             {failed > 0 && <span className="text-destructive">{failed} upload{failed > 1 ? 's' : ''} failed; remove {failed > 1 ? 'them' : 'it'} to save.</span>}
+          </p>
+        )}
+        {saveError && (
+          <p className="mr-auto text-sm font-medium text-destructive" role="alert" data-testid="project-save-error">
+            Not saved: {saveError}
           </p>
         )}
         <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>

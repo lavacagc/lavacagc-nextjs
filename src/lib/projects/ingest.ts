@@ -15,8 +15,8 @@ import { IMAGE_CATEGORIES, SERVICE_TYPES } from './fields';
 import { ProjectError, createProjectSchema, updateProjectSchema, type ImageInput } from './draft';
 import { checkIngestToken } from './ingestAuth';
 import { adminUserId } from './session';
-import { isSafeObjectPath, pathFromPublicUrl, publicUrlFor, sniffStoredObject } from './storage';
-import { UNSUPPORTED_MEDIA_MESSAGE } from './media';
+import { isSafeObjectPath, pathFromPublicUrl } from './storage';
+import { verifyStored } from './uploads';
 
 export const INGEST_RATE_LIMIT = 30;
 export const INGEST_RATE_WINDOW_MS = 60_000;
@@ -111,10 +111,16 @@ export async function resolveIngestImages(images: IngestImage[], uploaded: Uploa
       if (!path || !isSafeObjectPath(path)) {
         throw new ProjectError(400, `images[${i}]: must be a path or public URL inside the project-images bucket.`);
       }
-      const media = await sniffStoredObject(path);
-      if (!media) throw new ProjectError(422, `images[${i}] (${path}): not found, or ${UNSUPPORTED_MEDIA_MESSAGE}`);
-      url = publicUrlFor(path);
-      mediaType = media.kind;
+      // Checks bytes and the per-type cap. A definitive refusal of a key this
+      // server minted for a signed upload (and that nothing references) deletes
+      // it; a referenced drafts/ or project object is never deleted; a storage
+      // error answers 503 and deletes nothing.
+      const stored = await verifyStored(path).catch((err: unknown) => {
+        if (err instanceof ProjectError) throw new ProjectError(err.status, `images[${i}]: ${err.message}`);
+        throw err;
+      });
+      url = stored.url;
+      mediaType = stored.media_type;
     }
     out.push({
       url,

@@ -118,6 +118,9 @@ test.describe('follow-ups absorbs the review-request form', () => {
   }
 
   test('the Request a review card queues the day-0/3/7 sequence', async ({ page, context, baseURL }) => {
+    // The stub session cookie is only accepted by a server pointed at the GoTrue
+    // stub; against a live backend the page redirects to /auth, every time.
+    test.skip(!!process.env.E2E_LIVE_BACKEND, 'stub-session cookie only works against the GoTrue stub');
     await signInAsAdmin(context, baseURL!);
 
     await page.route('**/api/admin/follow-ups', async (route) => {

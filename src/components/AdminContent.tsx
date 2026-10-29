@@ -52,11 +52,17 @@ export default function AdminContent() {
   const router = useRouter();
   const { user, loading, signOut } = useAuth();
   const isMobile = useIsMobile();
-  // `?project=<id>` is the admin_url the project ingest API returns: open the
-  // Projects tab, where ProjectUploadSystem opens that project's edit form.
+  // Deep links: `?tab=<id>` opens that tab, and `?project=<id>` (the admin_url
+  // the project APIs return, `?tab=projects&project=<id>`) opens Projects, where
+  // ProjectUploadSystem opens that project's edit form.
   // (Nothing tab-dependent renders before auth resolves, so no hydration gap.)
-  const [activeTab, setActiveTabRaw] = useState(() =>
-    typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('project') ? 'projects' : 'dashboard');
+  const [activeTab, setActiveTabRaw] = useState(() => {
+    if (typeof window === 'undefined') return 'dashboard';
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('project')) return 'projects';
+    const tab = params.get('tab');
+    return tab && /^[a-z][a-z-]{1,39}$/.test(tab) ? tab : 'dashboard';
+  });
   const [editingPost, setEditingPost] = useState<string | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -71,7 +77,6 @@ export default function AdminContent() {
   const setActiveTab = useCallback((tab: string) => {
     setActiveTabRaw(tab);
   }, []);
-
 
   const handleSignOut = async () => {
     try {

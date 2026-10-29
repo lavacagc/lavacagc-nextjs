@@ -4,9 +4,9 @@
  * Portfolio Manager: Drafts first (one-click Publish / Publish + feature), the
  * photos waiting in storage, then every published and archived project.
  *
- * Reads and the draft lifecycle go through /api/admin/projects/* (service key);
- * only the homepage reorder and the bulk Feature / Archive still write from the
- * browser, as they did before, and those set `status` alongside `active`.
+ * Every read and write goes through /api/admin/projects/* (service key), the
+ * bulk actions and the homepage reorder included (./bulk), so each change also
+ * revalidates the public pages. The browser never writes `projects` directly.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -22,7 +22,6 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AdminCheckbox } from '@/components/admin/ui/AdminCheckbox';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { formatMonthYear } from '@/lib/projects/dates';
 import { projectsApi } from './projects/api';
@@ -172,15 +171,7 @@ export function PortfolioManager({ onNewProject, onEditProject }: PortfolioManag
   const bulk = async (action: 'delete' | 'archive' | 'feature') => {
     if (selected.length === 0) return;
     if (!confirm(`${action[0].toUpperCase()}${action.slice(1)} ${selected.length} project(s)?`)) return;
-    await run(`bulk:${action}`, async () => {
-      if (action === 'delete') {
-        for (const id of selected) await projectsApi.remove(id);
-        return;
-      }
-      const patch = action === 'archive' ? { active: false, status: 'archived' } : { featured: true };
-      const { error } = await supabase.from('projects').update(patch).in('id', selected);
-      if (error) throw new Error(error.message);
-    }, `${selected.length} project(s) updated`);
+    await run(`bulk:${action}`, () => projectsApi.bulk(action, selected), `${selected.length} project(s) updated`);
     setSelected([]);
   };
 
@@ -217,9 +208,7 @@ export function PortfolioManager({ onNewProject, onEditProject }: PortfolioManag
   const saveOrder = async () => {
     setIsSavingOrder(true);
     try {
-      const results = await Promise.all(reorderList.map((p, i) => supabase.from('projects').update({ sort_order: i + 1 }).eq('id', p.id)));
-      const failed = results.find((r) => r.error);
-      if (failed?.error) throw new Error(failed.error.message);
+      await projectsApi.bulk('reorder', reorderList.map((p) => p.id));
       toast({ title: 'Order saved' });
       cancelReordering();
       await loadProjects();

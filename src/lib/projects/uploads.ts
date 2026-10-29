@@ -16,10 +16,10 @@
  */
 import { z } from 'zod';
 import { MAX_IMAGE_BODY_BYTES, MAX_SIGNED_IMAGE_BYTES, MAX_VIDEO_BYTES } from './fields';
-import { SNIFF_BYTES, UNSUPPORTED_MEDIA_MESSAGE, isHeic, sniffMedia } from './media';
+import { SNIFF_BYTES, UNSUPPORTED_MEDIA_MESSAGE, isHeic, sniffMedia, type StoredVerdict } from './media';
 import { ProjectError } from './draft';
 import {
-  createSignedUpload, isSafeObjectPath, newObjectPath, publicUrlFor, removeObjects, sniffStoredObject, uploadObject,
+  createSignedUpload, discardRefused, isSafeObjectPath, judgeStored, newObjectPath, publicUrlFor, uploadObject,
 } from './storage';
 
 export interface StoredMedia {
@@ -72,16 +72,41 @@ export async function signUpload(req: SignRequest, prefix = 'projects'): Promise
   return { path: signed.path, token: signed.token, signed_url: signed.signedUrl };
 }
 
-/**
- * After a signed upload: confirm the object exists and is a type we accept.
- * A refused object is deleted so it cannot be referenced later.
- */
-export async function verifyStored(path: string): Promise<StoredMedia> {
-  if (!isSafeObjectPath(path)) throw new ProjectError(400, 'Invalid storage path.');
-  const media = await sniffStoredObject(path);
-  if (!media) {
-    if (path.startsWith('projects/')) await removeObjects([path]);
-    throw new ProjectError(415, `${path}: ${UNSUPPORTED_MEDIA_MESSAGE}`);
+/** The caller-facing error for a verdict that is not `ok`. */
+export function verdictError(path: string, verdict: Exclude<StoredVerdict, { kind: 'ok' }>): ProjectError {
+  switch (verdict.kind) {
+    case 'bad': return new ProjectError(verdict.status, `${path}: ${verdict.reason}`);
+    case 'missing': return new ProjectError(422, `${path}: not found in storage.`);
+    default: return new ProjectError(503, `${path}: storage did not answer. Try again in a moment.`);
   }
-  return { path, url: publicUrlFor(path), media_type: media.kind, content_type: media.contentType, size: 0 };
+}
+
+/**
+ * Check a stored object (after a signed upload, or when a caller references one).
+ *
+ * It must be an accepted type by its bytes, within the per-type cap, and, when
+ * the uploader declared a size, exactly that size. A definitive refusal deletes
+ * the object only if this server minted its key and nothing references it
+ * (discardRefused); a storage error deletes nothing and answers 503.
+ */
+export async function verifyStored(
+  path: string,
+  opts: { declaredSize?: number | null; expectKind?: 'image' | 'video' } = {},
+): Promise<StoredMedia> {
+  if (!isSafeObjectPath(path)) throw new ProjectError(400, 'Invalid storage path.');
+  let verdict = await judgeStored(path, opts.declaredSize);
+  if (verdict.kind === 'ok' && opts.expectKind && verdict.media.kind !== opts.expectKind) {
+    verdict = { kind: 'bad', status: 415, reason: `expected a ${opts.expectKind}. ${UNSUPPORTED_MEDIA_MESSAGE}` };
+  }
+  if (verdict.kind !== 'ok') {
+    await discardRefused(path, verdict);
+    throw verdictError(path, verdict);
+  }
+  return {
+    path,
+    url: publicUrlFor(path),
+    media_type: verdict.media.kind,
+    content_type: verdict.media.contentType,
+    size: verdict.size ?? 0,
+  };
 }

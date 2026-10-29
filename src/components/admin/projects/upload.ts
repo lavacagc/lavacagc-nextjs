@@ -14,7 +14,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { PROJECT_IMAGES_BUCKET } from '@/lib/projects/fields';
 import { convertHeicToJpeg } from '@/utils/heicConverter';
-import { api } from './api';
+import { ApiError, api } from './api';
 
 const REENCODE_ABOVE_BYTES = 3.5 * 1024 * 1024;
 const TARGET_MAX_BYTES = 3.8 * 1024 * 1024;
@@ -87,10 +87,19 @@ async function uploadVideo(file: File): Promise<UploadedMedia> {
     .from(PROJECT_IMAGES_BUCKET)
     .uploadToSignedUrl(signed.path, signed.token, file, { contentType: file.type || 'video/mp4' });
   if (error) throw new Error('The video upload did not finish. Try again.');
-  return api<UploadedMedia>('/api/admin/projects/upload', {
+  const verify = () => api<UploadedMedia>('/api/admin/projects/upload', {
     method: 'POST',
-    body: JSON.stringify({ action: 'verify', path: signed.path }),
+    body: JSON.stringify({ action: 'verify', path: signed.path, size: file.size }),
   });
+  // 503 means storage did not answer the check; the upload itself is intact, so retry.
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await verify();
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status !== 503 || attempt >= 3) throw err;
+      await new Promise((r) => setTimeout(r, 1000 * attempt));
+    }
+  }
 }
 
 async function uploadImage(file: File): Promise<UploadedMedia> {

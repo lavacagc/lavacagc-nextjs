@@ -6,7 +6,8 @@ import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBa
 import {
   checkIngestToken, configuredIngestToken, tokensMatch, bearerToken, MIN_INGEST_TOKEN_LENGTH,
 } from '../src/lib/projects/ingestAuth';
-import { sniffMedia, isHeic } from '../src/lib/projects/media';
+import { sniffMedia, isHeic, judgeStoredObject, totalFromContentRange, STORED_CAPS } from '../src/lib/projects/media';
+import { discardRefused, isMintedUploadKey } from '../src/lib/projects/storage';
 import { defaultAltText, defaultMetaDescription, defaultSeoTitle, deriveSlug, slugify } from '../src/lib/projects/slug';
 import { formatMonthYear, parseDateOnly } from '../src/lib/projects/dates';
 
@@ -145,14 +146,68 @@ test.describe('ingest token check (direct import)', () => {
 
 test.describe('media sniffing and deterministic defaults', () => {
   test('magic bytes decide the type, not the name', () => {
-    expect(sniffMedia(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))?.ext).toBe('jpg');
-    expect(sniffMedia(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))?.ext).toBe('png');
+    const pad = (head: number[] | Buffer, tail = '') =>
+      new Uint8Array([...head, ...Buffer.alloc(16), ...Buffer.from(tail)]);
+    expect(sniffMedia(pad([0xff, 0xd8, 0xff, 0xe0]))?.ext).toBe('jpg');
+    expect(sniffMedia(pad([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))?.ext).toBe('png');
+    expect(sniffMedia(pad(Buffer.from('RIFF\0\0\0\0WEBP')))?.ext).toBe('webp');
     const ftyp = (brand: string) => new Uint8Array([0, 0, 0, 0x18, ...Buffer.from('ftyp'), ...Buffer.from(brand)]);
     expect(sniffMedia(ftyp('isom'))?.kind).toBe('video');
     expect(sniffMedia(ftyp('qt  '))?.ext).toBe('mov');
     expect(sniffMedia(ftyp('heic'))).toBeNull();
     expect(isHeic(ftyp('heic'))).toBe(true);
     expect(sniffMedia(new Uint8Array(Buffer.from('<html>hi</html>')))).toBeNull();
+    expect(sniffMedia(new Uint8Array(TINY_JPEG))?.ext).toBe('jpg');
+  });
+
+  test('a signature followed by markup is refused, and short buffers are never trusted', () => {
+    // Fewer than 12 bytes: no verdict, whatever the first three say.
+    expect(sniffMedia(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))).toBeNull();
+    // Polyglots: a real signature, then markup or script inside the first kilobyte.
+    const jpegHead = [0xff, 0xd8, 0xff, 0xe0, 0, 0x10, ...Buffer.from('JFIF\0')];
+    expect(sniffMedia(new Uint8Array([...jpegHead, ...Buffer.from('<HTML><body>x</body></html>')]))).toBeNull();
+    expect(sniffMedia(new Uint8Array([...jpegHead, ...Buffer.alloc(500), ...Buffer.from('<?php echo 1; ?>')]))).toBeNull();
+    const pngHead = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    expect(sniffMedia(new Uint8Array([...pngHead, ...Buffer.from('<script>alert(1)</script>')]))).toBeNull();
+    expect(sniffMedia(new Uint8Array([...Buffer.from('RIFF\0\0\0\0WEBP'), ...Buffer.from('<Script>')]))).toBeNull();
+    // A PNG signature must be complete, not just "\x89PNG".
+    expect(sniffMedia(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0, ...Buffer.alloc(8)]))).toBeNull();
+  });
+
+  test('stored-object verdicts: only a 2xx with bad bytes or a bad size is "bad"', () => {
+    const jpeg = new Uint8Array(TINY_JPEG);
+    // Storage errors are retryable and never "bad" (nothing may be deleted on them).
+    expect(judgeStoredObject({ status: null })).toEqual({ kind: 'unavailable' });
+    expect(judgeStoredObject({ status: 500 })).toEqual({ kind: 'unavailable' });
+    expect(judgeStoredObject({ status: 503 })).toEqual({ kind: 'unavailable' });
+    expect(judgeStoredObject({ status: 429 })).toEqual({ kind: 'unavailable' });
+    expect(judgeStoredObject({ status: 404 })).toEqual({ kind: 'missing' });
+    expect(judgeStoredObject({ status: 400 })).toEqual({ kind: 'missing' });
+    // Definitive refusals.
+    expect(judgeStoredObject({ status: 206, bytes: new Uint8Array(Buffer.from('<html>not a photo</html>')), size: 24 }))
+      .toMatchObject({ kind: 'bad', status: 415 });
+    expect(judgeStoredObject({ status: 206, bytes: jpeg, size: STORED_CAPS.image + 1 })).toMatchObject({ kind: 'bad', status: 413 });
+    expect(judgeStoredObject({ status: 206, bytes: jpeg, size: TINY_JPEG.length }, 100)).toMatchObject({ kind: 'bad', status: 413 });
+    // Good.
+    expect(judgeStoredObject({ status: 206, bytes: jpeg, size: TINY_JPEG.length }, TINY_JPEG.length)).toMatchObject({ kind: 'ok' });
+    expect(judgeStoredObject({ status: 200, bytes: jpeg, size: null })).toMatchObject({ kind: 'ok' });
+    expect(totalFromContentRange('bytes 0-1023/123456')).toBe(123456);
+    expect(totalFromContentRange('bytes */*')).toBeNull();
+  });
+
+  test('a refused object is deleted only on a "bad" verdict for a minted, signed-upload key', async () => {
+    const minted = 'projects/1793257221217-1850efcf5d30.jpg';
+    // None of these reach storage or the database: each returns before any call.
+    expect(await discardRefused(minted, { kind: 'unavailable' })).toBe(false);
+    expect(await discardRefused(minted, { kind: 'missing' })).toBe(false);
+    expect(await discardRefused('drafts/1760035527927-bund8n.jpg', { kind: 'bad', status: 415, reason: 'x' })).toBe(false);
+    expect(await discardRefused('projects/0b1c2d3e-0000-4000-8000-000000000000_0.jpg', { kind: 'bad', status: 415, reason: 'x' })).toBe(false);
+    expect(isMintedUploadKey(minted)).toBe(true);
+    expect(isMintedUploadKey('drafts/1793257221217-1850efcf5d30.jpg')).toBe(false);
+    // And the one deletion site in the upload code is behind that guard.
+    const uploads = read('src/lib/projects/uploads.ts');
+    expect(uploads).not.toMatch(/removeObjects\(/);
+    expect(uploads).toContain('discardRefused(path, verdict)');
   });
 
   test('date_completed shows its own month in a US timezone (was one month early)', () => {
@@ -222,6 +277,8 @@ test.describe('drafts, publish and ingest (live backend)', () => {
   const ingestToken = env.PROJECT_INGEST_TOKEN;
   const draftPaths = [0, 1].map((n) => `drafts/zztest-d-spec-${RUN}-${n}.jpg`);
   const service = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` };
+  /** Storage objects a test wrote that no project row references; removed in afterAll. */
+  const extraObjects: string[] = [];
 
   async function clearIngestRateLimit(request: APIRequestContext) {
     // Only this suite's bucket family; other builders share the database.
@@ -259,7 +316,7 @@ test.describe('drafts, publish and ingest (live backend)', () => {
       { headers: service },
     )).json() as Array<{ id: string; project_images: Array<{ image_url: string }> }>;
     const marker = '/storage/v1/object/public/project-images/';
-    const objects = new Set<string>(draftPaths);
+    const objects = new Set<string>([...draftPaths, ...extraObjects]);
     for (const r of rows) {
       for (const img of r.project_images ?? []) {
         const path = img.image_url.split(marker)[1];
@@ -381,7 +438,7 @@ test.describe('drafts, publish and ingest (live backend)', () => {
     expect(json.status(), await json.text()).toBe(201);
     const created = await json.json();
     expect(created).toMatchObject({ status: 'draft' });
-    expect(created.admin_url).toContain(`/vaca-mgmt?project=${created.id}`);
+    expect(created.admin_url).toContain(`/vaca-mgmt?tab=projects&project=${created.id}`);
     expect(await publicStatus(request, created.url_slug)).toBe(404);
 
     const row = await (await request.get(
@@ -441,6 +498,84 @@ test.describe('drafts, publish and ingest (live backend)', () => {
       data: { title: `${PREFIX} Escape`, location: 'Clifton', service_types: ['Home Additions'], images: [{ path: '../secrets.jpg' }] },
     });
     expect(escape.status()).toBe(400);
+  });
+
+  test('review fixes: refused uploads are cleaned up safely, declared size is enforced, bulk archive revalidates', async ({ page, request }) => {
+    const auth = { Authorization: `Bearer ${ingestToken}` };
+    const publicObject = (path: string) => `${supabaseUrl}/storage/v1/object/public/project-images/${path}`;
+    const exists = async (path: string) => (await request.get(publicObject(path))).status() === 200;
+    const anon = { apikey: env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY };
+
+    // Fix 1: a text file PUT through an ingest signed upload and then referenced
+    // by path is refused AND removed from the public bucket.
+    const signed = await (await request.post('/api/projects/ingest/uploads', {
+      headers: auth, data: { files: [{ filename: 'fake.jpg', size: 30, kind: 'image' }] },
+    })).json();
+    const up = signed.uploads[0];
+    const put = await request.put(up.signed_url, {
+      headers: { ...signed.headers, 'Content-Type': 'image/jpeg' }, data: Buffer.from('<html>not a photo at all</html>'),
+    });
+    expect(put.ok(), await put.text()).toBe(true);
+    expect(await exists(up.path)).toBe(true);
+    const refused = await request.post('/api/projects/ingest', {
+      headers: auth,
+      data: { title: `${PREFIX} Refused`, location: 'Clifton', service_types: ['Home Additions'], images: [{ path: up.path }] },
+    });
+    expect(refused.status()).toBe(415);
+    expect(await exists(up.path)).toBe(false);
+
+    // ...while a pre-existing drafts/ object with bad bytes is refused but never deleted.
+    const badDraft = `drafts/zztest-d-spec-${RUN}-bad.jpg`;
+    extraObjects.push(badDraft);
+    await request.post(`${supabaseUrl}/storage/v1/object/project-images/${badDraft}`, {
+      headers: { ...service, 'Content-Type': 'image/jpeg', 'x-upsert': 'true' }, data: Buffer.from('<html>junk</html>'),
+    });
+    const refusedDraft = await request.post('/api/projects/ingest', {
+      headers: auth,
+      data: { title: `${PREFIX} Refused Draft`, location: 'Clifton', service_types: ['Home Additions'], images: [{ path: badDraft }] },
+    });
+    expect(refusedDraft.status()).toBe(415);
+    expect(await exists(badDraft)).toBe(true);
+
+    // Fix 2: the stored object must be the size declared when the upload was signed.
+    await signIn(page);
+    const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom'), Buffer.alloc(2000)]);
+    const signVideo = async () => (await page.request.post('/api/admin/projects/upload', {
+      data: { action: 'sign', filename: 'clip.mp4', size: mp4.length, kind: 'video' },
+    })).json() as Promise<{ path: string; signed_url: string }>;
+    const lying = await signVideo();
+    expect((await request.put(lying.signed_url, { headers: { ...anon, 'Content-Type': 'video/mp4' }, data: mp4 })).ok()).toBe(true);
+    const tooBig = await page.request.post('/api/admin/projects/upload', { data: { action: 'verify', path: lying.path, size: 100 } });
+    expect(tooBig.status()).toBe(413);
+    expect(await exists(lying.path)).toBe(false);
+    const honest = await signVideo();
+    extraObjects.push(honest.path);
+    expect((await request.put(honest.signed_url, { headers: { ...anon, 'Content-Type': 'video/mp4' }, data: mp4 })).ok()).toBe(true);
+    const ok = await page.request.post('/api/admin/projects/upload', { data: { action: 'verify', path: honest.path, size: mp4.length } });
+    expect(ok.status(), await ok.text()).toBe(200);
+    expect((await ok.json()).media_type).toBe('video');
+
+    // Fix 5: admin_url follows the contract, and the admin opens that project from it.
+    const draft = await (await page.request.post('/api/admin/projects', {
+      data: {
+        title: `${PREFIX} Bulk`, location: 'Clifton', service_types: ['Kitchen Remodeling'],
+        images: [{ url: publicObject(draftPaths[0]) }],
+      },
+    })).json();
+    expect(draft.admin_url).toMatch(new RegExp(`/vaca-mgmt\\?tab=projects&project=${draft.id}$`));
+    await page.goto(new URL(draft.admin_url).pathname + new URL(draft.admin_url).search);
+    await expect(page.getByTestId('project-form')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByLabel('Title')).toHaveValue(`${PREFIX} Bulk`);
+
+    // Fix 7: bulk Archive goes through the server and takes the page down.
+    await page.request.post(`/api/admin/projects/${draft.id}/publish`, { data: {} });
+    expect(await publicStatus(page.request, draft.url_slug)).toBe(200);
+    const bulk = await page.request.post('/api/admin/projects/bulk', { data: { action: 'archive', ids: [draft.id] } });
+    expect(bulk.status(), await bulk.text()).toBe(200);
+    const archived = (await (await page.request.get(`/api/admin/projects/${draft.id}`)).json()).project;
+    expect(archived).toMatchObject({ status: 'archived', active: false });
+    expect(await publicStatus(page.request, draft.url_slug)).toBe(404);
+    expect(read('src/components/admin/PortfolioManager.tsx')).not.toMatch(/supabase\.from\('projects'\)/);
   });
 
   test('PF6: the draft-photos listing returns objects under drafts/', async ({ page }) => {

@@ -390,6 +390,51 @@ export async function deleteProject(id: string): Promise<void> {
   await supabaseRest('DELETE', `projects?id=eq.${id}`, undefined, { prefer: 'return=minimal' });
 }
 
+export const bulkSchema = z.object({
+  action: z.enum(['archive', 'feature', 'delete', 'reorder']),
+  /** For `reorder`, the featured projects in their new homepage order. */
+  ids: z.array(z.string().uuid()).min(1).max(200),
+});
+export type BulkInput = z.infer<typeof bulkSchema>;
+
+/**
+ * The manager's bulk actions, server-side so they revalidate like Publish does.
+ * Archive keeps its meaning (`active=false, status='archived'`). Answers the
+ * slugs whose public pages changed.
+ */
+export async function bulkUpdate(input: BulkInput): Promise<string[]> {
+  const ids = [...new Set(input.ids)];
+  const rows = await supabaseRest<Array<{ id: string; url_slug: string | null }>>(
+    'GET',
+    `projects?select=id,url_slug&id=in.(${ids.join(',')})&limit=200`,
+  );
+  const found = rows ?? [];
+  if (found.length === 0) throw new ProjectError(404, 'None of those projects exist.');
+  const foundIds = found.map((r) => r.id);
+  const inList = `id=in.(${foundIds.join(',')})`;
+  const now = new Date().toISOString();
+
+  switch (input.action) {
+    case 'archive':
+      await supabaseRest('PATCH', `projects?${inList}`, { active: false, status: 'archived', updated_at: now }, { prefer: 'return=minimal' });
+      break;
+    case 'feature':
+      await supabaseRest('PATCH', `projects?${inList}`, { featured: true, updated_at: now }, { prefer: 'return=minimal' });
+      break;
+    case 'reorder':
+      // Order follows the request, not the lookup.
+      for (const [i, id] of ids.entries()) {
+        if (!foundIds.includes(id)) continue;
+        await supabaseRest('PATCH', `projects?id=eq.${id}`, { sort_order: i + 1 }, { prefer: 'return=minimal' });
+      }
+      break;
+    case 'delete':
+      for (const id of foundIds) await deleteProject(id);
+      break;
+  }
+  return found.map((r) => r.url_slug).filter((s): s is string => !!s);
+}
+
 /** The admin list: every project with its media, newest first. */
 export async function listProjects(): Promise<unknown[]> {
   return (await supabaseRest<unknown[]>(

@@ -42,6 +42,8 @@ export const projectsApi = {
   publish: (id: string, feature = false) =>
     api<SavedProject>(`/api/admin/projects/${id}/publish`, { method: 'POST', body: JSON.stringify(feature ? { feature: true } : {}) }),
   unpublish: (id: string) => api<SavedProject>(`/api/admin/projects/${id}/unpublish`, { method: 'POST' }),
+  bulk: (action: 'archive' | 'feature' | 'delete' | 'reorder', ids: string[]) =>
+    api<{ status: string; updated: number }>('/api/admin/projects/bulk', { method: 'POST', body: JSON.stringify({ action, ids }) }),
   draftPhotos: () => api<{ photos: DraftPhoto[] }>('/api/admin/projects/draft-photos'),
 };
 

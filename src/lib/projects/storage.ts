@@ -9,7 +9,10 @@
 import { randomBytes } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { PROJECT_IMAGES_BUCKET } from './fields';
-import { SNIFF_BYTES, sniffMedia, type SniffedMedia } from './media';
+import { supabaseRest } from '@/lib/notify/supabase-rest';
+import {
+  SNIFF_BYTES, judgeStoredObject, totalFromContentRange, type StoredRead, type StoredVerdict,
+} from './media';
 
 function serviceClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -78,17 +81,79 @@ export async function createSignedUpload(path: string): Promise<{ path: string; 
 }
 
 /**
- * Read the first bytes of a stored object and say what it really is.
- * Null when the object is missing or is not a type we accept.
+ * Range-read the first bytes of a stored object, plus its total size.
+ * Never throws: a failed read comes back as `status: null`, which
+ * judgeStoredObject treats as "unavailable, try again", never as "bad".
  */
-export async function sniffStoredObject(path: string): Promise<SniffedMedia | null> {
-  const res = await fetch(publicUrlFor(path), {
-    headers: { Range: `bytes=0-${SNIFF_BYTES - 1}` },
-    cache: 'no-store',
-  });
-  if (!res.ok) return null;
-  const buf = new Uint8Array(await res.arrayBuffer()).subarray(0, SNIFF_BYTES);
-  return sniffMedia(buf);
+export async function readStoredHead(path: string): Promise<StoredRead> {
+  const url = publicUrlFor(path);
+  try {
+    // Size first. A Range that runs past the end of the object makes Supabase
+    // storage hang rather than answer 206 (reproduced: a 1 KB range on a 676-byte
+    // object never returned), so the range below never asks past the end.
+    const head = await fetch(url, { method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(STORAGE_TIMEOUT_MS) });
+    if (!head.ok) return { status: head.status };
+    const size = Number(head.headers.get('content-length'));
+    if (!Number.isInteger(size) || size < 0) return { status: null };
+    if (size === 0) return { status: head.status, bytes: new Uint8Array(), size: 0 };
+
+    const last = Math.min(size, SNIFF_BYTES) - 1;
+    const res = await fetch(url, {
+      headers: { Range: `bytes=0-${last}` },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(STORAGE_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      await res.body?.cancel().catch(() => undefined);
+      return { status: res.status };
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer()).subarray(0, SNIFF_BYTES);
+    const total = res.status === 206 ? totalFromContentRange(res.headers.get('content-range')) ?? size : size;
+    return { status: res.status, bytes, size: total };
+  } catch {
+    // Timeouts and network errors are "unavailable": retryable, never grounds to delete.
+    return { status: null };
+  }
+}
+
+/** A storage call that takes longer than this is treated as unavailable. */
+const STORAGE_TIMEOUT_MS = 10_000;
+
+/** What a stored object is, as a verdict (see judgeStoredObject). */
+export async function judgeStored(path: string, declaredSize?: number | null): Promise<StoredVerdict> {
+  return judgeStoredObject(await readStoredHead(path), declaredSize);
+}
+
+/**
+ * The shape of a key this server mints for a signed upload
+ * (`projects/<ms>-<12 hex>.<ext>`, see newObjectPath). Only such keys may ever
+ * be deleted after a refusal: a `drafts/` object or a live project's
+ * `projects/<id>_<n>` file that a caller merely referenced is never touched.
+ */
+const MINTED_KEY = /^projects\/\d{13}-[0-9a-f]{12}\.[a-z0-9]{2,4}$/;
+export function isMintedUploadKey(path: string): boolean {
+  return MINTED_KEY.test(path);
+}
+
+/** Does any project_images row point at this object? */
+export async function isReferenced(path: string): Promise<boolean> {
+  const rows = await supabaseRest<Array<{ id: string }>>(
+    'GET',
+    `project_images?select=id&image_url=eq.${encodeURIComponent(publicUrlFor(path))}&limit=1`,
+  );
+  return (rows ?? []).length > 0;
+}
+
+/**
+ * Delete an object that was just refused, but only when it is safe to:
+ * a definitive `bad` verdict, a key this server minted for a signed upload,
+ * and no project referencing it. Anything else is left exactly where it is.
+ */
+export async function discardRefused(path: string, verdict: StoredVerdict): Promise<boolean> {
+  if (verdict.kind !== 'bad' || !isMintedUploadKey(path)) return false;
+  if (await isReferenced(path)) return false;
+  await removeObjects([path]);
+  return true;
 }
 
 export interface DraftPhoto {

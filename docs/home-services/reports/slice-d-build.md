@@ -222,3 +222,54 @@ The one expected failure in that Playwright command is the stub-cookie follow-up
 Local test data: I removed every row and storage object I created (titles prefixed `ZZTEST-D`, objects `drafts/zztest-d-*` and the `projects/` objects those rows referenced); the `project-images` bucket is empty again, as it was at the start.
 The local auth user `admin-d@local.test` is left in place for the reviewer.
 The spec seeds and cleans up its own.
+
+## Fixes after review
+
+Review: `docs/home-services/reports/slice-d-review.md` (ACCEPT WITH FIXES, 12 of 12 ACs confirmed, seven low-severity defects).
+All seven are fixed below, plus two defects the fixes surfaced.
+`363a6f5` (the coordinator's `chaos:static` fix for Node 20) was cherry-picked first, so `npm run chaos:static` now runs as is.
+
+| # | Defect | Fix | Evidence |
+| --- | --- | --- | --- |
+| 1 | A signed-upload object refused at ingest `path` resolution stayed in the public bucket. | `resolveIngestImages` now goes through `verifyStored`, the same check the admin form uses. A refusal deletes the object only when the key is one this server minted for a signed upload (`projects/<13 digits>-<12 hex>.<ext>`, `isMintedUploadKey`) AND no `project_images` row references it (`discardRefused` in `storage.ts`). A `drafts/` object, or any referenced object, is never deleted. | Live spec "review fixes": a text file PUT through `/api/projects/ingest/uploads` and then referenced answers 415, and the object is gone (public URL no longer 200). A `drafts/` object with bad bytes answers 415 and is still there. Direct-import test: `discardRefused` returns false for a `drafts/` key and for a `projects/<uuid>_<n>` key. |
+| 2 | The declared size of a signed upload was never enforced. | `judgeStoredObject` (`media.ts`) checks the stored object's real size (HEAD `Content-Length`, Content-Range on the read) against the per-type cap (photos 25 MB, videos 200 MB) and, when the uploader declared one, against the declared size. The admin `verify` call now must send `size`, and the browser sends `file.size`. Oversize is 413 and the object is deleted under the rule in fix 1. The ingest path has no declared size at resolution time, so the cap applies there. | Live spec: a video signed for its real size but verified with `size: 100` answers 413 and the object is deleted; the honest verify answers 200 with `media_type: video`. Unit test: over-cap and size-mismatch verdicts are `bad`/413. |
+| 3 | A failed storage read (non-2xx or thrown) was treated as "bad bytes", so a storage blip could delete a live photo. | `judgeStoredObject` returns four verdicts: `ok`; `bad` (2xx with wrong bytes or a bad size, the ONLY one that may lead to deletion); `missing` (404/400, answered 422, nothing deleted); `unavailable` (any other status, a timeout or a thrown error, answered 503 "try again", nothing deleted). The browser retries a 503 verify twice. `uploads.ts` no longer calls `removeObjects` directly; its only deletion is `discardRefused(path, verdict)`, which returns early on anything but `bad`. | Unit test "stored-object verdicts": status `null`, 500, 503 and 429 are `unavailable`, 404 and 400 are `missing`. Direct-import test: `discardRefused` on a minted key with `unavailable` or `missing` returns false without touching storage. A source pin asserts `uploads.ts` has no `removeObjects(` call. |
+| 4 | The JPEG test read 3 bytes, so `FF D8 FF` followed by HTML was stored as a photo. | `sniffMedia` needs at least 12 bytes, checks the full 8-byte PNG signature, and refuses JPEG, PNG or WebP whose first kilobyte contains `<html`, `<script` or `<?php` (case-insensitive). Reads are now 1024 bytes. | Unit test "a signature followed by markup is refused": JPEG + `<HTML>`, JPEG + `<?php` after 500 bytes, PNG + `<script>`, WebP + `<Script>`, a truncated PNG signature and a 4-byte JPEG all return null; a real 676-byte JPEG passes. |
+| 5 | `admin_url` was `/vaca-mgmt?project=<id>`; the contract says `?tab=projects&project=<id>`. | `adminUrl` returns `/vaca-mgmt?tab=projects&project=<id>`. `AdminContent` opens the tab named by `?tab=` on load (lowercase id, else Dashboard), and `?project=` still opens Projects and that project's edit form. | Live spec: `admin_url` matches the contract, and navigating to it opens the form with the project's title loaded. The CLI prints the new form. |
+| 6 | The stub-cookie follow-ups test failed on every live-backend run. | `test.skip(!!process.env.E2E_LIVE_BACKEND, 'stub-session cookie only works against the GoTrue stub')` on that test. | Live: skipped. Stub: runs and passes. |
+| 7 | Bulk Archive and Feature wrote from the browser with no revalidation. | New `POST /api/admin/projects/bulk` (`archive`, `feature`, `delete`, `reorder`; uuid ids, at most 200) does the write with the service key and calls `revalidateProjectPages` for every affected slug, like Publish. The manager's bulk buttons and the homepage Reorder now use it, so the browser no longer writes `projects` at all. Archive still means `active=false, status='archived'`. | Live spec: publish a project (page 200), bulk-archive it, it reads back `status: archived, active: false` and the page answers 404. Source pin: no `supabase.from('projects')` in `PortfolioManager.tsx`. |
+
+### Defects the fixes surfaced
+
+- **A Range read past the end of an object makes Supabase storage hang.**
+  Raising the sniff read from 32 to 1024 bytes made ingest on a 676-byte JPEG take 29.9 s; `curl -H "Range: bytes=0-1023"` on that object got no answer in 40 s, while `bytes=0-675` answered 206 at once.
+  `readStoredHead` now does a HEAD for the size first and never asks past the end, and both calls have a 10 s timeout that maps to `unavailable` (503), so a stuck storage call can no longer stall a route.
+  Ingest calls on the same files are back to tens of milliseconds in the server log.
+- **An error toast covered the sticky Save button.**
+  The toast viewport is bottom right on desktop, the same place as the form's Save button, and a toast stays five seconds, so after a failed save the retry was covered.
+  Seen in the browser with the local dashboard-error toast over "Save draft".
+  Save failures now show inline in the action bar (`role="alert"`) instead of as a toast.
+
+### Also checked after the fixes
+
+- The Google review picker, which I had not exercised (no table locally), now has seed rows locally: picking "Local Seed One" filled the testimonial and the client name, and the public page rendered the quote with 5/5 stars.
+- The date fix in the browser: the public page shows "October 2026" for this month's draft.
+- The CLI with a 10.97 MB photo, a HEIC, an MP4 and `--pair` still works end to end through the new verification (0.35 s total locally).
+- The walkthrough still measures 6 clicks to a draft and 1 to publish, with 0 CSP violations.
+
+### Gates after the fixes
+
+- `npm run typecheck`: clean.
+- `eslint --max-warnings 0` on every touched file, now including `tests/admin-nav-simplified.spec.ts`: clean.
+- `npm run chaos:static` (with `363a6f5`): 0 new violations.
+- Live backend, the three specs: 37 passed, 1 skipped (the follow-ups test, by design), 0 failed.
+  The lightbox test ran because published projects existed; with none it skips by design.
+- Stub mode, the three specs: 29 passed, 9 skipped (the live-only tests), 0 failed.
+- `tests/project-drafts.spec.ts` now has 24 tests per browser project.
+
+### Still open (not mine, recorded for the owner)
+
+- Whether production's anonymous select policy on `projects` is `active = true` (the reviewer's launch follow-up); the coordinator is checking.
+- Abandoned uploads (Cancel, or a form left mid-upload) still stay in `projects/`; a periodic cleanup of unreferenced minted keys would cover them and is now easy to write with `isMintedUploadKey` + `isReferenced`.
+
+Local test data after this round: every `ZZTEST-D` row, the objects they referenced, the 12 orphans my abandoned walkthrough runs left, and my `project-ingest:*` rate-limit rows were removed; `projects` and `project-images` are empty, as before.
