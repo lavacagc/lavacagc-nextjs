@@ -334,10 +334,9 @@ async function main() {
   const serverEnv = {
     ...process.env,
     NODE_ENV: 'production',
-    // Local stack only; blank keys so no email/AI call can ever fire from here.
+    // Local stack only; a blank key so no email can ever fire from here.
     SUPABASE_SECRET_KEY: sb.SERVICE_ROLE_KEY,
     RESEND_API_KEY: '',
-    OPENAI_API_KEY: '',
     RECAPTCHA_E2E_BYPASS_TOKEN: RECAPTCHA_TOKEN,
   };
 

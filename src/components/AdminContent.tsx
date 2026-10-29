@@ -48,22 +48,32 @@ import { ComplianceDocumentsManager } from '@/components/admin/ComplianceDocumen
 import { LogOut, Menu } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
+/** The blog post id in `?post=<uuid>`, or null. */
+function deepLinkedPost(): string | null {
+  if (typeof window === 'undefined') return null;
+  const id = new URLSearchParams(window.location.search).get('post') ?? '';
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : null;
+}
+
 export default function AdminContent() {
   const router = useRouter();
   const { user, loading, signOut } = useAuth();
   const isMobile = useIsMobile();
   // Deep links: `?tab=<id>` opens that tab, and `?project=<id>` (the admin_url
   // the project APIs return, `?tab=projects&project=<id>`) opens Projects, where
-  // ProjectUploadSystem opens that project's edit form.
+  // ProjectUploadSystem opens that project's edit form. `?post=<id>` (the
+  // adminUrl the article APIs return, `?tab=blog&post=<id>`) opens that blog
+  // post in the editor.
   // (Nothing tab-dependent renders before auth resolves, so no hydration gap.)
   const [activeTab, setActiveTabRaw] = useState(() => {
     if (typeof window === 'undefined') return 'dashboard';
     const params = new URLSearchParams(window.location.search);
     if (params.has('project')) return 'projects';
+    if (deepLinkedPost()) return 'new-post';
     const tab = params.get('tab');
     return tab && ADMIN_TAB_IDS.includes(tab) ? tab : 'dashboard';
   });
-  const [editingPost, setEditingPost] = useState<string | null>(null);
+  const [editingPost, setEditingPost] = useState<string | null>(() => deepLinkedPost());
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   useEffect(() => {

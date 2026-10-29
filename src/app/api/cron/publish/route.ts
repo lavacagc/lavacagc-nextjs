@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidateArticlePages } from '@/lib/articles/revalidate';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,7 +50,9 @@ export async function GET(request: NextRequest) {
     // Find posts that are scheduled and past their publish time
     const posts = await supabaseRest(
       'GET',
-      `blog_posts?select=id,title,slug,scheduled_publish_at&published=eq.false&scheduled_publish_at=not.is.null&scheduled_publish_at=lte.${encodeURIComponent(now)}`
+      // Capped: a daily run publishes what is due; anything past the cap is
+      // still due tomorrow, so nothing is lost.
+      `blog_posts?select=id,title,slug,scheduled_publish_at&published=eq.false&scheduled_publish_at=not.is.null&scheduled_publish_at=lte.${encodeURIComponent(now)}&order=scheduled_publish_at.asc&limit=50`
     );
 
     if (!posts || posts.length === 0) {
@@ -58,18 +61,23 @@ export async function GET(request: NextRequest) {
 
     // Publish each post
     const published: string[] = [];
+    const slugs: string[] = [];
     for (const post of posts) {
       try {
         await supabaseRest(
           'PATCH',
           `blog_posts?id=eq.${post.id}`,
-          { published: true, scheduled_publish_at: null, created_at: now, updated_at: now }
+          { published: true, published_at: now, scheduled_publish_at: null, created_at: now, updated_at: now }
         );
         published.push(post.title);
+        slugs.push(post.slug);
       } catch (err) {
         console.error(`Failed to publish "${post.title}":`, err);
       }
     }
+
+    // Show them on /blog, their pages and the sitemap now, not after the ISR window.
+    if (slugs.length > 0) revalidateArticlePages(...slugs);
 
     return NextResponse.json({
       message: `Published ${published.length} posts`,

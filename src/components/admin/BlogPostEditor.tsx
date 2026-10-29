@@ -22,13 +22,13 @@ import {
 } from '@/components/ui/popover';
 import { MarkdownEditor } from './MarkdownEditor';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, Save, Eye, Upload, Sparkles, X, Wand2, Clock, CalendarIcon } from 'lucide-react';
-import { AdminRadioGroup, AdminRadioGroupItem } from './ui/AdminRadioGroup';
+import { Loader2, Save, Eye, Upload, X, Clock, CalendarIcon } from 'lucide-react';
 import { convertHeicToJpeg } from '@/utils/heicConverter';
 import { format, parse } from 'date-fns';
 import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
+import { blogPagePaths, requestRevalidate } from '@/lib/revalidate';
 
 interface BlogPost {
   id: string;
@@ -44,7 +44,8 @@ interface BlogPost {
   meta_keywords: string;
   published: boolean;
   scheduled_publish_at: string | null;
-  suggested_image_prompt: string | null;
+  published_at?: string | null;
+  source?: string | null;
 }
 
 const EASTERN_TZ = 'America/New_York';
@@ -110,16 +111,13 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     meta_keywords: '',
     published: false,
     scheduled_publish_at: null,
-    suggested_image_prompt: null,
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [isGeneratingSEO, setIsGeneratingSEO] = useState(false);
-  const [imagePrompt, setImagePrompt] = useState('');
-  const [enhancementLevel, setEnhancementLevel] = useState<'light' | 'moderate' | 'heavy'>('moderate');
-  const [isEnhancing, setIsEnhancing] = useState(false);
+  // What the database held when the post was loaded: a save compares against it
+  // to stamp published_at on a publish and to revalidate the old slug's page.
+  const [loaded, setLoaded] = useState<{ published: boolean; slug: string } | null>(null);
 
   // Scheduling state
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
@@ -144,6 +142,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
       if (error) throw error;
       setPost(data);
+      setLoaded({ published: !!data.published, slug: data.slug ?? '' });
 
       // Load scheduling info if present
       if (data.scheduled_publish_at) {
@@ -155,11 +154,6 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
         setScheduleDate(undefined);
         setScheduleTime('09:00');
         setIsScheduled(false);
-      }
-
-      // Pre-fill image prompt with AI suggestion if available and no image exists yet
-      if (data.suggested_image_prompt && !data.featured_image) {
-        setImagePrompt(data.suggested_image_prompt);
       }
     } catch (error) {
       console.error('Error loading post:', error);
@@ -216,6 +210,7 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
     setIsSaving(true);
     try {
+      const willPublish = isScheduled ? false : (post.published || false);
       const postData = {
         title: post.title,
         slug: post.slug || generateSlug(post.title),
@@ -228,7 +223,11 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
         meta_description: post.meta_description || post.excerpt || '',
         meta_keywords: post.meta_keywords || '',
         // If scheduled, don't publish immediately
-        published: isScheduled ? false : (post.published || false),
+        published: willPublish,
+        // A publish (draft to live) is stamped now; an edit of a live post keeps
+        // its date, and an unpublish keeps the last one for the record.
+        ...(willPublish && !loaded?.published ? { published_at: new Date().toISOString() } : {}),
+        updated_at: new Date().toISOString(),
         // Set scheduled time if scheduling is enabled
         scheduled_publish_at: isScheduled && scheduleDate
           ? easternToUtc(scheduleDate, scheduleTime)
@@ -241,6 +240,14 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
       } else {
         const { error } = await supabase.from('blog_posts').insert(postData);
         if (error) throw error;
+      }
+
+      // The public blog pages are ISR copies; drop the ones this save touched
+      // (the list, the post under its new and old slug, the sitemap) so the
+      // change shows on the next request instead of after the ISR window.
+      // A draft that stays a draft changes nothing public, so it skips this.
+      if (willPublish || loaded?.published) {
+        void requestRevalidate(blogPagePaths(postData.slug, loaded?.slug));
       }
 
       // Show appropriate success message
@@ -273,7 +280,8 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
 
   const handlePreview = () => {
     if (post.slug) {
-      window.open(`/blog/${post.slug}`, '_blank');
+      // A draft has no public page yet; the preview route shows it to an admin.
+      window.open(loaded?.published ? `/blog/${post.slug}` : `/blog/preview/${post.slug}`, '_blank');
     }
   };
 
@@ -327,148 +335,8 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
     }
   };
 
-  const handleGenerateImage = async () => {
-    if (!imagePrompt.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Please enter an image prompt',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsGeneratingImage(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-blog-image', {
-        body: { prompt: imagePrompt },
-      });
-
-      if (error) throw error;
-      if (!data.imageUrl) throw new Error('No image URL returned');
-
-      // Convert base64 to blob and upload
-      const base64Response = await fetch(data.imageUrl);
-      const blob = await base64Response.blob();
-
-      const fileName = `${Math.random()}.png`;
-      const filePath = fileName; // Remove the blog-images/ prefix
-
-      const { error: uploadError } = await supabase.storage
-        .from('blog-images')
-        .upload(filePath, blob);
-
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from('blog-images').getPublicUrl(filePath);
-
-      setPost((prev) => ({ ...prev, featured_image: publicUrl }));
-      setImagePrompt('');
-      toast({
-        title: 'Success',
-        description: 'Image generated successfully',
-      });
-    } catch (error) {
-      console.error('Error generating image:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to generate image',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsGeneratingImage(false);
-    }
-  };
-
   const handleRemoveImage = () => {
     setPost((prev) => ({ ...prev, featured_image: '' }));
-  };
-
-  const handleGenerateSEO = async () => {
-    if (!post.title || !post.content) {
-      toast({
-        title: 'Missing Content',
-        description: 'Please add a title and content before generating SEO',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsGeneratingSEO(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-blog-seo', {
-        body: {
-          title: post.title,
-          content: post.content,
-          excerpt: post.excerpt,
-        },
-      });
-
-      if (error) throw error;
-
-      setPost((prev) => ({
-        ...prev,
-        meta_title: data.metaTitle,
-        meta_description: data.metaDescription,
-        meta_keywords: data.keywords,
-      }));
-
-      toast({
-        title: 'SEO Generated',
-        description: 'Meta title, description, and keywords have been generated',
-      });
-    } catch (error) {
-      console.error('Error generating SEO:', error);
-      toast({
-        title: 'Generation Failed',
-        description: 'Failed to generate SEO metadata',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsGeneratingSEO(false);
-    }
-  };
-
-  const handleEnhanceContent = async () => {
-    if (!post.content?.trim()) {
-      toast({
-        title: 'No Content',
-        description: 'Please add content before enhancing',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsEnhancing(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('enhance-blog-content', {
-        body: {
-          title: post.title || 'Untitled',
-          content: post.content,
-          category: post.category || 'General Remodeling',
-          enhancementLevel,
-        },
-      });
-
-      if (error) throw error;
-      if (!data?.enhancedContent) throw new Error('No enhanced content returned');
-
-      setPost((prev) => ({ ...prev, content: data.enhancedContent }));
-      toast({
-        title: 'Content Enhanced',
-        description: `Article enhanced with ${enhancementLevel} optimization`,
-      });
-    } catch (error) {
-      console.error('Enhancement error:', error);
-      toast({
-        title: 'Enhancement Failed',
-        description: 'Failed to enhance content',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsEnhancing(false);
-    }
   };
 
   if (isLoading) {
@@ -576,38 +444,6 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
                 </div>
               </div>
 
-              <Separator />
-
-              <div>
-                <Label htmlFor="image-prompt">Generate with AI</Label>
-                <div className="space-y-2 mt-2">
-                  <Textarea
-                    id="image-prompt"
-                    value={imagePrompt}
-                    onChange={(e) => setImagePrompt(e.target.value)}
-                    placeholder="Describe the image you want to generate..."
-                    rows={3}
-                  />
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={handleGenerateImage}
-                    disabled={isGeneratingImage}
-                  >
-                    {isGeneratingImage ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Generate Image
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
             </CardContent>
           </Card>
 
@@ -785,27 +621,6 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
               <CardTitle className="text-lg">SEO Settings</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={handleGenerateSEO}
-                disabled={isGeneratingSEO || !post.title || !post.content}
-              >
-                {isGeneratingSEO ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Generate SEO
-                  </>
-                )}
-              </Button>
-
-              <Separator />
-
               <div>
                 <Label htmlFor="meta_title">Meta Title</Label>
                 <Input
@@ -841,68 +656,6 @@ export function BlogPostEditor({ postId, onSave, onCancel }: BlogPostEditorProps
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">AI Enhancement</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Enhancement Level</Label>
-                <AdminRadioGroup
-                  value={enhancementLevel}
-                  onValueChange={(value) =>
-                    setEnhancementLevel(value as 'light' | 'moderate' | 'heavy')
-                  }
-                  disabled={isEnhancing}
-                >
-                  <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
-                    <AdminRadioGroupItem value="light" id="enhance-light" />
-                    <Label htmlFor="enhance-light" className="text-sm font-normal cursor-pointer flex-1">
-                      <span className="font-medium">Light</span>
-                      <span className="text-muted-foreground text-xs block">Quick polish with local context</span>
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
-                    <AdminRadioGroupItem value="moderate" id="enhance-moderate" />
-                    <Label htmlFor="enhance-moderate" className="text-sm font-normal cursor-pointer flex-1">
-                      <span className="font-medium">Moderate</span>
-                      <span className="text-muted-foreground text-xs block">Full local SEO optimization</span>
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
-                    <AdminRadioGroupItem value="heavy" id="enhance-heavy" />
-                    <Label htmlFor="enhance-heavy" className="text-sm font-normal cursor-pointer flex-1">
-                      <span className="font-medium">Heavy</span>
-                      <span className="text-muted-foreground text-xs block">Complete rewrite with max SEO</span>
-                    </Label>
-                  </div>
-                </AdminRadioGroup>
-              </div>
-
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={handleEnhanceContent}
-                disabled={isEnhancing || !post.content}
-              >
-                {isEnhancing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Enhancing...
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className="w-4 h-4 mr-2" />
-                    Enhance Content
-                  </>
-                )}
-              </Button>
-
-              <p className="text-xs text-muted-foreground text-center">
-                AI will add internal links and optimize for local SEO
-              </p>
-            </CardContent>
-          </Card>
         </div>
       </div>
 

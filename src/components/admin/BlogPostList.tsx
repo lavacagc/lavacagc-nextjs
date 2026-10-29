@@ -17,7 +17,7 @@ import { toast } from '@/hooks/use-toast';
 import { Edit, Eye, Trash2, Globe, FileX, Clock, XCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
-import { BlogPostGenerator } from './BlogPostGenerator';
+import { blogPagePaths, requestRevalidate } from '@/lib/revalidate';
 
 interface BlogPost {
   id: string;
@@ -27,6 +27,7 @@ interface BlogPost {
   author: string;
   published: boolean;
   scheduled_publish_at: string | null;
+  source?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -49,11 +50,14 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
     try {
       const { data, error } = await supabase
         .from('blog_posts')
-        .select('id, title, slug, category, author, published, scheduled_publish_at, created_at, updated_at')
-        .order('updated_at', { ascending: false });
+        .select('id, title, slug, category, author, published, scheduled_publish_at, source, created_at, updated_at')
+        .order('updated_at', { ascending: false })
+        // The admin list, not the public one; a cap keeps it a bounded read.
+        .limit(500);
 
       if (error) throw error;
-      setPosts(data || []);
+      // `source` (Phase 2 migration) is not in the generated types file yet.
+      setPosts((data ?? []) as unknown as BlogPost[]);
     } catch (error) {
       console.error('Error loading posts:', error);
       toast({
@@ -67,15 +71,20 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
   };
 
   const togglePublished = async (id: string, published: boolean) => {
+    const now = new Date().toISOString();
     try {
       const { error } = await supabase
         .from('blog_posts')
-        .update({ published: !published })
+        // A publish stamps published_at; an unpublish keeps the last one.
+        .update(published ? { published: false, updated_at: now } : { published: true, published_at: now, updated_at: now })
         .eq('id', id);
 
       if (error) throw error;
 
-      setPosts(posts.map((post) => (post.id === id ? { ...post, published: !published } : post)));
+      setPosts(posts.map((post) => (post.id === id ? { ...post, published: !published, updated_at: now } : post)));
+      // Show (or hide) it on /blog, its page and the sitemap on the next request.
+      const slug = posts.find((post) => post.id === id)?.slug;
+      void requestRevalidate(blogPagePaths(slug));
 
       toast({
         title: 'Success',
@@ -97,11 +106,13 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
     }
 
     try {
+      const deleted = posts.find((post) => post.id === id);
       const { error } = await supabase.from('blog_posts').delete().eq('id', id);
 
       if (error) throw error;
 
       setPosts(posts.filter((post) => post.id !== id));
+      if (deleted?.published) void requestRevalidate(blogPagePaths(deleted.slug));
 
       toast({
         title: 'Success',
@@ -172,7 +183,12 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
   // Helper function to render a post row
   const renderPostRow = (post: BlogPost, showScheduleColumn = false) => (
     <TableRow key={post.id}>
-      <TableCell className="font-medium">{post.title}</TableCell>
+      <TableCell className="font-medium">
+        {post.title}
+        {post.source === 'claude' && (
+          <Badge variant="outline" className="ml-2 align-middle text-[10px] font-normal">From Claude Code</Badge>
+        )}
+      </TableCell>
       <TableCell>{post.category}</TableCell>
       <TableCell>
         {post.published ? (
@@ -218,7 +234,8 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
             size="sm"
             onClick={(e) => {
               e.preventDefault();
-              router.push(`/blog/${post.slug}`);
+              // A draft has no public page yet; the preview route shows it to an admin.
+              router.push(post.published ? `/blog/${post.slug}` : `/blog/preview/${post.slug}`);
             }}
             title="View post"
           >
@@ -273,7 +290,7 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
   return (
     <div className="space-y-6">
       <Tabs defaultValue="posts" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="posts">All Posts</TabsTrigger>
           <TabsTrigger value="scheduled" className="relative">
             Scheduled
@@ -283,7 +300,6 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="generate">Generate New</TabsTrigger>
         </TabsList>
 
         <TabsContent value="posts" className="space-y-4 mt-6">
@@ -333,10 +349,6 @@ export function BlogPostList({ onEditPost }: BlogPostListProps) {
               </TableBody>
             </Table>
           )}
-        </TabsContent>
-
-        <TabsContent value="generate" className="mt-6">
-          <BlogPostGenerator onPostCreated={onEditPost} />
         </TabsContent>
       </Tabs>
     </div>

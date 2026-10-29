@@ -9,6 +9,8 @@ import { MarkdownContent } from '@/components/MarkdownContent';
 import { ArrowLeft, Calendar, User, Tag } from 'lucide-react';
 import { format } from 'date-fns';
 import Link from 'next/link';
+import { BlogFaq } from '@/components/blog/BlogFaq';
+import { readFaq } from '@/lib/articles/schemas';
 
 interface BlogPost {
   id: string;
@@ -23,6 +25,7 @@ interface BlogPost {
   meta_description: string;
   meta_keywords: string;
   published: boolean;
+  faq?: unknown;
   created_at: string;
   updated_at: string;
 }
@@ -221,6 +224,8 @@ export default function BlogPostPreviewPage({
             <div className="prose prose-lg max-w-none">
               <MarkdownContent content={post.content} />
             </div>
+
+            <BlogFaq items={readFaq(post.faq)} />
           </article>
         </div>
       </main>

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { validateDraft, buildFactLockText, buildDraftInstruction, type Fact } from '../src/lib/seo/draftGuardrails';
+import { validateDraft, type Fact } from '../src/lib/seo/draftGuardrails';
 
 /**
  * Unit tests for Phase 2 drafting guardrails. Pure — runs in CI.
@@ -9,8 +9,7 @@ import { validateDraft, buildFactLockText, buildDraftInstruction, type Fact } fr
  *  2. Too few internal links fails.
  *  3. A wrong phone number fails (hallucinated contact info).
  *  4. A wrong NJ HIC license number fails (consumer-fraud risk).
- *  5. The fact-lock prompt block includes the locked values.
- *  6. The drafting instruction differs by action type.
+ *  5. The prompt builders for the removed OpenAI drafters are gone (RM1).
  */
 
 const FACTS: Fact[] = [
@@ -52,16 +51,7 @@ test('wrong NJ license number fails', () => {
   expect(v.issues.some((i) => /license/i.test(i))).toBe(true);
 });
 
-test('fact-lock prompt block includes locked values', () => {
-  const text = buildFactLockText(FACTS);
-  expect(text).toContain('13VH13373800');
-  expect(text).toContain('(201) 212-4917');
-  expect(text).toMatch(/NEVER invent/i);
-});
-
-test('draft instruction differs by action type', () => {
-  const base = { target_query: 'kitchen remodel cost nj', rationale: null };
-  expect(buildDraftInstruction({ ...base, action_type: 'new' })).toMatch(/brand-new/i);
-  expect(buildDraftInstruction({ ...base, action_type: 'refresh', currentMarkdown: 'old' })).toMatch(/rewrite/i);
-  expect(buildDraftInstruction({ ...base, action_type: 'consolidate', currentMarkdown: 'old' })).toMatch(/consolidat|merg/i);
+test('RM1: the OpenAI prompt builders are gone; only the validator remains', async () => {
+  const mod = await import('../src/lib/seo/draftGuardrails');
+  expect(Object.keys(mod).sort()).toEqual(['validateDraft']);
 });

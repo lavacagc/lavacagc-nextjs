@@ -9,8 +9,13 @@ import { ArrowLeft, Calendar, User, Tag } from 'lucide-react';
 import { format } from 'date-fns';
 import Link from 'next/link';
 import PageViewTracker from '@/components/PageViewTracker';
+import { faqPageJsonLd, jsonLdScript } from '@/lib/articles/faqJsonLd';
+import { readFaq } from '@/lib/articles/schemas';
+import { BlogFaq } from '@/components/blog/BlogFaq';
 
-// Five minutes: the blog editor writes straight to the database and cannot revalidate on save (docs/cost-review.md).
+// Every blog writer now revalidates this page on save and publish (the admin
+// editor and list, the article routes, the publish and rollback crons), so
+// this window is only the ceiling for a write that somehow skipped it.
 export const revalidate = 300;
 
 // Server-side Supabase client (trim to handle any whitespace in env vars)
@@ -35,6 +40,8 @@ interface BlogPost {
   meta_description: string;
   meta_keywords: string;
   published: boolean;
+  published_at?: string | null;
+  faq?: unknown;
   created_at: string;
   updated_at: string;
 }
@@ -106,7 +113,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
       description,
       type: 'article',
       url: `https://www.lavacagc.com/blog/${post.slug}`,
-      publishedTime: post.created_at,
+      publishedTime: post.published_at || post.created_at,
       modifiedTime: post.updated_at,
       authors: [post.author],
       images: post.featured_image
@@ -143,6 +150,11 @@ export default async function BlogPostPage({ params }: PageProps) {
     notFound();
   }
 
+  const pageUrl = `https://www.lavacagc.com/blog/${post.slug}`;
+  const publishedAt = post.published_at || post.created_at;
+  const faq = readFaq(post.faq);
+  const faqJsonLd = faqPageJsonLd(post.faq, pageUrl);
+
   // JSON-LD Schema for BlogPosting
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -150,7 +162,7 @@ export default async function BlogPostPage({ params }: PageProps) {
     headline: post.title,
     description: post.excerpt,
     image: post.featured_image || 'https://www.lavacagc.com/default-blog-image.jpg',
-    datePublished: post.created_at,
+    datePublished: publishedAt,
     dateModified: post.updated_at,
     author: {
       '@type': 'Person',
@@ -214,6 +226,12 @@ export default async function BlogPostPage({ params }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
+      {faqJsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLdScript(faqJsonLd) }}
+        />
+      )}
 
       <main className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-12">
@@ -270,8 +288,8 @@ export default async function BlogPostPage({ params }: PageProps) {
                 </div>
                 <div className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" />
-                  <time dateTime={post.created_at}>
-                    {format(new Date(post.created_at), 'MMMM d, yyyy')}
+                  <time dateTime={publishedAt}>
+                    {format(new Date(publishedAt), 'MMMM d, yyyy')}
                   </time>
                 </div>
                 <div className="flex items-center gap-1">
@@ -308,6 +326,8 @@ export default async function BlogPostPage({ params }: PageProps) {
             <div className="prose prose-lg max-w-none">
               <MarkdownContent content={post.content} />
             </div>
+
+            <BlogFaq items={faq} />
 
             {/* Call to Action */}
             <aside className="mt-16 p-8 bg-primary/5 rounded-lg border border-primary/10">
