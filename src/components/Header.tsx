@@ -15,6 +15,24 @@ import { setMobileMenuOpen as publishMobileMenuOpen } from "@/hooks/useMobileMen
 const ITEM_CLASS =
   "block px-4 py-2 text-text-secondary hover:text-primary hover:bg-muted rounded-md transition-colors";
 
+/**
+ * One row in the mobile menu, whether it is a <Link>, a <button> or the phone
+ * link, so every entry shares one left edge and one height.
+ *
+ * Three base rules in globals.css would otherwise pull the entries apart. They
+ * are overridden here, inside the menu only, never weakened site-wide:
+ * - `a, button { margin: 2px }` shifted every link and button 2px off the
+ *   headings' edge: `m-0`.
+ * - `button { min-width: 44px }` plus the default `text-align: center`
+ *   centered short labels ("Blog") inside a 44px box: `w-full min-w-0 text-left`.
+ * - `button { min-height: 44px }` gave buttons 44px rows while links had 26px
+ *   ones. Rather than shrink the buttons, EVERY row gets `min-h-11` (44px), so
+ *   each tap target keeps the size that rule exists to guarantee.
+ */
+const MOBILE_ROW_LAYOUT = "m-0 flex w-full min-w-0 min-h-11 items-center py-2 text-left";
+const MOBILE_ROW = `${MOBILE_ROW_LAYOUT} text-text-secondary hover:text-primary transition-colors`;
+const MOBILE_HEADING = "m-0 font-semibold text-text-primary";
+
 /** A hover/click/keyboard-accessible desktop nav dropdown. Manages its own open state. */
 function NavDropdown({ label, children }: { label: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -345,7 +363,7 @@ const Header = () => {
               {hcKnown && (
                 <button
                   onClick={() => navigateToPage('/home-care/checklist')}
-                  className="flex w-full items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-primary font-semibold hover:bg-primary/10 transition-colors"
+                  className="m-0 flex w-full min-h-11 items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-primary font-semibold hover:bg-primary/10 transition-colors"
                   aria-label="Open my Home Care checklist"
                 >
                   <Home className="h-4 w-4" /> My Home Care
@@ -353,39 +371,37 @@ const Header = () => {
               )}
 
               <div>
-                <p className="font-semibold text-text-primary mb-2">Services</p>
-                <div className="pl-4 space-y-2">
-                  <Link href="/services" className="block font-semibold text-text-primary hover:text-primary transition-colors">
-                    Services Hub
-                  </Link>
-                  <Link href="/home-services" className="block text-text-secondary hover:text-primary transition-colors">
-                    Home Services
-                  </Link>
-                  <Link href="/commercial-services" className="block text-text-secondary hover:text-primary transition-colors">
-                    Commercial Services
-                  </Link>
-                  <p className="pt-2 text-[11px] font-bold uppercase tracking-wider text-text-muted">Remodeling</p>
-                  <Link href="/services/kitchen-remodeling" className="block text-text-secondary hover:text-primary transition-colors">
-                    Kitchen Remodeling
-                  </Link>
-                  <Link href="/services/bathroom-renovation" className="block text-text-secondary hover:text-primary transition-colors">
-                    Bathroom Renovation
-                  </Link>
-                  <Link href="/services/basement-finishing" className="block text-text-secondary hover:text-primary transition-colors">
-                    Basement Finishing
-                  </Link>
-                  <Link href="/services/home-additions" className="block text-text-secondary hover:text-primary transition-colors">
-                    Home Additions
-                  </Link>
-                  <Link href="/services/interior-finishing" className="block text-text-secondary hover:text-primary transition-colors">
-                    Interior Finishing
-                  </Link>
-                </div>
+                <p className={MOBILE_HEADING}>Services</p>
+                <Link href="/services" className={`${MOBILE_ROW_LAYOUT} font-semibold text-text-primary hover:text-primary transition-colors`}>
+                  Services Hub
+                </Link>
+                <Link href="/home-services" className={MOBILE_ROW}>
+                  Home Services
+                </Link>
+                <Link href="/commercial-services" className={MOBILE_ROW}>
+                  Commercial Services
+                </Link>
+                <p className="m-0 pt-2 text-[11px] font-bold uppercase tracking-wider text-text-muted">Remodeling</p>
+                <Link href="/services/kitchen-remodeling" className={MOBILE_ROW}>
+                  Kitchen Remodeling
+                </Link>
+                <Link href="/services/bathroom-renovation" className={MOBILE_ROW}>
+                  Bathroom Renovation
+                </Link>
+                <Link href="/services/basement-finishing" className={MOBILE_ROW}>
+                  Basement Finishing
+                </Link>
+                <Link href="/services/home-additions" className={MOBILE_ROW}>
+                  Home Additions
+                </Link>
+                <Link href="/services/interior-finishing" className={MOBILE_ROW}>
+                  Interior Finishing
+                </Link>
               </div>
 
               <button
                 onClick={() => scrollToSection('projects')}
-                className="block text-text-secondary hover:text-primary transition-colors font-medium"
+                className={`${MOBILE_ROW} font-medium`}
                 aria-label="View our project gallery"
               >
                 Projects
@@ -393,67 +409,63 @@ const Header = () => {
 
               {showPrograms && (
                 <div>
-                  <p className="font-semibold text-text-primary mb-2">Programs</p>
-                  <div className="pl-4 space-y-2">
-                    {!hcKnown && (
-                      <button
-                        onClick={() => navigateToPage('/home-care')}
-                        className="block text-text-secondary hover:text-primary transition-colors"
-                        aria-label="Go to home care page"
-                      >
-                        Home Care
-                      </button>
-                    )}
-                  </div>
+                  <p className={MOBILE_HEADING}>Programs</p>
+                  {!hcKnown && (
+                    <button
+                      onClick={() => navigateToPage('/home-care')}
+                      className={MOBILE_ROW}
+                      aria-label="Go to home care page"
+                    >
+                      Home Care
+                    </button>
+                  )}
                 </div>
               )}
 
               <div>
-                <p className="font-semibold text-text-primary mb-2">Company</p>
-                <div className="pl-4 space-y-2">
-                  <button
-                    onClick={() => navigateToPage('/about')}
-                    className="block text-text-secondary hover:text-primary transition-colors"
-                    aria-label="Go to about us page"
-                  >
-                    About
-                  </button>
-                  <button
-                    onClick={() => navigateToPage('/process')}
-                    className="block text-text-secondary hover:text-primary transition-colors"
-                    aria-label="Go to our process page"
-                  >
-                    Process
-                  </button>
-                  <button
-                    onClick={() => navigateToPage('/resources')}
-                    className="block text-text-secondary hover:text-primary transition-colors"
-                    aria-label="Go to homeowner resources page"
-                  >
-                    Resources
-                  </button>
-                  <button
-                    onClick={() => navigateToPage('/blog')}
-                    className="block text-text-secondary hover:text-primary transition-colors"
-                    aria-label="Go to blog page"
-                  >
-                    Blog
-                  </button>
-                </div>
+                <p className={MOBILE_HEADING}>Company</p>
+                <button
+                  onClick={() => navigateToPage('/about')}
+                  className={MOBILE_ROW}
+                  aria-label="Go to about us page"
+                >
+                  About
+                </button>
+                <button
+                  onClick={() => navigateToPage('/process')}
+                  className={MOBILE_ROW}
+                  aria-label="Go to our process page"
+                >
+                  Process
+                </button>
+                <button
+                  onClick={() => navigateToPage('/resources')}
+                  className={MOBILE_ROW}
+                  aria-label="Go to homeowner resources page"
+                >
+                  Resources
+                </button>
+                <button
+                  onClick={() => navigateToPage('/blog')}
+                  className={MOBILE_ROW}
+                  aria-label="Go to blog page"
+                >
+                  Blog
+                </button>
               </div>
 
               <button
                 onClick={() => navigateToPage('/request-estimate')}
-                className="block text-text-secondary hover:text-primary transition-colors font-medium"
+                className={`${MOBILE_ROW} font-medium`}
                 aria-label="Request an estimate"
               >
                 Request an Estimate
               </button>
 
-              <div className="pt-4 border-t border-border space-y-3">
+              <div className="pt-4 border-t border-border">
                 <CallTrackingWrapper
                   href="tel:2012124917"
-                  className="flex items-center text-secondary font-semibold"
+                  className={`${MOBILE_ROW_LAYOUT} text-secondary font-semibold`}
                 >
                   <Phone className="h-4 w-4 mr-2" />
                   (201) 212-4917

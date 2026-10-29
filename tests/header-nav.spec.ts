@@ -298,3 +298,53 @@ test.describe('open mobile menu on a tablet (768-1023px)', () => {
     await expect(card).toBeVisible();
   });
 });
+
+/**
+ * Every entry in the open menu shares one left edge and every tappable row is
+ * the same 44px height (2026-10-29).
+ *
+ * Three base rules in globals.css pulled the entries apart: `a, button
+ * { margin: 2px }` put links and buttons 2px off the headings' edge, and
+ * `button { min-width: 44px; min-height: 44px }` with the default centered
+ * text both centered "Blog" in a 44px box and gave buttons 44px rows next to
+ * 26px links. Measured before the fix: five text-start x values (16, 18, 32,
+ * 34, 39.1) and a smallest tappable row of 25.6px. The menu overrides those
+ * rules on its own rows, never site-wide, and lifts every row to 44px.
+ *
+ * Viewports pinned for the same reason as the blocks above.
+ */
+for (const viewport of [{ width: 390, height: 844 }, { width: 820, height: 1024 }]) {
+  test.describe(`open mobile menu alignment at ${viewport.width}x${viewport.height}`, () => {
+    test.use({ viewport });
+
+    test('every entry shares one left edge and every row is 44px tall', async ({ page }) => {
+      await page.goto('/portfolio');
+      await page.click('button[aria-controls="mobile-menu"]');
+      await expect(page.locator('#mobile-menu')).toBeVisible();
+
+      const entries = await page.locator('#mobile-menu').evaluate(menu =>
+        [...menu.querySelectorAll('a, button, p')].map(el => {
+          // Where the entry visibly starts: its icon if it has one, else its text.
+          const icon = el.querySelector('svg');
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const x = (icon ?? range).getBoundingClientRect().left;
+          return {
+            text: (el.textContent ?? '').trim(),
+            tappable: el.tagName !== 'P',
+            x: Math.round(x),
+            height: Math.round(el.getBoundingClientRect().height),
+          };
+        })
+      );
+
+      // The heading, link, button and phone kinds are all present, so a single
+      // x below really is one shared edge and not one kind measured alone.
+      expect(entries.map(e => e.text)).toEqual(expect.arrayContaining([
+        'Services', 'Kitchen Remodeling', 'Blog', 'Projects', 'Request an Estimate', '(201) 212-4917',
+      ]));
+      expect([...new Set(entries.map(e => e.x))]).toHaveLength(1);
+      expect([...new Set(entries.filter(e => e.tappable).map(e => e.height))]).toEqual([44]);
+    });
+  });
+}
