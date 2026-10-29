@@ -25,6 +25,12 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
+      - name: Keep the stack's ports out of the ephemeral range
+        # 54320-54329 sit inside Linux's ephemeral range (32768-60999), so one
+        # of the dozen parallel image pulls could take 54322 as its outbound
+        # source port and the db container then failed with "address already
+        # in use". Reserved ports are never handed out as source ports.
+        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=54320-54329
       - name: Start a local stack and replay all migrations
         run: |
           supabase start -x studio,imgproxy,inbucket,edge-runtime,logflare,vector
