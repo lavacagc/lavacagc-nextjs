@@ -7,7 +7,7 @@
 #      Vercel sets VERCEL_GIT_PULL_REQUEST_ID only for PR deployments, so the
 #      no-mistakes gate's intermediate pushes stop costing a build each.
 #   2. A push that, since the branch's last deployed commit, touches only docs,
-#      tests, review pages or agent config is not built, on any branch.
+#      tests, review pages, agent config or gate/CI config is not built, on any branch.
 # Anything that errors here builds (the safe default): a wrong skip hides a
 # broken site, a wrong build costs a few cents.
 set -u
@@ -22,8 +22,8 @@ base="${VERCEL_GIT_PREVIOUS_SHA:-}"
 if [ -n "$base" ] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
   # Markdown is skipped only under docs/ or at the repo root: src/content/*.md
   # is read at build time by the legal pages, so any change under src/ builds.
-  if git diff --quiet "$base" HEAD -- . ':(exclude)docs' ':(exclude)tests' ':(exclude).lavish' ':(exclude).claude' ':(exclude,glob)*.md' ':(exclude)chaos' ':(exclude)scripts/vercel-ignore-build.sh'; then
-    echo "ignore-build: only docs, tests or review files changed since $base, skipping"
+  if git diff --quiet "$base" HEAD -- . ':(exclude)docs' ':(exclude)tests' ':(exclude).lavish' ':(exclude).claude' ':(exclude,glob)*.md' ':(exclude)chaos' ':(exclude).no-mistakes.yaml' ':(exclude).github' ':(exclude)scripts/vercel-ignore-build.sh'; then
+    echo "ignore-build: only docs, tests, review or gate/CI config files changed since $base, skipping"
     exit 0
   fi
 fi
