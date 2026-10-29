@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Star, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { subscribeBannerState, isBannerVisible } from '@/hooks/useBannerState';
+import { useMobileMenuOpen } from '@/hooks/useMobileMenuState';
 import { useAuth } from '@/hooks/useAuth';
 import { isPrivateTokenPage } from '@/lib/privatePages';
 
@@ -42,6 +43,12 @@ export default function ReviewToast() {
     const cooldownUntil = parseInt(localStorage.getItem(REVIEW_COOLDOWN_KEY) || '0');
     return cooldownUntil > Date.now();
   });
+  // The hamburger menu is `lg:hidden`, so it is open-able up to 1023px while
+  // this toast only stands down below 768px - in the 768-1023px band it lands
+  // on the menu's last entries. Kept OUT of `suppressed` on purpose: that also
+  // drives the fetch and rotation effects, and the menu is transient, so
+  // folding it in would restart the rotation every time the menu is tapped.
+  const menuOpen = useMobileMenuOpen();
 
   // Track viewport: hide toast entirely on mobile.
   useEffect(() => {
@@ -167,7 +174,7 @@ export default function ReviewToast() {
     setIsDismissed(true);
   };
 
-  if (suppressed || reviews.length === 0 || isDismissed || bannerShowing || coolingDown) return null;
+  if (suppressed || reviews.length === 0 || isDismissed || bannerShowing || coolingDown || menuOpen) return null;
 
   const review = reviews[currentReviewIndex];
   const excerpt =
