@@ -116,6 +116,10 @@ switch (command) {
     for (const c of found) {
       console.log(`# ${c.page} ${c.element} (from ${c.source})`);
       console.log(JSON.stringify(c.payload, null, 2));
+      for (const l of c.locked ?? []) {
+        console.log(`# locked: "${l.slot}" states a fixed fact (${l.reason}) - leave it out of every variant; the page keeps showing it.`);
+      }
+      console.log('# Put in each variant ONLY the slots your test changes, with this copy as variant A.');
     }
     break;
   }

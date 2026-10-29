@@ -339,6 +339,34 @@ const SEED_ACTIVE: Record<'primary' | 'secondary', Record<string, boolean>> = {
   secondary: { A: true },
 };
 
+/**
+ * Put the homepage buttons back to the seeded state AND refresh what serves
+ * them. The variant rows are rewritten directly (the admin route cannot delete
+ * a variant), then one admin-route write per button (which expires the
+ * experiments cache, the event sink's active-pair cache and revalidates '/')
+ * and an explicit revalidate of '/', so a failed run can never leave its test
+ * variant on the cached homepage for the next one. Idempotent; called from
+ * CT5's finally and again from afterAll.
+ */
+async function restoreHeroButtons(adminApi: APIRequestContext) {
+  for (const button of ['primary', 'secondary'] as const) {
+    const variants = (await heroVariants(button))
+      .filter((v) => !String(v.label).startsWith(TAG))
+      .map((v) => (v.key in SEED_ACTIVE[button] ? { ...v, active: SEED_ACTIVE[button][v.key] } : v));
+    await rest('PATCH', `experiments?key=eq.${HERO_KEYS[button]}`, { variants }, 'return=minimal');
+    const touched = await adminApi.patch('/api/admin/cta/variants', { data: { button, variant_key: 'A', active: true } });
+    expect(touched.status(), `restore ${button} through the admin route`).toBe(200);
+  }
+  expect((await adminApi.post('/api/admin/revalidate', { data: { paths: ['/'] } })).status()).toBe(200);
+  // The cached homepage is regenerated within seconds; wait until it no longer shows a test variant.
+  await expect
+    .poll(async () => {
+      const html = await (await adminApi.get('/')).text();
+      return html.includes(TAG) || /data-cta-button="secondary"[^>]*data-cta-variant="[B-G]"/.test(html);
+    }, { timeout: 10_000, intervals: [250, 500, 1000] })
+    .toBe(false);
+}
+
 test.describe('CTA test - live backend', () => {
   test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
   test.skip(!SB_KEY || !IS_LOCAL_DB, `needs SUPABASE_SECRET_KEY and a LOCAL NEXT_PUBLIC_SUPABASE_URL (got "${SB_URL}"); these tests write rows`);
@@ -352,7 +380,7 @@ test.describe('CTA test - live backend', () => {
     originalMinVisitors = rows[0]?.cta_min_visitors ?? 100;
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({ browser }) => {
     // Contexts a failed test left open: close them, then give in-flight event
     // posts time to land (and their minted ids to be recorded) before deleting.
     for (const c of browserContexts) await c.close().catch(() => undefined);
@@ -367,14 +395,15 @@ test.describe('CTA test - live backend', () => {
       await rest('DELETE', `experiment_events?experiment_key=in.(hero-primary,hero-secondary)&visitor_id=in.(${ids.slice(i, i + 50).join(',')})`, undefined, 'return=minimal');
     }
     await rest('DELETE', `home_service_requests?first_name=eq.${TAG}`, undefined, 'return=minimal');
-    // Variants this spec added are dropped; the seeded ones get their seeded switch back.
-    for (const button of ['primary', 'secondary'] as const) {
-      const variants = (await heroVariants(button))
-        .filter((v) => !String(v.label).startsWith(TAG))
-        .map((v) => (v.key in SEED_ACTIVE[button] ? { ...v, active: SEED_ACTIVE[button][v.key] } : v));
-      await rest('PATCH', `experiments?key=eq.${HERO_KEYS[button]}`, { variants }, 'return=minimal');
-    }
     await rest('PATCH', 'site_settings?id=eq.1', { cta_min_visitors: originalMinVisitors }, 'return=minimal');
+    // Variants this spec added are dropped and the seeded ones switched back,
+    // through the admin route so the cached homepage is refreshed too.
+    const { ctx } = await adminContext(browser);
+    try {
+      await restoreHeroButtons(ctx.request);
+    } finally {
+      await ctx.close();
+    }
   });
 
   test('CT1 + SEO3: every active variant is a real link in the server HTML; one shows per button', async ({ browser }) => {
@@ -826,88 +855,101 @@ test.describe('CTA test - live backend', () => {
     test.setTimeout(150_000);
     const { ctx, page: adminPage } = await adminContext(browser);
     const api = ctx.request;
+    try {
+      const list = await api.get('/api/admin/cta/variants');
+      expect(list.status()).toBe(200);
+      const existing = (await list.json()).variants as { button: string; variant_key: string }[];
+      const secondaryCount = existing.filter((v) => v.button === 'secondary').length;
 
-    const list = await api.get('/api/admin/cta/variants');
-    expect(list.status()).toBe(200);
-    const existing = (await list.json()).variants as { button: string; variant_key: string }[];
-    const secondaryCount = existing.filter((v) => v.button === 'secondary').length;
+      // Create secondary variants up to seven; keys are assigned in order.
+      const created: string[] = [];
+      for (let i = secondaryCount; i < 7; i++) {
+        const res = await api.post('/api/admin/cta/variants', { data: { button: 'secondary', wording: `${TAG} wording ${i}` } });
+        expect(res.status()).toBe(201);
+        const body = await res.json();
+        expect(body.variant.active).toBe(false);
+        created.push(body.variant.variant_key);
+      }
+      expect(created[0]).toBe('B');
+      const eighth = await api.post('/api/admin/cta/variants', { data: { button: 'secondary', wording: `${TAG} eighth` } });
+      expect(eighth.status()).toBe(409);
+      expect((await eighth.json()).error).toMatch(/7 variants/);
 
-    // Create secondary variants up to seven; keys are assigned in order.
-    const created: string[] = [];
-    for (let i = secondaryCount; i < 7; i++) {
-      const res = await api.post('/api/admin/cta/variants', { data: { button: 'secondary', wording: `${TAG} wording ${i}` } });
-      expect(res.status()).toBe(201);
-      const body = await res.json();
-      expect(body.variant.active).toBe(false);
-      created.push(body.variant.variant_key);
+      // A variant with no events yet: wording, subtext and colour all edit in place.
+      const upd = await api.patch('/api/admin/cta/variants', {
+        data: { button: 'secondary', variant_key: 'B', wording: `${TAG} edited`, subtext: 'Small line', color: '#1f7a4d' },
+      });
+      expect(upd.status()).toBe(200);
+      expect(await upd.json()).toMatchObject({ variant: { wording: `${TAG} edited`, subtext: 'Small line', color: '#1f7a4d' } });
+      const badColor = await api.patch('/api/admin/cta/variants', {
+        data: { button: 'secondary', variant_key: 'B', color: 'red; background:url(x)' },
+      });
+      expect(badColor.status()).toBe(400);
+      const empty = await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'B', wording: '  ' } });
+      expect(empty.status()).toBe(400);
+
+      // The last active variant cannot be switched off.
+      const lastOff = await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'A', active: false } });
+      expect(lastOff.status()).toBe(409);
+      expect((await lastOff.json()).error).toMatch(/only active/);
+
+      // With B active, A may go off; the homepage then serves B with its colour and subtext.
+      expect((await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'B', active: true } })).status()).toBe(200);
+      expect((await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'A', active: false } })).status()).toBe(200);
+      // The admin write revalidates '/', and the cached homepage is regenerated
+      // within a few seconds, not always by the very next request: a fresh
+      // visitor is tried until it is served B, for up to 10 seconds.
+      let vid = '';
+      await expect(async () => {
+        const visitor = await freshContext(browser);
+        try {
+          const home = await visitor.newPage();
+          await openHome(home);
+          vid = await visitorIdOf(visitor);
+          const sec = shown(home, 'secondary');
+          await expect(sec).toHaveAttribute('data-cta-variant', 'B', { timeout: 1_000 });
+          await expect(sec).toContainText(`${TAG} edited`);
+          await expect(sec).toContainText('Small line');
+          expect(await sec.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(31, 122, 77)');
+          // B now has a recorded view.
+          await expectEventCount(vid, (r) => r.button === 'secondary' && r.variant_key === 'B' && r.event_type === 'view', 1);
+        } finally {
+          await visitor.close();
+        }
+      }).toPass({ timeout: 10_000, intervals: [500, 1000, 2000] });
+
+      // Fix 6: B has events, so its wording is frozen; subtext and colour still edit.
+      const frozen = await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'B', wording: `${TAG} renamed` } });
+      expect(frozen.status()).toBe(409);
+      expect((await frozen.json()).error).toMatch(/Deactivate it and add a new variant/);
+      const sameWording = await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'B', wording: `${TAG} edited` } });
+      expect(sameWording.status()).toBe(200);
+      expect((await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'B', subtext: 'Other line', color: '' } })).status()).toBe(200);
+
+      // Fix 6 in the tab: a new wording on B becomes "deactivate B and add a new variant".
+      // Free a slot first (seven exist): the new variant needs a key.
+      const withoutG = (await heroVariants('secondary')).filter((v) => !(v.key === 'G' && String(v.label).startsWith(TAG)));
+      await rest('PATCH', `experiments?key=eq.${HERO_KEYS.secondary}`, { variants: withoutG }, 'return=minimal');
+      await adminPage.getByRole('button', { name: 'Marketing' }).first().click({ force: true });
+      await adminPage.getByRole('button', { name: 'Experiments' }).first().click({ force: true });
+      await adminPage.getByRole('button', { name: 'Edit secondary variant B' }).click();
+      const editor = adminPage.locator('form').filter({ has: adminPage.getByText('Colour (blank = default)') }).first();
+      await editor.getByLabel('Wording').fill(`${TAG} replacement`);
+      await expect(editor.getByRole('status')).toContainText('cannot change');
+      await editor.getByRole('button', { name: 'Deactivate B and add new variant' }).click();
+      await expect(adminPage.getByTestId('cta-row-secondary-G')).toContainText(`${TAG} replacement`);
+      const after = (await (await api.get('/api/admin/cta/variants')).json()).variants as { button: string; variant_key: string; active: boolean; wording: string }[];
+      const sec2 = (k: string) => after.find((v) => v.button === 'secondary' && v.variant_key === k)!;
+      expect(sec2('G')).toMatchObject({ wording: `${TAG} replacement`, active: true });
+      expect(sec2('B')).toMatchObject({ wording: `${TAG} edited`, active: false });
+
+      // Restore: A back on, G off (the finally below drops the created variants).
+      expect((await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'A', active: true } })).status()).toBe(200);
+      expect((await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'G', active: false } })).status()).toBe(200);
+    } finally {
+      // Whatever failed above, the homepage buttons go back to the seed and the cached homepage is refreshed.
+      await restoreHeroButtons(api);
+      await ctx.close();
     }
-    expect(created[0]).toBe('B');
-    const eighth = await api.post('/api/admin/cta/variants', { data: { button: 'secondary', wording: `${TAG} eighth` } });
-    expect(eighth.status()).toBe(409);
-    expect((await eighth.json()).error).toMatch(/7 variants/);
-
-    // A variant with no events yet: wording, subtext and colour all edit in place.
-    const upd = await api.patch('/api/admin/cta/variants', {
-      data: { button: 'secondary', variant_key: 'B', wording: `${TAG} edited`, subtext: 'Small line', color: '#1f7a4d' },
-    });
-    expect(upd.status()).toBe(200);
-    expect(await upd.json()).toMatchObject({ variant: { wording: `${TAG} edited`, subtext: 'Small line', color: '#1f7a4d' } });
-    const badColor = await api.patch('/api/admin/cta/variants', {
-      data: { button: 'secondary', variant_key: 'B', color: 'red; background:url(x)' },
-    });
-    expect(badColor.status()).toBe(400);
-    const empty = await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'B', wording: '  ' } });
-    expect(empty.status()).toBe(400);
-
-    // The last active variant cannot be switched off.
-    const lastOff = await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'A', active: false } });
-    expect(lastOff.status()).toBe(409);
-    expect((await lastOff.json()).error).toMatch(/only active/);
-
-    // With B active, A may go off; the homepage then serves B with its colour and subtext.
-    expect((await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'B', active: true } })).status()).toBe(200);
-    expect((await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'A', active: false } })).status()).toBe(200);
-    const visitor = await freshContext(browser);
-    const home = await visitor.newPage();
-    await openHome(home);
-    const vid = await visitorIdOf(visitor);
-    const sec = shown(home, 'secondary');
-    await expect(sec).toHaveAttribute('data-cta-variant', 'B');
-    await expect(sec).toContainText(`${TAG} edited`);
-    await expect(sec).toContainText('Small line');
-    expect(await sec.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(31, 122, 77)');
-    // B now has a recorded view.
-    await expectEventCount(vid, (r) => r.button === 'secondary' && r.variant_key === 'B' && r.event_type === 'view', 1);
-    await visitor.close();
-
-    // Fix 6: B has events, so its wording is frozen; subtext and colour still edit.
-    const frozen = await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'B', wording: `${TAG} renamed` } });
-    expect(frozen.status()).toBe(409);
-    expect((await frozen.json()).error).toMatch(/Deactivate it and add a new variant/);
-    const sameWording = await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'B', wording: `${TAG} edited` } });
-    expect(sameWording.status()).toBe(200);
-    expect((await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'B', subtext: 'Other line', color: '' } })).status()).toBe(200);
-
-    // Fix 6 in the tab: a new wording on B becomes "deactivate B and add a new variant".
-    // Free a slot first (seven exist): the new variant needs a key.
-    const withoutG = (await heroVariants('secondary')).filter((v) => !(v.key === 'G' && String(v.label).startsWith(TAG)));
-    await rest('PATCH', `experiments?key=eq.${HERO_KEYS.secondary}`, { variants: withoutG }, 'return=minimal');
-    await adminPage.getByRole('button', { name: 'Marketing' }).first().click({ force: true });
-    await adminPage.getByRole('button', { name: 'Experiments' }).first().click({ force: true });
-    await adminPage.getByRole('button', { name: 'Edit secondary variant B' }).click();
-    const editor = adminPage.locator('form').filter({ has: adminPage.getByText('Colour (blank = default)') }).first();
-    await editor.getByLabel('Wording').fill(`${TAG} replacement`);
-    await expect(editor.getByRole('status')).toContainText('cannot change');
-    await editor.getByRole('button', { name: 'Deactivate B and add new variant' }).click();
-    await expect(adminPage.getByTestId('cta-row-secondary-G')).toContainText(`${TAG} replacement`);
-    const after = (await (await api.get('/api/admin/cta/variants')).json()).variants as { button: string; variant_key: string; active: boolean; wording: string }[];
-    const sec2 = (k: string) => after.find((v) => v.button === 'secondary' && v.variant_key === k)!;
-    expect(sec2('G')).toMatchObject({ wording: `${TAG} replacement`, active: true });
-    expect(sec2('B')).toMatchObject({ wording: `${TAG} edited`, active: false });
-
-    // Restore: A back on, G off (afterAll deletes the created rows).
-    expect((await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'A', active: true } })).status()).toBe(200);
-    expect((await api.patch('/api/admin/cta/variants', { data: { button: 'secondary', variant_key: 'G', active: false } })).status()).toBe(200);
-    await ctx.close();
   });
 });

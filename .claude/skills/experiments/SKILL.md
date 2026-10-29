@@ -34,7 +34,11 @@ Background: `docs/experiments.md`.
 4. Otherwise pick the next test for every free page: the highest-priority open backlog item that maps to a surface.
    "How it works above the service cards" (and any "put X before Y") maps to `/home-services sections` (an `order`); "services heading" maps to `/home-services services-heading`.
    If none maps, add a sharper hypothesis with `backlog-add` and say so; do not invent a surface.
-5. Get today's copy for the control: `node scripts/experiments.mjs copy --site <url> --page /home-services --element hero` prints the payload the page shows now. Use it unchanged as variant A; each challenger changes one idea.
+5. Get today's copy for the control: `node scripts/experiments.mjs copy --site <url> --page /home-services --element hero` prints the payload the page shows now.
+   Put in every variant ONLY the slots the test changes (the slots must be the same in every variant); every other slot keeps showing today's copy.
+   Variant A takes those slots exactly as `copy` printed them; each challenger changes one idea.
+   A slot `copy` marks "locked" states a fixed fact (the hero `body` carries the license line) and can never be in a variant: leave it out.
+   Example: to test the hero title, both variants carry only `title` (the template below), never `body`.
 6. Write the variants file (template below), then create, preview, start:
    `node scripts/experiments.mjs create /tmp/exp.json --site <url>` prints the admin preview links (`?exp=<key>:<variant>`; a signed-in admin sees each variant, nothing is recorded);
    `node scripts/experiments.mjs start <key> --site <url>` sends the "Experiment started" Telegram and prints the message.

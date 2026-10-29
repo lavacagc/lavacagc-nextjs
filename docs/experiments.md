@@ -26,6 +26,7 @@ A signed-in admin can preview any variant, drafts included, with `?exp=<key>:<va
 
 `withExperiment(page, element, lang)` (`src/lib/experiments/withExperiment.server.ts`) applies the payload on the server.
 A concluded experiment renders its control, which is the promoted winner; a retired or draft one renders the page's own default.
+Every write expires the cached experiments and revalidates the page, so a change shows within seconds (a request already being served can still get the previous render).
 The payload schema is a closed set of slots with no price field (`src/lib/experiments/types.ts`).
 Every string of a variant, both languages and the label, goes through the article publish guard's price and legal detectors (`src/lib/articles/publishGuard.ts`) in their strict short-copy mode with no published price allowed: `$99`, `2,095$`, `＄99`, `99 bucks`, `two hundred dollars`, `doscientos dólares`, `half price`, `free`, `discount`, `save`, `deal`, any bare number of three or more digits, and legal claims are all refused, as are the phone number and the license.
 The label is for the admin and Telegram only; a visitor only ever sees payload fields, and the homepage button surfaces require `wording`.

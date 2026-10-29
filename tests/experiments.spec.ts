@@ -44,6 +44,7 @@ import {
 } from '../src/lib/experiments/types';
 import { createExperimentSchema, priceFieldsIn } from '../src/lib/experiments/schemas';
 import { createVetoToken, verifyVetoToken } from '../src/lib/experiments/vetoToken';
+import { currentCopy } from '../src/lib/experiments/currentCopy';
 import { winnerProposedMessage } from '../src/lib/experiments/messages';
 import { isEvaluationDay, isPromotionDue, promotionRunAfter } from '../src/lib/experiments/schedule';
 import { evaluate as evaluateFn } from '../src/lib/experiments/evaluate';
@@ -311,6 +312,37 @@ test.describe('experiments - units and source (EX4, payload, assignment)', () =>
       variants: [{ key: 'A', label: 'Orange', payload: { color: '#f26f21' } }, { key: 'B', label: 'Green', payload: { color: '#1f7a4d' } }],
     });
     expect(noWording.error?.issues.map((i) => i.message).join(' ')).toMatch(/renders nothing without "wording"/);
+  });
+
+  test('R2: the hero copy has a locked slot; a variant with only the changed slots passes, today\'s full hero does not', () => {
+    const hero = currentCopy([]).find((c) => c.page === '/home-services' && c.element === 'hero')!;
+    expect(hero.source).toBe('code default');
+    expect(hero.locked.map((l) => l.slot)).toEqual(['body']);
+    expect(hero.locked[0].reason).toMatch(/license/);
+    const base = { key: 'hero-20261102', page: '/home-services', element: 'hero', hypothesis: 'Naming the three counties in the hero title raises requests from local visitors.', expected_effect: 'request_submitted per visitor up about 10 percent' };
+    // Following the skill: variant A is today's title from `copy`, B changes it, nothing else.
+    const onlyTitle = createExperimentSchema.safeParse({
+      ...base,
+      variants: [
+        { key: 'A', label: 'Current hero', payload: { title: hero.payload.title } },
+        { key: 'B', label: 'Counties in title', payload: { title: { en: 'Home services for Essex, Morris and Bergen', es: 'Servicios del hogar para Essex, Morris y Bergen' } } },
+      ],
+    });
+    expect(onlyTitle.success, JSON.stringify(onlyTitle.error?.issues)).toBe(true);
+    // Using the whole `copy` output unchanged is refused on the locked body.
+    const whole = createExperimentSchema.safeParse({
+      ...base,
+      variants: [
+        { key: 'A', label: 'Current hero', payload: hero.payload },
+        { key: 'B', label: 'Counties in title', payload: { ...hero.payload, title: { en: 'Home services for Essex, Morris and Bergen', es: 'Servicios del hogar para Essex, Morris y Bergen' } } },
+      ],
+    });
+    expect(whole.error?.issues.map((i) => i.message).join(' ')).toMatch(/license/);
+    // The skill says so, and its template carries only the changed slot.
+    const skill = src('.claude/skills/experiments/SKILL.md');
+    expect(skill).toContain('ONLY the slots the test changes');
+    const template = JSON.parse(/```json\n([\s\S]*?)```/.exec(skill)![1]) as { variants: Array<{ payload: Record<string, unknown> }> };
+    for (const v of template.variants) expect(Object.keys(v.payload)).toEqual(['title']);
   });
 
   test('SEC1 + wiring: routes self-guarded and listed, the cron registered, the migration guarded, the preview header ours only', () => {
@@ -974,8 +1006,15 @@ test.describe('experiments - live backend', () => {
     const res = await a.post(`/api/experiments/${HERO_KEY}/conclude`, { data: { retire: true, reason: 'slice H spec done' } });
     expect(res.status()).toBe(200);
     expect((await res.json()).telegram).toBe('not_configured');
-    const html = await (await (await visitorWithSeed(seedFor('B'))).get('/home-services')).text();
-    expect(html).toContain('Pick your services. See the price. Sit back.');
-    expect(html).not.toContain(HERO_COPY.B.title.en);
+    // The retire expires the cache at once, but a request already in flight, or
+    // the next one, can still be served the old render for a few seconds under
+    // next start: poll a visitor seeded for B until the default is back (10 s).
+    const visitor = await visitorWithSeed(seedFor('B'));
+    await expect
+      .poll(async () => {
+        const html = await (await visitor.get('/home-services')).text();
+        return html.includes('Pick your services. See the price. Sit back.') && !html.includes(HERO_COPY.B.title.en);
+      }, { timeout: 10_000, intervals: [250, 500, 1000] })
+      .toBe(true);
   });
 });

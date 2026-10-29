@@ -9,7 +9,7 @@
  */
 import { s, type StringKey } from '@/lib/home-services/i18n';
 import { HOME_SERVICES_SECTIONS, SURFACES } from './surfaces';
-import { LIVE_STATUSES, type ExperimentPayload, type ExperimentRow } from './types';
+import { forbiddenClaim, LIVE_STATUSES, type ExperimentPayload, type ExperimentRow } from './types';
 
 const CODE_COPY: Record<string, Partial<Record<keyof ExperimentPayload, StringKey>>> = {
   '/home-services hero': { eyebrow: 'heroEyebrow', title: 'heroTitle', body: 'heroBody', cta: 'heroCta' },
@@ -22,6 +22,27 @@ export interface SurfaceCopy {
   /** Where the copy comes from: the code, or the control of an experiment. */
   source: string;
   payload: ExperimentPayload;
+  /**
+   * Slots whose copy states a locked fact (the license line in the hero
+   * body, for instance), so no variant may carry them: leave them out of
+   * every variant and the page keeps showing them.
+   */
+  locked: Array<{ slot: string; reason: string }>;
+}
+
+function lockedSlots(payload: ExperimentPayload): SurfaceCopy['locked'] {
+  const out: SurfaceCopy['locked'] = [];
+  for (const [slot, value] of Object.entries(payload)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    for (const text of Object.values(value as Record<string, string>)) {
+      const reason = typeof text === 'string' ? forbiddenClaim(text) : null;
+      if (reason) {
+        out.push({ slot, reason });
+        break;
+      }
+    }
+  }
+  return out;
 }
 
 type CopySource = Pick<ExperimentRow, 'key' | 'page' | 'element' | 'status' | 'control_key' | 'concluded_at'> & {
@@ -37,7 +58,7 @@ export function currentCopy(experiments: CopySource[]): SurfaceCopy[] {
     const exp = here[0];
     const control = exp?.variants.find((v) => v.key === exp.control_key);
     if (exp && control) {
-      return { page: surface.page, element: surface.element, source: `control ${control.key} of ${exp.key} (${exp.status})`, payload: control.payload };
+      return { page: surface.page, element: surface.element, source: `control ${control.key} of ${exp.key} (${exp.status})`, payload: control.payload, locked: lockedSlots(control.payload) };
     }
     const keys = CODE_COPY[`${surface.page} ${surface.element}`];
     const payload: ExperimentPayload = {};
@@ -47,6 +68,6 @@ export function currentCopy(experiments: CopySource[]): SurfaceCopy[] {
       }
     }
     if (surface.element === 'sections') payload.order = [...HOME_SERVICES_SECTIONS];
-    return { page: surface.page, element: surface.element, source: keys || surface.element === 'sections' ? 'code default' : 'none', payload };
+    return { page: surface.page, element: surface.element, source: keys || surface.element === 'sections' ? 'code default' : 'none', payload, locked: lockedSlots(payload) };
   });
 }
