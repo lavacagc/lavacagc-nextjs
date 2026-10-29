@@ -16,17 +16,6 @@
 # missing install fails loudly as exit 127. See .no-mistakes.yaml for the
 # npm-run/never-npx rule this follows.
 
-# Docs-only pushes (docs/, Markdown, review pages, agent config) change nothing the
-# four checks below can see, so they are skipped. The same rule the Vercel ignore
-# step uses (scripts/vercel-ignore-build.sh). Added 2026-10-29 after the weekly
-# article routine's social-copy push ran the full smoke in a cloud sandbox with no
-# browser installed and had to be redone.
-base=$(git merge-base origin/main HEAD 2>/dev/null || git rev-parse HEAD~1 2>/dev/null)
-if [ -n "$base" ] && git diff --quiet "$base" HEAD -- . ':(exclude)docs' ':(exclude,glob)*.md' ':(exclude).lavish' ':(exclude).claude'; then
-  echo "pre-push: docs-only push, skipping the checks."
-  exit 0
-fi
-
 set -u
 
 fail() {
@@ -36,21 +25,22 @@ fail() {
   exit 1
 }
 
-# --- pre-flight: port 3000 must be free -------------------------------------
-# Step 4's Playwright config reuses any server already listening on :3000, and
-# a leftover `npm run dev` there serves the WRONG baked env (see CLAUDE.md).
-# Fail in one second instead of after a multi-minute build.
-if lsof -ti :3000 -sTCP:LISTEN >/dev/null 2>&1; then
-  fail "something is already listening on port 3000 (a dev server?). Stop it first - the smoke tests would silently test the wrong server."
-fi
-
 # --- work out which files this push actually changes ------------------------
 # git feeds pre-push lines on stdin: <local ref> <local sha> <remote ref> <remote sha>
 ZERO="0000000000000000000000000000000000000000"
 LINT_LIST=$(mktemp)
 trap 'rm -f "$LINT_LIST" "$LINT_LIST.sorted"' EXIT
 
+# Docs-only pushes (docs/, Markdown, review pages, agent config) change nothing the
+# checks below can see, so they are skipped. The same rule the Vercel ignore
+# step uses (scripts/vercel-ignore-build.sh). Added 2026-10-29 after the weekly
+# article routine's social-copy push ran the full smoke in a cloud sandbox with no
+# browser installed and had to be redone. Decided per pushed ref, from the same
+# base the lint list uses: every ref must be docs-only, and a ref with no usable
+# base is never treated as docs-only.
+
 PUSHING_CODE=0
+ALL_DOCS_ONLY=1
 while read -r local_ref local_sha remote_ref remote_sha; do
   # Deleting a remote branch pushes no code - nothing to check for this ref.
   [ "$local_sha" = "$ZERO" ] && continue
@@ -62,6 +52,9 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   else
     base="$remote_sha"
   fi
+  if [ -z "$base" ] || ! git diff --quiet "$base" "$local_sha" -- . ':(exclude)docs' ':(exclude,glob)*.md' ':(exclude).lavish' ':(exclude).claude'; then
+    ALL_DOCS_ONLY=0
+  fi
   if [ -n "$base" ]; then
     git diff --name-only --diff-filter=d "$base" "$local_sha" -- '*.ts' '*.tsx' '*.js' '*.jsx' >>"$LINT_LIST"
   else
@@ -72,6 +65,19 @@ done
 
 # Only branch deletions in this push: let it through untouched.
 [ "$PUSHING_CODE" = "1" ] || exit 0
+
+if [ "$ALL_DOCS_ONLY" = "1" ]; then
+  echo "pre-push: docs-only push (docs/, Markdown, .lavish/, .claude/), skipping typecheck, chaos static, lint, build and smoke."
+  exit 0
+fi
+
+# --- pre-flight: port 3000 must be free -------------------------------------
+# Step 4's Playwright config reuses any server already listening on :3000, and
+# a leftover `npm run dev` there serves the WRONG baked env (see CLAUDE.md).
+# Fail in one second instead of after a multi-minute build.
+if lsof -ti :3000 -sTCP:LISTEN >/dev/null 2>&1; then
+  fail "something is already listening on port 3000 (a dev server?). Stop it first - the smoke tests would silently test the wrong server."
+fi
 
 # --- 1/4 TypeScript ---------------------------------------------------------
 echo "pre-push [1/5] TypeScript type check (tsc --noEmit)..."
