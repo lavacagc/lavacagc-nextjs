@@ -42,7 +42,8 @@ export const TRADE_LABEL: Record<Trade, L> = {
   drywall: { en: 'Drywall', es: 'Reparación de drywall' },
 };
 
-export const COUNTIES = ['Essex', 'Morris', 'Bergen'] as const;
+/** The counties the home services serve; Union since decision 006 Q21 (2026-10-29). */
+export const COUNTIES = ['Essex', 'Morris', 'Bergen', 'Union'] as const;
 export type County = (typeof COUNTIES)[number];
 
 /** The seven services, in the order the landing page lists them. */

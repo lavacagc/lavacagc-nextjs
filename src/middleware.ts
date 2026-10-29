@@ -182,6 +182,15 @@ async function verifySupabaseSession(request: NextRequest): Promise<boolean> {
   }
 }
 
+/** A cookie value as written by the browser (URI-encoded) or raw; never throws. */
+function decodeCookieValue(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 function verifyCronSecret(request: NextRequest): { ok: boolean; misconfigured: boolean } {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
@@ -328,13 +337,20 @@ export async function middleware(request: NextRequest) {
   // drawn here, set on the response, and added to this request's own cookie
   // header so the render already uses it. The homepage keeps drawing its seed
   // in the pre-paint script, which reads an `R` set here as its own.
-  let mintedSeed: string | null = null;
+  // A cookie that already carries the hero's P and S keys but no seed keeps
+  // them: the seed is added, never swapped in for the whole value, so the
+  // request route still reads the variants the visitor was shown.
+  let mintedCookie: string | null = null;
   if (isServerExperimentPage(pathname) && !isBot && !seedFromCookie(request.cookies.get(CTA_ASSIGN_COOKIE_NAME)?.value)) {
-    mintedSeed = drawSeed();
+    const kept = decodeCookieValue(request.cookies.get(CTA_ASSIGN_COOKIE_NAME)?.value ?? '')
+      .split(';')
+      .map((part) => part.trim())
+      .filter((part) => /^[A-QS-Z]=/.test(part));
+    mintedCookie = [...kept, `R=${drawSeed()}`].join(';');
     const others = (request.headers.get('cookie') ?? '')
       .split(/;\s*/)
       .filter((c) => c && !c.startsWith(`${CTA_ASSIGN_COOKIE_NAME}=`));
-    requestHeaders.set('cookie', [...others, `${CTA_ASSIGN_COOKIE_NAME}=R%3D${mintedSeed}`].join('; '));
+    requestHeaders.set('cookie', [...others, `${CTA_ASSIGN_COOKIE_NAME}=${encodeURIComponent(mintedCookie)}`].join('; '));
   }
 
   // For good bots and suspected bots: set a header so client-side code can skip analytics
@@ -362,10 +378,10 @@ export async function middleware(request: NextRequest) {
     const minted = await mintVisitorCookieEdge();
     if (minted) response.cookies.set(VISITOR_COOKIE_EDGE.name, minted, VISITOR_COOKIE_EDGE.options(secure));
   }
-  if (mintedSeed) {
+  if (mintedCookie) {
     // Same name, format and lifetime the pre-paint script writes (URI-encoded
     // by the cookie serializer into R%3D<seed>); readable by that script.
-    response.cookies.set(CTA_ASSIGN_COOKIE_NAME, `R=${mintedSeed}`, { path: '/', sameSite: 'lax', secure, maxAge: CTA_COOKIE_MAX_AGE_S });
+    response.cookies.set(CTA_ASSIGN_COOKIE_NAME, mintedCookie, { path: '/', sameSite: 'lax', secure, maxAge: CTA_COOKIE_MAX_AGE_S });
   }
 
   // Detect if this looks like a bot (no UA, or matches known bot patterns)

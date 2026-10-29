@@ -524,6 +524,20 @@ test('RF4 county gate at the API: 07601 Hackensack is accepted, 07920 Basking Ri
   expect(rows[0]).toMatchObject({ zip: '07601', status: 'new' });
 });
 
+test('Q21: a Union County ZIP (07090 Westfield) is accepted at the API; 07920 Basking Ridge is still declined', async ({ request }) => {
+  const declined = await postRequest(request, apiBody({ zip: '07920', first_name: tag('BaskingQ21') }), freshIp());
+  expect(declined.status()).toBe(403);
+  expect(await declined.json()).toEqual({ error: 'out_of_area' });
+  expect(await requestsFor(tag('BaskingQ21'))).toHaveLength(0);
+
+  const name = tag('Westfield');
+  const accepted = await postRequest(request, apiBody({ zip: '07090', town: 'Westfield', address: `${run} Elm St`, first_name: name }), freshIp());
+  expect(accepted.status()).toBe(200);
+  const rows = await requestsFor(name);
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ zip: '07090', status: 'new' });
+});
+
 test('RF11: the sixth submit from one IP in a minute and the fourth for one phone in an hour get 429', async ({ request }) => {
   // Out-of-area ZIPs: the rate limit runs before the area check, so these count
   // against the limit without creating rows.

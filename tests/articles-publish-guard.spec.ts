@@ -900,7 +900,7 @@ test.describe('publish guard and one-tap unpublish (live backend)', () => {
     expect(keys).not.toContain('email_leads');
     // The placeholders are unlocked, so they are not offered as quotable.
     expect(keys).not.toContain('claim_license');
-    expect(fb.counties).toEqual(['Essex', 'Morris', 'Bergen']);
+    expect(fb.counties).toEqual(['Essex', 'Morris', 'Bergen', 'Union']);
   });
 
   test('a price edited in Services & Prices is the price the guard allows on the next publish', async ({ page, request }) => {

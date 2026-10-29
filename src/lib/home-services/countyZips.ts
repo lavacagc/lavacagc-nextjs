@@ -1,6 +1,7 @@
 /**
- * ZIP codes of the three counties the home services pages promise to serve:
- * Essex, Morris and Bergen (docs/home-services/spec-website-build.md).
+ * ZIP codes of the four counties the home services pages promise to serve:
+ * Essex, Morris and Bergen (docs/home-services/spec-website-build.md), and
+ * Union since decision 006 Q21.
  *
  * The remodel scorer's SERVICE_ZIPS in leadScoring.ts lists about thirty ZIPs
  * around the towns La Vaca works most, which is right for scoring a remodel
@@ -11,6 +12,12 @@
  * Source: USPS ZIP allocations by county, compiled 2026-10-29. Newark and the
  * Oranges are included because they are Essex County; whether to serve them
  * is Alex's call and is one line to change. Alex should review this list once.
+ *
+ * Union: the 30 ZIPs zip-codes.com lists for Union County, NJ (26 standard,
+ * 4 PO box: 07061, 07091, 07207, 07902), checked 2026-10-29, the same way the
+ * other counties include their PO box ZIPs. 07060 and 07063 (Plainfield) also
+ * deliver to North Plainfield in Somerset County, so a North Plainfield
+ * address reads as Union here; the ZIP is the gate, as for the other counties.
  */
 import type { County } from './catalog';
 
@@ -41,13 +48,21 @@ const BERGEN = [
   '07662', '07663', '07666', '07670', '07675', '07676', '07677',
 ];
 
+const UNION = [
+  '07016', '07023', '07027', '07033', '07036', '07060', '07061', '07062', '07063',
+  '07065', '07066', '07076', '07081', '07083', '07088', '07090', '07091', '07092',
+  '07201', '07202', '07203', '07204', '07205', '07206', '07207', '07208', '07901',
+  '07902', '07922', '07974',
+];
+
 const BY_ZIP: ReadonlyMap<string, County> = new Map<string, County>([
   ...ESSEX.map((z): [string, County] => [z, 'Essex']),
   ...MORRIS.map((z): [string, County] => [z, 'Morris']),
   ...BERGEN.map((z): [string, County] => [z, 'Bergen']),
+  ...UNION.map((z): [string, County] => [z, 'Union']),
 ]);
 
-/** The county a five-digit ZIP belongs to, or null when it is outside the three. */
+/** The county a five-digit ZIP belongs to, or null when it is outside the four. */
 export function countyForZip(zip: string | null | undefined): County | null {
   if (!zip) return null;
   const five = zip.trim().slice(0, 5);
