@@ -236,3 +236,110 @@ Advisories (worth doing, not blocking): reasons that name the section instead of
 ## Spec text
 
 No spec change was needed; the acceptance criteria were consistent with what I tested.
+
+## Re-review of `5cadc09`
+
+Head reviewed: `5cadc09` on `phase2/slice-g` (fix round 1 on top of this review's `f8ac613`, with slice E merged through `4ddfa0f`).
+Same rig and env as above; a fresh production build (`npm run build`, exit 0) served on port 3124.
+My rows (`review-g-` posts, my admin user, my two `198.18.x` rate-limit buckets) were deleted afterwards.
+
+### Verdict: **ACCEPT**
+
+All four fixes hold under my own checks, slice E's table now drives the price allowance, the skill took all seven notes, and every gate is green, including TG2 five runs in a row on the production build.
+
+### 1. The price hole
+
+Pure probe (`checkPublishable` with the seed catalog) and the same cases through the CLI on the production build:
+
+| Text | Result |
+| --- | --- |
+| `A small bathroom costs 2000 or more.` | held, `Price claim: "costs 2000" in paragraph 3` (CLI exit 2, row a draft with the hold) |
+| `costs 1950` | held, `"costs 1950"` |
+| `Expect a cost of 2000 for a small bath.` | held, `"cost of 2000"` |
+| `Save $2,095 on cabinet repainting this month.` | held, `"Save $2,095"` |
+| `Exterior painting is $2.95 per linear foot.` | held, `"$2.95 per linear foot"` |
+| `Get twenty percent off this month.` | held, `"twenty percent off"` (and `half off` too) |
+| `In 2026 most homeowners in Essex County repaint before spring.` | published |
+| `The cost of a kitchen remodel in 2026 depends on size.` | published |
+| `Cabinet repainting starts at $2,095`, `Exterior painting starts at $2.95 / sq ft` and `per square foot`, `Gutter cleaning starts at $279` | pass (pure probe) |
+| Locked `claim_insurance` sentence on its own, or after another sentence | pass; the same words after "It is not true that" are held |
+
+The side effect: the title `Kitchen remodel cost of 2026 trends` is now held (`"cost of 2026" in the title`, and again `in the meta title`, because the meta title defaults to the title).
+Judgement: acceptable.
+It is a false hold, which costs Alex one tap or Claude one rewrite, never a false pass, and the usual wordings pass: "Kitchen remodel costs in 2026", "The cost of a kitchen remodel in 2026", "2026 kitchen remodel cost guide".
+The grill now tells Claude that a year-shaped number after a price word counts.
+Cosmetic, not blocking: the same claim is listed twice when the meta title is a copy of the title, and `Take $2,095 off ...` is reported as `"$2,095"` without the "off".
+
+### 2. The publish nonce
+
+`publishArticle` and the cron stamp a 128-bit `publish_nonce` on every draft-to-live publish; the token carries it and `isTokenCurrent` requires the live row's nonce.
+Live, three rounds of: unpublish by the token route, publish, press the one-tap link (200), republish at once.
+In all three rounds the old and new tokens carried the same publish second (`1793293789`), the links differed, the old link answered 410 on GET and POST, and the new one 200; the row was live with a new nonce each time.
+`TG2` (back-to-back unpublish and republish) passed in 5 consecutive runs of `tests/articles-publish-guard.spec.ts` on the production build (77 passed each run).
+
+### 3. The override message
+
+Production build, desktop and iPhone 13, signed in:
+
+| Path | Toast seen |
+| --- | --- |
+| "Publish anyway" | "Published anyway - Published over the review hold; your override is recorded.", still the only toast 2.1 s later on the list; row has `review_override.by` = my admin id |
+| Ordinary save of a draft | "Success - Blog post saved successfully" (from the editor itself) |
+| Ordinary publish of a clean post from the editor | "Published - Blog post saved and published." |
+
+So the generic AdminContent toast is gone on every path, and every path still confirms with the editor's own message.
+Screenshots: `slice-g-rereview-desktop-publish-anyway-toast.png`, `slice-g-rereview-iphone13-publish-anyway-toast.png`, `slice-g-rereview-desktop-plain-save-toast.png`, `slice-g-rereview-iphone13-plain-save-toast.png`.
+
+### 4. Spec cleanup
+
+Read the hooks: `tests/articles-publish-guard.spec.ts` picks one random `198.18.x.y` per run, sends it as `cf-connecting-ip` on every rate-limited call (the browser's unpublish POST included, through `setExtraHTTPHeaders`), and `clearRateLimits` deletes `ip_address=in.("articles:<ip>","article-unpublish:<ip>")` only.
+`tests/articles-ingest.spec.ts` does the same for its run IP and ART7's burst IP.
+After seven live runs, the rig's `articles:::1` bucket (made by my CLI) was still there with its count, so other buckets survive; the specs left no `slice-g-%` posts.
+
+### 5. Catalog prices from the table
+
+Through the Services & Prices editor in the browser (`slice-g-rereview-catalog-edit.png`):
+
+| Step | Result |
+| --- | --- |
+| Before the edit, a post quoting "Cabinet repainting starts at $2,195" | 409, held |
+| Set the starting price to 2195 and Save | table `price_display_en/es = $2,195`, `starting_price_cents = 219500` |
+| New post at $2,195 | 200, published (the cache tag was invalidated; no wait) |
+| New post at the old $2,095 | 409, `Price claim: "starts at $2,095" in paragraph 3` |
+| Restore 2095 through the same editor | `$2,095`, `209500`; every column equal to the pre-edit row |
+| New post at $2,095 after the restore | 200 |
+
+All seven `home_services` rows compared with `contentToRow(HOME_SERVICES_SEED[i])`: 0 differing fields (ignoring `updated_at`, `updated_by` and jsonb key order).
+
+### 6. The skill
+
+`SKILL.md` is 98 lines.
+All seven notes are in: the `--site` warning, a scratch folder outside the repo, a rule for an empty feedback, towns only inside a county from `counties` (Union does not widen it, in SKILL.md and the grill), the main starting price only and never inside saving wording, and how "paragraph N" counts.
+
+### 7. Advisories not taken
+
+| Advisory | Leaving it acceptable? |
+| --- | --- |
+| Reasons name a paragraph number instead of the section | Yes. The reason quotes the matched text, and the skill now explains the count. |
+| The global `Referrer-Policy` overrides the handler's `no-referrer` | Yes for now. The page's `<meta name="referrer" content="no-referrer">` and `rel="noreferrer"` keep the token out of referrers in every browser; the comment in `unpublishPage.ts` still overstates the header, which is a follow-up. |
+| Redirect after the unpublish POST | Yes. A reload shows "This link no longer works", which is true and changes nothing. |
+| Admin edits of a live post through the guard | Yes. Only an admin session can do it, the contract scopes the guard to publishes, and Alex can already publish anything with "Publish anyway"; worth a follow-up for the audit trail. |
+| An "Overridden" note in the list | Yes. `review_override` is recorded; showing it is polish. |
+
+One new observation, not blocking: `publish_nonce` was added by editing `20261030000002_content_facts_claims.sql` rather than in a new dated migration, which `docs/local-rig.md` asks for.
+It is safe here because that migration has never left this branch (not on `main`, not in production, listed in `follow-ups.md` to apply with the release), and the shared rig got the column by re-applying the file.
+Any other database that ran the earlier version of 0002 would lack the column, and every article route would fail on its select, so check before the release that nothing but the rig ran it.
+
+### Gates on `5cadc09`
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm run lint` | exit 0 |
+| `npm run chaos:static` | total 0, baselined 0, NEW 0 |
+| `npm run build` (rig env) | exit 0 |
+| `TEST_URL=http://localhost:3124 E2E_LIVE_BACKEND=1 E2E_ISR=1 playwright test tests/articles-publish-guard.spec.ts tests/articles-ingest.spec.ts --project=chromium` (production build) | 108 passed, 1 skipped (ART1 over HTTP, stub only) |
+| The guard spec alone, 5 runs in a row, same build | 77 passed each time |
+| `npm run test:e2e -- <the slice G stub subset> tests/home-services-catalog.spec.ts --project=chromium` (`.env.local` aside) | exit 0, 253 passed, 49 skipped (live-backend specs) |
+
+The worktree's `.next` is the stub build from `test:e2e` again.
