@@ -610,10 +610,23 @@ test.describe('home services admin (live backend)', () => {
     // Counted by source over 30 days: three, not four (the old one is outside the window).
     const summary = (await (await api.get('/api/admin/service-requests')).json()).summary;
     expect(summary.bySource).toContainEqual({ key: tag, count: 3 });
-    await openTab(page, 'Service Requests');
-    const bySource = page.getByTestId('sr-by-source');
-    // The card shows the top six; the rest fold into one "N more" line.
-    await expect(bySource.locator('li')).toHaveCount(Math.min(summary.bySource.length, 6) + (summary.bySource.length > 6 ? 1 : 0));
+    // The card shows the top six; the rest fold into one "N more" line. Other
+    // specs seed new sources in parallel, so judge only a load where the source
+    // count did not move around it, as the close rate does below.
+    const sourceCount = async () => (await (await api.get('/api/admin/service-requests')).json()).summary.bySource.length as number;
+    let sourceVerdict = 'unstable';
+    for (let attempt = 0; attempt < 8 && sourceVerdict === 'unstable'; attempt += 1) {
+      const before = await sourceCount();
+      await openTab(page, 'Service Requests');
+      const items = page.getByTestId('sr-by-source').locator('li');
+      await expect(items.first()).toBeVisible({ timeout: 15_000 });
+      const shownItems = await items.count();
+      const after = await sourceCount();
+      if (before !== after) continue;
+      const expected = Math.min(after, 6) + (after > 6 ? 1 : 0);
+      sourceVerdict = shownItems === expected ? 'match' : `card shows ${shownItems} items, expected ${expected} for ${after} sources`;
+    }
+    expect(sourceVerdict).toBe('match');
 
     // The close rate is over the whole database, which other builders write to:
     // read the truth right after the card and retry if a write landed between.

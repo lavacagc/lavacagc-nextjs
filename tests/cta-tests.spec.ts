@@ -242,6 +242,17 @@ async function withAssignment(ctx: BrowserContext, value: string) {
 async function openHome(page: Page) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => document.documentElement.hasAttribute('data-cta-p'), null, { timeout: 30_000 });
+  // The pre-paint script sets data-cta-p about 100 ms before React hydrates the
+  // hero; a click in that gap is a plain link navigation with no click beacon,
+  // which made CT3 fail about half its runs. Wait for React to own the links.
+  await page.waitForFunction(
+    () => {
+      const link = document.querySelector('.hero-cta a[data-cta-button]');
+      return !!link && Object.keys(link).some((k) => k.startsWith('__reactProps'));
+    },
+    null,
+    { timeout: 30_000 },
+  );
 }
 
 /**
@@ -629,6 +640,9 @@ test.describe('CTA test - live backend', () => {
 
   test('fix 3b: the homepage response issues the signed id (middleware), and the event sink accepts it as its own', async ({ browser }) => {
     const ctx = await freshContext(browser);
+    // The page's own view beacons would land under the same id; only the
+    // event posted below may count, so the id must come from middleware alone.
+    await ctx.route('**/api/cta/event', (route) => route.abort());
     const page = await ctx.newPage();
     await openHome(page);
     const cookie = (await ctx.cookies()).find((c) => c.name === 'cta_vid');
