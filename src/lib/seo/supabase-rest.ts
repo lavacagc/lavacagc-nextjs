@@ -57,13 +57,26 @@ export async function supabaseRest<T = unknown>(
  * and scoring.
  */
 export async function supabaseRestPaged<T = unknown>(path: string, pageSize = 1000): Promise<T[]> {
+  return (await supabaseRestPagedCapped<T>(path, Number.POSITIVE_INFINITY, pageSize)).rows;
+}
+
+/**
+ * The same paging, stopping once `maxRows` rows are in hand. For a read whose
+ * window a CALLER chooses (the article feedback route's `?days=`), so one
+ * request can never pull the whole table; `truncated` says the cap was hit.
+ */
+export async function supabaseRestPagedCapped<T = unknown>(
+  path: string,
+  maxRows: number,
+  pageSize = 1000,
+): Promise<{ rows: T[]; truncated: boolean }> {
   const secretKey = process.env.SUPABASE_SECRET_KEY;
   if (!secretKey) throw new Error('SUPABASE_SECRET_KEY not configured');
   if (!SUPABASE_URL) throw new Error('NEXT_PUBLIC_SUPABASE_URL not configured');
 
   const out: T[] = [];
-  for (let from = 0; ; from += pageSize) {
-    const to = from + pageSize - 1;
+  for (let from = 0; from < maxRows; from += pageSize) {
+    const to = Math.min(from + pageSize, maxRows) - 1;
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
       headers: {
         apikey: secretKey,
@@ -78,7 +91,7 @@ export async function supabaseRestPaged<T = unknown>(path: string, pageSize = 10
     }
     const batch = (JSON.parse((await res.text()) || '[]')) as T[];
     out.push(...batch);
-    if (batch.length < pageSize) break; // last page
+    if (batch.length < to - from + 1) return { rows: out, truncated: false }; // last page
   }
-  return out;
+  return { rows: out, truncated: true };
 }

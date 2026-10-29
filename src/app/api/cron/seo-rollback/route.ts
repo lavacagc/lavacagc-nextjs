@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRest } from '@/lib/seo/supabase-rest';
 import { assessRollback, windowMetrics } from '@/lib/seo/rollback';
 import { sendRollbackDigestEmail, type RollbackDigestItem } from '@/lib/notify/sendRollbackDigestEmail';
+import { revalidateArticlePages } from '@/lib/articles/revalidate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -128,6 +129,8 @@ export async function GET(request: NextRequest) {
           );
           didRevert = true;
           reverted += 1;
+          // The live page shows the restored copy on the next request.
+          revalidateArticlePages(post.slug);
         }
       }
 

@@ -1,9 +1,10 @@
 /**
- * SEO Autonomy — Phase 3 (Semi-auto): turn an approved AI draft into a blog_posts
- * DRAFT (published=false). Pure builder — no I/O — so it's unit-testable.
+ * SEO Autonomy, Phase 3 (semi-auto): turn an action's draft into a blog_posts
+ * DRAFT (published=false). Pure builder - no I/O - so it's unit-testable.
  *
- * Mirrors the field mapping the manual generator uses (BlogPostGenerator):
- * markdown content, title from the first `# ` line, slug from the title.
+ * The draft is markdown with the title on the first `# ` line; Claude Code
+ * writes it through the article routes (src/lib/articles/actions.ts builds it
+ * with draftMarkdownFor), and the slug comes from the title.
  *
  * Phase 3 (the "schedule + email, you publish" variant) never sets
  * scheduled_publish_at, so the publish cron never auto-publishes — a human
@@ -32,7 +33,7 @@ export function slugify(title: string): string {
 }
 
 /** Strip markdown syntax to plain text for excerpt/meta. */
-function toPlain(md: string): string {
+export function toPlain(md: string): string {
   return md
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/[#>*_`~|]/g, ' ')

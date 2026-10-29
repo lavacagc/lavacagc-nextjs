@@ -128,6 +128,10 @@ const PUBLIC_ROUTES = [
   '/api/offers/',
   '/api/cta/',
   '/api/projects/ingest',
+  // Phase 2 article routes for Claude Code (docs/articles-ingest.md). Self-
+  // guarded like the project ingest: the same constant-time bearer token (404
+  // for everyone when it is unset) and a 30-a-minute per-IP rate limit.
+  '/api/articles/',
 ];
 
 function isPublicRoute(pathname: string): boolean {
