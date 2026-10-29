@@ -185,3 +185,81 @@ Nothing in the repo invokes it; if a dashboard cron does, it races `/api/cron/pu
 4. Blog list at 390 px: the "From Claude Code" badge on one line.
 5. Correct the 500 paragraph in `slice-f-build.md` to the conditional finding in item 4.
 6. Update `docs/local-rig.md` for the dated-migration placement and the now-present blog columns.
+
+## Re-review of fix round 1 (`3bcce53`)
+
+Same worktree, reset to `phase2/slice-f` at `3bcce53` (on top of the review commit `6578f6e`), rig env as both env files, fresh production build on port 3116, `next dev` on 3115 for the signed-in admin screenshots.
+Every row I created was prefixed `review-f-` and deleted afterwards (0 rows left in `blog_posts`, `content_actions`, `seo_metrics`, `rate_limits`).
+
+### 1. Fact-lock on publish: FIXED
+
+Same reproduction as before (`rereview.sh`): a published post with body `Original live body.`, an approved refresh action, `patch --action` with the wrong-phone, no-links draft, then `POST .../publish {action_id}`.
+
+- Answer: 422 `{"published":false,"error":"Draft failed validation - fix before publishing.","issues":["Only 0 internal link(s); needs at least 3.","Unrecognized phone number \"(973) 555-0199\" (locked: (201) 212-4917)."]}`.
+- Live row still `Original live body.`, and the public page still serves it.
+- Action still `drafted` with `published_post_id` null; `blog_post_revisions` for the post: 0.
+- A plain create with no links followed by a plain publish: 422 `Only 0 internal link(s); needs at least 3.`, row still unpublished.
+- `applyActionDraft` itself now refuses a failed recorded validation, so Apply and publish share the rule.
+
+### 2. Held posts: FIXED
+
+- A post that passes the fact-lock, with `review_hold` set by SQL, published with the token: 409 `{"published":false,"hold":["Price claim: from 9,000 (set by reviewer)"],"adminUrl":...}`; the row stays unpublished with the same hold.
+- `review_hold` in a create, patch or publish body: 400 `Unrecognized key: "review_hold"` on all three; `grep -rn review_hold src` shows only the writer, the publish route's refusal and comments.
+- The same post with the hold cleared publishes (200), so the refusal is the hold, not something else.
+- Still the planner's to carry: an un-held post publishes with only the fact-lock checked (no price or legal check) until slice G, so the merge condition stands: slice F must not reach production before slice G.
+
+### 3. Phone UI at iPhone 13: FIXED
+
+Screenshots:
+
+- `docs/phase-2/reports/shots/slice-f-rereview-blog-list-iphone13.png`
+- `docs/phase-2/reports/shots/slice-f-rereview-seo-tab-iphone13.png`
+- `docs/phase-2/reports/shots/slice-f-rereview-seo-panel-iphone13.png`
+
+Measured in the page (390 px viewport):
+
+- Blog list: each post is a card; Edit at x 100 to 144 and Publish or Unpublish at x 156 to 200, 44 by 44 px, on screen for every card; the "From Claude Code" badge is 110 by 26 px (one line); `scrollWidth` 390.
+- SEO tab: the "Draft with Claude Code" button (y 408 to 452) and the "approved" pill (y 372 to 394) no longer overlap; the query title is 340 px wide and not clipped; `scrollWidth` 390.
+- Claude Code panel: the command block is now 314 px wide with Copy below it; it still scrolls sideways for the long lines, which is fine for a copy target.
+- No page errors in the console.
+- The orange fill on the first card's Publish button in the list screenshot is the desktop hover state left by the test cursor, not a style.
+- Minor, not blocking: a drafted refresh whose fact-lock failed still offers "Apply to live post"; the server refuses it with 422, but the button could be disabled with the issues shown.
+
+### 4. Build report 500 claim: FIXED
+
+`slice-f-build.md` lines 66 to 68 now say the 500 happens only when the build sees zero published posts, that production builds compile `/blog/[slug]` as dynamic and answered 200, and that production never answered 500; the fix round section restates it.
+
+### 5. `publish-scheduled-articles`: FIXED, one note for the planner
+
+- `supabase/functions/` now holds only `_shared`, `send-lead-notification` and `send-warranty-notification`; nothing in `src`, `supabase` or `scripts` names the function.
+- `/api/cron/publish` (in `vercel.json`, daily `0 11 * * *`) publishes due posts with `published_at`, clears the schedule and revalidates (ART9 spec green on the production build).
+- `docs/phase-2/follow-ups.md` lists `supabase functions delete publish-scheduled-articles` and removing any schedule that calls it.
+- **For the planner:** the function also sent a "Blog Post Published" email with ready-made social copy (Twitter, LinkedIn, Facebook); that notification is gone with it until slice G's Telegram publish message exists. Also, posts scheduled for any time now wait for the 11:00 UTC run, which may be up to a day late; the follow-up says so.
+
+### Gates on `3bcce53`
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm run lint` | exit 0 |
+| `npm run chaos:static` | total 0, baselined 0, NEW 0, "no new violations" |
+| `npm run build` (rig env) | exit 0; `/blog` ISR 5m, `/blog/[slug]` SSG, five `/api/articles/*` dynamic |
+| Article specs on the production build (`E2E_ISR=1`), run 1 | 30 passed, 1 skipped, **1 failed**: ART7 got 401 on the 31st call |
+| Same, runs 2 and 3, and ART7 alone three times | 31 passed, 1 skipped; ART7 passed 3 of 3 |
+| `npm run test:e2e -- tests/articles-ingest.spec.ts tests/seo-draft-guardrails.spec.ts tests/seo-suggestions-ui.spec.ts --project=chromium` (rig env moved aside) | exit 0, 27 passed, 17 skipped |
+
+The ART7 failure is a test-isolation flake, not a limiter fault I could reproduce.
+The spec's `clearRateLimit` (in `beforeAll`, `beforeEach` and `afterAll`) deletes every `articles:*` bucket in the shared `rate_limits` table, while the burst runs from its own IP.
+The builder was running the same spec on port 3133 against the same database during this review, so one run's cleanup can wipe the other's ART7 bucket mid-burst, and the 31st call then sees a fresh window.
+That fits the evidence (one failure under concurrency, then 3 of 3 alone and 2 of 2 full runs green), but I did not catch the concurrent delete in the act, so it stays the likely cause, not a proven one.
+Fix: clear only this run's buckets (`articles:${ip}` for the run's `cf-connecting-ip` and the ART7 burst IP), the way every other spec in `tests/` clears its own key.
+CI runs one suite against its own database, so the gate will not see it, but it is the kind of flake Alex wants fixed when found.
+
+### Re-review verdict: ACCEPT
+
+All five fix items are verified fixed with evidence above.
+Conditions that remain, none of which is a code defect in this slice:
+
+1. Merge condition, planner's call: slice F must not reach production before slice G, because an un-held post publishes with only the fact-lock checked.
+2. Before the no-mistakes gate: scope `clearRateLimit` in `tests/articles-ingest.spec.ts` to this run's own buckets (one-line change), so the spec stops flaking when two worktrees share the rig.
+3. Alex: the privacy policy section 5.1 OpenAI wording, and whether the lost "post published" email with social copy matters before slice G.
