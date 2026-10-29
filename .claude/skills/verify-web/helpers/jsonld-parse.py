@@ -52,10 +52,22 @@ def extract_scripts(html: str) -> list[dict]:
     out = []
     for blob in blobs:
         try:
-            out.append(json.loads(blob))
+            out.extend(flatten(json.loads(blob)))
         except json.JSONDecodeError as e:
             print(f"  WARN: failed to parse one JSON-LD block: {e}", file=sys.stderr)
     return out
+
+
+def flatten(data) -> list[dict]:
+    """Top-level nodes of one block: a bare node, a list of nodes, or an
+    @graph wrapper. Without this, a node inside @graph (the home services
+    landing page uses one) is invisible, and a duplicate rating there would
+    pass --strict."""
+    if isinstance(data, list):
+        return [node for item in data for node in flatten(item)]
+    if isinstance(data, dict) and isinstance(data.get("@graph"), list):
+        return [node for item in data["@graph"] for node in flatten(item)]
+    return [data] if isinstance(data, dict) else []
 
 
 def assess(url: str) -> dict:

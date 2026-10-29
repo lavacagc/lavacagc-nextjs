@@ -3,6 +3,7 @@
  * Import-light; used by server pages and by the source-level tests.
  */
 import { COUNTIES, t, type HomeService, type Lang } from './catalog';
+import { s } from './i18n';
 
 export const SITE = 'https://www.lavacagc.com';
 export const ORG_ID = `${SITE}/#organization`;
@@ -22,6 +23,11 @@ export function brandedTitle(title: string): string {
  * Spanish only because of the `lv_lang` cookie keeps the English canonical: a
  * crawler has no cookie and sees the English page at that URL.
  */
+/** The absolute URL of a home services page in a language: Spanish is `?lang=es`. */
+export function pageUrl(path: string, lang: Lang): string {
+  return `${SITE}${path}${lang === 'es' ? '?lang=es' : ''}`;
+}
+
 export function languageAlternates(
   path: string,
   queryLang: string | string[] | undefined,
@@ -40,11 +46,12 @@ export function languageAlternates(
  * review each produced a duplicate-rating error in Search Console).
  */
 export function serviceJsonLd(service: HomeService, lang: Lang): Record<string, unknown> {
-  const url = `${SITE}/home-services/${service.slug}`;
+  const url = pageUrl(`/home-services/${service.slug}`, lang);
   return {
     '@context': 'https://schema.org',
     '@type': 'Service',
-    '@id': `${url}#service`,
+    // One entity per service across both languages; `url` is the page in this language.
+    '@id': `${SITE}/home-services/${service.slug}#service`,
     name: t(service.name, lang),
     description: t(service.description, lang),
     serviceType: t(service.name, 'en'),
@@ -62,6 +69,9 @@ export function serviceJsonLd(service: HomeService, lang: Lang): Record<string, 
  * A flat starting price is `price`. A per-unit price with a job minimum (today
  * only exterior painting: $2.95 per square foot, $3,500 minimum) is a
  * UnitPriceSpecification instead, so it never reads as a $2.95 job (review D12).
+ * The unit is the UN/CEFACT code FTK (square foot) per one unit, and the job
+ * minimum is `eligibleTransactionVolume`, schema.org's "minimal purchasing
+ * volume"; `minPrice` would instead claim the unit price itself starts at $3,500.
  */
 function offerFor(service: HomeService, lang: Lang, url: string): Record<string, unknown> {
   const base = {
@@ -78,10 +88,54 @@ function offerFor(service: HomeService, lang: Lang, url: string): Record<string,
       '@type': 'UnitPriceSpecification',
       price,
       priceCurrency: 'USD',
+      unitCode: 'FTK',
       unitText: 'per square foot',
-      // The $3,500 job minimum stays in the offer description: inside a
-      // per-square-foot UnitPriceSpecification, minPrice reads as the lowest
-      // unit price (review D12 re-verification note).
+      referenceQuantity: { '@type': 'QuantitativeValue', value: 1, unitCode: 'FTK' },
+      eligibleTransactionVolume: {
+        '@type': 'PriceSpecification',
+        minPrice: (service.minimumCents / 100).toFixed(2),
+        priceCurrency: 'USD',
+      },
     },
+  };
+}
+
+/**
+ * `FAQPage` JSON-LD for questions that are visible on the page. Google shows
+ * FAQ rich results only for government and health sites since 2023, so this is
+ * for search and answer engines that read the markup, not for a SERP feature.
+ */
+export function faqJsonLd(items: Array<{ q: string; a: string }>, url: string): Record<string, unknown> {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    '@id': `${url}#faq`,
+    mainEntity: items.map(({ q, a }) => ({
+      '@type': 'Question',
+      name: q,
+      acceptedAnswer: { '@type': 'Answer', text: a },
+    })),
+  };
+}
+
+/** Home > Home services [> service], with every URL in the page's language. */
+export function breadcrumbJsonLd(lang: Lang, service?: HomeService): Record<string, unknown> {
+  const items = [
+    { name: lang === 'es' ? 'Inicio' : 'Home', item: SITE },
+    { name: s('servicesNav', lang), item: pageUrl('/home-services', lang) },
+    ...(service ? [{ name: t(service.name, lang), item: pageUrl(`/home-services/${service.slug}`, lang) }] : []),
+  ];
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((entry, i) => ({ '@type': 'ListItem', position: i + 1, ...entry })),
+  };
+}
+
+/** Several nodes in one script: one `@context` on the wrapper, none on the nodes. */
+export function jsonLdGraph(nodes: Array<Record<string, unknown>>): Record<string, unknown> {
+  return {
+    '@context': 'https://schema.org',
+    '@graph': nodes.map((node) => Object.fromEntries(Object.entries(node).filter(([key]) => key !== '@context'))),
   };
 }

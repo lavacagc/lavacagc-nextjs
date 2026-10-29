@@ -448,12 +448,46 @@ test.describe('browser', () => {
         '@type': 'UnitPriceSpecification',
         price: (exterior.startingPriceCents / 100).toFixed(2),
         priceCurrency: 'USD',
+        unitCode: 'FTK',
         unitText: 'per square foot',
-        minPrice: (exterior.minimumCents! / 100).toFixed(2),
+        referenceQuantity: { '@type': 'QuantitativeValue', value: 1, unitCode: 'FTK' },
+        // The job minimum, not a floor on the unit price (SEO review).
+        eligibleTransactionVolume: { '@type': 'PriceSpecification', minPrice: (exterior.minimumCents! / 100).toFixed(2), priceCurrency: 'USD' },
       },
     });
+    expect((svc.offers.priceSpecification as Record<string, unknown>).minPrice).toBeUndefined();
     const drywall = (await jsonLdNodes(request, '/home-services/drywall-patching')).find((n) => n['@type'] === 'Service') as { offers: Record<string, unknown> };
     expect(drywall.offers.price).toBe('249.00');
     expect(drywall.offers.priceSpecification).toBeUndefined();
+  });
+
+  test('SEO review: Spanish service pages link, breadcrumb and mark up FAQs in Spanish; siblings are linked', async ({ request }) => {
+    const service = HOME_SERVICES_CATALOG.find((x) => x.slug === 'gutter-cleaning')!;
+    const html = await (await request.get(`/home-services/${service.slug}?lang=es`)).text();
+    for (const other of SERVICE_SLUGS.filter((slug) => slug !== service.slug)) {
+      expect(html, other).toContain(`href="/home-services/${other}?lang=es"`);
+    }
+    expect(html).toContain('href="/home-services?lang=es"');
+    const nodes = await jsonLdNodes(request, `/home-services/${service.slug}?lang=es`);
+    const crumbs = nodes.find((n) => n['@type'] === 'BreadcrumbList') as { itemListElement: Array<{ item: string }> };
+    expect(crumbs.itemListElement.map((c) => c.item)).toEqual([
+      'https://www.lavacagc.com',
+      'https://www.lavacagc.com/home-services?lang=es',
+      `https://www.lavacagc.com/home-services/${service.slug}?lang=es`,
+    ]);
+    const faq = nodes.find((n) => n['@type'] === 'FAQPage') as { mainEntity: Array<{ name: string }> };
+    expect(faq.mainEntity.map((q) => q.name)).toEqual(service.faq.map((item) => t(item.q, 'es')));
+  });
+
+  test('SEO review: the landing page marks up the seven services under the organization @id, without ratings', async ({ request }) => {
+    const [graph] = (await jsonLdNodes(request, '/home-services')).filter((n) => Array.isArray(n['@graph']));
+    const nodes = graph['@graph'] as Array<Record<string, unknown>>;
+    const services = nodes.filter((n) => n['@type'] === 'Service');
+    expect(services.map((n) => n['@id'])).toEqual(SERVICE_SLUGS.map((slug) => `https://www.lavacagc.com/home-services/${slug}#service`));
+    for (const svc of services) {
+      expect(svc.provider).toEqual({ '@id': 'https://www.lavacagc.com/#organization' });
+      expect(svc.aggregateRating).toBeUndefined();
+    }
+    expect(nodes.some((n) => n['@type'] === 'FAQPage')).toBe(true);
   });
 });

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { ArrowDown, ArrowLeft, Check, Phone, Plus } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, Check, Phone, Plus } from 'lucide-react';
 import HeaderComponent from '@/components/Header';
 import Footer from '@/components/Footer';
 import ServicesTrustBar from '@/components/services/ServicesTrustBar';
@@ -11,10 +11,10 @@ import AttributionCapture from '@/components/home-services/AttributionCapture';
 import LangToggle from '@/components/home-services/LangToggle';
 import RequestServiceButton from '@/components/home-services/RequestServiceButton';
 import ServiceIcon from '@/components/home-services/ServiceIcon';
-import { getService, SERVICE_SLUGS, t, type Lang } from '@/lib/home-services/catalog';
+import { getService, HOME_SERVICES_CATALOG, SERVICE_SLUGS, t, type Lang } from '@/lib/home-services/catalog';
 import { s } from '@/lib/home-services/i18n';
 import { LANG_COOKIE, resolveLang } from '@/lib/home-services/lang';
-import { brandedTitle, languageAlternates, serviceJsonLd, SITE } from '@/lib/home-services/seo';
+import { brandedTitle, breadcrumbJsonLd, faqJsonLd, languageAlternates, pageUrl, serviceJsonLd } from '@/lib/home-services/seo';
 
 /**
  * /home-services/<slug> - one page per catalog service (LP8, SEO1, SEO2; audit
@@ -60,20 +60,23 @@ export default async function HomeServicePage({ params, searchParams }: { params
   if (!service) notFound();
   const lang = await pageLang(searchParams);
   const jsonLd = serviceJsonLd(service, lang);
-  const breadcrumb = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: SITE },
-      { '@type': 'ListItem', position: 2, name: s('servicesNav', lang), item: `${SITE}/home-services` },
-      { '@type': 'ListItem', position: 3, name: t(service.name, lang), item: `${SITE}/home-services/${slug}` },
-    ],
-  };
+  const breadcrumb = breadcrumbJsonLd(lang, service);
+  const faq =
+    service.faq.length > 0
+      ? faqJsonLd(
+          service.faq.map((item) => ({ q: t(item.q, lang), a: t(item.a, lang) })),
+          pageUrl(`/home-services/${slug}`, lang),
+        )
+      : null;
+  // Links stay in the page's language so a crawler on a Spanish page stays on Spanish pages.
+  const langQuery = lang === 'es' ? '?lang=es' : '';
+  const siblings = HOME_SERVICES_CATALOG.filter((other) => other.slug !== slug);
 
   return (
     <div id="top" className="flex min-h-screen flex-col">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumb) }} />
+      {faq && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faq) }} />}
       <AttributionCapture />
       <HeaderComponent />
       <ServicesTrustBar />
@@ -83,7 +86,7 @@ export default async function HomeServicePage({ params, searchParams }: { params
           <div className="container relative mx-auto px-4">
             <div className="flex items-center justify-between gap-3">
               <Link
-                href="/home-services"
+                href={`/home-services${langQuery}`}
                 className="inline-flex min-h-[44px] items-center gap-2 text-sm font-bold text-secondary underline-offset-4 hover:underline"
               >
                 <ArrowLeft aria-hidden className="h-4 w-4" />
@@ -157,7 +160,7 @@ export default async function HomeServicePage({ params, searchParams }: { params
           <section aria-labelledby="service-faq" className="bg-background-soft py-12 md:py-16">
             <div className="container mx-auto max-w-3xl px-4">
               <h2 id="service-faq" className="text-2xl font-extrabold tracking-tight text-text-primary md:text-3xl">
-                {s('serviceFaqTitle', lang)}
+                {s('serviceFaqTitle', lang, { service: t(service.name, lang) })}
               </h2>
               <div className="mt-6 divide-y divide-border rounded-2xl border border-border bg-card" data-testid="service-faq-list">
                 {service.faq.map((item) => (
@@ -174,10 +177,37 @@ export default async function HomeServicePage({ params, searchParams }: { params
           </section>
         )}
 
-        <section className="bg-background py-12 text-center">
+        <section aria-labelledby="more-services" className="bg-background py-12 md:py-16">
+          <div className="container mx-auto px-4">
+            <h2 id="more-services" className="text-2xl font-extrabold tracking-tight text-text-primary md:text-3xl">
+              {s('moreServicesTitle', lang)}
+            </h2>
+            <ul className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="sibling-services">
+              {siblings.map((other) => (
+                <li key={other.slug}>
+                  <Link
+                    href={`/home-services/${other.slug}${langQuery}`}
+                    className="flex min-h-[56px] items-center justify-between gap-4 rounded-2xl border border-border bg-card px-5 py-3 text-[15px] font-semibold text-text-primary shadow-card transition-colors hover:border-secondary hover:text-secondary"
+                  >
+                    <span className="flex items-center gap-3">
+                      <ServiceIcon icon={other.icon} className="h-5 w-5 shrink-0 text-secondary" />
+                      {t(other.name, lang)}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2 font-extrabold">
+                      {t(other.priceDisplay, lang)}
+                      <ArrowRight aria-hidden className="h-4 w-4" />
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        <section className="bg-background pb-12 text-center">
           <div className="container mx-auto px-4">
             <Link
-              href="/home-services#services"
+              href={`/home-services${langQuery}#services`}
               className="inline-flex min-h-[52px] items-center gap-2 rounded-xl border-2 border-secondary px-6 py-3 text-[17px] font-bold text-secondary transition-colors hover:bg-secondary hover:text-white"
             >
               <ArrowLeft aria-hidden className="h-5 w-5" />
