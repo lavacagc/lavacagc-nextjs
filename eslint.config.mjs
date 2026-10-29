@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Agent worktrees live under .claude/worktrees inside the repo; each has its
+    // own node_modules and .next, and linting them from here reported two
+    // hundred thousand phantom problems (Home Services build, 2026-10-29).
+    ".claude/worktrees/**",
   ]),
   // `.cjs` is CommonJS by definition, so `require()` is the only import form
   // available there.
