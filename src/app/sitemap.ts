@@ -1,10 +1,12 @@
 import { MetadataRoute } from 'next'
+import { unstable_cache } from 'next/cache'
 import { PHASE_PRODUCTION_BUILD } from 'next/constants'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { Database } from '@/integrations/supabase/types'
 import { getAllResourceSlugs } from '@/data/resourceData'
 import { SERVICE_SLUGS } from '@/lib/home-services/catalog'
 import { getCatalog } from '@/lib/home-services/catalogData'
+import { SITEMAP_TAG } from '@/lib/revalidate'
 
 // Create a static client for build-time data fetching (no cookies/SSR)
 function getStaticSupabaseClient() {
@@ -15,21 +17,40 @@ function getStaticSupabaseClient() {
 
 const isBuildOffVercel = () => process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD && !process.env.VERCEL
 
-async function readOrThrow<T>(
-  what: string,
+// Each database list is cached under SITEMAP_TAG, which every blog and project
+// writer expires. A failed read throws inside the cache, so it is never stored.
+function cachedRows<T>(
+  key: string,
   read: () => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
-): Promise<T[]> {
-  let failure: unknown
-  try {
+): () => Promise<T[]> {
+  return unstable_cache(async () => {
     const { data, error } = await read()
-    if (!error) return data ?? []
-    failure = error.message
+    if (error) throw new Error(error.message)
+    return data ?? []
+  }, ['sitemap', key], { tags: [SITEMAP_TAG], revalidate: 3600 })
+}
+
+const readPosts = cachedRows('blog-posts', () => getStaticSupabaseClient()
+  .from('blog_posts')
+  .select('slug, updated_at, published')
+  .eq('published', true)
+  .order('updated_at', { ascending: false }))
+
+const readProjects = cachedRows('projects', () => getStaticSupabaseClient()
+  .from('projects')
+  .select('url_slug, updated_at, active')
+  .eq('active', true)
+  .order('updated_at', { ascending: false }))
+
+async function readOrThrow<T>(what: string, read: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await read()
   } catch (err) {
-    failure = err instanceof Error ? err.message : err
+    const failure = err instanceof Error ? err.message : err
+    console.error(`sitemap: ${what} read failed:`, failure)
+    if (isBuildOffVercel()) return []
+    throw new Error(`sitemap: ${what} read failed: ${String(failure)}`)
   }
-  console.error(`sitemap: ${what} read failed:`, failure)
-  if (isBuildOffVercel()) return []
-  throw new Error(`sitemap: ${what} read failed: ${String(failure)}`)
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -285,16 +306,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Builds off Vercel (pre-push, CI, the gate) point at a stub or at nothing,
   // so there the database entries are left out and the build goes on.
   const [posts, projects] = await Promise.all([
-    readOrThrow('blog posts', () => getStaticSupabaseClient()
-      .from('blog_posts')
-      .select('slug, updated_at, published')
-      .eq('published', true)
-      .order('updated_at', { ascending: false })),
-    readOrThrow('projects', () => getStaticSupabaseClient()
-      .from('projects')
-      .select('url_slug, updated_at, active')
-      .eq('active', true)
-      .order('updated_at', { ascending: false })),
+    readOrThrow('blog posts', readPosts),
+    readOrThrow('projects', readProjects),
   ])
 
   posts.forEach(post => {
@@ -319,10 +332,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 }
 
 
-// ISR: the sitemap reads published posts and projects from the database. Without
-// a revalidate export Next builds it once per deploy and Vercel serves that file
-// from its cache, so revalidatePath('/sitemap.xml') on a publish had nothing to
-// refresh and a new article stayed out of the sitemap until the next deploy
-// (seen on 2026-10-29 with the first routine-written article). One hour plus
-// on-demand revalidation on every blog and project write.
+// ISR, explicit: the sitemap regenerates at least hourly. On-demand refresh
+// does NOT come from revalidatePath('/sitemap.xml'): on Vercel that call does
+// not take effect for this metadata route (2026-10-29, an article published at
+// 20:47Z was still missing at 21:00Z, x-vercel-cache HIT, while the hourly
+// regeneration at 20:37Z had picked up one published at 20:28Z). So the post
+// and project reads above are cached under SITEMAP_TAG, and every blog and
+// project writer (revalidateArticlePages, revalidateProjectPages and
+// /api/admin/revalidate) expires that tag alongside the path.
 export const revalidate = 3600;

@@ -25,6 +25,13 @@ export const REVALIDATE_PREFIXES = [
  */
 export const REVALIDATE_EXACT = ['/sitemap.xml'] as const;
 
+/**
+ * Data-cache tag on the sitemap's database reads. revalidatePath('/sitemap.xml')
+ * alone does not refresh the metadata route on Vercel, so every writer that
+ * changes what the sitemap lists expires this tag too.
+ */
+export const SITEMAP_TAG = 'sitemap';
+
 const SAFE_PATH = /^\/[A-Za-z0-9\-_/]*$/;
 
 export function isRevalidatablePath(path: string): boolean {

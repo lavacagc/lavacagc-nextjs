@@ -10,7 +10,7 @@ import { sniffMedia, isHeic, judgeStoredObject, totalFromContentRange, STORED_CA
 import { discardRefused, isMintedUploadKey } from '../src/lib/projects/storage';
 import { defaultAltText, defaultMetaDescription, defaultSeoTitle, deriveSlug, slugify } from '../src/lib/projects/slug';
 import { formatMonthYear, parseDateOnly } from '../src/lib/projects/dates';
-import { projectPagePaths } from '../src/lib/revalidate';
+import { projectPagePaths, SITEMAP_TAG } from '../src/lib/revalidate';
 
 /**
  * Slice D: portfolio projects as drafts, no AI, and an ingest API for Claude Code.
@@ -159,6 +159,15 @@ test.describe('project revalidation paths', () => {
     expect(src).toContain("readOrThrow('blog posts'");
     expect(src).toContain("readOrThrow('projects'");
     expect(src).toMatch(/throw new Error\(`sitemap: /);
+  });
+
+  test('the sitemap reads carry the sitemap tag, and all three writers expire it', () => {
+    // revalidatePath('/sitemap.xml') alone does not refresh the metadata route on Vercel.
+    expect(SITEMAP_TAG).toBe('sitemap');
+    expect(read('src/app/sitemap.ts')).toMatch(/unstable_cache\([\s\S]*tags: \[SITEMAP_TAG\], revalidate: 3600/);
+    for (const file of ['src/lib/articles/revalidate.ts', 'src/lib/projects/http.ts', 'src/app/api/admin/revalidate/route.ts']) {
+      expect(read(file), file).toContain('revalidateTag(SITEMAP_TAG, { expire: 0 })');
+    }
   });
 });
 
