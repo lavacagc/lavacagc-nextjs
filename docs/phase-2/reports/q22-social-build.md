@@ -57,3 +57,26 @@ The worktree's `.next` is the stub build from `test:e2e`.
 - No social copy for posts that are published by the cron or from the admin: those publishes carry no file, and the decision asks only for the skill's publishes. Their Telegram is unchanged.
 - The skill saves `docs/social/<slug>.md` but does not commit it; whoever runs the skill decides whether the run commits, as with any other file.
 - No `docs/social/` example file is committed; the format is in `references/social.md`, and the first real publish creates the folder.
+
+## Fix round 1
+
+Review: `docs/phase-2/reports/q22-social-review.md` (REJECT, two fixes and three advisories), taken with `git merge --ff-only f5f746f`.
+
+| Item | Change | Evidence |
+| --- | --- | --- |
+| 1. A realistic social file got 413 | The publish route's body cap goes from 1 KB (slice F) to 20 KB, room for the 16 KB `social` field plus JSON escaping; every other article route keeps its cap. `references/social.md` and `docs/articles-ingest.md` state the 16 KB file limit. | Live `fix round 1: a file with every post at its limit (2,200 / 1,500 / 280) publishes; the body cap fits the 16 KB field`: a file over 4 KB with each post exactly at its limit and 5 hashtags publishes (200, `social: included`); one character over on X is a 422 naming 281 characters with nothing published; 17 KB of social is a 400 naming the field, not a 413. |
+| 2. Claims inside compound hashtags passed | `hashtagWords` splits a hashtag at case changes (keeping acronyms: `#NJHomes` is "NJ Homes") and at letter-digit boundaries before `claimReasons` reads it; a number next to save, off, discount, deal, sale or cheaper in a hashtag is a price claim. | `claims inside compound hashtags are found (#FullyInsured, #Save20)`: `#FullyInsured` gives `Legal claim: "Insured" in the hashtags`, `#Save20` and `#20Off` give price claims, and `#GutterCleaning #EssexCounty #NJHomes #FallChecklist` still passes. |
+| Advisory: any URL counted as the call to action | The caption's call must be a URL on www.lavacagc.com or lavacagc.com (or the origin the route runs on, for the rig) to `/home-services/<slug>`, `/services/<slug>` or `/free-estimate`, or one of those paths bare. | `the call to action and the Article line must be on the La Vaca site` (`https://example.com/anything` and `https://www.lavacagc.com/about` are refused, a bare service path and the rig origin pass). |
+| Advisory: the `Article:` host was not checked | The `Article:` URL must be on the same hosts and its path exactly `/blog/<slug>`. | Same test: `https://evil.example/blog/<slug>` is refused. |
+| Advisory: file-size limit in the reference | Done (fix 1). | |
+
+### Commands and results
+
+| Command | Result |
+| --- | --- |
+| `npm run typecheck`, `npm run lint` | clean |
+| `npm run chaos:static` | total 0, NEW 0 |
+| `npm run build` (rig env) | exit 0 |
+| `TEST_URL=http://localhost:3119 E2E_LIVE_BACKEND=1 E2E_ISR=1 playwright test tests/articles-social-copy.spec.ts tests/articles-publish-guard.spec.ts tests/articles-ingest.spec.ts --project=chromium` (production build) | 127 passed, 1 skipped (ART1 over HTTP, stub only) |
+| `npm run test:e2e -- <the stub subset> --project=chromium` (`.env.local` aside) | exit 0, 270 passed, 51 skipped (live-backend specs) |
+| Row check: `slice-g-%` posts on the rig | 0 |

@@ -2,7 +2,7 @@ import { test, expect, type APIRequestContext } from '@playwright/test';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
-import { checkSocialCopy, parseSocialMarkdown } from '../src/lib/articles/socialCopy';
+import { checkSocialCopy, hashtagWords, parseSocialMarkdown } from '../src/lib/articles/socialCopy';
 import { catalogPricesFrom } from '../src/lib/articles/catalogPrices';
 import { publishedMessage } from '../src/lib/articles/notify';
 import { HOME_SERVICES_SEED } from '../src/lib/home-services/catalogSeed';
@@ -96,20 +96,52 @@ test.describe('Q22: the social-copy guard', () => {
       hashtags: '#Gutters #NJ',
     }));
     expect(reasons).toEqual([
-      `Social copy: the "Article:" line must be this article's URL (/blog/${SLUG}).`,
+      `Social copy: the "Article:" line must be this article's URL on the La Vaca site (/blog/${SLUG}).`,
       'Social copy: the Instagram caption has 2613 characters; the limit is 2200.',
       'Social copy: the X post has 281 characters; the limit is 280.',
-      'Social copy: the Instagram caption needs a call to the service page (its URL or /home-services/<slug>).',
+      'Social copy: the Instagram caption needs a call to a La Vaca service page (https://www.lavacagc.com/home-services/<slug>, /services/<slug> or /free-estimate).',
       'Social copy: 3 to 5 hashtags are needed; there are 2.',
     ]);
     expect(check(socialFile({ hashtags: '#One #two-words #Three' }))).toEqual(['Social copy: not a hashtag: "#two-words".']);
-    const missing = parseSocialMarkdown('# Social copy: x\n\nArticle: https://x/blog/' + SLUG + '\nDate: 2026-10-30\n');
+    const missing = parseSocialMarkdown('# Social copy: x\n\nArticle: https://www.lavacagc.com/blog/' + SLUG + '\nDate: 2026-10-30\n');
     expect(checkSocialCopy(missing, SLUG, FACTS)).toEqual([
       'Social copy: the Instagram caption is missing.',
       'Social copy: the Google Business post is missing.',
       'Social copy: the X post is missing.',
       'Social copy: 3 to 5 hashtags are needed; there are 0.',
     ]);
+  });
+});
+
+test.describe('Q22 fix round 1: compound hashtags and La Vaca hosts', () => {
+  test('claims inside compound hashtags are found (#FullyInsured, #Save20)', () => {
+    expect(hashtagWords('#FullyInsured')).toBe('Fully Insured');
+    expect(hashtagWords('#Save20')).toBe('Save 20');
+    expect(hashtagWords('#NJHomes')).toBe('NJ Homes');
+    expect(hashtagWords('#20Off')).toBe('20 Off');
+    expect(check(socialFile({ hashtags: '#GutterCleaning #FullyInsured #Save20' }))).toEqual([
+      'Social copy: Legal claim: "Insured" in the hashtags ("Gutter Cleaning. Fully Insured. Save 20")',
+      'Social copy: Price claim: "#Save20" in the hashtags',
+    ]);
+    expect(check(socialFile({ hashtags: '#GutterCleaning #EssexCounty #20Off' }))).toEqual(['Social copy: Price claim: "#20Off" in the hashtags']);
+    // Ordinary compound hashtags still pass.
+    expect(check(socialFile({ hashtags: '#GutterCleaning #EssexCounty #NJHomes #FallChecklist' }))).toEqual([]);
+  });
+
+  test('the call to action and the Article line must be on the La Vaca site', () => {
+    const other = check(socialFile({ instagram: 'Leaves again? Clean them in fall. Book: https://example.com/anything' }));
+    expect(other).toContain('Social copy: the Instagram caption needs a call to a La Vaca service page (https://www.lavacagc.com/home-services/<slug>, /services/<slug> or /free-estimate).');
+    expect(check(socialFile({ url: `https://evil.example/blog/${SLUG}` })))
+      .toEqual([`Social copy: the "Article:" line must be this article's URL on the La Vaca site (/blog/${SLUG}).`]);
+    // A La Vaca URL to a page that is not a service is not a call to a service page.
+    expect(check(socialFile({ instagram: 'Leaves again? https://www.lavacagc.com/about' })).some((r) => r.includes('call to a La Vaca service page'))).toBe(true);
+    // A bare service path is fine, and the site the route runs on counts as La Vaca's (the rig).
+    expect(check(socialFile({ instagram: 'Leaves again? Book at /home-services/gutter-cleaning' }))).toEqual([]);
+    const rig = checkSocialCopy(parseSocialMarkdown(socialFile({
+      url: `http://localhost:3119/blog/${SLUG}`,
+      instagram: 'Leaves again? http://localhost:3119/home-services/gutter-cleaning',
+    })), SLUG, FACTS, 'http://localhost:3119');
+    expect(rig).toEqual([]);
   });
 });
 
@@ -206,5 +238,45 @@ test.describe('Q22: publish with social copy (live backend)', () => {
     expect(await good.json()).toMatchObject({ published: true, social: 'included', telegram: 'not_configured' });
     expect((await row(request, created.id)).published).toBe(true);
     await request.post(`/api/articles/ingest/${created.id}/unpublish`, { headers: auth });
+  });
+
+  test('fix round 1: a file with every post at its limit (2,200 / 1,500 / 280) publishes; the body cap fits the 16 KB field', async ({ request, baseURL }) => {
+    const created = await (await request.post('/api/articles/ingest', {
+      headers: auth, data: { title: `${PREFIX} Limits`, content: body, category: 'Gutter Cleaning' },
+    })).json() as { id: string; slug: string };
+    const url = `${baseURL}/blog/${created.slug}`;
+    const fill = (head: string, tail: string, total: number) => {
+      const filler = 'Clean gutters keep water off the foundation. ';
+      let mid = '';
+      while (head.length + mid.length + filler.length + tail.length <= total) mid += filler;
+      return `${head}${mid}${'.'.repeat(total - head.length - mid.length - tail.length)}${tail}`;
+    };
+    const instagram = fill('Leaves in your gutters again? ', ' https://www.lavacagc.com/home-services/gutter-cleaning', 2200);
+    const google = fill('Clean your gutters in late fall. ', ` ${url}`, 1500);
+    const x = fill('Clean gutters in late fall. ', ` ${url}`, 280);
+    expect([instagram.length, google.length, x.length]).toEqual([2200, 1500, 280]);
+    const md = socialFile({ url, instagram, google, x, hashtags: '#GutterCleaning #EssexCounty #NJHomes #FallChecklist #HomeCare' })
+      .replace('# Social copy: When should you clean gutters in Essex County?', `# Social copy: ${PREFIX} Limits`);
+    expect(Buffer.byteLength(md)).toBeGreaterThan(4000);
+
+    const res = await request.post(`/api/articles/ingest/${created.id}/publish`, { headers: auth, data: { social: md } });
+    expect(res.status(), await res.text()).toBe(200);
+    expect(await res.json()).toMatchObject({ published: true, social: 'included' });
+    await request.post(`/api/articles/ingest/${created.id}/unpublish`, { headers: auth });
+
+    // One character over a limit is refused with the count, and nothing is published.
+    const draft = await (await request.post('/api/articles/ingest', {
+      headers: auth, data: { title: `${PREFIX} Over`, content: body, category: 'Gutter Cleaning' },
+    })).json() as { id: string; slug: string };
+    const over = socialFile({ url: `${baseURL}/blog/${draft.slug}`, x: `${x}!` });
+    const refused = await request.post(`/api/articles/ingest/${draft.id}/publish`, { headers: auth, data: { social: over } });
+    expect(refused.status()).toBe(422);
+    expect((await refused.json()).social).toEqual(['Social copy: the X post has 281 characters; the limit is 280.']);
+    expect((await row(request, draft.id)).published).toBe(false);
+
+    // The 16 KB field limit, and the body cap above it: 17 KB of social is a 400 naming the field, not a 413.
+    const huge = await request.post(`/api/articles/ingest/${draft.id}/publish`, { headers: auth, data: { social: 'x'.repeat(17 * 1024) } });
+    expect(huge.status()).toBe(400);
+    expect(JSON.stringify(await huge.json())).toContain('social');
   });
 });

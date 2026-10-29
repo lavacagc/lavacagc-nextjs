@@ -61,6 +61,8 @@ import {
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+const PUBLISH_BODY_MAX_BYTES = 20 * 1024;
+
 /** How this publish relates to the action it names, decided before anything is written. */
 function planFor(action: ContentActionRow | null, post: ArticleRow): { candidate: ArticleRow; applyDraft: boolean } {
   if (!action) return { candidate: post, applyDraft: false };
@@ -87,7 +89,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   let raw: unknown = {};
   if (Number(request.headers.get('content-length') ?? '0') > 0) {
-    const read = await readArticleBody(request, 1024);
+    // The social copy file (up to 16 KB) rides in this body, so the cap is
+    // 20 KB: the file plus its JSON escaping and the other fields. Every
+    // other article route keeps its own cap (Q22 review, fix 1).
+    const read = await readArticleBody(request, PUBLISH_BODY_MAX_BYTES);
     if ('response' in read) return read.response;
     raw = read.body ?? {};
   }
@@ -135,7 +140,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // article stays as it was, so Claude fixes the file and publishes again.
     const social = parsed.data.social ? parseSocialMarkdown(parsed.data.social) : null;
     if (social) {
-      const socialReasons = checkSocialCopy(social, candidate.slug, facts);
+      const socialReasons = checkSocialCopy(social, candidate.slug, facts, siteOrigin(request));
       if (socialReasons.length > 0) {
         return NextResponse.json({
           published: false,

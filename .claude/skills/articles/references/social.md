@@ -30,16 +30,17 @@ Date: <today, YYYY-MM-DD>
 #one #two #three
 ```
 
-On the local rig the `Article:` URL uses the rig's origin; the route checks only that it ends in `/blog/<slug>`.
+The whole file must stay under 16 KB (a full set of posts at their limits is about 5 KB).
+The `Article:` URL must be this post on the La Vaca site (`https://www.lavacagc.com/blog/<slug>`); on the local rig, the rig's own origin also counts.
 
 ## Each post
 
 | Post | Limit | What it holds |
 | --- | --- | --- |
-| Instagram and Facebook caption | 2,200 characters | A hook line that names the reader's problem; three plain sentences with the article's answer; a call to the matching service page (`https://www.lavacagc.com/home-services/<slug>` or `/services/<slug>`), or `/free-estimate` when no service fits. |
+| Instagram and Facebook caption | 2,200 characters | A hook line that names the reader's problem; three plain sentences with the article's answer; a call to the matching La Vaca service page (`https://www.lavacagc.com/home-services/<slug>` or `/services/<slug>`), or `/free-estimate` when no service fits. A link to any other site or page does not count. |
 | Google Business post | 1,500 characters | The answer in two or three sentences, the county from the article, and the article URL. |
 | X post | 280 characters, URL included | One sentence of the answer and the article URL. |
-| Hashtags | 3 to 5 | Each `#` plus letters and digits only: the service, the county, and NJ home topics (`#BergenCounty`, `#NJHomes`, `#GutterCleaning`). |
+| Hashtags | 3 to 5 | Each `#` plus letters and digits only: the service, the county, and NJ home topics (`#BergenCounty`, `#NJHomes`, `#GutterCleaning`). They are read as words (`#FullyInsured` is "Fully Insured"), so the claim rules apply inside them, and a number next to save, off or discount (`#Save20`) is a price claim. |
 
 ## Checklist (the publish route enforces every item)
 

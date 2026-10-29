@@ -89,13 +89,57 @@ export function parseSocialMarkdown(markdown: string): SocialCopy {
   };
 }
 
-const SERVICE_CALL = /https?:\/\/\S+|\/home-services\/[a-z0-9-]+|\/services\/[a-z0-9-]+|\/free-estimate/i;
+/** La Vaca's own hosts; the caller adds the site origin it runs on (the local rig). */
+const SITE_HOSTS = ['www.lavacagc.com', 'lavacagc.com'];
+const SERVICE_PATH = /^\/(?:home-services\/[a-z0-9-]+|services\/[a-z0-9-]+|free-estimate)\/?$/i;
+
+function hostsFor(siteOrigin?: string): string[] {
+  const hosts = [...SITE_HOSTS];
+  try {
+    if (siteOrigin) hosts.push(new URL(siteOrigin).host.toLowerCase());
+  } catch {
+    // An unparsable origin adds nothing.
+  }
+  return hosts;
+}
+
+/** A call to a La Vaca service page: a site URL, or a bare path, to a service or the estimate form. */
+function hasServiceCall(text: string, hosts: string[]): boolean {
+  for (const m of text.matchAll(/https?:\/\/[^\s<>"')]+/gi)) {
+    try {
+      const url = new URL(m[0].replace(/[.,;:!?]+$/, ''));
+      if (hosts.includes(url.host.toLowerCase()) && SERVICE_PATH.test(url.pathname)) return true;
+    } catch {
+      // Not a URL; keep looking.
+    }
+  }
+  return /(?:^|\s)\/(?:home-services\/[a-z0-9-]+|services\/[a-z0-9-]+|free-estimate)\b/i.test(text);
+}
+
+/**
+ * A hashtag as words: "#FullyInsured" -> "Fully Insured", "#Save20" -> "Save 20",
+ * "#NJHomes" -> "NJ Homes". A hashtag is one token to the eye but says the
+ * same thing as the words, so the claim rules read the words (Q22 review, fix 2).
+ */
+export function hashtagWords(tag: string): string {
+  return tag
+    .replace(/^#/, '')
+    .replace(/_/g, ' ')
+    .replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2')
+    .replace(/(\p{Lu})(\p{Lu}\p{Ll})/gu, '$1 $2')
+    .replace(/(\p{L})(\p{N})/gu, '$1 $2')
+    .replace(/(\p{N})(\p{L})/gu, '$1 $2');
+}
+
+/** A discount number in a hashtag ("#Save20", "#20Off"), which prose rules would read as a bare number. */
+const HASHTAG_DISCOUNT = /\b(?:save|saving|savings|off|discount|deal|sale|cheaper)\s+\d|\d+\s+(?:off|percent|discount)\b/i;
 
 /**
  * Every reason this copy may not go out, as plain sentences; empty means it
  * passes. `slug` is the article the copy belongs to.
  */
-export function checkSocialCopy(copy: SocialCopy, slug: string, facts: PublishFacts): string[] {
+export function checkSocialCopy(copy: SocialCopy, slug: string, facts: PublishFacts, siteOrigin?: string): string[] {
+  const hosts = hostsFor(siteOrigin);
   const reasons: string[] = [];
   const named: Array<[Section, string, string]> = [
     ['instagram', 'the Instagram caption', copy.instagram],
@@ -103,9 +147,14 @@ export function checkSocialCopy(copy: SocialCopy, slug: string, facts: PublishFa
     ['x', 'the X post', copy.x],
   ];
 
-  if (!copy.articleUrl || !new RegExp(`/blog/${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/?$`).test(copy.articleUrl)) {
-    reasons.push(`Social copy: the "Article:" line must be this article's URL (/blog/${slug}).`);
+  let articleOk = false;
+  try {
+    const url = new URL(copy.articleUrl ?? '');
+    articleOk = hosts.includes(url.host.toLowerCase()) && url.pathname.replace(/\/$/, '') === `/blog/${slug}`;
+  } catch {
+    articleOk = false;
   }
+  if (!articleOk) reasons.push(`Social copy: the "Article:" line must be this article's URL on the La Vaca site (/blog/${slug}).`);
   if (!copy.date) reasons.push('Social copy: the "Date:" line (YYYY-MM-DD) is missing.');
 
   for (const [key, where, text] of named) {
@@ -116,8 +165,8 @@ export function checkSocialCopy(copy: SocialCopy, slug: string, facts: PublishFa
     const limit = SOCIAL_LIMITS[key as keyof typeof SOCIAL_LIMITS];
     if (text.length > limit) reasons.push(`Social copy: ${where} has ${text.length} characters; the limit is ${limit}.`);
   }
-  if (copy.instagram && !SERVICE_CALL.test(copy.instagram)) {
-    reasons.push('Social copy: the Instagram caption needs a call to the service page (its URL or /home-services/<slug>).');
+  if (copy.instagram && !hasServiceCall(copy.instagram, hosts)) {
+    reasons.push('Social copy: the Instagram caption needs a call to a La Vaca service page (https://www.lavacagc.com/home-services/<slug>, /services/<slug> or /free-estimate).');
   }
 
   const n = copy.hashtags.length;
@@ -130,8 +179,11 @@ export function checkSocialCopy(copy: SocialCopy, slug: string, facts: PublishFa
   // The article's own price and legal rules, word for word.
   const places = [
     ...named.filter(([, , text]) => text).map(([, where, text]) => ({ where, text })),
-    ...(n > 0 ? [{ where: 'the hashtags', text: copy.hashtags.map((h) => h.replace(/^#/, '')).join(' ') }] : []),
+    ...(n > 0 ? [{ where: 'the hashtags', text: copy.hashtags.map(hashtagWords).join('. ') }] : []),
   ];
   for (const reason of claimReasons(places, facts)) reasons.push(`Social copy: ${reason}`);
+  for (const tag of copy.hashtags) {
+    if (HASHTAG_DISCOUNT.test(hashtagWords(tag))) reasons.push(`Social copy: Price claim: "${tag}" in the hashtags`);
+  }
   return reasons;
 }
