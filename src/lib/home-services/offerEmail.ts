@@ -8,14 +8,12 @@
  * signup link. The full address is never in a message: it is released on the
  * offer page to the sub who wins the job.
  *
- * Builders are pure; `sendToSub` does the sending and reports each channel's
- * outcome in the vocabulary offer_recipients stores.
+ * Pure builders only: no network, no send layer, so they can be rendered and
+ * checked anywhere. offerSend.ts does the sending.
  */
 import { TRADE_LABEL, t, type Lang } from './catalog';
 import { s } from './i18n';
 import { formatDollars } from './pricing';
-import { sendSms } from './sms';
-import { sendTrackedEmail } from '@/lib/notify/sendEmail';
 import {
   esc, licenceBar, brandRow, pill, headline, intro, cta, panel, homeCareEmailShell,
   FF, MUTED, HAIRLINE, INK, BODY, BUSINESS_ADDRESS, PHONE, ORANGE_DEEP,
@@ -70,6 +68,17 @@ function tradeName(trade: string, lang: Lang): string {
   return t(TRADE_LABEL[trade as keyof typeof TRADE_LABEL], lang) || trade;
 }
 
+/** Outlined button under the primary one: same target, lower emphasis. */
+function secondaryCta(label: string, url: string, subtext?: string): string {
+  return `  <tr><td class="px" align="center" style="padding:14px 40px 0 40px">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto">
+      <tr><td align="center" style="border:2px solid ${INK};border-radius:12px;padding:13px 32px">
+        <a href="${esc(url)}" style="display:block;font-family:${FF};font-size:16px;line-height:20px;font-weight:bold;color:${INK};text-decoration:none">${esc(label)}</a>
+      </td></tr>
+    </table>
+  </td></tr>${subtext ? `\n  <tr><td class="px" align="center" style="padding:12px 40px 0 40px;font-family:${FF};font-size:13px;line-height:20px;color:${MUTED}">${subtext}</td></tr>` : ''}`;
+}
+
 function detailRows(rows: Array<[string, string]>): string {
   const cells = rows.map(([k, v]) =>
     `<tr><td style="padding:8px 0;border-bottom:1px solid ${HAIRLINE};font-family:${FF};font-size:13px;line-height:18px;color:${MUTED};width:120px;vertical-align:top">${esc(k)}</td>` +
@@ -98,7 +107,8 @@ export function buildOfferEmail(ctx: OfferMessageContext): { subject: string; ht
   const trade = tradeName(ctx.trade, lang);
   const pay = formatDollars(ctx.payCents);
   const link = offerLink(ctx.token);
-  const when = expiryLabel(ctx.expiresAt, lang);
+  // Spanish times end in "p.m."; the sentence adds its own full stop.
+  const when = expiryLabel(ctx.expiresAt, lang).replace(/\.$/, '');
   const start = startWindowLabel(ctx.targetStart, ctx.targetEnd, lang);
   const subject = s('emailOfferSubject', lang, { trade, town: ctx.town, pay });
 
@@ -116,7 +126,7 @@ export function buildOfferEmail(ctx: OfferMessageContext): { subject: string; ht
       [s('offerJob', lang), ctx.scope || trade],
     ]),
     cta(s('offerAccept', lang), link),
-    cta(s('offerRespond', lang), link, esc(s('emailOfferExpires', lang, { when }))),
+    secondaryCta(s('offerRespond', lang), link, esc(s('emailOfferExpires', lang, { when }))),
     panel(esc(s('emailOfferAddressNote', lang))),
     subFooter(lang, ctx.signupUrl),
   ].join('\n');
@@ -235,50 +245,3 @@ export function buildNotice(kind: NoticeKind, ctx: NoticeContext): { subject: st
   return { subject, html: homeCareEmailShell({ preheader: esc(subject), rows }), text, sms };
 }
 
-/**
- * What offer_recipients records per channel:
- * sent | failed | not_configured (no provider key) | skipped (the sub has no address for it).
- */
-export type ChannelStatus = 'sent' | 'failed' | 'not_configured' | 'skipped';
-
-export interface SendOutcome {
-  email: ChannelStatus;
-  sms: ChannelStatus;
-}
-
-export async function sendToSub(args: {
-  sub: { email: string; phone: string; contact_name: string; business_name: string };
-  category: 'sub_offer' | 'sub_offer_notice';
-  email: { subject: string; html: string; text: string };
-  sms: string;
-  sentBy?: string | null;
-  campaign?: Record<string, unknown>;
-}): Promise<SendOutcome> {
-  const { sub } = args;
-  const emailPromise: Promise<ChannelStatus> = sub.email.trim()
-    ? sendTrackedEmail({
-        from: OFFER_FROM,
-        to: sub.email.trim(),
-        replyTo: cleanEnv(process.env.LEAD_NOTIFICATION_EMAIL) || undefined,
-        subject: args.email.subject,
-        html: args.email.html,
-        text: args.email.text,
-        category: args.category,
-        toName: sub.contact_name || sub.business_name,
-        sentBy: args.sentBy ?? 'system',
-        campaign: args.campaign ?? null,
-      }).then((r) => {
-        if (r.status === 'sent') return 'sent' as const;
-        if (r.status === 'skipped' && r.reason === 'no_api_key') return 'not_configured' as const;
-        if (r.status === 'skipped') return 'skipped' as const;
-        return 'failed' as const;
-      }).catch(() => 'failed' as const)
-    : Promise.resolve('skipped' as const);
-
-  const smsPromise: Promise<ChannelStatus> = sub.phone.trim()
-    ? sendSms({ to: sub.phone, body: args.sms }).then((r) => r.status)
-    : Promise.resolve('skipped' as const);
-
-  const [email, sms] = await Promise.all([emailPromise, smsPromise]);
-  return { email, sms };
-}

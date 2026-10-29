@@ -30,7 +30,8 @@ import {
   type Attachment, type DeclineCallRow, type DeclineReason, type JobOfferRow, type OfferRecipientRow,
   type OfferResponseRow, type SubRow,
 } from './offerRules';
-import { buildNotice, buildOfferEmail, buildOfferSms, offerLink, sendToSub, siteUrl, type NoticeKind, type SendOutcome } from './offerEmail';
+import { buildNotice, buildOfferEmail, buildOfferSms, offerLink, siteUrl, type NoticeKind } from './offerEmail';
+import { sendToSub, type SendOutcome } from './offerSend';
 import { signPaths } from './storage';
 
 export const SUB_COLUMNS = 'id,business_name,contact_name,phone,email,trades,counties,language,status,specnook_sub_id,insurance_expires_at,hic_expires_at,callback_count,notes,created_at,updated_at';

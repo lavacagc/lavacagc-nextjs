@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { createHash, randomBytes } from 'crypto';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
 import path from 'path';
 import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
 import {
@@ -10,6 +10,7 @@ import {
   confirmablePrice, extendedExpiry, offerExclusion, recipientView,
 } from '../src/lib/home-services/offerRules';
 import { countyForTown, summarizeRequests, tradesForServices } from '../src/lib/home-services/requestsAdmin';
+import { buildNotice, buildOfferEmail, buildOfferSms } from '../src/lib/home-services/offerEmail';
 
 /**
  * Slice B - the bid request system and the sub offer page.
@@ -100,6 +101,48 @@ test.describe('pricing and offer rules (pure)', () => {
     expect(confirmablePrice([{ ...base, status: 'replied', admin_price_cents: 145000 }])).toEqual({ responseId: 'r1', cents: 145000, source: 'admin_price' });
 
     expect(extendedExpiry('2026-10-30T12:00:00.000Z', '2026-10-29T10:00:00.000Z', now)).toBe('2026-10-30T14:00:00.000Z');
+  });
+});
+
+test.describe('offer email and text (rendered)', () => {
+  test('BD3/OF6: the email shows trade, town only, start window, pay, expiry, Accept and Respond to the offer page, and the tagged SpecNook link, in the sub language', async ({ page }) => {
+    const token = 'T'.repeat(43);
+    const signupUrl = 'https://specnook.com/signup?trade=cabinet_painting&ref=offer-123';
+    const base = {
+      subName: 'Luis', trade: 'cabinet_painting', town: 'Montclair', payCents: 140000, scope: '30 doors, same color',
+      targetStart: '2026-11-09', targetEnd: '2026-11-13', expiresAt: '2026-10-30T18:00:00Z', token, signupUrl,
+    };
+    mkdirSync('test-results/home-services-offer-email', { recursive: true });
+    for (const lang of ['en', 'es'] as const) {
+      const email = buildOfferEmail({ ...base, lang });
+      expect(email.subject).toBe(lang === 'en' ? 'Job offer: Cabinet painting in Montclair, pay $1,400' : 'Oferta de trabajo: Pintura de gabinetes en Montclair, pago $1,400');
+      await page.setContent(email.html);
+      const accept = page.getByRole('link', { name: lang === 'en' ? 'Accept this job' : 'Aceptar este trabajo' });
+      const respond = page.getByRole('link', { name: lang === 'en' ? 'Respond' : 'Responder', exact: true });
+      await expect(accept).toHaveAttribute('href', `http://localhost:3102/offer/${token}`.replace('http://localhost:3102', process.env.NEXT_PUBLIC_SITE_URL || 'https://www.lavacagc.com'));
+      expect(await respond.getAttribute('href')).toBe(await accept.getAttribute('href'));
+      await expect(page.locator('body')).toContainText('$1,400');
+      await expect(page.locator('body')).toContainText('Montclair');
+      await expect(page.locator('body')).toContainText(lang === 'en' ? 'Nov 9 - Nov 13' : '9 nov - 13 nov');
+      await expect(page.locator('body')).toContainText(lang === 'en' ? 'This offer expires Fri, Oct 30' : 'Esta oferta vence vie, 30 de oct');
+      const signup = page.getByRole('link', { name: lang === 'en' ? /Sign up on SpecNook/ : /Regístrese en SpecNook/ });
+      await expect(signup).toHaveAttribute('href', signupUrl);
+      expect(email.html).not.toContain('..<');
+      expect(email.text).not.toMatch(/\.\.$/m);
+      // Town only: no street address anywhere in the message.
+      expect(email.html).not.toMatch(/Elm|Street/);
+      expect(email.text).toContain(`/offer/${token}`);
+      await page.setViewportSize({ width: 640, height: 900 });
+      await page.screenshot({ path: `test-results/home-services-offer-email/offer-email-${lang}.png`, fullPage: true });
+
+      const sms = buildOfferSms({ ...base, lang });
+      expect(sms).toContain(`/offer/${token}`);
+      expect(sms).toContain(lang === 'en' ? 'Cabinet painting in Montclair, pay $1,400' : 'Pintura de gabinetes en Montclair, pago $1,400');
+      expect(sms.length).toBeLessThan(320);
+    }
+    const taken = buildNotice('taken', { lang: 'es', subName: 'Luis', trade: 'cabinet_painting', town: 'Montclair', token });
+    expect(taken.sms).toBe('La Vaca: el trabajo de Pintura de gabinetes en Montclair ya fue tomado. Gracias por revisarlo.');
+    expect(taken.html).not.toContain(`/offer/${token}`);
   });
 });
 
