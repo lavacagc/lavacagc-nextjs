@@ -32,7 +32,7 @@ export default function ContactPage() {
               Let&apos;s Talk About Your Project
             </h1>
             <p className="text-lg text-text-secondary max-w-2xl mx-auto mb-6">
-              Call us now or leave your details below — we&apos;ll get back to you within 24 hours.
+              Call us now or leave your details below - we&apos;ll get back to you within 24 hours.
             </p>
             {/* Prominent Phone Number */}
             <ContactHeroPhone />
