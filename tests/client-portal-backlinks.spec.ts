@@ -50,6 +50,9 @@ test.describe('/client-portal', () => {
     expect(description?.length ?? 999).toBeLessThan(155);
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://www.lavacagc.com/client-portal');
 
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', 'https://www.lavacagc.com/logo.png');
+    await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute('content', 'https://www.lavacagc.com/logo.png');
+
     const blocks = await page.locator('script[type="application/ld+json"]').allTextContents();
     const crumbs = blocks.map((b) => JSON.parse(b)).find((j) => j['@type'] === 'BreadcrumbList');
     expect(crumbs?.itemListElement.at(-1).item).toBe('https://www.lavacagc.com/client-portal');
@@ -67,6 +70,14 @@ test.describe('/client-portal', () => {
     await expect(main.locator('a[href="/free-estimate"]')).toHaveCount(1);
     const EM_DASH = String.fromCharCode(0x2014);
     expect(await main.innerText()).not.toContain(EM_DASH);
+  });
+
+  test('is linked from the SpecNook box on /process', async ({ page }) => {
+    await page.goto('/process');
+    await expect(page.locator('main').getByRole('link', { name: 'See what your portal includes' })).toHaveAttribute(
+      'href',
+      '/client-portal',
+    );
   });
 
   test.describe('on a phone', () => {

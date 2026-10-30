@@ -303,6 +303,14 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
                 <p className="text-sm text-text-secondary mt-2">
                   Selection tracking, daily updates, digital contracts, and client communication — built for contractors who care about the client experience.
                 </p>
+                <p className="text-sm mt-3">
+                  <Link
+                    href="/client-portal"
+                    className="inline-flex min-h-11 md:min-h-0 items-center text-primary font-semibold hover:underline"
+                  >
+                    See what your portal includes
+                  </Link>
+                </p>
               </div>
 
               <Button
