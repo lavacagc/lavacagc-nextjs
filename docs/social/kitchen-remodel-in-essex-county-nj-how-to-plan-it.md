@@ -16,5 +16,8 @@ Planning a kitchen remodel in Essex County, NJ? Start with how you use the room,
 ## X
 Planning a kitchen remodel in Essex County, NJ? Set the layout first, order cabinets early and ask your town before work starts. https://www.lavacagc.com/blog/kitchen-remodel-in-essex-county-nj-how-to-plan-it
 
+## Threads
+Most kitchen remodels in Essex County slip on two things: a layout decided after the finishes, and cabinets ordered too late. Which one bit you? Here is the order that keeps a plan on track. https://www.lavacagc.com/blog/kitchen-remodel-in-essex-county-nj-how-to-plan-it
+
 ## Hashtags
 #KitchenRemodel #EssexCounty #NJHomes #KitchenDesign

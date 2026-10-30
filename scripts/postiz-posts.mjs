@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 /**
- * Queue an article's social copy in Postiz as DRAFTS that Alex approves in the
- * Postiz calendar. Nothing is ever published or scheduled from here.
+ * Publish an article's social copy through Postiz: the text channels, right
+ * away by default (decision 007, Alex 2026-10-29: article posts go out
+ * without his approval), or at a given time, or as drafts on request.
  *
- *   node scripts/postiz-drafts.mjs --file docs/social/<slug>.md --postiz <url> [--date <ISO>] [--dry-run]
+ *   node scripts/postiz-posts.mjs --file docs/social/<slug>.md --postiz <url> [--date <ISO> | --draft] [--dry-run]
  *
  * --file    the social copy file the article skill wrote (docs/social/<slug>.md).
  * --postiz  the Postiz origin, e.g. http://localhost:4007 (default POSTIZ_URL).
- * --date    where the drafts sit in the calendar (default tomorrow 14:00 UTC).
+ * --date    schedule the posts for this time instead of publishing now.
+ * --draft   create drafts in the calendar (tomorrow 14:00 UTC, or --date) and
+ *           publish nothing; the pre-007 behaviour, for a run Alex wants to see first.
  * --dry-run print the POST it would send; nothing is created. With a key it
  *           still reads the channels and recent posts (read-only); without
  *           one it uses placeholder channel ids and skips the dedup.
@@ -16,20 +19,27 @@
  * and, for the hosted instance behind Cloudflare Access, CF_ACCESS_CLIENT_ID
  * and CF_ACCESS_CLIENT_SECRET (a service token).
  *
- * One POST /api/public/v1/posts with type "draft" carries one entry per text
- * channel: facebook (the caption and hashtags), threads, x and gmb. Pinterest,
- * Instagram and TikTok are skipped because they need media. Before creating,
- * GET /posts lists from 60 days before the earlier of today and --date to 60
- * days after the later of them; a channel that already has a
- * live (not errored) post with this article URL or a near-identical text is
- * skipped. Exits 0 when done (including "all skipped"), 1 on any failure.
- * Node 18+ (global fetch). No dependencies. Docs: docs/articles-ingest.md.
+ * One POST /api/public/v1/posts carries one entry per text channel: facebook
+ * (the caption and hashtags), threads, x and gmb. Pinterest, Instagram and
+ * TikTok are skipped because they need media. Before creating, GET /posts
+ * lists from 60 days before the earlier of today and the post date to 60
+ * days after the later of them; a channel that already has a live (not
+ * errored) post with this article URL or a near-identical text is skipped,
+ * so a re-run never posts twice. After a "now" publish it reads each post
+ * back (up to 45 s) and prints published with its link, or FAILED. Exits 0
+ * when done (including "all skipped"), 2 when Postiz accepted the posts but a
+ * channel failed to publish, 1 on any other failure. Node 18+ (global fetch).
+ * No dependencies. Docs: docs/articles-ingest.md.
  */
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-/** Always "draft": Postiz starts no publishing workflow for a draft. Never "now" or "schedule". */
-export const POST_TYPE = 'draft';
+/**
+ * Postiz post types: "now" publishes as soon as the request is accepted,
+ * "schedule" publishes at `date`, "draft" sits in the calendar and starts no
+ * publishing workflow.
+ */
+export const POST_TYPES = ['now', 'schedule', 'draft'];
 /** The text channels, in the order they are sent. */
 export const CHANNELS = ['facebook', 'threads', 'x', 'gmb'];
 /** Connected channels this script never posts to: they need an image or video. */
@@ -108,6 +118,9 @@ export function fileProblems(copy) {
   const key = url ? urlKey(url.href) : null;
   for (const channel of CHANNELS) {
     const t = channel === 'facebook' ? copy.instagram : texts[channel];
+    // Threads got its own section after the first social files were written
+    // (PR #111); a file without one posts to the other three channels.
+    if (!t && channel === 'threads') continue;
     if (!t) problems.push(`the "${names[channel]}" section is missing`);
     else if (texts[channel].length > LIMITS[channel]) problems.push(`the ${channel} text has ${texts[channel].length} characters; the limit is ${LIMITS[channel]}`);
     else if (channel !== 'facebook' && key && !urlKeysIn(texts[channel]).includes(key)) problems.push(`the "${names[channel]}" post must contain the article URL`);
@@ -201,6 +214,7 @@ export function findDuplicates(posts, picked, texts, articleUrl) {
   const dupes = {};
   const key = urlKey(articleUrl);
   for (const [channel, integration] of Object.entries(picked)) {
+    if (!texts[channel]) continue;
     for (const post of posts) {
       if (post.integration?.id !== integration.id || post.state === 'ERROR' || post.deletedAt) continue;
       const sameUrl = key && urlKeysIn(normalizeText(post.content)).includes(key);
@@ -214,22 +228,21 @@ export function findDuplicates(posts, picked, texts, articleUrl) {
   return dupes;
 }
 
-/** The one POST /posts body: a draft, one entry per channel to post to. */
-export function buildRequest({ copy, picked, skip = {}, date }) {
+/** The one POST /posts body: one entry per channel to post to, published, scheduled or drafted per `type`. */
+export function buildRequest({ copy, picked, skip = {}, date, type = 'now' }) {
+  if (!POST_TYPES.includes(type)) throw new CliError(`Unknown post type ${type}`);
   const texts = channelTexts(copy);
   const posts = CHANNELS.filter((c) => picked[c] && !skip[c]).map((channel) => ({
     integration: { id: picked[channel].id },
     value: [{ content: toPostizHtml(texts[channel]), image: [] }],
     settings: settingsFor(channel, copy.articleUrl),
   }));
-  const body = { type: POST_TYPE, shortLink: false, date, tags: [], posts };
-  if (body.type !== 'draft') throw new CliError('Refusing to send anything but a draft.');
-  return body;
+  return { type, shortLink: false, date, tags: [], posts };
 }
 
 /**
- * The GET /posts window: 60 days either side of both today and the drafts'
- * date, so a re-run with a far --date still finds its own drafts.
+ * The GET /posts window: 60 days either side of both today and the posts'
+ * date, so a re-run with a far --date still finds its own posts.
  */
 export function dedupWindow(now, date) {
   const day = 24 * 60 * 60 * 1000;
@@ -301,7 +314,7 @@ function parseArgs(argv) {
     const arg = argv[i];
     const [name, inline] = arg.replace(/^--/, '').split(/=(.*)/s);
     if (!arg.startsWith('--')) throw new CliError(`Unexpected argument ${arg}`);
-    if (name === 'dry-run' || name === 'help') { out[name] = true; continue; }
+    if (name === 'dry-run' || name === 'help' || name === 'draft') { out[name] = true; continue; }
     if (!['file', 'postiz', 'date'].includes(name)) throw new CliError(`Unknown option --${name}`);
     const value = inline ?? argv[++i];
     if (value === undefined) throw new CliError(`--${name} needs a value`);
@@ -313,7 +326,7 @@ function parseArgs(argv) {
 export async function run(argv, env = process.env, log = console.log) {
   const opts = parseArgs(argv);
   if (opts.help) {
-    log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(2, 27).map((l) => l.replace(/^ \* ?/, '')).join('\n'));
+    log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(2, 31).map((l) => l.replace(/^ \* ?/, '')).join('\n'));
     return;
   }
   if (!opts.file) throw new CliError('--file docs/social/<slug>.md is required');
@@ -323,8 +336,11 @@ export async function run(argv, env = process.env, log = console.log) {
   const problems = fileProblems(copy);
   if (problems.length) throw new CliError(`${opts.file} cannot be queued:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
 
-  const date = opts.date ?? defaultDate();
+  // now: publish on acceptance. --date: schedule for then. --draft: drafts at --date or tomorrow 14:00 UTC.
+  const type = opts.draft ? 'draft' : opts.date ? 'schedule' : 'now';
+  const date = opts.date ?? (opts.draft ? defaultDate() : new Date().toISOString());
   if (Number.isNaN(Date.parse(date))) throw new CliError(`--date ${date} is not a date`);
+  if (type === 'schedule' && Date.parse(date) < Date.now()) throw new CliError(`--date ${date} is in the past; drop it to publish now`);
   const origin = (opts.postiz ?? env.POSTIZ_URL ?? '').replace(/\/+$/, '');
   if (!origin) throw new CliError('Pass --postiz <url> or set POSTIZ_URL.');
   const dryRun = !!opts['dry-run'];
@@ -351,9 +367,13 @@ export async function run(argv, env = process.env, log = console.log) {
 
   const texts = channelTexts(copy);
   const skip = findDuplicates(posts, picked, texts, copy.articleUrl);
-  const body = buildRequest({ copy, picked, skip, date });
+  if (!texts.threads) skip.threads = { missing: true };
+  const body = buildRequest({ copy, picked, skip, date, type });
 
-  for (const [channel, d] of Object.entries(skip)) log(`${channel}: already in Postiz (post ${d.id}, ${d.state}, ${d.reason}), skipped`);
+  for (const [channel, d] of Object.entries(skip)) {
+    if (d.missing) log(`${channel}: no "Threads" section in the file, skipped`);
+    else log(`${channel}: already in Postiz (post ${d.id}, ${d.state}, ${d.reason}), skipped`);
+  }
   for (const note of notes) log(note);
 
   if (dryRun) {
@@ -368,10 +388,50 @@ export async function run(argv, env = process.env, log = console.log) {
   const created = await call(ctx, 'POST', '/posts', body);
   log(`Postiz answered: ${JSON.stringify(created)}`);
   const byIntegration = Object.fromEntries(Object.entries(picked).map(([c, i]) => [i.id, c]));
-  for (const row of Array.isArray(created) ? created : []) {
-    log(`${byIntegration[row.integration] ?? row.integration}: draft ${row.postId}`);
+  const rows = Array.isArray(created) ? created : [];
+  const noun = type === 'draft' ? 'draft' : type === 'schedule' ? 'scheduled' : 'publishing';
+  for (const row of rows) log(`${byIntegration[row.integration] ?? row.integration}: ${noun} ${row.postId}`);
+  if (type === 'draft') {
+    log(`Drafts for "${copy.title ?? copy.articleUrl}" are in the Postiz calendar on ${date.slice(0, 10)}. Nothing was published or scheduled.`);
+    return 0;
   }
-  log(`Drafts for "${copy.title ?? copy.articleUrl}" are in the Postiz calendar on ${date.slice(0, 10)} for Alex to approve. Nothing was published or scheduled.`);
+  if (type === 'schedule') {
+    log(`Posts for "${copy.title ?? copy.articleUrl}" are scheduled in Postiz for ${date}.`);
+    return 0;
+  }
+  // "now": read each post back until Postiz has published it or given up, so
+  // the report says what actually went out (X failed on 2026-10-29 with the
+  // account out of API credits, and the calendar was the only place it showed).
+  const states = await awaitStates(ctx, rows.map((r) => r.postId), date, env);
+  let failed = 0;
+  for (const row of rows) {
+    const channel = byIntegration[row.integration] ?? row.integration;
+    const s = states[row.postId];
+    if (s?.state === 'PUBLISHED') log(`${channel}: published ${s.releaseURL ?? '(no link returned)'}`);
+    else if (s?.state === 'ERROR') { failed += 1; log(`${channel}: FAILED; Postiz could not post it (open the calendar entry for the provider's reason)`); }
+    else log(`${channel}: still ${s?.state ?? 'queued'} after ${Math.round(pollTimeoutMs(env) / 1000)} s; check the calendar`);
+  }
+  if (failed) log(`${failed} of ${rows.length} posts for "${copy.title ?? copy.articleUrl}" failed; the rest are live. A re-run retries only the failed channels.`);
+  else log(`Posts for "${copy.title ?? copy.articleUrl}" are live.`);
+  return failed ? 2 : 0;
+}
+
+const pollTimeoutMs = (env) => Number(env.POSTIZ_POLL_TIMEOUT_MS) || 45_000;
+
+/** Poll GET /posts until every id is PUBLISHED or ERROR, or the timeout passes; returns { id: { state, releaseURL } }. */
+export async function awaitStates(ctx, ids, date, env = process.env) {
+  const every = Number(env.POSTIZ_POLL_MS) || 5_000;
+  const deadline = Date.now() + pollTimeoutMs(env);
+  const { startDate, endDate } = dedupWindow(Date.now(), Date.parse(date));
+  const query = `startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
+  let states = {};
+  for (;;) {
+    const listed = (await call(ctx, 'GET', `/posts?${query}`))?.posts ?? [];
+    states = Object.fromEntries(listed.filter((p) => ids.includes(p.id)).map((p) => [p.id, { state: p.state, releaseURL: p.releaseURL ?? null }]));
+    const settled = ids.every((id) => ['PUBLISHED', 'ERROR'].includes(states[id]?.state));
+    if (settled || Date.now() >= deadline) return states;
+    await new Promise((r) => setTimeout(r, every));
+  }
 }
 
 const invokedDirectly = (() => {
@@ -379,8 +439,8 @@ const invokedDirectly = (() => {
 })();
 
 if (invokedDirectly) {
-  run(process.argv.slice(2)).catch((err) => {
-    console.error(`postiz-drafts: ${err instanceof Error ? err.message : err}`);
+  run(process.argv.slice(2)).then((code) => process.exit(code ?? 0), (err) => {
+    console.error(`postiz-posts: ${err instanceof Error ? err.message : err}`);
     process.exit(1);
   });
 }

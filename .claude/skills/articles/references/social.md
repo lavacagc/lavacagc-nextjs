@@ -1,8 +1,8 @@
 # Social copy
 
-Every published article gets ready-made posts for Alex to paste (decision 006, Q22).
+Every published article gets ready-made posts (decision 006, Q22).
 Write them after the article is created and before the publish, because `publish --social <file>` checks them and carries the caption in the "New article published" Telegram.
-After the publish, `scripts/postiz-drafts.mjs` queues the Facebook caption, the Threads, X and Google Business posts as Postiz drafts from this same file (SKILL.md step 8); Alex approves them in the Postiz calendar.
+After the publish, `scripts/postiz-posts.mjs` publishes the Facebook caption, the Threads, X and Google Business posts through Postiz from this same file (SKILL.md step 8), without Alex's approval (decision 007); the Instagram caption stays for him to post with a photo.
 
 ## The file
 
