@@ -199,6 +199,12 @@ export async function buildSitemapEntries(sources: SitemapSources = cachedSitema
       priority: 0.7,
     },
     {
+      url: `${baseUrl}/client-portal`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly',
+      priority: 0.6,
+    },
+    {
       url: `${baseUrl}/blog`,
       lastModified: currentDate,
       changeFrequency: 'weekly',

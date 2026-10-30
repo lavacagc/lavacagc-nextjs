@@ -305,6 +305,9 @@ const Header = () => {
                 <Link href="/process" className={ITEM_CLASS} role="menuitem">
                   Process
                 </Link>
+                <Link href="/client-portal" className={ITEM_CLASS} role="menuitem">
+                  Client Portal
+                </Link>
                 <Link href="/resources" className={ITEM_CLASS} role="menuitem">
                   Resources
                 </Link>
@@ -437,6 +440,13 @@ const Header = () => {
                   aria-label="Go to our process page"
                 >
                   Process
+                </button>
+                <button
+                  onClick={() => navigateToPage('/client-portal')}
+                  className={MOBILE_ROW}
+                  aria-label="Go to the client portal page"
+                >
+                  Client Portal
                 </button>
                 <button
                   onClick={() => navigateToPage('/resources')}
