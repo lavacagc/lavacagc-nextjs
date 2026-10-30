@@ -79,8 +79,8 @@ export function generateLocalBusinessSchema() {
     logo: {
       '@type': 'ImageObject',
       url: BUSINESS_INFO.logo,
-      width: 800,
-      height: 800,
+      width: 120,
+      height: 120,
     },
     image: BUSINESS_INFO.logo,
     telephone: BUSINESS_INFO.telephone,

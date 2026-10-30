@@ -8,6 +8,7 @@ import PageViewTracker from '@/components/PageViewTracker';
 import Link from 'next/link';
 import { getAllLocations } from '@/data/locationData';
 import { MapPin } from 'lucide-react';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 // Hourly: the services editor revalidates /services and every page below it on save (/api/admin/revalidate, docs/cost-review.md).
 export const revalidate = 3600;
@@ -112,9 +113,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       url: `https://www.lavacagc.com/services/${slug}`,
       images: [
         {
-          url: 'https://www.lavacagc.com/logo.png',
-          width: 800,
-          height: 800,
+          ...OG_CARD,
           alt: `${service.title} Services by La Vaca General Contractors`,
         },
       ],

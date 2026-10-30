@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
 
@@ -9,6 +11,7 @@ import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBa
 
 const FOOTER_HREF =
   'https://www.specnook.app/contractor-client-portal?utm_source=lavacagc&utm_medium=website&utm_campaign=client_portal&utm_content=footer';
+const OG_CARD_URL = 'https://www.lavacagc.com/og-card.png';
 const PAGE_UTM = 'utm_source=lavacagc&utm_medium=website&utm_campaign=client_portal&utm_content=client_portal_page';
 const PAGE_HREFS = [
   `https://www.specnook.app/contractor-client-portal?${PAGE_UTM}`,
@@ -51,8 +54,9 @@ test.describe('/client-portal', () => {
     expect(description?.length ?? 999).toBeLessThan(155);
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://www.lavacagc.com/client-portal');
 
-    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', 'https://www.lavacagc.com/logo.png');
-    await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute('content', 'https://www.lavacagc.com/logo.png');
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', OG_CARD_URL);
+    await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute('content', OG_CARD_URL);
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute('content', 'summary_large_image');
 
     const blocks = await page.locator('script[type="application/ld+json"]').allTextContents();
     const crumbs = blocks.map((b) => JSON.parse(b)).find((j) => j['@type'] === 'BreadcrumbList');
@@ -77,10 +81,18 @@ test.describe('/client-portal', () => {
   // on production. A card image on our own host is fetched from the server
   // under test, so one that is not shipped with the build fails here; one on
   // another host (a blog post's featured image in storage) is fetched as is.
-  for (const path of ['/process', '/client-portal', '/about']) {
-    test(`${path} advertises an og:image that loads`, async ({ page, request }) => {
-      await page.goto(path);
+  // The shared card's declared size must also be the file's real size: the
+  // old /logo.png entries claimed 800x800 for a 120x120 file.
+  for (const route of ['/', '/process', '/client-portal', '/about', '/blog', '/warranty']) {
+    test(`${route} advertises an og:image that loads at its declared size`, async ({ page, request }) => {
+      await page.goto(route);
       await expectOgImageLoads(page, request);
+      await expect(page.locator('meta[property="og:image"]').first()).toHaveAttribute('content', OG_CARD_URL);
+      const card = pngSize(path.join(process.cwd(), 'public/og-card.png'));
+      expect(card).toEqual({ width: 1200, height: 630 });
+      await expect(page.locator('meta[property="og:image:width"]').first()).toHaveAttribute('content', String(card.width));
+      await expect(page.locator('meta[property="og:image:height"]').first()).toHaveAttribute('content', String(card.height));
+      await expect(page.locator('meta[property="og:image:type"]').first()).toHaveAttribute('content', 'image/png');
     });
   }
 
@@ -119,4 +131,10 @@ async function expectOgImageLoads(page: Page, request: APIRequestContext) {
   const image = await request.get(url.hostname === 'www.lavacagc.com' ? url.pathname : url.href);
   expect(image.status()).toBe(200);
   expect(image.headers()['content-type']).toMatch(/^image\//);
+}
+
+function pngSize(file: string) {
+  const png = readFileSync(file);
+  expect(png.subarray(12, 16).toString('ascii')).toBe('IHDR');
+  return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
 }

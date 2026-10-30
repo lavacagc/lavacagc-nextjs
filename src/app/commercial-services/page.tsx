@@ -21,6 +21,7 @@ import ServicesBottomTabs from "@/components/services/ServicesBottomTabs";
 import ServiceTile from "@/components/services/ServiceTile";
 import ServiceImageGrid from "@/components/services/ServiceImageGrid";
 import { COMMERCIAL_SERVICES } from "@/components/services/serviceData";
+import { OG_CARD } from "@/lib/seo/ogCard";
 
 const COMMERCIAL_IMAGE_CARDS = [
   {
@@ -64,9 +65,7 @@ export const metadata: Metadata = {
     url: "https://www.lavacagc.com/commercial-services",
     images: [
       {
-        url: "https://www.lavacagc.com/logo.png",
-        width: 800,
-        height: 800,
+        ...OG_CARD,
         alt: "La Vaca General Contractors — Commercial Services",
       },
     ],

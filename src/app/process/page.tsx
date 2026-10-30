@@ -4,6 +4,7 @@ import Footer from '@/components/Footer';
 import ProcessPageClient from '@/components/ProcessPageClient';
 import HowToSchema from '@/components/seo/HowToSchema';
 import Link from 'next/link';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 export const metadata: Metadata = {
   title: 'Our 6-Step Home Remodeling Process',
@@ -19,9 +20,7 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/process',
     images: [
       {
-        url: 'https://www.lavacagc.com/logo.png',
-        width: 800,
-        height: 800,
+        ...OG_CARD,
         alt: 'La Vaca General Contractors Remodeling Process',
       },
     ],

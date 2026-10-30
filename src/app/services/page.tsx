@@ -15,6 +15,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import ServicesTrustBar from "@/components/services/ServicesTrustBar";
 import ServicesBottomTabs from "@/components/services/ServicesBottomTabs";
+import { OG_CARD } from "@/lib/seo/ogCard";
 
 // Hourly: this content is in code, so changes ship with a deploy (docs/cost-review.md).
 export const revalidate = 3600;
@@ -31,9 +32,7 @@ export const metadata: Metadata = {
     url: "https://www.lavacagc.com/services",
     images: [
       {
-        url: "https://www.lavacagc.com/logo.png",
-        width: 800,
-        height: 800,
+        ...OG_CARD,
         alt: "La Vaca General Contractors — Services Hub",
       },
     ],

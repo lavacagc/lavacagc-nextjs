@@ -6,6 +6,7 @@ import { Shield, Clock, FileText, Wrench, Home, AlertTriangle, Phone } from 'luc
 import Link from 'next/link';
 import WarrantyFormWrapper from '@/components/WarrantyFormWrapper';
 import CallTrackingWrapper from '@/components/CallTrackingWrapper';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 export const metadata: Metadata = {
   title: '5-Year Two-Tier Warranty | Home Remodeling Guarantee',
@@ -21,9 +22,7 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/warranty',
     images: [
       {
-        url: 'https://www.lavacagc.com/logo.png',
-        width: 800,
-        height: 800,
+        ...OG_CARD,
         alt: 'La Vaca General Contractors 5-Year Two-Tier Warranty',
       },
     ],

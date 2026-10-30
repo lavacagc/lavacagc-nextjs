@@ -18,6 +18,7 @@ import {
   Hammer,
   Sparkles,
 } from 'lucide-react';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 export const metadata: Metadata = {
   title: 'Drywall & Interior Finishing in NJ',
@@ -33,9 +34,7 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/services/interior-finishing',
     images: [
       {
-        url: 'https://www.lavacagc.com/logo.png',
-        width: 800,
-        height: 800,
+        ...OG_CARD,
         alt: 'Drywall & Interior Finishing Services by La Vaca General Contractors',
       },
     ],

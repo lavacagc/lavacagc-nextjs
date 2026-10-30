@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 /**
  * /client-portal - what a La Vaca client gets in their own project portal.
@@ -20,7 +21,6 @@ import Footer from '@/components/Footer';
  */
 
 const PAGE_URL = 'https://www.lavacagc.com/client-portal';
-const OG_IMAGE = 'https://www.lavacagc.com/logo.png';
 const UTM = 'utm_source=lavacagc&utm_medium=website&utm_campaign=client_portal&utm_content=client_portal_page';
 const SPECNOOK = {
   portal: `https://www.specnook.app/contractor-client-portal?${UTM}`,
@@ -39,13 +39,10 @@ export const metadata: Metadata = {
     type: 'website',
     url: PAGE_URL,
     // Setting openGraph here replaces the root layout's object, image included,
-    // so the card image is restated. /logo.png is the root layout's image and
-    // the one OG asset that exists in public/.
+    // so the shared card image is restated.
     images: [
       {
-        url: OG_IMAGE,
-        width: 800,
-        height: 800,
+        ...OG_CARD,
         alt: 'La Vaca General Contractors',
       },
     ],
@@ -54,7 +51,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Your Client Portal | La Vaca GC',
     description: 'Follow your remodel from your phone: photos, selections, approvals and documents.',
-    images: [OG_IMAGE],
+    images: [OG_CARD.url],
   },
   alternates: {
     canonical: PAGE_URL,

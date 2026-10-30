@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Shield, Award, Users, Calendar, CheckCircle, Heart } from "lucide-react";
 import alexHeadshot from "@/assets/alex-headshot.png";
 import veronicaHeadshot from "@/assets/veronica-headshot.jpg";
+import { OG_CARD } from "@/lib/seo/ogCard";
 
 export const metadata: Metadata = {
   title: "About La Vaca General Contractors - Our Story & Team | Northern NJ",
@@ -19,9 +20,7 @@ export const metadata: Metadata = {
     // A page-level openGraph replaces the root layout's, image included.
     images: [
       {
-        url: "https://www.lavacagc.com/logo.png",
-        width: 800,
-        height: 800,
+        ...OG_CARD,
         alt: "La Vaca General Contractors",
       },
     ],
@@ -30,7 +29,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "About La Vaca General Contractors - Our Story & Team | Northern NJ",
     description: "Learn about La Vaca General Contractors' story, meet our expert team, and discover our commitment to quality home remodeling in Northern New Jersey.",
-    images: ["https://www.lavacagc.com/logo.png"],
+    images: [OG_CARD.url],
   },
   alternates: {
     canonical: "https://www.lavacagc.com/about",

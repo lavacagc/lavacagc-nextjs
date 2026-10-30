@@ -6,6 +6,7 @@ import ReferralForm from '@/components/ReferralForm';
 import { Card, CardContent } from '@/components/ui/card';
 import { Gift, Users, Phone, DollarSign, Heart, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 export const metadata: Metadata = {
   title: 'Referral Program | Earn Rewards for Referring Friends',
@@ -27,9 +28,7 @@ export const metadata: Metadata = {
     type: 'website',
     images: [
       {
-        url: 'https://www.lavacagc.com/logo.png',
-        width: 800,
-        height: 800,
+        ...OG_CARD,
         alt: 'La Vaca General Contractors Referral Program',
       },
     ],
