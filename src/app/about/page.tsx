@@ -16,6 +16,21 @@ export const metadata: Metadata = {
     title: "About La Vaca General Contractors - Our Story & Team | Northern NJ",
     description: "Learn about La Vaca General Contractors' story, meet our expert team, and discover our commitment to quality home remodeling in Northern New Jersey.",
     url: "https://www.lavacagc.com/about",
+    // A page-level openGraph replaces the root layout's, image included.
+    images: [
+      {
+        url: "https://www.lavacagc.com/logo.png",
+        width: 800,
+        height: 800,
+        alt: "La Vaca General Contractors",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "About La Vaca General Contractors - Our Story & Team | Northern NJ",
+    description: "Learn about La Vaca General Contractors' story, meet our expert team, and discover our commitment to quality home remodeling in Northern New Jersey.",
+    images: ["https://www.lavacagc.com/logo.png"],
   },
   alternates: {
     canonical: "https://www.lavacagc.com/about",

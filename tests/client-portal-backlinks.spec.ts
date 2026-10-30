@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
+import { SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON } from './helpers/liveBackend';
 
 /**
  * SpecNook backlinks (Alex, 2026-10-29): one followed footer link on every
@@ -73,18 +74,24 @@ test.describe('/client-portal', () => {
   });
 
   // og-process.jpg and the other og-*.jpg files were never in public/ and 404ed
-  // on production. Fetch the advertised path from the server under test, so a
-  // card image that is not shipped with the build fails here.
-  for (const path of ['/process', '/client-portal']) {
-    test(`${path} advertises an og:image this build serves`, async ({ page, request }) => {
+  // on production. A card image on our own host is fetched from the server
+  // under test, so one that is not shipped with the build fails here; one on
+  // another host (a blog post's featured image in storage) is fetched as is.
+  for (const path of ['/process', '/client-portal', '/about']) {
+    test(`${path} advertises an og:image that loads`, async ({ page, request }) => {
       await page.goto(path);
-      const content = await page.locator('meta[property="og:image"]').getAttribute('content');
-      expect(content).toBeTruthy();
-      const image = await request.get(new URL(content!).pathname);
-      expect(image.status()).toBe(200);
-      expect(image.headers()['content-type']).toMatch(/^image\//);
+      await expectOgImageLoads(page, request);
     });
   }
+
+  test('a blog post advertises an og:image that loads', async ({ page, request }) => {
+    test.skip(SKIP_WITHOUT_LIVE_BACKEND, LIVE_BACKEND_REASON);
+    await page.goto('/blog');
+    const href = await page.locator('main a[href^="/blog/"]').first().getAttribute('href');
+    expect(href).toBeTruthy();
+    await page.goto(href!);
+    await expectOgImageLoads(page, request);
+  });
 
   test('is linked from the SpecNook box on /process', async ({ page }) => {
     await page.goto('/process');
@@ -104,3 +111,12 @@ test.describe('/client-portal', () => {
     });
   });
 });
+
+async function expectOgImageLoads(page: Page, request: APIRequestContext) {
+  const content = await page.locator('meta[property="og:image"]').first().getAttribute('content');
+  expect(content).toBeTruthy();
+  const url = new URL(content!);
+  const image = await request.get(url.hostname === 'www.lavacagc.com' ? url.pathname : url.href);
+  expect(image.status()).toBe(200);
+  expect(image.headers()['content-type']).toMatch(/^image\//);
+}

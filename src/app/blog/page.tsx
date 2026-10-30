@@ -107,7 +107,7 @@ export default async function Blog() {
         '@type': 'Person',
         name: post.author,
       },
-      image: post.featured_image || 'https://www.lavacagc.com/default-blog-image.jpg',
+      image: post.featured_image || 'https://www.lavacagc.com/logo.png',
     })),
   };
 

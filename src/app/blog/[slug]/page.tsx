@@ -124,14 +124,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
               alt: post.title,
             },
           ]
-        : [],
+        : [{ url: 'https://www.lavacagc.com/logo.png', width: 800, height: 800, alt: post.title }],
       siteName: 'La Vaca General Contractors',
     },
     twitter: {
       card: 'summary_large_image',
       title: post.title,
       description,
-      images: post.featured_image ? [post.featured_image] : [],
+      images: [post.featured_image || 'https://www.lavacagc.com/logo.png'],
     },
     alternates: {
       canonical: `https://www.lavacagc.com/blog/${post.slug}`,
@@ -160,7 +160,7 @@ export default async function BlogPostPage({ params }: PageProps) {
     '@type': 'BlogPosting',
     headline: post.title,
     description: post.excerpt,
-    image: post.featured_image || 'https://www.lavacagc.com/default-blog-image.jpg',
+    image: post.featured_image || 'https://www.lavacagc.com/logo.png',
     datePublished: publishedAt,
     dateModified: post.updated_at,
     author: {
