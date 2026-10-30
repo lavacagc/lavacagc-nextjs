@@ -23,7 +23,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { validationResponse } from '@/lib/projects/http';
-import { livePostIdOf, recordActionDraft, requireOpenAction } from '@/lib/articles/actions';
+import { livePostIdOf, rebuiltFromDraft, recordActionDraft, requireOpenAction } from '@/lib/articles/actions';
 import { authorizeArticles } from '@/lib/articles/auth';
 import { articleAdminUrl, articlePreviewUrl, readArticleBody } from '@/lib/articles/http';
 import { runPublishGuard } from '@/lib/articles/publishFlow';
@@ -82,7 +82,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         if (fields.slug && fields.slug !== post.slug) {
           throw new ArticleError(400, 'A refresh keeps the slug, so the URL and its inbound links survive.');
         }
-        const drafted = await recordActionDraft(action, mergeArticle(post, fields), await loadContentFacts());
+        // A patch that brings no body builds on the draft the action already
+        // holds, not on the live post: otherwise a one-field fix (a meta title,
+        // a category) silently replaced a finished draft with the live text,
+        // which is what the first cloud refresh ran into on 2026-10-30.
+        const base = action.draft_markdown && fields.content === undefined ? { ...post, ...rebuiltFromDraft(action) } : post;
+        const drafted = await recordActionDraft(action, mergeArticle(base, fields), await loadContentFacts());
         return answer(request, post, {
           action: {
             id: action.id,

@@ -45,6 +45,8 @@ interface MetricRow {
 }
 interface RevisionRow {
   title: string;
+  /** Null on revisions taken before the column existed; the rollback then leaves the meta title alone. */
+  meta_title: string | null;
   content_html: string | null;
   meta_description: string | null;
   excerpt: string | null;
@@ -117,14 +119,21 @@ export async function GET(request: NextRequest) {
         // Restore the most recent pre-change snapshot.
         const revs = await supabaseRest<RevisionRow[]>(
           'GET',
-          `blog_post_revisions?select=title,content_html,meta_description,excerpt&post_id=eq.${post.id}&order=revised_at.desc&limit=1`,
+          `blog_post_revisions?select=title,meta_title,content_html,meta_description,excerpt&post_id=eq.${post.id}&order=revised_at.desc&limit=1`,
         );
         const rev = revs?.[0];
         if (rev) {
           await supabaseRest(
             'PATCH',
             `blog_posts?id=eq.${post.id}`,
-            { title: rev.title, content: rev.content_html ?? post.content, meta_description: rev.meta_description, excerpt: rev.excerpt, updated_at: new Date().toISOString() },
+            {
+              title: rev.title,
+              ...(rev.meta_title !== null ? { meta_title: rev.meta_title } : {}),
+              content: rev.content_html ?? post.content,
+              meta_description: rev.meta_description,
+              excerpt: rev.excerpt,
+              updated_at: new Date().toISOString(),
+            },
             { prefer: 'return=minimal' },
           );
           didRevert = true;

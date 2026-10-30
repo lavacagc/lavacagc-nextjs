@@ -102,6 +102,8 @@ Alex says: "Write something for people searching how long a kitchen remodel take
 
 A `refresh` (or `consolidate`) action rewrites a post that is already live.
 Patch that post with the action id: the live post is NOT changed, the new version is stored on the action as its draft.
+The draft is the title and the body; when it is applied, the meta title follows the title and the excerpt and meta description are derived from the body, so a refresh that changes the title also changes what `<title>` shows and what the guard checks.
+A later patch with the same action id and no `--file` (a category, say) builds on that draft, not on the live post, so it never replaces a finished draft with the live text.
 
 ```bash
 node scripts/ingest-article.mjs patch <live post id> --file article.md --action <action id>
