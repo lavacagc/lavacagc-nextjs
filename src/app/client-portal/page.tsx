@@ -20,6 +20,7 @@ import Footer from '@/components/Footer';
  */
 
 const PAGE_URL = 'https://www.lavacagc.com/client-portal';
+const OG_IMAGE = 'https://www.lavacagc.com/logo.png';
 const UTM = 'utm_source=lavacagc&utm_medium=website&utm_campaign=client_portal&utm_content=client_portal_page';
 const SPECNOOK = {
   portal: `https://www.specnook.app/contractor-client-portal?${UTM}`,
@@ -37,11 +38,23 @@ export const metadata: Metadata = {
       'Daily photo updates, selections with deadlines, change orders, contracts and documents for your remodel, in one private place.',
     type: 'website',
     url: PAGE_URL,
+    // Setting openGraph here replaces the root layout's object, image included,
+    // so the card image is restated. /logo.png is the root layout's image and
+    // the one OG asset that exists (og-process.jpg and friends 404 on prod).
+    images: [
+      {
+        url: OG_IMAGE,
+        width: 800,
+        height: 800,
+        alt: 'La Vaca General Contractors',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Your Client Portal | La Vaca GC',
     description: 'Follow your remodel from your phone: photos, selections, approvals and documents.',
+    images: [OG_IMAGE],
   },
   alternates: {
     canonical: PAGE_URL,
