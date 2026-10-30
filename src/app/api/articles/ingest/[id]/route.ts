@@ -12,6 +12,7 @@
  *     NOT changed. The article as it would read after this patch becomes the
  *     action's draft, applied (snapshot first, so the 14-day rollback guard
  *     works) by a publish with the same action_id or by Apply in the admin.
+ *     The draft carries the title and the body only: any other field is a 400.
  *
  * A patch that would change a LIVE post directly runs the publish guard on
  * the post as it would read afterwards (slice G): a live article must never
@@ -23,7 +24,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { validationResponse } from '@/lib/projects/http';
-import { livePostIdOf, recordActionDraft, requireOpenAction } from '@/lib/articles/actions';
+import { livePostIdOf, rebuiltFromDraft, recordActionDraft, requireOpenAction } from '@/lib/articles/actions';
 import { authorizeArticles } from '@/lib/articles/auth';
 import { articleAdminUrl, articlePreviewUrl, readArticleBody } from '@/lib/articles/http';
 import { runPublishGuard } from '@/lib/articles/publishFlow';
@@ -35,6 +36,9 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+/** The fields a refresh or consolidate draft carries (the slug only as the live post's own). */
+const DRAFT_FIELDS = new Set(['title', 'content', 'slug']);
 
 function answer(request: NextRequest, post: ArticleRow, extra: Record<string, unknown> = {}) {
   return NextResponse.json({
@@ -82,7 +86,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         if (fields.slug && fields.slug !== post.slug) {
           throw new ArticleError(400, 'A refresh keeps the slug, so the URL and its inbound links survive.');
         }
-        const drafted = await recordActionDraft(action, mergeArticle(post, fields), await loadContentFacts());
+        // A refresh draft carries the title and the body, nothing else, so any
+        // other field would be dropped on apply: refuse it rather than answer
+        // "drafted" for a change that never happens.
+        const extra = Object.keys(fields).filter((k) => !DRAFT_FIELDS.has(k) && fields[k as keyof typeof fields] !== undefined);
+        if (extra.length) {
+          throw new ArticleError(400, `A refresh draft carries the title and body; set ${extra.join(', ')} on the post without --action, or after the draft is applied.`);
+        }
+        // A patch that brings no body builds on the draft the action already
+        // holds, not on the live post, so a title-only patch rewrites the
+        // draft's title and keeps its body; building on the live post silently
+        // replaced a finished draft with the live text, which is what the first
+        // cloud refresh ran into on 2026-10-30.
+        const base = action.draft_markdown && fields.content === undefined ? { ...post, ...rebuiltFromDraft(action) } : post;
+        const drafted = await recordActionDraft(action, mergeArticle(base, fields), await loadContentFacts());
         return answer(request, post, {
           action: {
             id: action.id,

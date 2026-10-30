@@ -76,8 +76,10 @@ node scripts/ingest-article.mjs create --file article.md --category "<category>"
 Refresh of a live post (from a `refresh` or `consolidate` action; the live post stays unchanged until publish):
 
 ```bash
-node scripts/ingest-article.mjs patch <post id> --file article.md --faq faq.json --action <action id>
+node scripts/ingest-article.mjs patch <post id> --file article.md --action <action id>
 ```
+
+A patch with `--action` carries only the title and body; any other field (`--faq`, `--meta-title`, `--category`) is a 400, so never retry a hold that way: the meta title follows the title, and the rest goes on with a plain `patch` after publish.
 
 A plain `patch` of a live post without `--action` is checked by the guard too; exit code 2 means nothing changed.
 Done when the CLI printed the post id and the preview link.

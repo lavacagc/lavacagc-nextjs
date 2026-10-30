@@ -677,18 +677,36 @@ test.describe('article routes, CLI and feedback (live backend)', () => {
     expect(applied.status(), JSON.stringify(appliedBody)).toBe(200);
     expect(appliedBody).toMatchObject({ ok: true, postId: live.id, status: 'completed' });
     expect(await text(request, `/blog/${live.slug}`)).toContain('Bath refreshed by Claude.');
-    const revisions = await rest<Array<{ content_html: string; revised_by: string }>>(request, 'GET', `blog_post_revisions?select=content_html,revised_by&post_id=eq.${live.id}`);
-    expect(revisions).toEqual([expect.objectContaining({ revised_by: 'apply' })]);
+    const revisions = await rest<Array<{ content_html: string; revised_by: string; meta_title: string | null }>>(request, 'GET', `blog_post_revisions?select=content_html,revised_by,meta_title&post_id=eq.${live.id}`);
+    expect(revisions).toEqual([expect.objectContaining({ revised_by: 'apply', meta_title: `${PREFIX} Bath Guide` })]);
     expect(revisions[0].content_html).toContain('Bath original.');
 
     // Second refresh, applied by Claude's publish: the guard sees the draft, then it is applied.
     const [again] = await rest<Array<{ id: string }>>(request, 'POST', 'content_actions', [{
       action_type: 'refresh', target_post_id: live.id, target_query: `${PREFIX} bath guide again`, status: 'approved',
     }]);
-    await request.patch(`/api/articles/ingest/${live.id}`, { headers: auth, data: { content: articleMarkdown('Bath second pass.'), action_id: again.id } });
+    await request.patch(`/api/articles/ingest/${live.id}`, {
+      headers: auth, data: { content: articleMarkdown('Bath second pass.'), action_id: again.id },
+    });
+    // A draft carries the title and body only: a field-only patch with the action is refused and the draft is untouched.
+    const draftOf = async () => (await rest<Array<{ draft_markdown: string }>>(request, 'GET', `content_actions?select=draft_markdown&id=eq.${again.id}`))[0].draft_markdown;
+    const drafted = await draftOf();
+    const fieldOnly = await request.patch(`/api/articles/ingest/${live.id}`, { headers: auth, data: { category: 'Bathroom Renovation', action_id: again.id } });
+    expect(fieldOnly.status()).toBe(400);
+    expect((await fieldOnly.json()).error).toContain('set category on the post without --action');
+    expect(await draftOf()).toBe(drafted);
+    // A title-only patch builds on the draft, not the live post: the title changes and the drafted body survives.
+    const titleOnly = await request.patch(`/api/articles/ingest/${live.id}`, { headers: auth, data: { title: `${PREFIX} Bath Guide Reworked`, action_id: again.id } });
+    expect(titleOnly.status(), await titleOnly.text()).toBe(200);
+    const retitled = await draftOf();
+    expect(retitled).toContain('Bath second pass.');
+    expect(retitled.startsWith(`# ${PREFIX} Bath Guide Reworked\n`)).toBe(true);
     const pub = await request.post(`/api/articles/ingest/${live.id}/publish`, { headers: auth, data: { action_id: again.id } });
     expect(pub.status(), await pub.text()).toBe(200);
     expect(await text(request, `/blog/${live.slug}`)).toContain('Bath second pass.');
+    // The meta title follows the draft's title, so <title> and the guard see the new one.
+    const [reworked] = await rest<Array<{ title: string; meta_title: string | null }>>(request, 'GET', `blog_posts?select=title,meta_title&id=eq.${live.id}`);
+    expect(reworked).toEqual({ title: `${PREFIX} Bath Guide Reworked`, meta_title: `${PREFIX} Bath Guide Reworked` });
     const [done] = await rest<Array<{ status: string; draft_meta: { applied_by: string } }>>(request, 'GET', `content_actions?select=status,draft_meta&id=eq.${again.id}`);
     expect(done.status).toBe('completed');
     expect(done.draft_meta.applied_by).toBe('claude');

@@ -108,17 +108,26 @@ export async function completeAction(action: ContentActionRow, postId: string, e
   }, { prefer: 'return=minimal' });
 }
 
-/** The fields a refresh or consolidate draft rewrites on the live post. */
-export function rebuiltFromDraft(action: ContentActionRow): { title: string; content: string; excerpt: string; meta_description: string } {
+/**
+ * The fields a refresh or consolidate draft rewrites on the live post.
+ *
+ * The meta title follows the draft's title. A draft is markdown (one `#`
+ * title and the body), so it cannot carry a meta title of its own, and
+ * leaving the live post's old one in place put the old title in <title> and
+ * in front of the publish guard: the first cloud refresh (2026-10-30) was
+ * held for "Costs 2025" in a meta title no patch with the action could reach.
+ */
+export function rebuiltFromDraft(action: ContentActionRow): { title: string; meta_title: string; content: string; excerpt: string; meta_description: string } {
   if (!action.draft_markdown) throw new ArticleError(400, 'The action has no draft yet.');
   const rebuilt = buildBlogPostFromDraft(action.draft_markdown, { category: categoryForQuery(action.target_query) });
-  return { title: rebuilt.title, content: rebuilt.content, excerpt: rebuilt.excerpt, meta_description: rebuilt.meta_description };
+  return { title: rebuilt.title, meta_title: rebuilt.title, content: rebuilt.content, excerpt: rebuilt.excerpt, meta_description: rebuilt.meta_description };
 }
 
 interface LivePostRow {
   id: string;
   slug: string;
   title: string;
+  meta_title: string | null;
   content: string | null;
   meta_description: string | null;
   excerpt: string | null;
@@ -150,7 +159,7 @@ export async function applyActionDraft(action: ContentActionRow, appliedBy: 'app
 
   const posts = await supabaseRest<LivePostRow[]>(
     'GET',
-    `blog_posts?select=id,slug,title,content,meta_description,excerpt&id=eq.${livePostId}&limit=1`,
+    `blog_posts?select=id,slug,title,meta_title,content,meta_description,excerpt&id=eq.${livePostId}&limit=1`,
   );
   const post = posts?.[0];
   if (!post) throw new ArticleError(404, 'Target blog post not found.');
@@ -158,6 +167,7 @@ export async function applyActionDraft(action: ContentActionRow, appliedBy: 'app
   await supabaseRest('POST', 'blog_post_revisions', [{
     post_id: post.id,
     title: post.title,
+    meta_title: post.meta_title,
     content_html: post.content,
     meta_description: post.meta_description,
     excerpt: post.excerpt,
