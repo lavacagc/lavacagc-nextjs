@@ -686,14 +686,21 @@ test.describe('article routes, CLI and feedback (live backend)', () => {
       action_type: 'refresh', target_post_id: live.id, target_query: `${PREFIX} bath guide again`, status: 'approved',
     }]);
     await request.patch(`/api/articles/ingest/${live.id}`, {
-      headers: auth, data: { title: `${PREFIX} Bath Guide Reworked`, content: articleMarkdown('Bath second pass.'), action_id: again.id },
+      headers: auth, data: { content: articleMarkdown('Bath second pass.'), action_id: again.id },
     });
-    // A field-only patch with the action builds on the draft, not the live post: the drafted body survives it.
+    // A draft carries the title and body only: a field-only patch with the action is refused and the draft is untouched.
+    const draftOf = async () => (await rest<Array<{ draft_markdown: string }>>(request, 'GET', `content_actions?select=draft_markdown&id=eq.${again.id}`))[0].draft_markdown;
+    const drafted = await draftOf();
     const fieldOnly = await request.patch(`/api/articles/ingest/${live.id}`, { headers: auth, data: { category: 'Bathroom Renovation', action_id: again.id } });
-    expect(fieldOnly.status(), await fieldOnly.text()).toBe(200);
-    const [stillDrafted] = await rest<Array<{ draft_markdown: string }>>(request, 'GET', `content_actions?select=draft_markdown&id=eq.${again.id}`);
-    expect(stillDrafted.draft_markdown).toContain('Bath second pass.');
-    expect(stillDrafted.draft_markdown.startsWith(`# ${PREFIX} Bath Guide Reworked\n`)).toBe(true);
+    expect(fieldOnly.status()).toBe(400);
+    expect((await fieldOnly.json()).error).toContain('set category on the post without --action');
+    expect(await draftOf()).toBe(drafted);
+    // A title-only patch builds on the draft, not the live post: the title changes and the drafted body survives.
+    const titleOnly = await request.patch(`/api/articles/ingest/${live.id}`, { headers: auth, data: { title: `${PREFIX} Bath Guide Reworked`, action_id: again.id } });
+    expect(titleOnly.status(), await titleOnly.text()).toBe(200);
+    const retitled = await draftOf();
+    expect(retitled).toContain('Bath second pass.');
+    expect(retitled.startsWith(`# ${PREFIX} Bath Guide Reworked\n`)).toBe(true);
     const pub = await request.post(`/api/articles/ingest/${live.id}/publish`, { headers: auth, data: { action_id: again.id } });
     expect(pub.status(), await pub.text()).toBe(200);
     expect(await text(request, `/blog/${live.slug}`)).toContain('Bath second pass.');
