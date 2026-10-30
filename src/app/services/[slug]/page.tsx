@@ -112,9 +112,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       url: `https://www.lavacagc.com/services/${slug}`,
       images: [
         {
-          url: 'https://www.lavacagc.com/og-services.jpg',
-          width: 1200,
-          height: 630,
+          url: 'https://www.lavacagc.com/logo.png',
+          width: 800,
+          height: 800,
           alt: `${service.title} Services by La Vaca General Contractors`,
         },
       ],

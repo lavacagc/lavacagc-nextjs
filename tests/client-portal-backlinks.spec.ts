@@ -72,6 +72,20 @@ test.describe('/client-portal', () => {
     expect(await main.innerText()).not.toContain(EM_DASH);
   });
 
+  // og-process.jpg and the other og-*.jpg files were never in public/ and 404ed
+  // on production. Fetch the advertised path from the server under test, so a
+  // card image that is not shipped with the build fails here.
+  for (const path of ['/process', '/client-portal']) {
+    test(`${path} advertises an og:image this build serves`, async ({ page, request }) => {
+      await page.goto(path);
+      const content = await page.locator('meta[property="og:image"]').getAttribute('content');
+      expect(content).toBeTruthy();
+      const image = await request.get(new URL(content!).pathname);
+      expect(image.status()).toBe(200);
+      expect(image.headers()['content-type']).toMatch(/^image\//);
+    });
+  }
+
   test('is linked from the SpecNook box on /process', async ({ page }) => {
     await page.goto('/process');
     await expect(page.locator('main').getByRole('link', { name: 'See what your portal includes' })).toHaveAttribute(

@@ -19,9 +19,9 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/process',
     images: [
       {
-        url: 'https://www.lavacagc.com/og-process.jpg',
-        width: 1200,
-        height: 630,
+        url: 'https://www.lavacagc.com/logo.png',
+        width: 800,
+        height: 800,
         alt: 'La Vaca General Contractors Remodeling Process',
       },
     ],

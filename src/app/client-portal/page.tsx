@@ -40,7 +40,7 @@ export const metadata: Metadata = {
     url: PAGE_URL,
     // Setting openGraph here replaces the root layout's object, image included,
     // so the card image is restated. /logo.png is the root layout's image and
-    // the one OG asset that exists (og-process.jpg and friends 404 on prod).
+    // the one OG asset that exists in public/.
     images: [
       {
         url: OG_IMAGE,

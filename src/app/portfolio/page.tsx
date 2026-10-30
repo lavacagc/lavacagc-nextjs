@@ -28,9 +28,9 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/portfolio',
     images: [
       {
-        url: 'https://www.lavacagc.com/og-portfolio.jpg',
-        width: 1200,
-        height: 630,
+        url: 'https://www.lavacagc.com/logo.png',
+        width: 800,
+        height: 800,
         alt: 'La Vaca General Contractors Project Portfolio',
       },
     ],
