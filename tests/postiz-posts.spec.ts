@@ -435,6 +435,24 @@ test.describe('postiz-posts: the CLI against a stub Postiz', () => {
     }
   });
 
+  test('the Postiz origin tolerates a trailing period, slash, whitespace and a missing scheme', async () => {
+    const { postizOrigin } = await load();
+    expect(postizOrigin(' https://postiz.lavacagc.com. ')).toBe('https://postiz.lavacagc.com');
+    expect(postizOrigin('https://postiz.lavacagc.com/')).toBe('https://postiz.lavacagc.com');
+    expect(postizOrigin('postiz.lavacagc.com')).toBe('https://postiz.lavacagc.com');
+    expect(postizOrigin('http://localhost:4007/api/')).toBe('http://localhost:4007');
+    expect(postizOrigin('')).toBe('');
+    expect(() => postizOrigin('not a url')).toThrow('is not a URL');
+    const stub = await stubPostiz();
+    try {
+      const r = await cli(['--file', file, '--postiz', `${stub.url}.`, '--dry-run'], { POSTIZ_API_KEY: 'test-key' });
+      expect(r.code, r.err).toBe(0);
+      expect(stub.seen.some((s) => s.url === '/api/public/v1/integrations')).toBe(true);
+    } finally {
+      await stub.close();
+    }
+  });
+
   test('a Cloudflare Access redirect to its login page exits 1 naming the service token', async () => {
     const stub = await stubPostiz({ redirect: 'https://old-field-2a50.cloudflareaccess.com/cdn-cgi/access/login/postiz.lavacagc.com' });
     try {
