@@ -2,8 +2,9 @@
  * Social copy written by the articles skill at publish time (decision 006,
  * Q22). It replaces the retired Supabase function's "post published" email,
  * whose point was ready-made copy for Instagram, Facebook, Google Business,
- * X and Threads. After the publish, scripts/postiz-drafts.mjs queues the
- * text posts as Postiz drafts for Alex to approve (it reads this same file).
+ * X and Threads. After the publish, scripts/postiz-posts.mjs publishes the
+ * text posts through Postiz without approval (decision 007; it reads this
+ * same file).
  *
  * The skill saves the copy as docs/social/<slug>.md and passes the file to
  * `ingest-article.mjs publish --social <file>`; the publish route parses and

@@ -204,7 +204,7 @@ test.describe('postiz-posts: parsing and the per-channel mapping', () => {
 
 interface Seen { method: string; url: string; headers: IncomingMessage['headers']; body: unknown }
 
-async function stubPostiz(opts: { posts?: Array<{ publishDate?: string; [key: string]: unknown }>; createStatus?: number; redirect?: string; createdState?: string } = {}) {
+async function stubPostiz(opts: { posts?: Array<{ publishDate?: string; [key: string]: unknown }>; createStatus?: number; redirect?: string; createdState?: string; createdBody?: unknown } = {}) {
   const seen: Seen[] = [];
   // Posts this stub created, listed back by GET /posts in the state the test asked for (like Postiz after its worker ran).
   const created: Array<{ id: string; state: string; releaseURL: string | null; publishDate: string; integration: { id: string }; content: string }> = [];
@@ -233,7 +233,7 @@ async function stubPostiz(opts: { posts?: Array<{ publishDate?: string; [key: st
         for (const [i, p] of body.posts.entries()) {
           created.push({ id: `post-${i}`, state, releaseURL: state === 'PUBLISHED' ? `https://social.example/${p.integration.id}/post-${i}` : null, publishDate: body.date, integration: { id: p.integration.id }, content: p.value[0].content });
         }
-        return send(201, rows);
+        return send(201, opts.createdBody ?? rows);
       }
       return send(404, {});
     });
@@ -284,7 +284,7 @@ test.describe('postiz-posts: the CLI against a stub Postiz', () => {
       // Read back: every channel published, with its link.
       expect(r.out).toContain('facebook: published https://social.example/int-fb/post-0');
       expect(r.out).toContain('gmb: published https://social.example/int-gmb/post-3');
-      expect(r.out).toContain('are live.');
+      expect(r.out).toContain('Posts for "When should you clean gutters in Essex County?": 4 live.');
     } finally {
       await stub.close();
     }
@@ -296,7 +296,7 @@ test.describe('postiz-posts: the CLI against a stub Postiz', () => {
       const r = await cli(['--file', file, '--postiz', stub.url], { POSTIZ_API_KEY: 'test-key', POSTIZ_POLL_MS: '50', POSTIZ_POLL_TIMEOUT_MS: '2000' });
       expect(r.code).toBe(2);
       expect(r.out).toContain('x: FAILED; Postiz could not post it');
-      expect(r.out).toContain('4 of 4 posts for "When should you clean gutters in Essex County?" failed');
+      expect(r.out).toContain('Posts for "When should you clean gutters in Essex County?": 4 failed. A re-run retries only the failed channels.');
     } finally {
       await stub.close();
     }
@@ -308,10 +308,32 @@ test.describe('postiz-posts: the CLI against a stub Postiz', () => {
       const r = await cli(['--file', file, '--postiz', stub.url], { POSTIZ_API_KEY: 'test-key', POSTIZ_POLL_MS: '50', POSTIZ_POLL_TIMEOUT_MS: '300' });
       expect(r.code, r.err).toBe(0);
       expect(r.out).toContain('threads: still QUEUE after 0 s; check the calendar');
+      expect(r.out).toContain('Posts for "When should you clean gutters in Essex County?": 4 still publishing (check the calendar).');
+      expect(r.out).not.toMatch(/\d+ live/);
       expect(stub.seen.filter((s) => s.method === 'GET' && s.url.startsWith('/api/public/v1/posts?')).length).toBeGreaterThan(2);
     } finally {
       await stub.close();
     }
+  });
+
+  test('an answer without post ids is reported as such, not as live', async () => {
+    const stub = await stubPostiz({ createdBody: { ok: true } });
+    try {
+      const r = await cli(['--file', file, '--postiz', stub.url], { POSTIZ_API_KEY: 'test-key', POSTIZ_POLL_MS: '50', POSTIZ_POLL_TIMEOUT_MS: '300' });
+      expect(r.code, r.err).toBe(0);
+      expect(r.out).toContain('Postiz answered without post ids for "When should you clean gutters in Essex County?"; check the calendar.');
+      expect(r.out).not.toMatch(/\d+ live/);
+    } finally {
+      await stub.close();
+    }
+  });
+
+  test('--help prints the whole header comment', async () => {
+    const r = await cli(['--help'], {});
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toContain('Publish an article\'s social copy through Postiz');
+    expect(r.out).toContain('No dependencies. Docs: docs/articles-ingest.md.');
+    expect(r.out).not.toContain('*/');
   });
 
   test('a file without a Threads section posts to the other three channels and says so', async () => {

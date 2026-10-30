@@ -197,7 +197,7 @@ Decision 006 (Q22): the retired Supabase function used to email Alex a "post pub
 
    The message stays under Telegram's 4,096 characters: a caption that does not fit is cut with "(Caption cut to fit Telegram; the full copy is in docs/social/<slug>.md.)".
 5. The file stays in the repo as the record of what was suggested.
-   After the publish, the drafts script below queues the text posts in Postiz, so Alex approves them there instead of pasting.
+   After the publish, the posts script below publishes the text posts through Postiz, so nobody pastes them.
 
 ## Postiz posts
 

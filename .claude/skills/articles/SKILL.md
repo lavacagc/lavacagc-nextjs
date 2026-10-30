@@ -103,8 +103,7 @@ node scripts/ingest-article.mjs publish <post id> --social docs/social/<slug>.md
 
 ## 8. Social PR, then post through Postiz
 
-Only after exit 0: commit the social file alone on a branch from main and open its PR (no Co-Authored-By line), then publish the posts through Postiz.
-Article posts go out without Alex's approval (decision 007); do not pass `--draft` unless he asked to see this one first.
+Only after exit 0: commit the social file alone on a branch from main and open its PR (no Co-Authored-By line), then publish the posts through Postiz without Alex's approval (decision 007; pass `--draft` only if he asked to see this one first).
 A docs-only social PR is the one change that may skip the no-mistakes gate (CLAUDE.md, "Shipping changes"); the time suffix keeps a second run on the same day from colliding with the first branch.
 
 ```bash
@@ -112,8 +111,7 @@ git fetch origin && git switch -c social/<slug>-<YYYY-MM-DD>-<HHMM> origin/main 
 git commit -m "docs(social): <article title>" && git push -u origin HEAD && gh pr create --fill
 node scripts/postiz-posts.mjs --file docs/social/<slug>.md --postiz "$POSTIZ_URL"
 ```
-Needs `POSTIZ_API_KEY`, plus `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` for the hosted instance; it skips channels that already have the post, so a re-run is safe.
-It prints each channel as published with its link or FAILED: exit 0 all live, exit 2 some channel failed (report which; the rest are live), exit 1 the request itself failed (401, 403, 429: report its message). The article stays published either way.
+Needs `POSTIZ_API_KEY` (plus `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` for the hosted instance), skips channels that already have the post so a re-run is safe, and prints each channel as published with its link, FAILED, or still publishing: exit 2 when a channel failed (report which), exit 1 when the request itself failed (401, 403, 429: report its message), else 0, the article staying published either way.
 
 ## 9. Report
 

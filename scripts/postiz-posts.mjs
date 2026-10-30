@@ -326,7 +326,8 @@ function parseArgs(argv) {
 export async function run(argv, env = process.env, log = console.log) {
   const opts = parseArgs(argv);
   if (opts.help) {
-    log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(2, 31).map((l) => l.replace(/^ \* ?/, '')).join('\n'));
+    const lines = readFileSync(new URL(import.meta.url), 'utf8').split('\n');
+    log(lines.slice(2, lines.findIndex((l) => l.trim() === '*/')).map((l) => l.replace(/^ \* ?/, '')).join('\n'));
     return;
   }
   if (!opts.file) throw new CliError('--file docs/social/<slug>.md is required');
@@ -391,6 +392,10 @@ export async function run(argv, env = process.env, log = console.log) {
   const rows = Array.isArray(created) ? created : [];
   const noun = type === 'draft' ? 'draft' : type === 'schedule' ? 'scheduled' : 'publishing';
   for (const row of rows) log(`${byIntegration[row.integration] ?? row.integration}: ${noun} ${row.postId}`);
+  if (rows.length === 0) {
+    log(`Postiz answered without post ids for "${copy.title ?? copy.articleUrl}"; check the calendar.`);
+    return 0;
+  }
   if (type === 'draft') {
     log(`Drafts for "${copy.title ?? copy.articleUrl}" are in the Postiz calendar on ${date.slice(0, 10)}. Nothing was published or scheduled.`);
     return 0;
@@ -403,16 +408,22 @@ export async function run(argv, env = process.env, log = console.log) {
   // the report says what actually went out (X failed on 2026-10-29 with the
   // account out of API credits, and the calendar was the only place it showed).
   const states = await awaitStates(ctx, rows.map((r) => r.postId), date, env);
+  let live = 0;
   let failed = 0;
+  let pending = 0;
   for (const row of rows) {
     const channel = byIntegration[row.integration] ?? row.integration;
     const s = states[row.postId];
-    if (s?.state === 'PUBLISHED') log(`${channel}: published ${s.releaseURL ?? '(no link returned)'}`);
+    if (s?.state === 'PUBLISHED') { live += 1; log(`${channel}: published ${s.releaseURL ?? '(no link returned)'}`); }
     else if (s?.state === 'ERROR') { failed += 1; log(`${channel}: FAILED; Postiz could not post it (open the calendar entry for the provider's reason)`); }
-    else log(`${channel}: still ${s?.state ?? 'queued'} after ${Math.round(pollTimeoutMs(env) / 1000)} s; check the calendar`);
+    else { pending += 1; log(`${channel}: still ${s?.state ?? 'queued'} after ${Math.round(pollTimeoutMs(env) / 1000)} s; check the calendar`); }
   }
-  if (failed) log(`${failed} of ${rows.length} posts for "${copy.title ?? copy.articleUrl}" failed; the rest are live. A re-run retries only the failed channels.`);
-  else log(`Posts for "${copy.title ?? copy.articleUrl}" are live.`);
+  const tally = [
+    live && `${live} live`,
+    failed && `${failed} failed`,
+    pending && `${pending} still publishing (check the calendar)`,
+  ].filter(Boolean).join(', ');
+  log(`Posts for "${copy.title ?? copy.articleUrl}": ${tally}.${failed ? ' A re-run retries only the failed channels.' : ''}`);
   return failed ? 2 : 0;
 }
 

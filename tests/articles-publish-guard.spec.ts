@@ -558,8 +558,8 @@ test.describe('SK: the articles skill', () => {
       expect(text, cmd).toContain(cmd);
     }
     expect(text).toMatch(/Exit 2/);
-    // Postiz drafts after the publish, and the optional SpecNook links (2026-10-29).
-    expect(text).toContain('node scripts/postiz-drafts.mjs --file docs/social/<slug>.md');
+    // Post through Postiz after the publish, and the optional SpecNook links (2026-10-29).
+    expect(text).toContain('node scripts/postiz-posts.mjs --file docs/social/<slug>.md');
     expect(text).toContain('(references/specnook-links.md)');
     expect(existsSync(join(root, '.claude/skills/articles/references/specnook-links.md'))).toBe(true);
   });
