@@ -219,6 +219,7 @@ What it sends: one `POST <url>/api/public/v1/posts` with that `type`, `shortLink
 | gmb | The Google Business post | `topicType: "STANDARD"`, `callToActionType: "LEARN_MORE"`, `callToActionUrl`: the article |
 
 Instagram, Pinterest and TikTok are skipped because they need an image or video.
+The Threads section is the one the script treats as optional, because the social files written before Threads was added have none: such a file posts to the other three channels and prints `threads: no "Threads" section in the file, skipped`.
 The channel ids come from `GET /integrations` on every run; the first enabled channel of each kind is used.
 Postiz's `CreatePostDto` accepts `type: "now" | "schedule" | "draft"`; a draft starts no publishing workflow (verified on the local Postiz v1.47.0: `state = DRAFT`, no Temporal `post_<id>` workflow), a `now` post is handed to the publishing worker as soon as the request is accepted.
 They land as four separate calendar entries, one per channel, not one grouped post: Postiz's public API gives every entry its own group.
