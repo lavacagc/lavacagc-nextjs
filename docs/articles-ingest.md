@@ -239,7 +239,7 @@ Environment for the weekly cloud routine:
 | Variable | Value |
 | --- | --- |
 | `POSTIZ_API_KEY` | The organization's public API key (Postiz Settings, Public API). Sent as `Authorization: <key>`, without "Bearer". |
-| `POSTIZ_URL` | The Postiz origin, `https://postiz.lavacagc.com` for the hosted instance (`http://localhost:4007` on Alex's Mac). `--postiz` overrides it. |
+| `POSTIZ_URL` | The Postiz origin, `https://postiz.lavacagc.com` for the hosted instance (`http://localhost:4007` on Alex's Mac). `--postiz` overrides it. Surrounding whitespace, trailing slashes or periods, and a missing scheme (gets `https://`) are tolerated; anything else that is not a URL fails with a plain error naming the value. |
 | `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | A Cloudflare Access service token allowed by the policy in front of the hosted instance. Sent as `CF-Access-Client-Id` and `CF-Access-Client-Secret`, only when both are set. |
 
 The routine's network policy must allow the Postiz host.
