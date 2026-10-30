@@ -118,7 +118,7 @@ export default function ContactPage() {
 
               {/* License */}
               <p className="text-center text-text-muted text-xs mt-8">
-                Licensed & Insured — NJ HIC# 13VH13373800 · Fully bonded for your protection
+                Licensed & Insured - NJ HIC# 13VH13373800 · Fully bonded for your protection
               </p>
             </div>
           </div>
