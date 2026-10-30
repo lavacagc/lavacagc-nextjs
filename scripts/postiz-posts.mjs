@@ -323,6 +323,24 @@ function parseArgs(argv) {
   return out;
 }
 
+/**
+ * The Postiz origin from --postiz or POSTIZ_URL, tolerant of what a value
+ * pasted into a dashboard picks up: surrounding whitespace, a trailing slash,
+ * and a trailing period (the cloud routine's first POSTIZ_URL ended in one,
+ * 2026-10-29, and every request went to "postiz.lavacagc.com."). A value
+ * without a scheme gets https://. Empty stays empty; anything else that is
+ * not a URL is a plain error.
+ */
+export function postizOrigin(value) {
+  let v = (value ?? '').trim();
+  if (!v) return '';
+  if (!/^https?:\/\//i.test(v)) v = `https://${v}`;
+  v = v.replace(/[/.]+$/, '');
+  let url;
+  try { url = new URL(v); } catch { throw new CliError(`${value} is not a URL; set POSTIZ_URL to the Postiz origin, like https://postiz.lavacagc.com`); }
+  return url.origin;
+}
+
 export async function run(argv, env = process.env, log = console.log) {
   const opts = parseArgs(argv);
   if (opts.help) {
@@ -342,7 +360,7 @@ export async function run(argv, env = process.env, log = console.log) {
   const date = opts.date ?? (opts.draft ? defaultDate() : new Date().toISOString());
   if (Number.isNaN(Date.parse(date))) throw new CliError(`--date ${date} is not a date`);
   if (type === 'schedule' && Date.parse(date) < Date.now()) throw new CliError(`--date ${date} is in the past; drop it to publish now`);
-  const origin = (opts.postiz ?? env.POSTIZ_URL ?? '').replace(/\/+$/, '');
+  const origin = postizOrigin(opts.postiz ?? env.POSTIZ_URL);
   if (!origin) throw new CliError('Pass --postiz <url> or set POSTIZ_URL.');
   const dryRun = !!opts['dry-run'];
   const hasKey = !!env.POSTIZ_API_KEY;
