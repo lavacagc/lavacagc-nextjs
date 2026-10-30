@@ -181,7 +181,7 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
                 Your Own Project Portal
               </h2>
               <p className="text-lg text-text-secondary max-w-2xl mx-auto">
-                Every La Vaca client gets a personal project portal — a private online space where you can
+                Every La Vaca client gets a personal project portal - a private online space where you can
                 track selections, view daily progress photos, approve contracts, and see exactly where
                 your project stands. No more guessing.
               </p>
@@ -207,7 +207,7 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
                 <h3 className="text-xl font-bold text-text-primary mb-3">Daily Communication</h3>
                 <p className="text-text-secondary leading-relaxed">
                   Get daily photo updates showing exactly what was accomplished on your job site.
-                  No more wondering what&apos;s happening or calling for updates — log in anytime
+                  No more wondering what&apos;s happening or calling for updates - log in anytime
                   and see your home taking shape.
                 </p>
               </div>
@@ -219,7 +219,7 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
                 <p className="text-text-secondary leading-relaxed">
                   Every material selection is documented with photos, prices, and your approval.
                   Every punch list item is tracked to completion. Every document is signed and
-                  stored. Quality isn&apos;t just promised — it&apos;s proven.
+                  stored. Quality isn&apos;t just promised - it&apos;s proven.
                 </p>
               </div>
             </div>
@@ -239,7 +239,7 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
                   {
                     icon: Camera,
                     title: 'Daily Progress Photos',
-                    desc: "Every day our crew is on your site, you'll see photos and a summary of what was done. Watch your renovation come together from anywhere — phone, tablet, or computer.",
+                    desc: "Every day our crew is on your site, you'll see photos and a summary of what was done. Watch your renovation come together from anywhere - phone, tablet, or computer.",
                   },
                   {
                     icon: FileText,
@@ -254,7 +254,7 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
                   {
                     icon: Shield,
                     title: 'Complete Documentation',
-                    desc: 'Lien waivers, insurance certificates, signed contracts, warranties — every document your project generates is stored and accessible in your portal.',
+                    desc: 'Lien waivers, insurance certificates, signed contracts, warranties - every document your project generates is stored and accessible in your portal.',
                   },
                   {
                     icon: Smartphone,
@@ -280,7 +280,7 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
               <h3 className="text-2xl font-bold text-text-primary mb-4">Our Promise to Every Client</h3>
               <p className="text-text-secondary text-lg leading-relaxed mb-6">
                 We believe you shouldn&apos;t have to wonder what&apos;s happening with your renovation.
-                That&apos;s why we invested in technology that keeps you informed at every step — not because
+                That&apos;s why we invested in technology that keeps you informed at every step - not because
                 it&apos;s trendy, but because it&apos;s the right way to treat someone who&apos;s trusting you
                 with their home. Every La Vaca project comes with your own portal, daily updates, and
                 complete documentation. No extra cost. It&apos;s just how we work.
@@ -297,11 +297,11 @@ export default function ProcessPageClient({ processSteps }: ProcessPageClientPro
                   rel="noopener"
                   className="inline-flex items-center gap-2 text-primary hover:text-primary/80 font-semibold text-lg transition-colors"
                 >
-                  SpecNook — Construction Client Portal Software
+                  SpecNook - Construction Client Portal Software
                   <ExternalLink className="h-4 w-4" />
                 </a>
                 <p className="text-sm text-text-secondary mt-2">
-                  Selection tracking, daily updates, digital contracts, and client communication — built for contractors who care about the client experience.
+                  Selection tracking, daily updates, digital contracts, and client communication - built for contractors who care about the client experience.
                 </p>
                 <p className="text-sm mt-3">
                   <Link

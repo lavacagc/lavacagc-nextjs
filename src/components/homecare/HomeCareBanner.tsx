@@ -80,7 +80,7 @@ export default function HomeCareBanner() {
             <span className="bg-gradient-to-r from-primary to-accent-sunset bg-clip-text text-transparent">to-do list.</span>
           </h2>
           <p className="mb-5 max-w-[52ch] text-sm text-[#c7d3e2] md:text-base">
-            A free seasonal maintenance plan personalized to your home — gutters, furnace, sump pump, the works. Do it
+            A free seasonal maintenance plan personalized to your home - gutters, furnace, sump pump, the works. Do it
             yourself with our checklist, or book La Vaca to handle it.
           </p>
           <div className="flex flex-wrap items-center gap-4">
@@ -101,7 +101,7 @@ export default function HomeCareBanner() {
             )}
           </div>
           <div className="mt-4 text-xs text-[#8fa3bd]">
-            <b className="font-semibold text-[#c7d3e2]">20-second setup</b> · No account · No spam — unsubscribe anytime
+            <b className="font-semibold text-[#c7d3e2]">20-second setup</b> · No account · No spam - unsubscribe anytime
           </div>
         </div>
         <div className="flex min-w-0 flex-[0_1_340px] justify-center">

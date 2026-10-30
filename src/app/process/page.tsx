@@ -193,7 +193,7 @@ export default function ProcessPage() {
                 Our Proven Remodeling Process
               </h1>
               <p className="text-xl text-text-secondary leading-relaxed mb-8">
-                From first consultation to final walkthrough — plus a personal project portal where you can 
+                From first consultation to final walkthrough - plus a personal project portal where you can 
                 track every selection, see daily photos, and approve contracts from your phone.
               </p>
               <Link
