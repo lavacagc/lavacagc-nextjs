@@ -88,12 +88,12 @@ Alex says: "Write something for people searching how long a kitchen remodel take
 
    On success it prints the live URL; the article is on `/blog`, its own page and `sitemap.xml` on the next request.
    On exit code 2 it was refused or held: fix what the reasons name (patch the article) and publish again, or leave it for Alex and say so.
-7. Commit the social file alone on a branch from main and open its PR (no Co-Authored-By line), then queue the posts as Postiz drafts (see "Postiz drafts" below).
+7. Commit the social file alone on a branch from main and open its PR (no Co-Authored-By line), then publish the posts through Postiz (see "Postiz posts" below).
 
    ```bash
    git fetch origin && git switch -c social/<slug>-<YYYY-MM-DD> origin/main && git add docs/social/<slug>.md
    git commit -m "docs(social): <article title>" && git push -u origin HEAD && gh pr create --fill
-   node scripts/postiz-drafts.mjs --file docs/social/<slug>.md --postiz "$POSTIZ_URL"
+   node scripts/postiz-posts.mjs --file docs/social/<slug>.md --postiz "$POSTIZ_URL"
    ```
 
 8. To take it down: `node scripts/ingest-article.mjs unpublish <post id>`.
@@ -197,18 +197,19 @@ Decision 006 (Q22): the retired Supabase function used to email Alex a "post pub
 
    The message stays under Telegram's 4,096 characters: a caption that does not fit is cut with "(Caption cut to fit Telegram; the full copy is in docs/social/<slug>.md.)".
 5. The file stays in the repo as the record of what was suggested.
-   After the publish, the drafts script below queues the text posts in Postiz, so Alex approves them there instead of pasting.
+   After the publish, the posts script below publishes the text posts through Postiz, so nobody pastes them.
 
-## Postiz drafts
+## Postiz posts
 
-After a successful publish and once the social file's PR is open, `scripts/postiz-drafts.mjs` puts the article's text posts into La Vaca's Postiz as drafts.
-Nothing is posted or scheduled: a draft sits in the Postiz calendar until Alex opens it and schedules it himself (standing rule: never auto-post).
+After a successful publish and once the social file's PR is open, `scripts/postiz-posts.mjs` publishes the article's text posts through La Vaca's Postiz.
+Article posts go out without Alex's approval (decision 007, 2026-10-29); the general never-auto-post rule still covers everything else, such as reels and carousels.
 
 ```bash
-node scripts/postiz-drafts.mjs --file docs/social/<slug>.md --postiz "$POSTIZ_URL" [--date 2026-11-02T14:00:00Z] [--dry-run]
+node scripts/postiz-posts.mjs --file docs/social/<slug>.md --postiz "$POSTIZ_URL" [--date 2026-11-02T14:00:00Z | --draft] [--dry-run]
 ```
 
-What it sends: one `POST <url>/api/public/v1/posts` with `type: "draft"`, `shortLink: false` and one entry per channel.
+By default it publishes now (`type: "now"`); `--date` schedules for that time (`type: "schedule"`, must be in the future); `--draft` creates calendar drafts dated tomorrow 14:00 UTC or `--date` and publishes nothing, for a run Alex wants to look at first.
+What it sends: one `POST <url>/api/public/v1/posts` with that `type`, `shortLink: false` and one entry per channel.
 
 | Channel | Text from the file | Settings sent |
 | --- | --- | --- |
@@ -218,13 +219,17 @@ What it sends: one `POST <url>/api/public/v1/posts` with `type: "draft"`, `short
 | gmb | The Google Business post | `topicType: "STANDARD"`, `callToActionType: "LEARN_MORE"`, `callToActionUrl`: the article |
 
 Instagram, Pinterest and TikTok are skipped because they need an image or video.
+The Threads section is the one the script treats as optional, because the social files written before Threads was added have none: such a file posts to the other three channels and prints `threads: no "Threads" section in the file, skipped`.
 The channel ids come from `GET /integrations` on every run; the first enabled channel of each kind is used.
-Postiz's `CreatePostDto` accepts `type: "draft"`, and a draft starts no publishing workflow; this was verified on the local Postiz (v1.47.0): the rows were `state = DRAFT` and Temporal had no `post_<id>` workflow for them.
-The script never sends `"now"` or `"schedule"`.
-The drafts are dated tomorrow at 14:00 UTC unless `--date` says otherwise; the date is only where they sit in the calendar.
+Postiz's `CreatePostDto` accepts `type: "now" | "schedule" | "draft"`; a draft starts no publishing workflow (verified on the local Postiz v1.47.0: `state = DRAFT`, no Temporal `post_<id>` workflow), a `now` post is handed to the publishing worker as soon as the request is accepted.
 They land as four separate calendar entries, one per channel, not one grouped post: Postiz's public API gives every entry its own group.
 
-Dedup: before creating, it lists Postiz's posts (`GET /posts`) from 60 days before the earlier of today and `--date` to 60 days after the later of them, so a re-run with a far `--date` still finds its own drafts, and skips a channel that already has a post (not deleted, not errored) with a link to the article URL in its text or a text at least 90% similar.
+Dedup: before creating, it lists Postiz's posts (`GET /posts`) from 60 days before the earlier of today and the post date to 60 days after the later of them, so a re-run with a far `--date` still finds its own posts, and skips a channel that already has a post (not deleted, not errored) with a link to the article URL in its text or a text at least 90% similar.
+That is what makes a re-run after a partial failure safe: it never posts a channel twice.
+
+After a `now` publish the script reads each post back from `GET /posts` (every 5 s, up to 45 s; `POSTIZ_POLL_MS` and `POSTIZ_POLL_TIMEOUT_MS` change that) and prints, per channel, `published <link>`, `FAILED` (Postiz's worker could not post it; the provider's reason is on the calendar entry, the public API does not return it) or `still QUEUE`.
+Exit 2 means Postiz accepted the posts but at least one channel failed; the others are live, and a re-run retries only the failed ones.
+First real run, 2026-10-29: Facebook, Threads and Google Business published; X failed with HTTP 402 "credits depleted" from api.x.com (the X developer account's API credits, a billing matter, not a code one).
 The link must be the article URL itself, in any scheme, `www`, trailing-slash, query or fragment form; a longer URL that merely starts with it (another article's slug) does not count.
 A channel whose only post errored is tried again.
 If every channel already has the post, it creates nothing.
@@ -238,14 +243,14 @@ Environment for the weekly cloud routine:
 | `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | A Cloudflare Access service token allowed by the policy in front of the hosted instance. Sent as `CF-Access-Client-Id` and `CF-Access-Client-Secret`, only when both are set. |
 
 The routine's network policy must allow the Postiz host.
-Exit 0 means done (drafts created, or everything already there); exit 1 prints one plain reason:
+Exit 0 means done (posts handed to Postiz, or everything already there); exit 1 prints one plain reason:
 
 - 401: the API key is wrong.
 - 403 or a redirect: Cloudflare Access stopped the request, so the service token is missing or not allowed (without it, Access answers with a redirect to its login page).
 - 429: over Postiz's hourly limit on post creations for the organization, set by the instance's `API_LIMIT` (90 unless set; the local instance runs 30); run it again after the hour, and the dedup keeps it from doubling anything.
 
 `--dry-run` prints the request and sends nothing; with a key it still reads the channels and recent posts, without one it uses placeholder channel ids.
-The tests are stub-backed: `tests/postiz-drafts.spec.ts`.
+The tests are stub-backed: `tests/postiz-posts.spec.ts`.
 
 ## SpecNook links
 

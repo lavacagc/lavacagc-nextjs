@@ -10,14 +10,14 @@ import { catalogPricesFrom } from '../src/lib/articles/catalogPrices';
 import { HOME_SERVICES_SEED } from '../src/lib/home-services/catalogSeed';
 
 /**
- * scripts/postiz-drafts.mjs queues an article's social copy in Postiz as
+ * scripts/postiz-posts.mjs queues an article's social copy in Postiz as
  * drafts (Alex 2026-10-29). Stub-backed: the pure parsing and per-channel
  * mapping are imported from the script, and the CLI runs against a stub
  * Postiz public API that records what it was sent. No real Postiz is touched.
  */
 
-type Drafts = typeof import('../scripts/postiz-drafts.mjs');
-const load = () => import('../scripts/postiz-drafts.mjs') as Promise<Drafts>;
+type Drafts = typeof import('../scripts/postiz-posts.mjs');
+const load = () => import('../scripts/postiz-posts.mjs') as Promise<Drafts>;
 
 const SLUG = 'when-to-clean-gutters-in-essex-county';
 const ARTICLE = `https://www.lavacagc.com/blog/${SLUG}`;
@@ -59,7 +59,7 @@ const INTEGRATIONS = [
   { id: 'int-gmb', identifier: 'gmb', disabled: false },
 ];
 
-test.describe('postiz-drafts: parsing and the per-channel mapping', () => {
+test.describe('postiz-posts: parsing and the per-channel mapping', () => {
   test('the file parses into the four text posts, the same way the publish route reads it', async () => {
     const { parseSocialFile, channelTexts, fileProblems } = await load();
     const copy = parseSocialFile(FILE);
@@ -80,8 +80,10 @@ test.describe('postiz-drafts: parsing and the per-channel mapping', () => {
     expect(texts.gmb).toBe(copy.google);
     expect(texts.x).toBe(copy.x);
 
+    // Threads is the one optional section (files written before PR #111 have none); X is not.
     const missing = parseSocialFile(FILE.replace(/## Threads[\s\S]*?## Hashtags/, '## Hashtags'));
-    expect(fileProblems(missing)).toEqual(['the "Threads" section is missing']);
+    expect(fileProblems(missing)).toEqual([]);
+    expect(fileProblems(parseSocialFile(FILE.replace(/## X[\s\S]*?## Threads/, '## Threads')))).toEqual(['the "X" section is missing']);
     expect(fileProblems(parseSocialFile(FILE.replace(`Article: ${ARTICLE}`, 'Article: https://www.lavacagc.com/about'))))
       .toEqual([
         'the "Article:" line must be the article URL (.../blog/<slug>)',
@@ -101,7 +103,10 @@ test.describe('postiz-drafts: parsing and the per-channel mapping', () => {
     expect(notes).toEqual(['tiktok, pinterest, instagram: skipped, they need media']);
 
     const body = buildRequest({ copy, picked, date: '2026-10-30T14:00:00.000Z' });
-    expect(body.type).toBe('draft');
+    expect(body.type).toBe('now');
+    expect(buildRequest({ copy, picked, date: body.date, type: 'draft' }).type).toBe('draft');
+    expect(buildRequest({ copy, picked, date: body.date, type: 'schedule' }).type).toBe('schedule');
+    expect(() => buildRequest({ copy, picked, date: body.date, type: 'later' })).toThrow('Unknown post type later');
     expect(body.shortLink).toBe(false);
     expect(body.tags).toEqual([]);
     expect(body.posts.map((p) => [p.integration.id, p.settings])).toEqual([
@@ -199,8 +204,10 @@ test.describe('postiz-drafts: parsing and the per-channel mapping', () => {
 
 interface Seen { method: string; url: string; headers: IncomingMessage['headers']; body: unknown }
 
-async function stubPostiz(opts: { posts?: Array<{ publishDate?: string; [key: string]: unknown }>; createStatus?: number; redirect?: string } = {}) {
+async function stubPostiz(opts: { posts?: Array<{ publishDate?: string; [key: string]: unknown }>; createStatus?: number; redirect?: string; createdState?: string; createdBody?: unknown } = {}) {
   const seen: Seen[] = [];
+  // Posts this stub created, listed back by GET /posts in the state the test asked for (like Postiz after its worker ran).
+  const created: Array<{ id: string; state: string; releaseURL: string | null; publishDate: string; integration: { id: string }; content: string }> = [];
   const server: Server = createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => { raw += c; });
@@ -215,13 +222,18 @@ async function stubPostiz(opts: { posts?: Array<{ publishDate?: string; [key: st
         const q = new URL(req.url!, 'http://stub').searchParams;
         const from = Date.parse(q.get('startDate')!);
         const to = Date.parse(q.get('endDate')!);
-        const inWindow = (opts.posts ?? []).filter((p) => !p.publishDate || (Date.parse(p.publishDate) >= from && Date.parse(p.publishDate) <= to));
+        const inWindow = [...(opts.posts ?? []), ...created].filter((p) => !p.publishDate || (Date.parse(p.publishDate) >= from && Date.parse(p.publishDate) <= to));
         return send(200, { posts: inWindow });
       }
       if (req.method === 'POST' && req.url === '/api/public/v1/posts') {
         if (opts.createStatus) return send(opts.createStatus, { msg: 'ThrottlerException: Too Many Requests' });
-        const body = JSON.parse(raw) as { posts: Array<{ integration: { id: string } }> };
-        return send(201, body.posts.map((p, i) => ({ postId: `post-${i}`, integration: p.integration.id })));
+        const body = JSON.parse(raw) as { date: string; type: string; posts: Array<{ integration: { id: string }; value: Array<{ content: string }> }> };
+        const rows = body.posts.map((p, i) => ({ postId: `post-${i}`, integration: p.integration.id }));
+        const state = opts.createdState ?? (body.type === 'now' ? 'PUBLISHED' : body.type === 'draft' ? 'DRAFT' : 'QUEUE');
+        for (const [i, p] of body.posts.entries()) {
+          created.push({ id: `post-${i}`, state, releaseURL: state === 'PUBLISHED' ? `https://social.example/${p.integration.id}/post-${i}` : null, publishDate: body.date, integration: { id: p.integration.id }, content: p.value[0].content });
+        }
+        return send(201, opts.createdBody ?? rows);
       }
       return send(404, {});
     });
@@ -233,7 +245,7 @@ async function stubPostiz(opts: { posts?: Array<{ publishDate?: string; [key: st
 
 function cli(args: string[], env: Record<string, string>) {
   return new Promise<{ code: number; out: string; err: string }>((resolve) => {
-    execFile('node', ['scripts/postiz-drafts.mjs', ...args], {
+    execFile('node', ['scripts/postiz-posts.mjs', ...args], {
       encoding: 'utf8',
       env: { PATH: process.env.PATH ?? '', ...env } as unknown as NodeJS.ProcessEnv,
     }, (error, stdout, stderr) => {
@@ -242,32 +254,126 @@ function cli(args: string[], env: Record<string, string>) {
   });
 }
 
-test.describe('postiz-drafts: the CLI against a stub Postiz', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'postiz-drafts-'));
+test.describe('postiz-posts: the CLI against a stub Postiz', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'postiz-posts-'));
   const file = join(dir, `${SLUG}.md`);
   writeFileSync(file, FILE);
 
-  test('creates one draft request with the key as is and the Cloudflare headers', async () => {
+  test('publishes now by default, with the key as is and the Cloudflare headers', async () => {
     const stub = await stubPostiz();
     try {
-      const r = await cli(['--file', file, '--postiz', stub.url, '--date', '2026-11-02T14:00:00Z'], {
+      const before = Date.now();
+      const r = await cli(['--file', file, '--postiz', stub.url], {
         POSTIZ_API_KEY: 'test-key', CF_ACCESS_CLIENT_ID: 'cf-id', CF_ACCESS_CLIENT_SECRET: 'cf-secret',
       });
       expect(r.code, r.err).toBe(0);
       const posts = stub.seen.filter((s) => s.method === 'POST');
       expect(posts).toHaveLength(1);
       const body = posts[0].body as { type: string; date: string; posts: Array<{ settings: { __type: string } }> };
-      expect(body.type).toBe('draft');
-      expect(body.date).toBe('2026-11-02T14:00:00Z');
+      expect(body.type).toBe('now');
+      expect(Date.parse(body.date)).toBeGreaterThanOrEqual(before - 1000);
+      expect(Date.parse(body.date)).toBeLessThanOrEqual(Date.now() + 1000);
       expect(body.posts.map((p) => p.settings.__type)).toEqual(['facebook', 'threads', 'x', 'gmb']);
       for (const s of stub.seen) {
         expect(s.headers.authorization).toBe('test-key');
         expect(s.headers['cf-access-client-id']).toBe('cf-id');
         expect(s.headers['cf-access-client-secret']).toBe('cf-secret');
       }
-      expect(r.out).toContain('facebook: draft post-0');
-      expect(r.out).toContain('gmb: draft post-3');
-      expect(r.out).toContain('Nothing was published or scheduled.');
+      expect(r.out).toContain('facebook: publishing post-0');
+      expect(r.out).toContain('gmb: publishing post-3');
+      // Read back: every channel published, with its link.
+      expect(r.out).toContain('facebook: published https://social.example/int-fb/post-0');
+      expect(r.out).toContain('gmb: published https://social.example/int-gmb/post-3');
+      expect(r.out).toContain('Posts for "When should you clean gutters in Essex County?": 4 live.');
+    } finally {
+      await stub.close();
+    }
+  });
+
+  test('a channel Postiz could not publish is reported as FAILED and the exit code is 2', async () => {
+    const stub = await stubPostiz({ createdState: 'ERROR' });
+    try {
+      const r = await cli(['--file', file, '--postiz', stub.url], { POSTIZ_API_KEY: 'test-key', POSTIZ_POLL_MS: '50', POSTIZ_POLL_TIMEOUT_MS: '2000' });
+      expect(r.code).toBe(2);
+      expect(r.out).toContain('x: FAILED; Postiz could not post it');
+      expect(r.out).toContain('Posts for "When should you clean gutters in Essex County?": 4 failed. A re-run retries only the failed channels.');
+    } finally {
+      await stub.close();
+    }
+  });
+
+  test('a post still queued when the wait runs out is reported as queued, exit 0', async () => {
+    const stub = await stubPostiz({ createdState: 'QUEUE' });
+    try {
+      const r = await cli(['--file', file, '--postiz', stub.url], { POSTIZ_API_KEY: 'test-key', POSTIZ_POLL_MS: '50', POSTIZ_POLL_TIMEOUT_MS: '300' });
+      expect(r.code, r.err).toBe(0);
+      expect(r.out).toContain('threads: still QUEUE after 0 s; check the calendar');
+      expect(r.out).toContain('Posts for "When should you clean gutters in Essex County?": 4 still publishing (check the calendar).');
+      expect(r.out).not.toMatch(/\d+ live/);
+      expect(stub.seen.filter((s) => s.method === 'GET' && s.url.startsWith('/api/public/v1/posts?')).length).toBeGreaterThan(2);
+    } finally {
+      await stub.close();
+    }
+  });
+
+  test('an answer without post ids is reported as such, not as live', async () => {
+    const stub = await stubPostiz({ createdBody: { ok: true } });
+    try {
+      const r = await cli(['--file', file, '--postiz', stub.url], { POSTIZ_API_KEY: 'test-key', POSTIZ_POLL_MS: '50', POSTIZ_POLL_TIMEOUT_MS: '300' });
+      expect(r.code, r.err).toBe(0);
+      expect(r.out).toContain('Postiz answered without post ids for "When should you clean gutters in Essex County?"; check the calendar.');
+      expect(r.out).not.toMatch(/\d+ live/);
+    } finally {
+      await stub.close();
+    }
+  });
+
+  test('--help prints the whole header comment', async () => {
+    const r = await cli(['--help'], {});
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toContain('Publish an article\'s social copy through Postiz');
+    expect(r.out).toContain('No dependencies. Docs: docs/articles-ingest.md.');
+    expect(r.out).not.toContain('*/');
+  });
+
+  test('a file without a Threads section posts to the other three channels and says so', async () => {
+    const noThreads = join(dir, `${SLUG}-no-threads.md`);
+    writeFileSync(noThreads, FILE.replace(/## Threads\n[\s\S]*?\n## Hashtags/, '## Hashtags'));
+    const stub = await stubPostiz();
+    try {
+      const r = await cli(['--file', noThreads, '--postiz', stub.url], { POSTIZ_API_KEY: 'test-key' });
+      expect(r.code, r.err).toBe(0);
+      const body = stub.seen.find((s) => s.method === 'POST')!.body as { posts: Array<{ settings: { __type: string } }> };
+      expect(body.posts.map((p) => p.settings.__type)).toEqual(['facebook', 'x', 'gmb']);
+      expect(r.out).toContain('threads: no "Threads" section in the file, skipped');
+    } finally {
+      await stub.close();
+    }
+  });
+
+  test('--date schedules for that time, --draft creates drafts, a past --date is refused', async () => {
+    const stub = await stubPostiz();
+    try {
+      const scheduled = await cli(['--file', file, '--postiz', stub.url, '--date', '2099-11-02T14:00:00Z'], { POSTIZ_API_KEY: 'test-key' });
+      expect(scheduled.code, scheduled.err).toBe(0);
+      const sBody = stub.seen.filter((s) => s.method === 'POST').at(-1)!.body as { type: string; date: string };
+      expect(sBody).toMatchObject({ type: 'schedule', date: '2099-11-02T14:00:00Z' });
+      expect(scheduled.out).toContain('x: scheduled post-2');
+      expect(scheduled.out).toContain('scheduled in Postiz for 2099-11-02T14:00:00Z');
+
+      const drafted = await cli(['--file', file, '--postiz', stub.url, '--draft'], { POSTIZ_API_KEY: 'test-key' });
+      expect(drafted.code, drafted.err).toBe(0);
+      const dBody = stub.seen.filter((s) => s.method === 'POST').at(-1)!.body as { type: string; date: string };
+      expect(dBody.type).toBe('draft');
+      expect(dBody.date).toMatch(/T14:00:00\.000Z$/);
+      expect(drafted.out).toContain('facebook: draft post-0');
+      expect(drafted.out).toContain('Nothing was published or scheduled.');
+
+      const sent = stub.seen.filter((s) => s.method === 'POST').length;
+      const past = await cli(['--file', file, '--postiz', stub.url, '--date', '2020-01-01T00:00:00Z'], { POSTIZ_API_KEY: 'test-key' });
+      expect(past.code).toBe(1);
+      expect(past.err).toContain('is in the past; drop it to publish now');
+      expect(stub.seen.filter((s) => s.method === 'POST')).toHaveLength(sent);
     } finally {
       await stub.close();
     }
@@ -348,7 +454,7 @@ test.describe('postiz-drafts: the CLI against a stub Postiz', () => {
       expect(dry.code, dry.err).toBe(0);
       expect(stub.seen.some((s) => s.method === 'POST')).toBe(false);
       const printed = JSON.parse(dry.out.slice(dry.out.indexOf('{'), dry.out.lastIndexOf('}') + 1)) as { method: string; body: { type: string } };
-      expect(printed).toMatchObject({ method: 'POST', body: { type: 'draft' } });
+      expect(printed).toMatchObject({ method: 'POST', body: { type: 'now' } });
 
       const bad = await cli(['--file', file, '--postiz', stub.url], { POSTIZ_API_KEY: 'wrong' });
       expect(bad.code).toBe(1);

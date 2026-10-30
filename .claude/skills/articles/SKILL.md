@@ -1,6 +1,6 @@
 ---
 name: articles
-description: Write, refresh or SEO-edit a La Vaca blog article, publish it through the article CLI, write its social copy and queue it as Postiz drafts. Use when asked to write a blog post or article, refresh or fix a decaying post, answer an SEO queue action, improve an article for search, AEO or local SEO, or write social posts for an article.
+description: Write, refresh or SEO-edit a La Vaca blog article, publish it through the article CLI, write its social copy and post it through Postiz. Use when asked to write a blog post or article, refresh or fix a decaying post, answer an SEO queue action, improve an article for search, AEO or local SEO, or write social posts for an article.
 ---
 
 # La Vaca articles
@@ -101,18 +101,18 @@ node scripts/ingest-article.mjs publish <post id> --social docs/social/<slug>.md
   If a reason is a claim the article cannot do without, stop and leave it held for Alex (only he can "Publish anyway"; never work around the guard), and report the reasons and the admin link.
 - Exit 1: an error; report it.
 
-## 8. Social PR, then Postiz drafts
+## 8. Social PR, then post through Postiz
 
-Only after exit 0: commit the social file alone on a branch from main and open its PR (no Co-Authored-By line), then queue the posts as Postiz drafts for Alex to approve (never posted from here).
+Only after exit 0: commit the social file alone on a branch from main and open its PR (no Co-Authored-By line), then publish the posts through Postiz without Alex's approval (decision 007; pass `--draft` only if he asked to see this one first).
 A docs-only social PR is the one change that may skip the no-mistakes gate (CLAUDE.md, "Shipping changes"); the time suffix keeps a second run on the same day from colliding with the first branch.
 
 ```bash
 git fetch origin && git switch -c social/<slug>-<YYYY-MM-DD>-<HHMM> origin/main && git add docs/social/<slug>.md
 git commit -m "docs(social): <article title>" && git push -u origin HEAD && gh pr create --fill
-node scripts/postiz-drafts.mjs --file docs/social/<slug>.md --postiz "$POSTIZ_URL"
+node scripts/postiz-posts.mjs --file docs/social/<slug>.md --postiz "$POSTIZ_URL"
 ```
-Needs `POSTIZ_API_KEY`, plus `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` for the hosted instance; it skips channels that already have the post, and on a failure (401, 403, 429) you report its message, the article staying published.
+Needs `POSTIZ_API_KEY` (plus `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` for the hosted instance), skips channels that already have the post so a re-run is safe, and prints each channel as published with its link, FAILED, or still publishing: exit 2 when a channel failed (report which), exit 1 when the request itself failed (401, 403, 429: report its message), else 0, the article staying published either way.
 
 ## 9. Report
 
-Tell Alex, in this order: what you published or left held, its URL or admin link, the social copy file, the Postiz drafts per channel, the target and action id, the questions it answers, and the grill result in one line per section.
+Tell Alex, in this order: what you published or left held, its URL or admin link, the social copy file, the Postiz result per channel (publishing, skipped, or the failure), the target and action id, the questions it answers, and the grill result in one line per section.

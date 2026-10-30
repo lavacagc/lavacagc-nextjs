@@ -16,5 +16,8 @@ How long does a bathroom remodel take in Morristown, NJ? A full remodel usually 
 ## X
 A full bathroom remodel in Morristown, NJ usually takes 4 to 7 weeks, with 2 to 3 weeks of construction. https://www.lavacagc.com/blog/how-long-does-a-bathroom-remodel-take-in-morristown-nj
 
+## Threads
+The bathroom itself is only out of use for 2 to 3 weeks of a 4 to 7 week remodel in Morristown. The rest is design, approvals and waiting on materials. What held your last remodel up the longest? https://www.lavacagc.com/blog/how-long-does-a-bathroom-remodel-take-in-morristown-nj
+
 ## Hashtags
 #BathroomRemodel #MorrisCounty #Morristown #NJHomes
