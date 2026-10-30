@@ -7,6 +7,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { fetchHeroCtaVariants } from '@/lib/cta/variants.server'
 import { HeroCta } from '@/lib/cta/HeroCta'
+import { OG_CARD } from '@/lib/seo/ogCard'
 
 /**
  * Static, refreshed every five minutes so hero CTA variant edits appear without
@@ -24,9 +25,7 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com',
     images: [
       {
-        url: 'https://www.lavacagc.com/logo.webp',
-        width: 800,
-        height: 800,
+        ...OG_CARD,
         alt: 'La Vaca General Contractors - Premium Home Remodeling NJ',
       },
     ],

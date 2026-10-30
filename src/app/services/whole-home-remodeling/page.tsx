@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { CheckCircle, Clock, Home, Sparkles, Shield } from 'lucide-react';
 import CallTrackingWrapper from '@/components/CallTrackingWrapper';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 export const metadata: Metadata = {
   title: 'Whole Home Remodeling in Northern NJ',
@@ -21,9 +22,7 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/services/whole-home-remodeling',
     images: [
       {
-        url: 'https://www.lavacagc.com/og-services.jpg',
-        width: 1200,
-        height: 630,
+        ...OG_CARD,
         alt: 'Whole Home Remodeling Services by La Vaca General Contractors',
       },
     ],

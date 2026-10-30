@@ -12,6 +12,7 @@ import PageViewTracker from '@/components/PageViewTracker';
 import { faqPageJsonLd, jsonLdScript } from '@/lib/articles/faqJsonLd';
 import { readFaq } from '@/lib/articles/schemas';
 import { BlogFaq } from '@/components/blog/BlogFaq';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 // Every blog writer now revalidates this page on save and publish (the admin
 // editor and list, the article routes, the publish and rollback crons), so
@@ -124,14 +125,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
               alt: post.title,
             },
           ]
-        : [],
+        : [{ ...OG_CARD, alt: post.title }],
       siteName: 'La Vaca General Contractors',
     },
     twitter: {
       card: 'summary_large_image',
       title: post.title,
       description,
-      images: post.featured_image ? [post.featured_image] : [],
+      images: [post.featured_image || OG_CARD.url],
     },
     alternates: {
       canonical: `https://www.lavacagc.com/blog/${post.slug}`,
@@ -160,7 +161,7 @@ export default async function BlogPostPage({ params }: PageProps) {
     '@type': 'BlogPosting',
     headline: post.title,
     description: post.excerpt,
-    image: post.featured_image || 'https://www.lavacagc.com/default-blog-image.jpg',
+    image: post.featured_image || OG_CARD.url,
     datePublished: publishedAt,
     dateModified: post.updated_at,
     author: {

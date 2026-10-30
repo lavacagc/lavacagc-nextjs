@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import PortfolioContent from '@/components/PortfolioContent';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 // Hourly: publishing or unpublishing a project revalidates this page on demand (src/lib/projects/http.ts, docs/cost-review.md).
 export const revalidate = 3600;
@@ -28,9 +29,7 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/portfolio',
     images: [
       {
-        url: 'https://www.lavacagc.com/og-portfolio.jpg',
-        width: 1200,
-        height: 630,
+        ...OG_CARD,
         alt: 'La Vaca General Contractors Project Portfolio',
       },
     ],

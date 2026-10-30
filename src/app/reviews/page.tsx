@@ -5,6 +5,7 @@ import Breadcrumb from '@/components/Breadcrumb';
 import ReviewsPageClient from '@/components/ReviewsPageClient';
 import { BUSINESS_INFO } from '@/components/StructuredData';
 import { Star, Shield, Award, CheckCircle } from 'lucide-react';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 import ReviewsBottomCTA from '@/components/ReviewsBottomCTA';
 
@@ -22,9 +23,7 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/reviews',
     images: [
       {
-        url: 'https://www.lavacagc.com/logo.png',
-        width: 800,
-        height: 800,
+        ...OG_CARD,
         alt: 'Customer Reviews - La Vaca General Contractors',
       },
     ],
@@ -33,7 +32,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Customer Reviews | La Vaca GC',
     description: '5-star rated NJ home remodeling contractor',
-    images: ['/logo.png'],
+    images: [OG_CARD.url],
   },
   alternates: {
     canonical: 'https://www.lavacagc.com/reviews',

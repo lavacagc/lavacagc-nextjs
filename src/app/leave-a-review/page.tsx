@@ -4,6 +4,7 @@ import Footer from '@/components/Footer';
 import Breadcrumb from '@/components/Breadcrumb';
 import LeaveReviewClient from '@/components/LeaveReviewClient';
 import { BUSINESS_INFO } from '@/components/StructuredData';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 export const metadata: Metadata = {
   title: 'Leave a Review | Share Your Experience',
@@ -17,9 +18,7 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/leave-a-review',
     images: [
       {
-        url: 'https://www.lavacagc.com/logo.png',
-        width: 800,
-        height: 800,
+        ...OG_CARD,
         alt: 'Leave a Review - La Vaca General Contractors',
       },
     ],

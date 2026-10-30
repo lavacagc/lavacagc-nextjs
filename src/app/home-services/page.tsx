@@ -21,6 +21,7 @@ import { ExperimentZone } from '@/lib/experiments/ExperimentZone';
 import { HOME_SERVICES_SECTIONS, type HomeServicesSection } from '@/lib/experiments/surfaces';
 import { brandedTitle, breadcrumbJsonLd, faqJsonLd, jsonLdGraph, languageAlternates, pageUrl, serviceJsonLd } from '@/lib/home-services/seo';
 import { jsonLdScript } from '@/lib/jsonLd';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 /**
  * /home-services - the seven priced services and the in-page request flow
@@ -73,7 +74,7 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
       type: 'website',
       url: alternates.canonical,
       locale: lang === 'es' ? 'es_US' : 'en_US',
-      images: [{ url: 'https://www.lavacagc.com/logo.png', width: 800, height: 800, alt: 'La Vaca General Contractors' }],
+      images: [{ ...OG_CARD, alt: 'La Vaca General Contractors' }],
     },
   };
 }

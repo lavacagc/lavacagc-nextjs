@@ -5,6 +5,9 @@ import Link from "next/link";
 import Image from "next/image";
 import CallTrackingWrapper from "@/components/CallTrackingWrapper";
 
+const SPECNOOK_FOOTER_HREF =
+  "https://www.specnook.app/contractor-client-portal?utm_source=lavacagc&utm_medium=website&utm_campaign=client_portal&utm_content=footer";
+
 const Footer = () => {
   const currentYear = new Date().getFullYear();
 
@@ -107,6 +110,19 @@ const Footer = () => {
                 <Link href="/do-not-sell" className="hover:text-primary transition-colors">Do Not Sell My Info</Link>
                 {" | "}
                 <Link href="/data-rights" className="hover:text-primary transition-colors">Your Data Rights</Link>
+              </p>
+              {/* The one site-wide link to SpecNook (Alex, 2026-10-29). Followed on purpose; the
+                  direction is La Vaca to SpecNook only. A 44px row on phones, like the mobile menu. */}
+              <p className="mt-2">
+                <a
+                  href={SPECNOOK_FOOTER_HREF}
+                  target="_blank"
+                  rel="noopener"
+                  aria-label="Client portal by SpecNook (opens in a new tab)"
+                  className="inline-flex min-h-11 md:min-h-0 items-center hover:text-primary transition-colors"
+                >
+                  Client portal by SpecNook
+                </a>
               </p>
             </div>
 

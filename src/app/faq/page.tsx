@@ -13,6 +13,7 @@ import {
   Clock,
   Home,
 } from 'lucide-react';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 export const metadata: Metadata = {
   title: 'Home Remodeling FAQ for NJ Homeowners',
@@ -28,9 +29,7 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/faq',
     images: [
       {
-        url: 'https://www.lavacagc.com/logo.png',
-        width: 800,
-        height: 800,
+        ...OG_CARD,
         alt: 'Home Remodeling FAQ - La Vaca General Contractors',
       },
     ],
@@ -39,7 +38,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Home Remodeling FAQ | La Vaca GC',
     description: '50+ answers to common renovation questions',
-    images: ['/logo.png'],
+    images: [OG_CARD.url],
   },
   alternates: {
     canonical: 'https://www.lavacagc.com/faq',

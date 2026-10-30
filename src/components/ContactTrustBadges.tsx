@@ -52,7 +52,7 @@ export default function ContactTrustBadges() {
             <div className="bg-blue-100 p-2 rounded-full">
               <Shield className="h-5 w-5 text-blue-600" />
             </div>
-            <span className="font-semibold text-text-primary">Licensed &amp; Insured — HIC# 13VH13373800</span>
+            <span className="font-semibold text-text-primary">Licensed &amp; Insured - HIC# 13VH13373800</span>
           </div>
           <div className="flex items-center gap-2 text-base">
             <div className="bg-yellow-100 p-2 rounded-full">

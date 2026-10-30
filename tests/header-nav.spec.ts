@@ -62,10 +62,21 @@ test.describe('open mobile menu', () => {
    */
   const stickyBar = 'div.fixed.bottom-0:has(a[href^="tel:"]):has(a[href="/contact"])';
 
-  /** StickyCTA only arms itself past 300px of scroll. */
+  /**
+   * StickyCTA only arms itself past 300px of scroll.
+   *
+   * Instant, and settled at exactly 600, never "past 300". globals.css puts
+   * `scroll-behavior: smooth` on <html>, so a plain scrollTo(0, 600) animates,
+   * and "past 300" used to pass mid-animation. Traced on a loaded run: the menu
+   * opened at scrollY 512, scroll anchoring added the menu's 764px (to 1358),
+   * the still-running animation pulled the page back to its 600 target with the
+   * menu open, and on close anchoring subtracted the 764px from 600 - clamped
+   * to 0, under the bar's threshold, so the bar correctly stayed hidden and the
+   * "comes back" assertion failed, intermittently and only under load.
+   */
   async function scrollPastCtaThreshold(page: import('@playwright/test').Page) {
-    await page.evaluate(() => window.scrollTo(0, 600));
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(300);
+    await page.evaluate(() => window.scrollTo({ top: 600, behavior: 'instant' }));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(600);
   }
 
   test('the last entry can be brought on screen', async ({ page }) => {

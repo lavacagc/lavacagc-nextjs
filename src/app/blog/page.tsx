@@ -6,6 +6,7 @@ import Footer from '@/components/Footer';
 import { Badge } from '@/components/ui/badge';
 import BlogPostGrid from '@/components/BlogPostGrid';
 import { jsonLdScript } from '@/lib/jsonLd';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 // Every blog writer now revalidates /blog on save and publish (see
 // src/lib/articles/revalidate.ts), so this window is only the ceiling.
@@ -28,9 +29,7 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/blog',
     images: [
       {
-        url: 'https://www.lavacagc.com/og-blog.jpg',
-        width: 1200,
-        height: 630,
+        ...OG_CARD,
         alt: 'La Vaca General Contractors Blog',
       },
     ],
@@ -107,7 +106,7 @@ export default async function Blog() {
         '@type': 'Person',
         name: post.author,
       },
-      image: post.featured_image || 'https://www.lavacagc.com/default-blog-image.jpg',
+      image: post.featured_image || OG_CARD.url,
     })),
   };
 

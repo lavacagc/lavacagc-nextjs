@@ -75,7 +75,7 @@ const Header = () => {
   const router = useRouter();
   const pathname = usePathname();
   // Returning Home Care members get a direct "My Home Care" portal link instead
-  // of the public "Home Care" opt-in link — the two are mutually exclusive. The
+  // of the public "Home Care" opt-in link - the two are mutually exclusive. The
   // hc_known cookie is non-httpOnly (name hint only); real access is enforced
   // server-side.
   const [hcKnown, setHcKnown] = useState<string | null>(null);
@@ -209,14 +209,14 @@ const Header = () => {
           >
             {hcKnown ? (
               <span>
-                Your seasonal checklist is waiting —{' '}
+                Your seasonal checklist is waiting -{' '}
                 <span className="underline underline-offset-2 decoration-[#FFD9AD]/60 group-hover:decoration-white">open it →</span>
               </span>
             ) : (
               <>
                 <span className="rounded-full bg-gradient-to-r from-primary to-accent-sunset px-2 py-px text-[10px] font-extrabold tracking-wider text-white">NEW</span>
                 <span>
-                  Free seasonal home checklist —{' '}
+                  Free seasonal home checklist -{' '}
                   <span className="underline underline-offset-2 decoration-[#FFD9AD]/60 group-hover:decoration-white">get yours →</span>
                 </span>
               </>
@@ -305,6 +305,9 @@ const Header = () => {
                 <Link href="/process" className={ITEM_CLASS} role="menuitem">
                   Process
                 </Link>
+                <Link href="/client-portal" className={ITEM_CLASS} role="menuitem">
+                  Client Portal
+                </Link>
                 <Link href="/resources" className={ITEM_CLASS} role="menuitem">
                   Resources
                 </Link>
@@ -316,7 +319,7 @@ const Header = () => {
 
             {/* Right side - CTA and Menu */}
             <div className="flex items-center gap-3 lg:justify-end ml-auto lg:ml-0">
-              {/* Returning member portal access — an account chip, not a marketing link. */}
+              {/* Returning member portal access - an account chip, not a marketing link. */}
               {hcKnown && (
                 <Link
                   href="/home-care/checklist"
@@ -437,6 +440,13 @@ const Header = () => {
                   aria-label="Go to our process page"
                 >
                   Process
+                </button>
+                <button
+                  onClick={() => navigateToPage('/client-portal')}
+                  className={MOBILE_ROW}
+                  aria-label="Go to the client portal page"
+                >
+                  Client Portal
                 </button>
                 <button
                   onClick={() => navigateToPage('/resources')}

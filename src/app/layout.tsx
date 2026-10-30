@@ -16,6 +16,7 @@ import VisitorTracker from '@/components/VisitorTracker'
 import SmartBanner from '@/components/SmartBanner'
 import { RecaptchaChallengeProvider } from '@/components/recaptcha/RecaptchaChallengeProvider'
 import { ThirdPartyAnalytics } from '@/components/ThirdPartyAnalytics';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -49,9 +50,7 @@ export const metadata: Metadata = {
     description: 'Transform your NJ home with La Vaca GC\'s expert kitchen & bathroom remodeling, home additions, and renovation services. Licensed contractors. Free estimates. Call today!',
     images: [
       {
-        url: '/logo.png',
-        width: 800,
-        height: 800,
+        ...OG_CARD,
         alt: 'La Vaca General Contractors - Home Renovation NJ',
       }
     ],
@@ -60,7 +59,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Home Renovation & Remodeling Contractor NJ | Kitchen, Bathroom & Additions',
     description: 'Transform your NJ home with La Vaca GC\'s expert kitchen & bathroom remodeling, home additions, and renovation services. Licensed contractors. Free estimates. Call today!',
-    images: ['/logo.png'],
+    images: [OG_CARD.url],
   },
   robots: {
     index: true,

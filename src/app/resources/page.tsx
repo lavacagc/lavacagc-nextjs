@@ -16,6 +16,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import Link from 'next/link';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 export const metadata: Metadata = {
   title: 'NJ Renovation Guides for Homeowners',
@@ -38,9 +39,7 @@ export const metadata: Metadata = {
     type: 'website',
     images: [
       {
-        url: 'https://www.lavacagc.com/logo.png',
-        width: 800,
-        height: 800,
+        ...OG_CARD,
         alt: 'La Vaca General Contractors - Homeowner Resources',
       },
     ],

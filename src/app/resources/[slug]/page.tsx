@@ -10,6 +10,7 @@ import { resourceContent } from '@/data/resourceContent';
 import { ArrowLeft, ArrowRight, BookOpen, Phone } from 'lucide-react';
 import Link from 'next/link';
 import CallTrackingWrapper from '@/components/CallTrackingWrapper';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -37,9 +38,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       type: 'article',
       images: [
         {
-          url: 'https://www.lavacagc.com/logo.png',
-          width: 800,
-          height: 800,
+          ...OG_CARD,
           alt: article.title,
         },
       ],

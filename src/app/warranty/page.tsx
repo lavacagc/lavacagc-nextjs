@@ -6,6 +6,7 @@ import { Shield, Clock, FileText, Wrench, Home, AlertTriangle, Phone } from 'luc
 import Link from 'next/link';
 import WarrantyFormWrapper from '@/components/WarrantyFormWrapper';
 import CallTrackingWrapper from '@/components/CallTrackingWrapper';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 export const metadata: Metadata = {
   title: '5-Year Two-Tier Warranty | Home Remodeling Guarantee',
@@ -21,9 +22,7 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/warranty',
     images: [
       {
-        url: 'https://www.lavacagc.com/og-warranty.jpg',
-        width: 1200,
-        height: 630,
+        ...OG_CARD,
         alt: 'La Vaca General Contractors 5-Year Two-Tier Warranty',
       },
     ],
@@ -253,7 +252,7 @@ export default function WarrantyPage() {
                   <CardContent>
                     <p className="text-text-secondary mb-4">
                       Both warranty periods begin on the date of Substantial Completion as documented by our written
-                      certificate, or the date you take occupancy of the completed work—whichever occurs first.
+                      certificate, or the date you take occupancy of the completed work - whichever occurs first.
                     </p>
                     <p className="text-sm text-text-muted">
                       Full warranty documentation is provided at project closeout.
@@ -316,7 +315,7 @@ export default function WarrantyPage() {
                   <div>
                     <h3 className="text-lg font-semibold text-text-primary mb-2">Emergency Warranty Issues</h3>
                     <p className="text-text-secondary mb-3">
-                      For issues posing immediate risk to health, safety, or property—such as active water intrusion,
+                      For issues posing immediate risk to health, safety, or property - such as active water intrusion,
                       electrical hazards, or structural failure:
                     </p>
                     <ul className="space-y-2 text-text-secondary text-sm">

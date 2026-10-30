@@ -470,7 +470,7 @@ export default function ServiceDetailClient({ service, slug }: ServiceDetailClie
               Call (201) 212-4917
             </a>
           </div>
-          <p className="text-sm opacity-70">Licensed &amp; Insured — HIC# 13VH13373800</p>
+          <p className="text-sm opacity-70">Licensed &amp; Insured - HIC# 13VH13373800</p>
         </div>
       </section>
     </>

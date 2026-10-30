@@ -4,6 +4,7 @@ import Footer from '@/components/Footer';
 import ProcessPageClient from '@/components/ProcessPageClient';
 import HowToSchema from '@/components/seo/HowToSchema';
 import Link from 'next/link';
+import { OG_CARD } from '@/lib/seo/ogCard';
 
 export const metadata: Metadata = {
   title: 'Our 6-Step Home Remodeling Process',
@@ -19,9 +20,7 @@ export const metadata: Metadata = {
     url: 'https://www.lavacagc.com/process',
     images: [
       {
-        url: 'https://www.lavacagc.com/og-process.jpg',
-        width: 1200,
-        height: 630,
+        ...OG_CARD,
         alt: 'La Vaca General Contractors Remodeling Process',
       },
     ],
@@ -193,7 +192,7 @@ export default function ProcessPage() {
                 Our Proven Remodeling Process
               </h1>
               <p className="text-xl text-text-secondary leading-relaxed mb-8">
-                From first consultation to final walkthrough — plus a personal project portal where you can 
+                From first consultation to final walkthrough - plus a personal project portal where you can 
                 track every selection, see daily photos, and approve contracts from your phone.
               </p>
               <Link
