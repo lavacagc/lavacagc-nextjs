@@ -63,7 +63,7 @@ Phases 3 and 4 assume it exists, so it needs a spec and a build first (see decis
 
 - No migration in the repo creates `consent_logs`; the table exists only in production and in the generated types.
 - Form requires ZIP; the API treats it as optional.
-- The handler destructures only the fields it knows and hardcodes `source: 'home-care'` (`subscribe/route.ts:62`), so a shop param posted today would vanish without error.
+- The handler destructures only the fields it knows and hardcodes `source: 'home-care'` (`subscribe/route.ts:62` and `:125`), so a shop param posted today would vanish without error.
 - No UTM or `gclid` is stored on signup, so attribution is impossible today.
 - The wizard counts an empty home profile as finished.
 
