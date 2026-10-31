@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { Resend } from "https://esm.sh/resend@3.2.0";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { PHOTO_PATH, escapeHtml, signWarrantyPhotos } from "./photos.ts";
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 // Allowed origins for CORS
 const ALLOWED_ORIGINS = [
@@ -95,7 +96,10 @@ const handler = async (req)=>{
     const requestSchema = z.object({
       recaptchaToken: z.string().min(1),
       formData: formDataSchema,
-      imageUrls: z.array(z.string().url()).max(10)
+      // Object paths inside the private warranty-images bucket, as the form
+      // uploaded them (`<ms>-<index>-<file name>`). Signed below; the browser
+      // cannot read the bucket.
+      imagePaths: z.array(z.string().regex(PHOTO_PATH)).max(10).default([])
     });
     const validationResult = requestSchema.safeParse(await req.json());
     if (!validationResult.success) {
@@ -110,7 +114,7 @@ const handler = async (req)=>{
         }
       });
     }
-    const { recaptchaToken, formData, imageUrls } = validationResult.data;
+    const { recaptchaToken, formData, imagePaths } = validationResult.data;
     const requestId = crypto.randomUUID();
     console.log('Processing warranty claim:', {
       request_id: requestId,
@@ -201,6 +205,12 @@ const handler = async (req)=>{
       }
     };
     const urgencyColor = getUrgencyColor(formData.urgencyLevel);
+    // Signed links to the private photos, valid 30 days. If signing fails the
+    // email still goes out and names the files so staff can find them.
+    const { urls: imageUrls, unsigned } = await signWarrantyPhotos(supabaseClient, imagePaths);
+    const missingPhotoNote = unsigned.length > 0
+      ? `<p style="color: #b91c1c;">${unsigned.length} photo(s) could not be linked; find them in the warranty-images bucket: ${unsigned.map(escapeHtml).join(', ')}</p>`
+      : '';
     // Create image attachments section
     const imageAttachmentsHtml = imageUrls.length > 0 ? `
       <h2 style="color: #002855; margin: 30px 0 20px 0;">Attached Images (${imageUrls.length})</h2>
@@ -208,11 +218,11 @@ const handler = async (req)=>{
         ${imageUrls.map((url, index)=>`
           <div style="border: 1px solid #e5e5e5; border-radius: 8px; padding: 10px; text-align: center;">
             <img src="${url}" alt="Warranty Issue Photo ${index + 1}" style="max-width: 100%; height: 150px; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" />
-            <p style="margin: 0; font-size: 12px; color: #666;">Image ${index + 1}</p>
+            <p style="margin: 0; font-size: 12px; color: #666;"><a href="${url}">Image ${index + 1}</a> (link valid 30 days)</p>
           </div>
         `).join('')}
       </div>
-    ` : '';
+    ` + missingPhotoNote : missingPhotoNote;
     // Email to business owner
     const businessEmailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -223,7 +233,7 @@ const handler = async (req)=>{
         
         <div style="padding: 30px; background: #ffffff;">
           <div style="background: ${urgencyColor}; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center;">
-            <h2 style="margin: 0; color: white;">URGENCY: ${formData.urgencyLevel.toUpperCase()}</h2>
+            <h2 style="margin: 0; color: white;">URGENCY: ${escapeHtml(formData.urgencyLevel.toUpperCase())}</h2>
             ${formData.urgencyLevel === 'Emergency' ? '<p style="margin: 5px 0 0 0; font-weight: bold;">⚠️ IMMEDIATE ATTENTION REQUIRED</p>' : ''}
           </div>
 
@@ -231,24 +241,24 @@ const handler = async (req)=>{
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 8px 0; font-weight: bold; color: #002855;">Invoice #:</td>
-              <td style="padding: 8px 0; font-family: monospace; background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">${formData.invoiceNumber}</td>
+              <td style="padding: 8px 0; font-family: monospace; background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">${escapeHtml(formData.invoiceNumber)}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; font-weight: bold; color: #002855;">Name:</td>
-              <td style="padding: 8px 0;">${formData.firstName} ${formData.lastName}</td>
+              <td style="padding: 8px 0;">${escapeHtml(formData.firstName)} ${escapeHtml(formData.lastName)}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; font-weight: bold; color: #002855;">Email:</td>
-              <td style="padding: 8px 0;"><a href="mailto:${formData.email}">${formData.email}</a></td>
+              <td style="padding: 8px 0;"><a href="mailto:${escapeHtml(formData.email)}">${escapeHtml(formData.email)}</a></td>
             </tr>
             <tr>
               <td style="padding: 8px 0; font-weight: bold; color: #002855;">Phone:</td>
-              <td style="padding: 8px 0;"><a href="tel:${formData.phone}">${formData.phone}</a></td>
+              <td style="padding: 8px 0;"><a href="tel:${escapeHtml(formData.phone)}">${escapeHtml(formData.phone)}</a></td>
             </tr>
             ${formData.address ? `
             <tr>
               <td style="padding: 8px 0; font-weight: bold; color: #002855;">Property:</td>
-              <td style="padding: 8px 0;">${formData.address}${formData.city ? `, ${formData.city}` : ''}${formData.zipCode ? ` ${formData.zipCode}` : ''}</td>
+              <td style="padding: 8px 0;">${escapeHtml(formData.address)}${formData.city ? `, ${escapeHtml(formData.city)}` : ''}${formData.zipCode ? ` ${escapeHtml(formData.zipCode)}` : ''}</td>
             </tr>
             ` : ''}
             <tr>
@@ -261,7 +271,7 @@ const handler = async (req)=>{
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 8px 0; font-weight: bold; color: #002855;">Original Project:</td>
-              <td style="padding: 8px 0;">${formData.originalProjectType}</td>
+              <td style="padding: 8px 0;">${escapeHtml(formData.originalProjectType)}</td>
             </tr>
             ${formData.projectCompletionDate ? `
             <tr>
@@ -271,13 +281,13 @@ const handler = async (req)=>{
             ` : ''}
             <tr>
               <td style="padding: 8px 0; font-weight: bold; color: #002855;">Urgency Level:</td>
-              <td style="padding: 8px 0; color: ${urgencyColor}; font-weight: bold;">${formData.urgencyLevel}</td>
+              <td style="padding: 8px 0; color: ${urgencyColor}; font-weight: bold;">${escapeHtml(formData.urgencyLevel)}</td>
             </tr>
           </table>
 
           <h2 style="color: #002855; margin: 30px 0 20px 0;">Issue Description</h2>
           <div style="background: #f5f5f5; padding: 15px; border-left: 4px solid #EE9639; margin-bottom: 20px;">
-            <p style="margin: 0; line-height: 1.6;">${formData.issueDescription}</p>
+            <p style="margin: 0; line-height: 1.6;">${escapeHtml(formData.issueDescription)}</p>
           </div>
 
           ${imageAttachmentsHtml}
