@@ -127,9 +127,16 @@ test.describe('Link Validation', () => {
 
     console.log(`\\n🌐 Found ${externalLinks.length} external links`);
 
-    const insecureLinks = externalLinks.filter(
-      (link) => !link.rel.includes('noopener') || !link.rel.includes('noreferrer')
-    );
+    // Hosts we link to as a followed backlink on purpose (Footer.tsx, Alex
+    // 2026-10-29): they keep the referrer so the target sees La Vaca traffic,
+    // but still need noopener. Every other external link needs both.
+    const REFERRER_KEPT = ['specnook.app'];
+    const insecureLinks = externalLinks.filter((link) => {
+      if (!link.rel.includes('noopener')) return true;
+      const host = new URL(link.href).hostname;
+      const keepsReferrer = REFERRER_KEPT.some((h) => host === h || host.endsWith(`.${h}`));
+      return !keepsReferrer && !link.rel.includes('noreferrer');
+    });
 
     if (insecureLinks.length > 0) {
       console.log('\\n⚠️ External links missing security attributes:');
