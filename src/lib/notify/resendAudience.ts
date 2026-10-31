@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { audienceWritesAllowed } from './emailSafety';
 import { cleanEnv } from '@/lib/envClean';
 import {
   getSuppressedEmails,
@@ -113,6 +114,7 @@ export async function syncAudienceSuppression(
 ): Promise<AudienceSyncResult> {
   const apiKey = cleanEnv(process.env.RESEND_API_KEY);
   if (!apiKey) return emptyResult(stream, 'skipped', { reason: 'no_api_key' });
+  if (!audienceWritesAllowed()) return emptyResult(stream, 'skipped', { reason: 'not_production' });
   if (!audienceId) return emptyResult(stream, 'error', { error: 'audienceId required' });
 
   try {
@@ -229,6 +231,7 @@ export async function addOrUpdateResendContact(
     const apiKey = cleanEnv(process.env.RESEND_API_KEY);
     const audienceId = cleanEnv(process.env[RESEND_AUDIENCE_ENV]);
     if (!apiKey || !audienceId) return; // Not configured — silently skip.
+    if (!audienceWritesAllowed()) return; // Production mailing list: previews never write it.
 
     const email = normalizeEmail(rawEmail);
     if (!email || !email.includes('@')) return;
