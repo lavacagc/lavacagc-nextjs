@@ -229,12 +229,10 @@ const WarrantyForm = () => {
           throw new Error(`Failed to upload ${file.name}`);
         }
 
-        // Get public URL
-        const { data: publicData } = supabase.storage
-          .from('warranty-images')
-          .getPublicUrl(data.path);
-
-        uploadedUrls.push(publicData.publicUrl);
+        // warranty-images is private (customers' home photos): keep the object
+        // path. The notification function signs it with the service key; a
+        // public URL would never load.
+        uploadedUrls.push(data.path);
       }
 
       setImageUrls(uploadedUrls);
@@ -362,7 +360,7 @@ const WarrantyForm = () => {
         body: {
           recaptchaToken,
           formData,
-          imageUrls: uploadedImageUrls
+          imagePaths: uploadedImageUrls
         }
       });
 
