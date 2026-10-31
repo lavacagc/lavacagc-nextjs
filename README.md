@@ -54,7 +54,7 @@ Vercel's own Git deploys of `main` are off (`vercel.json` `git.deploymentEnabled
 1. **Migrate**: `supabase db push` to production, dry run first. If it fails, nothing else runs and the current site keeps serving.
 2. **Build** on the GitHub runner with production's environment (`vercel pull`, `vercel build`).
 3. **Deploy without the domain**: `vercel deploy --prebuilt --prod --skip-domain`.
-4. **Smoke the new deployment**: `/`, `/services/kitchen-remodeling`, `/home-care` and `/api/health`, which must report this commit (`scripts/smoke.sh`). If it fails, the domain never moves.
+4. **Smoke the new deployment**: `/`, `/services/kitchen-remodeling`, `/home-care` and `/api/health`, which must report this commit and, on production, a Vercel region (without one the email guard would redirect production mail; `scripts/smoke.sh`). If it fails, the domain never moves.
 5. **Promote**: `vercel promote` switches www.lavacagc.com in one step.
 6. **Confirm** the domain serves the new deployment, then smoke www.
 7. **Alert** on any failure: Telegram plus a GitHub issue.
@@ -84,6 +84,6 @@ Roll the app back first when the old app cannot work with the new schema.
 
 ## Monitoring
 
-- `GET /api/health`: commit and a 3-second Supabase ping, 200 or 503; exempt from the bot filter so monitors can read it.
+- `GET /api/health`: commit, `VERCEL_ENV`, Vercel region and a 3-second Supabase ping, 200 or 503; exempt from the bot filter so monitors can read it.
 - Better Stack uptime checks on `/` and `/api/health` (email alerts).
 - Telegram: deploy failures, new leads, form errors.
