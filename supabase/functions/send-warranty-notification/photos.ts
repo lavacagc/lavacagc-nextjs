@@ -2,7 +2,7 @@
 // against a real bucket (photos.test.ts) without serving the function.
 
 /** Object paths the form uploads: `<ms>-<index>-<file name>`, no folders. */
-export const PHOTO_PATH = /^[0-9]+-[0-9]+-[^/\\]{1,200}$/;
+export const PHOTO_PATH = /^[0-9]+-[0-9]+-[^/\\]{1,1000}$/;
 export const PHOTO_LINK_SECONDS = 60 * 60 * 24 * 30;
 
 /** Every visitor-supplied string is escaped before it enters an email's HTML. */

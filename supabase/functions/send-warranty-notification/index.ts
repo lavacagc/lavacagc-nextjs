@@ -295,7 +295,7 @@ const handler = async (req)=>{
           <div style="background: ${urgencyColor}; color: white; padding: 20px; border-radius: 8px; margin-top: 30px;">
             <h3 style="margin: 0 0 10px 0; color: white;">Response Required:</h3>
             <ul style="margin: 0; padding-left: 20px;">
-              ${formData.urgencyLevel === 'Emergency' ? '<li><strong>IMMEDIATE:</strong> Contact customer within 2 hours</li><li><strong>EMERGENCY:</strong> Dispatch team same day if possible</li>' : formData.urgencyLevel === 'High' ? '<li>Contact within 4 hours (preferably by phone)</li><li>Schedule inspection within 24 hours</li>' : '<li>Contact within 24 hours (preferably by ' + (formData.preferredContactMethod || 'phone') + ')</li><li>Schedule inspection within 2-3 business days</li>'}
+              ${formData.urgencyLevel === 'Emergency' ? '<li><strong>IMMEDIATE:</strong> Contact customer within 2 hours</li><li><strong>EMERGENCY:</strong> Dispatch team same day if possible</li>' : formData.urgencyLevel === 'High' ? '<li>Contact within 4 hours (preferably by phone)</li><li>Schedule inspection within 24 hours</li>' : '<li>Contact within 24 hours (preferably by ' + escapeHtml(formData.preferredContactMethod || 'phone') + ')</li><li>Schedule inspection within 2-3 business days</li>'}
               <li>Review warranty coverage and documentation</li>
               <li>Prepare repair plan and timeline</li>
             </ul>

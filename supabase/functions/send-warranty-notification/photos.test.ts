@@ -15,6 +15,8 @@ Deno.test("escapeHtml neutralises markup and quotes", () => {
 
 Deno.test("PHOTO_PATH accepts the form's names and nothing with a folder", () => {
   assertMatch("1761950000000-0-kitchen leak.jpg", PHOTO_PATH);
+  assertMatch(`1761950000000-0-${"a".repeat(996)}.jpg`, PHOTO_PATH);
+  assert(!PHOTO_PATH.test(`1-0-${"a".repeat(1001)}`));
   assert(!PHOTO_PATH.test("other-bucket/1-0-x.jpg"));
   assert(!PHOTO_PATH.test("../1-0-x.jpg"));
   assert(!PHOTO_PATH.test("https://evil.example/x.jpg"));
