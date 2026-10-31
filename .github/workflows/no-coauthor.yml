@@ -41,6 +41,8 @@ jobs:
           fi
           echo "Checking commits in $range"
           offending=""
+          # $range is split on purpose: it can be "-1 <sha>" (two arguments).
+          # shellcheck disable=SC2086
           for sha in $(git rev-list $range); do
             if git log -1 --format=%B "$sha" | grep -qi '^Co-Authored-By:'; then
               offending="$offending $sha"

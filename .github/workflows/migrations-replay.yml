@@ -41,7 +41,7 @@ jobs:
         run: |
           eval "$(supabase status -o env | grep '^DB_URL=')"
           applied=$(psql "$DB_URL" -Atc "select count(*) from supabase_migrations.schema_migrations")
-          files=$(ls supabase/migrations/*.sql | wc -l | tr -d ' ')
+          files=$(find supabase/migrations -maxdepth 1 -name '*.sql' | wc -l | tr -d ' ')
           echo "applied=$applied files=$files"
           test "$applied" = "$files"
       - name: Stop
