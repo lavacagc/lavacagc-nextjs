@@ -63,9 +63,11 @@ jobs:
           cache: npm
 
       # --- 1. Migrations -------------------------------------------------
+      # CLI versions are pinned: their output and flags drive production.
+      # Bump them on purpose, in their own reviewed change.
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.122.0
       - name: Link the production project
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
       - name: Pending migrations (dry run)
@@ -74,10 +76,12 @@ jobs:
         run: supabase db push --linked --yes
 
       # --- 2-3. Build and deploy without the domain ------------------------
-      - run: npm i -g vercel@latest
+      - run: npm i -g vercel@65.9.0
       - name: Pull production settings and env
         run: vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
       - name: Build
+        env:
+          NEXT_PUBLIC_APP_COMMIT_SHA: ${{ github.sha }}
         run: vercel build --prod --token "$VERCEL_TOKEN"
       - name: Deploy (domain not assigned yet)
         id: deploy

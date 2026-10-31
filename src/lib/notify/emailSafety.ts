@@ -7,11 +7,16 @@
  * redirected to one inbox, the original recipients are kept in the subject,
  * and writes to Resend audiences are skipped.
  *
- * EMAIL_REDIRECT_TO sets the inbox. On a Vercel preview without it, mail goes
- * to Resend's test sink `delivered@resend.dev` (accepted, logged, delivered to
- * no one): the fail-safe default, so a preview can never mail a customer just
- * because a variable is missing. Production is never redirected unless
- * EMAIL_REDIRECT_TO is set there on purpose.
+ * "Production" means VERCEL_ENV === 'production' and nothing else: previews,
+ * `vercel dev` (development) and local `next dev` / `next start` (unset) are
+ * all redirected, even with a real RESEND_API_KEY in .env.local.
+ *
+ * EMAIL_REDIRECT_TO sets the inbox, in any environment. Without it, mail
+ * outside production goes to Resend's test sink `delivered@resend.dev`
+ * (accepted, logged, delivered to no one): the fail-safe default, so nothing
+ * but production can mail a customer just because a variable is missing.
+ * Production is never redirected unless EMAIL_REDIRECT_TO is set there on
+ * purpose.
  */
 
 export const RESEND_TEST_SINK = 'delivered@resend.dev';
@@ -19,7 +24,7 @@ export const RESEND_TEST_SINK = 'delivered@resend.dev';
 export function emailRedirectTarget(env: NodeJS.ProcessEnv = process.env): string | null {
   const explicit = env.EMAIL_REDIRECT_TO?.trim();
   if (explicit) return explicit;
-  if (env.VERCEL_ENV === 'preview') return RESEND_TEST_SINK;
+  if (env.VERCEL_ENV !== 'production') return RESEND_TEST_SINK;
   return null;
 }
 
@@ -34,7 +39,7 @@ export function applyEmailSafety(envelope: Envelope, env: NodeJS.ProcessEnv = pr
   const target = emailRedirectTarget(env);
   if (!target) return envelope;
   const original = [...envelope.to, ...envelope.cc].join(', ') || 'nobody';
-  return { to: [target], cc: [], subject: `[${env.VERCEL_ENV ?? 'test'} → ${original}] ${envelope.subject}` };
+  return { to: [target], cc: [], subject: `[${env.VERCEL_ENV || 'local'} → ${original}] ${envelope.subject}` };
 }
 
 /** Resend audiences are production mailing lists; only production may write them. */

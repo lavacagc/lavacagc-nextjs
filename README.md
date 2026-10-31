@@ -40,7 +40,7 @@ The local pre-push hook runs only the fast checks (types, chaos static, ESLint o
 
 Vercel builds a preview for every pull request.
 Previews read and write the **staging** Supabase project `wrffvnmtmtgfrcqvcbia` (free org "La Vaca Staging"), never production.
-Outside production all email is redirected (to `EMAIL_REDIRECT_TO`, or Resend's test sink `delivered@resend.dev`) with the real recipients in the subject, and Resend audiences are never written (`src/lib/notify/emailSafety.ts`).
+Outside production (any `VERCEL_ENV` other than `production`, including previews, `vercel dev` and local `next dev`/`next start`) all email is redirected (to `EMAIL_REDIRECT_TO`, or Resend's test sink `delivered@resend.dev`) with the real recipients in the subject, and Resend audiences are never written (`src/lib/notify/emailSafety.ts`).
 Previews sit behind Vercel Authentication: open them signed in, or use `vercel curl <url>/path`.
 
 Staging gets the schema from `supabase/migrations` and public content from production with `SUPABASE_ACCESS_TOKEN=... node scripts/db/seed-staging.mjs` (an allowlist of content tables; no customer data).
@@ -66,7 +66,7 @@ Every new migration needs a `-- Rollback:` comment saying how to undo it; CI fai
 Migrations land before the new app, so they must work with the app that is still running: add columns and tables first, remove them in a later deploy.
 `.github/workflows/migrations-replay.yml` replays every migration on a fresh database for each PR that touches `supabase/`.
 To check production's migration history: `supabase migration list --linked`.
-If production drifts from the migrations again, `scripts/db/schema-drift.mjs` turns a schema dump diff into an idempotent migration (see `20261031000000_production_schema_baseline.sql`).
+If production drifts from the migrations again, `scripts/db/schema-drift.mjs` turns a schema dump diff into an idempotent migration (see `20261031000200_production_schema_baseline.sql`).
 
 ### Edge functions
 

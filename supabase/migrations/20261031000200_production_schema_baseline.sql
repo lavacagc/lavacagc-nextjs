@@ -14,13 +14,26 @@
 -- definition, or a DO block guarded on the catalog. On production it changes
 -- nothing (proven in BEGIN/ROLLBACK against production before merge).
 --
--- Security note: some storage policies reproduced below grant writes to role
--- `public` (anonymous). They are copied as they are so previews behave like
--- production; tightening them is a separate, reviewed migration.
+-- Security note: four storage policies production once had are deliberately
+-- omitted: "Authenticated users can delete project images", "Authenticated
+-- users can update project images", "Authenticated users can upload project
+-- images" and "Anyone can view warranty images". They granted anonymous
+-- delete, update and upload of portfolio photos and anonymous read of private
+-- warranty photos, and 20261031000100_tighten_storage_policies.sql dropped
+-- them. This baseline sorts after that migration and must never recreate them.
+-- "Anyone can upload warranty images" (role `public`) stays, because the
+-- public warranty form uploads through it.
 --
 -- Rollback: none needed on production (no-op there). On a fresh database, drop
--- the 26 tables listed in docs/home-care-audit.md with CASCADE, drop the 44 added
--- columns, and delete the 4 bucket rows; or rebuild the database from scratch.
+-- these 26 tables with CASCADE: ai_content_history, ai_content_snippets,
+-- analytics_config, broken_links, calculator_lead_selections,
+-- calculator_option_categories, calculator_option_items,
+-- calculator_project_types, consent_logs, custom_events, data_rights_requests,
+-- email_rate_limits, gmb_config, image_optimizations, material_estimates,
+-- non_negotiables, opt_out_requests, page_revisions, pages, redirects,
+-- review_sync_log, seo_analysis, seo_metadata, services, site_content,
+-- warranty_claims. Then drop the 44 added columns (docs/home-care-audit.md)
+-- and delete the 4 bucket rows; or rebuild the database from scratch.
 
 
 DO $drift$ BEGIN
@@ -1984,20 +1997,8 @@ DO $drift$ BEGIN
 END $drift$;
 
 DO $drift$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'Anyone can view warranty images') THEN
-    EXECUTE 'CREATE POLICY "Anyone can view warranty images" ON storage.objects FOR SELECT TO public USING ((bucket_id = ''warranty-images''::text))';
-  END IF;
-END $drift$;
-
-DO $drift$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'Authenticated users can delete blog images') THEN
     EXECUTE 'CREATE POLICY "Authenticated users can delete blog images" ON storage.objects FOR DELETE TO authenticated USING ((bucket_id = ''blog-images''::text))';
-  END IF;
-END $drift$;
-
-DO $drift$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'Authenticated users can delete project images') THEN
-    EXECUTE 'CREATE POLICY "Authenticated users can delete project images" ON storage.objects FOR DELETE TO public USING ((bucket_id = ''project-images''::text))';
   END IF;
 END $drift$;
 
@@ -2008,20 +2009,8 @@ DO $drift$ BEGIN
 END $drift$;
 
 DO $drift$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'Authenticated users can update project images') THEN
-    EXECUTE 'CREATE POLICY "Authenticated users can update project images" ON storage.objects FOR UPDATE TO public USING ((bucket_id = ''project-images''::text))';
-  END IF;
-END $drift$;
-
-DO $drift$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'Authenticated users can upload blog images') THEN
     EXECUTE 'CREATE POLICY "Authenticated users can upload blog images" ON storage.objects FOR INSERT TO authenticated WITH CHECK ((bucket_id = ''blog-images''::text))';
-  END IF;
-END $drift$;
-
-DO $drift$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'Authenticated users can upload project images') THEN
-    EXECUTE 'CREATE POLICY "Authenticated users can upload project images" ON storage.objects FOR INSERT TO public WITH CHECK ((bucket_id = ''project-images''::text))';
   END IF;
 END $drift$;
 

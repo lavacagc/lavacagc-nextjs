@@ -19,13 +19,18 @@ export async function GET() {
   return NextResponse.json(
     {
       status: healthy ? 'ok' : 'degraded',
-      commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'local',
+      commit: servingCommit(),
       env: process.env.VERCEL_ENV ?? 'local',
       db,
       ms: Date.now() - started,
     },
     { status: healthy ? 200 : 503, headers: { 'Cache-Control': 'no-store' } },
   );
+}
+
+function servingCommit(): string {
+  const sha = process.env.NEXT_PUBLIC_APP_COMMIT_SHA?.trim() || process.env.VERCEL_GIT_COMMIT_SHA?.trim();
+  return sha ? sha.slice(0, 7) : 'local';
 }
 
 async function pingDatabase(): Promise<{ ok: boolean; ms: number; error?: string }> {
