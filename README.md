@@ -40,7 +40,8 @@ The local pre-push hook runs only the fast checks (types, chaos static, ESLint o
 
 Vercel builds a preview for every pull request.
 Previews read and write the **staging** Supabase project `wrffvnmtmtgfrcqvcbia` (free org "La Vaca Staging"), never production.
-Outside production (any `VERCEL_ENV` other than `production`, including previews, `vercel dev` and local `next dev`/`next start`) all email is redirected (to `EMAIL_REDIRECT_TO`, or Resend's test sink `delivered@resend.dev`) with the real recipients in the subject, and Resend audiences are never written (`src/lib/notify/emailSafety.ts`).
+Outside real production (a Vercel production function: `VERCEL_ENV=production` with the runtime-only `VERCEL_REGION` set) all email is redirected, including previews, `vercel dev`, and local `next dev`/`next start` even on a `.env.local` pulled from production.
+It goes to `EMAIL_REDIRECT_TO`, or else Resend's test sink `delivered@resend.dev`, with the real recipients in the subject, and Resend audiences are never written (`src/lib/notify/emailSafety.ts`).
 Previews sit behind Vercel Authentication: open them signed in, or use `vercel curl <url>/path`.
 
 Staging gets the schema from `supabase/migrations` and public content from production with `SUPABASE_ACCESS_TOKEN=... node scripts/db/seed-staging.mjs` (an allowlist of content tables; no customer data).

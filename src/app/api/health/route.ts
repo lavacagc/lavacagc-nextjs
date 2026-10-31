@@ -8,9 +8,10 @@ const DB_TIMEOUT_MS = 3000;
  * GET /api/health
  *
  * Public liveness and readiness for uptime monitors and the deploy pipeline:
- * which commit is serving, and whether Supabase answers a one-row read with
- * the public key within 3 seconds. 200 when healthy, 503 when the database
- * check fails. Returns no secrets and no data beyond those two facts.
+ * which commit is serving, in which environment and Vercel region, and
+ * whether Supabase answers a one-row read with the public key within 3
+ * seconds. 200 when healthy, 503 when the database check fails. Returns no
+ * secrets and no data beyond those facts.
  */
 export async function GET() {
   const started = Date.now();
@@ -21,6 +22,7 @@ export async function GET() {
       status: healthy ? 'ok' : 'degraded',
       commit: servingCommit(),
       env: process.env.VERCEL_ENV ?? 'local',
+      region: process.env.VERCEL_REGION ?? null,
       db,
       ms: Date.now() - started,
     },

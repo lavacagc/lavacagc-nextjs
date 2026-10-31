@@ -15,7 +15,7 @@ test.describe('health check', () => {
     expect(typeof body.db.ok).toBe('boolean');
     expect(res.headers()['cache-control']).toContain('no-store');
     // Nothing beyond these fields: no env values, no keys.
-    expect(Object.keys(body).sort()).toEqual(['commit', 'db', 'env', 'ms', 'status']);
+    expect(Object.keys(body).sort()).toEqual(['commit', 'db', 'env', 'ms', 'region', 'status']);
   });
 
   test('a monitor that identifies as curl gets through', async ({ request }) => {

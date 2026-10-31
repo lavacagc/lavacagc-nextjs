@@ -6,9 +6,20 @@ const env = (v: Record<string, string>) => v as unknown as NodeJS.ProcessEnv;
 
 test.describe('email safety outside production', () => {
   test('production sends to the real recipients and may write audiences', () => {
-    const prod = env({ VERCEL_ENV: 'production' });
+    const prod = env({ VERCEL_ENV: 'production', VERCEL_REGION: 'iad1' });
     expect(applyEmailSafety(envelope, prod)).toEqual(envelope);
     expect(audienceWritesAllowed(prod)).toBe(true);
+  });
+
+  test('production env pulled into .env.local (no VERCEL_REGION) never mails a real person', () => {
+    const pulled = env({ VERCEL_ENV: 'production' });
+    expect(emailRedirectTarget(pulled)).toBe(RESEND_TEST_SINK);
+    const out = applyEmailSafety(envelope, pulled);
+    expect(out.to).toEqual([RESEND_TEST_SINK]);
+    expect(out.cc).toEqual([]);
+    expect(out.subject).toBe('[production → homeowner@example.com, office@lavacagc.com] Confirm your email');
+    expect(audienceWritesAllowed(pulled)).toBe(false);
+    expect(emailRedirectTarget(env({ VERCEL_ENV: 'production', VERCEL_REGION: ' ' }))).toBe(RESEND_TEST_SINK);
   });
 
   test('a preview with no setting still never mails a real person', () => {
@@ -42,8 +53,8 @@ test.describe('email safety outside production', () => {
     const out = applyEmailSafety(envelope, env({ VERCEL_ENV: 'preview', EMAIL_REDIRECT_TO: 'tests@example.com' }));
     expect(out.to).toEqual(['tests@example.com']);
     expect(audienceWritesAllowed(env({ EMAIL_REDIRECT_TO: 'tests@example.com' }))).toBe(false);
-    const prod = applyEmailSafety(envelope, env({ VERCEL_ENV: 'production', EMAIL_REDIRECT_TO: 'tests@example.com' }));
-    expect(prod.to).toEqual(['tests@example.com']);
-    expect(audienceWritesAllowed(env({ VERCEL_ENV: 'production', EMAIL_REDIRECT_TO: 'tests@example.com' }))).toBe(false);
+    const prodEnv = env({ VERCEL_ENV: 'production', VERCEL_REGION: 'iad1', EMAIL_REDIRECT_TO: 'tests@example.com' });
+    expect(applyEmailSafety(envelope, prodEnv).to).toEqual(['tests@example.com']);
+    expect(audienceWritesAllowed(prodEnv)).toBe(false);
   });
 });

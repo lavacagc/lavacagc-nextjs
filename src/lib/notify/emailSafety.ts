@@ -7,9 +7,12 @@
  * redirected to one inbox, the original recipients are kept in the subject,
  * and writes to Resend audiences are skipped.
  *
- * "Production" means VERCEL_ENV === 'production' and nothing else: previews,
- * `vercel dev` (development) and local `next dev` / `next start` (unset) are
- * all redirected, even with a real RESEND_API_KEY in .env.local.
+ * "Production" means a real Vercel production function: VERCEL_ENV ===
+ * 'production' AND VERCEL_REGION set. VERCEL_REGION is a runtime-only system
+ * variable, so `vercel env pull --environment=production` never writes it into
+ * .env.local; a local run on pulled production env is still redirected.
+ * Previews, `vercel dev` (development) and local `next dev` / `next start`
+ * are all redirected, even with a real RESEND_API_KEY in .env.local.
  *
  * EMAIL_REDIRECT_TO sets the inbox, in any environment. Without it, mail
  * outside production goes to Resend's test sink `delivered@resend.dev`
@@ -21,10 +24,14 @@
 
 export const RESEND_TEST_SINK = 'delivered@resend.dev';
 
+export function isRealProduction(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.VERCEL_ENV === 'production' && Boolean(env.VERCEL_REGION?.trim());
+}
+
 export function emailRedirectTarget(env: NodeJS.ProcessEnv = process.env): string | null {
   const explicit = env.EMAIL_REDIRECT_TO?.trim();
   if (explicit) return explicit;
-  if (env.VERCEL_ENV !== 'production') return RESEND_TEST_SINK;
+  if (!isRealProduction(env)) return RESEND_TEST_SINK;
   return null;
 }
 
