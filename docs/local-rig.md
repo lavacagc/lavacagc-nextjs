@@ -36,7 +36,7 @@ NEXT_PUBLIC_SITE_URL=http://localhost:<port>
 
 Leave Resend, Telegram, Twilio, SpecNook and Places unset so those paths degrade to `not_configured`, which is itself worth testing.
 
-Port 3000 belongs to the pre-push smoke run; use 3101 and up for dev servers.
+Port 3000 belongs to the Playwright suite's `npm run start`; use 3101 and up for dev servers.
 
 ## Admin sign-in
 

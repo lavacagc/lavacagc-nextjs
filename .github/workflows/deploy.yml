@@ -1,0 +1,139 @@
+name: Deploy production
+
+# The only path to production (README, "Deploys").
+#
+#   1. Migrate: supabase db push to production, dry run first. A failure stops
+#      everything; the old app keeps serving.
+#   2. Build on this runner (free on a public repo) with production's env.
+#   3. Deploy the prebuilt output WITHOUT assigning the domain.
+#   4. Smoke that deployment: homepage, a service page, /home-care and
+#      /api/health reporting this commit. A failure stops here; the domain
+#      still points at the previous deployment.
+#   5. Promote it: the domain switches in one step.
+#   6. Confirm the domain now serves this deployment, and smoke www.
+#   7. Any failure: Telegram alert and a GitHub issue.
+#
+# Vercel's own Git deploys of main are off (vercel.json git.deploymentEnabled),
+# so it cannot race this. Pull-request previews still deploy from Git.
+# Migrations must stay backward compatible with the running app, because they
+# land before the new app does (README, "Migrations").
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.lavish/**'
+      - '.claude/**'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-deploy
+    env:
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Required secrets are present
+        run: |
+          missing=""
+          for v in VERCEL_TOKEN SUPABASE_ACCESS_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID SUPABASE_PROJECT_REF; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then echo "::error::missing in environment production-deploy:$missing"; exit 1; fi
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # --- 1. Migrations -------------------------------------------------
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Link the production project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+      - name: Pending migrations (dry run)
+        run: supabase db push --linked --dry-run
+      - name: Apply migrations
+        run: supabase db push --linked --yes
+
+      # --- 2-3. Build and deploy without the domain ------------------------
+      - run: npm i -g vercel@latest
+      - name: Pull production settings and env
+        run: vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
+      - name: Build
+        run: vercel build --prod --token "$VERCEL_TOKEN"
+      - name: Deploy (domain not assigned yet)
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --prod --skip-domain --token "$VERCEL_TOKEN")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed $url"
+
+      # --- 4. Smoke the new deployment ---------------------------------------
+      - name: Smoke the deployment before it takes traffic
+        env:
+          SMOKE_CURL: vercel curl --token ${{ secrets.VERCEL_TOKEN }}
+        run: bash scripts/smoke.sh "${{ steps.deploy.outputs.url }}" "$GITHUB_SHA"
+
+      # --- 5. Promote ----------------------------------------------------------
+      - name: Promote
+        run: vercel promote "${{ steps.deploy.outputs.url }}" --yes --token "$VERCEL_TOKEN"
+
+      # --- 6. Confirm --------------------------------------------------------
+      - name: The domain serves this deployment
+        run: |
+          want=$(vercel inspect "${{ steps.deploy.outputs.url }}" --token "$VERCEL_TOKEN" 2>&1 | awk '/^ *id/ {print $2; exit}')
+          for _ in $(seq 1 12); do
+            got=$(vercel inspect www.lavacagc.com --token "$VERCEL_TOKEN" 2>&1 | awk '/^ *id/ {print $2; exit}')
+            [ -n "$want" ] && [ "$got" = "$want" ] && { echo "www.lavacagc.com -> $got"; exit 0; }
+            sleep 5
+          done
+          echo "::error::www.lavacagc.com serves $got, expected $want"; exit 1
+      - name: Smoke www (best effort from a datacenter IP)
+        run: |
+          # Cloudflare may challenge GitHub's runners; a challenge is reported,
+          # not failed, because the deployment itself passed step 4 and Better
+          # Stack watches www from outside.
+          if ! out=$(bash scripts/smoke.sh https://www.lavacagc.com "$GITHUB_SHA"); then
+            echo "$out"
+            if curl -s -o /dev/null -D - https://www.lavacagc.com/ | grep -qi '^cf-mitigated: challenge'; then
+              echo "::warning::Cloudflare challenged the runner; www not verifiable from here"
+            else
+              exit 1
+            fi
+          else
+            echo "$out"
+          fi
+
+      # --- 7. Alert --------------------------------------------------------------
+      - name: Alert on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          msg="Production deploy FAILED for ${GITHUB_SHA::7}. Production still serves the previous version unless the failure was after promotion. $RUN_URL"
+          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+            curl -s -o /dev/null -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=${msg}" || true
+          fi
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "Production deploy failed: ${GITHUB_SHA::7}" --body "$msg" || true

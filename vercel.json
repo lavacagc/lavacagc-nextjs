@@ -12,6 +12,11 @@
       "permanent": true
     }
   ],
+  "git": {
+    "deploymentEnabled": {
+      "main": false
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/publish",
