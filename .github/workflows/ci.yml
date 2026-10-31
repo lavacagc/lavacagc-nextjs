@@ -102,7 +102,9 @@ jobs:
 
   build:
     name: Build and smoke
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest is 26.04, which Playwright 1.57 cannot install
+    # chromium on. Move to ubuntu-latest once Playwright supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     needs: changes
     if: needs.changes.outputs.code == 'true'

@@ -1,0 +1,39 @@
+# Gitleaks config. Committed because CI (.github/workflows/ci.yml, "Secret
+# scan") loads it with --config; the scan fails closed if it is missing.
+#
+# Defaults are good - we only add allowlist entries for known-safe patterns
+# that would otherwise false-positive (e.g. the public Supabase anon key,
+# example tokens in tests).
+
+title = "Lavaca website credential scan"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known-safe patterns intentionally present in the repo"
+paths = [
+  '''node_modules''',
+  '''\.next''',
+  '''playwright-report''',
+  '''test-results''',
+  '''package-lock\.json''',
+]
+regexes = [
+  # NEXT_PUBLIC_* env values are by definition browser-exposed (publishable),
+  # not secrets. Never block those.
+  '''NEXT_PUBLIC_[A-Z0-9_]+''',
+  # Test/local-dev placeholder strings used in CI workflow + Playwright env.
+  '''local-dev-secret''',
+  '''placeholder''',
+  '''example''',
+  '''fixture-access-token''',
+  # The stub-run Resend webhook secret in playwright.config.ts; it is base64
+  # for "test-only-resend-webhook-secret" and never set over a real run.
+  '''whsec_dGVzdC1vbmx5LXJlc2VuZC13ZWJob29rLXNlY3JldA==''',
+  # The production project's ANON key, matched on its JWT payload
+  # {"iss":"supabase","ref":"xrvbrnrbnyfdwkfdoepq","role":"anon" so only that
+  # publishable key passes; a service_role key for the same project still fails.
+  # It sits in the cron http_post headers of the schema baseline migration.
+  '''\.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhydmJybnJibnlmZHdrZmRvZXBxIiwicm9sZSI6ImFub24i''',
+]
