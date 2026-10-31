@@ -7,7 +7,9 @@
 # /api/health. Pages send a real browser user-agent: the bad-bot filter in
 # src/middleware.ts answers 403 to curl, and a smoke test should measure the
 # site, not the filter. /api/health must say "ok" and, when given, report the
-# expected commit (so a stale deployment cannot pass for the new one).
+# expected commit (so a stale deployment cannot pass for the new one). When it
+# reports env production it must also report a region, because the email guard
+# treats production without VERCEL_REGION as non-production.
 #
 # SMOKE_CURL overrides the client, e.g. SMOKE_CURL="vercel curl" for deployment
 # URLs behind Vercel Authentication (arguments after -- go to curl).
@@ -38,11 +40,14 @@ for path in / /services/kitchen-remodeling /home-care; do
 done
 
 read -r code file < <(fetch "$base/api/health")
-status=$(node -e 'try{const b=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(b.status+" "+b.commit)}catch{console.log("unparseable -")}' "$file")
-read -r hstatus hcommit <<<"$status"
+status=$(node -e 'const w=(v)=>typeof v==="string"&&v.trim()?v.trim():"-";try{const b=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log([w(b.status),w(b.commit),w(b.env),w(b.region)].join(" "))}catch{console.log("unparseable - - -")}' "$file")
+read -r hstatus hcommit henv hregion <<<"$status"
 if [ "$code" = "200" ] && [ "$hstatus" = "ok" ] && { [ -z "$want_commit" ] || [ "$hcommit" = "${want_commit:0:7}" ]; }; then
-  echo "ok   $code /api/health ($hstatus, commit $hcommit)"
+  echo "ok   $code /api/health ($hstatus, commit $hcommit, env $henv, region $hregion)"
 else
   echo "FAIL $code /api/health (status $hstatus, commit $hcommit, expected ${want_commit:0:7})"; fail=1
+fi
+if [ "$henv" = "production" ] && [ "$hregion" = "-" ]; then
+  echo "FAIL /api/health reports env production with no region: production email would be redirected to the test sink (src/lib/notify/emailSafety.ts)"; fail=1
 fi
 exit $fail
