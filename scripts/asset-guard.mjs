@@ -8,25 +8,24 @@
 //
 // Prints the total size of public/ and, under GitHub Actions, writes a summary.
 
-import { readdirSync, statSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { statSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const ROOT = 'public';
 const LIMIT_BYTES = 1024 * 1024; // 1 MB
 const BASELINE = 'scripts/asset-guard-baseline.json';
 
-function walk(dir, out = []) {
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    const st = statSync(p);
-    if (st.isDirectory()) walk(p, out);
-    else out.push({ path: relative('.', p), bytes: st.size });
-  }
-  return out;
+// Only files git tracks: an untracked local file never ships, and counting it
+// made the laptop and CI disagree (164.8 MB locally, 118.8 MB in CI).
+function trackedFiles() {
+  return execFileSync('git', ['ls-files', '-z', '--', ROOT], { encoding: 'utf8' })
+    .split('\0')
+    .filter(Boolean)
+    .map((path) => ({ path, bytes: statSync(path).size }));
 }
 
 const mb = (b) => `${(b / 1024 / 1024).toFixed(1)} MB`;
-const files = walk(ROOT);
+const files = trackedFiles();
 const total = files.reduce((n, f) => n + f.bytes, 0);
 const large = files.filter((f) => f.bytes > LIMIT_BYTES).sort((a, b) => b.bytes - a.bytes);
 
