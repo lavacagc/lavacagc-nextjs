@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Asset guard: fail when a file in public/ is over the size limit, unless it is
+// Asset guard: fail when a git-tracked file in public/ is over the size limit, unless it is
 // a known large file listed in scripts/asset-guard-baseline.json and has not
 // grown. The baseline is a ratchet: it only shrinks as files get compressed.
 //
 //   node scripts/asset-guard.mjs              # check (CI)
-//   node scripts/asset-guard.mjs --baseline   # rewrite the baseline from disk
+//   node scripts/asset-guard.mjs --baseline   # rewrite the baseline from tracked files
 //
-// Prints the total size of public/ and, under GitHub Actions, writes a summary.
+// Prints the total size of the tracked files in public/ and, under GitHub Actions, writes a summary.
 
 import { statSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';

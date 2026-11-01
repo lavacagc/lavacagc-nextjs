@@ -24,7 +24,7 @@ To develop against a local database instead, follow `docs/local-rig.md`.
 | `npm run chaos:static` | structural invariants with a ratchet (`chaos/`) |
 | `npm run test:e2e` | stub-backed production build, then the Playwright suite |
 | `npm run test:smoke` | the critical-path specs, against an existing `test:build` |
-| `node scripts/asset-guard.mjs` | fails on a new `public/` file over 1 MB |
+| `node scripts/asset-guard.mjs` | fails on a new git-tracked `public/` file over 1 MB (untracked files are ignored) |
 | `deno test --allow-net --allow-env supabase/functions/send-warranty-notification/photos.test.ts` | edge-function helpers (storage half needs staging env, see the file) |
 
 Read `docs/testing.md` before writing or running specs: every Playwright script pins a stub or live backend.
