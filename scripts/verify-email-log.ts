@@ -6,12 +6,16 @@
  *   - The email_log migration is applied to the target Supabase project.
  *   - .env.local has RESEND_API_KEY + SUPABASE_SECRET_KEY + NEXT_PUBLIC_SUPABASE_URL
  *     (pull with `vercel env pull --environment=production` if missing).
+ *   - EMAIL_REDIRECT_TO is set to the owner's inbox. Outside a real Vercel
+ *     production function every send is redirected (src/lib/notify/emailSafety.ts),
+ *     to EMAIL_REDIRECT_TO or else to Resend's test sink delivered@resend.dev,
+ *     so without it nothing reaches a real inbox.
  *
  * Run:
  *   npx ts-node -r tsconfig-paths/register --compiler-options '{"module":"commonjs"}' \
  *     -r dotenv/config scripts/verify-email-log.ts dotenv_config_path=.env.local
  *
- * Sends ONE real email to the owner's own inbox (TEST_TO below) — the
+ * Sends ONE real email to the owner's own inbox (EMAIL_REDIRECT_TO) — the
  * "test to me first" pattern — then prints the audit row it wrote.
  */
 import { sendTrackedEmail } from '@/lib/notify/sendEmail';

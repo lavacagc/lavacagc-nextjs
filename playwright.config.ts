@@ -1,5 +1,22 @@
 import { defineConfig, devices } from '@playwright/test';
 
+/**
+ * A fixed Svix signing secret for the stub-backed server, so
+ * tests/chaos/regressions/resend-webhook-signature.spec.ts can sign real
+ * payloads. Set only on stub runs and never over a real one; the started
+ * `npm run start` inherits it from this process.
+ */
+export const TEST_RESEND_WEBHOOK_SECRET = 'whsec_dGVzdC1vbmx5LXJlc2VuZC13ZWJob29rLXNlY3JldA==';
+if (process.env.E2E_STUB_BACKEND && !process.env.RESEND_WEBHOOK_SECRET) {
+  process.env.RESEND_WEBHOOK_SECRET = TEST_RESEND_WEBHOOK_SECRET;
+}
+// The stub server must match CI's, which has no ingest token. Locally
+// `next start` would load one from .env.local (it never overrides a variable
+// already set), and the "no token means 404" specs then saw 401.
+if (process.env.E2E_STUB_BACKEND && !process.env.E2E_LIVE_BACKEND) {
+  process.env.PROJECT_INGEST_TOKEN = '';
+}
+
 /** Suites that run against a local stub rather than a browser - see the `node` project. */
 const NODE_SUITES = /service-quotes-e2e\.spec\.ts/;
 

@@ -1,0 +1,156 @@
+name: CI
+
+# The one required check for main. Runs on every PR and every push to main.
+#
+# This repo is public, so GitHub-hosted minutes are free; the full gate that used
+# to live only in .husky/pre-push (build + Playwright smoke) now runs here too.
+# No `paths` filter on purpose: a required check that never starts blocks the
+# PR forever. Instead the `changes` job decides, and docs-only changes skip the
+# expensive jobs (a skipped job counts as passing for the `ci` summary).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+      base: ${{ steps.diff.outputs.base }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        name: Code or docs only?
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            base=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+          fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          # Same docs-only rule as .husky/pre-push: docs/, root Markdown,
+          # review pages and agent config never change the running site.
+          if git diff --quiet "$base" HEAD -- . ':(exclude)docs' ':(exclude,glob)*.md' ':(exclude).lavish' ':(exclude).claude'; then
+            echo "code=false" >> "$GITHUB_OUTPUT"; echo "docs-only change: skipping build and tests"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: changes
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The gitleaks binary (MIT), pinned and checksum-verified. The
+      # gitleaks-action needs a paid license on organization repos.
+      - name: Install gitleaks 8.30.1
+        run: |
+          v=8.30.1
+          curl -sSLo gl.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${v}/gitleaks_${v}_linux_x64.tar.gz"
+          curl -sSLo sums.txt "https://github.com/gitleaks/gitleaks/releases/download/v${v}/gitleaks_${v}_checksums.txt"
+          grep " gitleaks_${v}_linux_x64.tar.gz$" sums.txt | sed 's/ .*//' | awk '{print $1"  gl.tgz"}' | sha256sum -c -
+          tar -xzf gl.tgz gitleaks && sudo mv gitleaks /usr/local/bin/
+      - name: Scan the commits in this change
+        run: gitleaks git --config .gitleaks.toml --redact --no-banner --log-opts="${{ needs.changes.outputs.base }}..HEAD" .
+
+  static:
+    name: Lint, types, static checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      # `npm run`, never `npx` (see .no-mistakes.yaml).
+      - run: npm run lint -- --max-warnings 0
+      - run: mkdir -p .next/types && touch .next/types/routes.d.ts
+      - run: npm run typecheck
+      - name: Chaos static invariants (new-violation ratchet)
+        run: npm run chaos:static
+      - name: Asset guard (public/ files over 1 MB)
+        run: node scripts/asset-guard.mjs
+      - name: Every new migration has a rollback note
+        run: bash scripts/check-migration-rollback.sh "${{ needs.changes.outputs.base }}"
+
+  build:
+    name: Build and smoke
+    # Pinned: ubuntu-latest is 26.04, which Playwright 1.57 cannot install
+    # chromium on. Move to ubuntu-latest once Playwright supports it.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.ts', 'tailwind.config.ts') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      - name: Playwright browser cache
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx --no-install playwright install --with-deps chromium
+      - if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx --no-install playwright install-deps chromium
+      # The same stub-env build the local gate and the e2e suite use.
+      - run: npm run test:build
+      - run: npm run test:smoke
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: smoke-report
+          path: playwright-report
+          retention-days: 7
+
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [changes, secrets, static, build]
+    steps:
+      - name: All required jobs passed or were skipped for docs
+        run: |
+          echo '${{ toJSON(needs) }}' | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if echo '${{ toJSON(needs) }}' | jq -e 'to_entries | map(.value.result) | any(. == "failure" or . == "cancelled")' >/dev/null; then
+            exit 1
+          fi

@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { applyEmailSafety } from './emailSafety';
 import { cleanEnv } from '@/lib/envClean';
 import { supabaseRest } from '@/lib/notify/supabase-rest';
 import { redactEmailBody } from '@/lib/notify/redactEmailBody';
@@ -290,12 +291,14 @@ export async function sendTrackedEmail(input: TrackedEmailInput): Promise<Tracke
   let result: TrackedEmailResult;
   try {
     const resend = new Resend(apiKey);
+    // Outside production every message goes to one test inbox (emailSafety.ts).
+    const envelope = applyEmailSafety({ to: toList, cc: ccList, subject: input.subject });
     const { data, error } = await resend.emails.send({
       from: input.from,
-      to: toList,
-      ...(ccList.length ? { cc: ccList } : {}),
+      to: envelope.to,
+      ...(envelope.cc.length ? { cc: envelope.cc } : {}),
       ...(input.replyTo ? { replyTo: input.replyTo } : {}),
-      subject: input.subject,
+      subject: envelope.subject,
       ...(unsubHeaders ? { headers: unsubHeaders } : {}),
       // Base64 is the only encoding Resend's JSON API takes for attachment
       // content. A Buffer would serialize to `{"type":"Buffer","data":[...]}`

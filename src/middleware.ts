@@ -59,7 +59,15 @@ const BOT_FILTER_EXEMPT_PREFIXES = ['/articles/unpublish/', '/api/articles/unpub
 /** Slice H: the experiment veto link and its one button, for the same reason. */
 const EXPERIMENT_VETO_PREFIXES = ['/experiments/veto/', '/api/experiments/veto'];
 
+/**
+ * The health check is read by uptime monitors and the deploy pipeline's smoke
+ * step, which identify as curl or a monitoring bot. Exact path only: it returns
+ * a commit id and a database ping, nothing else.
+ */
+const BOT_FILTER_EXEMPT_EXACT = ['/api/health'];
+
 function isBotFilterExempt(pathname: string): boolean {
+  if (BOT_FILTER_EXEMPT_EXACT.includes(pathname)) return true;
   return [...BOT_FILTER_EXEMPT_PREFIXES, ...EXPERIMENT_VETO_PREFIXES].some((p) => pathname.startsWith(p));
 }
 

@@ -1,38 +1,14 @@
 name: Chaos runners
 
-# THE TIERS EXIST; ONLY TIER 1 RUNS AUTOMATICALLY, AND IT IS ALMOST FREE.
+# Tier 1 (static invariants) now runs in ci.yml on every PR and push to main.
+# This workflow keeps the two heavier tiers, run on demand:
 #
-# The chaos-monkey playbook prescribes three CI tiers (PR smoke, merge suite,
-# nightly at scale). This repo deliberately keeps CI thin because Actions
-# minutes are the scarce resource - the real gate is .husky/pre-push, and
-# Playwright is manual-dispatch only (see playwright.yml). Wiring three
-# automatic tiers here would quietly undo that decision.
+#   Tier 2  isolation + budget  needs a build + chromium
+#   Tier 3  crawl               needs a build + long crawl
 #
-# So the split is by COST, not by ceremony:
-#
-#   Tier 1  static invariants   ~20s, no build, no browser   -> runs on PR/push
-#   Tier 2  isolation + budget  needs a build + chromium     -> manual dispatch
-#   Tier 3  crawl + nightly     needs a build + long crawl   -> manual dispatch
-#
-# Tier 1 is the one that matters day to day: it enforces the *classes* found in
-# chaos/findings.json against every change, for about the cost of a lint run.
-# Flip tiers 2 and 3 onto a schedule the moment minutes exist - the jobs are
-# written and working, only their `on:` triggers are conservative.
+# Phase 4 (docs/home-care-audit.md) schedules them nightly with the e2e suite.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'scripts/chaos-static.ts'
-      - 'chaos/static-baseline.json'
-      - '.github/workflows/chaos.yml'
-  pull_request:
-    paths:
-      - 'src/**'
-      - 'scripts/chaos-static.ts'
-      - 'chaos/static-baseline.json'
-      - '.github/workflows/chaos.yml'
   workflow_dispatch:
     inputs:
       tier:
@@ -47,39 +23,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # --- Tier 1 -------------------------------------------------------------
-  # Structural invariants only. No build, no browser, no database. A NEW
-  # violation of a known bug class fails the build; the existing backlog is
-  # baselined in chaos/static-baseline.json and does not.
-  static:
-    name: 'Tier 1 - static invariants'
-    if: github.event_name != 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 6
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - name: Chaos static checks
-        run: npm run chaos:static
-
-  # --- Tier 2 -------------------------------------------------------------
-  # The regression tests written from confirmed findings, plus query budgets.
-  # Each finding graduates into here when its fix lands, tagged @isolation or
-  # @budget, and never has to be re-found by hand again.
   regressions:
     name: 'Tier 2 - isolation + budget'
     if: github.event_name == 'workflow_dispatch' && inputs.tier == 'tier2'
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest is 26.04, which Playwright 1.57 cannot install
+    # chromium on. Move to ubuntu-latest once Playwright supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: mkdir -p .next/types && touch .next/types/routes.d.ts
@@ -104,13 +59,15 @@ jobs:
   crawl:
     name: 'Tier 3 - coverage crawl'
     if: github.event_name == 'workflow_dispatch' && inputs.tier == 'tier3'
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest is 26.04, which Playwright 1.57 cannot install
+    # chromium on. Move to ubuntu-latest once Playwright supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: mkdir -p .next/types && touch .next/types/routes.d.ts

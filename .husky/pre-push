@@ -1,17 +1,15 @@
-# Local correctness gate: the Mac is the gatekeeper, so CI minutes are not.
-# Four checks, cheapest first; the first failure blocks the push:
-#   1. TypeScript type check   (tsc --noEmit, whole project)     ~seconds
-#   2. ESLint                  (only the files this push changes) ~seconds
-#   3. Production build        (next build via scripts/test-build.sh - the
-#                               same one-definition build CI's e2e job uses;
-#                               stub env, so it never dials hosted Supabase)
-#   4. Playwright smoke        (critical-path specs only, against the build
-#                               from step 3 - see `npm run test:smoke`)
+# Fast local gate: seconds, not minutes. Three checks, cheapest first; the
+# first failure blocks the push:
+#   1. TypeScript type check   (tsc --noEmit, whole project)
+#   2. Chaos static checks     (new-violation ratchet)
+#   3. ESLint                  (only the files this push changes)
+# The production build and the Playwright smoke run in CI (.github/workflows/
+# ci.yml) on every PR; the repo is public, so those minutes are free, and the
+# `ci` check is required before merge (decided 2026-10-31).
 # A docs-only push (docs/, root Markdown, .lavish/, .claude/) skips all of
 # them - see the rule above the ref loop below.
 #
-# Emergency bypass: `git push --no-verify`. Use it knowingly: the trimmed CI
-# no longer repeats the expensive checks, so whatever you skip stays unchecked.
+# Emergency bypass: `git push --no-verify`. CI still runs every check.
 #
 # Bare tool names on purpose: the husky runner (.husky/_/h) prepends
 # node_modules/.bin to PATH, so these resolve to the pinned binaries and a
@@ -73,16 +71,8 @@ if [ "$ALL_DOCS_ONLY" = "1" ]; then
   exit 0
 fi
 
-# --- pre-flight: port 3000 must be free -------------------------------------
-# Step 4's Playwright config reuses any server already listening on :3000, and
-# a leftover `npm run dev` there serves the WRONG baked env (see CLAUDE.md).
-# Fail in one second instead of after a multi-minute build.
-if lsof -ti :3000 -sTCP:LISTEN >/dev/null 2>&1; then
-  fail "something is already listening on port 3000 (a dev server?). Stop it first - the smoke tests would silently test the wrong server."
-fi
-
-# --- 1/4 TypeScript ---------------------------------------------------------
-echo "pre-push [1/5] TypeScript type check (tsc --noEmit)..."
+# --- 1/3 TypeScript ---------------------------------------------------------
+echo "pre-push [1/3] TypeScript type check (tsc --noEmit)..."
 # tsc reads .next/types/, which only `next build` writes - and a FAILED build
 # leaves stale files there referencing routes that no longer exist, breaking
 # tsc with a phantom error. Reset to exactly what CI stubs before its
@@ -90,9 +80,9 @@ echo "pre-push [1/5] TypeScript type check (tsc --noEmit)..."
 rm -rf .next/types
 mkdir -p .next/types
 touch .next/types/routes.d.ts
-npm run typecheck || fail "TypeScript found type errors (step 1/5)."
+npm run typecheck || fail "TypeScript found type errors (step 1/3)."
 
-# --- 2/5 Chaos static checks ------------------------------------------------
+# --- 2/3 Chaos static checks ------------------------------------------------
 # Structural invariants distilled from the chaos-monkey run (chaos/findings.json):
 # uncapped reads of growing tables, guards that fail open when their own secret
 # is missing, analytics mounted on token-authenticated pages, duplicated owner
@@ -102,10 +92,10 @@ npm run typecheck || fail "TypeScript found type errors (step 1/5)."
 # and do not block; only NEW ones do. That baseline is a debt register - shrink it
 # with `npm run chaos:static:baseline` as findings close, never grow it silently.
 # Costs about a second, which is why it lives here rather than in CI.
-echo "pre-push [2/5] Chaos static checks (new-violation ratchet)..."
-npm run chaos:static || fail "a NEW structural violation was introduced (step 2/5). See the list above; chaos/findings.json explains each class."
+echo "pre-push [2/3] Chaos static checks (new-violation ratchet)..."
+npm run chaos:static || fail "a NEW structural violation was introduced (step 2/3). See the list above; chaos/findings.json explains each class."
 
-# --- 3/5 ESLint on the pushed files only ------------------------------------
+# --- 3/3 ESLint on the pushed files only ------------------------------------
 sort -u "$LINT_LIST" >"$LINT_LIST.sorted"
 # A file can be renamed/deleted after the pushed commit on an unusual push;
 # lint only paths that exist in the working tree.
@@ -115,19 +105,11 @@ while read -r f; do
 done <"$LINT_LIST.sorted"
 
 if [ -s "$LINT_LIST" ]; then
-  echo "pre-push [3/5] ESLint on $(wc -l <"$LINT_LIST" | tr -d ' ') changed file(s)..."
-  tr '\n' '\0' <"$LINT_LIST" | xargs -0 eslint --max-warnings 0 || fail "ESLint found problems in the files you are pushing (step 3/5)."
+  echo "pre-push [3/3] ESLint on $(wc -l <"$LINT_LIST" | tr -d ' ') changed file(s)..."
+  tr '\n' '\0' <"$LINT_LIST" | xargs -0 eslint --max-warnings 0 || fail "ESLint found problems in the files you are pushing (step 3/3)."
 else
-  echo "pre-push [3/5] ESLint: no JS/TS files changed in this push - skipped."
+  echo "pre-push [3/3] ESLint: no JS/TS files changed in this push - skipped."
 fi
 
-# --- 4/5 Production build ---------------------------------------------------
-echo "pre-push [4/5] Production build (next build, stub env - a few minutes)..."
-npm run test:build || fail "the production build failed (step 4/5)."
-
-# --- 5/5 Playwright smoke ---------------------------------------------------
-echo "pre-push [5/5] Playwright smoke tests (critical path)..."
-npm run test:smoke || fail "smoke tests failed (step 5/5). Report: npm run test:report"
-
 echo ""
-echo "pre-push: all 5 checks passed - pushing."
+echo "pre-push: all 3 checks passed - pushing (CI builds and runs the smoke suite)."

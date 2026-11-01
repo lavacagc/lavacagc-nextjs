@@ -68,7 +68,6 @@ supabase/.temp/
 /*.jpeg
 /*.jpg
 /.githooks/
-/.gitleaks.toml
 /supabase/config.toml
 /supabase/.gitignore
 /scripts/crew-dispatch-live-test.ts
